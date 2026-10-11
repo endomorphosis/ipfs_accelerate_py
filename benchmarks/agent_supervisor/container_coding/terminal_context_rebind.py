@@ -156,7 +156,7 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
     if retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1":
         result.update({key: retrieval[key] for key in (
             "retrieval_schema", "source_population_cid", "disposition", "embedding_calls", "support_hashes", "program_paths")})
-    for key in ("source384_context", "numerical_formalization"):
+    for key in ("source384_context", "numerical_formalization", "numerical_selection_384"):
         if key in selected_context:
             result[key] = selected_context[key]
     result["context_bundle"] = write_task_context_bundle(repository=root, prepared=[result],
@@ -219,7 +219,7 @@ def verify_worker_context_prompt(*, prompt: str, rebound: dict) -> dict:
     # validity: dispatch performs the live replay, while a stored prompt may
     # still be inspected after source changes or a completed publication.
     from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import _worker_evidence
-    selected = {key: rebound[key] for key in ("source384_context", "numerical_formalization")
+    selected = {key: rebound[key] for key in ("source384_context", "numerical_formalization", "numerical_selection_384")
                 if key in rebound}
     kind = "source-formalization-context"
     refs = sorted((row for row in wire["evidence"] if row["kind"] == kind),

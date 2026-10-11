@@ -224,7 +224,7 @@ def _formalization_audit_observations(audit):
     fields = {"schema", "task_id", "task_cid", *digest_fields, "chunks", "source_files", "contexts",
         "historical_receipt_bindings_verified", *false_fields, "source_obligations_discharged"}
     context_fields = {"kind", "receipt_sha256", "summary_sha256", "source_hashes_sha256"}
-    kinds = ("source384-candidate-context", "numerical-formalization-context")
+    kinds = ("source384-candidate-context", "numerical-formalization-context", "learned-numerical-selection-context")
     digest = lambda value: type(value) is str and re.fullmatch(r"[a-f0-9]{64}", value) is not None
     identity = lambda value: type(value) is str and re.fullmatch(r"[A-Za-z0-9_:./-]{1,512}", value) is not None
     result = []
@@ -240,13 +240,13 @@ def _formalization_audit_observations(audit):
                 or value["task_cid"] != capsule.get("task_cid")
                 or any(not digest(value[key]) for key in digest_fields)
                 or type(value["chunks"]) is not int or not 1 <= value["chunks"] <= 6
-                or type(value["source_files"]) is not int or not 0 <= value["source_files"] <= 320
+                or type(value["source_files"]) is not int or not 0 <= value["source_files"] <= 768
                 or value["historical_receipt_bindings_verified"] is not True
                 or any(value[key] is not False for key in false_fields)
                 or type(value["source_obligations_discharged"]) is not int or value["source_obligations_discharged"] != 0):
             continue
         contexts = value["contexts"]
-        if (type(contexts) is not list or not 1 <= len(contexts) <= 2
+        if (type(contexts) is not list or not 1 <= len(contexts) <= 3
                 or any(type(row) is not dict or set(row) != context_fields
                     or row["kind"] not in kinds
                     or any(not digest(row[key]) for key in context_fields - {"kind"}) for row in contexts)

@@ -196,9 +196,11 @@ def _verify_predecessor(*, root, result):
     bundle = result["predecessor_bundle"]
     selected = read_task_context_historical_selection(repository=root, artifact=bundle["artifact"],
         expected_sha256=bundle["sha256"], task_cid=result["task_cid"], task_id=result["task_id"])
-    families = ("source384_context", "numerical_formalization")
+    families = ("source384_context", "numerical_formalization", "numerical_selection_384")
     if any((key in selected) != (key in result) for key in families):
         raise ValueError("published context cannot omit or add a selected formalization family")
+    if "numerical_selection_384" in selected:
+        raise ValueError("learned numerical successor regeneration policy is unavailable")
     if "source384_context" in selected:
         from .source384_repository_context import validate_historical_source384_selection
         previous_source384 = validate_historical_source384_selection(repository=root,
@@ -339,6 +341,39 @@ def observe_numerical_successor_unavailable(*, server, admission, predecessor_bu
         task_cid=task_cid, task_id=binding["task_id"])
     if "numerical_formalization" in selected:
         return _numerical_successor_unavailable(binding, predecessor_bundle, selected)
+    return None
+
+
+def _learned_numerical_successor_unavailable(binding, bundle, selected):
+    """Keep the entire historical selection when learned regeneration is absent."""
+    result = {"schema": "supervisor-learned-numerical-successor-observation@1", **binding,
+        "status": "successor_unavailable", "reason": "learned_numerical_successor_policy_unavailable",
+        "predecessor_bundle": dict(bundle), "needs_successor": True,
+        "source_semantics_verified": False, "whole_program_semantics_verified": False,
+        "source_obligations_discharged": 0, "proof_authority": False,
+        "formalization_authority": False, "planning_authority": False, "dispatch_authority": False,
+        "execution_authority": False, "completion_authority": False,
+        "canonical_task_mutated": False, "launch_nomination_mutated": False,
+        "text_generation_calls": 0, "inference_calls": 0}
+    for key, prefix in (("source384_context", "source384"),
+                        ("numerical_formalization", "numerical"),
+                        ("numerical_selection_384", "learned_numerical")):
+        if key in selected:
+            result[key] = selected[key]
+            result[prefix + "_current"] = False
+            result[prefix + "_scope"] = "sealed historical envelope; current source/model validity not established"
+    return result
+
+
+def observe_learned_numerical_successor_unavailable(*, server, admission, predecessor_bundle, task_cid):
+    root, binding, _task = _owner_state(server=server, admission=admission, task_cid=task_cid)
+    if not isinstance(predecessor_bundle, dict) or set(predecessor_bundle) != {"artifact", "sha256"}:
+        raise ValueError("exact predecessor bundle reference required")
+    selected = read_task_context_historical_selection(repository=root,
+        artifact=predecessor_bundle["artifact"], expected_sha256=predecessor_bundle["sha256"],
+        task_cid=task_cid, task_id=binding["task_id"])
+    if "numerical_selection_384" in selected:
+        return _learned_numerical_successor_unavailable(binding, predecessor_bundle, selected)
     return None
 
 
@@ -522,6 +557,8 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
         validate_manifest(policy=numerical_policy, manifest=admission["manifest"]["payload"])
     # Every selected family must have a rebuild policy before any work starts;
     # a mixed successor cannot silently drop an unavailable component.
+    if "numerical_selection_384" in selected:
+        return _learned_numerical_successor_unavailable(binding, predecessor_bundle, selected)
     if "numerical_formalization" in selected and numerical_policy is None:
         return _numerical_successor_unavailable(binding, predecessor_bundle, selected)
     if "source384_context" in selected and source384_output is None:
@@ -910,9 +947,10 @@ def load_published_task_context(*, server, admission, artifact: str, expected_sh
     checkpoint()
     arguments = dict(repository=root, artifact=result["context_bundle"]["artifact"],
         expected_sha256=result["context_bundle"]["sha256"], task_cid=result["task_cid"], task_id=result["task_id"])
-    if "source384_context" in result or "numerical_formalization" in result:
+    if any(key in result for key in ("source384_context", "numerical_formalization", "numerical_selection_384")):
         selected = read_task_context_historical_selection(**arguments)
-        if any(selected.get(key) != result.get(key) for key in ("source384_context", "numerical_formalization")):
+        if any(selected.get(key) != result.get(key) for key in (
+                "source384_context", "numerical_formalization", "numerical_selection_384")):
             raise ValueError("formalization successor bundle differs from refresh receipt")
         metadata = selected["metadata"]
         source_remaining = None

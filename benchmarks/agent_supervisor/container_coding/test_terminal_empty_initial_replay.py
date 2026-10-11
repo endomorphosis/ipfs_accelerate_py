@@ -173,13 +173,15 @@ def test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts(capt
     _reject_before_dispatch(root, state, prepared)
 
 
-@pytest.mark.parametrize("decoder", ["training", "legacy_security", "source384"])
+@pytest.mark.parametrize("decoder", ["training", "legacy_security", "source384", "learned_numerical"])
 def test_selected_decoders_abstain_before_consumption_for_empty_retrieval(prepared_only, monkeypatch, decoder):
     from ipfs_accelerate_py.agent_supervisor.runtime import security_autoencoder_advisor as legacy
     from ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context as source384
     from ipfs_datasets_py.logic.formalization.autoencoder.security import codebase_autoencoder as training
     from ipfs_datasets_py.logic.software_contracts import codebase_source_384 as source384_parent
     from ipfs_datasets_py.logic.software_contracts import codebase_source_units_384 as source384_units
+    from ipfs_accelerate_py.agent_supervisor.runtime import numerical_selection_context as learned
+    from ipfs_accelerate_py.agent_supervisor.runtime import numerical_selection_config as learned_config
 
     root, state, _ = prepared_only
     calls = []
@@ -191,14 +193,21 @@ def test_selected_decoders_abstain_before_consumption_for_empty_retrieval(prepar
     monkeypatch.setattr(source384_parent, "register_shared_parent", forbidden)
     monkeypatch.setattr(source384_units, "infer_shared_parent_units", forbidden)
     monkeypatch.setattr(training, "train_codebase_autoencoder", forbidden)
+    monkeypatch.setattr(learned, "prepare_numerical_selection_context", forbidden)
     if decoder == "training":
         options = {"train_autoencoder": True}
     elif decoder == "legacy_security":
         options = {"security_checkpoint": {"explicit_unconsumed_selection": True}}
-    else:
+    elif decoder == "source384":
         selection = state / "requested-source384-config.json"
         selection.write_text("{}\n")
         options = {"source384_config": selection}
+    else:
+        selection = state / "requested-learned-numerical-config.json"
+        selection.write_text("{}\n")
+        # Isolate empty-population refusal from separate native asset checks.
+        monkeypatch.setattr(learned_config, "load_numerical_selection_config", lambda *args: {})
+        options = {"numerical_selection_config": selection}
     with pytest.raises(ValueError, match="independent decoder abstention"):
         prep.initial_context(state=state, **options)
     assert calls == []
@@ -206,4 +215,5 @@ def test_selected_decoders_abstain_before_consumption_for_empty_retrieval(prepar
     assert not (state / "planner-invoked.json").exists()
     assert not (state / "admission.json").exists()
     assert not (root / ".runtime/terminal-initial-context").exists()
+    assert not (state / "numerical-selection-384").exists()
     assert not (root / "result.py").exists()

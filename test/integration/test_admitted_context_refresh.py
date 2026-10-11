@@ -110,7 +110,7 @@ def test_opted_in_runtime_refreshes_only_after_native_stop(scenario, tmp_path, l
             runtime.close()
 
 
-@pytest.mark.parametrize("selected_domain", ["source384", "numerical", "combined"])
+@pytest.mark.parametrize("selected_domain", ["source384", "numerical", "combined", "learned_numerical", "all_three"])
 def test_formalization_publication_preserves_selection_and_admitted_refresh(
         scenario, tmp_path, monkeypatch, selected_domain):
     from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import (
@@ -122,8 +122,9 @@ def test_formalization_publication_preserves_selection_and_admitted_refresh(
 
     root = scenario["repository"]
     baseline_sha = hashlib.sha256((root / "answer.py").read_bytes()).hexdigest()
-    learned = selected_domain in {"source384", "combined"}
-    numeric = selected_domain in {"numerical", "combined"}
+    learned = selected_domain in {"source384", "combined", "all_three"}
+    numeric = selected_domain in {"numerical", "combined", "all_three"}
+    learned_numerical = selected_domain in {"learned_numerical", "all_three"}
     # Actual native owner/publication/completion/lifecycle, with an explicitly
     # authored source-bound validator instead of any model inference claim.
     module = types.ModuleType("ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context")
@@ -152,6 +153,23 @@ def test_formalization_publication_preserves_selection_and_admitted_refresh(
         selected_receipts["numerical_formalization"] = numerical.prepare_numerical_context(
             repository=root, source_hashes={"answer.py": baseline_sha},
             output=tmp_path / "numerical-receipt", profile=numerical.PROFILE)
+    if learned_numerical:
+        # Explicit authored transport control: no learned inference is claimed.
+        learned_owner = types.ModuleType("ipfs_accelerate_py.agent_supervisor.runtime.numerical_selection_context")
+        learned_owner.SCHEMA = "supervisor-learned-numerical-selection@1"
+        learned_owner._sources = native_source384._sources
+        def validate_learned(*, repository, expected_receipt):
+            native_source384._sources(repository, expected_receipt["source_hashes"])
+        learned_owner.validate_numerical_selection_context = validate_learned
+        monkeypatch.setitem(sys.modules, learned_owner.__name__, learned_owner)
+        output = tmp_path / "authored-learned-numerical"
+        output.mkdir()
+        learned_receipt = dict(schema=learned_owner.SCHEMA, repository=str(root), output=str(output),
+            source_hashes={"answer.py": baseline_sha}, summary=dict(schema="authored-learned-summary@1",
+                candidates=[], proof_authority=False), proof_authority=False)
+        raw = json.dumps(learned_receipt, sort_keys=True, separators=(",", ":")).encode()
+        (output / "receipt.json").write_bytes(raw)
+        selected_receipts["numerical_selection_384"] = dict(learned_receipt, receipt_sha256=hashlib.sha256(raw).hexdigest())
     admission = local.admit_local_benchmark_plan(graph=scenario["graph"], manifest=scenario["manifest"])
     with typed_claim(scenario, tmp_path) as (owner, _daemon, attempt):
         previous = initial_bundle(scenario, owner)
@@ -189,18 +207,24 @@ def test_formalization_publication_preserves_selection_and_admitted_refresh(
             complete(owner, attempt, passed["results"][0]["evidence_digest"])
             completed_task = owner.source.get_task(task.task_cid)
             observed = runtime.observe()
-            historical = observed["context_observation"]["numerical_formalization" if numeric else "source384"][0]
+            historical = observed["context_observation"]["numerical_selection_384" if learned_numerical else
+                "numerical_formalization" if numeric else "source384"][0]
             assert historical["task_status"] == "completed"
             assert all(historical[key] == value for key, value in selected_receipts.items())
             assert historical["predecessor_bundle"] == bundle
             if learned:
                 assert historical["source384_current"] is False
-                assert observed["context_observation"]["source384"][0]["source384_context"] == receipt
+                if not learned_numerical:
+                    assert observed["context_observation"]["source384"][0]["source384_context"] == receipt
             if numeric:
                 assert historical["numerical_current"] is False
-                assert historical["reason"] == "numerical_successor_not_prepared"
+                assert historical["reason"] == ("learned_numerical_successor_policy_unavailable" if learned_numerical
+                    else "numerical_successor_not_prepared")
                 assert historical["source_obligations_discharged"] == 0
                 assert historical["dispatch_authority"] is historical["planning_authority"] is False
+            if learned_numerical:
+                assert historical["learned_numerical_current"] is False
+                assert historical["source_obligations_discharged"] == 0
             assert historical["needs_successor"] is True
             assert historical["completion_authority"] is historical["proof_authority"] is False
             assert observed["published_context"][0]["status"] == "pending_native_stop"
@@ -215,7 +239,7 @@ def test_formalization_publication_preserves_selection_and_admitted_refresh(
             assert stopped.succeeded and stopped.data["old_tree_fenced"] is True
             assert not runtime.process.snapshot(runtime.profile).members
             successor = runtime.refresh_after_stop()[0]
-            if numeric and not learned:
+            if numeric and not learned and not learned_numerical:
                 assert successor["status"] == "refreshed", successor
                 assert successor["numerical_refresh_reused"] is False
                 assert successor["requires_independent_manifest"] is True
@@ -255,7 +279,8 @@ def test_formalization_publication_preserves_selection_and_admitted_refresh(
             else:
                 assert successor["status"] == "successor_unavailable"
                 assert all(successor[key] == value for key, value in selected_receipts.items())
-                assert successor["reason"] == "source384_successor_not_prepared"
+                assert successor["reason"] == ("learned_numerical_successor_policy_unavailable" if learned_numerical
+                    else "source384_successor_not_prepared")
                 assert "context_bundle" not in successor
                 assert runtime._published_context == runtime._context_refresh_attempts == {}
                 if numeric:
@@ -265,7 +290,8 @@ def test_formalization_publication_preserves_selection_and_admitted_refresh(
             direct = refresh_published_task_context(server=owner.server, admission=admission,
                 predecessor_bundle=bundle, task_cid=task.task_cid, output=root / ".runtime/no-successor")
             assert direct["status"] == "successor_unavailable"
-            assert direct["reason"] == ("numerical_successor_not_prepared" if numeric else "source384_successor_not_prepared")
+            assert direct["reason"] == ("learned_numerical_successor_policy_unavailable" if learned_numerical else
+                "numerical_successor_not_prepared" if numeric else "source384_successor_not_prepared")
             assert all(direct[key] == value for key, value in selected_receipts.items())
             assert "context_bundle" not in direct
             assert not (root / ".runtime/no-successor").exists()

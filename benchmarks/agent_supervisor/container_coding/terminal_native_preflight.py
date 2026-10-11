@@ -96,6 +96,7 @@ def qualify(*, repository: Path, instruction: Path, state: Path,
             resource_profile: str | None = None, source384_config: Path | None = None,
             source384_timeout_seconds: float | None = None,
             numerical_formalization_profile: str | None = None,
+            numerical_selection_config: Path | None = None,
             intent_checkpoint_descriptor: Path | None = None,
             intent_action_384_config: Path | None = None,
             intent_projection_request: Path | None = None,
@@ -117,6 +118,9 @@ def qualify(*, repository: Path, instruction: Path, state: Path,
 
     started = time.monotonic()
     validate_numerical_profile(numerical_formalization_profile)
+    if numerical_selection_config is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.numerical_selection_config import load_numerical_selection_config
+        load_numerical_selection_config(numerical_selection_config)
     # Refuse unsupported declarations before prepare commits public input files
     # or creates signed state. This authored graph does not fabricate a symbolic
     # requirement-to-task coverage witness or discard additional declared tasks.
@@ -151,7 +155,7 @@ def qualify(*, repository: Path, instruction: Path, state: Path,
     repository, state = Path(prepared["repository"]), Path(prepared["state"])
     initial = None
     initial_seconds = 0.0
-    if source384_config is not None or numerical_formalization_profile is not None:
+    if source384_config is not None or numerical_formalization_profile is not None or numerical_selection_config is not None:
         entered = time.monotonic()
         initial = prep.initial_context(state=state, model_snapshot=model_snapshot,
             model_revision=model_revision, source384_config=source384_config,
@@ -159,7 +163,11 @@ def qualify(*, repository: Path, instruction: Path, state: Path,
             **({"source384_budget_profile":resource_profile}
                if resource_profile == FORMALIZATION_SOURCE384_PROFILE and source384_config is not None else {}),
             **({"numerical_formalization_profile": numerical_formalization_profile}
-               if numerical_formalization_profile is not None else {}))
+               if numerical_formalization_profile is not None else {}),
+            **({"numerical_selection_config": numerical_selection_config,
+                "numerical_selection_timeout_seconds": budget["source384_seconds"],
+                **({"numerical_selection_budget_profile": resource_profile} if resource_profile == FORMALIZATION_SOURCE384_PROFILE else {})}
+               if numerical_selection_config is not None else {}))
         initial_seconds = time.monotonic() - entered
     graph = _authored_graph(prepared)
     admission = local.admit_local_benchmark_plan(graph=graph, manifest=prepared["manifest"])
@@ -268,6 +276,7 @@ def main():
     parser.add_argument("--source384-config", type=Path)
     parser.add_argument("--source384-timeout-seconds", type=float)
     parser.add_argument("--numerical-formalization-profile")
+    parser.add_argument("--numerical-selection-config", type=Path)
     parser.add_argument("--intent-checkpoint-descriptor", type=Path)
     parser.add_argument("--intent-action-384-config", type=Path)
     parser.add_argument("--intent-projection-request", type=Path)

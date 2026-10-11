@@ -393,6 +393,52 @@ def test_bounded_child_preserves_formalization_dispatch_observation(formalizatio
     assert result["matches"][0]["model_input_checks"]["source_formalization_dispatch"] is True
 
 
+@pytest.mark.parametrize("change", [None, "receipt", "omission", "source_binding"])
+def test_historical_audit_preserves_selected_third_family(formalization, monkeypatch, change):
+    from ipfs_accelerate_py.agent_supervisor.runtime import task_context_bundle as bundle
+    from ipfs_accelerate_py.agent_supervisor.runtime import numerical_selection_context as learned
+    c = formalization
+    root = c["repository"]
+    output = root.parent / "learned-numerical-receipt"
+    output.mkdir()
+    receipt = dict(schema=learned.SCHEMA, repository=str(root), output=str(output),
+        source_hashes=c["selected"]["source384_context"]["source_hashes"],
+        summary=dict(schema="authored-learned-summary@1", candidate_ir_json="private candidate", proof_authority=False),
+        proof_authority=False)
+    raw = bundle._raw(receipt)
+    (output / "receipt.json").write_bytes(raw)
+    receipt["receipt_sha256"] = hashlib.sha256(raw).hexdigest()
+    c["selected"]["numerical_selection_384"] = receipt
+    nomination = {**c["nomination"], "numerical_selection_384": receipt}
+    binding = bundle.write_task_context_bundle(repository=root, prepared=[nomination], output=root / "third-family.json")
+    expected_path = c["state"] / "context-result.json"
+    expected = json.loads(expected_path.read_bytes())
+    expected.update(context_bundle=binding, numerical_selection_384=receipt)
+    expected_path.write_text(json.dumps(expected))
+    payload = bundle._worker_evidence(c["selected"], repository=root, artifact=binding["artifact"],
+        expected_sha256=binding["sha256"], task_cid="cid:task", task_id="TB-CODE-TASK")
+    _rewrite_formalization(c, payload)
+    monkeypatch.setattr(learned, "validate_numerical_selection_context",
+        lambda **kwargs: pytest.fail("historical audit must not replay learned inference"))
+    (root / "bottle.py").write_text("intentional completed worker edit")
+    if change == "receipt":
+        (output / "receipt.json").write_bytes(raw + b" ")
+    elif change == "omission":
+        expected.pop("numerical_selection_384")
+        expected_path.write_text(json.dumps(expected))
+    elif change == "source_binding":
+        payload["contexts"][-1]["source_hashes_sha256"] = "f" * 64
+        _rewrite_formalization(c, payload)
+    result = observe(c)
+    assert result["all_observed_coding_inputs_verified"] is (change is None), result
+    if change is None:
+        observation = result["capsules"][0]["source_formalization_context"]
+        assert [row["kind"] for row in observation["contexts"]][-1] == "learned-numerical-selection-context"
+        assert len(observation["contexts"]) == 3
+        assert observation["source_obligations_discharged"] == 0
+        assert "private candidate" not in json.dumps(result)
+
+
 def test_independent_selection_detects_omitted_prompt_and_matching_router_receipt(formalization):
     _rewrite_formalization(formalization, None)
     result = observe(formalization)

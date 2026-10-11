@@ -20,11 +20,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 
 
 @pytest.mark.parametrize("source384", ["absent", "selected", "drift-during-capture",
-    "numerical", "combined", "numerical-drift-during-capture"])
+    "numerical", "combined", "numerical-drift-during-capture", "learned_numerical", "all_three"])
 def test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority(original, monkeypatch, source384):
     root, instruction, state = original
-    numeric = source384 in {"numerical", "combined", "numerical-drift-during-capture"}
-    learned = source384 in {"selected", "combined", "drift-during-capture"}
+    numeric = source384 in {"numerical", "combined", "numerical-drift-during-capture", "all_three"}
+    learned = source384 in {"selected", "combined", "drift-during-capture", "all_three"}
+    learned_numerical = source384 in {"learned_numerical", "all_three"}
     if numeric:
         from benchmarks.agent_supervisor.container_coding.test_terminal_numerical_context import SOURCE
         (root / "bottle.py").write_text(SOURCE)
@@ -66,6 +67,25 @@ def test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_worl
         selected_receipts["numerical_formalization"] = numerical.prepare_numerical_context(
             repository=root, source_hashes={"bottle.py": hashlib.sha256((root / "bottle.py").read_bytes()).hexdigest()},
             output=state / "numerical-formalization", profile=numerical.PROFILE)
+    if learned_numerical:
+        from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import _raw
+        from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import _read
+        module = types.ModuleType("ipfs_accelerate_py.agent_supervisor.runtime.numerical_selection_context")
+        module.SCHEMA = "supervisor-learned-numerical-selection@1"
+        def sources(repository, hashes):
+            if any(hashlib.sha256(_read(repository / name)).hexdigest() != digest for name, digest in hashes.items()):
+                raise ValueError("learned numerical source changed")
+        module._sources = sources
+        module.validate_numerical_selection_context = lambda **kw: sources(kw["repository"], kw["expected_receipt"]["source_hashes"])
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+        output = state / "authored-learned-numerical"
+        output.mkdir()
+        receipt = dict(schema=module.SCHEMA, repository=str(root), output=str(output),
+            source_hashes={"bottle.py": hashlib.sha256((root / "bottle.py").read_bytes()).hexdigest()},
+            summary=dict(schema="authored-learned-summary@1", candidates=[], proof_authority=False), proof_authority=False)
+        raw = _raw(receipt)
+        (output / "receipt.json").write_bytes(raw)
+        selected_receipts["numerical_selection_384"] = dict(receipt, receipt_sha256=hashlib.sha256(raw).hexdigest())
     if selected_receipts:
         from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import write_task_context_bundle
         context_result = json.loads((state / "context-result.json").read_bytes())
@@ -111,7 +131,8 @@ def test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_worl
             assert all(rebound[key] == receipt for key, receipt in selected_receipts.items())
             assert len(source384_calls) == (2 if learned else 0)
             rebound_bundle = json.loads((root / rebound["context_bundle"]["artifact"]).read_bytes())
-            assert rebound_bundle["schema"] == ("supervisor-task-context-nominations@4" if numeric
+            assert rebound_bundle["schema"] == ("supervisor-task-context-nominations@5" if learned_numerical else
+                                                 "supervisor-task-context-nominations@4" if numeric
                                                  else "supervisor-task-context-nominations@3")
             from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import read_task_context_historical_selection
             selected = read_task_context_historical_selection(repository=root,
@@ -146,6 +167,9 @@ def test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_worl
                 assert formal["task_cid"] == task_spec.task_cid
                 assert formal["context_bundle"] == rebound["context_bundle"]
                 assert formal["source_obligations_discharged"] == 0
+                if learned_numerical:
+                    assert next(row["summary"] for row in formal["contexts"]
+                        if row["kind"] == "learned-numerical-selection-context") == selected_receipts["numerical_selection_384"]["summary"]
                 if numeric:
                     summary = next(row["summary"] for row in formal["contexts"]
                         if row["kind"] == "numerical-formalization-context")

@@ -107,3 +107,22 @@ def test_malformed_or_unbounded_observation_is_not_projected(observed, change):
 
 def test_legacy_audit_keeps_formalization_unobserved():
     assert project({"status": "verified_all_observed_model_inputs"}) == []
+
+
+@pytest.mark.parametrize("change", [None, "duplicate", "order", "overflow"])
+def test_three_family_delivery_remains_bounded_and_ordered(observed, change):
+    value = observed["capsules"][0]["source_formalization_context"]
+    row = dict(kind="learned-numerical-selection-context", receipt_sha256="7" * 64,
+        summary_sha256="8" * 64, source_hashes_sha256="9" * 64)
+    value["contexts"].append(row)
+    value["source_files"] = 768
+    if change == "duplicate": value["contexts"].append(dict(row))
+    elif change == "order": value["contexts"].reverse()
+    elif change == "overflow": value["source_files"] += 1
+    result = project(observed)
+    if change:
+        assert result == []
+    else:
+        assert result[0]["contexts"][-1] == row
+        assert result[0]["reported_model_input_verified"] is True
+        assert result[0]["source_obligations_discharged"] == 0

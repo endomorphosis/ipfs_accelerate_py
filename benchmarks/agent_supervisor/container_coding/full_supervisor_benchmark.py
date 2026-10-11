@@ -286,6 +286,10 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     verify_intent_action_384_archive(archive / "runtime.tar.gz", manifest)
     selected_source384 = validate_source384_binding(manifest)
     verify_source384_archive(archive / "runtime.tar.gz", manifest)
+    from .terminal_numerical_selection_deployment import verify_numerical_selection_archive
+    selected_numerical = verify_numerical_selection_archive(archive / "runtime.tar.gz", manifest)
+    if setup_cache_policy is not None and manifest.get("numerical_selection_384") is not None:
+        raise ValueError("setup cache is not qualified for learned numerical selection")
     if source384_config is not None:
         _, expected_binding = _source384_assets(load_source384_config(source384_config))
         if selected_source384 != expected_binding:
@@ -311,7 +315,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         semantic_metadata_view=semantic_metadata_view,
         numerical_formalization_profile=numerical_formalization_profile,
         **({"provider_profile": provider_profile} if provider_profile is not None else {}))
-    if selected_source384 is not None and arm == "full":
+    if (selected_source384 is not None or selected_numerical is not None) and arm == "full":
         validate_resource_profile(declared_config, resource_profile)
     config = JobConfig.model_validate(declared_config, extra="forbid")
     output.mkdir(parents=True)
@@ -346,6 +350,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               "benchmark_advantage_claimed": False, **_intent_selection(requirements),
               "intent_action_384": selected_intent, "source384": selected_source384,
               "source384_enabled": selected_source384 is not None and arm == "full",
+              **({"numerical_selection_384": selected_numerical,
+                  "numerical_selection_enabled": arm == "full"} if selected_numerical is not None else {}),
               "resource_profile": resource_profile,
               **({"setup_cache_selection": setup_cache_selection} if setup_cache_selection is not None else {})}
     _json(output / "preparation.json", result)
@@ -475,6 +481,8 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     require_coding_reply_archive(current_manifest, reply_mode)
     require_semantic_metadata_archive(current_manifest, metadata_view)
     require_numerical_archive(current_manifest, numerical_profile)
+    from .terminal_numerical_selection_deployment import require_numerical_selection_archive
+    require_numerical_selection_archive(current_manifest)
     require_retrieval_revision(current_manifest, prepared["arm"],
         config["agents"][0].get("kwargs", {}).get("model_revision", ""))
     from .terminal_worker_capability import require_worker_capability

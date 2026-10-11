@@ -684,6 +684,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         intent_action_384_config: Path | None = None,
         source384_config: Path | None = None,
         numerical_formalization_profile: str | None = None,
+        numerical_selection_config: Path | None = None,
         intent_projection_request: Path | None = None,
         intent_projection_request_sha256: str | None = None,
         disable_intent_autoencoder: bool = False,
@@ -726,13 +727,21 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     if arm != "full" and any(value is not None for value in (
             security_initializer, canonical_cve_export, canonical_cve_manifest_sha256,
             security_checkpoint, security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
-            formula_decoder_descriptor, header_protocol_descriptor, source384_config)):
+            formula_decoder_descriptor, header_protocol_descriptor, source384_config, numerical_selection_config)):
         raise ValueError("security training assets require the full indexed arm")
     if source384_config is not None and any(value is not None for value in (
             security_initializer, canonical_cve_export, canonical_cve_manifest_sha256,
             security_checkpoint, security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
             formula_decoder_descriptor, header_protocol_descriptor)):
         raise ValueError("Source384 pinned-parent and legacy security profiles are mutually exclusive")
+    if numerical_selection_config is not None:
+        if any(value is not None for value in (
+                security_initializer, canonical_cve_export, canonical_cve_manifest_sha256)):
+            raise ValueError("learned numerical inference excludes legacy training inputs")
+        if security_checkpoint is None and any(value is not None for value in (
+                security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
+                formula_decoder_descriptor, header_protocol_descriptor)):
+            raise ValueError("learned numerical auxiliary decoder assets require an explicit frozen checkpoint")
     generic_profile = None
     if task_profile is not None:
         from .terminal_task_profile import validate_task_profile
@@ -898,11 +907,16 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     model_snapshot=model_snapshot, model_revision=model_revision,
                     **({"numerical_formalization_profile": numerical_formalization_profile}
                        if numerical_formalization_profile is not None else {}),
+                    **({"numerical_selection_config": numerical_selection_config,
+                        "numerical_selection_timeout_seconds": min(budget["source384_seconds"], remaining()),
+                        **({"numerical_selection_budget_profile": resource_profile} if reserved_phases else {})}
+                       if numerical_selection_config is not None else {}),
                     **({"source384_config": source384_config, "train_autoencoder": False,
                         "source384_timeout_seconds": min(budget["source384_seconds"], remaining()),
                         **({"source384_budget_profile": resource_profile} if reserved_phases else {})}
                        if source384_config is not None else {"train_autoencoder": False}
-                       if generic_profile is not None and security_checkpoint is None
+                       if (generic_profile is not None or numerical_selection_config is not None)
+                           and security_checkpoint is None
                        else _security_runtime_inputs(security_checkpoint=security_checkpoint,
                         security_checkpoint_manifest_sha256=security_checkpoint_manifest_sha256,
                         security_checkpoint_hub_descriptor=security_checkpoint_hub_descriptor,
@@ -1274,6 +1288,7 @@ def main():
     parser.add_argument("--intent-action-384-config", type=Path)
     parser.add_argument("--source384-config", type=Path)
     parser.add_argument("--numerical-formalization-profile")
+    parser.add_argument("--numerical-selection-config", type=Path)
     parser.add_argument("--intent-projection-request", type=Path)
     parser.add_argument("--intent-projection-request-sha256")
     parser.add_argument("--disable-intent-autoencoder", action="store_true")

@@ -145,7 +145,7 @@ def _live_selection(payload, text, root, *, timeout_seconds=None):
     if _json(selected.get("worker_evidence")) != text:
         raise ValueError("source formalization differs from current task evidence")
     sources = {}
-    for key in ("source384_context", "numerical_formalization"):
+    for key in ("source384_context", "numerical_formalization", "numerical_selection_384"):
         if key not in selected:
             continue
         population = selected[key]["source_hashes"]
@@ -156,7 +156,7 @@ def _live_selection(payload, text, root, *, timeout_seconds=None):
             if not _digest(digest) or name in sources and sources[name] != digest:
                 raise ValueError("source formalization source bindings disagree")
             sources[name] = digest
-    if len(sources) > 320:
+    if len(sources) > 768:
         raise ValueError("source formalization source population exceeds bound")
     return sources
 
@@ -250,7 +250,7 @@ def _sealed_handoff(*, path, expected_sha256, boundary, boundary_sha256, prompt,
             or not issued <= time.monotonic_ns() <= expires):
         raise ValueError("owner handoff is expired or from a future invocation")
     sources = value["source_hashes"]
-    if type(sources) is not dict or len(sources) > 320:
+    if type(sources) is not dict or len(sources) > 768:
         raise ValueError("bounded sealed owner source population required")
     expected = _observation(payload, text, len(build_text_context_references(text,
         reference_prefix="source-formalization", kind=KIND, required=True, chunk_bytes=6144)), sources)

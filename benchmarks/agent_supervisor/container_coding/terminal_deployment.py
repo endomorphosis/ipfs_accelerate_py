@@ -25,6 +25,7 @@ from pathlib import Path
 from ipfs_accelerate_py.agent_supervisor.runtime.source384_config import (
     load_source384_config, validate_source384_config, validate_source384_assets,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.numerical_selection_config import load_numerical_selection_config
 from .benchmark_provider_profile import CLI_VERSION as CODEX_VERSION, require_runtime_cli_version
 
 ROOT = "/opt/ipfs-supervisor"
@@ -745,6 +746,7 @@ def build_runtime_archive(
     intent_projection_request: dict | None = None,
     intent_action_384_config: dict | None = None,
     source384_config: dict | None = None,
+    numerical_selection_config: dict | None = None,
     torch_cpu_wheel: Path | None = None,
     torch_cpu_wheel_sha256: str | None = None,
     setup_cache_policy: str | None = None,
@@ -760,6 +762,8 @@ def build_runtime_archive(
         if setup_cache_policy is not None:
             raise ValueError("Grok runtime does not admit the Codex setup cache policy")
     if setup_cache_policy is not None:
+        if numerical_selection_config is not None:
+            raise ValueError("setup cache is not qualified for learned numerical selection")
         import platform
         from .terminal_setup_cache_advice import POLICIES
         if (setup_cache_policy not in POLICIES or platform.machine() != "aarch64"
@@ -775,6 +779,8 @@ def build_runtime_archive(
             security_checkpoint_cache, formula_decoder, header_protocol)):
         raise ValueError("Source384 and legacy Security model selections are mutually exclusive")
     source384_assets, source384_binding = _source384_assets(source384_config)
+    from .terminal_numerical_selection_deployment import numerical_selection_assets, require_numerical_selection_archive
+    numerical_assets, numerical_binding = numerical_selection_assets(numerical_selection_config)
     frozen_selected = any(value is not None for value in (security_checkpoint,
         security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor, security_checkpoint_cache))
     if frozen_selected and any(value is not None for value in (
@@ -803,6 +809,7 @@ def build_runtime_archive(
     portable_assets.extend(intent_request_assets)
     portable_assets.extend(intent_action_assets)
     portable_assets.extend(source384_assets)
+    portable_assets.extend(numerical_assets)
     torch_required = bool(model_snapshot or portable_assets)
     if torch_cpu_wheel is not None and not torch_required:
         raise ValueError("Torch wheel requires an already selected Torch runtime feature")
@@ -821,6 +828,8 @@ def build_runtime_archive(
         security_bindings["intent_action_384"] = intent_action_binding
     if source384_binding is not None:
         security_bindings["source384"] = source384_binding
+    if numerical_binding is not None:
+        security_bindings["numerical_selection_384"] = numerical_binding
     if torch_binding is not None:
         security_bindings["torch_cpu_wheel"] = torch_binding
     output.mkdir(parents=True)
@@ -928,6 +937,7 @@ def build_runtime_archive(
         "torch_cpu_requirement": TORCH_CPU_REQUIREMENT if torch_required else "",
         "intent_action_384_requirements": list(LEARNED_REQUIREMENTS) if intent_action_binding is not None else [],
         "source384_requirements": list(LEARNED_REQUIREMENTS) if source384_binding is not None else [],
+        "numerical_selection_requirements": list(LEARNED_REQUIREMENTS) if numerical_binding is not None else [],
         "security_training_requirements": list(SECURITY_TRAINING_REQUIREMENTS) if security_training_selected else [],
         "security_inference_requirements": list(SECURITY_TRAINING_REQUIREMENTS) if checkpoint_binding is not None else [],
         **security_bindings,
@@ -948,6 +958,7 @@ def build_runtime_archive(
         validate_grok_binding(manifest, required=True)
     validate_intent_action_384_binding(manifest)
     validate_source384_binding(manifest)
+    require_numerical_selection_archive(manifest)
     validate_torch_cpu_wheel_binding(manifest)
     if setup_cache_policy is not None:
         from .terminal_setup_cache_advice import binding_for_manifest
@@ -983,6 +994,8 @@ async def deploy_supervisor(
     validate_setup_cache_selection(archive_dir, setup_cache_selection)
     validate_setup_cache_prerequisites(setup_cache_selection, install_codex=install_codex, auth_json=auth_json)
     manifest = json.loads((Path(archive_dir) / "manifest.json").read_text())
+    if setup_cache_selection is not None and manifest.get("numerical_selection_384") is not None:
+        raise ValueError("setup cache is not qualified for learned numerical selection")
     if install_codex:
         require_runtime_cli_version(manifest)
     output = Path(output)
@@ -995,6 +1008,8 @@ async def deploy_supervisor(
     torch_binding = verify_torch_cpu_wheel_archive(archive, manifest)
     verify_intent_action_384_archive(archive, manifest)
     verify_source384_archive(archive, manifest)
+    from .terminal_numerical_selection_deployment import verify_numerical_selection_archive
+    verify_numerical_selection_archive(archive, manifest)
     started = time.monotonic()
     steps = []
 
@@ -1082,6 +1097,7 @@ async def deploy_supervisor(
     ] + manifest.get("security_training_requirements", []) + manifest.get("security_inference_requirements", [])
     requirements += manifest.get("intent_action_384_requirements", [])
     requirements += manifest.get("source384_requirements", [])
+    requirements += manifest.get("numerical_selection_requirements", [])
     requirements = list(dict.fromkeys(requirements))
     await execute(
         "python-install",
@@ -1349,6 +1365,8 @@ def main():
     build.add_argument("--torch-cpu-wheel", type=Path, help="Local pinned CPython 3.12 Torch CPU wheel")
     build.add_argument("--torch-cpu-wheel-sha256", help="Independent SHA-256 of the selected Torch CPU wheel")
     build.add_argument("--source384-config", type=Path, help="Pinned offline shared Source384 parent configuration")
+    build.add_argument("--numerical-selection-config", type=Path,
+        help="Explicit experimental offline NumPy CALL checkpoint and cached GTE assets")
     from .terminal_setup_cache_advice import POLICIES, read_selection
     build.add_argument("--setup-cache-policy", choices=POLICIES,
         help="Explicit pinned setup advice after worker-boundary installation")
@@ -1417,6 +1435,8 @@ def main():
             intent_action_384_config=(load_intent_action_384_config(args.intent_action_384_config)
                                      if args.intent_action_384_config else None),
             source384_config=(load_source384_config(args.source384_config) if args.source384_config else None),
+            numerical_selection_config=(load_numerical_selection_config(args.numerical_selection_config)
+                if args.numerical_selection_config else None),
             intent_checkpoint=(_load_initializer_descriptor(args.intent_checkpoint_descriptor)
                                if args.intent_checkpoint_descriptor else None),
             intent_projection_request=(_load_initializer_descriptor(args.intent_projection_request)

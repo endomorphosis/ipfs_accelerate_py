@@ -158,11 +158,11 @@ def _formalization_receipt(value: dict) -> dict:
     if type(value) is not dict:
         raise ValueError("invalid source formalization dispatch observation")
     kinds = value.get("context_kinds")
-    allowed = ("source384-candidate-context", "numerical-formalization-context")
+    allowed = ("source384-candidate-context", "numerical-formalization-context", "learned-numerical-selection-context")
     if (type(kinds) is not list or not kinds or kinds != [kind for kind in allowed if kind in kinds]
             or type(value.get("owner_validation_inherited")) is not bool
             or type(value.get("chunks")) is not int or not 1 <= value["chunks"] <= 6
-            or type(value.get("source_files")) is not int or not 0 <= value["source_files"] <= 320):
+            or type(value.get("source_files")) is not int or not 0 <= value["source_files"] <= 768):
         raise ValueError("invalid source formalization dispatch population")
     payload = dict(task_id=_identity(value.get("task_id")), task_cid=_identity(value.get("task_cid")),
         context_bundle={"sha256": _digest(value.get("context_bundle_sha256"))},
@@ -547,7 +547,7 @@ def _historical_formalization(*, rendered: str, expected: dict, prepared: dict):
     )
     from ipfs_accelerate_py.agent_supervisor.context.context_contracts import canonical_context_json_bytes
 
-    keys = ("source384_context", "numerical_formalization")
+    keys = ("source384_context", "numerical_formalization", "numerical_selection_384")
     nominated = {key: expected[key] for key in keys if key in expected}
     parsed = _parts(rendered)
     binding = expected.get("context_bundle")
@@ -597,7 +597,7 @@ def _historical_formalization(*, rendered: str, expected: dict, prepared: dict):
                     or name in sources and sources[name] != digest):
                 raise ValueError("formalization source differs from signed captured input")
             sources[name] = digest
-    if len(sources) > 320:
+    if len(sources) > 768:
         raise ValueError("historical formalization source population exceeds bound")
     dispatch = _observation(evidence, text, chunks, sources)
     observed = dict(schema="terminal-historical-source-formalization-observation@1",

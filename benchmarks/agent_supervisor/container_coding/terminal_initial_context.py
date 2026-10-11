@@ -175,6 +175,8 @@ def _summaries(descriptor, semantic, retrieval, world, *, intent_freshness_check
     numerical = descriptor.get("numerical_formalization")
     if numerical is not None:
         summaries.append(numerical["summary"])
+    if descriptor.get("numerical_selection_384") is not None:
+        summaries.append(descriptor["numerical_selection_384"]["summary"])
     if any(len(_bytes(summary)) > 8192 for summary in summaries):
         raise ValueError("initial planning summary exceeds its fixed 8192-byte bound")
     return summaries
@@ -191,7 +193,10 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
                             header_protocol: dict | None = None,
                             source384_config: Path | None = None, source384_timeout_seconds: float = 90.,
                             source384_budget_profile: str | None = None,
-                            numerical_formalization_profile: str | None = None) -> dict:
+                            numerical_formalization_profile: str | None = None,
+                            numerical_selection_config: Path | None = None,
+                            numerical_selection_timeout_seconds: float = 180.,
+                            numerical_selection_budget_profile: str | None = None) -> dict:
     import duckdb
     from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index import (
         CodeVectorIndexSnapshot, CodeVectorSearchResult,
@@ -204,6 +209,13 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
     if numerical_formalization_profile is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context import validate_profile
         validate_profile(numerical_formalization_profile)
+    learned_selection = None
+    if numerical_selection_config is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.numerical_selection_config import load_numerical_selection_config
+        from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import _read as read_selected
+        digest = hashlib.sha256(read_selected(numerical_selection_config, 32768)).hexdigest()
+        load_numerical_selection_config(numerical_selection_config, digest)
+        learned_selection = dict(config_path=str(numerical_selection_config), config_sha256=digest)
     header_intent = (prepared.get("intent_requirement_contract") or {}).get("schema") == "intent-plan-requirement-contract@3"
     if header_intent and source384_config is None:
         raise ValueError("header intent requires the explicit Source384 header profile")
@@ -246,17 +258,20 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
             "config_sha256": hashlib.sha256(read_selected(source384_config, 32768)).hexdigest()})
     if numerical_formalization_profile is not None:
         _write(state / "numerical-formalization-selection.json", {"profile": numerical_formalization_profile})
+    if learned_selection is not None:
+        _write(state / "numerical-selection-384-selection.json", learned_selection)
     alias = prepared["spec"]["task_key"]
     timings, stage = {}, time.monotonic()
     vectors = root / ".runtime/terminal-vectors"
     indexed, partition = qualify_terminal_population(prepared=prepared, output=vectors,
         paths=vector_paths, model_snapshot=model_snapshot, model_revision=model_revision)
     empty_population = indexed.get("schema") == EMPTY_INDEX_SCHEMA
-    if empty_population and (train_autoencoder or security_checkpoint is not None or source384_config is not None):
+    if empty_population and (train_autoencoder or security_checkpoint is not None
+            or source384_config is not None or numerical_selection_config is not None):
         raise ValueError("empty retrieval requires independent decoder abstention; selected decoder/training is unavailable")
     timings["vector_qualification"] = time.monotonic() - stage
     stage = time.monotonic()
-    learner = learner_catalog = frozen_advice = source384 = numerical = None
+    learner = learner_catalog = frozen_advice = source384 = numerical = learned_numerical = None
     if source384_config is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context import prepare_source384_context
         from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
@@ -280,6 +295,19 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
             source_hashes={name: manifest["sources"][name]["sha256"] for name in paths if name.endswith(".py")},
             output=state / "numerical-formalization", profile=numerical_formalization_profile)
         timings["numerical_structure_projection_and_hydration"] = time.monotonic() - stage
+        stage = time.monotonic()
+    if learned_selection is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.numerical_selection_context import prepare_numerical_selection_context
+        from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
+        manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
+        paths = partition["program_paths"] if partition is not None else vector_paths
+        learned_numerical = prepare_numerical_selection_context(repository=root,
+            source_hashes={name: value["sha256"] for name, value in manifest["sources"].items()},
+            program_paths=paths, output=state / "numerical-selection-384",
+            config_path=numerical_selection_config, expected_config_sha256=learned_selection["config_sha256"],
+            timeout_seconds=numerical_selection_timeout_seconds,
+            **({"budget_profile": numerical_selection_budget_profile} if numerical_selection_budget_profile is not None else {}))
+        timings["learned_numerical_capture_inference_and_hydration"] = time.monotonic() - stage
         stage = time.monotonic()
     if security_checkpoint is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import prepare_security_advice
@@ -379,6 +407,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         descriptor["source384_context"] = source384
     if numerical is not None:
         descriptor["numerical_formalization"] = numerical
+    if learned_numerical is not None:
+        descriptor["numerical_selection_384"] = learned_numerical
     if model_snapshot and not empty_population:
         descriptor["model_manifest"] = _reference(root, vectors / "model-manifest.json")
     _write(output / "descriptor.json", descriptor)
@@ -404,6 +434,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         result["source384_context"] = source384
     if numerical is not None:
         result["numerical_formalization"] = numerical
+    if learned_numerical is not None:
+        result["numerical_selection_384"] = learned_numerical
     # Replay reloads these artifacts; keep only the result that it verifies.
     del view, get_block, capture, descriptor, metadata, semantic, retrieval, indexed
     # Strict source and live-owner replay before this result may reach a router.
@@ -519,6 +551,26 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
     source384_selection = state / "source384-selection.json"
     numerical = descriptor.get("numerical_formalization")
     numerical_selection = state / "numerical-formalization-selection.json"
+    learned_numerical = descriptor.get("numerical_selection_384")
+    learned_marker = state / "numerical-selection-384-selection.json"
+    if learned_numerical is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.numerical_selection_context import validate_numerical_selection_context
+        from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import _read as read_selected
+        from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
+        manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
+        selected = json.loads(read_selected(learned_marker, 32768))
+        paths = (partition["program_paths"] if partition is not None else
+                 task_profile_index_paths(prepared["task_profile"]) if prepared.get("task_profile") is not None else ["bottle.py"])
+        if (learned_numerical["output"] != str(state / "numerical-selection-384")
+                or result.get("numerical_selection_384") != learned_numerical
+                or selected != {"config_path": learned_numerical["config_path"], "config_sha256": learned_numerical["config_sha256"]}
+                or learned_numerical["source_hashes"] != {name: row["sha256"] for name,row in manifest["sources"].items()}
+                or learned_numerical["selected_paths"] != sorted(paths)):
+            raise ValueError("learned numerical selection differs from declared sources/config")
+        if not _stage_source384:
+            validate_numerical_selection_context(repository=root, expected_receipt=learned_numerical)
+    elif learned_marker.exists() or result.get("numerical_selection_384") is not None:
+        raise ValueError("selected learned numerical context is missing")
     if numerical is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context import validate_numerical_context
         from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import _read as read_numerical
@@ -716,6 +768,8 @@ def bind_admitted_context(*, state: Path, prepared: dict, admission: dict, verif
         result["new_autoencoder_training_steps"] = 0
     if descriptor.get("numerical_formalization") is not None:
         result["numerical_formalization"] = descriptor["numerical_formalization"]
+    if descriptor.get("numerical_selection_384") is not None:
+        result["numerical_selection_384"] = descriptor["numerical_selection_384"]
     _write(output / "result.json", result)
     return {"prepared_context": result, "indexed": loaded["indexed"],
             "diagnostic_artifact": (root / metadata["Semantic context artifact"]).parent / "doctor.json"}

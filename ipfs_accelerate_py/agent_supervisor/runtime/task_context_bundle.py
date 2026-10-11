@@ -17,8 +17,10 @@ SCHEMA = "supervisor-task-context-nominations@1"
 SOURCE384_SCHEMA = "supervisor-task-context-nominations@2"
 SOURCE384_REFERENCE_SCHEMA = "supervisor-task-context-nominations@3"
 FORMALIZATION_REFERENCE_SCHEMA = "supervisor-task-context-nominations@4"
+LEARNED_FORMALIZATION_REFERENCE_SCHEMA = "supervisor-task-context-nominations@5"
 RECEIPT_REFERENCE_SCHEMA = "supervisor-source384-receipt-reference@1"
 NUMERICAL_REFERENCE_SCHEMA = "supervisor-numerical-receipt-reference@1"
+LEARNED_NUMERICAL_REFERENCE_SCHEMA = "supervisor-learned-numerical-receipt-reference@1"
 WORKER_EVIDENCE_SCHEMA = "supervisor-task-formalization-worker-evidence@1"
 SOURCE384_RECEIPT_SCHEMAS = frozenset({"terminal-source384-repository-context@1",
     "terminal-source384-repository-context@2", "terminal-source384-repository-context@3"})
@@ -32,6 +34,7 @@ MAX_SOURCE384_RECEIPT_BYTES = 131_072
 MAX_SOURCE384_REFERENCE_BYTES = 4096
 MAX_NUMERICAL_RECEIPT_BYTES = 131_072
 MAX_WORKER_EVIDENCE_BYTES = 32_768
+FORMALIZATION_KEYS = ("source384_context", "numerical_formalization", "numerical_selection_384")
 
 
 def _raw(value):
@@ -135,12 +138,49 @@ def _nominate_numerical_receipt(receipt, repository):
     return reference
 
 
+def _learned_numerical_reference(reference, repository):
+    if type(reference) is not dict or reference.get("schema") != LEARNED_NUMERICAL_REFERENCE_SCHEMA:
+        raise ValueError("invalid bounded learned numerical receipt reference")
+    _source384_reference({**reference, "schema": RECEIPT_REFERENCE_SCHEMA}, repository)
+    return reference
+
+
+def _read_learned_numerical_reference(reference, repository):
+    from .security_autoencoder_advisor import _read
+    from .numerical_selection_context import SCHEMA as learned_schema
+
+    reference = _learned_numerical_reference(reference, repository)
+    raw = _read(Path(reference["output"]) / "receipt.json", MAX_NUMERICAL_RECEIPT_BYTES)
+    if (len(raw) != reference["receipt_bytes"]
+            or hashlib.sha256(raw).hexdigest() != reference["receipt_sha256"]):
+        raise ValueError("learned numerical referenced receipt bytes differ")
+    receipt = json.loads(raw, object_pairs_hook=_unique)
+    if (type(receipt) is not dict or receipt.get("schema") != learned_schema
+            or "receipt_sha256" in receipt or receipt.get("output") != reference["output"]
+            or receipt.get("repository") != str(repository) or _raw(receipt) != raw):
+        raise ValueError("learned numerical referenced receipt envelope differs")
+    return {**receipt, "receipt_sha256": reference["receipt_sha256"]}
+
+
+def _nominate_learned_numerical_receipt(receipt, repository):
+    if type(receipt) is not dict:
+        raise ValueError("a selected learned numerical context receipt is required")
+    raw = _raw({key: value for key, value in receipt.items() if key != "receipt_sha256"})
+    reference = _learned_numerical_reference(dict(schema=LEARNED_NUMERICAL_REFERENCE_SCHEMA,
+        output=receipt.get("output"), receipt_sha256=receipt.get("receipt_sha256"),
+        receipt_bytes=len(raw)), repository)
+    if _read_learned_numerical_reference(reference, repository) != receipt:
+        raise ValueError("learned numerical selected receipt differs from retained bytes")
+    return reference
+
+
 def _worker_evidence(selection, *, repository, artifact, expected_sha256, task_cid, task_id):
     """Project already verified owner summaries, never accept caller formulae."""
     contexts = []
     for key, kind, nominate in (
         ("source384_context", "source384-candidate-context", _nominate_source384_receipt),
         ("numerical_formalization", "numerical-formalization-context", _nominate_numerical_receipt),
+        ("numerical_selection_384", "learned-numerical-selection-context", _nominate_learned_numerical_receipt),
     ):
         if key not in selection:
             continue
@@ -205,18 +245,22 @@ def write_task_context_bundle(*, repository: Path, prepared: list[dict], output:
     tasks = []
     source384 = any("source384_context" in item for item in prepared)
     formalization = any("numerical_formalization" in item for item in prepared)
+    learned = any("numerical_selection_384" in item for item in prepared)
     for item in prepared:
         if item.get("schema") != "supervisor-task-context-preparation@1":
             raise ValueError("native prepared task context required")
         tasks.append({"task_cid": item["task_cid"], "task_id": item["task_id"],
                       "metadata": _normalize(item["metadata"])})
-        if source384 and (not formalization or "source384_context" in item):
+        if source384 and (not (formalization or learned) or "source384_context" in item):
             tasks[-1]["source384_context"] = _nominate_source384_receipt(item.get("source384_context"), root)
         if formalization and "numerical_formalization" in item:
             tasks[-1]["numerical_formalization"] = _nominate_numerical_receipt(item["numerical_formalization"], root)
+        if learned and "numerical_selection_384" in item:
+            tasks[-1]["numerical_selection_384"] = _nominate_learned_numerical_receipt(item["numerical_selection_384"], root)
     if len({item["task_cid"] for item in tasks}) != len(tasks) or len({item["task_id"] for item in tasks}) != len(tasks):
         raise ValueError("context bundle task identities must be unique")
-    payload = {"schema": FORMALIZATION_REFERENCE_SCHEMA if formalization else
+    payload = {"schema": LEARNED_FORMALIZATION_REFERENCE_SCHEMA if learned else
+               FORMALIZATION_REFERENCE_SCHEMA if formalization else
                SOURCE384_REFERENCE_SCHEMA if source384 else SCHEMA,
                "tasks": tasks, "completion_authority": False}
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
@@ -266,19 +310,28 @@ def load_task_context_selection(*, repository: Path, artifact: str, expected_sha
     if "numerical_formalization" in result:
         from .numerical_formalization_context import validate_numerical_context
         validate_numerical_context(repository=root, expected_receipt=result["numerical_formalization"])
-    if "source384_context" in result and "numerical_formalization" in result:
-        first, second = (result[key]["source_hashes"] for key in ("source384_context", "numerical_formalization"))
-        if any(first[path] != second[path] for path in first.keys() & second.keys()):
-            raise ValueError("selected formalization contexts disagree on source bytes")
+    if "numerical_selection_384" in result:
+        from .numerical_selection_context import validate_numerical_selection_context
+        validate_numerical_selection_context(repository=root, expected_receipt=result["numerical_selection_384"])
+    sources = {}
+    for key in FORMALIZATION_KEYS:
+        if key in result:
+            for path, digest in result[key]["source_hashes"].items():
+                if path in sources and sources[path] != digest:
+                    raise ValueError("selected formalization contexts disagree on source bytes")
+                sources[path] = digest
     # The second owner may take time to replay. Recheck signed source bytes
     # after all owner validations, without re-running either neural inference
     # or expensive projection/metadata validation.
-    for key, owner in (("source384_context", "source384"), ("numerical_formalization", "numerical")):
+    for key, owner in (("source384_context", "source384"), ("numerical_formalization", "numerical"),
+                       ("numerical_selection_384", "learned_numerical")):
         if key in result:
             if owner == "source384":
                 from .source384_repository_context import _sources
-            else:
+            elif owner == "numerical":
                 from .numerical_formalization_context import _sources
+            else:
+                from .numerical_selection_context import _sources
             _sources(root, result[key]["source_hashes"])
     if read_task_context_historical_selection(repository=root, artifact=artifact,
             expected_sha256=expected_sha256, task_cid=task_cid, task_id=task_id) != result:
@@ -315,17 +368,21 @@ def read_task_context_historical_selection(*, repository: Path, artifact: str, e
     payload = json.loads(raw, object_pairs_hook=_unique)
     if (not isinstance(payload, dict) or set(payload) != {"schema", "tasks", "completion_authority"}
             or payload["schema"] not in (SCHEMA, SOURCE384_SCHEMA, SOURCE384_REFERENCE_SCHEMA,
-                                         FORMALIZATION_REFERENCE_SCHEMA)
+                                         FORMALIZATION_REFERENCE_SCHEMA, LEARNED_FORMALIZATION_REFERENCE_SCHEMA)
             or payload["completion_authority"] is not False
             or not isinstance(payload["tasks"], list) or not 1 <= len(payload["tasks"]) <= 16):
         raise ValueError("invalid context bundle")
-    formalization = payload["schema"] == FORMALIZATION_REFERENCE_SCHEMA
+    formalization = payload["schema"] in (FORMALIZATION_REFERENCE_SCHEMA, LEARNED_FORMALIZATION_REFERENCE_SCHEMA)
+    learned = payload["schema"] == LEARNED_FORMALIZATION_REFERENCE_SCHEMA
     source384 = payload["schema"] in (SOURCE384_SCHEMA, SOURCE384_REFERENCE_SCHEMA)
-    referenced = payload["schema"] in (SOURCE384_REFERENCE_SCHEMA, FORMALIZATION_REFERENCE_SCHEMA)
+    referenced = payload["schema"] in (SOURCE384_REFERENCE_SCHEMA, FORMALIZATION_REFERENCE_SCHEMA,
+                                       LEARNED_FORMALIZATION_REFERENCE_SCHEMA)
     task_keys = {"task_cid", "task_id", "metadata"} | ({"source384_context"} if source384 else set())
     selected, selected_receipt, selected_numerical, identities, aliases = None, None, None, set(), set()
+    selected_learned = None
     for task in payload["tasks"]:
-        expected_keys = task_keys | ({key for key in ("source384_context", "numerical_formalization")
+        allowed_families = FORMALIZATION_KEYS if learned else FORMALIZATION_KEYS[:2]
+        expected_keys = task_keys | ({key for key in allowed_families
                                      if key in task} if formalization and isinstance(task, dict) else set())
         if (not isinstance(task, dict) or set(task) != expected_keys
                 or not isinstance(task["task_cid"], str) or not task["task_cid"]
@@ -339,12 +396,15 @@ def read_task_context_historical_selection(*, repository: Path, artifact: str, e
                     else _source384_receipt(task["source384_context"])) if "source384_context" in task else None)
         numerical = (_numerical_reference(task["numerical_formalization"], root)
                      if "numerical_formalization" in task else None)
+        learned_reference = (_learned_numerical_reference(task["numerical_selection_384"], root)
+                             if "numerical_selection_384" in task else None)
         if task["task_cid"] == task_cid or task["task_id"] == task_id:
             if task["task_cid"] != task_cid or task["task_id"] != task_id:
                 raise ValueError("context nomination has a foreign task identity")
             selected = metadata
             selected_receipt = receipt
             selected_numerical = numerical
+            selected_learned = learned_reference
     if selected is None:
         raise ValueError("context bundle does not contain the dispatched task")
     result = {"metadata": selected}
@@ -353,4 +413,6 @@ def read_task_context_historical_selection(*, repository: Path, artifact: str, e
                                        if referenced else selected_receipt)
     if selected_numerical is not None:
         result["numerical_formalization"] = _read_numerical_reference(selected_numerical, root)
+    if selected_learned is not None:
+        result["numerical_selection_384"] = _read_learned_numerical_reference(selected_learned, root)
     return result

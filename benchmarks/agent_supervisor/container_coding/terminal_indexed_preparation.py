@@ -521,7 +521,10 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
                     security_checkpoint_hub: dict | None = None, formula_decoder: dict | None = None,
                     header_protocol: dict | None = None, source384_config: Path | None = None,
                     source384_timeout_seconds: float = 90., source384_budget_profile: str | None = None,
-                    numerical_formalization_profile: str | None = None) -> dict:
+                    numerical_formalization_profile: str | None = None,
+                    numerical_selection_config: Path | None = None,
+                    numerical_selection_timeout_seconds: float = 180.,
+                    numerical_selection_budget_profile: str | None = None) -> dict:
     """Prepare source indexes and a real empty-owner observation before planning.
 
     This cost belongs to the full arm's agent time. The subsequent context()
@@ -542,7 +545,12 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
             **({"source384_budget_profile": source384_budget_profile} if source384_budget_profile is not None else {})}
            if source384_config is not None else {}),
         **({"numerical_formalization_profile": numerical_formalization_profile}
-           if numerical_formalization_profile is not None else {}))
+           if numerical_formalization_profile is not None else {}),
+        **({"numerical_selection_config": numerical_selection_config,
+            "numerical_selection_timeout_seconds": numerical_selection_timeout_seconds,
+            **({"numerical_selection_budget_profile": numerical_selection_budget_profile}
+               if numerical_selection_budget_profile is not None else {})}
+           if numerical_selection_config is not None else {}))
 
 
 def _require_same_initial_selection(current, initial):
@@ -1065,7 +1073,7 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
         result["codebase_autoencoder"] = prepared_context["codebase_autoencoder"]
         result["codebase_autoencoder_catalog"] = prepared_context["codebase_autoencoder_catalog"]
         result["new_autoencoder_training_steps"] = prepared_context["new_autoencoder_training_steps"]
-    for key in ("source384_context", "numerical_formalization"):
+    for key in ("source384_context", "numerical_formalization", "numerical_selection_384"):
         if prepared_context.get(key) is not None:
             result[key] = prepared_context[key]
     _write(state / "context-result.json", result)

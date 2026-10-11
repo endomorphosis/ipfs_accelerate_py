@@ -43,6 +43,9 @@ from .terminal_semantic_metadata_policy import (
 from .terminal_numerical_policy import (
     validate_numerical_profile, numerical_observation, require_numerical_archive,
 )
+from .terminal_numerical_selection_deployment import (
+    numerical_selection_asset_arguments,
+)
 
 
 def measured_usage(report: dict) -> dict:
@@ -370,6 +373,9 @@ class FullSupervisorAgent(BaseAgent):
         from .terminal_worker_capability import require_worker_capability
         require_worker_capability(manifest, getattr(self, "resource_profile", None))
         require_numerical_archive(manifest, getattr(self, "numerical_formalization_profile", None))
+        numerical_selection_asset_arguments(manifest, self.arm, getattr(self, "resource_profile", None))
+        if selection is not None and manifest.get("numerical_selection_384") is not None:
+            raise ValueError("setup cache is not qualified for learned numerical selection")
         require_semantic_transport_archive(manifest,
             getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA))
         selected_provider = require_runtime_provider_profile(manifest, getattr(self, "provider_profile", None))
@@ -446,6 +452,10 @@ class FullSupervisorAgent(BaseAgent):
         require_worker_capability(manifest, getattr(self, "resource_profile", None))
         numerical_profile = validate_numerical_profile(getattr(self, "numerical_formalization_profile", None))
         require_numerical_archive(manifest, numerical_profile)
+        numerical_arguments, numerical_assets = numerical_selection_asset_arguments(
+            manifest, self.arm, getattr(self, "resource_profile", None))
+        if getattr(self, "setup_cache_selection", None) is not None and numerical_assets["selected"]:
+            raise ValueError("setup cache is not qualified for learned numerical selection")
         public = self.logs_dir / "instruction.md"
         public.write_text(instruction)
         instruction_path = ROOT + "/instruction.md"
@@ -500,6 +510,7 @@ class FullSupervisorAgent(BaseAgent):
         source384_arguments, source384_observation = source384_asset_arguments(
             manifest, self.arm, getattr(self, "resource_profile", None))
         argv += source384_arguments
+        argv += numerical_arguments
         context.metadata = {"arm": self.arm, "task_completed": False, "official_reward": None,
                             "provider_profile": resolve_provider_profile(provider_profile),
                             **semantic_transport_selection(transport),
@@ -512,6 +523,7 @@ class FullSupervisorAgent(BaseAgent):
                             "security_model_assets": asset_observation,
                             "intent_model_assets": intent_observation,
                             "source384_assets": source384_observation,
+                            "numerical_selection_assets": numerical_assets,
                             "resource_profile": profile, "execution_budget": budget,
                             "admission_environment": admission_environment(profile),
                             **({"setup_cache": self.setup_cache_receipt} if hasattr(self, "setup_cache_receipt") else {}),
