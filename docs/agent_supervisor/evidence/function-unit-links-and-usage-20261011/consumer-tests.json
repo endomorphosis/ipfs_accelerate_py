@@ -1,0 +1,26 @@
+{
+  "returncode": 0,
+  "seconds": 138.01107540598605,
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "ff378e9191a9f9123af0f83888dc7979ae9820b40e3aed535e9582f434ca47f6",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py": "17716ed4ddfc5e78bc4afb1227975b48635d869c7e204be51154564170d77bdf",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "34b78199d6ad2469172146f5f0aefea6547d145ca2cac997b9f416b87babc684",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py": "d17151605967748ac378153b05f3cbc2bb41dd85ebeb0c97d882d452172201bf",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py": "29b5262b1c3e5adfd4487059082ba44f0f86f473206e11b8c6d7325aa58b8f73",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_observation.py": "6072b5b42e034c176c5f260496b3cd36d9914caa0e31ccc9b3fc694c1804e93e",
+    "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0"
+  },
+  "source_unchanged": true,
+  "suites": [
+    {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "146",
+      "time": "136.809",
+      "timestamp": "2026-10-11T06:27:12.276962+00:00",
+      "hostname": "spark-b271"
+    }
+  ]
+}

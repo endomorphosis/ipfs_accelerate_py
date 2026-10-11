@@ -1,0 +1,111 @@
+{
+  "errors": 0,
+  "failures": 0,
+  "model_inference_executed": false,
+  "native_lake_scope": "Existing numerical logic regression suite runs authored positive/negative native Lake checks; bridge creates no new Lean source.",
+  "provider_calls": 0,
+  "public_replay": {
+    "assertion_requirements": 4,
+    "compound_contracts": 2,
+    "matched_units": 4,
+    "path": "public-replay.json",
+    "pending_obligations": 45,
+    "sha256": "70ae4645304d5455100902846a884abd23693ae2706ef411886fa6c5d66c16c3",
+    "source_unchanged": true,
+    "units": 4
+  },
+  "schema": "source-unit-numerical-links-final-qualification@1",
+  "scope": "Deterministic provenance/artifact linkage; no learned scalar decoder extension or NumPy semantic proof.",
+  "skipped": 0,
+  "source_head": "90c1bb382cdb66f021d32c7671943ec4c1e7eeb4",
+  "source_obligations_discharged": 0,
+  "source_producers_unchanged": true,
+  "test_groups": [
+    {
+      "after": {
+        "files": {
+          "ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+          "ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+          "ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0",
+          "ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+          "ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+          "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py": "3ea4b24de14cf3b25fa70e8fd9bc93ec94ca32542c2b3c46506852655d2a2b3e"
+        },
+        "head": "90c1bb382cdb66f021d32c7671943ec4c1e7eeb4",
+        "status": [
+          "?? ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py",
+          "?? tests/unit/logic/software_contracts/test_source_unit_numerical_links.py"
+        ]
+      },
+      "before": {
+        "files": {
+          "ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+          "ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+          "ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0",
+          "ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+          "ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+          "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py": "3ea4b24de14cf3b25fa70e8fd9bc93ec94ca32542c2b3c46506852655d2a2b3e"
+        },
+        "head": "90c1bb382cdb66f021d32c7671943ec4c1e7eeb4",
+        "status": [
+          "?? ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py",
+          "?? tests/unit/logic/software_contracts/test_source_unit_numerical_links.py"
+        ]
+      },
+      "counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 46
+      },
+      "path": "authored-01-qualification.json",
+      "sha256": "39363be08cbd6e7395496a5dc3432502b5d7b5ec942db70e9accbdd642b892cd"
+    },
+    {
+      "after": {
+        "files": {
+          "ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+          "ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+          "ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0",
+          "ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+          "ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+          "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py": "3ea4b24de14cf3b25fa70e8fd9bc93ec94ca32542c2b3c46506852655d2a2b3e"
+        },
+        "head": "90c1bb382cdb66f021d32c7671943ec4c1e7eeb4",
+        "status": [
+          "?? ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py",
+          "?? tests/unit/logic/software_contracts/test_source_unit_numerical_links.py"
+        ]
+      },
+      "before": {
+        "files": {
+          "ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+          "ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+          "ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0",
+          "ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+          "ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+          "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py": "3ea4b24de14cf3b25fa70e8fd9bc93ec94ca32542c2b3c46506852655d2a2b3e"
+        },
+        "head": "90c1bb382cdb66f021d32c7671943ec4c1e7eeb4",
+        "status": [
+          "?? ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py",
+          "?? tests/unit/logic/software_contracts/test_source_unit_numerical_links.py"
+        ]
+      },
+      "counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 199
+      },
+      "path": "neighbors-01-qualification.json",
+      "sha256": "2367285b13dcdc2f0a683be3daa2f48320bad3fae0c463927f5a92bd29e00498"
+    }
+  ],
+  "training_performed": false,
+  "unique_test_count": 245,
+  "unpublished_changes": [
+    "ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py",
+    "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py"
+  ]
+}

@@ -1,0 +1,191 @@
+{
+  "arm": "no-index",
+  "classification": "setup_authentication_refusal_and_separate_failed_host_source_check",
+  "cleanup": {
+    "absent_observations": 2,
+    "container_id": "529e18c7dc4d0e326aa66aef262edeb940cc1674238129aad8f2a5220c56801e",
+    "container_observed_live_by_reader": false,
+    "exact_setup_deployment_digest_and_id_join_verified": true,
+    "invocation_ownership_join_applicable": false,
+    "new_container_actions": 0,
+    "scope": "setup_deployment_no_provider_invocation_exists"
+  },
+  "credential_contents_read_or_hashed": false,
+  "deployment": {
+    "archive_sha256": "10f8e35960883b9dd0fdf3d96161960818ab67bf9cb0bb21c5e0c950059bd3c1",
+    "auth_file_transferred": true,
+    "codex_installed": false,
+    "credential_contents_recorded": false,
+    "grok_installed": true,
+    "official_verifier_executed": false,
+    "provider": "grok_cli",
+    "provider_calls": 0,
+    "qualified": true,
+    "task_source_preserved": true
+  },
+  "diagnosis_limits": [
+    "The retained classifier groups multiple negative-auth phrases; the exact phrase and reason for session invalidity are not retained.",
+    "Credential transfer and private boundary succeeded; credential availability is not proof of authentication.",
+    "The same fixed HOME/GROK_HOME and binary passed the earlier full run; no new deployment environment omission is evidenced.",
+    "The host credential contents and equality across attempts were neither read nor fingerprinted.",
+    "Expiry, revocation, refresh-state changes and switching the host authentication mode cannot be distinguished by these receipts."
+  ],
+  "docker_calls_by_reader": 0,
+  "efficiency_or_token_advantage_claimed": false,
+  "evidence": {
+    "cleanup": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/grok-no-index-pilot-01/owned-container-absence.json",
+      "sha256": "bf6497a59267b08784932bfef62997b847bf86f45ca882668284e38eb9bd42d3"
+    },
+    "deployment_source": {
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-coding-progress-20261011/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "sha256": "1707be47142ec38097ad366c3353402236e2959998dbbdd1e1b961cf29f26933"
+    },
+    "execute_command": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/pilot-execute-no-index-command.json",
+      "sha256": "42d5dad6b083b1ae8df49ec617b231fb2b3caca34c3691ad7301a13b05ad708d"
+    },
+    "execute_exit": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/pilot-execute-no-index-exit.json",
+      "sha256": "c8432379a7eaa70b8d99fedbe680696a3fe7e115bf73d663329ba43dcc74cb8a"
+    },
+    "historical_full_readiness": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/grok-full-pilot-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__rgk7YXZ/agent/provider-readiness/readiness.json",
+      "sha256": "eacb49bda378dce1fc959ee05038091b51d31c755b27cc690e838e3251c5e6d2"
+    },
+    "native_result": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/grok-no-index-pilot-01/jobs/supervisor-no-index-largest-eigenval/largest-eigenval__zjRiyTB/result.json",
+      "sha256": "0c355d5035c30eb6c7c2f84bdd0a0906e9c1623868eac9d465915a2440b8c8ea"
+    },
+    "readiness": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/grok-no-index-pilot-01/jobs/supervisor-no-index-largest-eigenval/largest-eigenval__zjRiyTB/agent/provider-readiness/readiness.json",
+      "sha256": "1571b30d197db079f6032abf7051cc7bd285caf95747cc484b5273e15b5bcdd1"
+    },
+    "readiness_source": {
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-coding-progress-20261011/benchmarks/agent_supervisor/container_coding/terminal_grok_deployment.py",
+      "sha256": "cb093c8e99506b739134c9a49ac3facf05a6d6ac91d6617fdc3dd88e60b85706"
+    },
+    "receipt": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/grok-no-index-pilot-01/receipt.json",
+      "sha256": "e482f2a39fbfc1fe0a9161865072b43b277063ffe5e6c543dca622151e425bb9"
+    },
+    "runtime_deployment": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/grok-no-index-pilot-01/jobs/supervisor-no-index-largest-eigenval/largest-eigenval__zjRiyTB/agent/deployment/deployment.json",
+      "sha256": "9b3f98970e874357ac33fa6da9466d6ea9f1f81b9106f87c1f62e16f00a40b55"
+    },
+    "sealed_controls": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/grok-pilot-frozen-review.json",
+      "sha256": "de7b17b73a0cee4a501f2cd90d6a7ee68d23714c2abc5dc4c3f21bc666011d66"
+    },
+    "setup_source": {
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-coding-progress-20261011/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "dd6367311424a3704abbdf2af6c210a79528cdbd1ff92e6079aa7f0333f0f11b"
+    },
+    "spec": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/grok-pilot-command-spec.json",
+      "sha256": "bd542c8b8b1c7b5e4c74d3d4e39592223a5201988bb7b69e9f25f762bed95e19"
+    },
+    "strict_reader": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/review/review_matched_result.py",
+      "sha256": "bf9cd801202a00a8325c48c484f45a78ce42709de849f2d7096b4e3d2457a051"
+    },
+    "worker_deployment": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/grok-no-index-pilot-01/jobs/supervisor-no-index-largest-eigenval/largest-eigenval__zjRiyTB/agent/worker-boundary/deployment.json",
+      "sha256": "c53d714a204b359304f4b06e51632718ebfa50ebf1fc4708689b177409d7dbd3"
+    },
+    "worker_deployment_source": {
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-coding-progress-20261011/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "16cb97bc55413bd906bea19a12cefcc32a2590a5fc058da3fce3f8e7c7a0ad8d"
+    },
+    "worker_qualification": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/grok-no-index-pilot-01/jobs/supervisor-no-index-largest-eigenval/largest-eigenval__zjRiyTB/agent/worker-boundary/qualification/qualification.json",
+      "sha256": "4b677b860f4259159fe7a3290cf74dd37365aee12ddaa94040e18fc287a40bc5"
+    }
+  },
+  "goal_planner_or_coding_executed": false,
+  "hidden_verifier_or_solution_contents_read": false,
+  "historical_same_frozen_guard_observation": {
+    "models_observed": 4,
+    "native_exit_code": 0,
+    "reason": "catalog_observed",
+    "status": "ready",
+    "stderr_bytes": 0,
+    "stdout_bytes": 150
+  },
+  "matched_task_comparison_qualified": false,
+  "observed_at_utc": "2026-10-11T06:35:09Z",
+  "official_verifier_executed": false,
+  "provider_calls_by_reader": 0,
+  "raw_provider_output_read": false,
+  "readiness": {
+    "authentication_authority": false,
+    "cli_version": "1.0.46",
+    "completion_authority": false,
+    "execution_authority": false,
+    "model": "grok-4.7",
+    "models_observed": 0,
+    "native_catalog_commands": 1,
+    "native_command": "models",
+    "native_exit_code": 0,
+    "proof_authority": false,
+    "provider": "grok_cli",
+    "reason": "authentication_refused",
+    "schema": "terminal-grok-credential-readiness@1",
+    "scope": "isolated_worker_credential_copy",
+    "selected_model_observed": false,
+    "status": "unauthenticated",
+    "stderr_bytes": 0,
+    "stdout_bytes": 144,
+    "text_generation_calls": 0
+  },
+  "recommended_next_action": {
+    "action": "one_isolated_copied_credential_metadata_only_models_probe_after_exact_source_restoration",
+    "login_renewal_condition": "If the fresh isolated probe still reports unauthenticated, renew the normal host Grok CLI login before a new exclusive no-index attempt. A login requirement is not proven by old aggregate reason alone.",
+    "new_attempt_must_preserve_this_failed_record": true,
+    "paid_benchmark_retry_before_readiness": false,
+    "preserve_authentication_guard": true,
+    "retain_only_closed_negative_auth_category_and_catalog_counts": true,
+    "same_runtime_archive_reusable_if_all_exact_source_guards_pass": true,
+    "text_generation_calls": 0
+  },
+  "schema": "matched-no-index-setup-failure-diagnosis@1",
+  "source_closure": {
+    "current_sources": {
+      "datasets": {
+        "clean": true,
+        "head": "fecc4ecbf2b6a2c7453af7d2f0d749e2b7d9bc52",
+        "observation_scope": "after_parent_restored_kit_not_historical_run_continuity"
+      },
+      "kit": {
+        "clean": true,
+        "head": "8ac00bb1974b1378e12091d546d8425af34049e0",
+        "observation_scope": "after_parent_restored_kit_not_historical_run_continuity"
+      },
+      "source": {
+        "clean": true,
+        "head": "bfda2ab7e07982bc776a130a8ed509a55d4ce32c",
+        "observation_scope": "after_parent_restored_kit_not_historical_run_continuity"
+      }
+    },
+    "historical_record_rewritten": false,
+    "kit_restoration": "parent_reports_exact8ac_restored_at_original_path",
+    "missing_kit_path_at_closure": "observed_by_parent_not_reconstructed_by_this_reader",
+    "outer_timeout": false,
+    "recorded_error_type": "ValueError",
+    "recorded_source_unchanged": false,
+    "recorded_underlying_driver_exit_code": 0,
+    "source_continuity_retroactively_established": false
+  },
+  "strict_result_reader_unchanged": true,
+  "supervisor_result_present": false,
+  "task": "largest-eigenval",
+  "task_score": null,
+  "text_generation_calls": 0,
+  "trial": "largest-eigenval__zjRiyTB",
+  "worker_boundary": {
+    "owner_uid": 1000,
+    "provider": "grok_cli",
+    "qualified": true,
+    "worker_uid": 1001
+  }
+}

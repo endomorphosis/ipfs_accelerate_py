@@ -1,0 +1,88 @@
+{
+  "artifacts_sha256": {
+    "before-command.json": "d1b45589fa853716814d8c44a2ab0e2ca7ffffcc11518380a4cf8522378ba538",
+    "before-result.json": "0446f84889eb3c39708921ceb5fa1dbc23909b12797613184e52dd130f79761a",
+    "before.log": "449a984917661f2419ba54d19c277be3c8722903968a84d956b2a60bf018f999",
+    "before.xml": "431c7c334face41e8c77398512c57898831268b0ae65046858e31fa4c258727c",
+    "fixed-01-command.json": "24274de62737bdae81dc045d5c3752919396f371a31ab0b49c92c07b032d19fd",
+    "fixed-01-result.json": "1ec2a812907095073d4a24f61be9cf12271a969578e59a47e0cb89420d68d5f8",
+    "fixed-01.log": "69e485c047117f92a04e0412b1cd9ae9e908988441cdb52c5f19d9617624ef56",
+    "fixed-01.xml": "d8f4c5bb6ac67a327135d0a501656050845a74f7464e861037b1940d47d9fae8",
+    "fixed-02-command.json": "088055b4c0cdca3745f162d28ffc2458da681ac15fe3b29ce0dc22528f369582",
+    "fixed-02-result.json": "cc925e3dac3e06fba9606a968a3bcfbabc6eb1c2dab5e723ee2e7f5769a7f9ee",
+    "fixed-02.log": "60dd52b73479eceda7cc8b6108f1c2aad564a6fdd2cf4ce69413ca4cfb50c9f1",
+    "fixed-02.xml": "24c92c619199b3a070f313a191d4f85505ee14e43ed5cfdb98bfd61bd2a0ec0e",
+    "retained-receipt-replay-02.json": "2c2133bf1a9d7f2bbd8f146349981d0b6e2f7e148144f7f844731e96d32cba63",
+    "retained-receipt-replay.json": "2510804e2a17bba8bd9c5455cbb76e16add3e67ee3a35b91bf658689592159f4"
+  },
+  "baseline_scope": "Sixteen new authored cases fail against the previous producer, including assertions for missing new diagnostic fields. Separate immutable live-receipt replay demonstrates the actual false completeness classification.",
+  "completion_authority": false,
+  "contract": {
+    "billing_total_verified": false,
+    "cache_semantics_provider_specific": true,
+    "codex_native_cumulative_contract_preserved": true,
+    "grok_explicit_usage_completeness_required": true,
+    "grok_lower_bound_inferred": false,
+    "grok_observed_counters_retained": true,
+    "provider_scopes_distinguished": true,
+    "sparse_missing_flag_interpreted_as_complete": false,
+    "unknown_or_incomplete_grok_aggregates": null
+  },
+  "docker_calls": 0,
+  "git_commit_created": false,
+  "independent_review": {
+    "reviewer": "source_byte_provenance",
+    "scope": "comparison, shared accounting helper, matching comparison tests",
+    "status": "no_blocker",
+    "tests_rerun_by_reviewer": false
+  },
+  "limitations": [
+    "Native Grok final-envelope scope excludes some side-model calls; this patch does not reinterpret missing sparse flags or prove billing totals.",
+    "Harbor consumer changes and its tests belong to the root integration and are outside this qualification."
+  ],
+  "proof_authority": false,
+  "provider_calls": 0,
+  "published": false,
+  "raw_provider_data_exported": false,
+  "retained_receipt_replay": {
+    "fixed_completeness": null,
+    "fixed_total": null,
+    "historical_receipt_modified": false,
+    "observed_counter_sum_preserved": 1565373,
+    "previous_completeness": true,
+    "previous_total": 1565373
+  },
+  "schema": "provider-scoped-usage-comparison-qualification@1",
+  "source_head": "e6ff14f30befd52d5d1134d1632b1de89dfb2e9d",
+  "source_root": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "f34611194de55a8d5e283162d153109afc5b7ec873a7434f583f3548b82e5383",
+    "benchmarks/agent_supervisor/container_coding/native_usage_accounting.py": "a21c831eed08c9c1692121f912000ebc03a7c7d04adf9a68fd0dcba0d61cc67e",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "f2d0140158fcb9d0a12ec9e49c9d6ef51de388ce77f4c372b5a3e4c9f6002668"
+  },
+  "source_stable_during_final_tests": true,
+  "tests": {
+    "before": {
+      "errors": 0,
+      "failed": 16,
+      "passed": 0,
+      "skipped": 0,
+      "tests": 16
+    },
+    "fixed-01": {
+      "errors": 0,
+      "failed": 0,
+      "passed": 40,
+      "skipped": 0,
+      "tests": 40
+    },
+    "fixed-02": {
+      "errors": 0,
+      "failed": 0,
+      "passed": 40,
+      "skipped": 0,
+      "tests": 40
+    }
+  },
+  "unique_final_passing": 40
+}

@@ -1,0 +1,144 @@
+{
+  "after": {
+    "head": "90c1bb382cdb66f021d32c7671943ec4c1e7eeb4",
+    "producer": {
+      "numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+      "source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+      "source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0"
+    }
+  },
+  "before": {
+    "head": "90c1bb382cdb66f021d32c7671943ec4c1e7eeb4",
+    "producer": {
+      "numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+      "source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+      "source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0"
+    }
+  },
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/unit-links/replay_public.py"
+  ],
+  "files": [
+    {
+      "assertion_requirements": 0,
+      "compound_contracts": 1,
+      "functions": [
+        {
+          "assertion_requirements": 0,
+          "compound_contracts": 1,
+          "end_byte": 641,
+          "function_id": "function:2",
+          "pending_obligations": 16,
+          "scalar_guard_reason": "two_distinct_parameters_required",
+          "scalar_guard_status": "unsupported",
+          "start_byte": 21,
+          "status": "structurally_complete",
+          "unit_id": "3c45193b7d05eb9ae25e76d1eb9901c6e09cfba1b94bddaa3895d3e2e6930974"
+        }
+      ],
+      "inventory_sha256": "9e00f493048bac5d744b3d3c9e4159877e509f075d400055efb64bb6d9514056",
+      "linked_pending_obligations": 16,
+      "matched_units": 1,
+      "native_functions": 1,
+      "numerical_report_id": "786b65b7ce4b9a8d3d6ad38431a81a17223d0141685efd26a3aab326360a5a3f",
+      "numerical_report_sha256": "a919f301e7707b4fe54c8574372c61717c45ea9419a14054dac6f296c9e34f11",
+      "path": "eigen.py",
+      "pending_obligations": 16,
+      "replay_verified": true,
+      "report_file_sha256": "59c80a4bcd6f3fc76a77855b648f5c7ccfc6f525cbc5717ce6ae6947027a60eb",
+      "report_path": "links-0000.json",
+      "report_sha256": "993f464140e15c42eb8aae826b591012265fae32efa39ec1781081df8659f7ee",
+      "source_bytes": 642,
+      "source_obligations_discharged": 0,
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "units": 1,
+      "unmatched_native_functions": 0,
+      "unmatched_units": 0
+    },
+    {
+      "assertion_requirements": 4,
+      "compound_contracts": 1,
+      "functions": [
+        {
+          "assertion_requirements": 0,
+          "compound_contracts": 1,
+          "end_byte": 386,
+          "function_id": "function:6",
+          "pending_obligations": 16,
+          "scalar_guard_reason": "two_distinct_parameters_required",
+          "scalar_guard_status": "unsupported",
+          "start_byte": 173,
+          "status": "structurally_complete",
+          "unit_id": "b6d7596b67c4a1a2170f3d24b8ee56da17d7941be8591685df16cd1ccf50c68d"
+        },
+        {
+          "assertion_requirements": 4,
+          "compound_contracts": 0,
+          "end_byte": 1302,
+          "function_id": "function:81",
+          "pending_obligations": 13,
+          "scalar_guard_reason": "source_encoding_unsupported",
+          "scalar_guard_status": "unsupported",
+          "start_byte": 389,
+          "status": "partial",
+          "unit_id": "2459b87b4a1d358a713ab70626435b018cec0b675f078c42389a863f455901ad"
+        },
+        {
+          "assertion_requirements": 0,
+          "compound_contracts": 0,
+          "end_byte": 2132,
+          "function_id": "function:243",
+          "pending_obligations": 0,
+          "scalar_guard_reason": "two_distinct_parameters_required",
+          "scalar_guard_status": "unsupported",
+          "start_byte": 1305,
+          "status": "partial",
+          "unit_id": "21dd1d5f1cf37884aba0dc435628266deb24807e2a41b43bbbfcd2e16846ed33"
+        }
+      ],
+      "inventory_sha256": "0315b9803e4981a21b8d84ee4c44f60d8215f08e468d5064e540ed07bf6670c2",
+      "linked_pending_obligations": 29,
+      "matched_units": 3,
+      "native_functions": 3,
+      "numerical_report_id": "91f15fe1e7149b3ec190d81dc51154cef977147c4d248e8315ff5a58d26664d4",
+      "numerical_report_sha256": "31654d0037267c444436fc63e2379bd6c4502e5266a7c2a789a1e8f7f771cf89",
+      "path": "eval.py",
+      "pending_obligations": 29,
+      "replay_verified": true,
+      "report_file_sha256": "9e132a6b381172350cede619235cf880f1c53d0f7a10df7c63128207eede86b8",
+      "report_path": "links-0001.json",
+      "report_sha256": "63c41fe4907197ea935f7ace955f566cb4c30f22c591d9b9b7380e558d1b430d",
+      "source_bytes": 2246,
+      "source_obligations_discharged": 0,
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "units": 3,
+      "unmatched_native_functions": 0,
+      "unmatched_units": 0
+    }
+  ],
+  "helper_sha256": "d1bd4d0e5d498f43b38666613d1c4086c78f35e4ef9b26c9f83f7c4adad3ea93",
+  "inputs_root": "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/consumer/public-sources",
+  "lake_executed": false,
+  "learned_decoder_coverage_changed": false,
+  "limitations": [
+    "Exact whole-file byte/span and deterministic artifact joins only.",
+    "Existing scalar guard assessments are source-shape checks, not learned candidates or checkpoint inference.",
+    "Native numerical semantics, runtime library identity and benchmark correctness remain unproven."
+  ],
+  "model_inference_executed": false,
+  "projection_bodies_changed": false,
+  "provider_calls": 0,
+  "schema": "source-unit-numerical-public-replay@1",
+  "seconds": 0.199,
+  "solver_calls": 0,
+  "source_executed": false,
+  "source_obligations_discharged": 0,
+  "source_unchanged": true,
+  "training_performed": false
+}

@@ -1,0 +1,400 @@
+{
+  "benchmark_score": null,
+  "hydration": {
+    "catalog_count": 3,
+    "ducklake_catalogs": 3,
+    "ducklake_links": 3,
+    "ducklake_verified": true,
+    "ducklake_world_records": 1,
+    "world_record_cid": "bafkreifd43i2oslptv2jjmj27dot3wyphiasdutpyfketblvzryc2z4a2a"
+  },
+  "live_model_delivery_verified": false,
+  "loaded_supervisor_logic_modules": {
+    "ipfs_accelerate_py.agent_supervisor": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.control": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/control/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.control.control_contracts": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/control/control_contracts.py",
+    "ipfs_accelerate_py.agent_supervisor.control.control_plane": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+    "ipfs_accelerate_py.agent_supervisor.core": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.core.conflict_graph": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py",
+    "ipfs_accelerate_py.agent_supervisor.merge": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/merge/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.merge.checkout_lock": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py",
+    "ipfs_accelerate_py.agent_supervisor.merge.quarantine_validation": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/merge/quarantine_validation.py",
+    "ipfs_accelerate_py.agent_supervisor.merge.workspace_quarantine": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/merge/workspace_quarantine.py",
+    "ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+    "ipfs_accelerate_py.agent_supervisor.objectives": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/objectives/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.objectives.goal_completion": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/objectives/goal_completion.py",
+    "ipfs_accelerate_py.agent_supervisor.prompt": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/prompt/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+    "ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+    "ipfs_accelerate_py.agent_supervisor.proof": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/proof/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/proof/code_proof_obligations.py",
+    "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+    "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_capabilities": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py",
+    "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+    "ipfs_accelerate_py.agent_supervisor.proof.proof_attestation": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/proof/proof_attestation.py",
+    "ipfs_accelerate_py.agent_supervisor.proof.proof_obligation_templates": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/proof/proof_obligation_templates.py",
+    "ipfs_accelerate_py.agent_supervisor.runtime": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_cache": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_cache.py",
+    "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_projection": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_projection.py",
+    "ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py",
+    "ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py",
+    "ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+    "ipfs_accelerate_py.agent_supervisor.self_improvement": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/self_improvement/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement_completion": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_completion.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.contracts": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.datasets_adapter": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.durable_state": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/durable_state.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.harness": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_database": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_database.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.providers": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/providers.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.receipts": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/receipts.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.routing": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/routing.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.scheduling_contracts": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/scheduling_contracts.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.selection_execution": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/selection_execution.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.verification": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/verification.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.wire": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py",
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.worktree": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/worktree.py",
+    "ipfs_accelerate_py.agent_supervisor.task_sources": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_command": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_command.py",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.task_identity": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/task_sources/task_identity.py",
+    "ipfs_accelerate_py.agent_supervisor.validation": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/validation/__init__.py",
+    "ipfs_accelerate_py.agent_supervisor.validation.proposal_validation": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/validation/proposal_validation.py",
+    "ipfs_accelerate_py.agent_supervisor.validation.validation_commands": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/validation/validation_commands.py"
+  },
+  "optional_ipfs_kit_backend_disabled": true,
+  "planner_context_nesting_accepted": true,
+  "producers": {
+    "consumer": "9ecc557712f34a81e0aa3b5e2d213da2cf44ee92b77ca5945469f9c33750dd83",
+    "function_units": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+    "grammar": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "projections": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "scalar_source_guard": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+    "unit_links": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0",
+    "unit_source_screening": "f53a59b989274d7944628017a3baae2ebd66dc432855a7aa92033774d7c41eab",
+    "unit_span_extraction": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+    "unit_span_validation": "3f7f9443be1cf122d019f5936f0650b13da185686cbbc205d98e61098f9fca1c"
+  },
+  "provider_calls": 0,
+  "receipt_sha256": "a6e18bb0e0e1977b8ae9367645bad0cc95320d7aaa77a679a0c4a0317e27b9cd",
+  "schema": "public-function-unit-numerical-consumer-qualification@1",
+  "source_executed": false,
+  "source_hashes": {
+    "eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+    "eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+  },
+  "source_obligations_discharged": 0,
+  "status": "passed",
+  "summary": {
+    "assertion_requirement_count": 4,
+    "assertion_requirements": [
+      {
+        "argument_expression_ids": [
+          "expr:140",
+          "expr:142"
+        ],
+        "command_id": "command:149",
+        "function_id": "function:81",
+        "keyword_names": [],
+        "origin": "source_assertion",
+        "path": "eval.py",
+        "predicate": {
+          "call_expression_id": "expr:144",
+          "callee_resolution": "declared_import",
+          "imported_callee": "numpy.allclose",
+          "operator": "not"
+        },
+        "predicate_expression_id": "expr:146",
+        "proof_authority": false,
+        "requirement_id": "assertion-requirement:ebc0ea7091ee3686c5476a4e62c1f418",
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eval.py"
+        ],
+        "span_ids": [
+          "span:150"
+        ],
+        "status": "pending",
+        "symbol_definition_ids": [
+          "assertion-definition:a7b9de6f7208b09bd1c71afecf0d6c7d"
+        ],
+        "unknown_effects": true
+      },
+      {
+        "argument_expression_ids": [
+          "expr:155"
+        ],
+        "command_id": "command:162",
+        "function_id": "function:81",
+        "keyword_names": [],
+        "origin": "source_assertion",
+        "path": "eval.py",
+        "predicate": {
+          "call_expression_id": "expr:157",
+          "callee_resolution": "declared_import",
+          "imported_callee": "numpy.isnan",
+          "operator": "not"
+        },
+        "predicate_expression_id": "expr:159",
+        "proof_authority": false,
+        "requirement_id": "assertion-requirement:a8ff2ab6514ec9b8b56b46edd6ec9589",
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eval.py"
+        ],
+        "span_ids": [
+          "span:163"
+        ],
+        "status": "pending",
+        "symbol_definition_ids": [
+          "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef"
+        ],
+        "unknown_effects": true
+      },
+      {
+        "argument_expression_ids": [
+          "expr:168"
+        ],
+        "command_id": "command:175",
+        "function_id": "function:81",
+        "keyword_names": [],
+        "origin": "source_assertion",
+        "path": "eval.py",
+        "predicate": {
+          "call_expression_id": "expr:170",
+          "callee_resolution": "declared_import",
+          "imported_callee": "numpy.isinf",
+          "operator": "not"
+        },
+        "predicate_expression_id": "expr:172",
+        "proof_authority": false,
+        "requirement_id": "assertion-requirement:e163570e60a090402103f0dda3bc4265",
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eval.py"
+        ],
+        "span_ids": [
+          "span:176"
+        ],
+        "status": "pending",
+        "symbol_definition_ids": [
+          "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef"
+        ],
+        "unknown_effects": true
+      },
+      {
+        "argument_expression_ids": [
+          "expr:227",
+          "expr:233"
+        ],
+        "command_id": "command:239",
+        "function_id": "function:81",
+        "keyword_names": [],
+        "origin": "source_assertion",
+        "path": "eval.py",
+        "predicate": {
+          "call_expression_id": "expr:235",
+          "callee_resolution": "declared_import",
+          "imported_callee": "numpy.allclose",
+          "operator": "call"
+        },
+        "predicate_expression_id": "expr:235",
+        "proof_authority": false,
+        "requirement_id": "assertion-requirement:f4ac37f98a2a842ea7f8b490c19aee0e",
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eval.py"
+        ],
+        "span_ids": [
+          "span:240"
+        ],
+        "status": "pending",
+        "symbol_definition_ids": [
+          "assertion-definition:2ab40b009209ed0c63bc0a0d1c7cc1da",
+          "assertion-definition:a7b9de6f7208b09bd1c71afecf0d6c7d",
+          "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef"
+        ],
+        "unknown_effects": true
+      }
+    ],
+    "autoencoder_coverage_changed": false,
+    "completion_authority": false,
+    "compound_contract_count": 2,
+    "compound_contracts": [
+      {
+        "contract_id": "numerical-contract:0036a2a80f854cf5c649405487b5ba86",
+        "function_id": "function:2",
+        "kind": "selected_eigenpair",
+        "path": "eigen.py",
+        "pending_obligation_kinds": [
+          "selected_eigenpair_runtime_interpretation",
+          "selected_eigenpair_dimensions",
+          "selected_eigenpair_value_column",
+          "selected_eigenpair_magnitude_selection",
+          "selected_eigenpair_nonzero",
+          "selected_eigenpair_finite",
+          "selected_eigenpair_approximate_residual"
+        ],
+        "proof_authority": false,
+        "roles": {
+          "eig_expression": "expr:29",
+          "input_expression": "expr:27",
+          "returned_value_expression": "expr:54",
+          "returned_vector_expression": "expr:70",
+          "selection_expression": "expr:46"
+        },
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eigen.py"
+        ],
+        "span_ids": [
+          "span:32",
+          "span:49",
+          "span:75"
+        ],
+        "status": "pending"
+      },
+      {
+        "contract_id": "numerical-contract:7796ed25a89bda54c2deb0061d8228f5",
+        "function_id": "function:6",
+        "kind": "selected_eigenpair",
+        "path": "eval.py",
+        "pending_obligation_kinds": [
+          "selected_eigenpair_runtime_interpretation",
+          "selected_eigenpair_dimensions",
+          "selected_eigenpair_value_column",
+          "selected_eigenpair_magnitude_selection",
+          "selected_eigenpair_nonzero",
+          "selected_eigenpair_finite",
+          "selected_eigenpair_approximate_residual"
+        ],
+        "proof_authority": false,
+        "roles": {
+          "eig_expression": "expr:32",
+          "input_expression": "expr:30",
+          "returned_value_expression": "expr:57",
+          "returned_vector_expression": "expr:73",
+          "selection_expression": "expr:49"
+        },
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eval.py"
+        ],
+        "span_ids": [
+          "span:35",
+          "span:52",
+          "span:78"
+        ],
+        "status": "pending"
+      }
+    ],
+    "execution_authority": false,
+    "families_with_artifacts": [
+      "first_order",
+      "higher_order",
+      "program"
+    ],
+    "files": 2,
+    "functions": 4,
+    "interpretation": "Structural syntax and pending obligations; NumPy calls remain opaque. Assertions are local requirements if reached with assertions enabled, not callee postconditions. Read source before editing.",
+    "linked_source_unit_count": 4,
+    "model_inference_calls": 0,
+    "omitted_assertion_requirement_summaries": 0,
+    "omitted_compound_contract_summaries": 0,
+    "omitted_function_summaries": 3,
+    "omitted_obligation_summaries": 45,
+    "omitted_source_unit_link_summaries": 0,
+    "partial_or_unsupported_functions": 2,
+    "pending_obligation_count": 45,
+    "pending_obligations": [],
+    "per_function": [
+      {
+        "function_id": "function:2",
+        "name_truncated": false,
+        "path": "eigen.py",
+        "pending_obligation_count": 16,
+        "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+        "status": "structurally_complete",
+        "structurally_complete": true,
+        "unsupported_construct_count": 0
+      }
+    ],
+    "profile": "python-numerical-structure@1",
+    "proof_authority": false,
+    "provider_calls": 0,
+    "schema": "terminal-numerical-formalization-planning-summary@1",
+    "source_obligations_discharged": 0,
+    "source_semantics_verified": false,
+    "source_tree_id": "baguqeeraanfjei4wydhtho3ymct5ff3frqntxrehd24k7ru4v3mctkugvksq",
+    "source_unit_count": 4,
+    "source_unit_link_origin": "deterministic_source_projection",
+    "source_unit_links": [
+      {
+        "assertion_requirement_count": 0,
+        "compound_contract_count": 1,
+        "function_id": "function:2",
+        "link_report_sha256": "993f464140e15c42eb8aae826b591012265fae32efa39ec1781081df8659f7ee",
+        "normalized_body_sha256": "8abb894029599f96c8e8054997c5d0279927d7829d0a9bd1c3bad90bb796c0ae",
+        "path": "eigen.py",
+        "pending_obligation_count": 16,
+        "scalar_guard_reason": "two_distinct_parameters_required",
+        "scalar_guard_status": "unsupported",
+        "status": "matched",
+        "structural_status": "structurally_complete",
+        "unit_id": "3c45193b7d05eb9ae25e76d1eb9901c6e09cfba1b94bddaa3895d3e2e6930974"
+      },
+      {
+        "assertion_requirement_count": 0,
+        "compound_contract_count": 1,
+        "function_id": "function:6",
+        "link_report_sha256": "63c41fe4907197ea935f7ace955f566cb4c30f22c591d9b9b7380e558d1b430d",
+        "normalized_body_sha256": "7e44e4ca561fd59c32216556523cb2cf71498a73f13db4f6de4ea4701fad337e",
+        "path": "eval.py",
+        "pending_obligation_count": 16,
+        "scalar_guard_reason": "two_distinct_parameters_required",
+        "scalar_guard_status": "unsupported",
+        "status": "matched",
+        "structural_status": "structurally_complete",
+        "unit_id": "b6d7596b67c4a1a2170f3d24b8ee56da17d7941be8591685df16cd1ccf50c68d"
+      },
+      {
+        "assertion_requirement_count": 4,
+        "compound_contract_count": 0,
+        "function_id": "function:81",
+        "link_report_sha256": "63c41fe4907197ea935f7ace955f566cb4c30f22c591d9b9b7380e558d1b430d",
+        "normalized_body_sha256": "6c153cfe290ae28ee1b73dd4b9110d8685cf685dfccad41edf539d7d02584cdb",
+        "path": "eval.py",
+        "pending_obligation_count": 13,
+        "scalar_guard_reason": "source_encoding_unsupported",
+        "scalar_guard_status": "unsupported",
+        "status": "matched",
+        "structural_status": "partial",
+        "unit_id": "2459b87b4a1d358a713ab70626435b018cec0b675f078c42389a863f455901ad"
+      },
+      {
+        "assertion_requirement_count": 0,
+        "compound_contract_count": 0,
+        "function_id": "function:243",
+        "link_report_sha256": "63c41fe4907197ea935f7ace955f566cb4c30f22c591d9b9b7380e558d1b430d",
+        "normalized_body_sha256": "8dba913427cb13311027843cc2d5d331324863a72c8e3075213c6b4795b0bb65",
+        "path": "eval.py",
+        "pending_obligation_count": 0,
+        "scalar_guard_reason": "two_distinct_parameters_required",
+        "scalar_guard_status": "unsupported",
+        "status": "matched",
+        "structural_status": "partial",
+        "unit_id": "21dd1d5f1cf37884aba0dc435628266deb24807e2a41b43bbbfcd2e16846ed33"
+      }
+    ],
+    "source_unit_links_establish_learned_coverage": false,
+    "structurally_complete_functions": 2,
+    "training_steps": 0,
+    "unmatched_source_unit_count": 0,
+    "whole_program_semantics_verified": false
+  },
+  "summary_bytes": 8096,
+  "summary_sha256": "14e2ccc4b87e66d694496121deee87ccaf589479ee02ab53ff8e2b001601ac11"
+}

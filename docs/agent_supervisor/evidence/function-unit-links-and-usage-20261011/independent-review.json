@@ -1,0 +1,204 @@
+{
+  "checked_qualifications": {
+    "comparison": {
+      "failures": 0,
+      "passed": 40,
+      "scope": "Provider-specific usage completeness and observed counters; no billing claim.",
+      "skips": 0
+    },
+    "consumer_before_final_helper_pins": {
+      "failures": 0,
+      "passed": 146,
+      "scope": "Broader consumer tests at prior consumer hash; not relabeled as final-producer tests.",
+      "skips": 0
+    },
+    "consumer_final_pin_checks": {
+      "failures": 0,
+      "passed": 9,
+      "scope": "Exact extraction-helper owner hashes, archive enforcement and rejection before replay; selected producer bytes stable.",
+      "skips": 0
+    },
+    "datasets_bridge": {
+      "authored_passed": 46,
+      "failures": 0,
+      "neighbor_passed": 199,
+      "scope": "Exact function provenance and numerical artifact links; neighboring native Lean checks do not prove Python or NumPy correctness.",
+      "skips": 0,
+      "unique_passed": 245
+    },
+    "harbor_final_affected": {
+      "failures": 0,
+      "passed": 18,
+      "scope": "Corrected shared scope/cache contract including absent optional provider label and contradictory provider/schema refusal.",
+      "skips": 0
+    },
+    "matched_reader": {
+      "passed": 60,
+      "scope": "Authored closed-metadata tests; reader was not relaxed or used to turn setup failure into a successful comparison."
+    }
+  },
+  "code_review": {
+    "artifact_links_do_not_expand_scalar_checkpoint_coverage": true,
+    "final_consumer_binds_all_extractor_pin_owners": true,
+    "grok_task_completion_does_not_establish_usage_completeness": true,
+    "module_import_context_retained_without_runtime_identity_claim": true,
+    "observed_counts_not_claimed_as_lower_bounds_or_bill": true,
+    "persisted_unit_artifacts_replay_against_current_source": true,
+    "unknown_usage_blocks_headline_aggregate_export": true,
+    "unmatched_units_and_partial_coverage_accounted": true,
+    "upstream_inventory_and_numerical_report_replayed": true,
+    "whole_file_path_digest_and_exact_span_joins": true
+  },
+  "comparison_independent_reviewer": "source_byte_provenance, retained in comparison qualification",
+  "completion_authority": false,
+  "credential_contents_read_or_hashed": false,
+  "docker_calls_by_reviewer": 0,
+  "documentation_claims_match_reviewed_scope": true,
+  "efficiency_advantage_claimed": false,
+  "evidence": {
+    "comparison_qualification": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/usage/qualification.json",
+      "sha256": "efd495140466878f60d0395e441a8444e199dcf66b6d4c31c4d5140c261e0292"
+    },
+    "comparison_xml": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/usage/fixed-02.xml",
+      "sha256": "24c92c619199b3a070f313a191d4f85505ee14e43ed5cfdb98bfd61bd2a0ec0e"
+    },
+    "consumer_prior_qualification": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/unit-consumer/qualification.json",
+      "sha256": "505adde8309ae169cb0a02a444aff380c59787cdb56ac3f2754164977379b63d"
+    },
+    "consumer_prior_xml": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/unit-consumer/tests.xml",
+      "sha256": "9f1d087776b95a387f5fda9527981cbf3c88ae93bf35b1d6ca98d1399edab6ad"
+    },
+    "datasets_authored_xml": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/unit-links/authored-01.xml",
+      "sha256": "6f8df2b84a792a14adf97492867441ff63bf60a1cd660021a470165630a004a0"
+    },
+    "datasets_neighbors_xml": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/unit-links/neighbors-01.xml",
+      "sha256": "5c542c1f83d7b7ef583177542aa2ea06b0cb66cda976da69154e5f1706aa74ed"
+    },
+    "datasets_qualification": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/unit-links/qualification.json",
+      "sha256": "e47f2c887bb7d8aaab25710b8328037bffd6388c2f6e2aaee636eb68cb4e872d"
+    },
+    "documentation": {
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/docs/agent_supervisor/durable_cleanup_status.md",
+      "sha256": "247ae9e885a05049a8207f22225affa840aec769cf32ea53ef7522fd476d521d"
+    },
+    "final_pin_qualification": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/unit-producer-pins/qualification.json",
+      "sha256": "1b6ecf99c174e39e3207fc29e677a23dab64065b09e9c11eaab6e2d1af5bc82f"
+    },
+    "final_pin_xml": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/unit-producer-pins/tests.xml",
+      "sha256": "1954ab15f4f13f68b069dcf7448bd3786bcf6bab735e82b70ae9453a014469a7"
+    },
+    "final_public_context": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/public-consumer-02/public-qualification.json",
+      "sha256": "d7791621da785091194a4581742b4c674c8566561e2c30934bbd2209d1b83c20"
+    },
+    "final_public_execution": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/public-consumer-02/execution.json",
+      "sha256": "969c4d20f28415e904238fa6da1d13cb2f24e7f3bd87acec41439b6ff351e6e1"
+    },
+    "harbor_independent_review": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/harbor-usage/review-02.json",
+      "sha256": "979cca63fbf084e5e308ab628ffba9f75c9a907283f76925754afc813171de04"
+    },
+    "harbor_qualification": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/harbor-usage-02/qualification.json",
+      "sha256": "85847d30f87de2f5acca63af74520a2cc34c40d923cc387547659fdd1855ac7b"
+    },
+    "harbor_xml": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/harbor-usage-02/tests.xml",
+      "sha256": "06405a1b1b6327b26aba33972e875fd58b7132a5d1855fd79094e4f300f0da23"
+    },
+    "host_copy_probe": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/review/host-catalog-probe-01.json",
+      "sha256": "456b3c7f66310c85d1001ad0671461126d2a78c675a95405cfc8fa277435e518"
+    },
+    "matched_reader_qualification": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/review/qualification.json",
+      "sha256": "1b0b056b350787d9e6d642b2194b6c668277ec9bbccd50023863ac8f667bce4e"
+    },
+    "setup_failure": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/review/setup-failure-01.json",
+      "sha256": "3f83d44333cfeb3f73cd7f20066687d3c958bb6dd908472bd594c3d800cb6528"
+    },
+    "usage_replay": {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/usage/retained-receipt-replay-02.json",
+      "sha256": "2c2133bf1a9d7f2bbd8f146349981d0b6e2f7e148144f7f844731e96d32cba63"
+    }
+  },
+  "final_public_context": {
+    "actual_kit_import_provenance_claimed": false,
+    "assertion_requirements": 4,
+    "benchmark_score": null,
+    "compound_contracts": 2,
+    "files": 2,
+    "learned_autoencoder_coverage_changed": false,
+    "linked_units": 4,
+    "live_model_delivery_verified": false,
+    "loaded_selected_logic_module_count": 54,
+    "model_inference_calls": 0,
+    "native_ducklake_catalogs": 3,
+    "native_ducklake_verified": true,
+    "omitted_individual_obligation_rows": 45,
+    "omitted_structural_function_summaries": 3,
+    "optional_ipfs_kit_backend_disabled": true,
+    "pending_obligations": 45,
+    "planner_context_nesting_accepted": true,
+    "sampled_functions": 4,
+    "selected_final_producer_hashes_match": true,
+    "selected_logic_module_roots_verified": true,
+    "source_obligations_discharged": 0,
+    "source_snapshots_unchanged": true,
+    "summary_bytes": 8096,
+    "training_steps": 0,
+    "worker_capsule_delivery_verified": false
+  },
+  "hidden_verifier_or_solution_contents_read": false,
+  "historical_evidence_rewritten": false,
+  "limitations": [
+    "Test groups have different scopes and revisions; their counts are not summed into a single final-producer total.",
+    "Closed evidence verifies source/artifact provenance and pending formal structure, not numerical semantics or proof discharge.",
+    "The historical full trial remains successful; the failed no-index setup supplies no score, efficiency comparison or token-savings evidence.",
+    "Historical unavailable candidate/canonical output bytes and unknown usage completeness remain unknown."
+  ],
+  "no_index_failed_attempt": {
+    "absence_observations": 2,
+    "exception_type": "GrokCredentialReadinessError",
+    "kit_path_disappearance_scope": "Parent observation retained by diagnosis; not reconstructed independently.",
+    "later_kit_restoration_establishes_historical_continuity": false,
+    "matched_performance_comparison_qualified": false,
+    "official_verifier_executed": false,
+    "readiness": "unauthenticated/authentication_refused",
+    "score": null,
+    "setup_deployment_to_exact_container_absence_join_verified": true,
+    "source_unchanged_recorded": false,
+    "supervisor_started": false,
+    "text_generation_calls": 0
+  },
+  "proof_authority": false,
+  "provider_calls_by_reviewer": 0,
+  "raw_provider_output_read": false,
+  "review_method": "Read-only source, authored tests, closed receipts, selected source and evidence digest joins; no tests rerun.",
+  "reviewer": "shutdown_contract_audit",
+  "reviewer_authored_comparison_implementation": true,
+  "schema": "function-unit-usage-publication-independent-review@1",
+  "separate_host_copy_probe": {
+    "container_qualification": false,
+    "host_credential_modified": false,
+    "negative_category": "not_authenticated_or_logged_in",
+    "next_step": "Renew file-based Grok login and repeat isolated copied-auth readiness before a new benchmark attempt.",
+    "temporary_copy_removed": true,
+    "text_generation_calls": 0
+  },
+  "source_edits_by_reviewer": false,
+  "status": "no_blocking_discrepancy_found",
+  "tests_rerun_by_reviewer": false,
+  "token_savings_claimed": false
+}

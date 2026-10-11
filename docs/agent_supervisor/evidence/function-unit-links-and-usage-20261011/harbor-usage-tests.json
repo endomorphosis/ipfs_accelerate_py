@@ -1,0 +1,23 @@
+{
+  "returncode": 0,
+  "seconds": 16.014502768055536,
+  "source_after": {
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "d0b9b2b97cd81bc86de5c5b72467b197e996f5fb18a08f5d75f5a529c1450f99",
+    "benchmarks/agent_supervisor/container_coding/native_usage_accounting.py": "a21c831eed08c9c1692121f912000ebc03a7c7d04adf9a68fd0dcba0d61cc67e",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_provider_selection.py": "7334ac617cb86e14d1bab2112187b55a7c62e0fd20a8bdf2e1b1435d8710c803",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c"
+  },
+  "source_unchanged": true,
+  "suites": [
+    {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "18",
+      "time": "15.321",
+      "timestamp": "2026-10-11T06:22:39.211402+00:00",
+      "hostname": "spark-b271"
+    }
+  ]
+}

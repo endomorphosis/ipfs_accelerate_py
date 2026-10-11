@@ -1,0 +1,36 @@
+{
+  "artifacts": {
+    "tests-final-command.json": "9e758cff50f87ac6f252062a67bd08a2666252b672e952195c6a5c8b71a45fff",
+    "tests-final.log": "6b7d420f5aecd5ffc6c73e96b01a6889fda2dfd54581058688dcf6b701e24db3",
+    "tests-final.xml": "10d0b2fc4a268223d0e8f2e657b46da5fe90ea37b3fdb09a4e053da55622ddca"
+  },
+  "benchmark_execution": false,
+  "closed_historical_full_projection_check": {
+    "aggregate_tokens_unknown": true,
+    "cleanup_exact_join": true,
+    "numerical_join": "verified",
+    "official_reward": 1.0,
+    "output_bytes_unavailable": true,
+    "scope": "earlier read-only replay; no new provider or container execution"
+  },
+  "counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 60
+  },
+  "docker_calls": 0,
+  "exit_code": 0,
+  "provider_calls": 0,
+  "schema": "matched-result-reader-tests@1",
+  "seconds": 0.6653519289102405,
+  "source_after": {
+    "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/review/review_matched_result.py": "bf9cd801202a00a8325c48c484f45a78ce42709de849f2d7096b4e3d2457a051",
+    "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/review/test_review_matched_result.py": "8d4be6d1839609078bbcb3da0a88ba25f4cc9ece9f21e6cbd71854b2f93b373f"
+  },
+  "source_before": {
+    "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/review/review_matched_result.py": "bf9cd801202a00a8325c48c484f45a78ce42709de849f2d7096b4e3d2457a051",
+    "/home/barberb/lift_coding/artifacts/supervisor-matched-no-index-20261011/review/test_review_matched_result.py": "8d4be6d1839609078bbcb3da0a88ba25f4cc9ece9f21e6cbd71854b2f93b373f"
+  },
+  "source_unchanged": true
+}

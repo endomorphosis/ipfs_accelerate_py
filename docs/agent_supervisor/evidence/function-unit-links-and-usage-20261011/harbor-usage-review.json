@@ -1,0 +1,42 @@
+{
+  "artifacts_sha256": {
+    "harbor-usage-02/command.json": "2d199dcf77ebbb666abf31c8c1f72267e0f0eccef1ff4a4ed6aadb2eeca487f9",
+    "harbor-usage-02/qualification.json": "85847d30f87de2f5acca63af74520a2cc34c40d923cc387547659fdd1855ac7b",
+    "harbor-usage-02/tests.xml": "06405a1b1b6327b26aba33972e875fd58b7132a5d1855fd79094e4f300f0da23",
+    "harbor-usage/review.json": "a73af8800845ed4e7819088f20aafde2f1b0ebc23169b5da3929d876719217c4"
+  },
+  "billing_total_verified": false,
+  "checks": [
+    "Observed categories remain available independently of export eligibility.",
+    "Native scoped completeness, exact Boolean semantics, one known scope, and one consistent cache convention gate headline fields.",
+    "Unknown/incomplete/malformed/unreceipted cases leave all n_* fields unknown, including previously populated values.",
+    "Native Codex cumulative completion behavior is retained; mixed or unknown scopes do not export.",
+    "No completeness is inferred from verifier reward or task success; billing_total_verified remains false."
+  ],
+  "closed_findings": [
+    {
+      "id": "schema_only_grok_cache_semantics",
+      "resolution": "Cache semantics now use the shared contract tuple; native Grok schema selects cache-write accounting even without a provider label. The added regression verifies 10 uncached +30 cache-read +5 cache-write becomes Harbor input45 and contradictory provider/schema resets all headline fields to unknown."
+    }
+  ],
+  "completion_authority": false,
+  "docker_calls": 0,
+  "provider_calls": 0,
+  "reviewed_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "d0b9b2b97cd81bc86de5c5b72467b197e996f5fb18a08f5d75f5a529c1450f99",
+    "benchmarks/agent_supervisor/container_coding/native_usage_accounting.py": "a21c831eed08c9c1692121f912000ebc03a7c7d04adf9a68fd0dcba0d61cc67e",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_provider_selection.py": "7334ac617cb86e14d1bab2112187b55a7c62e0fd20a8bdf2e1b1435d8710c803"
+  },
+  "reviewer": "shutdown_contract_audit",
+  "schema": "harbor-native-usage-integration-review@1",
+  "source_edits_by_reviewer": false,
+  "status": "no_remaining_blocker",
+  "tests_reported": {
+    "failed": 0,
+    "passed": 18,
+    "scope": "affected accounting cases after correction",
+    "skipped": 0
+  },
+  "tests_rerun_by_reviewer": false
+}

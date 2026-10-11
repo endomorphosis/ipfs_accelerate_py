@@ -1,0 +1,22 @@
+{
+  "blocking_findings": [],
+  "live_trial_result_claimed": false,
+  "qualification_sha256": "1b0b056b350787d9e6d642b2194b6c668277ec9bbccd50023863ac8f667bce4e",
+  "reviewed_reader_sha256": "bf9cd801202a00a8325c48c484f45a78ce42709de849f2d7096b4e3d2457a051",
+  "reviewed_tests_sha256": "8d4be6d1839609078bbcb3da0a88ba25f4cc9ece9f21e6cbd71854b2f93b373f",
+  "reviewer_agent": "shutdown_contract_audit",
+  "reviewer_docker_calls": 0,
+  "reviewer_executed_closed_reader": false,
+  "reviewer_provider_calls": 0,
+  "reviewer_reran_tests": false,
+  "schema": "matched-result-reader-independent-review@1",
+  "scope": [
+    "Actual normalized configuration and retained immutable controls",
+    "Both execute/spec/source/archive records",
+    "Official result hash and reward join",
+    "Identical selected checkpoint assets and full context identity",
+    "Exact deployed container and nonempty provider invocation ownership cleanup joins",
+    "No-index actual planner receipt absence with initial/semantic/Source384 inputs disabled",
+    "Corrected accounting retains unknown Grok completeness and historical unavailable output bytes"
+  ]
+}

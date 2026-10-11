@@ -1,0 +1,48 @@
+{
+  "schema": "closed-comparison-usage-replay@1",
+  "receipt_sha256": "e168971a6c61546f9c24c1e6db43923f66b3346773591f6ca5c3abec9006824b",
+  "prior_producer_sha256": "bea10b27b296b2f6ea9dfef6ad1da94251f7318e899f9fb2668ce39726d0a527",
+  "fixed_producer_sha256": "f34611194de55a8d5e283162d153109afc5b7ec873a7434f583f3548b82e5383",
+  "before": {
+    "native_usage_complete_observed": true,
+    "tokens": {
+      "input_tokens": 128614,
+      "cached_input_tokens": 1385216,
+      "output_tokens": 51543,
+      "total_tokens": 1565373
+    },
+    "known_token_subtotals": {
+      "input_tokens": 128614,
+      "cached_input_tokens": 1385216,
+      "output_tokens": 51543,
+      "total_tokens": 1565373
+    },
+    "cache_included_in_input": null,
+    "observed_counts_are_lower_bounds": null,
+    "reported_cost_usd": null
+  },
+  "after": {
+    "native_usage_complete_observed": null,
+    "tokens": {
+      "input_tokens": null,
+      "cached_input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null
+    },
+    "known_token_subtotals": {
+      "input_tokens": 128614,
+      "cached_input_tokens": 1385216,
+      "output_tokens": 51543,
+      "total_tokens": 1565373
+    },
+    "cache_included_in_input": false,
+    "observed_counts_are_lower_bounds": false,
+    "reported_cost_usd": null
+  },
+  "historical_receipt_modified": false,
+  "provider_calls": 0,
+  "docker_calls": 0,
+  "raw_provider_data_exported": false,
+  "billing_total_verified": false,
+  "shared_accounting_sha256": "a21c831eed08c9c1692121f912000ebc03a7c7d04adf9a68fd0dcba0d61cc67e"
+}

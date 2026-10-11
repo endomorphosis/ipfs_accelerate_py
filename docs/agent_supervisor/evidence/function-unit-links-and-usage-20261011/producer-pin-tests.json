@@ -1,0 +1,84 @@
+{
+  "after": {
+    "files": {
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_corpus.py": "3f7f9443be1cf122d019f5936f0650b13da185686cbbc205d98e61098f9fca1c",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/source_screening.py": "f53a59b989274d7944628017a3baae2ebd66dc432855a7aa92033774d7c41eab",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0",
+      "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py": "495e6ef2977e1bbafb182274edb8ac67c1260e0a969da114c059fa26d04b8747",
+      "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "24d757183a7acf2c621c955f9ed967573cc91c7e934204ab34841b1cfcd893fe",
+      "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py": "15d40370a467df249bbd141516be941ba22d512b12dffeb1f57b054d17cf4a2e",
+      "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "9ecc557712f34a81e0aa3b5e2d213da2cf44ee92b77ca5945469f9c33750dd83"
+    },
+    "heads": {
+      "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011": "d24e15ee73659a5d4cff20e8f1cbf1c5ab92a234",
+      "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011": "164b57564d00874bcb979e0e0268ac9e6b0bb34f"
+    }
+  },
+  "before": {
+    "files": {
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_corpus.py": "3f7f9443be1cf122d019f5936f0650b13da185686cbbc205d98e61098f9fca1c",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/source_screening.py": "f53a59b989274d7944628017a3baae2ebd66dc432855a7aa92033774d7c41eab",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0",
+      "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py": "495e6ef2977e1bbafb182274edb8ac67c1260e0a969da114c059fa26d04b8747",
+      "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "24d757183a7acf2c621c955f9ed967573cc91c7e934204ab34841b1cfcd893fe",
+      "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py": "15d40370a467df249bbd141516be941ba22d512b12dffeb1f57b054d17cf4a2e",
+      "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "9ecc557712f34a81e0aa3b5e2d213da2cf44ee92b77ca5945469f9c33750dd83"
+    },
+    "heads": {
+      "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011": "d24e15ee73659a5d4cff20e8f1cbf1c5ab92a234",
+      "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011": "164b57564d00874bcb979e0e0268ac9e6b0bb34f"
+    }
+  },
+  "command": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py",
+    "-k",
+    "function_unit_extractor_producers or unit_extraction_helper_mutation or (every_current_numerical_producer and (security_formula_corpus or security_formalization_evaluation or source_screening)) or default_preserves_historical",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/unit-producer-pins/tests.xml",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/unit-producer-pins/cache"
+  ],
+  "counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 9
+  },
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-comparison-contracts-20261011/unit-producer-pins/seal.duckdb",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "helper_sha256": "781c93c9a135e2805e8894bafa764c308a47d59d55a86c3b0b528218be1411be",
+  "provider_calls": 0,
+  "returncode": 0,
+  "schema": "unit-extraction-producer-pin-qualification@1",
+  "seconds": 26.548,
+  "source_obligations_discharged": 0,
+  "source_unchanged": true,
+  "test_log_sha256": "742cd045340689c0456393eae8a1aa928540cab5103c5ce0e5f7a81db2fa9574",
+  "test_xml_sha256": "1954ab15f4f13f68b069dcf7448bd3786bcf6bab735e82b70ae9453a014469a7"
+}

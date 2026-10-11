@@ -3,6 +3,83 @@
 Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
+## Sampled function links and matched no-index setup, 2026-10-11
+
+Datasets `d24e15ee7` connects sampled function units to the numerical grammar's
+ProgramIR, typed first-order/SMT artifacts and Lean higher-order definitions.
+The join replays both producers from exact whole-file bytes and matches source
+path, file digest and byte span. It preserves module imports, function identities,
+normalized-body hashes, unmatched units and per-function obligation references.
+A name match or an isolated function body is insufficient. Referenced artifacts
+retain their existing interpretation requirements; a link grants no proof,
+execution or completion authority.
+
+The supervisor persists these links beside the full reports in its native world
+and metadata lakes, rechecks producer and content hashes, and passes bounded flat
+references to the planner before goal decomposition. Archive qualification now
+also binds the reused extraction, screening and scalar source-guard helpers.
+The public `largest-eigenval` replay links **4/4 sampled functions**, retains both
+compound contracts and all four assertion requirements, and fits in an
+**8,096-byte** planner summary. All 45 individual obligation rows and three
+structural function summaries are omitted from that bounded prompt with explicit
+counts; full reports remain in the index. There are **45 pending source
+obligations, zero discharged**. This qualifies persistence and planner delivery;
+it is not a new live-model benchmark or worker-capsule delivery test.
+
+The same four functions remain outside the learned scalar checkpoint contract.
+Three first fail its two-distinct-parameter requirement; the assertion function
+first fails its source-encoding guard. These observations do not justify removing
+the guard: the existing scalar grammar also lacks the required call, indexing,
+tuple and assertion representation. No checkpoint was trained, replaced or
+relabelled. A subsequent learned numerical profile needs an independently authored
+training corpus, corresponding decoder grammar and held-out reconstruction plus
+source/projection checks; benchmark task sources must remain evaluation inputs.
+
+The [datasets qualification](evidence/function-unit-links-and-usage-20261011/datasets-qualification.json)
+records **245 passing tests**, including neighboring native Lean checks.
+The [consumer qualification](evidence/function-unit-links-and-usage-20261011/consumer-tests.json)
+records **146 passing tests** before the final helper-pin extension. The
+[final pin checks](evidence/function-unit-links-and-usage-20261011/producer-pin-tests.json)
+passed nine focused cases. A fresh [public context replay](evidence/function-unit-links-and-usage-20261011/public-context.json)
+then qualified the final producer set with the optional IPFS Kit backend disabled;
+the native DuckLake stores use DuckDB directly. Strict tampering controls and
+explicit unmatched/omission accounting verify the link contract. Lean compilation checks formal definitions and does
+not establish Python or NumPy correctness.
+
+A separate accounting correction shares native usage contracts between the
+comparison reader and Harbor adapter. Grok's final envelope requires an explicit
+usage-completeness flag as well as session completion and valid counters;
+a missing flag stays unknown. Schema-qualified cache semantics remain consistent
+when the optional provider label is absent. Harbor headline token fields are
+cleared when export is not qualified, while observed counters remain in receipts.
+Native final-envelope scope is not verified billing or all-model usage.
+The [retained-receipt replay](evidence/function-unit-links-and-usage-20261011/usage-replay.json)
+shows the historical full trial's **1,565,373 observed tokens** were previously
+mislabelled complete; complete aggregate usage is now unknown without altering
+the original receipt. The [comparison tests](evidence/function-unit-links-and-usage-20261011/usage-qualification.json)
+passed 40 cases, and the final [Harbor usage checks](evidence/function-unit-links-and-usage-20261011/harbor-usage-tests.json)
+passed 18 affected cases after independent review exposed and fixed the omitted
+provider-label edge case.
+
+The matched no-index attempt used the successful full trial's frozen archive
+and matching controls, but **failed setup before supervisor execution** with
+`GrokCredentialReadinessError`. The isolated native model-list command reported
+`unauthenticated` / `authentication_refused`: one metadata command, zero text
+calls, no supervisor result and no official reward. The exact owned container
+was observed absent twice. The recorder also reported unchanged-source checking
+failed while its pinned kit checkout was absent; restoring that exact checkout
+later does not repair the historical record. The [closed failure diagnosis](evidence/function-unit-links-and-usage-20261011/no-index-setup-failure.json)
+retains these separate failures. This attempt supplies neither a no-index score
+nor a token-efficiency comparison. No automatic provider fallback was used.
+A subsequent [isolated host-copy metadata probe](evidence/function-unit-links-and-usage-20261011/grok-host-copy-readiness.json)
+reproduced `not_authenticated_or_logged_in` using the same pinned CLI. It made
+zero text-generation calls and removed its temporary credential copy. The normal
+file-based Grok login must be renewed and copied-auth readiness rechecked before
+a fresh benchmark attempt; this host probe does not qualify a container.
+The matched result reader separately passed 60 authored tests and independent
+review, but its successful-comparison requirements were not relaxed to accept
+this failed setup.
+
 ## Successful full-supervisor Terminal Bench trial, 2026-10-11
 
 The fresh, single-attempt `largest-eigenval` trial returned **official reward
@@ -49,8 +126,9 @@ It predates the source-assertion extension below.
 
 Neither invocation explicitly establishes usage completeness. These are observed
 counters; complete aggregate token usage and verified billing remain unknown.
-No matching no-index or native Codex trial was rerun, and no token savings or
-efficiency advantage is claimed.
+At the time of this successful trial no matching no-index or native Codex
+trial had been rerun. The subsequent no-index setup failure is recorded above;
+no token savings or efficiency advantage is claimed.
 
 Candidate/canonical output hashes were **not retained**: the declared-output
 observer returned `settlement_or_cleanup_unavailable`, and the retained progress
