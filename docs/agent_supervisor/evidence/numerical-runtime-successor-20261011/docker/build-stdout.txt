@@ -1,0 +1,71 @@
+#0 building with "rootless" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 795B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/ipfs-supervisor-preview-worker:20261005-r3
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 DONE 0.0s
+
+#5 [1/4] FROM docker.io/library/ipfs-supervisor-preview-worker:20261005-r3@sha256:88463ed5d1f72a79fdd4bac5e2ad1c2a0490c1ae24b21365d14eacd5e2a0a879
+#5 resolve docker.io/library/ipfs-supervisor-preview-worker:20261005-r3@sha256:88463ed5d1f72a79fdd4bac5e2ad1c2a0490c1ae24b21365d14eacd5e2a0a879
+#5 resolve docker.io/library/ipfs-supervisor-preview-worker:20261005-r3@sha256:88463ed5d1f72a79fdd4bac5e2ad1c2a0490c1ae24b21365d14eacd5e2a0a879 0.0s done
+#5 DONE 0.3s
+
+#4 [internal] load build context
+#4 transferring context: 77.34MB 0.2s done
+#4 DONE 0.2s
+
+#6 [2/4] COPY wheels /tmp/numerical-dev-wheels
+#6 DONE 0.3s
+
+#7 [3/4] COPY requirements.lock /tmp/numerical-dev-requirements.lock
+#7 DONE 0.0s
+
+#8 [4/4] RUN /opt/ipfs-supervisor/venv/bin/python -m pip --isolated install --no-index --no-deps --require-hashes --find-links=/tmp/numerical-dev-wheels --report=/opt/ipfs-supervisor/numerical-dev-install.json -r /tmp/numerical-dev-requirements.lock && /opt/ipfs-supervisor/venv/bin/python -m pip check && /opt/ipfs-supervisor/venv/bin/python -m pip list --format=json > /opt/ipfs-supervisor/numerical-dev-packages.json && /opt/ipfs-supervisor/venv/bin/python -c "import torch; assert torch.__version__ == '2.13.0+cpu'" && rm -rf /tmp/numerical-dev-wheels /tmp/numerical-dev-requirements.lock
+#8 0.403 Looking in links: /tmp/numerical-dev-wheels
+#8 0.405 Processing /tmp/numerical-dev-wheels/sentence_transformers-5.4.1-py3-none-any.whl (from -r /tmp/numerical-dev-requirements.lock (line 1))
+#8 0.409 Processing /tmp/numerical-dev-wheels/transformers-4.52.1-py3-none-any.whl (from -r /tmp/numerical-dev-requirements.lock (line 2))
+#8 0.455 Processing /tmp/numerical-dev-wheels/safetensors-0.7.0-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (from -r /tmp/numerical-dev-requirements.lock (line 3))
+#8 0.459 Processing /tmp/numerical-dev-wheels/numpy-1.26.4-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (from -r /tmp/numerical-dev-requirements.lock (line 4))
+#8 0.480 Processing /tmp/numerical-dev-wheels/huggingface_hub-0.36.2-py3-none-any.whl (from -r /tmp/numerical-dev-requirements.lock (line 5))
+#8 0.491 Processing /tmp/numerical-dev-wheels/pyyaml-6.0.3-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (from -r /tmp/numerical-dev-requirements.lock (line 6))
+#8 0.493 Processing /tmp/numerical-dev-wheels/regex-2026.9.29-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (from -r /tmp/numerical-dev-requirements.lock (line 7))
+#8 0.495 Processing /tmp/numerical-dev-wheels/scikit_learn-1.9.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl (from -r /tmp/numerical-dev-requirements.lock (line 8))
+#8 0.508 Processing /tmp/numerical-dev-wheels/scipy-1.17.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl (from -r /tmp/numerical-dev-requirements.lock (line 9))
+#8 0.555 Processing /tmp/numerical-dev-wheels/tokenizers-0.21.4-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (from -r /tmp/numerical-dev-requirements.lock (line 10))
+#8 0.561 Processing /tmp/numerical-dev-wheels/tqdm-4.70.1-py3-none-any.whl (from -r /tmp/numerical-dev-requirements.lock (line 11))
+#8 0.564 Processing /tmp/numerical-dev-wheels/hf_xet-1.7.0-cp38-abi3-manylinux_2_28_aarch64.whl (from -r /tmp/numerical-dev-requirements.lock (line 12))
+#8 0.570 Processing /tmp/numerical-dev-wheels/joblib-1.6.0-py3-none-any.whl (from -r /tmp/numerical-dev-requirements.lock (line 13))
+#8 0.572 Processing /tmp/numerical-dev-wheels/narwhals-2.27.1-py3-none-any.whl (from -r /tmp/numerical-dev-requirements.lock (line 14))
+#8 0.575 Processing /tmp/numerical-dev-wheels/threadpoolctl-3.7.0-py3-none-any.whl (from -r /tmp/numerical-dev-requirements.lock (line 15))
+#8 0.576 Processing /tmp/numerical-dev-wheels/cloudpickle-3.1.2-py3-none-any.whl (from -r /tmp/numerical-dev-requirements.lock (line 16))
+#8 0.611 Installing collected packages: transformers, tqdm, tokenizers, threadpoolctl, sentence-transformers, scipy, scikit-learn, safetensors, regex, PyYAML, numpy, narwhals, joblib, huggingface_hub, hf-xet, cloudpickle
+#8 7.287   Attempting uninstall: numpy
+#8 7.289     Found existing installation: numpy 2.4.6
+#8 7.289     Not uninstalling numpy at /usr/local/lib/python3.12/site-packages, outside environment /opt/ipfs-supervisor/venv
+#8 7.289     Can't uninstall 'numpy'. No files were found to uninstall.
+#8 8.985 Successfully installed PyYAML-6.0.3 cloudpickle-3.1.2 hf-xet-1.7.0 huggingface_hub-0.36.2 joblib-1.6.0 narwhals-2.27.1 numpy-1.26.4 regex-2026.9.29 safetensors-0.7.0 scikit-learn-1.9.1 scipy-1.17.1 sentence-transformers-5.4.1 threadpoolctl-3.7.0 tokenizers-0.21.4 tqdm-4.70.1 transformers-4.52.1
+#8 9.241 No broken requirements found.
+#8 9.675 /__w/pytorch/pytorch/third_party/ideep/mkl-dnn/third_party/xbyak_aarch64/src/util_impl_linux.h, 444: Can't open MIDR_EL1 sysfs entry
+#8 DONE 10.7s
+
+#9 exporting to image
+#9 exporting layers
+#9 exporting layers 10.9s done
+#9 exporting manifest sha256:e3afeb5196be7010526ea17404a71babc0ee7206aedf8e3951be425b4e86f3c1 0.0s done
+#9 exporting config sha256:390365957672a81ca007e16629904e9c8579203700686d475944697a024277ec 0.0s done
+#9 exporting attestation manifest sha256:9596c26743b2bdf8e105f5be064e4788c8508bc51eb72723890a83a8ee72f5bf 0.1s done
+#9 exporting manifest list sha256:3198b1b627d4084887f01a88eeaba4c6190d0d86a36dbb4892cf569ea1f83bf6
+#9 exporting manifest list sha256:3198b1b627d4084887f01a88eeaba4c6190d0d86a36dbb4892cf569ea1f83bf6 0.0s done
+#9 naming to docker.io/library/ipfs-supervisor-numerical-dev:20261011-r1 done
+#9 unpacking to docker.io/library/ipfs-supervisor-numerical-dev:20261011-r1
+#9 unpacking to docker.io/library/ipfs-supervisor-numerical-dev:20261011-r1 3.3s done
+#9 DONE 14.4s

@@ -18,12 +18,14 @@ EMBEDDING_PATH = PREFIX + "models--thenlper--gte-small/snapshots/"
 KEY = "numerical_selection_384"
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_numerical_selection_deployment.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_numerical_refresh_accounting.py",
     "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
     "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
     "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py",
     "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/numerical_selection_config.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/numerical_selection_context.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/published_numerical_selection.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/source384_config.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/source384_program_scope.py",

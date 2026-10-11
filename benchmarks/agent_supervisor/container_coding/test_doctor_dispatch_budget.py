@@ -24,7 +24,8 @@ from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile imp
 ])
 def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
         tmp_path, monkeypatch, route, remaining_work_seconds, budget_kwargs,total,cleanup_seconds,source_seconds,
-        native_failure=False, verified_manifest=None, expected_contract_profile='wsgi-header-controls@1'):
+        native_failure=False, verified_manifest=None, expected_contract_profile='wsgi-header-controls@1',
+        numerical_selection=False):
     cutoff=total-cleanup_seconds
     used_work_seconds=0 if remaining_work_seconds is None else cutoff-remaining_work_seconds
     now=[1000.];alarms=[];entered=[];cleanup=[];native_options=[];context_options=[];native_cleanup=[]
@@ -94,7 +95,8 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
     ]:
         module=ModuleType(name);vars(module).update(attrs);monkeypatch.setitem(sys.modules,name,module)
     state=tmp_path/'state/run';state.mkdir(parents=True);(state/'admission.json').write_text('{}')
-    report=driver.run(instruction=tmp_path/'instruction.md',state=state,arm='full',source384_config=tmp_path/'config.json',**budget_kwargs)
+    report=driver.run(instruction=tmp_path/'instruction.md',state=state,arm='full',source384_config=tmp_path/'config.json',
+        **({'numerical_selection_config':tmp_path/'numerical-config.json'} if numerical_selection else {}), **budget_kwargs)
     reached_native=(route!='model_router' or remaining_work_seconds is None
         or remaining_work_seconds>25) and used_work_seconds<cutoff
     extended = budget_kwargs.get('resource_profile') in EXTENDED_PROFILES
@@ -110,6 +112,7 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
     assert context_options[0]['source384_timeout_seconds']==source_seconds
     if admitted:
         assert native_options[0]['refresh_source384_on_completion'] is extended
+        assert native_options[0]['refresh_numerical_selection_on_completion'] is (extended and numerical_selection)
         assert native_options[0]['lifetime_seconds']==min(900,max(120,cutoff-used_work_seconds+60))
         assert native_options[0]['timeout_ms']==20_000
         if extended:
@@ -145,6 +148,18 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
             {'attempted':True,'succeeded':False,'error_type':'RuntimeError'}
             if native_failure == 'close' else {'attempted':True,'succeeded':True})
         assert 'PRIVATE' not in json.dumps(report)
+
+
+@pytest.mark.parametrize(('profile','total','cleanup','source'), [
+    (None,285,40,90), (EXTENDED_SOURCE384_PROFILE,900,60,180),
+    (CODING600_SOURCE384_PROFILE,900,60,180),
+])
+def test_learned_successor_requires_explicit_checkpoint_and_local_resource_scope(
+        tmp_path,monkeypatch,profile,total,cleanup,source):
+    test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
+        tmp_path,monkeypatch,'doctor_contract_candidate',None,
+        {} if profile is None else {'resource_profile':profile},total,cleanup,source,
+        numerical_selection=True)
 
 
 def test_signed_data_selector_does_not_inherit_legacy_header_profile(tmp_path,monkeypatch):

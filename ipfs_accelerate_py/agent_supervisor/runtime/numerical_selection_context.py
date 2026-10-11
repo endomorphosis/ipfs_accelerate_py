@@ -144,7 +144,8 @@ def _deadline(timeout, budget_profile=None):
 
 def prepare_numerical_selection_context(*, repository, source_hashes, output, config_path,
         expected_config_sha256, program_paths=None, timeout_seconds=180., memory_mb=4096,
-        scheduler=None, parent_lease=None, cancel_event=None, budget_profile=None):
+        scheduler=None, parent_lease=None, cancel_event=None, budget_profile=None,
+        excluded_new_output_paths=()):
     from ipfs_datasets_py.logic.software_contracts.codebase_ir import CodebaseScanLimits
     from ipfs_datasets_py.logic.software_contracts.codebase_resources import acquire_codebase_resources, codebase_admission_timeout
     from ipfs_datasets_py.logic.software_contracts.codebase_numerical_selection_384 import infer_numerical_selection
@@ -154,6 +155,7 @@ def prepare_numerical_selection_context(*, repository, source_hashes, output, co
     config_path = Path(config_path)
     config = config_owner.load_numerical_selection_config(config_path, expected_config_sha256)
     hashes = _sources(root, source_hashes)
+    exclusions = source_owner._successor_exclusions(excluded_new_output_paths, hashes)
     producers = _producers()
     output.mkdir(parents=True, mode=0o700)
     with acquire_codebase_resources(scheduler=scheduler, parent_lease=parent_lease, cancel_event=cancel_event,
@@ -161,7 +163,8 @@ def prepare_numerical_selection_context(*, repository, source_hashes, output, co
             cpu_slots=3, child_process_slots=3) as lease, source_owner._owners(output) as (index, registry):
         head = index.prepare_current(root, repository_id="numerical-selection:"+content_identity(dict(repository=str(root), sources=hashes)),
             operation_id="initial", expected_head=None,
-            limits=CodebaseScanLimits(max_entries=len(hashes), max_file_bytes=1024*1024), exclusions=[".runtime"],
+            limits=CodebaseScanLimits(max_entries=len(hashes), max_file_bytes=1024*1024),
+            exclusions=[".runtime", *exclusions],
             parent_lease=lease, cancel_event=cancel_event, timeout_seconds=remaining(), memory_mb=memory_mb).head
         inventory = source_owner._inventory(index, head, hashes)
         selected = _paths(program_paths, hashes, inventory)

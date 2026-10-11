@@ -549,6 +549,10 @@ def _refresh_completed_context(runtime, report: dict, *, deadline: float,
     observation = {"status": "deferred", "budget_seconds": budget, "refresh_seconds": None,
         "completion_authority": False, "embedding_calls": None}
     report["post_publication_context"] = observation
+    learned_selected = report.get("initial_context", {}).get("numerical_selection_384") is not None
+    if learned_selected:
+        from .terminal_numerical_refresh_accounting import summarize as numerical_refresh_accounting
+        observation["learned_numerical_accounting"] = numerical_refresh_accounting(None)
     if budget < 5:
         observation["reason"] = "post_stop_refresh_budget_unavailable"
         return
@@ -574,6 +578,8 @@ def _refresh_completed_context(runtime, report: dict, *, deadline: float,
                 state=Path(doctor["result_artifact"]).parent / "published-contract-index")
         results = runtime.refresh_after_stop()
         observation["results"] = results
+        if learned_selected:
+            observation["learned_numerical_accounting"] = numerical_refresh_accounting(results)
         counters = ("local_embedding_calls", "local_embedding_texts",
                     "remote_embedding_calls", "text_generation_calls")
         receipts = [row.get("embedding_receipt") for row in results]
@@ -1069,6 +1075,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 worker_worktree_root=WORKTREES, candidate_runner_argv=(str(VALIDATOR),),
                 refresh_context_on_completion=bundle is not None,
                 refresh_source384_on_completion=(source384_config is not None
+                    and selected_admission.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") == "local-benchmark@1"),
+                refresh_numerical_selection_on_completion=(numerical_selection_config is not None
                     and selected_admission.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") == "local-benchmark@1"),
                 **_published_retrieval_options(repository=Path("/app"), bundle=bundle, task=task,
                     model_snapshot=model_snapshot),

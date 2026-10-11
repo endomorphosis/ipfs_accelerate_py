@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="11.730" timestamp="2026-10-11T23:48:16.228825+00:00" hostname="3378a63860d6"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration" name="test_unselected_numerical_checkpoint_leaves_default_initial_context_unchanged" time="0.367"><failure message="ipfs_accelerate_py.agent_supervisor.entrypoints.facade.SupervisorConfigurationError: local initialization failed: local authority directory cannot be created">path = PosixPath('/home/supervisor/.local/state/ipfs_accelerate_py/local-profile-root-registry')
+
+    def _create_directory_chain(path: Path) -&gt; tuple[int, int, int, int]:
+        """Create/open an authority directory chain through no-follow dirfds."""
+    
+        secured = _absolute_without_symlinks(path)
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        if nofollow is None:
+            raise LocalProfileTampered(
+                "no-follow authority directory creation is unavailable"
+            )
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | nofollow
+        )
+        descriptor = os.open(secured.anchor, flags)
+        try:
+            for component in secured.parts[1:]:
+                try:
+&gt;                   child = os.open(component, flags, dir_fd=descriptor)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                   FileNotFoundError: [Errno 2] No such file or directory: '.local'
+
+/code/source/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py:477: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+path = PosixPath('/home/supervisor/.local/state/ipfs_accelerate_py/local-profile-root-registry')
+
+    def _create_directory_chain(path: Path) -&gt; tuple[int, int, int, int]:
+        """Create/open an authority directory chain through no-follow dirfds."""
+    
+        secured = _absolute_without_symlinks(path)
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        if nofollow is None:
+            raise LocalProfileTampered(
+                "no-follow authority directory creation is unavailable"
+            )
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | nofollow
+        )
+        descriptor = os.open(secured.anchor, flags)
+        try:
+            for component in secured.parts[1:]:
+                try:
+                    child = os.open(component, flags, dir_fd=descriptor)
+                except FileNotFoundError:
+                    try:
+&gt;                       os.mkdir(component, mode=0o700, dir_fd=descriptor)
+E                       OSError: [Errno 30] Read-only file system: '.local'
+
+/code/source/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py:480: OSError
+
+The above exception was the direct cause of the following exception:
+
+cls = &lt;class 'ipfs_accelerate_py.agent_supervisor.entrypoints.facade.Supervisor'&gt;
+repository = PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/app')
+consent = True
+profile_dir = PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/state/profile')
+lifecycle_dir = PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/state/lifecycle')
+
+    @classmethod
+    def init_local(
+        cls,
+        *,
+        repository: Path | str | None = None,
+        consent: bool = False,
+        profile_dir: Path | None = None,
+        lifecycle_dir: Path | None = None,
+    ) -&gt; Mapping[str, Any]:
+        """One-time local profile bootstrap (explicit consent required).
+    
+        Does not start workers. Returns a body-free receipt; callers re-open
+        with :meth:`open` after configuration is present.
+        """
+    
+        if consent is not True:
+            raise SupervisorConfigurationError(
+                "init_local requires explicit consent=True"
+            )
+        root = Path(repository).resolve() if repository is not None else Path.cwd()
+        git_root = _nearest_git_root(root) or root
+        # Prefer the reviewed local_profile initializer when available.
+        try:
+            from .local_profile import initialize_local_profile
+            from .service_factory import observe_production_bindings
+    
+            # Observe real Git bindings before creating any local authority.
+            # Bootstrap does not require an activated scheduler and does not
+            # grant activation, merge, or worker-start authority.
+            composition = resolve_production_composition(
+                repository_root=git_root, require_activation=False
+            )
+            bindings = observe_production_bindings(composition)
+&gt;           profile = initialize_local_profile(
+                repository_cid=bindings.repository_root_cid,
+                baseline_commit=bindings.head_commit,
+                profile_dir=profile_dir,
+                lifecycle_dir=lifecycle_dir,
+            )
+
+/code/source/ipfs_accelerate_py/agent_supervisor/entrypoints/facade.py:250: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/code/source/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py:982: in wrapped
+    anchor_path, _ = _anchor_path(
+/code/source/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py:776: in _anchor_path
+    _anchor_root(directory, lifecycle_dir, register=register)
+/code/source/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py:760: in _anchor_root
+    return _registered_anchor_root(
+/code/source/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py:672: in _registered_anchor_root
+    registry_root = _registry_root()
+                    ^^^^^^^^^^^^^^^^
+/code/source/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py:586: in _registry_root
+    _ensure_owned_directory(root)
+/code/source/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py:560: in _ensure_owned_directory
+    created_identity = _create_directory_chain(secured)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+path = PosixPath('/home/supervisor/.local/state/ipfs_accelerate_py/local-profile-root-registry')
+
+    def _create_directory_chain(path: Path) -&gt; tuple[int, int, int, int]:
+        """Create/open an authority directory chain through no-follow dirfds."""
+    
+        secured = _absolute_without_symlinks(path)
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        if nofollow is None:
+            raise LocalProfileTampered(
+                "no-follow authority directory creation is unavailable"
+            )
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | nofollow
+        )
+        descriptor = os.open(secured.anchor, flags)
+        try:
+            for component in secured.parts[1:]:
+                try:
+                    child = os.open(component, flags, dir_fd=descriptor)
+                except FileNotFoundError:
+                    try:
+                        os.mkdir(component, mode=0o700, dir_fd=descriptor)
+                    except FileExistsError:
+                        pass
+                    child = os.open(component, flags, dir_fd=descriptor)
+                os.close(descriptor)
+                descriptor = child
+            metadata = os.fstat(descriptor)
+            return (
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_mode,
+                metadata.st_uid,
+            )
+        except OSError as exc:
+&gt;           raise LocalProfileTampered(
+                "local authority directory cannot be created"
+            ) from exc
+E           ipfs_accelerate_py.agent_supervisor.control.profile_authority.LocalProfileTampered: local authority directory cannot be created
+
+/code/source/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py:494: LocalProfileTampered
+
+The above exception was the direct cause of the following exception:
+
+original = (PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/app'), PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/instruction.md'), PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xec995da5dbe0&gt;
+
+    def test_unselected_numerical_checkpoint_leaves_default_initial_context_unchanged(original, monkeypatch):
+        from benchmarks.agent_supervisor.container_coding import terminal_initial_context as initial
+        from ipfs_accelerate_py.agent_supervisor.runtime import numerical_selection_context as owner
+        from ipfs_accelerate_py.agent_supervisor.runtime import numerical_selection_config as configuration
+    
+        def forbidden(*args, **kwargs):
+            pytest.fail("default preparation implicitly selected experimental numerical weights")
+    
+        monkeypatch.setattr(owner, "prepare_numerical_selection_context", forbidden)
+        monkeypatch.setattr(configuration, "load_numerical_selection_config", forbidden)
+        root, instruction, state = original
+&gt;       prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/code/source/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py:92: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/code/source/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:392: in prepare
+    bootstrap = Supervisor.init_local(repository=repository, consent=True,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = &lt;class 'ipfs_accelerate_py.agent_supervisor.entrypoints.facade.Supervisor'&gt;
+repository = PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/app')
+consent = True
+profile_dir = PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/state/profile')
+lifecycle_dir = PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/state/lifecycle')
+
+    @classmethod
+    def init_local(
+        cls,
+        *,
+        repository: Path | str | None = None,
+        consent: bool = False,
+        profile_dir: Path | None = None,
+        lifecycle_dir: Path | None = None,
+    ) -&gt; Mapping[str, Any]:
+        """One-time local profile bootstrap (explicit consent required).
+    
+        Does not start workers. Returns a body-free receipt; callers re-open
+        with :meth:`open` after configuration is present.
+        """
+    
+        if consent is not True:
+            raise SupervisorConfigurationError(
+                "init_local requires explicit consent=True"
+            )
+        root = Path(repository).resolve() if repository is not None else Path.cwd()
+        git_root = _nearest_git_root(root) or root
+        # Prefer the reviewed local_profile initializer when available.
+        try:
+            from .local_profile import initialize_local_profile
+            from .service_factory import observe_production_bindings
+    
+            # Observe real Git bindings before creating any local authority.
+            # Bootstrap does not require an activated scheduler and does not
+            # grant activation, merge, or worker-start authority.
+            composition = resolve_production_composition(
+                repository_root=git_root, require_activation=False
+            )
+            bindings = observe_production_bindings(composition)
+            profile = initialize_local_profile(
+                repository_cid=bindings.repository_root_cid,
+                baseline_commit=bindings.head_commit,
+                profile_dir=profile_dir,
+                lifecycle_dir=lifecycle_dir,
+            )
+            receipt = {
+                "schema": "ipfs_accelerate_py.agent_supervisor.supervisor-init-local@1",
+                "repository_root": str(git_root),
+                "initialized": True,
+                "profile_bound": True,
+            }
+            if hasattr(profile, "repository_cid"):
+                receipt["repository_cid"] = str(profile.repository_cid)
+            return receipt
+        except Exception as exc:  # noqa: BLE001 — surface as typed config error
+            # If local profile already exists or helper needs more args, report typed.
+&gt;           raise SupervisorConfigurationError(
+                f"local initialization failed: {exc}"
+            ) from exc
+E           ipfs_accelerate_py.agent_supervisor.entrypoints.facade.SupervisorConfigurationError: local initialization failed: local authority directory cannot be created
+
+/code/source/ipfs_accelerate_py/agent_supervisor/entrypoints/facade.py:267: SupervisorConfigurationError</failure></testcase></testsuite></testsuites>

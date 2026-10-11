@@ -271,6 +271,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
                refresh_source384_on_completion: bool = False,
+               refresh_numerical_selection_on_completion: bool = False,
                published_retrieval_policy: str | None = None,
                published_learned_artifacts: dict | None = None,
                finite_execution_scope=None, inventory_execution_scope=None):
@@ -285,6 +286,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             candidate_runner_argv=candidate_runner_argv,
             refresh_context_on_completion=refresh_context_on_completion,
             refresh_source384_on_completion=refresh_source384_on_completion,
+            refresh_numerical_selection_on_completion=refresh_numerical_selection_on_completion,
             published_retrieval_policy=published_retrieval_policy,
             published_learned_artifacts=published_learned_artifacts,
             finite_execution_scope=finite_execution_scope, inventory_execution_scope=inventory_execution_scope)
@@ -342,6 +344,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
                refresh_source384_on_completion: bool = False,
+               refresh_numerical_selection_on_completion: bool = False,
                published_retrieval_policy: str | None = None,
                published_learned_artifacts: dict | None = None,
                finite_execution_scope=None, inventory_execution_scope=None):
@@ -360,6 +363,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     or replay_work_scope is None or finite_execution_scope is not None
                     or inventory_execution_scope is not None))):
             raise ValueError("Source384 refresh requires an explicit local work scope and ordinary context refresh")
+        if (type(refresh_numerical_selection_on_completion) is not bool
+                or (refresh_numerical_selection_on_completion and (not refresh_context_on_completion
+                    or replay_work_scope is None or finite_execution_scope is not None
+                    or inventory_execution_scope is not None))):
+            raise ValueError("learned numerical refresh requires explicit local work scope and ordinary context refresh")
         if published_retrieval_policy is not None and (
                 published_retrieval_policy not in {"lexical-tfidf-symbols@1", "local-safetensors-symbols@1",
                     "native-empty-program-scope@1"}
@@ -480,7 +488,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             runtime._startup_trace_truncated = False
             runtime.context_bundle = dict(context_bundle) if context_bundle is not None else None
             runtime._verify_context(verified)
-            numerical_policy = None
+            numerical_policy = learned_numerical_policy = None
             if refresh_context_on_completion:
                 from ..runtime.task_context_bundle import read_task_context_historical_selection
                 task = verified["graph"].tasks[0]
@@ -495,6 +503,15 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     numerical_policy = bind_policy(repository=repository,
                         receipt=selected["numerical_formalization"],
                         manifest=admission["manifest"]["payload"], output_root=numerical_root)
+                if refresh_numerical_selection_on_completion:
+                    if "numerical_selection_384" not in selected:
+                        raise ValueError("learned numerical refresh requires admitted predecessor")
+                    from ..runtime.published_numerical_selection import bind_policy
+                    learned_root = runtime.state / "published-learned-numerical"
+                    learned_root.mkdir(mode=0o700)
+                    learned_numerical_policy = bind_policy(repository=repository,
+                        receipt=selected["numerical_selection_384"], manifest=admission["manifest"]["payload"],
+                        output_root=learned_root, budget_profile=budget_profile)
             if refresh_source384_on_completion:
                 from ..runtime.task_context_bundle import read_task_context_historical_selection
                 task = verified["graph"].tasks[0]
@@ -637,6 +654,9 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             if numerical_policy is not None:
                 runtime.manifest["context_refresh_policy"].update(
                     schema="admitted-context-refresh-policy@3", numerical_formalization=numerical_policy)
+            if learned_numerical_policy is not None:
+                runtime.manifest["context_refresh_policy"].update(
+                    schema="admitted-context-refresh-policy@4", numerical_selection_384=learned_numerical_policy)
             if finite_execution_scope is not None:
                 runtime.manifest["finite_execution_scope"] = finite_execution_scope.material_binding
                 runtime.manifest["finite_worker_launcher"] = finite_execution_scope.worker_launcher_binding
@@ -1445,9 +1465,16 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             try:
                 learned_historical = next((item for item in result.get("context_observation", {}).get(
                     "numerical_selection_384", []) if item["task_cid"] == task.task_cid), None)
+                learned_numerical_policy = policy.get("numerical_selection_384")
                 if learned_historical is not None:
-                    refreshed.append(learned_historical)
-                    continue
+                    missing = ("learned_numerical_successor_policy_unavailable" if learned_numerical_policy is None else
+                        "numerical_successor_not_prepared" if "numerical_formalization" in learned_historical
+                            and policy.get("numerical_formalization") is None else
+                        "source384_successor_not_prepared" if "source384_context" in learned_historical
+                            and policy.get("source384") is None else None)
+                    if missing is not None:
+                        refreshed.append({**learned_historical, "reason": missing})
+                        continue
                 numerical_historical = next((item for item in result.get("context_observation", {}).get(
                     "numerical_formalization", []) if item["task_cid"] == task.task_cid), None)
                 numerical_policy = policy.get("numerical_formalization")
@@ -1462,7 +1489,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                         if numerical_historical is not None else historical)
                     continue
                 refresh_options = {}
-                if source384_policy is not None or numerical_policy is not None:
+                if source384_policy is not None or numerical_policy is not None or learned_numerical_policy is not None:
                     refresh_options["deadline_monotonic"] = min(
                         self._replay_lifetime_deadline,
                         self._replay_work_scope.deadline_monotonic
@@ -1471,6 +1498,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     refresh_options["source384_timeout_seconds"] = source384_policy["preparation_timeout_seconds"]
                 if numerical_policy is not None:
                     refresh_options["numerical_policy"] = numerical_policy
+                if learned_numerical_policy is not None:
+                    refresh_options["learned_numerical_policy"] = learned_numerical_policy
                 cached_refresh = task.task_cid in self._published_context
                 if cached_refresh:
                     refresh_phase = "cache_reload"
@@ -1507,7 +1536,9 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                         **({"source384_output": Path(source384_policy["output_root"]) / (str(count + 1) + "-" + _digest(task.task_cid))}
                            if source384_policy is not None else {}),
                         **({"numerical_output": Path(numerical_policy["output_root"]) / (str(count + 1) + "-" + _digest(task.task_cid))}
-                           if numerical_policy is not None else {}), **refresh_options)
+                           if numerical_policy is not None else {}),
+                        **({"learned_numerical_output": Path(learned_numerical_policy["output_root"]) / (str(count + 1) + "-" + _digest(task.task_cid))}
+                           if learned_numerical_policy is not None else {}), **refresh_options)
                     self._published_context[task.task_cid] = context
                 refreshed.append({"task_cid": task.task_cid, "status": "refreshed",
                     "refresh_artifact": context["refresh_artifact"], "refresh_sha256": context["refresh_sha256"],
@@ -1538,6 +1569,13 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 if "numerical_refresh" in context:
                     refreshed[-1]["numerical_refresh"] = json.loads(json.dumps(context["numerical_refresh"]))
                     refreshed[-1]["numerical_refresh_reused"] = cached_refresh
+                    refreshed[-1]["requires_independent_manifest"] = True
+                if "learned_numerical_refresh" in context:
+                    from ..runtime.published_numerical_selection import execution_observation
+                    refreshed[-1]["learned_numerical_refresh"] = json.loads(json.dumps(context["learned_numerical_refresh"]))
+                    refreshed[-1]["learned_numerical_refresh_reused"] = cached_refresh
+                    refreshed[-1]["learned_numerical_refresh_execution"] = execution_observation(
+                        context["learned_numerical_refresh"], reused=cached_refresh)
                     refreshed[-1]["requires_independent_manifest"] = True
             except Exception as error:
                 # Retain task success and shutdown availability. A failed or

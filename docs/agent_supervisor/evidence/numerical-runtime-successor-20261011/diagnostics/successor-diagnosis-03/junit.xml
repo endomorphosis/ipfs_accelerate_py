@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="59.417" timestamp="2026-10-11T23:50:23.549634" hostname="spark-b271"><testcase classname="integration.test_admitted_learned_numerical_successor" name="test_real_learned_successor_after_native_stop[all_three]" time="41.713"><properties><property name="learned_successor_execution" value="{&quot;completion_authority&quot;: false, &quot;counters_known&quot;: true, &quot;dispatch_authority&quot;: false, &quot;download_calls&quot;: 0, &quot;embedded_texts&quot;: 1, &quot;embedding_production_calls&quot;: 1, &quot;execution_authority&quot;: false, &quot;formalization_authority&quot;: false, &quot;head_inference_calls&quot;: 1, &quot;inference_executed&quot;: true, &quot;inferred_units&quot;: 1, &quot;model_loads&quot;: 1, &quot;native_worker_executed&quot;: true, &quot;planning_authority&quot;: false, &quot;proof_authority&quot;: false, &quot;provider_calls&quot;: 0, &quot;reused&quot;: false, &quot;schema&quot;: &quot;supervisor-learned-numerical-refresh-execution@1&quot;, &quot;scope&quot;: &quot;current_successor_refresh_call&quot;, &quot;source_obligations_discharged&quot;: 0, &quot;source_semantics_verified&quot;: false, &quot;training_steps&quot;: 0, &quot;whole_program_semantics_verified&quot;: false}" /><property name="successor_scope" value="{&quot;excluded&quot;: [&quot;report.txt&quot;], &quot;selected_paths&quot;: [&quot;answer.py&quot;], &quot;sources&quot;: [&quot;answer.py&quot;, &quot;test_answer.py&quot;]}" /></properties><failure message="AssertionError: assert {'answer.py':...3299ca3b87c3'} == {'answer.py':...3299ca3b87c3'}&#10;  &#10;  Omitting 1 identical items, use -vv to show&#10;  Differing items:&#10;  {'answer.py': '96ecbb1c1200996f5074e5a1025479882c7159d9d1f77dfd06c00c90f1194878'} != {'answer.py': 'f48449ed83ed195ae8727da414e603dbf068097228db8be14f18560ae9394685'}&#10;  &#10;  Full diff:&#10;    {...&#10;  &#10;  ...Full output truncated (4 lines hidden), use '-vv' to show">scenario = {'graph': PromptGoalGraph(request_cid='baguqeerawygxipxoc5mowrwddtnjdaibls6cbmjzp3usmbfrodrx7gr4p4sa', scan_cid='baguq...s6cbmjzp3usmbfrodrx7gr4p4sa', 'scan_cid': 'baguqeerafsd4imx3hl3mrvncyveqrsahlejkbyy3zocl42l4yuyp7s5isgqa'}, ...}}, ...}
+numerical_config = PosixPath('/tmp/pytest-of-barberb/pytest-22/test_real_learned_successor_af0/numerical-selection-config.json')
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-22/test_real_learned_successor_af0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe2dde9f26cf0&gt;
+mode = 'all_three'
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0xe2dde8db2b60&gt;
+
+    @pytest.mark.parametrize("mode", ["all_three", "unsupported", "over512", "mixed_missing", "dirty_during"])
+    def test_real_learned_successor_after_native_stop(scenario, numerical_config, tmp_path, monkeypatch, mode, record_property):
+        from ipfs_datasets_py.logic.software_contracts import codebase_numerical_selection_384 as native
+    
+        rebaseline(scenario, tmp_path)
+        root = scenario["repository"]
+        hashes = {name: row["sha256"] for name, row in scenario["manifest"]["payload"]["sources"].items()}
+        initial = learned.prepare_numerical_selection_context(repository=root, source_hashes=hashes,
+            program_paths=["answer.py"], output=tmp_path / "initial-learned", config_path=numerical_config,
+            expected_config_sha256=hashlib.sha256(numerical_config.read_bytes()).hexdigest())
+        assert initial["inference_execution"]["inference_executed"] is True
+        selected = {"numerical_selection_384": initial,
+            "numerical_formalization": deterministic.prepare_numerical_context(repository=root,
+                source_hashes={"answer.py": hashes["answer.py"]}, output=tmp_path / "initial-numerical",
+                profile=deterministic.PROFILE)}
+        with_scalar = mode in {"all_three", "mixed_missing"}
+        if with_scalar:
+            selected["source384_context"] = authored_source384(monkeypatch, root, tmp_path / "initial-scalar", hashes)
+        admission = local.admit_local_benchmark_plan(graph=scenario["graph"], manifest=scenario["manifest"])
+        with typed_claim(scenario, tmp_path) as (owner, _daemon, attempt):
+            previous = initial_bundle(scenario, owner, retrieval=False)
+            task_row = json.loads((root / previous["artifact"]).read_bytes())["tasks"][0]
+            bundle = write_task_context_bundle(repository=root, prepared=[dict(schema="supervisor-task-context-preparation@1",
+                **task_row, **selected)], output=root / ".runtime/learned-launch.json")
+            original = (root / bundle["artifact"]).read_bytes()
+            deadline = time.monotonic() + (3600. if mode == "all_three" else 180.)
+            budget = dict(budget_profile=FORMALIZATION_BUDGET_PROFILE, lifetime_seconds=2160) if mode == "all_three" else {}
+            with applicability.local_benchmark_applicability_budget(deadline_monotonic=deadline,
+                    budget_profile=budget.get("budget_profile")):
+                runtime = AdmittedBenchmarkRuntime.create(tmp_path / "launch", admission=admission,
+                    server=owner.server, source=owner.source, implement=False, timeout_ms=30_000,
+                    context_bundle=bundle, refresh_context_on_completion=True,
+                    refresh_numerical_selection_on_completion=True, refresh_source384_on_completion=mode == "all_three", **budget)
+            try:
+                policy = runtime.manifest["context_refresh_policy"]["numerical_selection_384"]
+                assert runtime.manifest["context_refresh_policy"]["schema"] == "admitted-context-refresh-policy@4"
+                assert policy["source_hashes"] == hashes and policy["selected_paths"] == ["answer.py"]
+                assert policy["excluded_new_output_paths"] == ["report.txt"]
+                assert policy["checkpoint_file_sha256"] == initial["checkpoint_file_sha256"]
+                assert runtime.start().succeeded
+                task = owner.source.get_task(attempt.task_cid)
+                body = ("def answer(values):\n    return max(values) - 1\n" if mode == "unsupported" else
+                    "# " + "word " * 650 + "\n" + AFTER if mode == "over512" else AFTER)
+                transition = native_published_transition(scenario, tmp_path, owner, attempt,
+                    modified_outputs={"answer.py": body}, created_outputs={"report.txt": "authored publication\n"})
+                passed = run_owner_local_task_validations(server=owner.server, task_cid=task.task_cid,
+                    attempt_id=attempt.attempt_id, expected_revision=task.revision, source_transition=transition)
+                assert passed["passed"] is True, passed
+                complete(owner, attempt, passed["results"][0]["evidence_digest"])
+                before = owner.source.get_task(task.task_cid)
+                assert runtime.observe()["published_context"][0]["status"] == "pending_native_stop"
+                assert runtime._context_refresh_attempts == {}
+                assert runtime.stop().succeeded and not runtime.process.snapshot(runtime.profile).members
+                calls = []
+                phase_elapsed = [0.]
+                if mode == "all_three":
+                    # Authored elapsed time exercises a &gt;180s learned phase without
+                    # delaying the real native inference or changing its deadline.
+                    monkeypatch.setattr(publication, "time", SimpleNamespace(monotonic=lambda: time.monotonic() + phase_elapsed[0]))
+                    assert policy["preparation_timeout_seconds"] == 3600
+                real_prepare = successor.prepare_successor
+                def tracked(**kwargs):
+                    calls.append(kwargs)
+                    assert kwargs["deadline_monotonic"] &lt;= deadline
+                    assert not runtime.process.snapshot(runtime.profile).members
+                    value = real_prepare(**kwargs)
+                    if mode == "all_three":
+                        phase_elapsed[0] = 200.
+                    if mode == "dirty_during":
+                        (root / "answer.py").write_text("def answer(values): return -1\n")
+                    return value
+                monkeypatch.setattr(successor, "prepare_successor", tracked)
+                if mode == "mixed_missing":
+                    monkeypatch.setattr(native, "_worker", lambda *args, **kwargs: pytest.fail("partial mixed-family refresh ran inference"))
+                refreshed = runtime.refresh_after_stop()[0]
+                if mode == "mixed_missing":
+                    assert refreshed["status"] == "successor_unavailable"
+                    assert refreshed["reason"] == "source384_successor_not_prepared"
+                    assert all(refreshed[key] == value for key, value in selected.items())
+                    assert calls == [] and runtime._context_refresh_attempts == {}
+                    assert list(Path(policy["output_root"]).iterdir()) == []
+                    assert runtime._published_context == {}
+                    return
+                if mode == "dirty_during":
+                    assert refreshed["status"] == "unavailable" and len(calls) == 1
+                    assert "learned_numerical_refresh_execution" not in refreshed
+                    assert runtime._published_context == {}
+                    assert not list((root / ".runtime").glob("published-context/*/context-bundle.json"))
+                    return
+                assert refreshed["status"] == "refreshed", refreshed
+                fresh = runtime._published_context[task.task_cid]
+                receipt = fresh["numerical_selection_384"]
+                assert set(receipt["source_hashes"]) == set(hashes)
+                assert receipt["source_hashes"]["answer.py"] != hashes["answer.py"]
+                assert receipt["selected_paths"] == ["answer.py"]
+                assert receipt["source_head"] != initial["source_head"]
+                assert "report.txt" in successor._capture_exclusions(receipt)
+                observation = refreshed["learned_numerical_refresh"]
+                execution = refreshed["learned_numerical_refresh_execution"]
+                assert execution["native_worker_executed"] is True and execution["reused"] is False
+                assert execution["inference_executed"] is (mode == "all_three")
+                assert execution["embedded_texts"] == execution["head_inference_calls"] == int(mode == "all_three")
+                assert execution["model_loads"] == execution["embedding_production_calls"] == int(mode != "unsupported")
+                assert observation["source_obligations_discharged"] == 0 and observation["proof_authority"] is False
+                assert observation["requires_independent_manifest"] is True
+                record_property("learned_successor_execution", json.dumps(execution, sort_keys=True))
+                record_property("successor_scope", json.dumps(dict(sources=sorted(receipt["source_hashes"]),
+                    selected_paths=receipt["selected_paths"], excluded=policy["excluded_new_output_paths"]), sort_keys=True))
+                monkeypatch.setattr(native, "_worker", lambda *args, **kwargs: pytest.fail("cache reload repeated neural inference"))
+                second = runtime.refresh_after_stop()[0]
+                assert second["status"] == "refreshed" and second["learned_numerical_refresh_reused"] is True
+                replay = second["learned_numerical_refresh_execution"]
+                assert replay["native_worker_executed"] is replay["inference_executed"] is False
+                assert all(replay[key] == 0 for key in ("model_loads", "head_inference_calls", "inferred_units",
+                    "embedding_production_calls", "embedded_texts"))
+                assert second["learned_numerical_refresh"] == observation and len(calls) == 1
+                current = load_task_context_selection(repository=root, artifact=fresh["context_bundle"]["artifact"],
+                    expected_sha256=fresh["context_bundle"]["sha256"], task_cid=task.task_cid, task_id=task.task_alias)
+                assert current["numerical_selection_384"] == receipt
+                assert set(current) &gt;= set(selected)
+                # The original launch never inherits the refreshed sources or model evidence.
+                assert (root / bundle["artifact"]).read_bytes() == original
+                assert owner.source.get_task(task.task_cid) == before
+                with pytest.raises(ValueError):
+&gt;                   load_task_context_selection(repository=root, artifact=bundle["artifact"],
+                        expected_sha256=bundle["sha256"], task_cid=task.task_cid, task_id=task.task_alias)
+
+test/integration/test_admitted_learned_numerical_successor.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py:307: in load_task_context_selection
+    validate_source384_context(repository=Path(repository).resolve(strict=True),
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+repository = PosixPath('/tmp/pytest-of-barberb/pytest-22/test_real_learned_successor_af0/isolated')
+expected_receipt = {'checkpoint_sha256': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'completion_authority': Fals...aaaaaaaaaaaaaaaaaaaaaaaa', 'inference_sha256': 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', ...}
+kwargs = {}
+@py_assert0 = {'answer.py': '96ecbb1c1200996f5074e5a1025479882c7159d9d1f77dfd06c00c90f1194878', 'test_answer.py': '7c0e4f781b99960d48d15a0a72c5cbf5514d8dbc702f04c42ec43299ca3b87c3'}
+@py_assert3 = {'answer.py': 'f48449ed83ed195ae8727da414e603dbf068097228db8be14f18560ae9394685', 'test_answer.py': '7c0e4f781b99960d48d15a0a72c5cbf5514d8dbc702f04c42ec43299ca3b87c3'}
+@py_assert2 = False
+@py_format5 = "{'answer.py':...3299ca3b87c3'} == {'answer.py':...3299ca3b87c3'}\n~\n~Omitting 1 identical items, use -vv to show\n~D...228db8be14f18560ae9394685'}\n~\n~Full diff:\n~  {...\n~\n~...Full output truncated (4 lines hidden), use '-vv' to show"
+
+    def validate(*, repository, expected_receipt, **kwargs):
+&gt;       assert expected_receipt["source_hashes"] == {
+            name: hashlib.sha256((repository / name).read_bytes()).hexdigest()
+            for name in expected_receipt["source_hashes"]}
+E       AssertionError: assert {'answer.py':...3299ca3b87c3'} == {'answer.py':...3299ca3b87c3'}
+E         
+E         Omitting 1 identical items, use -vv to show
+E         Differing items:
+E         {'answer.py': '96ecbb1c1200996f5074e5a1025479882c7159d9d1f77dfd06c00c90f1194878'} != {'answer.py': 'f48449ed83ed195ae8727da414e603dbf068097228db8be14f18560ae9394685'}
+E         
+E         Full diff:
+E           {...
+E         
+E         ...Full output truncated (4 lines hidden), use '-vv' to show
+
+test/integration/test_admitted_numerical_successor.py:31: AssertionError</failure></testcase></testsuite></testsuites>

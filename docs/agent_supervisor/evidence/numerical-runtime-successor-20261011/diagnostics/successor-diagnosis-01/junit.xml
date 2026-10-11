@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="29.035" timestamp="2026-10-11T23:48:27.683359" hostname="spark-b271"><testcase classname="integration.test_admitted_learned_numerical_successor" name="test_real_learned_successor_after_native_stop[all_three]" time="12.406"><failure message="ValueError: bounded local applicability work deadline required">scenario = {'graph': PromptGoalGraph(request_cid='baguqeerawygxipxoc5mowrwddtnjdaibls6cbmjzp3usmbfrodrx7gr4p4sa', scan_cid='baguq...s6cbmjzp3usmbfrodrx7gr4p4sa', 'scan_cid': 'baguqeerafsd4imx3hl3mrvncyveqrsahlejkbyy3zocl42l4yuyp7s5isgqa'}, ...}}, ...}
+numerical_config = PosixPath('/tmp/pytest-of-barberb/pytest-17/test_real_learned_successor_af0/numerical-selection-config.json')
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-17/test_real_learned_successor_af0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xedcf656b7b60&gt;
+mode = 'all_three'
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0xedcf643eab60&gt;
+
+    @pytest.mark.parametrize("mode", ["all_three", "unsupported", "over512", "mixed_missing", "dirty_during"])
+    def test_real_learned_successor_after_native_stop(scenario, numerical_config, tmp_path, monkeypatch, mode, record_property):
+        from ipfs_datasets_py.logic.software_contracts import codebase_numerical_selection_384 as native
+    
+        rebaseline(scenario, tmp_path)
+        root = scenario["repository"]
+        hashes = {name: row["sha256"] for name, row in scenario["manifest"]["payload"]["sources"].items()}
+        initial = learned.prepare_numerical_selection_context(repository=root, source_hashes=hashes,
+            program_paths=["answer.py"], output=tmp_path / "initial-learned", config_path=numerical_config,
+            expected_config_sha256=hashlib.sha256(numerical_config.read_bytes()).hexdigest())
+        assert initial["inference_execution"]["inference_executed"] is True
+        selected = {"numerical_selection_384": initial,
+            "numerical_formalization": deterministic.prepare_numerical_context(repository=root,
+                source_hashes={"answer.py": hashes["answer.py"]}, output=tmp_path / "initial-numerical",
+                profile=deterministic.PROFILE)}
+        with_scalar = mode in {"all_three", "mixed_missing"}
+        if with_scalar:
+            selected["source384_context"] = authored_source384(monkeypatch, root, tmp_path / "initial-scalar", hashes)
+        admission = local.admit_local_benchmark_plan(graph=scenario["graph"], manifest=scenario["manifest"])
+        with typed_claim(scenario, tmp_path) as (owner, _daemon, attempt):
+            previous = initial_bundle(scenario, owner, retrieval=False)
+            task_row = json.loads((root / previous["artifact"]).read_bytes())["tasks"][0]
+            bundle = write_task_context_bundle(repository=root, prepared=[dict(schema="supervisor-task-context-preparation@1",
+                **task_row, **selected)], output=root / ".runtime/learned-launch.json")
+            original = (root / bundle["artifact"]).read_bytes()
+            deadline = time.monotonic() + (3600. if mode == "all_three" else 180.)
+            budget = dict(budget_profile=FORMALIZATION_BUDGET_PROFILE, lifetime_seconds=2160) if mode == "all_three" else {}
+&gt;           with applicability.local_benchmark_applicability_budget(deadline_monotonic=deadline):
+
+test/integration/test_admitted_learned_numerical_successor.py:104: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    @contextmanager
+    def local_benchmark_applicability_budget(*, deadline_monotonic, budget_profile=None):
+        """Explicit local-profile work deadline, carrying no proof authority."""
+        now = time.monotonic()
+        maximum = local_work_timeout_limit(budget_profile)
+        if (type(deadline_monotonic) not in (int, float)
+                or not math.isfinite(deadline_monotonic)
+                or not 0 &lt; deadline_monotonic - now &lt;= maximum):
+&gt;           raise ValueError("bounded local applicability work deadline required")
+E           ValueError: bounded local applicability work deadline required
+
+ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py:64: ValueError</failure></testcase></testsuite></testsuites>

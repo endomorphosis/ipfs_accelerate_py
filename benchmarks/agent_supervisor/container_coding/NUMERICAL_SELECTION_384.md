@@ -90,11 +90,38 @@ numerical evidence. The router verifies current bindings before provider
 dispatch. The final historical audit checks delivery against the original
 captured source even after an expected code edit.
 
-After completion and native STOP, learned advice remains historical. No admitted
-learned-successor refresh policy exists yet: refresh reports
-`successor_unavailable`, retains every selected family, and does not regenerate
-only part of a mixed selection. Reindexing changed source requires an independent
-fresh preparation and admission.
+After accepted publication and native STOP, an explicitly admitted refresh can
+generate new learned advice. The terminal driver enables this when an explicit
+checkpoint is selected with `local-benchmark@1`. Direct callers use
+`refresh_numerical_selection_on_completion=True` together with ordinary context
+refresh and a captured local work scope. Before START, the signed refresh policy
+binds the checkpoint, configuration, producers, full source population, program
+subset, declared output exclusions and private successor directory. It cannot
+expand the indexed population or replace the selected model.
+
+Every selected family must have its refresh policy before regeneration begins.
+Without one, the combined selection remains historical and reports
+`successor_unavailable`. Successful refresh preserves Source384, deterministic
+numerical and learned numerical advice together. Changed source can truthfully
+become unsupported or exceed 512 tokens; completion does not imply inference or
+formalization success. Owner and source checks run again after generation and
+on cached reload. A successor requires a separate launch manifest before use in
+another run; it grants no proof or execution authority.
+
+Refresh uses the remaining original work and native lifetime budget, capped at
+180 seconds or the explicitly admitted 3,600-second learned profile. The separate
+Source384 phase starts its allowance when invoked and remains bounded by the
+same outer deadline. Cleanup time is not available for additional inference.
+
+Reports separate retrieval refresh from learned numerical refresh costs. Fresh
+observations record native worker calls, GTE construction, head inference,
+inferred units, embedding API calls and embedded texts. A cached reload records
+zero new execution while retaining the original artifact's execution history.
+Failed or unreceipted work has unknown totals, with observed subtotals retained.
+
+The offline Docker qualification uses a separate development image with hashed
+dependency wheels and cached model assets. Its recipe and results are retained
+in the [runtime qualification evidence](../../../docs/agent_supervisor/evidence/numerical-runtime-successor-20261011/qualification.json).
 
 Qualification and remaining benchmark limitations are recorded in the
 [current supervisor status](../../../docs/agent_supervisor/durable_cleanup_status.md).

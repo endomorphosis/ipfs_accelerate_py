@@ -430,6 +430,7 @@ def _proof_index_observation(report):
 
 
 def _refresh_observation(report):
+    from .terminal_numerical_refresh_accounting import project as numerical_refresh_accounting
     refresh = _mapping(report.get("post_publication_context"))
     accounting = _mapping(refresh.get("embedding_accounting"))
     complete = _boolean(accounting.get("all_refreshes_receipted"))
@@ -437,6 +438,7 @@ def _refresh_observation(report):
         **{key: _text(refresh.get(key)) for key in ("status", "reason", "error_type")},
         **{key: _number(refresh.get(key)) for key in ("budget_seconds", "refresh_seconds")},
         "embedding_calls": _count(refresh.get("embedding_calls")) if complete is True else None,
+        "learned_numerical_accounting": numerical_refresh_accounting(refresh.get("learned_numerical_accounting")),
         "embedding_accounting": {
             "all_refreshes_receipted": complete,
             "totals": {key: _count(_mapping(accounting.get("totals")).get(key))

@@ -11,13 +11,17 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime 
 from ipfs_accelerate_py.agent_supervisor.runtime import header_intent_applicability as budget
 
 
+@pytest.mark.parametrize('family,error', [
+    ('refresh_source384_on_completion', 'Source384 refresh requires'),
+    ('refresh_numerical_selection_on_completion', 'learned numerical refresh requires'),
+])
 @pytest.mark.parametrize('flag,refresh,bundle', [
     (True, False, None), (True, True, {}), (1, False, None), ('true', False, None),
 ])
-def test_successor_requires_explicit_captured_local_work_before_state(tmp_path, flag, refresh, bundle):
-    with pytest.raises(ValueError, match='Source384 refresh requires'):
+def test_successor_requires_explicit_captured_local_work_before_state(tmp_path, family, error, flag, refresh, bundle):
+    with pytest.raises(ValueError, match=error):
         AdmittedBenchmarkRuntime.create(tmp_path / 'launch', admission=None, server=None, source=None,
-            refresh_source384_on_completion=flag, refresh_context_on_completion=refresh,
+            **{family: flag}, refresh_context_on_completion=refresh,
             context_bundle=bundle)
     assert not (tmp_path / 'launch').exists()
 
