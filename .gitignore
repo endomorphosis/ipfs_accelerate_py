@@ -55,6 +55,10 @@ model_cache/*
 *_report_*
 *.log
 *_status_*
+!ipfs_accelerate_py/agent_supervisor/runtime/formal_status_census.py
+!test/api/test_formal_status_census.py
+!benchmarks/agent_supervisor/container_coding/test_terminal_formal_status_census.py
+!docs/agent_supervisor/terminal_formal_status_census.md
 *.bak
 *.py.bak
 test/benchmark_results/*.json

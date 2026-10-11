@@ -21,6 +21,7 @@ from .terminal_metadata_preflight import _doctor_residual_only, _private_prompt
 
 
 SCHEMA = "terminal-live-metadata-census-context@1"
+FORMAL_STATUS_SCHEMA = "terminal-live-metadata-census-context@2"
 MAX_METADATA_BYTES = 1_048_576
 
 
@@ -172,6 +173,20 @@ def _owner_snapshot(*, state, require_source384):
             "database_identity": (database_info.st_dev, database_info.st_ino)}
 
 
+def _formal_status_context_binding(observed):
+    """Bind observed Terminal custody without inventing a formal proof key."""
+    task, indexed, verified = (observed[key] for key in ("task", "indexed", "verified"))
+    return _identity({
+        "task_cid_sha256": _identity(task["task_cid"]),
+        "task_revision": task["revision"],
+        "task_contract_sha256": _identity(observed["contract"]),
+        "source_manifest_sha256": _identity(verified["manifest"]["sources"]),
+        "context_metadata_sha256": _identity(indexed),
+        "semantic_root_cid_sha256": _identity(indexed["semantic_root_cid"]),
+        "world_snapshot_cid_sha256": _identity(indexed["world_snapshot_cid"]),
+    })
+
+
 def _worker_readable_directory(path):
     try:
         path.mkdir(mode=0o755)
@@ -189,13 +204,16 @@ def _worker_readable_directory(path):
 @contextmanager
 def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context: bool = True,
                                           require_source384: bool = True, worktree_root: Path | None = None,
-                                          worker_writable: bool = False, worker_group_gid: int | None = None):
+                                          worker_writable: bool = False, worker_group_gid: int | None = None,
+                                          include_formal_status_census: bool = False):
     """Yield existing live owner inputs and an owned detached census workspace.
 
     ``require_source384=False`` supports native authored lexical boundary tests;
     the output reports that selection honestly. Persisted provider provenance
     is checked against admission, but actual live LLM execution and isolation
     must be established by the caller's normal router custody evidence.
+    The optional formal-status observation reports unavailable admitted proof
+    bindings; it neither opens a proof owner nor modifies the native input.
     """
     from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
     from ipfs_accelerate_py.agent_supervisor.runtime.router_public_instruction import prepare_public_instruction_context
@@ -206,6 +224,7 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
     from .indexed_doctor_lifecycle import _context
 
     if (type(include_doctor_context) is not bool or type(require_source384) is not bool
+            or type(include_formal_status_census) is not bool
             or type(worker_writable) is not bool
             or worker_writable and (type(worker_group_gid) is not int or worker_group_gid < 0)
             or not worker_writable and worker_group_gid is not None):
@@ -312,6 +331,18 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
         "post_yield_admission_task_revalidated": False, "allocated_worktree_removed": False,
         "guarded_cleanup": True, "explicit_external_worktree_root": worktree_root is not None,
         "worker_writable_workspace_selected": worker_writable}
+    if include_formal_status_census:
+        from ipfs_accelerate_py.agent_supervisor.runtime.formal_status_census import census_formal_status
+
+        # Current Terminal custody supplies no admitted formal owner, complete
+        # Doctor key or formal candidate-tree identity. Observe this gap without
+        # discovering a cache from task text, candidates or default locations.
+        formal_status = census_formal_status(binding=None, gate=None, keys=None)
+        formal_status_binding = _formal_status_context_binding(observed)
+        report.update(schema=FORMAL_STATUS_SCHEMA,
+            formal_status_context_binding_sha256=formal_status_binding,
+            formal_status_context_binding_current=True,
+            formal_status_census=formal_status)
     options = {"purpose": "coding", "semantic_repository": root,
         "semantic_transport_schema": "supervisor-semantic-router-input@1",
         "semantic_metadata_view": "common-bindings@1", "census_only": True,
@@ -381,7 +412,17 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                 git_file_sha256=_sha(git_file.read_bytes()))
         return result
 
-    with managed_git_worktree(repo_root=root, worktree_path=workspace,
+    @contextmanager
+    def formal_status_guard():
+        try:
+            yield
+        except BaseException:
+            # Also covers the native worktree helper's exit/cleanup errors.
+            if include_formal_status_census:
+                report["formal_status_context_binding_current"] = False
+            raise
+
+    with formal_status_guard(), managed_git_worktree(repo_root=root, worktree_path=workspace,
             metadata_rel=".runtime/live-metadata-census.json", owner_rel=".runtime/live-metadata-census-owner.json",
             run_command_fn=guarded_command, prune_on_exit=False) as session:
         if not session.ready:
@@ -401,6 +442,10 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                    "prompt_artifact": prompt_path, "runner_kwargs": options, "metadata": report}
         finally:
             # A caller exception never skips current owner/source custody checks.
+            if include_formal_status_census:
+                # The yielded dictionary may have escaped to the caller. Clear
+                # currentness before any check that can raise on custody drift.
+                report["formal_status_context_binding_current"] = False
             final = _owner_snapshot(state=state, require_source384=require_source384)
             check_workspace()
             if (final["database_identity"] != observed["database_identity"]
@@ -410,10 +455,17 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                     or prep._git(workspace, "rev-parse", "HEAD") != head
                     or prep._git(workspace, "rev-parse", "--abbrev-ref", "HEAD").strip() != b"HEAD"
                     or local._sources(workspace, sorted(verified["manifest"]["sources"]), max_files=256)
-                        != verified["manifest"]["sources"]):
+                        != verified["manifest"]["sources"]
+                    or include_formal_status_census and _formal_status_context_binding(final)
+                        != formal_status_binding
+                    or include_formal_status_census and report["formal_status_context_binding_sha256"]
+                        != formal_status_binding):
                 raise ValueError("census admission, task revision, contract, sources or baseline changed")
             report["post_yield_admission_task_revalidated"] = True
-    registered = prep._git(root, "worktree", "list", "--porcelain", "-z").decode().split("\0")
-    if workspace.exists() or "worktree " + str(workspace) in registered:
-        raise ValueError("guarded census workspace cleanup incomplete")
-    report["allocated_worktree_removed"] = True
+            if include_formal_status_census:
+                report["formal_status_context_binding_current"] = True
+    with formal_status_guard():
+        registered = prep._git(root, "worktree", "list", "--porcelain", "-z").decode().split("\0")
+        if workspace.exists() or "worktree " + str(workspace) in registered:
+            raise ValueError("guarded census workspace cleanup incomplete")
+        report["allocated_worktree_removed"] = True

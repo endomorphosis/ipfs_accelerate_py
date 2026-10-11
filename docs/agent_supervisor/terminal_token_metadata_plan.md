@@ -170,6 +170,17 @@ benchmark input size, behavior, rewards or cumulative tokens.
    repeated-status coverage remain unknown. Begin with a closed owner audit,
    refuse absent bindings before opening storage, and retain the native input
    when evidence or measured benefit is absent.
+   The new [formal-status census](terminal_formal_status_census.md) implements
+   this admission boundary. Its Terminal opt-in reports current task/source/
+   context bindings separately from the unavailable native proof binding;
+   accepted receipt and repeated-status counts remain null, with no proof-owner
+   operations. It preserves the native prompt. A programmatic host can supply
+   an already admitted Doctor gate, complete keys, independently expected key
+   identities and a current-binding probe. That lane checks native lookup and
+   render revalidation, including visible revocations, and explicitly reports
+   possible bookkeeping writes to the existing owner. It observes the requested
+   keys, without an atomic owner snapshot or a reusable proof receipt.
+   No current Terminal proof coverage or token benefit has been established.
 3. **Qualify a bounded owner lookup for progressive disclosure.** Required facts
    stay inline until the model has an actual qualified expansion interface.
    Typed queries should return an exact bounded population with an explicit
