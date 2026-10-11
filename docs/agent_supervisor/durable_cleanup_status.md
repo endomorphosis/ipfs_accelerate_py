@@ -1,7 +1,142 @@
 # Durable provider cleanup: current status and remaining integration
 
-Audit date: 2026-10-07. STOP integration starts from supervisor revision
+Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
+
+## Source, lifecycle, and Grok catalog qualification, 2026-10-11
+
+Three targeted fixes passed local validation. The datasets source adapter now
+accepts Unicode in comments while preserving executable-source
+restrictions; **194 tests passed** at datasets `5d5769f0b9`. Six authored supported
+source examples also compiled with native Lean/Lake. Compilation establishes the
+bounded generated definitions' syntax, not Python equivalence, security
+correctness, or proof authority. Supervisor `0d886f8bc` validates status against
+the current PID and process birth even when optional startup grace is disabled;
+**91 health tests passed**, including seven previously reproduced failures.
+Those health tests used datasets `5c69724316`; the subsequent Docker preflight
+used datasets `5d5769f0b9`.
+
+A fresh bundle was required after an exact worker-capability check correctly
+rejected the older archive with newer host runner bytes. The replacement archive
+`8ef6baa3441b0f4ea9a3a58f1ad50d112a10cc9139be587fcc513acfcd24a115`
+contains supervisor `0d886f8bc`, datasets `5d5769f0b9`, and kit `8ac00bb197`.
+Using the existing 20 GiB profile, the provider-free Harbor task-container
+preflight qualified again: **531.17 seconds** including recorder overhead,
+519.13 seconds inside the driver, and **29.12 seconds** for native START/STOP.
+The isolated UID 1001 worker received matching task, retrieval, semantic and
+world references in its 60,012-byte prompt. Two healthy observations advanced
+the same owner's sequence from 26 to 33. STOP left no residual native or worker
+processes, and the exact owned container was observed absent twice. An independent
+review checked 86 evidence joins. This remains an authored public task graph,
+with no model-generated planning or official verifier in the preflight.
+
+Actual Source384 inference loaded the pinned checkpoint once, but **all four
+sampled functions remain unsupported**: three fail the two-parameter source
+shape requirement and one still fails the executable-source encoding guard.
+There were no solver calls, verified formalizations, source edits, training, or
+model promotion. The Doctor abstained, and Intent advice remained
+`fail_open_no_checkpoint`. The six authored Lake examples do not change this
+coverage result for the benchmark's NumPy implementation.
+
+The next coverage step is a proposed opt-in numerical structural profile for the
+public target and `ref_solution`, both straight-line NumPy functions. Their
+structural adapter needs tuple assignment and return handling, preserved qualified
+callee names, and slice/index lowering. Such a profile could expose array-shape,
+eigenpair-residual, and result-selection obligations to the planner while retaining
+opaque `eig` semantics. The existing scalar source binder and native Lean path
+remain unchanged pending reviewed numerical semantics. Loop support is a separate
+need for the other evaluator functions. This profile and its obligations are
+future work; this qualification establishes no numerical proofs.
+
+The next full trial stopped during setup because its native `grok models`
+output did not match the earlier parser's bare-header grammar. That trial has
+**no reward and no verifier result**, rather than a zero score; it made no text
+generation calls. Its no-index partner remains unexecuted. Isolated metadata
+probes then confirmed the pinned CLI's exact public login preamble, declared
+default model, and four-model catalog. Supervisor `980b506fa` accepts that
+specific layout only with ordered fields and a matching starred default row,
+retains the bare-header grammar, and rejects contradictory or unknown output.
+Expanded authentication refusals still override a positive-looking catalog.
+**111 readiness, setup, and deployment tests passed** with no skips.
+
+The revised parser also returned `ready` against an actual isolated credential
+copy: native exit 0, 150 stdout bytes, no stderr, four catalog models including
+Grok 4.7, and no text generation calls. Its disposable container was removed and
+observed absent twice. Raw native output and credential contents were not retained
+in the published evidence. This catalog observation grants no authentication or
+subsequent-call authority. The parser is supplied by the newer host as a reviewed
+standalone script; the runtime archive remains at `0d886f8bc`, and its exact worker
+capability still matches the host at `980b506fa`.
+
+Fresh campaign03 full and no-index preparations passed strict control comparison
+under the newer host and unchanged archive. Both trials completed with official
+reward **0**, no Harbor exception, and a coding `TimeoutExpired` at the 300-second
+cap. This is one attempt per arm on `largest-eigenval`, using Grok 4.7 through
+`llm_router`:
+
+| Supervisor arm | Official reward | Agent execution (s) | Agent setup (s) | Total tokens |
+| --- | ---: | ---: | ---: | --- |
+| Full: lexical indexes + Source384 | 0 | 466.50 | 278.66 | Unknown |
+| No indexes | 0 | 422.32 | 345.70 | Unknown |
+
+Planning took 89.27 seconds for full and 104.42 seconds for no-index; outer
+recorders took 772.83 and 793.39 seconds respectively. Both retained unchanged
+original task inputs and frozen host sources. Their supervisors reported
+`task_completed=false`, authoritative START and STOP succeeded, no native
+processes remained, and worker cleanup returned 0. Each exact owned container
+was observed absent twice. The final control comparison matches declared
+configuration; separate live container observations confirm 5 CPUs and 20 GiB
+for each arm. Those observations do not establish enforcement of every declared
+control. No-index used the same archive with Source384 disabled for the ablation
+and no indexed context, Doctor advice, or semantic translation.
+
+The live context audit verified four indexed symbols, eight capsules, the four
+unsupported Source384 candidates supplied before planning, and delivery of
+retrieval, world, semantic, and Doctor residual context to the coding invocation.
+Identifier translation covered 19 mappings and 50 occurrences. Its recorded
+prompt sizes are byte counts for the router task prompt, excluding provider
+harness/system context; they do not establish token savings or task correctness.
+The measured profile used **lexical retrieval**: the archive has no learned
+retrieval requirements or retrieval-model revision. Source384 separately consumed
+its pinned GTE embeddings and neural checkpoint. This trial therefore does not
+qualify a neural-retrieval or all-features configuration.
+
+A future learned-retrieval trial needs a new archive with `--model-snapshot` set
+to the pinned GTE snapshot and the Source384 configuration, followed by fresh
+preflight and matched preparations. The current learned retrieval implementation
+embeds symbol names on CPU; body-aware retrieval requires separate work. The live
+trial also exposed a telemetry conversion issue: final progress summaries showed
+`unrecognized` for native lifecycle enums while the authoritative START and STOP
+receipts reported `succeeded`. A fourth fix at supervisor `212c23ec9`, created
+after the trial sources were frozen, normalizes only the exact native lifecycle
+enum for future progress reporting. **83 tests passed**, including the two
+reproduced projection failures. Retained trial observations and the measured
+host at `980b506fa` remain unchanged; this telemetry repair grants no lifecycle
+authority and does not establish a cause or fix for the coding timeout.
+
+Each arm has two receipted provider calls, but coding usage is unavailable, so
+**aggregate tokens and cost remain unknown**. Planning alone reported 22,183
+native tokens for full (13,277 input, 1,536 cached input, 7,370 output) and 18,464
+for no-index (8,682 input, 1,920 cached input, 7,862 output). These partial counts
+must not be used as trial totals or to claim token savings.
+
+This single matched pair establishes no performance advantage. Native Codex was
+not rerun, source proofs remain unestablished, and the full suite is incomplete.
+A next bounded pair can use the existing
+`source384-5cpu-20gib-coding600@1` profile with fresh matched preparations to test
+the longer coding budget; no such run is reported here. Learned retrieval still
+requires the separate new archive and preflight described above. The
+[bounded October 11 evidence](evidence/supervisor-recovery-20261011/qualification.json)
+separates live trial outcomes from the completed provider-free preflight and
+catalog checks. The protected nested-Docker and cold-owner recovery gaps below
+remain unchanged.
+
+Publication preserves the concurrent census work merged from `origin/main`.
+At combined supervisor `1d832b2d9`, datasets `9e5df0d19`, and kit `8ac00bb197`,
+**332 regression tests passed with no failures or skips** across native
+progress, Grok readiness/deployment, and census/dispatch interactions.
+Tracked Python source hashes remained unchanged. This post-merge validation
+does not replace the frozen source identities of the measured trials above.
 
 ## Task-container qualification and live pilot, 2026-10-07
 
@@ -38,8 +173,10 @@ provider refused authentication. The original verifier recorded reward **0**;
 token and cost totals remain **unknown**. The matching no-index arm was prepared
 with identical comparison controls but was not executed after that refusal.
 There is no new matched performance result, token-savings claim, native Codex
-comparison, or complete-suite score. The local pinned CLI also reported
-unauthenticated; a refreshed Grok sign-in is required before new live trials.
+comparison, or complete-suite score. At the October 7 cutoff, the local pinned CLI
+also reported unauthenticated and required a refreshed sign-in. The October 11
+isolated catalog observations above supersede that readiness observation, without
+establishing authentication for subsequent model calls.
 
 Subsequent host harness changes sort only Harbor's two set-valued retry filters
 before sealing new configurations, preserve historical control replay, and check
@@ -47,8 +184,10 @@ the isolated Grok credential copy before indexing or planning. The bounded
 `models` probe emits only a closed status receipt, rejects exit-zero negative
 authentication and unknown output formats, and can run against retained archives
 through its reviewed standalone script. It may refresh or invalidate the
-container's copied credential. Its positive catalog parser has fixture coverage;
-successful live authentication through this new guard has not been qualified.
+container's copied credential. At the October 7 cutoff, its positive catalog
+parser had only fixture coverage. That coverage limitation is superseded by the
+October 11 actual isolated catalog observation above; neither observation grants
+authentication authority for a later model call.
 Provider-free preflight defaults remain unchanged.
 
 Final merged-source harness qualification passed **254 tests with no skips**;

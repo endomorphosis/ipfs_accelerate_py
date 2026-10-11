@@ -1,0 +1,781 @@
+{
+  "authored_lake_compilation": {
+    "candidates": 6,
+    "compiled": 6,
+    "formalized": false,
+    "proof_authority": false,
+    "returncode": 0,
+    "tool_binary_sha256": {
+      "lake": "f80f50cbab5322e35bcb0bf88937e22e9d908b5e4e336e83ddfc30eb1506aacf",
+      "lean": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085"
+    }
+  },
+  "catalog_diagnosis": {
+    "corrected_actual_native_probe": {
+      "binary_sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+      "cleanup_succeeded": true,
+      "credential_contents_or_fingerprint_exported": false,
+      "credential_contents_read_by_driver": false,
+      "login_preamble_exact_match": true,
+      "owned_container_absence_samples": [
+        true,
+        true
+      ],
+      "parser_source_sha256": "cb093c8e99506b739134c9a49ac3facf05a6d6ac91d6617fdc3dd88e60b85706",
+      "probe_sha256": "479724e2a98f79283d398e2c1fe149a3201b2cfc3f47de9cba44dafd3d8eff44",
+      "raw_native_output_retained": false,
+      "readiness": {
+        "authentication_authority": false,
+        "cli_version": "1.0.46",
+        "completion_authority": false,
+        "execution_authority": false,
+        "model": "grok-4.7",
+        "models_observed": 4,
+        "native_catalog_commands": 1,
+        "native_command": "models",
+        "native_exit_code": 0,
+        "proof_authority": false,
+        "provider": "grok_cli",
+        "reason": "catalog_observed",
+        "schema": "terminal-grok-credential-readiness@1",
+        "scope": "isolated_worker_credential_copy",
+        "selected_model_observed": true,
+        "status": "ready",
+        "stderr_bytes": 0,
+        "stdout_bytes": 150,
+        "text_generation_calls": 0
+      },
+      "text_generation_calls": 0
+    },
+    "observed_public_grammar": "Exact You are logged in with grok.com. preamble, Default model field, Available models header, one matching starred default row and bounded unique model rows.",
+    "prior_full_setup": {
+      "campaign": "campaign02",
+      "exception_type": "GrokCredentialReadinessError",
+      "matching_no_index_executed": false,
+      "native_exit_code": 0,
+      "native_stderr_bytes": 0,
+      "native_stdout_bytes": 150,
+      "official_reward": null,
+      "reason": "catalog_shape_unknown",
+      "text_generation_calls": 0,
+      "token_usage": null,
+      "verifier_result": null
+    }
+  },
+  "date": "2026-10-11",
+  "evidence": [
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/independent-preflight-review.json",
+      "bytes": 16825,
+      "sha256": "029599adf291986391c2d3239624ddf6ef50c18616f602a4af18d56a2d45c992"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/bundle-identity.json",
+      "bytes": 1500,
+      "sha256": "b20ef60bed800a356832fb2205b2e020a788e1a4d0b7325b4c309403825ea50c"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/qualified-bundle.json",
+      "bytes": 1775,
+      "sha256": "4ca44da2d608cd3d9b476b1df2f4a9a84eceaec60be0b69acc58bad55ce07035"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/build-command.json",
+      "bytes": 2604,
+      "sha256": "41ca65fa40e28bd9ffbe6d7ae482d9f17a238ab1f758941ffbfc2a35fc2337c0"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/build-exit.json",
+      "bytes": 1374,
+      "sha256": "c59f7bdab5fc09b4870bb27985d5f9f97208e9656b0caf9f6679794369145b74"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/preflight-command.json",
+      "bytes": 2517,
+      "sha256": "453ffa076515f6787bc723e439d05f98c2966b9e836b99f25077df1526952c95"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/preflight-exit.json",
+      "bytes": 1377,
+      "sha256": "df5059965311c2c24a312020eb389cd4f6b4376d274eb7dc4ed3226c0e92d074"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/preflight/result.json",
+      "bytes": 15622,
+      "sha256": "fa019556745c041c10bb14923875ab0fbd5d6686837e325900f1040033312af4"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/preflight/preparation-result.json",
+      "bytes": 23710,
+      "sha256": "7822c850b04a187254533cbe3e40ed3afbf2b23f4139120fd8d48628a5f13ed3"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/preflight/native-start-stop-result.json",
+      "bytes": 51380,
+      "sha256": "5970493bf644f9df9178466b6bb160c1db8a098a2d88d0efd9aa35a9d8b7af53"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/preflight/source384-inference-observation.json",
+      "bytes": 1354,
+      "sha256": "668c1c52192ef592997275e641960f0c6269edd760e631e926c4765c874d103a"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/preflight/source384-inference.json",
+      "bytes": 119717,
+      "sha256": "20247c159168446a1d026e58a1db2fd5591afa91b8182d2a89e6c2519426d0f6"
+    },
+    {
+      "artifact": "source384-unicode-comments-20261011/merged-exit.json",
+      "bytes": 929,
+      "sha256": "46943b63637a283f9c05787ccffd3a11871c5bd057dfd29932069688e922672d"
+    },
+    {
+      "artifact": "source384-unicode-comments-20261011/merged-command.json",
+      "bytes": 2663,
+      "sha256": "96b15d6f5118e3c9e9d6fc52e3cab67f239603dbecc50b24826832f425db3880"
+    },
+    {
+      "artifact": "source384-unicode-comments-20261011/merged-tests.xml",
+      "bytes": 40970,
+      "sha256": "b9719535e8be2ca249b4fdd25596b073263b001a4ec496ffc5a924c25e18153e"
+    },
+    {
+      "artifact": "source384-unicode-comments-20261011/merged-lake-receipt.json",
+      "bytes": 232368,
+      "sha256": "84e3552519e5f0beb3a34b2584424a002efc1627d2521d6dbd61e901ecda98ef"
+    },
+    {
+      "artifact": "supervisor-status-generation-20261011/qualification.json",
+      "bytes": 4471,
+      "sha256": "be9618a3841063a7a430a8095adbc9787311bbe337d28e69c2e5d99440cd71ce"
+    },
+    {
+      "artifact": "supervisor-status-generation-20261011/health-after-02-command.json",
+      "bytes": 1933,
+      "sha256": "0b55d179be4d118b2edcbc75cd7ed3645da9cb3e2e87b028fad7febe36a594bf"
+    },
+    {
+      "artifact": "supervisor-status-generation-20261011/health-after-02.xml",
+      "bytes": 15439,
+      "sha256": "bae92a76c9d9c507b5b839d4fc403fdfb1c11ddb44b2626e65fcff0da4c5bc90"
+    },
+    {
+      "artifact": "grok-catalog-preamble-20261011/qualification.json",
+      "bytes": 1782,
+      "sha256": "0878a1ffe92c2b911e475e8d7af0b4a77330d5db5e7332434922446bdebac0f8"
+    },
+    {
+      "artifact": "grok-catalog-preamble-20261011/readiness-01-command.json",
+      "bytes": 2023,
+      "sha256": "9267f396c6d0988a9415944cbbae271a12e9d856fdf30d436b5e1641e5ec59a9"
+    },
+    {
+      "artifact": "grok-catalog-preamble-20261011/readiness-01-exit.json",
+      "bytes": 1062,
+      "sha256": "5960135243111b7f7fe06a7aad299eff7c261451f49bd131023014a6192272d1"
+    },
+    {
+      "artifact": "grok-catalog-preamble-20261011/readiness-01.xml",
+      "bytes": 27377,
+      "sha256": "c511be51639a31f2d117c5211de9eed0f7077ed2df8955d7c763032ec42b85ee"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/catalog-diagnostic-04/result.json",
+      "bytes": 3961,
+      "sha256": "1ebf4cc78dc891ecb3e71f824a1eabc84fcd6caeec1e56dc8f6318c44e8c86ea"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/grok-full-pilot-01/receipt.json",
+      "bytes": 7577,
+      "sha256": "345bb22783bbadeb6a178d67cf2e6f3973e08ba8fd891cf419b04887f7cdf9c8"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign02/grok-no-index-pilot-01/skipped.json",
+      "bytes": 278,
+      "sha256": "13eecd90d6faf4a7b1b6a51306e779a8ff8f1b930eb02b3cc2a83d5bb00de422"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign03/grok-pilot-frozen-review.json",
+      "bytes": 2323,
+      "sha256": "db3b8f94cf7c2f8370b4bbbab09b6c28bd94feeb2aa6397b551929e1534943c0"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign03/grok-pilot-command-spec.json",
+      "bytes": 11084,
+      "sha256": "731f022e21ad48015ad58d3bf87c4edf5de985c96f968b2d3cdf6bb99673548d"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign03/grok-full-pilot-01/receipt.json",
+      "bytes": 113566,
+      "sha256": "a517241420e8cebd3c0b65b8347e46dfcd5b7008ac8cb4e596bca9292c2d42fb"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign03/pilot-execute-full-exit.json",
+      "bytes": 4204,
+      "sha256": "727673f3de46d13e691bf8c3a5f74f9055bfddfa4a0b32b8edac99535c431fda"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign03/full-container-cleanup-observation.json",
+      "bytes": 410,
+      "sha256": "2bff11f83a384b82479c299c611d449785eae8507946e3727a94cc402b8ca17d"
+    },
+    {
+      "artifact": "supervisor-progress-enum-20261011/qualification.json",
+      "bytes": 2265,
+      "sha256": "5340ef7f4ae82935fbb901c0dbbbe9de7dc86d30cbd9a304a2776535af0a40e3"
+    },
+    {
+      "artifact": "supervisor-progress-enum-20261011/progress-final-01-command.json",
+      "bytes": 2358,
+      "sha256": "fbd37cb6070f18e5b8bec1b27d4e73a5b92a0a64cdd6f714bf9cb1e7f8ae9854"
+    },
+    {
+      "artifact": "supervisor-progress-enum-20261011/progress-final-01.xml",
+      "bytes": 16893,
+      "sha256": "76149ad0044c3e13713e8997e8e04a4e39347ced42fb7c640f2459435d3f088a"
+    },
+    {
+      "artifact": "supervisor-progress-enum-20261011/baseline-01-command.json",
+      "bytes": 2390,
+      "sha256": "88423784c05b5b0e4c2435df767e0778c767c3acf1731d8624c434300c89b9f7"
+    },
+    {
+      "artifact": "supervisor-progress-enum-20261011/baseline-01.xml",
+      "bytes": 4892,
+      "sha256": "752aab2f35b3129f99ab8a4cd8dda007642ecbb41d2b32fe2ca132e1655d06b9"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign03/grok-no-index-pilot-01/receipt.json",
+      "bytes": 73521,
+      "sha256": "655ea15e8aff0bb8684c9be74f79f7ac19ff4933d94dfff79f361fb211bc6507"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign03/pilot-execute-no-index-exit.json",
+      "bytes": 4208,
+      "sha256": "b3809b97b819a4cc9c3492cf6d65f18522d17f11d529b8d8a53f6baeded31089"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign03/no-index-container-cleanup-observation.json",
+      "bytes": 410,
+      "sha256": "ca4e29f60810e3465603db628e6ea6018551799ef3fd81a2754ec12046a3a8bf"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign03/paired-control-observation.json",
+      "bytes": 687,
+      "sha256": "7be8d2b03fe4ee9efd08f5345d0f4921e5bc2a08bc07f8484e435ad47ff786f6"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign03/full-container-observation.json",
+      "bytes": 355,
+      "sha256": "6eab5d3191ed2300823a74ea9bf251f7b84bc32578185e895b0e60a7095f411d"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/campaign03/no-index-container-observation.json",
+      "bytes": 482,
+      "sha256": "06caa08a60120d496d2d138813bb31d37b558d0394e5db95182791d0dc909964"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/merged-validation/merged-01-exit.json",
+      "bytes": 2987,
+      "sha256": "01c746c1d49eceabe30cbc3f944bce1547080ba0bdd5546089a6f7ebac309729"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/merged-validation/merged-01-command.json",
+      "bytes": 2722,
+      "sha256": "719e6c83d2ee6a130b93d971331bfa45acdb4546d5a0f77d64ad23b4a44dabec"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/merged-validation/merged-01.xml",
+      "bytes": 70506,
+      "sha256": "cfe81ac4cd15dc57c0907855788697540fdabc700a177a97fce281c400686347"
+    },
+    {
+      "artifact": "supervisor-recovery-20261011/merged-validation/merged-01.log",
+      "bytes": 432,
+      "sha256": "4ef003699e8d7200626bc07a2ce49734e025d3dc235aa8b1eb50481d6fd5134b"
+    }
+  ],
+  "fixes": [
+    {
+      "change": "Accept Unicode comments while retaining executable-source restrictions, including rejection of Unicode STRING tokens.",
+      "head": "5d5769f0b939676ef8c3f1221338a73272d6a9f8",
+      "repository": "ipfs_datasets_py",
+      "tests": {
+        "errors": 0,
+        "failures": 0,
+        "head": "5d5769f0b939676ef8c3f1221338a73272d6a9f8",
+        "skipped": 0,
+        "tests": 194
+      }
+    },
+    {
+      "change": "Validate current supervisor PID and birth independently of optional startup grace.",
+      "head": "0d886f8bcba28e8f446fbf23526d8fe01159dca5",
+      "repository": "ipfs_accelerate_py",
+      "tests": {
+        "datasets_dependency_head_during_tests": "5c69724316a3365bdb22023ba5608fced96d568a",
+        "dependency_scope_note": "Health tests used datasets5c; fresh Docker preflight used datasets5d.",
+        "errors": 0,
+        "failures": 0,
+        "head": "0d886f8bcba28e8f446fbf23526d8fe01159dca5",
+        "reproduced_baseline_failures": 7,
+        "skipped": 0,
+        "tests": 91
+      }
+    },
+    {
+      "change": "Accept the observed public login/default/catalog layout only with ordered and consistent rows; preserve negative authentication precedence and closed receipts.",
+      "exact_runtime_worker_capability_matches": true,
+      "head": "980b506fac1990e73eb0322ccd5a19d2c2417172",
+      "repository": "ipfs_accelerate_py",
+      "source_sha256": {
+        "benchmarks/agent_supervisor/container_coding/terminal_grok_deployment.py": "cb093c8e99506b739134c9a49ac3facf05a6d6ac91d6617fdc3dd88e60b85706",
+        "benchmarks/agent_supervisor/container_coding/test_full_supervisor_grok_readiness_setup.py": "12f38393904f1ff588b709331e1e24c7595223af87f6331459efb381128e84d8",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_grok_readiness.py": "3052b56eccc92efce3cc03e445bd287695135fd20a7df6663db29cd44ff36bf5"
+      },
+      "source_unchanged_during_validation": true,
+      "tests": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 111
+      }
+    },
+    {
+      "authority_added": false,
+      "change": "Normalize only exact native OperationStatus enums in final START/STOP telemetry.",
+      "committed_sources_match_validation": true,
+      "frozen_campaign03_sources_changed": false,
+      "head": "212c23ec987c3c096f20f87a26a1320e71ff31ed",
+      "post_trial_future_telemetry_only": true,
+      "repository": "ipfs_accelerate_py",
+      "reproduced_baseline_failures": 2,
+      "runtime_causal_fix_claimed": false,
+      "source_sha256": {
+        "benchmarks/agent_supervisor/container_coding/terminal_native_progress.py": "b255cae0f159843eba5575998de3fc6f9e11e0e20dd9a568ef9b523da941acca",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py": "60a48d617e09d9b9835d38b0e788b2b748a2e612e848d5fea009427ef1ae1844"
+      },
+      "source_unchanged_during_validation": true,
+      "tests": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 83
+      }
+    }
+  ],
+  "host": {
+    "host_only_delta": "Strict Grok catalog parser and readiness/setup regression tests. Reviewed standalone host script; exact worker capability unchanged.",
+    "runtime_heads_distinct": true,
+    "source_heads": {
+      "datasets": "5d5769f0b939676ef8c3f1221338a73272d6a9f8",
+      "kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "source": "980b506fac1990e73eb0322ccd5a19d2c2417172"
+    }
+  },
+  "limitations": [
+    "Authored public graph; no live planner or official verifier exercised by this preflight.",
+    "Intent checkpoint absent; fail-open advice.",
+    "Delivered world snapshot is a sealed historical observation after task claim.",
+    "Checkpoint consumption does not establish correct source semantics; all four sampled functions unsupported.",
+    "Protected nested Docker and cold-owner recovery remain unqualified.",
+    "Review checks retained cleanup evidence; no new Docker operation performed.",
+    "Catalog readiness is a bounded metadata observation, not authentication authority or a guarantee of subsequent model calls.",
+    "Current proof coverage for all four sampled benchmark functions remains unsupported despite six authored supported examples compiling.",
+    "Test fixtures, private runtime databases, signing keys, credentials, and raw native provider output are excluded."
+  ],
+  "live_campaign03": {
+    "actual_configs_identical_after_arm_job_output_normalization": true,
+    "archive_sha256": "8ef6baa3441b0f4ea9a3a58f1ad50d112a10cc9139be587fcc513acfcd24a115",
+    "full": "complete",
+    "full_context_delivery": {
+      "all_observed_coding_inputs_verified": true,
+      "audit_status": "verified_all_observed_model_inputs",
+      "byte_counts_are_token_counts": false,
+      "capsules": 8,
+      "chunks": {
+        "code-retrieval-context": {
+          "bytes": 4832,
+          "count": 1,
+          "sha256": "03a79ff0e314eb9b28786031a184e2e3bdaa75342eb1eeb06f835b9b3c33021a"
+        },
+        "intent-world-context": {
+          "bytes": 5907,
+          "count": 1,
+          "sha256": "268ec6851ad86f4076e92c5cab8ef76e892eb498936d89065cd5375c43299afb"
+        },
+        "semantic-context": {
+          "bytes": 31939,
+          "count": 6,
+          "sha256": "0e973bce2a09692c701d8619af2ce9928c6b5fcfcb1e8464408373f6457c049f"
+        }
+      },
+      "doctor_residual_context": {
+        "advisory_bytes": 2109,
+        "advisory_sha256": "3a9ea8de3fbb2d1e3873f62e99b258471a7e33d0409f563d01ba4fe43093b96e",
+        "candidate_only": true,
+        "completion_authority": false,
+        "publication_authority": false,
+        "source_freshness_verified": true
+      },
+      "identifier_mappings": 19,
+      "identifier_occurrences": 50,
+      "indexed_symbols": 4,
+      "measurement_scope": "router task prompt; provider harness/system context is outside this digest",
+      "model_prompt_bytes": 57567,
+      "model_prompt_sha256": "f3eaa3b9eb0bc34f44b7ea1af504045314b8f15ed07b3a1c88d17d207b1851f8",
+      "native_prompt_bytes": 60785,
+      "native_prompt_sha256": "7976c1690a23beecace5c5d52f19ad7787fa63bc10493300e36477d4a4683339",
+      "proof_authority": false,
+      "raw_prompts_exported": false,
+      "semantic_equivalence_claimed": false,
+      "source384_candidates_before_planning": 4,
+      "source384_unsupported_candidates": 4,
+      "task_correctness_established": false,
+      "world_scope": "sealed historical capture; claims may supersede its intent revision"
+    },
+    "full_outcome": {
+      "aggregate_usage_reason": "Coding invocation timed out without final usage; planning-only counts are not aggregate trial usage.",
+      "all_invocations_receipted": true,
+      "cleanup": {
+        "exact_absence_samples": 2,
+        "foreign_container_observation_or_action": false,
+        "owned_container_id": "daeb527febce08c21c27a81da2d095710f777626fae8cbe1e647d5d84352a8fd",
+        "remaining_native_processes": 0,
+        "removal_issued_by_observer": false,
+        "start_status": "succeeded",
+        "stop_status": "succeeded",
+        "worker_cleanup_returncode": 0
+      },
+      "coding_error_type": "TimeoutExpired",
+      "coding_timeout_cap_seconds": 300,
+      "dollar_cost": null,
+      "driver_seconds": 465.33449484501034,
+      "durations_seconds": {
+        "agent_execution": 466.498185,
+        "agent_setup": 278.655952,
+        "environment_setup": 3.598942,
+        "verifier": 7.498489
+      },
+      "harbor_exception_type": null,
+      "host_sources_unchanged": true,
+      "invocation_seconds": 771.2582665149821,
+      "official_reward": 0.0,
+      "original_task_inputs_unchanged": true,
+      "planning_only_partial_usage": {
+        "billing_total_verified": false,
+        "cache_included_in_input": false,
+        "cached_input_tokens": 1536,
+        "input_tokens": 13277,
+        "output_tokens": 7370,
+        "scope": "Planning invocation native final envelope only; excludes unavailable coding usage.",
+        "total_tokens": 22183,
+        "usage_observation_sha256": "a4e13c7f10331711c735a326eb92e34e99b092ebacaa60d2633d53f153d2e7b8"
+      },
+      "planning_seconds": 89.26999202603474,
+      "provider_calls_receipted": 2,
+      "task_completed": false,
+      "total_tokens": null,
+      "wrapper_seconds": 772.8316206180025
+    },
+    "future_extended_coding_budget": {
+      "coding_timeout_cap_seconds": 600,
+      "profile": "source384-5cpu-20gib-coding600@1",
+      "requires_fresh_matched_preparations": true,
+      "status": "proposed_not_run"
+    },
+    "future_learned_retrieval": {
+      "bundle_arguments": [
+        "--model-snapshot <local-pinned-GTE-snapshot>",
+        "--source384-config <selected-local-config>"
+      ],
+      "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+      "existing_embedding_scope": "CPU embeddings of symbol names only; code-body embeddings require additional work.",
+      "requires_fresh_preflight_and_matched_pair": true,
+      "requires_new_archive": true,
+      "status": "proposed_not_run"
+    },
+    "host_source_heads": {
+      "datasets": "5d5769f0b939676ef8c3f1221338a73272d6a9f8",
+      "kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "source": "980b506fac1990e73eb0322ccd5a19d2c2417172"
+    },
+    "live_context_proof_audit": "full_arm_context_delivery_verified_source_proofs_unestablished",
+    "native_codex_comparison_performed": false,
+    "no_index": "complete",
+    "no_index_ablation": {
+      "doctor_advice_present": false,
+      "indexed_context_present": false,
+      "same_archive_assets_bundled": true,
+      "semantic_translation_present": false,
+      "source384_disabled_reason": "no_index_ablation",
+      "source384_enabled": false
+    },
+    "no_index_outcome": {
+      "aggregate_usage_reason": "Coding invocation timed out without final usage; planning-only counts are not aggregate trial usage.",
+      "all_invocations_receipted": true,
+      "cleanup": {
+        "exact_absence_samples": 2,
+        "foreign_container_observation_or_action": false,
+        "owned_container_id": "8f4f6ffdd7753a6ae9fb659eace507bd0bdbbd9272d260d082398e9b40342dfc",
+        "remaining_native_processes": 0,
+        "removal_issued_by_observer": false,
+        "start_status": "succeeded",
+        "stop_status": "succeeded",
+        "worker_cleanup_returncode": 0
+      },
+      "coding_error_type": "TimeoutExpired",
+      "coding_timeout_cap_seconds": 300,
+      "dollar_cost": null,
+      "driver_seconds": 421.11744651698973,
+      "durations_seconds": {
+        "agent_execution": 422.31788,
+        "agent_setup": 345.702259,
+        "environment_setup": 3.145094,
+        "verifier": 4.755711
+      },
+      "harbor_exception_type": null,
+      "host_sources_unchanged": true,
+      "invocation_seconds": 791.7432573860278,
+      "official_reward": 0.0,
+      "original_task_inputs_unchanged": true,
+      "planning_only_partial_usage": {
+        "billing_total_verified": false,
+        "cache_included_in_input": false,
+        "cached_input_tokens": 1920,
+        "input_tokens": 8682,
+        "output_tokens": 7862,
+        "scope": "Planning invocation native final envelope only; excludes unavailable coding usage.",
+        "total_tokens": 18464,
+        "usage_observation_sha256": "f038c6327a70cc46964970ab632c5be94dcc7743c76479bff7a0092896f1e390"
+      },
+      "planning_seconds": 104.42385086696595,
+      "provider_calls_receipted": 2,
+      "task_completed": false,
+      "total_tokens": null,
+      "wrapper_seconds": 793.3882181940135
+    },
+    "observed_container_resources": {
+      "full": {
+        "memory_bytes": 21474836480,
+        "nano_cpus": 5000000000,
+        "running": true,
+        "scope": "Separate observed Docker limits, not proof of every declared control."
+      },
+      "no-index": {
+        "memory_bytes": 21474836480,
+        "nano_cpus": 5000000000,
+        "running": true,
+        "scope": "Separate observed Docker limits, not proof of every declared control."
+      }
+    },
+    "official_rewards": {
+      "full": 0.0,
+      "no_index": 0.0
+    },
+    "postrun_control_comparison": {
+      "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+      "differences": [],
+      "matches": true,
+      "status": "matched"
+    },
+    "postrun_receipt_hashes": {
+      "full": "a517241420e8cebd3c0b65b8347e46dfcd5b7008ac8cb4e596bca9292c2d42fb",
+      "no-index": "655ea15e8aff0bb8684c9be74f79f7ac19ff4933d94dfff79f361fb211bc6507"
+    },
+    "retrieval_profile": {
+      "all_features_profile_qualified": false,
+      "learned_embeddings": false,
+      "learned_requirements": [],
+      "mode": "lexical",
+      "model_snapshot_revision": null,
+      "neural_retrieval_qualified": false,
+      "source384_separate_embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+      "source384_separate_neural_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    },
+    "runtime_source_heads": {
+      "datasets": "5d5769f0b939676ef8c3f1221338a73272d6a9f8",
+      "kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "source": "0d886f8bcba28e8f446fbf23526d8fe01159dca5"
+    },
+    "sample_scope": {
+      "attempts_per_arm": 1,
+      "parallel_execution": false,
+      "performance_advantage_established": false,
+      "task": "largest-eigenval",
+      "trial_count_per_arm": 1
+    },
+    "status": "both_arms_complete",
+    "strict_control_comparison": {
+      "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+      "differences": [],
+      "matches": true,
+      "status": "matched"
+    },
+    "suite_complete": false,
+    "telemetry_discrepancy": {
+      "authoritative_start": "succeeded",
+      "authoritative_stop": "succeeded",
+      "coding_timeout_cause_or_fix_established": false,
+      "frozen_host_sources_changed": false,
+      "post_trial_fix_head": "212c23ec987c3c096f20f87a26a1320e71ff31ed",
+      "reason": "Exact OperationStatus string enum was refused by the progress projection strict plain-string guard.",
+      "retained_progress_start": "unrecognized",
+      "retained_progress_stop": "unrecognized"
+    },
+    "token_savings_established": false,
+    "token_usage": null
+  },
+  "merged_source_validation": {
+    "counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 332
+    },
+    "heads_after": {
+      "datasets": "9e5df0d19b62268cdda356077754fad43bdf65fa",
+      "kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "supervisor": "1d832b2d9102570ef82070458da7ce6f4f8e831e"
+    },
+    "heads_before": {
+      "datasets": "9e5df0d19b62268cdda356077754fad43bdf65fa",
+      "kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "supervisor": "1d832b2d9102570ef82070458da7ce6f4f8e831e"
+    },
+    "modules": {
+      "benchmarks.agent_supervisor.container_coding.test_full_supervisor_grok_readiness_setup": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 8
+      },
+      "benchmarks.agent_supervisor.container_coding.test_terminal_grok_deployment": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 37
+      },
+      "benchmarks.agent_supervisor.container_coding.test_terminal_grok_readiness": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 66
+      },
+      "benchmarks.agent_supervisor.container_coding.test_terminal_live_census_cache_profile": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 19
+      },
+      "benchmarks.agent_supervisor.container_coding.test_terminal_live_census_driver": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 38
+      },
+      "benchmarks.agent_supervisor.container_coding.test_terminal_live_census_provenance": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 31
+      },
+      "benchmarks.agent_supervisor.container_coding.test_terminal_live_metadata_census": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 38
+      },
+      "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 83
+      },
+      "test.api.test_semantic_metadata_census_dispatch": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 12
+      }
+    },
+    "private_fixture_publication": false,
+    "runtime_benchmark_repeated_at_merged_head": false,
+    "scope": "Post-merge regression validation; measured campaign03 source pins remain unchanged.",
+    "seconds": 270.03186064003967,
+    "source_counts": {
+      "datasets": 16384,
+      "kit": 5445,
+      "supervisor": 11979
+    },
+    "source_unchanged": true
+  },
+  "preflight": {
+    "cleanup": {
+      "confirmed_absence_samples": 2,
+      "owned_container_id": "e99c6f8f5894835958a1761fccf2ac3fe8c3f0e8c0d7fe9376ce03fa782fcb14",
+      "remaining_native_processes": 0,
+      "remaining_worker_processes": 0
+    },
+    "delivered_context": {
+      "index_id": "code-symbol-vector-index:sha256:7da871d658fd2417c0d02c8907e0347d39b2ac57216ca09f6a14bbbf92bcbd2b",
+      "prompt_bytes": 60012,
+      "prompt_sha256": "0f6458489406c141cfa16925afa320072f98cd9467b08c74383e294b20e8249b",
+      "public_query_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+      "semantic_root_cid": "baguqeeraal5jpaoe5gflml5cndgiuno4n64d65tuybpgt2yfoeevsrdpbnna",
+      "task_cid": "baguqeerayk54qwvcjmjb5lab7i7ckw36pwilmw2we3thrihmaalve4rjl2pq",
+      "world_snapshot_cid": "sha256:ed433302404f64a6466ef867fadf56974e8664df3da9b131dda855b624c21848"
+    },
+    "doctor_status": "abstained",
+    "graph_provenance": "Explicitly authored public task; no model proposal.",
+    "independent_evidence_joins": 86,
+    "intent_status": "fail_open_no_checkpoint",
+    "official_verifier_executed": false,
+    "provider_calls": 0,
+    "qualified": true,
+    "source384": {
+      "actual_model_loads": 1,
+      "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+      "functions": 4,
+      "reasons": {
+        "source_encoding_unsupported": 1,
+        "two_distinct_parameters_required": 3
+      },
+      "solver_calls": 0,
+      "training_steps": 0,
+      "unsupported_candidates": 4,
+      "verified_formalizations": 0
+    },
+    "task": "largest-eigenval",
+    "task_completion_or_benchmark_success_claimed": false,
+    "timings_seconds": {
+      "build_recorder": 36.333939667092636,
+      "native_start_stop": 29.12053754297085,
+      "preflight_driver": 519.1272665719735,
+      "preflight_recorder": 531.1729087888962
+    },
+    "worker": {
+      "observations": 2,
+      "owner_sequence": [
+        26,
+        33
+      ],
+      "pid": 3695,
+      "uid": 1001
+    }
+  },
+  "runtime": {
+    "archive_sha256": "8ef6baa3441b0f4ea9a3a58f1ad50d112a10cc9139be587fcc513acfcd24a115",
+    "manifest_sha256": "20a841d4e889be0383a93f557968647cdcec245b4dbd4736b808d0c2ceebed85",
+    "provider_profile": "grok-4.7-cli-1.0.46@1",
+    "resource_profile": "source384-5cpu-20gib-planner180@1",
+    "source_heads": {
+      "datasets": "5d5769f0b939676ef8c3f1221338a73272d6a9f8",
+      "kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "source": "0d886f8bcba28e8f446fbf23526d8fe01159dca5"
+    }
+  },
+  "schema": "supervisor-recovery-public-qualification@2",
+  "scope": "Selected source/test/lifecycle/catalog evidence and completed single-task matched live trial outcomes; no suite completion, source-proof correctness, or performance advantage established.",
+  "status": "COMPLETED_SINGLE_MATCHED_PAIR_NO_ADVANTAGE_ESTABLISHED"
+}
