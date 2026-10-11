@@ -28,6 +28,25 @@ not qualify. Compare repeated trials using native total-token counts and officia
 task success; prompt bytes and local tokenizer counts alone do not establish
 end-to-end savings.
 
+Native Codex receipts also include `interaction_telemetry` by default. This
+passive collector records bounded tool input/output sizes, pairing status,
+elapsed time between recorded events, and changes between adjacent cumulative
+usage checkpoints. It exports no tool arguments, outputs, or call identifiers.
+The first checkpoint has an unknown baseline; repeated snapshots add no usage,
+and malformed or decreasing counters interrupt the observation sequence. These
+checkpoints are not provider requests, and co-occurring tool events do not
+establish per-tool token costs. String byte counts measure decoded UTF-8;
+structured payloads use canonical JSON. Recorded elapsed time is not measured
+tool execution latency.
+
+Receipts retain at most 128 tool pairs and 256 usage checkpoints, with explicit
+omission counts; the diagnostic pass examines at most 100,000 records from an existing
+32 MB bounded rollout. Oversized payload measurements stay unknown. Native
+aggregate usage remains separate from these diagnostic observations. A resumed
+session, malformed record, invalid latest cumulative snapshot, or counter reset
+cannot inherit an earlier completion signal. Fresh runtime archives are required
+to qualify the new observations in live trials.
+
 Other public Terminal-Bench tasks can use the source-bound task profiles in
 [TERMINAL_SUITE_PROFILES.md](TERMINAL_SUITE_PROFILES.md). The first broader full
 supervisor pilot records two official passes and one native-execution timeout,

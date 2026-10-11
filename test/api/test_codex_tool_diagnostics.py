@@ -123,6 +123,95 @@ def test_valid_complete_session_without_tools_reports_observed_zero(tmp_path):
     assert d["absolute_canonical_app_reference_observed"] is False
 
 
+@pytest.mark.parametrize("later", [
+    {"type": "turn_context", "payload": {}},
+    *({"type": "event_msg", "payload": {"type": kind}} for kind in (
+        "task_started", "turn_started", "task_aborted", "turn_aborted", "user_message", "token_count")),
+    {"type": "response_item", "payload": {"type": "function_call", "arguments": "private"}},
+    {"type": "response_item", "payload": {"type": "custom_tool_call_output", "output": "private"}},
+    {"type": "response_item", "payload": {"type": "message", "role": "user", "content": "private"}},
+])
+def test_resumed_work_invalidates_prior_completion_without_discarding_usage(tmp_path, later):
+    home, workspace, path = rollout(tmp_path, [])
+    sample = {"type": "event_msg", "payload": {"type": "token_count", "info": {
+        "total_token_usage": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}}}}
+    original = path.read_text().splitlines()
+    path.write_text("\n".join([original[0], json.dumps(sample), original[1], json.dumps(later)]) + "\n")
+    observed = recover(home, workspace)
+    assert observed["task_complete_event_observed"] is True
+    assert observed["task_complete_observed"] is False
+    assert observed["usage"]["total_tokens"] == 12
+    assert observed["tool_diagnostics"]["tool_event_counts_complete"] is False
+    path.write_text(path.read_text() + json.dumps({"type": "event_msg", "payload": {"type": "task_complete"}}) + "\n")
+    assert recover(home, workspace)["task_complete_observed"] is True
+
+
+@pytest.mark.parametrize("corrupt", ["{incomplete", "[]", "{}", '{"type":[]}', '{"type":"response_item","payload":{"type":[]}}',
+                                      '{"type":"event_msg","payload":[]}'])
+def test_malformed_records_cannot_establish_completion(tmp_path, corrupt):
+    home, workspace, path = rollout(tmp_path, [])
+    path.write_text(path.read_text() + corrupt + "\n" + json.dumps(
+        {"type": "event_msg", "payload": {"type": "task_complete"}}) + "\n")
+    observed = recover(home, workspace)
+    assert observed["task_complete_event_observed"] is True
+    assert observed["task_complete_observed"] is False
+    assert observed["tool_diagnostics"]["malformed_json_records"] == 1
+    assert observed["tool_diagnostics"]["tool_event_counts_complete"] is False
+
+
+@pytest.mark.parametrize("invalid_info", [
+    False, [], {"total_token_usage": None}, {"total_token_usage": []},
+    {"total_token_usage": {"input_tokens": 20}},
+    *({"total_token_usage": {"input_tokens": value, "output_tokens": 2, "total_tokens": 22}}
+      for value in (-1, True, "20", 1 << 63)),
+    {"total_token_usage": {"input_tokens": 20, "output_tokens": 2, "total_tokens": 999}},
+    {"total_token_usage": {"input_tokens": 20, "output_tokens": 2, "total_tokens": 22, "cached_input_tokens": 21}},
+])
+def test_invalid_latest_counters_keep_lower_bound_without_completeness(tmp_path, invalid_info):
+    home, workspace, path = rollout(tmp_path, [])
+    first = path.read_text().splitlines()[0]
+    valid = {"type": "event_msg", "payload": {"type": "token_count", "info": {
+        "total_token_usage": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}}}}
+    complete = {"type": "event_msg", "payload": {"type": "task_complete"}}
+    invalid = {"type": "event_msg", "payload": {"type": "token_count", "info": invalid_info}}
+    path.write_text(first + "\n" + "\n".join(map(json.dumps, [valid, complete, invalid, complete])) + "\n")
+    observed = recover(home, workspace)
+    assert observed["usage"] == valid["payload"]["info"]["total_token_usage"]
+    assert observed["latest_usage_snapshot_valid"] is False
+    assert observed["task_complete_event_observed"] is True
+    assert observed["task_complete_observed"] is False
+    # A later valid cumulative total can re-establish the snapshot binding.
+    path.write_text(path.read_text() + "\n".join(map(json.dumps, [valid, complete])) + "\n")
+    assert recover(home, workspace)["task_complete_observed"] is True
+
+
+def test_rate_updates_do_not_invent_usage_and_regressions_cannot_hide_prior_spend(tmp_path):
+    home, workspace, path = rollout(tmp_path, [])
+    first = path.read_text().splitlines()[0]
+    def snapshot(input_tokens):
+        return {"type": "event_msg", "payload": {"type": "token_count", "info": {
+            "total_token_usage": {"input_tokens": input_tokens, "output_tokens": 2,
+                                  "total_tokens": input_tokens + 2}}}}
+    complete = {"type": "event_msg", "payload": {"type": "task_complete"}}
+    quota = {"type": "event_msg", "payload": {"type": "token_count", "info": None}}
+    path.write_text(first + "\n" + "\n".join(map(json.dumps, [snapshot(10), quota, complete])) + "\n")
+    assert recover(home, workspace)["task_complete_observed"] is True
+    path.write_text(path.read_text() + "\n".join(map(json.dumps, [snapshot(5), snapshot(20), complete])) + "\n")
+    observed = recover(home, workspace)
+    assert observed["usage"]["total_tokens"] == 22
+    assert observed["latest_usage_snapshot_valid"] is True
+    assert observed["counter_regression_observed"] is True
+    assert observed["task_complete_observed"] is False
+
+
+@pytest.mark.parametrize("thread", [THREAD, "foreign-thread-123456"])
+def test_later_session_metadata_cannot_mix_thread_accounting(tmp_path, thread):
+    home, workspace, path = rollout(tmp_path, [])
+    path.write_text(path.read_text() + json.dumps({"type": "session_meta", "payload": {
+        "id": thread, "cwd": str(workspace)}}) + "\n")
+    assert recover(home, workspace) is None
+
+
 def test_missing_native_code_mode_host_is_distinct_from_permission_or_path_errors(tmp_path):
     error = ("failed to spawn code-mode host "
         "/opt/ipfs-supervisor/provider-bin/codex-code-mode-host: "

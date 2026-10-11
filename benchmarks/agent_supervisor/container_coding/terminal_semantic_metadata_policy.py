@@ -29,6 +29,8 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/codex_interaction_telemetry.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
     "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
