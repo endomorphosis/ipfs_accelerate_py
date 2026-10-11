@@ -98,25 +98,47 @@ benchmark input size, behavior, rewards or cumulative tokens.
    complete inputs after current owner checks and stops before provider
    allocation. Administrative source preparation retains explicit authored-plan
    provenance; live planned input remains a separate scope.
-2. **Run a separately versioned matched trial.** Keep one planning session and
-   one coding session, model/reasoning/resource/setup budgets, original public
-   inputs, reply schema and coding transport fixed. Vary this metadata view
-   alone. A fallback run does not count as an observed treatment. Preserve both
-   native administrative identities and compare reviewed semantic populations.
-   Identical controls can still produce different plans. Report that distinction
-   and require substantive native input matching for an exact one-factor claim.
-3. **Use current formal status capsules to prevent redundant reasoning.** Resolve
+   The fresh live Source384 census now measured **59,336 to 58,454 bytes**,
+   an 882-byte reduction (1.49%), with exact restoration and zero coding calls.
+   Its retained planning session used **25,441 native tokens**. Current source,
+   owner/world, schema custody and cleanup checks passed. This completes the
+   input census gate; the result remains byte evidence, without complete-run
+   savings or benchmark reward. See the [live observation](terminal_metadata_census.md#actual-live-source384-census-2026-10-11).
+2. **Use current formal status capsules to prevent redundant reasoning.** Resolve
    an accepted native receipt through the supported proof-cache gate, including
    render/commit revalidation. Present property, verdict, assumptions, dependency
    digest and residual obligation. Keep proved, disproved, inconclusive,
    unsupported, error and cancelled distinct. Open Doctor work alone cannot
    produce an accepted proof card. Replace repeated status material rather than
    appending a second card.
-4. **Qualify a bounded owner lookup for progressive disclosure.** Required facts
+   This is the next implementation priority after the 1.49% live metadata
+   reduction. Inventory actual accepted receipts and repeated status populations
+   first; unsupported or absent evidence remains explicit. Qualify replacement
+   against unchanged obligations and current dependency/source digests with
+   offline refusal controls, then census the complete new input. Existing
+   conditional spectral lemmas do not certify the whole eigenvalue task or
+   qualify an unavailable/slower numerical route for benchmark execution.
+   The [source-only inventory](evidence/terminal-live-census-20261011/formal-status-next-treatment-inventory-01.json)
+   identifies `DoctorProofCacheGate.lookup`, render/commit revalidation and
+   existing proof-context digest handles. The inspected Terminal wiring lacks a
+   complete admitted proof-owner/key binding; actual accepted receipt and
+   repeated-status coverage remain unknown. Begin with a closed owner audit,
+   refuse absent bindings before opening storage, and retain the native input
+   when evidence or measured benefit is absent.
+3. **Qualify a bounded owner lookup for progressive disclosure.** Required facts
    stay inline until the model has an actual qualified expansion interface.
    Typed queries should return an exact bounded population with an explicit
    unresolved frontier, source/task bindings and counted response costs. Avoid
    model-facing arbitrary SQL and assumptions about the generic Quack gateway.
+4. **Run a separately versioned matched trial.** First census the qualified
+   treatment and retain enough measured input reduction to justify the trial.
+   Keep one planning session and one coding session, model/reasoning/resource/
+   setup budgets, original public inputs, reply schema and coding transport
+   fixed. Vary one qualified treatment alone. A fallback run does not count as
+   an observed treatment. Preserve both native administrative identities and
+   compare reviewed semantic populations. Identical controls can still produce
+   different plans. Report that distinction and require substantive native
+   input matching for an exact one-factor claim.
 5. **Use checked history deltas at decision boundaries.** Reconstruct a current
    context from an actually delivered parent plus changed facts. Bind parent,
    task, repository/tree, policy, schema and revision. Invalidate changed proof

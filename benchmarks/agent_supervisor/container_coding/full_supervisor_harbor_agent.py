@@ -273,7 +273,8 @@ class FullSupervisorAgent(BaseAgent):
                  provider_profile: str | None = None,
                  semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
                  coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
-                 semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW, **kwargs):
+                 semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+                 metadata_census_only: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         selected_provider = resolve_provider_profile(provider_profile)
         if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
@@ -283,6 +284,12 @@ class FullSupervisorAgent(BaseAgent):
             arm=arm, provider=selected_provider["provider"])
         self.semantic_metadata_view = validate_semantic_metadata_view(semantic_metadata_view,
             arm=arm, transport_schema=self.semantic_transport_schema, provider=selected_provider["provider"])
+        if type(metadata_census_only) is not bool:
+            raise ValueError("explicit Boolean metadata census selection required")
+        if metadata_census_only and (arm != "full" or self.semantic_metadata_view != "common-bindings@1"
+                or self.coding_reply_mode != "ordinary-completion@1"):
+            raise ValueError("live census requires the full common-bindings ordinary-completion route")
+        self.metadata_census_only = metadata_census_only
         if type(disable_intent_autoencoder) is not bool:
             raise ValueError("Intent ablation switch must be boolean")
         self.runtime_archive = Path(runtime_archive).resolve(strict=True)
@@ -358,8 +365,21 @@ class FullSupervisorAgent(BaseAgent):
                                 **({"isolated_uv_bootstrap": True} if task_profile is not None else {}),
                                 **({"setup_cache_selection": selection} if selection is not None else {}))
         boundary = self.logs_dir / "worker-boundary"
-        await deploy_worker_boundary(environment, output=boundary,
+        deployed_boundary = await deploy_worker_boundary(environment, output=boundary,
             **({"provider": "grok_cli"} if selected_provider["provider"] == "grok_cli" else {}))
+        if getattr(self, "metadata_census_only", False):
+            if validate_source384_binding(manifest) is None:
+                raise ValueError("live census requires current Source384 assets")
+            # This is the actual independent namespace/permission/termination
+            # qualification, protected by container root before owner use.
+            custody = self.logs_dir / "census-worker-qualification.json"
+            custody.write_text(json.dumps(deployed_boundary, sort_keys=True, allow_nan=False) + "\n")
+            target = ROOT + "/census-worker-qualification.json"
+            await environment.upload_file(custody, target)
+            protected = await environment.exec(command="chown root:root " + target + " && chmod 0444 " + target,
+                                               user="root", cwd="/", timeout_sec=5)
+            if protected.return_code:
+                raise RuntimeError("live census qualification protection failed")
         if selected_provider["provider"] == "grok_cli":
             from .terminal_grok_deployment import require_grok_credential_readiness
             await require_grok_credential_readiness(environment,
@@ -413,6 +433,8 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--coding-reply-mode", reply_mode]
         if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
             argv += ["--semantic-metadata-view", metadata_view]
+        if getattr(self, "metadata_census_only", False):
+            argv += ["--metadata-census-only"]
         task_profile = getattr(self, "task_profile", None)
         if task_profile is not None:
             from .terminal_task_profile import validate_task_profile

@@ -82,6 +82,90 @@ gate is a census at that genuine prepared input, with its model/index controls
 and planning usage receipted. A full efficacy pair is deferred until that gate;
 planning and coding remain enabled in the live benchmark.
 
+## Live planning and Source384 census route
+
+The Harbor adapter explicitly accepts `metadata_census_only=True`; the container
+driver exposes `--metadata-census-only`. This selection requires the full arm,
+current Source384 assets, original semantic `@1`, `common-bindings@1`, and the
+qualified Codex `ordinary-completion@1` reply contract. It retains fresh initial
+context construction and the normal isolated planning session through
+`llm_router`, then stops at the coding-input census before active Doctor repair,
+native implementation START, validation or coding-provider dispatch.
+
+[`terminal_live_census_provenance.py`](../../benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py)
+joins the actual planning invocation to the immutable provider pin, native
+stdin digest, requested and observed generation schema, and independent worker
+permission/namespace/termination qualification. The trusted Harbor setup
+protects that qualification with container root before owner use. The owner
+also compares the in-memory planning result with its persisted native result
+before launching the census worker.
+
+[`terminal_live_metadata_census.py`](../../benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py)
+consumes existing admitted owner state. It verifies the current Source384
+receipt/assets, initial index reuse, signed admission, pending task/contract and
+admitted world snapshot, constructs the native daemon input and preparation-only
+Doctor residual, and allocates a detached worktree under the qualified worker
+root. After the census it rechecks owner, world, sources, Git and allocation
+identities before guarded cleanup. The helper performs no planning or inference
+and cannot independently authenticate a caller's provider provenance.
+
+The isolated worker forwards both metadata flags to the existing runner. Its
+census reports model-prompt bytes including literal wrappers, suffixes and reply
+instruction. The native output schema is retained separately by digest and byte
+count; CLI system-prompt and output-schema tokens remain unmeasured.
+
+Run this observation through the owned Harbor environment's setup/run/stop
+lifecycle without a Harbor Trial or verifier. A census-success exit leaves
+`task_completed=false` and the official reward unmeasured. Preserve failed
+planning attempts, six nullable native token categories, known subtotals and
+unreceipted attempts. Cached input and reasoning output remain subsets of the
+native totals, and billing is not independently verified.
+
+## Actual live Source384 census (2026-10-11)
+
+The [closed live observation](evidence/terminal-live-census-20261011/actual-live-census-02.json)
+used fresh Source384 inference, genuine isolated router planning, native signed
+admission and the current pending-task/world context in a qualified Harbor
+container. Actual cgroup observations confirmed five CPU slots and 20 GiB.
+Source384 inference took 18.83 seconds; initial context took 23.78 seconds.
+Source384 GTE inference and the lexical retrieval index are separate selections.
+Admitted context reused the four-symbol initial index with no new embedding
+calls; the census did not replay neural inference.
+
+| Coding model prompt, including literal wrappers and reply instruction | UTF-8 bytes | Named byte-proxy units |
+| --- | ---: | ---: |
+| Original `@1` | 59,336 | 14,834 |
+| Common bindings | 58,454 | 14,614 |
+
+The view was selected with exact restoration: **882 fewer bytes (1.49%)** and
+220 fewer byte-proxy units. Four current fact rows, eight full capsules and four
+worker capsules covered two public code source groups from five signed source
+bindings. Doctor residual and public instruction remained present. The separate
+coding output schema was 215 bytes; its tokens and CLI system-prompt tokens were
+not measured by this census.
+
+One real planning session used **25,441 native tokens**: 23,707 input and 1,734
+output, including 179 reasoning-output tokens. Cached-input and cache-write
+counts were zero. All six categories were observed; cumulative usage was counted
+once, and cost/billing remained unverified. Coding-provider calls were zero.
+The retained pre-container refusal also had zero provider calls: the optional
+cache policy lacked the exact 20-GiB profile. A narrow allowlist fix passed its
+existing cache/resource/archive checks before the fresh retry.
+
+Requested and observed native planning schemas matched, the persisted owner
+planning result matched its router receipt, and current owner/world/source/task
+checks passed after census. The allocated worktree was removed, worker cleanup
+succeeded, and the exact container was independently absent twice. No benchmark
+verifier, candidate implementation, validation or task completion occurred.
+Private prompts, catalogs, provider traces, owner state and weights were excluded
+from this evidence package. The [qualification ledger](evidence/terminal-live-census-20261011/README.md)
+preserves the preparation refusal and earlier test/source transitions.
+
+This completes the genuine planned-input census gate. Its modest reduction does
+not establish complete-run token savings. The next treatment should reuse
+current formal status or qualify bounded owner lookup before spending on a new
+complete-token efficacy pair.
+
 ## Qualification and trial decision
 
 Check exact restoration, complete bounds and actual selection before a pilot.

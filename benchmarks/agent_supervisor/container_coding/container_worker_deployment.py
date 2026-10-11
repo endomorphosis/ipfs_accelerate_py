@@ -139,6 +139,8 @@ parser.add_argument('--timeout',type=int,default=90);parser.add_argument('--max-
 parser.add_argument('--purpose',choices=['planning','coding'],default='coding')
 parser.add_argument('--semantic-repository',type=pathlib.Path)
 parser.add_argument('--semantic-transport-schema',choices=['supervisor-semantic-router-input@1','supervisor-semantic-router-input@2'],default='supervisor-semantic-router-input@1')
+parser.add_argument('--semantic-metadata-view',choices=['legacy','common-bindings@1'],default='legacy')
+parser.add_argument('--semantic-metadata-census-only',action='store_true')
 parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion@1'],default='legacy')
 parser.add_argument('--doctor-candidate-artifact',type=pathlib.Path)
 parser.add_argument('--doctor-candidate-sha256')
@@ -167,6 +169,8 @@ contract_values=(args.doctor_contract_artifact,args.doctor_contract_sha256,args.
 finite_values=(args.finite_repository_artifact,args.finite_repository_sha256,args.finite_repository_task_cid)
 proof_query_values=(args.finite_proof_query_context,args.finite_proof_query_sha256,args.finite_proof_query_context_cid)
 instruction_values=(args.public_instruction_artifact,args.public_instruction_sha256,args.public_instruction_task_cid)
+if args.semantic_metadata_view!='legacy' and (args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('metadata view requires original semantic router coding')
+if args.semantic_metadata_census_only and args.semantic_metadata_view!='common-bindings@1':raise SystemExit('metadata census requires common bindings')
 if args.semantic_transport_schema!='supervisor-semantic-router-input@1' and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('controller dictionary transport requires semantic router coding')
 if args.coding_reply_mode!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('ordinary completion requires semantic Codex router coding')
 if any(finite_values) and (not all(finite_values) or any(contract_values) or any(doctor_values) or any(residual_values) or any(instruction_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact finite repository candidate invocation required')
@@ -227,6 +231,8 @@ else:
  sys.argv=[sys.argv[0],'--provider',args.provider,'--model',args.model,'--reasoning-effort',args.reasoning_effort,'--purpose',args.purpose,'--timeout',str(args.timeout),'--max-output-tokens',str(args.max_output_tokens),'--container-boundary',str(artifact),'--container-boundary-sha256',digest]
  if args.semantic_repository is not None:sys.argv+=['--semantic-repository',str(args.semantic_repository)]
  if args.semantic_transport_schema!='supervisor-semantic-router-input@1':sys.argv+=['--semantic-transport-schema',args.semantic_transport_schema]
+ if args.semantic_metadata_view!='legacy':sys.argv+=['--semantic-metadata-view',args.semantic_metadata_view]
+ if args.semantic_metadata_census_only:sys.argv+=['--semantic-metadata-census-only']
  if args.coding_reply_mode!='legacy':sys.argv+=['--coding-reply-mode',args.coding_reply_mode]
  if args.doctor_residual_artifact is not None:sys.argv+=['--doctor-residual-artifact',str(args.doctor_residual_artifact),'--doctor-residual-sha256',args.doctor_residual_sha256,'--doctor-residual-task-cid',args.doctor_residual_task_cid]
  if args.public_instruction_artifact is not None:sys.argv+=['--public-instruction-artifact',str(args.public_instruction_artifact),'--public-instruction-sha256',args.public_instruction_sha256,'--public-instruction-task-cid',args.public_instruction_task_cid]

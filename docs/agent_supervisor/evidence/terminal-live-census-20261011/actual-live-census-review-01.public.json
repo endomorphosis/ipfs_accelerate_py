@@ -1,0 +1,750 @@
+{
+  "body": {
+    "all_authority_and_savings_flags": {
+      "live_planning_provenance.completion_authority": false,
+      "live_planning_provenance.execution_authority": false,
+      "live_planning_provenance.proof_authority": false,
+      "live_planning_provenance.publication_authority": false,
+      "live_planning_provenance.settlement_authority": false,
+      "live_planning_provenance.usage.completion_authority": false,
+      "metadata_census.census.completion_authority": false,
+      "metadata_census.census.dispatch_authority": false,
+      "metadata_census.census.execution_authority": false,
+      "metadata_census.census.omission_authority": false,
+      "metadata_census.census.program_semantics_proved": false,
+      "metadata_census.census.proof_authority": false,
+      "metadata_census.census.publication_authority": false,
+      "metadata_census.census.total_token_savings_qualified": false,
+      "metadata_census.completion_authority": false,
+      "metadata_census.execution_authority": false,
+      "metadata_census.proof_authority": false,
+      "metadata_census.publication_authority": false,
+      "metadata_census.required_fact_omission_authority": false,
+      "metadata_census.settlement_authority": false,
+      "metadata_census.source_freshness_authority": false,
+      "metadata_census.total_token_savings_measured": false,
+      "metadata_census_context.completion_authority": false,
+      "metadata_census_context.execution_authority": false,
+      "metadata_census_context.proof_authority": false,
+      "metadata_census_context.publication_authority": false,
+      "metadata_census_context.required_fact_omission_authority": false,
+      "planning_usage_audit.completion_authority": false,
+      "total_token_savings_measured": false
+    },
+    "all_review_checks_passed": true,
+    "closed_actual02_boolean_flags": {
+      "agent_raw_provider_or_owner_database_body_reads": false,
+      "archive_unchanged": true,
+      "coding_dispatch_possible": false,
+      "container_stop_returned": true,
+      "declared_public_inputs_processed_by_native_owner": true,
+      "exact_container_absence_observations[0]": true,
+      "exact_container_absence_observations[1]": true,
+      "hidden_evaluator_reads": false,
+      "learned_vector_retrieval_selected": false,
+      "live_planning_provenance.actual_native_schema_observation_matched": true,
+      "live_planning_provenance.admission_verified_here": false,
+      "live_planning_provenance.completion_authority": false,
+      "live_planning_provenance.deployment_observation_authentication_performed_here": false,
+      "live_planning_provenance.execution_authority": false,
+      "live_planning_provenance.external_worker_custody_join_verified": true,
+      "live_planning_provenance.observation_only": true,
+      "live_planning_provenance.proof_authority": false,
+      "live_planning_provenance.publication_authority": false,
+      "live_planning_provenance.raw_provider_data_exported": false,
+      "live_planning_provenance.settlement_authority": false,
+      "live_planning_provenance.source_freshness_verified_here": false,
+      "live_planning_provenance.usage.all_callable_attempts_receipted": true,
+      "live_planning_provenance.usage.all_six_token_categories_complete": true,
+      "live_planning_provenance.usage.billing_total_verified": false,
+      "live_planning_provenance.usage.cache_included_in_input": true,
+      "live_planning_provenance.usage.cached_input_added_to_input": false,
+      "live_planning_provenance.usage.completion_authority": false,
+      "live_planning_provenance.usage.cumulative_records_summed": false,
+      "live_planning_provenance.usage.native_token_count_events_are_call_counts": false,
+      "live_planning_provenance.usage.native_totals_counted_once_per_invocation": true,
+      "live_planning_provenance.usage.observation_only": true,
+      "live_planning_provenance.usage.observed_complete_sessions": true,
+      "live_planning_provenance.usage.reasoning_output_added_to_output": false,
+      "llm_router_retained": true,
+      "metadata_census.census.actual_provider_tokens_measured": false,
+      "metadata_census.census.candidate_complete_within_bound": true,
+      "metadata_census.census.candidate_only": true,
+      "metadata_census.census.completion_authority": false,
+      "metadata_census.census.dispatch_authority": false,
+      "metadata_census.census.eligible_for_matched_input_comparison": true,
+      "metadata_census.census.exact_restoration_verified": true,
+      "metadata_census.census.execution_authority": false,
+      "metadata_census.census.native_complete_within_bound": true,
+      "metadata_census.census.omission_authority": false,
+      "metadata_census.census.program_semantics_proved": false,
+      "metadata_census.census.proof_authority": false,
+      "metadata_census.census.publication_authority": false,
+      "metadata_census.census.representation_only": true,
+      "metadata_census.census.selected_complete_within_bound": true,
+      "metadata_census.census.source_freshness_verified": false,
+      "metadata_census.census.total_token_savings_qualified": false,
+      "metadata_census.cli_system_prompt_measured": false,
+      "metadata_census.completion_authority": false,
+      "metadata_census.container_boundary_checked": true,
+      "metadata_census.credential_isolation_checked": true,
+      "metadata_census.current_semantic_encoder_used": true,
+      "metadata_census.doctor_residual_included": true,
+      "metadata_census.execution_authority": false,
+      "metadata_census.native_output_schema_tokens_measured": false,
+      "metadata_census.observation_only": true,
+      "metadata_census.planning_performed_by_census": false,
+      "metadata_census.proof_authority": false,
+      "metadata_census.provider_dispatch_observed": false,
+      "metadata_census.public_instruction_included": true,
+      "metadata_census.publication_authority": false,
+      "metadata_census.repository_common_dir_checked": true,
+      "metadata_census.required_fact_omission_authority": false,
+      "metadata_census.settlement_authority": false,
+      "metadata_census.source_freshness_authority": false,
+      "metadata_census.total_token_savings_measured": false,
+      "metadata_census_context.allocated_worktree_removed": true,
+      "metadata_census_context.completion_authority": false,
+      "metadata_census_context.detached_same_common_dir_checked": true,
+      "metadata_census_context.doctor_repair_execution_permitted": false,
+      "metadata_census_context.doctor_residual_included": true,
+      "metadata_census_context.execution_authority": false,
+      "metadata_census_context.existing_native_owner_state_observed": true,
+      "metadata_census_context.explicit_external_worktree_root": true,
+      "metadata_census_context.guarded_cleanup": true,
+      "metadata_census_context.hidden_evaluator_reads": false,
+      "metadata_census_context.implementation_executed": false,
+      "metadata_census_context.isolation_verified_here": false,
+      "metadata_census_context.live_llm_execution_verified_here": false,
+      "metadata_census_context.observation_only": true,
+      "metadata_census_context.official_verifier_executed": false,
+      "metadata_census_context.owner_state_created_by_census": false,
+      "metadata_census_context.planning_performed_by_census": false,
+      "metadata_census_context.post_yield_admission_task_revalidated": true,
+      "metadata_census_context.proof_authority": false,
+      "metadata_census_context.provider_response_reads": false,
+      "metadata_census_context.publication_authority": false,
+      "metadata_census_context.required_fact_omission_authority": false,
+      "metadata_census_context.retained_owner_planning_receipt_join_verified": true,
+      "metadata_census_context.solution_reads": false,
+      "metadata_census_context.source384_currentness_verified": true,
+      "metadata_census_context.source384_inference_performed_by_census": false,
+      "metadata_census_context.source384_neural_inference_replayed": false,
+      "metadata_census_context.source384_present": true,
+      "metadata_census_context.validation_executed": false,
+      "metadata_census_context.worker_writable_workspace_selected": true,
+      "metadata_census_only": true,
+      "metadata_census_succeeded": true,
+      "neural_source384_selected": true,
+      "official_verifier_executed": false,
+      "planning_retained": true,
+      "planning_usage_audit.all_callable_attempts_receipted": true,
+      "planning_usage_audit.all_six_token_categories_complete": true,
+      "planning_usage_audit.billing_total_verified": false,
+      "planning_usage_audit.cache_included_in_input": true,
+      "planning_usage_audit.cached_input_added_to_input": false,
+      "planning_usage_audit.completion_authority": false,
+      "planning_usage_audit.cumulative_records_summed": false,
+      "planning_usage_audit.native_token_count_events_are_call_counts": false,
+      "planning_usage_audit.native_totals_counted_once_per_invocation": true,
+      "planning_usage_audit.observation_only": true,
+      "planning_usage_audit.observed_complete_sessions": true,
+      "planning_usage_audit.reasoning_output_added_to_output": false,
+      "qualified": true,
+      "solution_reads": false,
+      "source384_initial_context_completed": true,
+      "source_bindings_unchanged": true,
+      "task_completed": false,
+      "total_token_savings_measured": false
+    },
+    "completion_authority": false,
+    "created_utc": "2026-10-11T00:44:40.271111+00:00",
+    "execution_authority": false,
+    "genuine_prepared_input_census_supported_by_closed_evidence": true,
+    "joined_digests": {
+      "Source384_checkpoint": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+      "Source384_config": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+      "Source384_inference": "c0f33964c0382e90a1a1c6742f243ff929d8aa1a967b0eb9ae8f25795a686907",
+      "canonical_planning_schema": "ecc5eb474f439394891392f89bd41cae86f2b9aaef4ebd2927d0c8b467a78b38",
+      "native_coding_output_schema": "4a118a8ff320f83d454399bed07f1263239bc49d2869c7b3012f02ec4d5c8e76",
+      "native_coding_prompt": "1b83a691df9bf1b0dcf001a7ca20b2022aca06ed56cc7c362276eee8d495a075",
+      "native_generation_schema": "2be832347465185e55f8e4f8202aaa9bab0eddbbae6fe5fc377cd330302612a5",
+      "planning_metadata": "b2dfbf124dca651a6af036a678433c89169a62bc8493ab0b110f4a7b51648698",
+      "worker_boundary_manifest": "9464bb1019a195c690a4c32fa42b54b79832968fe05db43d6dd5e68aa82d25f1"
+    },
+    "matched_benchmark_efficacy_qualified": false,
+    "measurement_scope": {
+      "archive_bytes_rehashed_by_reviewer": false,
+      "benchmark_source_bodies_rehashed_by_reviewer": false,
+      "cli_system_prompt_bytes_or_tokens_measured": false,
+      "coding_byte_counts": "router model prompt with literal wrappers, suffix and reply instruction",
+      "container_engine_absence_reobserved_by_reviewer": false,
+      "current_runtime24_source_bodies_rehashed_by_reviewer": true,
+      "exact_restoration_replayed_by_reviewer": false,
+      "native_census_exact_restoration_reported": true,
+      "native_output_schema_tokens_measured": false,
+      "outer_archive_unchanged_report_reviewed": true,
+      "provider_token_measurement": "actual one planning native cumulative session only; no coding session dispatched",
+      "two_outer_exact_container_absence_observations_reviewed": true
+    },
+    "metadata_only_export_review": {
+      "all_exported_digest_strings_shape_valid": true,
+      "closed_dictionary_body_key_hits": [],
+      "free_form_provider_or_failure_messages_exported": false,
+      "plaintext_native_source_or_task_cid_hits": [],
+      "private_repository_or_workspace_path_hits": [],
+      "public_task_name_and_route_control_labels_present": true,
+      "raw_identity_key_hits": [],
+      "source_and_owner_identifiers_exported_as_digests": true,
+      "source_body_marker_hits": [],
+      "system_resource_path_only": "/sys/fs/cgroup"
+    },
+    "native_schema_bytes": {
+      "canonical_planning": 4493,
+      "coding_output": 215,
+      "native_generation": 4378
+    },
+    "proof_authority": false,
+    "publication_authority": false,
+    "retained_attempt_accounting": {
+      "Source384_seconds_are_nested_in_initial_phase": true,
+      "attempt01_disposition": "pre-container setup-cache constructor refusal;0 LLM/router/container/neural dispatches",
+      "attempt01_outer_seconds": null,
+      "attempt02_disposition": "fresh Source384 initial preparation + one actual native planning session + provider-free coding-input census",
+      "attempt02_driver_phase_seconds": {
+        "context_seconds": 3.30841369391419,
+        "initial_context_seconds": 23.784707242040895,
+        "metadata_census_seconds": 16.869621069985442,
+        "planning_seconds": 41.500144688994624,
+        "prepare_seconds": 0.5222337539307773
+      },
+      "attempt02_outer_seconds": 555.3064958539326,
+      "attempt02_sum_listed_driver_phases_seconds": 85.98512044886593,
+      "attempts_retained": 2,
+      "billing_total_verified": false,
+      "coding_native_sessions": 0,
+      "complete_benchmark_token_total": null,
+      "complete_two_attempt_wall_seconds": null,
+      "known_outer_seconds_subtotal": 555.3064958539326,
+      "observed_native_llm_sessions": 1,
+      "observed_native_llm_token_total": 25441,
+      "official_reward": null,
+      "reported_dollar_cost": null,
+      "scope": "current live-census attempts01 and02 only; excludes historical transport pair/campaign",
+      "task_completed": false,
+      "total_benchmark_token_savings_measured": false
+    },
+    "review_checks": {
+      "all24_source_bindings_before_after": true,
+      "all_authority_and_savings_flags_false": true,
+      "all_native_usage_categories_and_once_semantics": true,
+      "arithmetic_exact882_bytes": true,
+      "capsules_and_source_groups": true,
+      "closed_artifacts_unchanged_during_review": true,
+      "closed_schema_and_success_scope": true,
+      "cost_remains_unknown_and_not_billing_claim": true,
+      "exact_resource_observation": true,
+      "exact_retained_owner_planning_metadata_join": true,
+      "metadata_only_export_scan": true,
+      "native_exact_restoration_selected_and_bounded": true,
+      "native_pending_prompt_bound": true,
+      "no_benchmark_reward_or_efficacy_claim": true,
+      "no_coding_dispatch_or_census_provider_call": true,
+      "planning_schema_and_external_boundary_joins": true,
+      "post_yield_owner_and_allocated_cleanup": true,
+      "private_body_read_flags_false": true,
+      "proxy_exact220_units": true,
+      "real_planning_and_router_retained": true,
+      "schema_and_system_token_scope_explicit": true,
+      "selected_current_controls": true,
+      "shared_fields_closed_counts": true,
+      "source384_initial_context_and_digest_joins": true,
+      "source_freeze03_and_archive_reports": true,
+      "zero_call_constructor_attempt_retained": true
+    },
+    "reviewed_artifacts": {
+      "actual01": {
+        "artifact": "$ARTIFACTS/actual-live-census-01.json",
+        "bytes": 1222,
+        "sha256": "286c9efa21d87c421a443f7b02bcc07f19f76b14d99b24adbe3e014fb2557006"
+      },
+      "actual02": {
+        "artifact": "$ARTIFACTS/actual-live-census-02.json",
+        "bytes": 17421,
+        "sha256": "dcc8fd05e7e1cffd9c40ae665d85653655d21f3bbd4603a58238953ec56daa00"
+      },
+      "source_freeze03": {
+        "artifact": "$ARTIFACTS/source-freeze-03.json",
+        "bytes": 5777,
+        "sha256": "c4b1ec77e81c6cc61902da03d59fe9d8b6a121a24a6eb13b994bd02abe8cc73c"
+      }
+    },
+    "reviewer_effects": {
+      "commits": 0,
+      "hidden_evaluator_or_solution_reads": 0,
+      "model_or_neural_inference_calls": 0,
+      "native_owner_runtime_invocations": 0,
+      "private_host_report_reads": 0,
+      "private_owner_database_reads": 0,
+      "prompt_or_provider_log_reads": 0,
+      "provider_calls": 0,
+      "provider_response_or_thought_body_reads": 0,
+      "source_edits": 0
+    },
+    "schema": "terminal-actual-live-census-independent-review@1",
+    "scope": "Independent consistency/accounting/privacy review of closed actual01/02 receipts and exact current24 runtime-source freeze only",
+    "selected_counts": {
+      "admissions": 4,
+      "byte_proxy_units_saved": 220,
+      "candidate_and_selected_byte_proxy_units": 14614,
+      "candidate_and_selected_complete_prompt_bytes": 58454,
+      "captured_source_bindings_and_groups": 5,
+      "census_provider_and_router_calls": 0,
+      "coding_provider_calls": 0,
+      "complete_prompt_bytes_saved": 882,
+      "complete_prompt_percent_reduction": 1.4864500471888904,
+      "exact_container_absence_observations": 2,
+      "full_capsules": 8,
+      "indexed_symbols_and_native_fact_rows": 4,
+      "original_byte_proxy_units": 14834,
+      "original_complete_prompt_bytes": 59336,
+      "planning_cache_write_input_tokens": 0,
+      "planning_cached_input_tokens_subset": 0,
+      "planning_native_input_tokens": 23707,
+      "planning_native_output_tokens": 1734,
+      "planning_native_total_tokens": 25441,
+      "planning_reasoning_output_tokens_subset": 179,
+      "planning_unique_router_invocations": 1,
+      "referenced_public_code_source_groups": 2,
+      "training_steps": 0,
+      "worker_capsules": 4
+    },
+    "source_binding_count": 24,
+    "source_bindings_current24_before_after": {
+      "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+          "bytes": 13780,
+          "sha256": "230e68980dd38dfc1e227ac18204734ec98e178ab6d0c42820738c825fc71b82"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+          "bytes": 13780,
+          "sha256": "230e68980dd38dfc1e227ac18204734ec98e178ab6d0c42820738c825fc71b82"
+        },
+        "expected": {
+          "bytes": 13780,
+          "sha256": "230e68980dd38dfc1e227ac18204734ec98e178ab6d0c42820738c825fc71b82"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+          "bytes": 28525,
+          "sha256": "9402fbf2f5e0603b3f3bc64a09987388c285b1be1ef7b72bfeee1c4ded626717"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+          "bytes": 28525,
+          "sha256": "9402fbf2f5e0603b3f3bc64a09987388c285b1be1ef7b72bfeee1c4ded626717"
+        },
+        "expected": {
+          "bytes": 28525,
+          "sha256": "9402fbf2f5e0603b3f3bc64a09987388c285b1be1ef7b72bfeee1c4ded626717"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+          "bytes": 33852,
+          "sha256": "a2c5ab68fb2c8acfdaba6e1900aa6f89b2b647311964a7dbf1068167b6d83ab7"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+          "bytes": 33852,
+          "sha256": "a2c5ab68fb2c8acfdaba6e1900aa6f89b2b647311964a7dbf1068167b6d83ab7"
+        },
+        "expected": {
+          "bytes": 33852,
+          "sha256": "a2c5ab68fb2c8acfdaba6e1900aa6f89b2b647311964a7dbf1068167b6d83ab7"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+          "bytes": 35674,
+          "sha256": "e5a054cc8482266f940802fa038e6d978c50b9a77e59bc8f4321ee815b221fe5"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+          "bytes": 35674,
+          "sha256": "e5a054cc8482266f940802fa038e6d978c50b9a77e59bc8f4321ee815b221fe5"
+        },
+        "expected": {
+          "bytes": 35674,
+          "sha256": "e5a054cc8482266f940802fa038e6d978c50b9a77e59bc8f4321ee815b221fe5"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+          "bytes": 3057,
+          "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+          "bytes": 3057,
+          "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+        },
+        "expected": {
+          "bytes": 3057,
+          "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "bytes": 75014,
+          "sha256": "58c184d08aaf47ea9eeb34f2bba8a438a1b5c2d4313a8dbf5aed865bb5dd8bb9"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "bytes": 75014,
+          "sha256": "58c184d08aaf47ea9eeb34f2bba8a438a1b5c2d4313a8dbf5aed865bb5dd8bb9"
+        },
+        "expected": {
+          "bytes": 75014,
+          "sha256": "58c184d08aaf47ea9eeb34f2bba8a438a1b5c2d4313a8dbf5aed865bb5dd8bb9"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+          "bytes": 38248,
+          "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+          "bytes": 38248,
+          "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+        },
+        "expected": {
+          "bytes": 38248,
+          "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+          "bytes": 18839,
+          "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+          "bytes": 18839,
+          "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+        },
+        "expected": {
+          "bytes": 18839,
+          "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py",
+          "bytes": 19598,
+          "sha256": "c2c009b8960674df8752ab1d7ada02b7951f845a4228fb0383913053ef905d9b"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py",
+          "bytes": 19598,
+          "sha256": "c2c009b8960674df8752ab1d7ada02b7951f845a4228fb0383913053ef905d9b"
+        },
+        "expected": {
+          "bytes": 19598,
+          "sha256": "c2c009b8960674df8752ab1d7ada02b7951f845a4228fb0383913053ef905d9b"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py",
+          "bytes": 27492,
+          "sha256": "ea94bdd0d47b193ebd0c9e78f4633ed4c0698ca863a7663efc83b0230c8810f8"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py",
+          "bytes": 27492,
+          "sha256": "ea94bdd0d47b193ebd0c9e78f4633ed4c0698ca863a7663efc83b0230c8810f8"
+        },
+        "expected": {
+          "bytes": 27492,
+          "sha256": "ea94bdd0d47b193ebd0c9e78f4633ed4c0698ca863a7663efc83b0230c8810f8"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+          "bytes": 20169,
+          "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+          "bytes": 20169,
+          "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+        },
+        "expected": {
+          "bytes": 20169,
+          "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+          "bytes": 4887,
+          "sha256": "32ecda1acc856ffda013243823e1b92b3eb4cc99588c59cc090d8aa16289ab83"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+          "bytes": 4887,
+          "sha256": "32ecda1acc856ffda013243823e1b92b3eb4cc99588c59cc090d8aa16289ab83"
+        },
+        "expected": {
+          "bytes": 4887,
+          "sha256": "32ecda1acc856ffda013243823e1b92b3eb4cc99588c59cc090d8aa16289ab83"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+          "bytes": 3257,
+          "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+          "bytes": 3257,
+          "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+        },
+        "expected": {
+          "bytes": 3257,
+          "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+          "bytes": 19493,
+          "sha256": "ac1c9e31a54be13f0492d98bbd33228e4c1d4468c38d3d7f74a0656172b3cb1b"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+          "bytes": 19493,
+          "sha256": "ac1c9e31a54be13f0492d98bbd33228e4c1d4468c38d3d7f74a0656172b3cb1b"
+        },
+        "expected": {
+          "bytes": 19493,
+          "sha256": "ac1c9e31a54be13f0492d98bbd33228e4c1d4468c38d3d7f74a0656172b3cb1b"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+          "bytes": 48931,
+          "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+          "bytes": 48931,
+          "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e"
+        },
+        "expected": {
+          "bytes": 48931,
+          "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+          "bytes": 5423,
+          "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+          "bytes": 5423,
+          "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+        },
+        "expected": {
+          "bytes": 5423,
+          "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "bytes": 41768,
+          "sha256": "0317c332e72eee4ba041e8229433244c662e485e79ae628398eae3d36d379641"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "bytes": 41768,
+          "sha256": "0317c332e72eee4ba041e8229433244c662e485e79ae628398eae3d36d379641"
+        },
+        "expected": {
+          "bytes": 41768,
+          "sha256": "0317c332e72eee4ba041e8229433244c662e485e79ae628398eae3d36d379641"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py",
+          "bytes": 10581,
+          "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py",
+          "bytes": 10581,
+          "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+        },
+        "expected": {
+          "bytes": 10581,
+          "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+          "bytes": 9585,
+          "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+          "bytes": 9585,
+          "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+        },
+        "expected": {
+          "bytes": 9585,
+          "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+          "bytes": 18633,
+          "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+          "bytes": 18633,
+          "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+        },
+        "expected": {
+          "bytes": 18633,
+          "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+          "bytes": 37780,
+          "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+          "bytes": 37780,
+          "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+        },
+        "expected": {
+          "bytes": 37780,
+          "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+          "bytes": 53490,
+          "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+          "bytes": 53490,
+          "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+        },
+        "expected": {
+          "bytes": 53490,
+          "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "ipfs_accelerate_py/cli_runtime/cli_metadata.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+          "bytes": 7870,
+          "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+          "bytes": 7870,
+          "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+        },
+        "expected": {
+          "bytes": 7870,
+          "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+        },
+        "unchanged_and_matches_freeze03": true
+      },
+      "ipfs_accelerate_py/llm_router.py": {
+        "after": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/llm_router.py",
+          "bytes": 553806,
+          "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+        },
+        "before": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/llm_router.py",
+          "bytes": 553806,
+          "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+        },
+        "expected": {
+          "bytes": 553806,
+          "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+        },
+        "unchanged_and_matches_freeze03": true
+      }
+    }
+  },
+  "historical_as_of_scope_preserved": true,
+  "local_path_aliases": [
+    "$ARTIFACTS",
+    "$DATASETS",
+    "$HARBOR_VENV",
+    "$KIT",
+    "$OWNED_WORKTREES",
+    "$SUPERVISOR",
+    "$USER_HOME",
+    "$WORKSPACE"
+  ],
+  "original_artifact": "actual-live-census-review-01.json",
+  "original_bytes": 37638,
+  "original_sha256": "4b9e209348395dfe1e97e56686c5e519703fa8f85a2ae981f8c2d966b7c34d3a",
+  "projection_scope": "local operational path substitution only; source body hashes and historical claims retained",
+  "schema": "terminal-live-census-public-metadata-projection@1"
+}

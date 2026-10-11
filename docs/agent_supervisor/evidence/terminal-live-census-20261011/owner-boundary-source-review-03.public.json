@@ -1,0 +1,285 @@
+{
+  "body": {
+    "all_requested_source_gates_closed": true,
+    "authored_cache_control_execution": {
+      "artifact_sha256": "ae2ec293be974adfdd7e7729c0135d129a6f802dc1aeced5e4688c23f310c34f",
+      "errors": 0,
+      "failures": 0,
+      "live_provider_or_inference_claim": false,
+      "skipped": 0,
+      "source_unchanged": true,
+      "tests": 19
+    },
+    "authored_controls_do_not_claim_live_llm_or_source384_execution": true,
+    "authored_driver_controls_execution_artifact": {
+      "bytes": 3224,
+      "sha256": "9bf6b887849c2d5bf27d05f467e045264a74bcf855650264de4061de2b590a04"
+    },
+    "blocking_findings": [],
+    "cache_review_gates": {
+      "archive_complete_inventory_checked_before_first_advice": true,
+      "cache_selection_remains_best_effort_page_cache_advice_only": true,
+      "credentials_not_read_hashed_or_serialized": true,
+      "existing_uid_gid_mode_nlink_nofollow_hash_and_replacement_guards_unchanged": true,
+      "explicit_selection_retained": true,
+      "full_arm_codex_aarch64_and_auth_metadata_guards_unchanged": true,
+      "isolated_shipped_helper_transport_and_code_hash_guards_unchanged": true,
+      "native_binary_population_remains_four_files": true,
+      "native_library_population_remains_131_fixed_rows": true,
+      "native_resource_observation_requires_exact_five_cpu_and_20480_mib": true,
+      "no_advice_target_population_or_file_body_change": true,
+      "no_global_drop_caches_cgroup_writes_admission_or_freed_byte_authority_added": true,
+      "other_profiles_do_not_become_cache_eligible": true,
+      "prerequisite_and_apply_share_closed_profile_allowlist": true,
+      "resource_observation_remains_required_before_cache_completed_and_agent_inference": true
+    },
+    "cache_source_change": {
+      "archive_current_source_gate_includes_cache_advice_once": true,
+      "archive_source_gate_population": 24,
+      "default_profile_preserved": true,
+      "only_cache_ast_change_is_exact_profile_addition": true,
+      "resource_profiles_after": [
+        "source384-5cpu-12gib@1",
+        "source384-5cpu-16gib-extended@1",
+        "source384-5cpu-20gib-planner180@1"
+      ],
+      "resource_profiles_before": [
+        "source384-5cpu-12gib@1",
+        "source384-5cpu-16gib-extended@1"
+      ],
+      "unchanged_fixed_policy_source_bindings": {
+        "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py": {
+          "bytes": 5374,
+          "sha256": "d90a0db3447bee7a746a6a21cdef21fb4ec667ee116161d91c12314e09c29f5d",
+          "unchanged_from_source_head": true
+        },
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py": {
+          "bytes": 13468,
+          "sha256": "2d56d853ae03a7fc80e774ae85b9c0deb3c46c1546f4b00ead688d235857ec8c",
+          "unchanged_from_source_head": true
+        },
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py": {
+          "bytes": 9360,
+          "sha256": "d49ffb33340c18b2167e060ad82e455e797eb1e7ee4ecf024d5e1ad4d7e7b93e",
+          "unchanged_from_source_head": true
+        },
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_libraries.py": {
+          "bytes": 41857,
+          "sha256": "226e507598f03aa8e95c960eaadcc2260b9e5a356f7d4c7be8c922df857f158e",
+          "unchanged_from_source_head": true
+        },
+        "benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py": {
+          "bytes": 17378,
+          "sha256": "92cecab09e40557ffc29e2a4708177bd4459328bb74144228a886fce0357da1d",
+          "unchanged_from_source_head": true
+        }
+      }
+    },
+    "completion_authority": false,
+    "container_executed_by_review": false,
+    "credential_body_inspected": false,
+    "current_resource_observation_required_for_actual_retry": true,
+    "dependency_heads": {
+      "$DATASETS": "5c69724316a3365bdb22023ba5608fced96d568a",
+      "$KIT": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "$SUPERVISOR": "036ce8679b8f9d926ed0ac95dc03743673a4fb16"
+    },
+    "dependency_heads_match_freeze": true,
+    "embedded_script_bindings": {
+      "OWNER_ENTRY": {
+        "bytes": 3180,
+        "sha256": "84e18ad672bc3127efa56b42ee8f39dec7077f0b0b7a57dcab7b3f83cbc31129"
+      },
+      "OWNER_MONITOR": {
+        "bytes": 1042,
+        "sha256": "5f01ba0307ba76c020051ac14276ab61bea1bf01b377898c1ee5a5e9717a8c51"
+      },
+      "VALIDATION_ENTRY": {
+        "bytes": 1383,
+        "sha256": "3e557fe3ff22c0d7ee0675d277b403a569d373c15677f07932339a27650528cd"
+      },
+      "WORKER_ENTRY": {
+        "bytes": 14331,
+        "sha256": "05e3570cd59131685724444c103e16304bb16f5a61813e68f48b9b0620170479"
+      }
+    },
+    "evaluator_body_inspected": false,
+    "execution_authority": false,
+    "existing_cache_policy_regressions_must_pass_before_actual_retry": true,
+    "external_harbor_evaluator_suppression_independently_reviewed": false,
+    "external_harness_policy_basis": "Parent reports direct task setup/run/stop with verification disabled; private orchestration body intentionally excluded from this source review.",
+    "gates": {
+      "actual_router_execution_and_native_schema_custody_joined": true,
+      "admitted_current_world_checked_before_and_after_census": true,
+      "census_returns_before_active_doctor_native_runtime_validation_and_coding": true,
+      "detached_common_directory_head_sources_and_owner_rechecked": true,
+      "failed_git_removal_cannot_trigger_recursive_delete_or_global_prune": true,
+      "model_prompt_measurement_excludes_unmeasured_cli_system_prompt": true,
+      "native_reply_schema_bytes_and_hash_are_observed_without_token_claim": true,
+      "normal_live_planning_and_llm_router_retained": true,
+      "outer_and_retained_owner_planning_metadata_explicitly_joined_before_worker_launch": true,
+      "preparation_only_doctor_residual_repair_candidate_refused": true,
+      "private_prompt_streamed_by_owner_without_state_path_or_authority": true,
+      "root_protected_independent_worker_qualification_required": true,
+      "runner_census_returns_before_provider_discovery_allocation_and_generation": true,
+      "source384_initial_context_precedes_normal_isolated_planning": true,
+      "success_report_published_after_owner_recheck_and_cleanup": true,
+      "usage_counted_once_per_invocation_with_incomplete_categories_null": true,
+      "worker_entry_forwards_view_census_and_reply_modes_to_existing_router": true,
+      "worker_worktree_parent_and_exact_native_modes_guarded": true
+    },
+    "historical_attempt01": {
+      "artifact_sha256": "286c9efa21d87c421a443f7b02bcc07f19f76b14d99b24adbe3e014fb2557006",
+      "constructor_prerequisite_refusal_observed": true,
+      "container_start_attempts": 0,
+      "neural_inference_calls": 0,
+      "provider_calls": 0,
+      "router_calls": 0
+    },
+    "inference_performed_by_review": false,
+    "live_planning_observed_by_review": false,
+    "native_20gib_resource_observation_completed_by_review": false,
+    "native_current_d_integration_claimed_by_review": false,
+    "observed_utc": "2026-10-11T00:29:19.419836+00:00",
+    "previous_source_review_sha256": "d3246aee0fe959f12baf633f27efb452f2f5d2fc6454ba1e5b785580a75d05ea",
+    "private_orchestration_body_inspected": false,
+    "proof_authority": false,
+    "provider_response_body_inspected": false,
+    "providers_called_by_review": 0,
+    "publication_authority": false,
+    "real_source384_run_certified_by_review": false,
+    "resolved_findings": [
+      {
+        "code": "planning_metadata_join_missing",
+        "resolution": "Driver compares retained owner planning metadata to the exact helper canonical identity of the same outer live-planning mapping before worker launch and records the successful join after equality."
+      },
+      {
+        "code": "optional_cache_prerequisite_excluded_selected_20gib_profile",
+        "resolution": "Add only the exact existing planner180 20-GiB profile to both shared cache gates; retain all public population, filesystem, hash, transport, native resource, and no-authority controls."
+      }
+    ],
+    "review_scope": "static-native-source-wiring-only",
+    "review_stage": "post-explicit-20gib-planner180-cache-profile-fix",
+    "reviewer": "live_census_owner_boundary",
+    "runtime_execution_performed_by_review": false,
+    "schema": "terminal-live-census-owner-boundary-source-review@1",
+    "source_bindings": {
+      "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": {
+        "bytes": 13780,
+        "sha256": "230e68980dd38dfc1e227ac18204734ec98e178ab6d0c42820738c825fc71b82"
+      },
+      "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": {
+        "bytes": 28525,
+        "sha256": "9402fbf2f5e0603b3f3bc64a09987388c285b1be1ef7b72bfeee1c4ded626717"
+      },
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": {
+        "bytes": 33852,
+        "sha256": "a2c5ab68fb2c8acfdaba6e1900aa6f89b2b647311964a7dbf1068167b6d83ab7"
+      },
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": {
+        "bytes": 35674,
+        "sha256": "e5a054cc8482266f940802fa038e6d978c50b9a77e59bc8f4321ee815b221fe5"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py": {
+        "bytes": 3057,
+        "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+        "bytes": 75014,
+        "sha256": "58c184d08aaf47ea9eeb34f2bba8a438a1b5c2d4313a8dbf5aed865bb5dd8bb9"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+        "bytes": 38248,
+        "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+        "bytes": 18839,
+        "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py": {
+        "bytes": 19598,
+        "sha256": "c2c009b8960674df8752ab1d7ada02b7951f845a4228fb0383913053ef905d9b"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": {
+        "bytes": 27492,
+        "sha256": "ea94bdd0d47b193ebd0c9e78f4633ed4c0698ca863a7663efc83b0230c8810f8"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py": {
+        "bytes": 20169,
+        "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py": {
+        "bytes": 4887,
+        "sha256": "32ecda1acc856ffda013243823e1b92b3eb4cc99588c59cc090d8aa16289ab83"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py": {
+        "bytes": 3257,
+        "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": {
+        "bytes": 19493,
+        "sha256": "ac1c9e31a54be13f0492d98bbd33228e4c1d4468c38d3d7f74a0656172b3cb1b"
+      },
+      "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py": {
+        "bytes": 48931,
+        "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py": {
+        "bytes": 5423,
+        "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+        "bytes": 41768,
+        "sha256": "0317c332e72eee4ba041e8229433244c662e485e79ae628398eae3d36d379641"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py": {
+        "bytes": 10581,
+        "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py": {
+        "bytes": 9585,
+        "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": {
+        "bytes": 18633,
+        "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": {
+        "bytes": 37780,
+        "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py": {
+        "bytes": 53490,
+        "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+      },
+      "ipfs_accelerate_py/cli_runtime/cli_metadata.py": {
+        "bytes": 7870,
+        "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+      },
+      "ipfs_accelerate_py/llm_router.py": {
+        "bytes": 553806,
+        "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+      }
+    },
+    "source_bindings_match_freeze": true,
+    "source_freeze_sha256": "c4b1ec77e81c6cc61902da03d59fe9d8b6a121a24a6eb13b994bd02abe8cc73c",
+    "source_review_allows_an_actual_attempt_only_with_runtime_checks_preserved": true,
+    "token_savings_qualified": false
+  },
+  "historical_as_of_scope_preserved": true,
+  "local_path_aliases": [
+    "$ARTIFACTS",
+    "$DATASETS",
+    "$HARBOR_VENV",
+    "$KIT",
+    "$OWNED_WORKTREES",
+    "$SUPERVISOR",
+    "$USER_HOME",
+    "$WORKSPACE"
+  ],
+  "original_artifact": "owner-boundary-source-review-03.json",
+  "original_bytes": 13112,
+  "original_sha256": "1c7217e27af87f8250d44d12c3d4043a8367d7401821c755185d07235860e6a9",
+  "projection_scope": "local operational path substitution only; source body hashes and historical claims retained",
+  "schema": "terminal-live-census-public-metadata-projection@1"
+}

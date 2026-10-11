@@ -1,0 +1,31 @@
+{
+  "archive_sha256": "86a399bc9a1c23049aa3dca8f91f38d8e6b296c13f89e1264a378a0c6ce0d9cb",
+  "attempt_id": "01",
+  "constructor_prerequisite_refusal_observed": true,
+  "container_start_attempts": 0,
+  "hidden_evaluator_reads": false,
+  "neural_inference_calls": 0,
+  "observed_utc": "2026-10-11T00:26:28.808885+00:00",
+  "official_reward": null,
+  "official_verifier_executed": false,
+  "outer_failure": {
+    "error_type": "ValueError",
+    "phase": "setup_cache_prerequisites",
+    "reason_code": "resource_profile_not_in_setup_cache_allowlist"
+  },
+  "planning_usage_audit": null,
+  "provider_calls": 0,
+  "qualified": false,
+  "raw_private_log_exported": false,
+  "resource_profile": "source384-5cpu-20gib-planner180@1",
+  "router_calls": 0,
+  "schema": "terminal-actual-live-planned-census@1",
+  "scope": "private-native-agent-construction-pre-container",
+  "setup_cache_policy": "source384-native-aarch64-dontneed@2",
+  "solution_reads": false,
+  "source_freeze_sha256": "36f4bfc8717d95888a44bf122a4c77085bbe82b333f63c0c36a036d75d986028",
+  "task_completed": false,
+  "total_token_savings_measured": false,
+  "trace_sha256": "c1dce6f4b974a00433c9806b8f0a9ab135e4746e207a39c517eff74f334e89f0",
+  "training_steps": 0
+}

@@ -1,0 +1,65 @@
+{
+  "actual_helper_body_in_AST_closure": true,
+  "artifacts": {
+    "final-native-tests-05.log": {
+      "bytes": 192,
+      "sha256": "fcd2fd62f86284b93b9a7fc07cdd2e3ddd623c04c45a6ca5026a1055a8e13b40"
+    },
+    "final-native-tests-05.xml": {
+      "bytes": 26733,
+      "sha256": "4d361c7510529f9f63ebd4020c5dcc4c6a5879d5d5c28f7096c5836590e7c2d4"
+    },
+    "integration-02-controlled-interruption.json": {
+      "bytes": 465,
+      "sha256": "15bdb9a0bfb2d5be0626de981c702a9bd17a55146a8e36748e2948db172de937"
+    },
+    "test-qualification-02.json": {
+      "bytes": 54054,
+      "sha256": "53ef9ace3ecdb1f113c75ee3e024c5bc75f4e8d8820f1dbc34b088632b37d6a2"
+    }
+  },
+  "completion_authority_seals": 0,
+  "counts_overlap_prior_suites": true,
+  "default_deployment_global_metadata_configuration_matched": true,
+  "errors": 0,
+  "failures": 0,
+  "inference_calls": 0,
+  "junit_seconds": 244.588,
+  "mandatory_AST_plugin": "ipfs_accelerate_py.testing.pytest_ast_seal",
+  "native_local_context_and_projection_unchanged": true,
+  "optional_global_metadata_mirror_selected": false,
+  "passing_source_seals": 138,
+  "provider_calls": 0,
+  "schema": "terminal-live-census-final-native-qualification@1",
+  "scope": "authored_control_and_native_owner_fixture_tests_default_deployment_environment",
+  "seal_database_fresh": true,
+  "skipped": 0,
+  "source_catalog_current_freeze_intersection": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": true,
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": true,
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": true,
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": true,
+    "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py": true,
+    "ipfs_accelerate_py/cli_runtime/cli_metadata.py": true,
+    "ipfs_accelerate_py/llm_router.py": true
+  },
+  "source_freeze_sha256": "c4b1ec77e81c6cc61902da03d59fe9d8b6a121a24a6eb13b994bd02abe8cc73c",
+  "test_count": 138,
+  "training_steps": 0
+}

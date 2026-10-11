@@ -1,0 +1,1152 @@
+{
+  "body": {
+    "catalog_intersection_is_not_full_suite_source_coverage": true,
+    "combined_passed_count": null,
+    "completed_native_runs": [
+      {
+        "cached_cases_claimed_as_executed": false,
+        "counts": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 194
+        },
+        "execution_command": {
+          "argv": [
+            "$HARBOR_VENV/bin/python",
+            "-m",
+            "pytest",
+            "-o",
+            "addopts=",
+            "-o",
+            "log_cli=false",
+            "-p",
+            "ipfs_accelerate_py.testing.pytest_ast_seal",
+            "--junitxml=$ARTIFACTS/final-tests-03.xml",
+            "-q",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_policy.py",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py",
+            "test/api/test_semantic_metadata_census_dispatch.py"
+          ],
+          "cwd": "$SUPERVISOR",
+          "exit_code": 0,
+          "exit_code_provenance": "parent reports completed root exec tool return0; independently supported by zero-error/failure JUnit and native passing seals",
+          "fresh_catalog_declared_by_executor": true,
+          "freshness_before_open_independently_captured_here": false,
+          "known_environment_overrides": {
+            "IPFS_ACCELERATE_META_INDEX_DUCKDB": "$ARTIFACTS/final-meta-03.duckdb",
+            "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "$ARTIFACTS/final-seal-03.duckdb",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            "PYTHONPATH": "$SUPERVISOR:$DATASETS:$KIT:$USER_HOME/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages"
+          },
+          "native_plugin_explicit_in_issued_command": true,
+          "other_environment_overrides": "not reconstructed here",
+          "record_provenance": "parent-reconstructed actual issued root tool command; not independently program-captured",
+          "source_before_after_program_capture_available": false
+        },
+        "fresh_native_catalog_declared_by_executor": true,
+        "junit": {
+          "artifact": "$ARTIFACTS/final-tests-03.xml",
+          "bytes": 40355,
+          "sha256": "4f6062b3bc4f4242013df918fbfeca58a939efa7c7b4c4013ad75514db5d816b"
+        },
+        "junit_recorded_suite_timestamps": [
+          "2026-10-11T00:18:55.851584+00:00"
+        ],
+        "junit_seconds": 145.289,
+        "label": "driver_and_runner_final_03",
+        "live_execution_established": false,
+        "log": {
+          "artifact": "$ARTIFACTS/final-tests-03.log",
+          "bytes": 272,
+          "sha256": "7733620c3cc64401df646d1aa730b16bf54b505add440e894e2e28f853cadd54"
+        },
+        "native_ast_plugin_qualified": true,
+        "native_ast_seal": {
+          "aggregate_queries_only": true,
+          "closure_file_count_max": 1096,
+          "closure_file_count_min": 2,
+          "completion_authority_true_seals": 0,
+          "current_freeze03": {
+            "binding_count": 24,
+            "catalog_intersection": 23,
+            "different_content_hashes": 2,
+            "matching_content_hashes": 21
+          },
+          "database": {
+            "artifact": "$ARTIFACTS/final-seal-03.duckdb",
+            "bytes": 1323008,
+            "sha256": "30952fcfa74a950f3d8ab2e7888a0ecb516e5ee5a7635a823640f8744533c0f5"
+          },
+          "distinct_closure_seals": 6,
+          "file_hash_catalog_rows": 1105,
+          "passing_test_seals": 194,
+          "recorded_at_max": "2026-10-11T00:21:21.126074+00:00",
+          "recorded_at_min": "2026-10-11T00:19:42.651379+00:00",
+          "run_stage": {
+            "binding_count": 23,
+            "catalog_intersection": 22,
+            "different_content_hashes": 0,
+            "matching_content_hashes": 22
+          }
+        },
+        "neural_inference_calls": 0,
+        "passed": 194,
+        "passing_seal_count_matches_actual_passed_cases": true,
+        "provider_calls": 0,
+        "seals_grant_completion_authority": false,
+        "source_stage": {
+          "artifact": "$ARTIFACTS/source-freeze-02.json",
+          "bytes": 5467,
+          "sha256": "36f4bfc8717d95888a44bf122a4c77085bbe82b333f63c0c36a036d75d986028"
+        },
+        "training_steps": 0,
+        "wall_seconds_provenance": "rounded parent tool wall-time report; separate from JUnit suite time",
+        "wall_seconds_reported_by_parent": 145.48
+      },
+      {
+        "cached_cases_claimed_as_executed": false,
+        "counts": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 192
+        },
+        "execution_command": {
+          "argv": [
+            "$HARBOR_VENV/bin/python",
+            "-m",
+            "pytest",
+            "-o",
+            "addopts=",
+            "-o",
+            "log_cli=false",
+            "-p",
+            "ipfs_accelerate_py.testing.pytest_ast_seal",
+            "--junitxml=$ARTIFACTS/cache-integration-tests-04.xml",
+            "-q",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py",
+            "benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_cache_profile.py",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py",
+            "benchmarks/agent_supervisor/container_coding/test_memory20_resource_profile.py"
+          ],
+          "cwd": "$SUPERVISOR",
+          "exit_code": 0,
+          "exit_code_provenance": "parent reports completed root exec tool return0; independently supported by zero-error/failure JUnit and native passing seals",
+          "fresh_catalog_declared_by_executor": true,
+          "freshness_before_open_independently_captured_here": false,
+          "known_environment_overrides": {
+            "IPFS_ACCELERATE_META_INDEX_DUCKDB": "$ARTIFACTS/cache-integration-meta-04.duckdb",
+            "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "$ARTIFACTS/cache-integration-seal-04.duckdb",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            "PYTHONPATH": "$SUPERVISOR:$DATASETS:$KIT:$USER_HOME/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages"
+          },
+          "native_plugin_explicit_in_issued_command": true,
+          "other_environment_overrides": "not reconstructed here",
+          "record_provenance": "parent-reconstructed actual issued root tool command; not independently program-captured",
+          "source_before_after_program_capture_available": false
+        },
+        "fresh_native_catalog_declared_by_executor": true,
+        "junit": {
+          "artifact": "$ARTIFACTS/cache-integration-tests-04.xml",
+          "bytes": 40443,
+          "sha256": "92cb9b2dd3c7336c264a9e589fdc0b19912cca7d477e0fe720bb27900d8c7db5"
+        },
+        "junit_recorded_suite_timestamps": [
+          "2026-10-11T00:27:19.603336+00:00"
+        ],
+        "junit_seconds": 50.282,
+        "label": "cache_and_archive_final_04",
+        "live_execution_established": false,
+        "log": {
+          "artifact": "$ARTIFACTS/cache-integration-tests-04.log",
+          "bytes": 891,
+          "sha256": "61a5322cd35a7c4d3ad0d5f479c31a2301e0b33437ab36384574b8284ae803bc"
+        },
+        "native_ast_plugin_qualified": true,
+        "native_ast_seal": {
+          "aggregate_queries_only": true,
+          "closure_file_count_max": 1063,
+          "closure_file_count_min": 2,
+          "completion_authority_true_seals": 0,
+          "current_freeze03": {
+            "binding_count": 24,
+            "catalog_intersection": 17,
+            "different_content_hashes": 0,
+            "matching_content_hashes": 17
+          },
+          "database": {
+            "artifact": "$ARTIFACTS/cache-integration-seal-04.duckdb",
+            "bytes": 1323008,
+            "sha256": "5db678c117a46f21bd182662033a32414a6da33d15ac611576b4bae356758e8a"
+          },
+          "distinct_closure_seals": 5,
+          "file_hash_catalog_rows": 1067,
+          "passing_test_seals": 192,
+          "recorded_at_max": "2026-10-11T00:28:09.873718+00:00",
+          "recorded_at_min": "2026-10-11T00:28:02.313841+00:00",
+          "run_stage": {
+            "binding_count": 24,
+            "catalog_intersection": 17,
+            "different_content_hashes": 0,
+            "matching_content_hashes": 17
+          }
+        },
+        "neural_inference_calls": 0,
+        "passed": 192,
+        "passing_seal_count_matches_actual_passed_cases": true,
+        "provider_calls": 0,
+        "seals_grant_completion_authority": false,
+        "source_stage": {
+          "artifact": "$ARTIFACTS/source-freeze-03.json",
+          "bytes": 5777,
+          "sha256": "c4b1ec77e81c6cc61902da03d59fe9d8b6a121a24a6eb13b994bd02abe8cc73c"
+        },
+        "training_steps": 0,
+        "wall_seconds_provenance": "rounded parent tool wall-time report; separate from JUnit suite time",
+        "wall_seconds_reported_by_parent": 50.51
+      },
+      {
+        "cached_cases_claimed_as_executed": false,
+        "counts": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 31
+        },
+        "execution_command": {
+          "argv": [
+            "$HARBOR_VENV/bin/python",
+            "-m",
+            "pytest",
+            "-o",
+            "addopts=",
+            "-o",
+            "log_cli=false",
+            "-p",
+            "ipfs_accelerate_py.testing.pytest_ast_seal",
+            "--junitxml=$ARTIFACTS/provenance-native-tests-04.xml",
+            "-q",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_provenance.py"
+          ],
+          "cwd": "$SUPERVISOR",
+          "exit_code": 0,
+          "exit_code_provenance": "parent reports completed root exec tool return0; independently supported by zero-error/failure JUnit and native passing seals",
+          "fresh_catalog_declared_by_executor": true,
+          "freshness_before_open_independently_captured_here": false,
+          "known_environment_overrides": {
+            "IPFS_ACCELERATE_META_INDEX_DUCKDB": "$ARTIFACTS/provenance-native-meta-04.duckdb",
+            "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "$ARTIFACTS/provenance-native-seal-04.duckdb",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            "PYTHONPATH": "$SUPERVISOR:$DATASETS:$USER_HOME/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages"
+          },
+          "native_plugin_explicit_in_issued_command": true,
+          "other_environment_overrides": "not reconstructed here",
+          "record_provenance": "parent-reconstructed actual issued root tool command; not independently program-captured",
+          "source_before_after_program_capture_available": false
+        },
+        "fresh_native_catalog_declared_by_executor": true,
+        "junit": {
+          "artifact": "$ARTIFACTS/provenance-native-tests-04.xml",
+          "bytes": 5999,
+          "sha256": "1ca469918ebf20e9094d472af023c58c27565c66c1a70e14463c97a72e6c3e8f"
+        },
+        "junit_recorded_suite_timestamps": [
+          "2026-10-11T00:30:37.741418+00:00"
+        ],
+        "junit_seconds": 19.051,
+        "label": "provenance_native_final_04",
+        "live_execution_established": false,
+        "log": {
+          "artifact": "$ARTIFACTS/provenance-native-tests-04.log",
+          "bytes": 100,
+          "sha256": "75691ad6ab8fd8b5de425b34a6e4ee0d67f1e0d87afe0d5ad93f6c50c14c3d2f"
+        },
+        "native_ast_plugin_qualified": true,
+        "native_ast_seal": {
+          "aggregate_queries_only": true,
+          "closure_file_count_max": 1054,
+          "closure_file_count_min": 1054,
+          "completion_authority_true_seals": 0,
+          "current_direct_body_observations": {
+            "terminal_live_census_provenance.py": {
+              "catalog_rows": 1,
+              "matching_current_hashes": 1
+            },
+            "test_terminal_live_census_provenance.py": {
+              "catalog_rows": 1,
+              "matching_current_hashes": 1
+            }
+          },
+          "current_freeze03": {
+            "binding_count": 24,
+            "catalog_intersection": 17,
+            "different_content_hashes": 0,
+            "matching_content_hashes": 17
+          },
+          "database": {
+            "artifact": "$ARTIFACTS/provenance-native-seal-04.duckdb",
+            "bytes": 1323008,
+            "sha256": "5298baf225a34114b6ca5b22dab31ca171adb1c16d18b41bdb98d0bcfe333268"
+          },
+          "distinct_closure_seals": 1,
+          "file_hash_catalog_rows": 1054,
+          "passing_test_seals": 31,
+          "recorded_at_max": "2026-10-11T00:30:56.783840+00:00",
+          "recorded_at_min": "2026-10-11T00:30:56.466945+00:00",
+          "run_stage": {
+            "binding_count": 24,
+            "catalog_intersection": 17,
+            "different_content_hashes": 0,
+            "matching_content_hashes": 17
+          }
+        },
+        "neural_inference_calls": 0,
+        "passed": 31,
+        "passing_seal_count_matches_actual_passed_cases": true,
+        "provider_calls": 0,
+        "seals_grant_completion_authority": false,
+        "source_stage": {
+          "artifact": "$ARTIFACTS/source-freeze-03.json",
+          "bytes": 5777,
+          "sha256": "c4b1ec77e81c6cc61902da03d59fe9d8b6a121a24a6eb13b994bd02abe8cc73c"
+        },
+        "training_steps": 0,
+        "wall_seconds_provenance": "rounded parent tool wall-time report; separate from JUnit suite time",
+        "wall_seconds_reported_by_parent": 19.51
+      },
+      {
+        "cached_cases_claimed_as_executed": false,
+        "counts": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 38
+        },
+        "execution_command": {
+          "argv": [
+            "$HARBOR_VENV/bin/python",
+            "-B",
+            "-m",
+            "pytest",
+            "-q",
+            "-o",
+            "addopts=",
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "ipfs_accelerate_py.testing.pytest_ast_seal",
+            "--tb=short",
+            "--junitxml=$ARTIFACTS/driver-census-controls-03.xml",
+            "--basetemp=$ARTIFACTS/driver-census-controls-03-fixtures",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py"
+          ],
+          "command_receipt": {
+            "artifact": "$ARTIFACTS/driver-census-controls-03-command.json",
+            "bytes": 3180,
+            "sha256": "1e430bf83ed8c2f055b923b777ce0e0fd3302bb26f8580bb9a0c7bc7d62d19fb"
+          },
+          "cwd": "$SUPERVISOR",
+          "environment_overrides": {
+            "HF_HUB_OFFLINE": "1",
+            "IPFS_ACCELERATE_META_INDEX_DUCKDB": "$ARTIFACTS/driver-census-controls-03-meta.duckdb",
+            "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+            "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "$ARTIFACTS/driver-census-controls-03.duckdb",
+            "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "$ARTIFACTS/driver-census-controls-03-resources.json",
+            "MKL_NUM_THREADS": "1",
+            "OMP_NUM_THREADS": "1",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONHASHSEED": "0",
+            "PYTHONPATH": "$SUPERVISOR:$DATASETS:$KIT:$HARBOR_VENV/lib/python3.12/site-packages:$USER_HOME/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+            "TRANSFORMERS_OFFLINE": "1"
+          },
+          "execution_receipt": {
+            "artifact": "$ARTIFACTS/driver-census-controls-03-execution.json",
+            "bytes": 3224,
+            "sha256": "9bf6b887849c2d5bf27d05f467e045264a74bcf855650264de4061de2b590a04"
+          },
+          "exit_code": 0,
+          "native_plugin_explicit_in_issued_command": true,
+          "record_provenance": "program-captured retained command and execution receipts",
+          "sources_after": {
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "9402fbf2f5e0603b3f3bc64a09987388c285b1be1ef7b72bfeee1c4ded626717",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "e5a054cc8482266f940802fa038e6d978c50b9a77e59bc8f4321ee815b221fe5",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "58c184d08aaf47ea9eeb34f2bba8a438a1b5c2d4313a8dbf5aed865bb5dd8bb9",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py": "c2c009b8960674df8752ab1d7ada02b7951f845a4228fb0383913053ef905d9b",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": "ea94bdd0d47b193ebd0c9e78f4633ed4c0698ca863a7663efc83b0230c8810f8",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py": "73895ad45a85504d1c0ac3e46d68889fb41c53bbeb74b44166d8516f73d1d251"
+          },
+          "sources_before": {
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "9402fbf2f5e0603b3f3bc64a09987388c285b1be1ef7b72bfeee1c4ded626717",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "e5a054cc8482266f940802fa038e6d978c50b9a77e59bc8f4321ee815b221fe5",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "58c184d08aaf47ea9eeb34f2bba8a438a1b5c2d4313a8dbf5aed865bb5dd8bb9",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py": "c2c009b8960674df8752ab1d7ada02b7951f845a4228fb0383913053ef905d9b",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": "ea94bdd0d47b193ebd0c9e78f4633ed4c0698ca863a7663efc83b0230c8810f8",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py": "73895ad45a85504d1c0ac3e46d68889fb41c53bbeb74b44166d8516f73d1d251"
+          },
+          "sources_unchanged": true
+        },
+        "fresh_native_catalog_declared_by_executor": true,
+        "junit": {
+          "artifact": "$ARTIFACTS/driver-census-controls-03.xml",
+          "bytes": 7803,
+          "sha256": "0cc7c09a1f78879eed6f13434c12db4a83aaa1b34ce93f2995c2ebff1a4ee103"
+        },
+        "junit_recorded_suite_timestamps": [
+          "2026-10-11T00:17:45.634982+00:00"
+        ],
+        "junit_seconds": 15.941,
+        "label": "independent_driver_final_03",
+        "live_execution_established": false,
+        "log": {
+          "artifact": "$ARTIFACTS/driver-census-controls-03.log",
+          "bytes": 7610,
+          "sha256": "90057064c927103970c7554703428df0a1ad0e0fc1bb790894f82cbcbcc8c000"
+        },
+        "native_ast_plugin_qualified": true,
+        "native_ast_seal": {
+          "aggregate_queries_only": true,
+          "closure_file_count_max": 1053,
+          "closure_file_count_min": 1053,
+          "completion_authority_true_seals": 0,
+          "current_freeze03": {
+            "binding_count": 24,
+            "catalog_intersection": 16,
+            "different_content_hashes": 2,
+            "matching_content_hashes": 14
+          },
+          "database": {
+            "artifact": "$ARTIFACTS/driver-census-controls-03.duckdb",
+            "bytes": 1323008,
+            "sha256": "cab4714096cd3f0c0fd6bf17d759c986ddf34f968482124da17e606543714eac"
+          },
+          "distinct_closure_seals": 1,
+          "file_hash_catalog_rows": 1053,
+          "passing_test_seals": 38,
+          "recorded_at_max": "2026-10-11T00:18:01.570349+00:00",
+          "recorded_at_min": "2026-10-11T00:18:01.295000+00:00",
+          "run_stage": {
+            "binding_count": 23,
+            "catalog_intersection": 15,
+            "different_content_hashes": 0,
+            "matching_content_hashes": 15
+          }
+        },
+        "neural_inference_calls": 0,
+        "passed": 38,
+        "passing_seal_count_matches_actual_passed_cases": true,
+        "provider_calls": 0,
+        "seals_grant_completion_authority": false,
+        "source_stage": {
+          "artifact": "$ARTIFACTS/source-freeze-02.json",
+          "bytes": 5467,
+          "sha256": "36f4bfc8717d95888a44bf122a4c77085bbe82b333f63c0c36a036d75d986028"
+        },
+        "training_steps": 0,
+        "wall_seconds_program_captured": 16.609564924961887
+      },
+      {
+        "cached_cases_claimed_as_executed": false,
+        "counts": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 19
+        },
+        "execution_command": {
+          "argv": [
+            "$HARBOR_VENV/bin/python",
+            "-B",
+            "-m",
+            "pytest",
+            "-q",
+            "-o",
+            "addopts=",
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "ipfs_accelerate_py.testing.pytest_ast_seal",
+            "--tb=short",
+            "--junitxml=$ARTIFACTS/cache-profile-controls-01.xml",
+            "--basetemp=$ARTIFACTS/cache-profile-controls-01-fixtures",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_cache_profile.py"
+          ],
+          "command_receipt": {
+            "artifact": "$ARTIFACTS/cache-profile-controls-01-command.json",
+            "bytes": 2317,
+            "sha256": "e8681dfb66b2d74e81878a91acfec93e4106fac1d3ef66522f086b7b9a2c2a72"
+          },
+          "cwd": "$SUPERVISOR",
+          "environment_overrides": {
+            "HF_HUB_OFFLINE": "1",
+            "IPFS_ACCELERATE_META_INDEX_DUCKDB": "$ARTIFACTS/cache-profile-controls-01-meta.duckdb",
+            "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+            "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "$ARTIFACTS/cache-profile-controls-01.duckdb",
+            "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "$ARTIFACTS/cache-profile-controls-01-resources.json",
+            "MKL_NUM_THREADS": "1",
+            "OMP_NUM_THREADS": "1",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONHASHSEED": "0",
+            "PYTHONPATH": "$SUPERVISOR:$DATASETS:$KIT:$HARBOR_VENV/lib/python3.12/site-packages:$USER_HOME/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+            "TRANSFORMERS_OFFLINE": "1"
+          },
+          "execution_receipt": {
+            "artifact": "$ARTIFACTS/cache-profile-controls-01-execution.json",
+            "bytes": 1490,
+            "sha256": "ae2ec293be974adfdd7e7729c0135d129a6f802dc1aeced5e4688c23f310c34f"
+          },
+          "exit_code": 0,
+          "native_plugin_explicit_in_issued_command": true,
+          "record_provenance": "program-captured retained command and execution receipts",
+          "sources_after": {
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": "ac1c9e31a54be13f0492d98bbd33228e4c1d4468c38d3d7f74a0656172b3cb1b",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/test_terminal_live_census_cache_profile.py": "683766668dd0888460995814ceb04800badf779f7f756d3a13c2658c6d2891b8"
+          },
+          "sources_before": {
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": "ac1c9e31a54be13f0492d98bbd33228e4c1d4468c38d3d7f74a0656172b3cb1b",
+            "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/test_terminal_live_census_cache_profile.py": "683766668dd0888460995814ceb04800badf779f7f756d3a13c2658c6d2891b8"
+          },
+          "sources_unchanged": true
+        },
+        "fresh_native_catalog_declared_by_executor": true,
+        "junit": {
+          "artifact": "$ARTIFACTS/cache-profile-controls-01.xml",
+          "bytes": 4411,
+          "sha256": "2c8dcf413a1cef7b3a554627103e8e3bc0c6542b6d6b1f2db76869acb4d4f1e0"
+        },
+        "junit_recorded_suite_timestamps": [
+          "2026-10-11T00:26:42.203291+00:00"
+        ],
+        "junit_seconds": 0.434,
+        "label": "independent_cache_profile_01",
+        "live_execution_established": false,
+        "log": {
+          "artifact": "$ARTIFACTS/cache-profile-controls-01.log",
+          "bytes": 4713,
+          "sha256": "79e4d059825b16a60697ab291fd4248aae2703892b04884cba763c53f12f4c3b"
+        },
+        "native_ast_plugin_qualified": true,
+        "native_ast_seal": {
+          "aggregate_queries_only": true,
+          "closure_file_count_max": 2,
+          "closure_file_count_min": 2,
+          "completion_authority_true_seals": 0,
+          "current_freeze03": {
+            "binding_count": 24,
+            "catalog_intersection": 0,
+            "different_content_hashes": 0,
+            "matching_content_hashes": 0
+          },
+          "database": {
+            "artifact": "$ARTIFACTS/cache-profile-controls-01.duckdb",
+            "bytes": 1323008,
+            "sha256": "cf7d565e68e30143360e2e1256a51a7657b3deca1c0b71711dada49ea9196c7a"
+          },
+          "distinct_closure_seals": 1,
+          "file_hash_catalog_rows": 2,
+          "passing_test_seals": 19,
+          "recorded_at_max": "2026-10-11T00:26:42.628930+00:00",
+          "recorded_at_min": "2026-10-11T00:26:42.390371+00:00",
+          "run_stage": {
+            "binding_count": 24,
+            "catalog_intersection": 0,
+            "different_content_hashes": 0,
+            "matching_content_hashes": 0
+          }
+        },
+        "neural_inference_calls": 0,
+        "passed": 19,
+        "passing_seal_count_matches_actual_passed_cases": true,
+        "provider_calls": 0,
+        "seals_grant_completion_authority": false,
+        "source_stage": {
+          "artifact": "$ARTIFACTS/source-freeze-03.json",
+          "bytes": 5777,
+          "sha256": "c4b1ec77e81c6cc61902da03d59fe9d8b6a121a24a6eb13b994bd02abe8cc73c"
+        },
+        "training_steps": 0,
+        "wall_seconds_program_captured": 1.043830864946358
+      },
+      {
+        "cached_cases_claimed_as_executed": false,
+        "counts": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 38
+        },
+        "current_helper_body_captured_by_native_catalog": false,
+        "current_test_file_body_hash_matches_catalog": false,
+        "dataset_source_stage": "987cf856 prefix reported by native helper executor; differs from current frozen5c69724316",
+        "execution_command": {
+          "argv": [
+            "python",
+            "-m",
+            "pytest",
+            "-o",
+            "addopts=",
+            "-o",
+            "log_cli=false",
+            "-p",
+            "ipfs_accelerate_py.testing.pytest_ast_seal",
+            "benchmarks/agent_supervisor/container_coding/test_terminal_live_metadata_census.py",
+            "--junitxml=$ARTIFACTS/new-helper-tests-05.xml",
+            "-x",
+            "-q"
+          ],
+          "cwd": "$SUPERVISOR",
+          "environment_overrides": {
+            "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "$ARTIFACTS/new-helper-ast-seal-05.duckdb",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            "PYTHONPATH": "$SUPERVISOR:$WORKSPACE/.worktrees/ir-supervisor-contracts-datasets-20261004"
+          },
+          "native_plugin_explicit_in_issued_command": true,
+          "record_provenance": "native helper executor reconstructed exact issued tool argv/environment; no retained pre/post source execution receipt",
+          "reported_python_version": "3.12.3",
+          "source_before_after_program_capture_available": false,
+          "source_hash_capture_scope": "executor manually captured hashes after run; does not establish retained pre/post receipt"
+        },
+        "fresh_native_catalog_declared_by_executor": true,
+        "historical_test_file_body_captured_by_native_catalog": true,
+        "junit": {
+          "artifact": "$ARTIFACTS/new-helper-tests-05.xml",
+          "bytes": 7450,
+          "sha256": "abf0135197ddfd07fcb2a92f0470bcc05f2d5a245fcc99daa2fe0e74c7b68fcc"
+        },
+        "junit_recorded_suite_timestamps": [
+          "2026-10-11T00:10:26.735886+00:00"
+        ],
+        "junit_seconds": 197.798,
+        "label": "native_helper_D987_05",
+        "live_execution_established": false,
+        "log": null,
+        "native_ast_plugin_qualified": true,
+        "native_ast_seal": {
+          "aggregate_queries_only": true,
+          "closure_file_count_max": 1035,
+          "closure_file_count_min": 1035,
+          "completion_authority_true_seals": 0,
+          "current_direct_body_observations": {
+            "terminal_live_metadata_census.py": {
+              "catalog_rows": 0,
+              "matching_current_hashes": 0
+            },
+            "test_terminal_live_metadata_census.py": {
+              "catalog_rows": 1,
+              "matching_current_hashes": 0
+            }
+          },
+          "current_freeze03": {
+            "binding_count": 24,
+            "catalog_intersection": 9,
+            "different_content_hashes": 1,
+            "matching_content_hashes": 8
+          },
+          "database": {
+            "artifact": "$ARTIFACTS/new-helper-ast-seal-05.duckdb",
+            "bytes": 1323008,
+            "sha256": "93414e98f1ef95db67bc3ea1c0db1206d98ab21de4c49c8c2b7f47528750439a"
+          },
+          "distinct_closure_seals": 1,
+          "file_hash_catalog_rows": 1035,
+          "passing_test_seals": 38,
+          "recorded_at_max": "2026-10-11T00:13:44.525807+00:00",
+          "recorded_at_min": "2026-10-11T00:10:48.222530+00:00"
+        },
+        "neural_inference_calls": 0,
+        "passed": 38,
+        "passing_seal_count_matches_actual_passed_cases": true,
+        "provider_calls": 0,
+        "seals_grant_completion_authority": false,
+        "source_stage": null,
+        "training_steps": 0,
+        "wall_seconds_reported_by_parent": 197.82
+      }
+    ],
+    "completed_native_runs_all_have_zero_failures_errors_and_skips": true,
+    "completion_authority": false,
+    "counts_are_overlapping_and_not_additive": true,
+    "created_utc": "2026-10-11T00:36:54.603433+00:00",
+    "current24_raw_source_body_hashes_match_freeze03": true,
+    "current_D_full_native_owner_integration_claimed": false,
+    "current_runtime_source_bodies": [
+      {
+        "expected": {
+          "bytes": 13780,
+          "sha256": "230e68980dd38dfc1e227ac18204734ec98e178ab6d0c42820738c825fc71b82"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+          "bytes": 13780,
+          "sha256": "230e68980dd38dfc1e227ac18204734ec98e178ab6d0c42820738c825fc71b82"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py"
+      },
+      {
+        "expected": {
+          "bytes": 28525,
+          "sha256": "9402fbf2f5e0603b3f3bc64a09987388c285b1be1ef7b72bfeee1c4ded626717"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+          "bytes": 28525,
+          "sha256": "9402fbf2f5e0603b3f3bc64a09987388c285b1be1ef7b72bfeee1c4ded626717"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py"
+      },
+      {
+        "expected": {
+          "bytes": 33852,
+          "sha256": "a2c5ab68fb2c8acfdaba6e1900aa6f89b2b647311964a7dbf1068167b6d83ab7"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+          "bytes": 33852,
+          "sha256": "a2c5ab68fb2c8acfdaba6e1900aa6f89b2b647311964a7dbf1068167b6d83ab7"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py"
+      },
+      {
+        "expected": {
+          "bytes": 35674,
+          "sha256": "e5a054cc8482266f940802fa038e6d978c50b9a77e59bc8f4321ee815b221fe5"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+          "bytes": 35674,
+          "sha256": "e5a054cc8482266f940802fa038e6d978c50b9a77e59bc8f4321ee815b221fe5"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py"
+      },
+      {
+        "expected": {
+          "bytes": 3057,
+          "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+          "bytes": 3057,
+          "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py"
+      },
+      {
+        "expected": {
+          "bytes": 75014,
+          "sha256": "58c184d08aaf47ea9eeb34f2bba8a438a1b5c2d4313a8dbf5aed865bb5dd8bb9"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "bytes": 75014,
+          "sha256": "58c184d08aaf47ea9eeb34f2bba8a438a1b5c2d4313a8dbf5aed865bb5dd8bb9"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py"
+      },
+      {
+        "expected": {
+          "bytes": 38248,
+          "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+          "bytes": 38248,
+          "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py"
+      },
+      {
+        "expected": {
+          "bytes": 18839,
+          "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+          "bytes": 18839,
+          "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py"
+      },
+      {
+        "expected": {
+          "bytes": 19598,
+          "sha256": "c2c009b8960674df8752ab1d7ada02b7951f845a4228fb0383913053ef905d9b"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py",
+          "bytes": 19598,
+          "sha256": "c2c009b8960674df8752ab1d7ada02b7951f845a4228fb0383913053ef905d9b"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py"
+      },
+      {
+        "expected": {
+          "bytes": 27492,
+          "sha256": "ea94bdd0d47b193ebd0c9e78f4633ed4c0698ca863a7663efc83b0230c8810f8"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py",
+          "bytes": 27492,
+          "sha256": "ea94bdd0d47b193ebd0c9e78f4633ed4c0698ca863a7663efc83b0230c8810f8"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py"
+      },
+      {
+        "expected": {
+          "bytes": 20169,
+          "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+          "bytes": 20169,
+          "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py"
+      },
+      {
+        "expected": {
+          "bytes": 4887,
+          "sha256": "32ecda1acc856ffda013243823e1b92b3eb4cc99588c59cc090d8aa16289ab83"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+          "bytes": 4887,
+          "sha256": "32ecda1acc856ffda013243823e1b92b3eb4cc99588c59cc090d8aa16289ab83"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py"
+      },
+      {
+        "expected": {
+          "bytes": 3257,
+          "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+          "bytes": 3257,
+          "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py"
+      },
+      {
+        "expected": {
+          "bytes": 19493,
+          "sha256": "ac1c9e31a54be13f0492d98bbd33228e4c1d4468c38d3d7f74a0656172b3cb1b"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+          "bytes": 19493,
+          "sha256": "ac1c9e31a54be13f0492d98bbd33228e4c1d4468c38d3d7f74a0656172b3cb1b"
+        },
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py"
+      },
+      {
+        "expected": {
+          "bytes": 48931,
+          "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+          "bytes": 48931,
+          "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e"
+        },
+        "path": "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py"
+      },
+      {
+        "expected": {
+          "bytes": 5423,
+          "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+          "bytes": 5423,
+          "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+        },
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py"
+      },
+      {
+        "expected": {
+          "bytes": 41768,
+          "sha256": "0317c332e72eee4ba041e8229433244c662e485e79ae628398eae3d36d379641"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "bytes": 41768,
+          "sha256": "0317c332e72eee4ba041e8229433244c662e485e79ae628398eae3d36d379641"
+        },
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+      },
+      {
+        "expected": {
+          "bytes": 10581,
+          "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py",
+          "bytes": 10581,
+          "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+        },
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py"
+      },
+      {
+        "expected": {
+          "bytes": 9585,
+          "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+          "bytes": 9585,
+          "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+        },
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py"
+      },
+      {
+        "expected": {
+          "bytes": 18633,
+          "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+          "bytes": 18633,
+          "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+        },
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py"
+      },
+      {
+        "expected": {
+          "bytes": 37780,
+          "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+          "bytes": 37780,
+          "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+        },
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py"
+      },
+      {
+        "expected": {
+          "bytes": 53490,
+          "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+          "bytes": 53490,
+          "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+        },
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py"
+      },
+      {
+        "expected": {
+          "bytes": 7870,
+          "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+          "bytes": 7870,
+          "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+        },
+        "path": "ipfs_accelerate_py/cli_runtime/cli_metadata.py"
+      },
+      {
+        "expected": {
+          "bytes": 553806,
+          "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+        },
+        "matches": true,
+        "observed": {
+          "artifact": "$SUPERVISOR/ipfs_accelerate_py/llm_router.py",
+          "bytes": 553806,
+          "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+        },
+        "path": "ipfs_accelerate_py/llm_router.py"
+      }
+    ],
+    "current_runtime_source_body_count": 24,
+    "current_source_freeze": {
+      "artifact": "$ARTIFACTS/source-freeze-03.json",
+      "bytes": 5777,
+      "sha256": "c4b1ec77e81c6cc61902da03d59fe9d8b6a121a24a6eb13b994bd02abe8cc73c"
+    },
+    "execution_authority": false,
+    "historical_integration_02": {
+      "final_counts": null,
+      "included_as_completed_qualification": false,
+      "mutable_log_hash_omitted": true,
+      "qualified_exact_current24_tuple": false,
+      "sealed_database": "integration-seal-02.duckdb",
+      "status": "still running at curation per parent; earlier source transitions retained"
+    },
+    "historical_results": [
+      {
+        "argv": [
+          "python3",
+          "-B",
+          "-m",
+          "pytest",
+          "--noconftest",
+          "-q",
+          "-p",
+          "no:cacheprovider",
+          "-o",
+          "addopts=",
+          "--junitxml=$ARTIFACTS/provenance-pure-tests-02.xml",
+          "$SUPERVISOR/benchmarks/agent_supervisor/container_coding/test_terminal_live_census_provenance.py"
+        ],
+        "counts": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 31
+        },
+        "eligible_for_mandatory_native_ast_qualification": false,
+        "junit": {
+          "artifact": "$ARTIFACTS/provenance-pure-tests-02.xml",
+          "bytes": 5998,
+          "sha256": "5824d3641f6909c6ccad673e0eabf32523a8b1a813d0ec63482f39b0e576ab60"
+        },
+        "junit_recorded_suite_timestamps": [
+          "2026-10-11T00:13:18.639642+00:00"
+        ],
+        "junit_seconds": 0.05,
+        "label": "manual_provenance_02",
+        "log": {
+          "artifact": "$ARTIFACTS/provenance-pure-tests-02.log",
+          "bytes": 7255,
+          "sha256": "463645e46dbe9dc74d6f568b2787d5e21c12e6d5fb5ff7365bf5c2f941bc3e69"
+        },
+        "manual_receipt": {
+          "artifact": "$ARTIFACTS/provenance-pure-test-seal-02.json",
+          "bytes": 1819,
+          "sha256": "c96bfb44d66eb97d2cd546bb4b7330d7cb9423a5c96337ae31bbdb4a45ba388c"
+        },
+        "native_ast_plugin_explicit": false,
+        "native_ast_plugin_qualified": false,
+        "native_seal_database": null,
+        "preserved_unmodified": true,
+        "qualification": "historical manual AST parse/hash binding; mandatory native pytest AST plugin was not invoked",
+        "substitutes_for_native_provenance_04": false
+      },
+      {
+        "counts": {
+          "errors": 1,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1
+        },
+        "junit": {
+          "artifact": "$ARTIFACTS/integration-tests-01.xml",
+          "bytes": 1277,
+          "sha256": "b4e4449fd593a27521da9ab6248714d454d264616918cd30bb78554dd90d846e"
+        },
+        "junit_recorded_suite_timestamps": [
+          "2026-10-11T00:14:15.023979+00:00"
+        ],
+        "junit_seconds": 61.588,
+        "label": "historical_integration_collection_01",
+        "log": {
+          "artifact": "$ARTIFACTS/integration-tests-01.log",
+          "bytes": 1303,
+          "sha256": "b6f42084b4d03f4bbd15f209ceae34a90d3838d5a5ddb1b72ddf88394911bb3c"
+        },
+        "native_ast_seal": {
+          "aggregate_queries_only": true,
+          "closure_file_count_max": null,
+          "closure_file_count_min": null,
+          "completion_authority_true_seals": 0,
+          "current_freeze03": {
+            "binding_count": 24,
+            "catalog_intersection": 23,
+            "different_content_hashes": 3,
+            "matching_content_hashes": 20
+          },
+          "database": {
+            "artifact": "$ARTIFACTS/integration-seal-01.duckdb",
+            "bytes": 798720,
+            "sha256": "1ab1a7e7170dac39504b3e8f92faeefd2e43ead77648f720bacf6caee1a53994"
+          },
+          "distinct_closure_seals": 0,
+          "file_hash_catalog_rows": 1109,
+          "passing_test_seals": 0,
+          "recorded_at_max": null,
+          "recorded_at_min": null
+        },
+        "preserved_unmodified": true,
+        "qualification": "historical collection failure retained; not a passing qualification"
+      }
+    ],
+    "known_nonfailure_warning": "existing timeout marker unknown under disabled plugin autoload",
+    "live_census_outcome": {
+      "actual_live_census01": "preserved pre-container cache-constructor refusal;0 provider calls and0 container start attempts",
+      "actual_live_census02_status": "separate runtime attempt ongoing per parent; no live result reviewed here",
+      "test_qualification_does_not_establish_live_success": true
+    },
+    "native_ast_plugin_source": {
+      "artifact": "$SUPERVISOR/ipfs_accelerate_py/testing/pytest_ast_seal.py",
+      "bytes": 18519,
+      "sha256": "42930334f4de159e71e6c345075a05b863fe427992bc1782f0cfbdf62b44ff9e"
+    },
+    "native_fixture_scope": "authored plans/native owner admission/context/pure metadata; no live LLM or Source384 inference by tests",
+    "native_plugin_is_distinct_from_manual_ast_parse": true,
+    "neural_inference_calls_by_qualification_work": 0,
+    "no_claim_all_runs_sealed_the_exact_current24_tuple": true,
+    "private_owner_database_body_reads": 0,
+    "proof_authority": false,
+    "provider_calls_by_qualification_work": 0,
+    "provider_response_or_thought_body_reads": 0,
+    "publication_authority": false,
+    "pytest_catalog_queries": "read-only aggregate queries over authored seal catalogs only",
+    "required_explicit_pytest_plugin": "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "schema": "terminal-live-census-test-qualification@2",
+    "scope": "Completed overlapping authored/native test qualifications and current24 source-body freeze; live census outcome kept separate",
+    "supersedes_qualification_summary": {
+      "artifact": "$ARTIFACTS/test-qualification-01.json",
+      "bytes": 4255,
+      "sha256": "3fa1624de551718d37b5edfd66d62d5f12cf2c7772d0c97ad3d29f14657166f1"
+    },
+    "total_token_savings_measured": false
+  },
+  "historical_as_of_scope_preserved": true,
+  "local_path_aliases": [
+    "$ARTIFACTS",
+    "$DATASETS",
+    "$HARBOR_VENV",
+    "$KIT",
+    "$OWNED_WORKTREES",
+    "$SUPERVISOR",
+    "$USER_HOME",
+    "$WORKSPACE"
+  ],
+  "original_artifact": "test-qualification-02.json",
+  "original_bytes": 54054,
+  "original_sha256": "53ef9ace3ecdb1f113c75ee3e024c5bc75f4e8d8820f1dbc34b088632b37d6a2",
+  "projection_scope": "local operational path substitution only; source body hashes and historical claims retained",
+  "schema": "terminal-live-census-public-metadata-projection@1"
+}
