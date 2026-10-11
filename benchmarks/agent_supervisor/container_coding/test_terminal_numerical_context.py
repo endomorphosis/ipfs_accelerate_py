@@ -19,6 +19,15 @@ def candidate(matrix):
     return values[chosen], vectors[:, chosen]
 """
 
+ASSERTION_SOURCE = SOURCE + """
+def check_candidate(matrix):
+    value, vector = candidate(matrix)
+    assert not np.allclose(vector, 0)
+    assert not np.isnan(value)
+    assert not np.isinf(value)
+    assert np.allclose(matrix @ vector, value * vector)
+"""
+
 
 @pytest.fixture
 def context(tmp_path, monkeypatch):
@@ -169,6 +178,92 @@ def test_compound_contract_budget_accounts_for_every_omitted_row():
     assert summary["compound_contract_count"] == 12
     assert 0 < len(summary["compound_contracts"]) <= 4
     assert len(summary["compound_contracts"]) + summary["omitted_compound_contract_summaries"] == 12
+    assert len(summary["pending_obligations"]) + summary["omitted_obligation_summaries"] == summary["pending_obligation_count"]
+    assert len(numerical._bytes(summary)) <= 8192
+    assert summary["source_obligations_discharged"] == 0
+
+
+def test_assertion_requirements_reopen_native_lakes_and_replay_predicates(tmp_path, monkeypatch):
+    monkeypatch.delenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", raising=False)
+    root = tmp_path / "code"
+    root.mkdir()
+    (root / "checks.py").write_text(ASSERTION_SOURCE)
+    receipt = numerical.prepare_numerical_context(repository=root,
+        source_hashes={"checks.py": hashlib.sha256(ASSERTION_SOURCE.encode()).hexdigest()},
+        output=tmp_path / "observations", profile=numerical.PROFILE)
+    summary = receipt["summary"]
+    assert summary["assertion_requirement_count"] == 4
+    rows = summary["assertion_requirements"]
+    assert rows and len(rows) + summary["omitted_assertion_requirement_summaries"] == 4
+    assert all(row["path"] == "checks.py" and row["origin"] == "source_assertion" for row in rows)
+    assert all(row["status"] == "pending" and not row["proof_authority"] for row in rows)
+    assert all(row["command_id"] and row["predicate_expression_id"] for row in rows)
+    assert all(row["symbol_definition_ids"] for row in rows)
+    assert all("argument_expression_ids" not in row["predicate"] for row in rows)
+    assert receipt["hydration"]["ducklake_verified"] is True
+    assert numerical.validate_numerical_context(repository=root, expected_receipt=receipt) == receipt
+
+    # Rehashing persisted bytes cannot promote a different assertion to source evidence.
+    output = numerical.Path(receipt["output"])
+    path = output / "report-0000.json"
+    report = json.loads(path.read_bytes())
+    report["assertion_requirements"][0]["predicate_expression_id"] = "forged-predicate"
+    path.write_bytes(numerical._bytes(report))
+    index = json.loads((output / "reports.json").read_bytes())
+    index["checks.py"]["sha256"] = numerical._sha(path.read_bytes())
+    (output / "reports.json").write_bytes(numerical._bytes(index))
+    receipt = deepcopy(receipt)
+    receipt["files"] = numerical._inventory(output)
+    unsigned = {k: v for k, v in receipt.items() if k != "receipt_sha256"}
+    (output / "receipt.json").write_bytes(numerical._bytes(unsigned))
+    receipt["receipt_sha256"] = numerical._sha(numerical._bytes(unsigned))
+    with pytest.raises(ValueError, match="source, interpretation or artifact"):
+        numerical.validate_numerical_context(repository=root, expected_receipt=receipt)
+
+
+def test_assertion_summary_reaches_planner_before_goals(original, monkeypatch):
+    root, instruction, state = original
+    (root / "bottle.py").write_text(ASSERTION_SOURCE)
+    prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+    receipt = prep.initial_context(state=state, numerical_formalization_profile=numerical.PROFILE)
+    formal = receipt["numerical_formalization"]
+    assert formal["summary"]["assertion_requirement_count"] == 4
+    observed = []
+    def router(prompt, **kwargs):
+        observed.append(prompt)
+        request = json.loads(prompt)
+        if request.get("schema") == "intent-plan-provider-request@1":
+            request = request["graph_request"]
+        summaries = request["constraints"]["constraint_summaries"]
+        supplied = [row for row in summaries if isinstance(row, dict)
+                    and row.get("schema") == formal["summary"]["schema"]]
+        assert supplied == [formal["summary"]]
+        return {"text": _proposal_json(prepared), "observation": {}, "execution_receipt": None}
+    _version(monkeypatch)
+    result = prep.plan(state, provider_callable=router)
+    assert result["qualified"], json.dumps(result, indent=2)
+    assert len(observed) == 1
+    admitted = prep.context(state=state)
+    assert admitted["initial_indexes_reused"] is True
+    assert admitted["numerical_formalization"] == formal
+    assert numerical.validate_numerical_context(repository=root, expected_receipt=formal) == formal
+
+
+def test_assertion_summary_budget_counts_upstream_omissions():
+    from ipfs_datasets_py.logic.software_verification.numerical_logic import formalize_numerical_source
+    source = ASSERTION_SOURCE + """
+def another_check(value):
+    assert not np.isnan(value)
+    assert not np.isinf(value)
+"""
+    reports = {f"file_{index:02d}.py": formalize_numerical_source(source, path=f"file_{index:02d}.py")
+               for index in range(3)}
+    assert all(report["summary"]["omitted_assertion_requirement_summaries"] > 0 for report in reports.values())
+    summary = numerical._summary(reports, "authored-assertion-tree")
+    assert summary["assertion_requirement_count"] == 18
+    assert 0 < len(summary["assertion_requirements"]) <= 4
+    assert len(summary["assertion_requirements"]) + summary["omitted_assertion_requirement_summaries"] == 18
+    assert len(summary["compound_contracts"]) + summary["omitted_compound_contract_summaries"] == 3
     assert len(summary["pending_obligations"]) + summary["omitted_obligation_summaries"] == summary["pending_obligation_count"]
     assert len(numerical._bytes(summary)) <= 8192
     assert summary["source_obligations_discharged"] == 0

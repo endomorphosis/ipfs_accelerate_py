@@ -61,9 +61,23 @@ def _producers():
         ("projections", numerical_logic.__file__))}
 
 
+def _planning_assertion(path, row):
+    # The native planner has a six-level context nesting bound. Keep scalar
+    # predicate metadata together, but flatten its operand lists and reference
+    # full versioned definition rows by identity instead of nesting them here.
+    predicate = row["predicate"]
+    return dict(path=path, **{key: value for key, value in row.items()
+                if key not in {"predicate", "symbol_definitions"}},
+        predicate={key: value for key, value in predicate.items()
+                   if key not in {"argument_expression_ids", "keyword_names"}},
+        argument_expression_ids=list(predicate["argument_expression_ids"]),
+        keyword_names=list(predicate["keyword_names"]),
+        symbol_definition_ids=[definition["definition_id"] for definition in row["symbol_definitions"]])
+
+
 def _summary(reports, tree):
-    rows, pending, contracts = [], [], []
-    contract_count = 0
+    rows, pending, contracts, assertions = [], [], [], []
+    contract_count = assertion_count = 0
     for path, report in sorted(reports.items()):
         for row in report["summary"]["per_function"]:
             rows.append(dict(path=path, **row))
@@ -73,6 +87,9 @@ def _summary(reports, tree):
         contract_count += len(report.get("compound_contracts", []))
         for row in report["summary"].get("compound_contracts", []):
             contracts.append(dict(path=path, **row))
+        assertion_count += len(report.get("assertion_requirements", []))
+        for row in report["summary"].get("assertion_requirements", []):
+            assertions.append(_planning_assertion(path, row))
     summaries = [r["summary"] for r in reports.values()]
     count = sum(r["functions"] for r in summaries)
     result = dict(schema="terminal-numerical-formalization-planning-summary@1",
@@ -85,19 +102,25 @@ def _summary(reports, tree):
         omitted_obligation_summaries=max(0, len(pending)-8),
         compound_contract_count=contract_count, compound_contracts=contracts[:4],
         omitted_compound_contract_summaries=contract_count-min(len(contracts), 4),
-        interpretation="Structural syntax and pending obligations; NumPy calls remain opaque. Read source before editing.",
+        assertion_requirement_count=assertion_count, assertion_requirements=assertions[:4],
+        omitted_assertion_requirement_summaries=assertion_count-min(len(assertions), 4),
+        interpretation=("Structural syntax and pending obligations; NumPy calls remain opaque. "
+            "Assertions are local requirements if reached with assertions enabled, not callee postconditions. "
+            "Read source before editing."),
         autoencoder_coverage_changed=False, **AUTHORITY)
     # Long public names cannot turn a bounded planning constraint into an
     # unbounded prompt. Drop complete rows and account for every omission.
     while len(_bytes(result)) > 8192:
-        key = next((name for name in ("pending_obligations", "per_function", "compound_contracts")
+        key = next((name for name in ("pending_obligations", "per_function", "compound_contracts",
+                                     "assertion_requirements")
                     if result[name]), None)
         if key is None:
             raise ValueError("numerical planning summary exceeds bound")
         result[key].pop()
         omitted = {"pending_obligations": "omitted_obligation_summaries",
             "per_function": "omitted_function_summaries",
-            "compound_contracts": "omitted_compound_contract_summaries"}[key]
+            "compound_contracts": "omitted_compound_contract_summaries",
+            "assertion_requirements": "omitted_assertion_requirement_summaries"}[key]
         result[omitted] += 1
     return result
 
