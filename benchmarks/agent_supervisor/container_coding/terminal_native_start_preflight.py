@@ -23,6 +23,8 @@ from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import GROK_CODEX_EXECUTION_MODE
+from .terminal_numerical_policy import validate_numerical_profile
+from .terminal_native_preflight import numerical_preflight_observation
 
 ROOT = Path('/opt/ipfs-supervisor')
 
@@ -63,7 +65,11 @@ def _preflight_receipt(state: Path) -> dict | None:
     return None
 
 
-def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -> dict:
+def qualify(*, prepared_state: Path, output: Path, full_context: bool = False,
+            numerical_formalization_profile: str | None = None) -> dict:
+    validate_numerical_profile(numerical_formalization_profile)
+    if numerical_formalization_profile is not None and not full_context:
+        raise ValueError('numerical preflight requires full context')
     if os.getuid() != 1000 or os.geteuid() != 1000:
         raise ValueError('the actual deployed supervisor owner identity is required')
     output = output.absolute()
@@ -71,6 +77,8 @@ def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -
         raise ValueError('a fresh private container state directory is required')
     if _workers():
         raise ValueError('the isolated single-worker container must be idle')
+    numerical = (numerical_preflight_observation(state=prepared_state, profile=numerical_formalization_profile)
+                 if numerical_formalization_profile is not None else None)
     output.mkdir(mode=0o700)
     admission = json.loads((prepared_state / 'admission.json').read_text())
     verified = verify_local_benchmark_admission(admission, initial=True)
@@ -84,6 +92,9 @@ def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -
               'text_generation_calls': 0, 'official_verifier_executed': False,
               'benchmark_success': None, 'task_completion_expected': False,
               'materialized': materialized, 'observations': []}
+    if numerical is not None:
+        report['numerical_formalization_profile'] = numerical_formalization_profile
+        report['numerical_formalization_observation'] = numerical
 
     def save():
         (output / 'result.json').write_text(json.dumps(report, sort_keys=True, indent=2) + '\n')
@@ -110,6 +121,8 @@ def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -
                 from .terminal_context_rebind import rebind_full_context
                 rebound = rebind_full_context(prepared_state=prepared_state, admission=admission,
                     server=owner.server, output=Path(verified['manifest']['repository']) / '.runtime' / output.name)
+                if numerical is not None:
+                    rebound['numerical_formalization_observation'] = numerical
                 report['full_context'] = rebound
             phase = 'runtime_create'
             runtime = AdmittedBenchmarkRuntime.create(output / 'launch', admission=admission,
@@ -129,6 +142,11 @@ def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -
                     'git_dubious_ownership': 'detected dubious ownership' in git.stderr}
                 if git.returncode:
                     raise RuntimeError('signed isolated Git environment cannot observe installed runtime')
+                if numerical is not None:
+                    phase = 'numerical_context_replay'
+                    if numerical_preflight_observation(state=prepared_state,
+                            profile=numerical_formalization_profile) != numerical:
+                        raise ValueError('numerical preflight changed before native START')
                 phase = 'start'
                 report['start'] = runtime.start().to_dict()
                 report['bootstrap_receipts'] = runtime.bootstrap_receipts
@@ -238,8 +256,10 @@ def main():
     parser.add_argument('--prepared-state', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--full-context', action='store_true')
+    parser.add_argument('--numerical-formalization-profile')
     args = parser.parse_args()
-    result = qualify(prepared_state=args.prepared_state, output=args.output, full_context=args.full_context)
+    result = qualify(prepared_state=args.prepared_state, output=args.output, full_context=args.full_context,
+        numerical_formalization_profile=args.numerical_formalization_profile)
     print(json.dumps(result, sort_keys=True))
     return 0 if result['qualified'] else 1
 

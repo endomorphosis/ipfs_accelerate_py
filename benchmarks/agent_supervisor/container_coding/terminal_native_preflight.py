@@ -17,6 +17,48 @@ import time
 from . import terminal_indexed_preparation as prep
 from .local_live_planner import preflight_proposal
 from .terminal_task_profile import MULTITASK_SCHEMA, validate_task_profile
+from .terminal_numerical_policy import validate_numerical_profile
+
+
+def numerical_preflight_observation(*, state: Path, profile: str) -> dict:
+    """Replay selected structural evidence, without claiming model delivery.
+
+    This is deliberately separate from the live planner observation. The
+    authored preflight never submits a prompt to a provider. Numerical context
+    is a planning observation, not part of the worker nomination bundle.
+    """
+    if validate_numerical_profile(profile) is None:
+        raise ValueError("numerical preflight requires an explicit profile")
+    from .terminal_initial_context import stage_initial_context_nomination
+    from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import _read
+    from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
+    from ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context import AUTHORITY
+
+    state = Path(state).resolve(strict=True)
+    prepared = prep._load_prepared(state)
+    # Staging skips only the separate Source384 model replay. Numerical source,
+    # producer, artifact, selection, and both DuckLake checks still run here.
+    loaded = stage_initial_context_nomination(state=state, prepared=prepared, require_empty_owner=False)
+    formal = loaded["receipt"].get("numerical_formalization")
+    admitted = json.loads(_read(state / "context-result.json", 2_000_000))
+    admission = json.loads(_read(state / "admission.json", 2_000_000))
+    verified = local.verify_local_benchmark_admission(admission, initial=True)
+    if (type(formal) is not dict or formal.get("profile") != profile
+            or admitted.get("numerical_formalization") != formal
+            or admission["manifest"] != prepared["manifest"]
+            or len(verified["graph"].tasks) != 1
+            or admitted.get("task_cid") != verified["graph"].tasks[0].task_cid):
+        raise ValueError("numerical preflight differs from selected initial/admitted context")
+    summary = formal["summary"]
+    return dict(schema="terminal-numerical-provider-free-observation@1", profile=profile,
+        provider_free=True, live_planner_delivery_verified=False, worker_delivery_verified=False,
+        admitted_context_matches_initial=True, receipt_sha256=formal["receipt_sha256"],
+        summary_sha256=hashlib.sha256(json.dumps(summary, sort_keys=True,
+            separators=(",", ":"), allow_nan=False).encode()).hexdigest(),
+        source_hashes=formal["source_hashes"], producers=formal["producers"], summary=summary,
+        hydration={key: formal["hydration"][key] for key in (
+            "world_record_cid", "catalog_count", "ducklake_verified", "ducklake_catalogs", "ducklake_links")},
+        **AUTHORITY)
 
 
 def _authored_graph(prepared):
@@ -53,6 +95,7 @@ def qualify(*, repository: Path, instruction: Path, state: Path,
             task_profile: dict | None = None, provider_profile: str | None = None,
             resource_profile: str | None = None, source384_config: Path | None = None,
             source384_timeout_seconds: float | None = None,
+            numerical_formalization_profile: str | None = None,
             intent_checkpoint_descriptor: Path | None = None,
             intent_action_384_config: Path | None = None,
             intent_projection_request: Path | None = None,
@@ -73,6 +116,7 @@ def qualify(*, repository: Path, instruction: Path, state: Path,
     from .benchmark_resource_profile import execution_budget, FORMALIZATION_SOURCE384_PROFILE
 
     started = time.monotonic()
+    validate_numerical_profile(numerical_formalization_profile)
     # Refuse unsupported declarations before prepare commits public input files
     # or creates signed state. This authored graph does not fabricate a symbolic
     # requirement-to-task coverage witness or discard additional declared tasks.
@@ -107,13 +151,15 @@ def qualify(*, repository: Path, instruction: Path, state: Path,
     repository, state = Path(prepared["repository"]), Path(prepared["state"])
     initial = None
     initial_seconds = 0.0
-    if source384_config is not None:
+    if source384_config is not None or numerical_formalization_profile is not None:
         entered = time.monotonic()
         initial = prep.initial_context(state=state, model_snapshot=model_snapshot,
             model_revision=model_revision, source384_config=source384_config,
             train_autoencoder=False, source384_timeout_seconds=source384_limit,
             **({"source384_budget_profile":resource_profile}
-               if resource_profile == FORMALIZATION_SOURCE384_PROFILE else {}))
+               if resource_profile == FORMALIZATION_SOURCE384_PROFILE and source384_config is not None else {}),
+            **({"numerical_formalization_profile": numerical_formalization_profile}
+               if numerical_formalization_profile is not None else {}))
         initial_seconds = time.monotonic() - entered
     graph = _authored_graph(prepared)
     admission = local.admit_local_benchmark_plan(graph=graph, manifest=prepared["manifest"])
@@ -196,7 +242,12 @@ def qualify(*, repository: Path, instruction: Path, state: Path,
         result["bottle_sha256"] = result["input_sha256"]["bottle.py"]
     if initial is not None:
         result["initial_context"] = initial
+    if source384_config is not None:
         result["source384_timeout_seconds"] = source384_limit
+    if numerical_formalization_profile is not None:
+        result["numerical_formalization_profile"] = numerical_formalization_profile
+        result["numerical_formalization_observation"] = numerical_preflight_observation(
+            state=state, profile=numerical_formalization_profile)
     prep._write(state / "native-preflight-result.json", result)
     return result
 
@@ -216,6 +267,7 @@ def main():
     parser.add_argument("--resource-profile", choices=PROFILES)
     parser.add_argument("--source384-config", type=Path)
     parser.add_argument("--source384-timeout-seconds", type=float)
+    parser.add_argument("--numerical-formalization-profile")
     parser.add_argument("--intent-checkpoint-descriptor", type=Path)
     parser.add_argument("--intent-action-384-config", type=Path)
     parser.add_argument("--intent-projection-request", type=Path)
