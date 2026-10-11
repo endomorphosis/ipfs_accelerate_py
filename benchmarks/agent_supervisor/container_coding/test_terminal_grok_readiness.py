@@ -15,6 +15,14 @@ import pytest
 from benchmarks.agent_supervisor.container_coding import terminal_grok_deployment as grok
 
 
+# Authored fixture of the isolated pinned CLI's observed public layout. The
+# three nonselected IDs are synthetic; no native output or account data retained.
+PREAMBLED_CATALOG = (
+    b"You are logged in with grok.com.\n\nDefault model: grok-4.7\n\nAvailable models:\n"
+    b"  * grok-4.7 (default)\n  - grok-fixture-a\n  - grok-fixture-b\n  - grok-fixture-c\n"
+)
+
+
 @pytest.mark.parametrize("stdout,stderr,code,status,reason", [
     (b"Available models:\n grok-4.7\n grok-code-fast\n", b"", 0, "ready", "catalog_observed"),
     (b"\x1b[32mAvailable models:\x1b[0m\n - grok-4.7 (default)\n", b"", 0, "ready", "catalog_observed"),
@@ -37,6 +45,92 @@ def test_catalog_parser_requires_closed_positive_shape_and_prioritizes_auth(stdo
     assert all(receipt[key] is False for key in (
         "authentication_authority", "proof_authority", "execution_authority", "completion_authority"))
     assert "PRIVATE" not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize("catalog", [PREAMBLED_CATALOG,
+    PREAMBLED_CATALOG.replace(b"Available models:", b"\x1b[32mAvailable models:\x1b[0m")])
+def test_pinned_public_preamble_requires_matching_default_catalog(catalog):
+    receipt = grok._catalog_observation(catalog, b"", 0)
+    assert receipt["status"] == "ready"
+    assert receipt["reason"] == "catalog_observed"
+    assert receipt["models_observed"] == 4
+    assert receipt["selected_model_observed"] is True
+    assert receipt["authentication_authority"] is False
+    assert "grok.com" not in json.dumps(receipt)
+    assert "grok-fixture" not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize("catalog", [
+    PREAMBLED_CATALOG.replace(b"grok.com.", b"PRIVATE.example."),
+    PREAMBLED_CATALOG.replace(b"You are logged in with grok.com.\n\n", b""),
+    PREAMBLED_CATALOG.replace(b"Default model: grok-4.7\n\n", b""),
+    PREAMBLED_CATALOG.replace(b"Default model: grok-4.7", b"Default model: grok-absent"),
+    PREAMBLED_CATALOG.replace(b"Default model: grok-4.7", b"Default model: grok-fixture-a"),
+    PREAMBLED_CATALOG.replace(b"Default model: grok-4.7", b"Default model: grok-4.7 (not in the list below)"),
+    PREAMBLED_CATALOG.replace(b"Default model: grok-4.7\n\nAvailable models:",
+                             b"Available models:\nDefault model: grok-4.7"),
+    PREAMBLED_CATALOG.replace(b"Default model:", b"You are logged in with grok.com.\nDefault model:"),
+    PREAMBLED_CATALOG.replace(b"* grok-4.7 (default)", b"- grok-4.7"),
+    PREAMBLED_CATALOG.replace(b"* grok-4.7 (default)", b"- grok-4.7 (default)"),
+    PREAMBLED_CATALOG.replace(b"* grok-4.7 (default)", b"* grok-4.7"),
+    PREAMBLED_CATALOG.replace(b"- grok-fixture-a", b"grok-fixture-a"),
+    PREAMBLED_CATALOG.replace(b"- grok-fixture-a", b"* grok-fixture-a (default)"),
+    PREAMBLED_CATALOG.replace(b"- grok-fixture-a", b"- grok-4.7"),
+    PREAMBLED_CATALOG + b"PRIVATE unexplained trailing diagnostic\n",
+    b"Available models:\n grok-4.7 (default)\n grok-fixture-a (default)\n",
+])
+def test_preamble_and_catalog_must_be_complete_ordered_and_consistent(catalog):
+    receipt = grok._catalog_observation(catalog, b"", 0)
+    assert receipt["status"] == "unavailable"
+    assert receipt["reason"] == "catalog_shape_unknown"
+    assert receipt["models_observed"] == 0
+    assert receipt["selected_model_observed"] is False
+    assert "PRIVATE" not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize("diagnostic", [
+    b"Token expired. Run `grok login` to re-authenticate.",
+    b"Authentication rejected by server. Run `grok login` to re-authenticate.",
+    b"Auth recovery exhausted; re-authentication required.",
+    b"Your auth token is invalid or expired. Run `grok login` to re-authenticate.",
+    b"Your GROK_DEPLOYMENT_KEY is invalid or expired. Please contact a team admin.",
+    b"API-key auth is disabled by your administrator. Run `grok login` to authenticate.",
+    b"You are not authenticated.",
+])
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+def test_pinned_native_auth_refusals_override_even_valid_preambled_catalog(diagnostic, stream):
+    stdout = PREAMBLED_CATALOG + (diagnostic if stream == "stdout" else b"")
+    stderr = diagnostic if stream == "stderr" else b""
+    receipt = grok._catalog_observation(stdout, stderr, 0)
+    assert receipt["status"] == "unauthenticated"
+    assert receipt["reason"] == "authentication_refused"
+    assert receipt["models_observed"] == 0
+    assert receipt["selected_model_observed"] is False
+
+
+def test_preambled_catalog_without_selected_model_remains_unavailable():
+    receipt = grok._catalog_observation(PREAMBLED_CATALOG.replace(b"grok-4.7", b"grok-other"), b"", 0)
+    assert receipt["reason"] == "selected_model_unavailable"
+    assert receipt["status"] == "unavailable"
+    assert receipt["models_observed"] == 4
+
+
+@pytest.mark.parametrize("catalog", [PREAMBLED_CATALOG,
+    PREAMBLED_CATALOG.replace(b"Default model: grok-4.7", b"Default model: grok-fixture-a"),
+    PREAMBLED_CATALOG + b"Token expired. PRIVATE\n"])
+def test_standalone_rendered_parser_matches_host_for_observed_and_refused_layouts(monkeypatch, catalog):
+    tree = ast.parse(grok.grok_credential_readiness_script())
+    assert isinstance(tree.body[-1], ast.Expr)
+    assert isinstance(tree.body[-1].value, ast.Call)
+    tree.body.pop()  # Define the emitted functions; never call the container probe.
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: pytest.fail("parser must not launch native CLI"))
+    namespace = {}
+    before = list(sys.path)
+    try:
+        exec(compile(tree, "rendered-catalog-parser-fixture", "exec"), namespace)
+    finally:
+        sys.path[:] = before
+    assert namespace["_catalog_observation"](catalog, b"", 0) == grok._catalog_observation(catalog, b"", 0)
 
 
 def test_probe_refuses_host_identity_without_launch_or_credential_read(monkeypatch):

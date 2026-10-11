@@ -6199,36 +6199,45 @@ def supervisor_status_health_fields(
     updated_at = _parse_status_timestamp(payload.get("updated_at") or payload.get("heartbeat_at"))
     if updated_at is None:
         return awaiting_current_generation("unknown", **read_retry_fields)
-    if startup_started_at is not None:
-        recorded_supervisor_pid = payload.get("supervisor_pid")
-        expected_pid_is_bound = bool(
-            type(expected_supervisor_pid) is int
-            and expected_supervisor_pid > 1
+    # Process-generation validity is independent of the optional startup
+    # grace.  Grace controls restart authority, not whether a foreign or
+    # pre-birth status can describe the current supervisor as live.
+    try:
+        generation_not_before = float(supervisor_status_not_before_epoch_seconds)
+    except (TypeError, ValueError):
+        generation_not_before = 0.0
+    recorded_supervisor_pid = payload.get("supervisor_pid")
+    expected_pid_is_bound = bool(
+        type(expected_supervisor_pid) is int
+        and expected_supervisor_pid > 1
+    )
+    recorded_pid_mismatch = bool(
+        expected_pid_is_bound
+        and (
+            type(recorded_supervisor_pid) is not int
+            or recorded_supervisor_pid <= 1
+            or recorded_supervisor_pid != expected_supervisor_pid
         )
-        recorded_pid_mismatch = bool(
-            expected_pid_is_bound
-            and (
-                type(recorded_supervisor_pid) is not int
-                or recorded_supervisor_pid <= 1
-                or recorded_supervisor_pid != expected_supervisor_pid
-            )
+    )
+    status_predates_process = bool(
+        generation_not_before > 0.0
+        and (
+            updated_at.timestamp() + 1e-6 < generation_not_before
+            or status_mtime + 1e-6 < generation_not_before
         )
-        status_predates_process = bool(
-            updated_at.timestamp() + 1e-6 < startup_started_at
-            or status_mtime + 1e-6 < startup_started_at
+    )
+    if recorded_pid_mismatch or status_predates_process:
+        age_seconds = max(
+            0.0,
+            (datetime.now(timezone.utc) - updated_at).total_seconds(),
         )
-        if recorded_pid_mismatch or status_predates_process:
-            age_seconds = max(
-                0.0,
-                (datetime.now(timezone.utc) - updated_at).total_seconds(),
-            )
-            return awaiting_current_generation(
-                "stale_prior_generation",
-                supervisor_status_age_seconds=round(age_seconds, 1),
-                supervisor_status_pid_mismatch=recorded_pid_mismatch,
-                supervisor_status_predates_process=status_predates_process,
-                **read_retry_fields,
-            )
+        return awaiting_current_generation(
+            "stale_prior_generation",
+            supervisor_status_age_seconds=round(age_seconds, 1),
+            supervisor_status_pid_mismatch=recorded_pid_mismatch,
+            supervisor_status_predates_process=status_predates_process,
+            **read_retry_fields,
+        )
     age_seconds = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds())
     expected_store_generation = str(
         getattr(resolved.database_program, "store_generation", "") or ""

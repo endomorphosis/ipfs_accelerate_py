@@ -258,7 +258,9 @@ def test_shared_authority_terminal_rejects_wrong_process_binding(tmp_path) -> No
         supervisor_status_not_before_epoch_seconds=time.time() - 0.01,
     )
 
-    assert fields["supervisor_status"] == "live"
+    assert fields["supervisor_status"] == "stale_prior_generation"
+    assert fields["supervisor_status_pid_mismatch"] is True
+    assert fields["restart_supervisor"] is False
     assert fields.get("shared_authority_terminal") is not True
 
 
@@ -879,6 +881,115 @@ def test_missing_status_restarts_only_after_startup_grace(tmp_path):
     assert expired["restart_supervisor"] is True
 
 
+@pytest.mark.parametrize("bind_birth", [False, True])
+@pytest.mark.parametrize("recorded_pid", [None, True, "123", 0, 999_999])
+def test_default_grace_rejects_status_without_current_supervisor_pid(
+    tmp_path, recorded_pid, bind_birth,
+):
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    status_path = state_dir / "example_supervisor_status.json"
+    payload = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if recorded_pid is not None:
+        payload["supervisor_pid"] = recorded_pid
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    fields = supervisor_status_health_fields(
+        _track(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=60.0,
+        expected_supervisor_pid=os.getpid(),
+        supervisor_status_not_before_epoch_seconds=(
+            time.time() - 1.0 if bind_birth else None
+        ),
+    )
+
+    assert fields["supervisor_status"] == "stale_prior_generation"
+    assert fields["supervisor_status_pid_mismatch"] is True
+    assert fields["restart_supervisor"] is False
+    assert "supervisor_startup_elapsed_seconds" not in fields
+
+
+@pytest.mark.parametrize("old_component", ["updated_at", "mtime"])
+def test_default_grace_rejects_status_predating_current_birth(
+    tmp_path, old_component,
+):
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    status_path = state_dir / "example_supervisor_status.json"
+    started_at = time.time() - 5.0
+    updated_at = started_at - 1.0 if old_component == "updated_at" else time.time()
+    status_path.write_text(
+        json.dumps({
+            "updated_at": datetime.fromtimestamp(updated_at, timezone.utc).isoformat(),
+            "supervisor_pid": os.getpid(),
+        }),
+        encoding="utf-8",
+    )
+    if old_component == "mtime":
+        os.utime(status_path, (started_at - 1.0, started_at - 1.0))
+
+    fields = supervisor_status_health_fields(
+        _track(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=60.0,
+        expected_supervisor_pid=os.getpid(),
+        supervisor_status_not_before_epoch_seconds=started_at,
+    )
+
+    assert fields["supervisor_status"] == "stale_prior_generation"
+    assert fields["supervisor_status_predates_process"] is True
+    assert fields["supervisor_status_pid_mismatch"] is False
+    assert fields["restart_supervisor"] is False
+
+
+def test_default_grace_accepts_fresh_current_generation_status(tmp_path):
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    status_path = state_dir / "example_supervisor_status.json"
+    status_path.write_text(
+        json.dumps({
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "supervisor_pid": os.getpid(),
+        }),
+        encoding="utf-8",
+    )
+
+    fields = supervisor_status_health_fields(
+        _track(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=60.0,
+        expected_supervisor_pid=os.getpid(),
+        supervisor_status_not_before_epoch_seconds=time.time() - 1.0,
+    )
+
+    assert fields["supervisor_status"] == "live"
+    assert fields.get("restart_supervisor") is not True
+
+
+@pytest.mark.parametrize("artifact_state", ["missing", "unsafe"])
+def test_default_grace_retains_missing_and_unsafe_restart_policy(
+    tmp_path, artifact_state,
+):
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    if artifact_state == "unsafe":
+        (state_dir / "example_supervisor_status.json").write_text(
+            "{invalid", encoding="utf-8",
+        )
+
+    fields = supervisor_status_health_fields(
+        _track(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=60.0,
+        expected_supervisor_pid=os.getpid(),
+        supervisor_status_not_before_epoch_seconds=time.time() - 60.0,
+    )
+
+    assert fields["supervisor_status"] == artifact_state
+    assert fields["restart_supervisor"] is False
+
+
 def test_status_reader_retries_one_atomic_replacement_race(
     tmp_path,
     monkeypatch,
@@ -1048,11 +1159,9 @@ def test_stale_lane_fence_failure_does_not_stop_other_lanes(
         status_name = (
             "stale_supervisor_status.json" if stale else "live_supervisor_status.json"
         )
-        updated_at = (
-            "'2000-01-01T00:00:00+00:00'"
-            if stale
-            else "datetime.now(timezone.utc).isoformat()"
-        )
+        # Publish within this process generation, then let the heartbeat
+        # timeout make the status stale independently of startup grace.
+        updated_at = "datetime.now(timezone.utc).isoformat()"
         return "\n".join(
             [
                 "import json",
@@ -1165,9 +1274,11 @@ def test_multi_runner_still_restarts_stale_idle_supervisor(tmp_path):
         "\n".join(
             [
                 "import json",
+                "import os",
                 "import signal",
                 "import sys",
                 "import time",
+                "from datetime import datetime, timezone",
                 "from pathlib import Path",
                 "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
                 "Path('state').mkdir(exist_ok=True)",
@@ -1178,7 +1289,8 @@ def test_multi_runner_still_restarts_stale_idle_supervisor(tmp_path):
                 ")",
                 "Path('state/example_supervisor_status.json').write_text(",
                 "    json.dumps({'updated_at': "
-                "'2000-01-01T00:00:00+00:00', "
+                "datetime.now(timezone.utc).isoformat(), "
+                "'supervisor_pid': os.getpid(), "
                 "'current_status_path': 'state/task_state.json'}),",
                 "    encoding='utf-8',",
                 ")",
