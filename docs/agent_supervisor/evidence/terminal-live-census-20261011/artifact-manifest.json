@@ -1,0 +1,64 @@
+{
+  "artifacts": {
+    "README.md": {
+      "bytes": 6208,
+      "sha256": "7b7496c011fc32c897db995a3b327bb55899202ea5365178167bcf1ea0175841"
+    },
+    "actual-live-census-01.json": {
+      "bytes": 1222,
+      "sha256": "286c9efa21d87c421a443f7b02bcc07f19f76b14d99b24adbe3e014fb2557006"
+    },
+    "actual-live-census-02.json": {
+      "bytes": 17421,
+      "sha256": "dcc8fd05e7e1cffd9c40ae665d85653655d21f3bbd4603a58238953ec56daa00"
+    },
+    "actual-live-census-review-01.public.json": {
+      "bytes": 36935,
+      "sha256": "c0f7035dacef98a72afdac690d60d31106befc825f7326454d4aef3624151271"
+    },
+    "archive-readiness-03.json": {
+      "bytes": 697,
+      "sha256": "a9e14897871d734915178f46104147a0e1843627121e1f1dcb90c929be7bc851"
+    },
+    "cache-integration-tests-04.xml": {
+      "bytes": 40443,
+      "sha256": "92cb9b2dd3c7336c264a9e589fdc0b19912cca7d477e0fe720bb27900d8c7db5"
+    },
+    "final-native-qualification-03.json": {
+      "bytes": 3474,
+      "sha256": "424cd2eb3c1a0cc368bcc0799fcc252116cf9e5e04ed80948ff89498a20f75aa"
+    },
+    "final-native-tests-05.log": {
+      "bytes": 192,
+      "sha256": "fcd2fd62f86284b93b9a7fc07cdd2e3ddd623c04c45a6ca5026a1055a8e13b40"
+    },
+    "final-native-tests-05.xml": {
+      "bytes": 26733,
+      "sha256": "4d361c7510529f9f63ebd4020c5dcc4c6a5879d5d5c28f7096c5836590e7c2d4"
+    },
+    "final-tests-03.log": {
+      "bytes": 272,
+      "sha256": "7733620c3cc64401df646d1aa730b16bf54b505add440e894e2e28f853cadd54"
+    },
+    "final-tests-03.xml": {
+      "bytes": 40355,
+      "sha256": "4f6062b3bc4f4242013df918fbfeca58a939efa7c7b4c4013ad75514db5d816b"
+    },
+    "owner-boundary-source-review-03.public.json": {
+      "bytes": 14069,
+      "sha256": "5e031b0c49db8a8e399c537999d29a92e761f7a10a67b967b4bd3740fdf391f1"
+    },
+    "source-freeze-03.public.json": {
+      "bytes": 6411,
+      "sha256": "fed81937367ea2bb95634dd6e57dba0f85a6316cc54a771783e6661adefd2250"
+    },
+    "test-qualification-02.public.json": {
+      "bytes": 50067,
+      "sha256": "1524f83df8fa458e3ada10ae8d92493bf7fc9b758681f11d0ba2cb1f34501012"
+    }
+  },
+  "includes_private_runtime_bodies": false,
+  "model_weights_included": false,
+  "schema": "terminal-live-census-published-artifact-manifest@1",
+  "self_excluded": true
+}

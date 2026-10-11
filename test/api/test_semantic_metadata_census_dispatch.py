@@ -8,7 +8,7 @@ import pytest
 
 from test.api.test_semantic_router_translation import native  # noqa: F401
 from test.api.test_semantic_metadata_dispatch import dispatch_case, invoke  # noqa: F401
-from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
+import ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner as runner
 
 
 def forbid_provider(monkeypatch):
@@ -47,6 +47,12 @@ def test_census_binds_actual_model_input_and_never_allocates_provider(dispatch_c
     assert receipt["provider_dispatch_observed"] is False
     assert receipt["planning_performed_by_census"] is False
     assert receipt["provider_token_usage"] is None and receipt["total_token_savings_measured"] is False
+    from ipfs_accelerate_py.agent_supervisor.runtime.coding_reply_contract import coding_completion_schema
+    schema = json.dumps(coding_completion_schema(), ensure_ascii=False, allow_nan=False,
+                        sort_keys=True, separators=(",", ":")).encode()
+    assert receipt["native_output_schema_sha256"] == hashlib.sha256(schema).hexdigest()
+    assert receipt["native_output_schema_bytes"] == len(schema)
+    assert receipt["cli_system_prompt_measured"] is receipt["native_output_schema_tokens_measured"] is False
     assert all(receipt[k] is False for k in ("proof_authority", "execution_authority",
         "completion_authority", "settlement_authority", "publication_authority",
         "source_freshness_authority", "required_fact_omission_authority"))

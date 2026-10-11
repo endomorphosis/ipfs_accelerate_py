@@ -1,0 +1,17 @@
+{
+  "archive_bytes": 1341591547,
+  "archive_sha256": "e76f0dfde0aa5313b086f25c41c529b82d8e67a270e73391047cbd4057cc76fc",
+  "codex_version": "0.160.0",
+  "coding_reply_archive_checked": true,
+  "current_source_inventory_checked": true,
+  "learned_retrieval_requirements": [],
+  "manifest_sha256": "74e2a8de36c9a0b40cf23b47cbaabf6843a43961fee19a0f5f38f15a3c3db404",
+  "neural_inference_calls": 0,
+  "no_live_result_claim": true,
+  "provider_calls": 0,
+  "provider_profile_checked": true,
+  "schema": "terminal-live-census-archive-readiness@1",
+  "source_freeze_sha256": "c4b1ec77e81c6cc61902da03d59fe9d8b6a121a24a6eb13b994bd02abe8cc73c",
+  "training_steps": 0,
+  "worker_capability_checked": true
+}

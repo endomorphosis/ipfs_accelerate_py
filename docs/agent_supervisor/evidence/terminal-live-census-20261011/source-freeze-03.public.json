@@ -1,0 +1,133 @@
+{
+  "body": {
+    "dependency_heads": {
+      "$DATASETS": "5c69724316a3365bdb22023ba5608fced96d568a",
+      "$KIT": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "$SUPERVISOR": "036ce8679b8f9d926ed0ac95dc03743673a4fb16"
+    },
+    "no_live_result_claim": true,
+    "observed_utc": "2026-10-11T00:28:04.823607+00:00",
+    "original_workspace_snapshot_sha256": "0f48514b7e75f5c9357a16031610ba4baec33ba5cfceaf644b2ff62add6dc403",
+    "planning_and_llm_router_retained": true,
+    "prior_freeze_sha256": "36f4bfc8717d95888a44bf122a4c77085bbe82b333f63c0c36a036d75d986028",
+    "private_orchestration_sha256": "645be3d1fe68909544a7d7d2f7d72e24cb3484359139e2974d636e1de60e03ff",
+    "python": "$USER_HOME/.local/bin/python",
+    "reason_for_new_freeze": "qualify existing setup cache advice on exact20GiBplanner180profile before retry",
+    "retained_pre_container_attempt_sha256": "286c9efa21d87c421a443f7b02bcc07f19f76b14d99b24adbe3e014fb2557006",
+    "schema": "terminal-live-census-source-freeze@1",
+    "source_bindings": {
+      "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": {
+        "bytes": 13780,
+        "sha256": "230e68980dd38dfc1e227ac18204734ec98e178ab6d0c42820738c825fc71b82"
+      },
+      "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": {
+        "bytes": 28525,
+        "sha256": "9402fbf2f5e0603b3f3bc64a09987388c285b1be1ef7b72bfeee1c4ded626717"
+      },
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": {
+        "bytes": 33852,
+        "sha256": "a2c5ab68fb2c8acfdaba6e1900aa6f89b2b647311964a7dbf1068167b6d83ab7"
+      },
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": {
+        "bytes": 35674,
+        "sha256": "e5a054cc8482266f940802fa038e6d978c50b9a77e59bc8f4321ee815b221fe5"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py": {
+        "bytes": 3057,
+        "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+        "bytes": 75014,
+        "sha256": "58c184d08aaf47ea9eeb34f2bba8a438a1b5c2d4313a8dbf5aed865bb5dd8bb9"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+        "bytes": 38248,
+        "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+        "bytes": 18839,
+        "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py": {
+        "bytes": 19598,
+        "sha256": "c2c009b8960674df8752ab1d7ada02b7951f845a4228fb0383913053ef905d9b"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": {
+        "bytes": 27492,
+        "sha256": "ea94bdd0d47b193ebd0c9e78f4633ed4c0698ca863a7663efc83b0230c8810f8"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py": {
+        "bytes": 20169,
+        "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py": {
+        "bytes": 4887,
+        "sha256": "32ecda1acc856ffda013243823e1b92b3eb4cc99588c59cc090d8aa16289ab83"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py": {
+        "bytes": 3257,
+        "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+      },
+      "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": {
+        "bytes": 19493,
+        "sha256": "ac1c9e31a54be13f0492d98bbd33228e4c1d4468c38d3d7f74a0656172b3cb1b"
+      },
+      "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py": {
+        "bytes": 48931,
+        "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py": {
+        "bytes": 5423,
+        "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+        "bytes": 41768,
+        "sha256": "0317c332e72eee4ba041e8229433244c662e485e79ae628398eae3d36d379641"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py": {
+        "bytes": 10581,
+        "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py": {
+        "bytes": 9585,
+        "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": {
+        "bytes": 18633,
+        "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": {
+        "bytes": 37780,
+        "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+      },
+      "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py": {
+        "bytes": 53490,
+        "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+      },
+      "ipfs_accelerate_py/cli_runtime/cli_metadata.py": {
+        "bytes": 7870,
+        "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+      },
+      "ipfs_accelerate_py/llm_router.py": {
+        "bytes": 553806,
+        "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+      }
+    }
+  },
+  "historical_as_of_scope_preserved": true,
+  "local_path_aliases": [
+    "$ARTIFACTS",
+    "$DATASETS",
+    "$HARBOR_VENV",
+    "$KIT",
+    "$OWNED_WORKTREES",
+    "$SUPERVISOR",
+    "$USER_HOME",
+    "$WORKSPACE"
+  ],
+  "original_artifact": "source-freeze-03.json",
+  "original_bytes": 5777,
+  "original_sha256": "c4b1ec77e81c6cc61902da03d59fe9d8b6a121a24a6eb13b994bd02abe8cc73c",
+  "projection_scope": "local operational path substitution only; source body hashes and historical claims retained",
+  "schema": "terminal-live-census-public-metadata-projection@1"
+}

@@ -291,6 +291,90 @@ def _router_reply(stdout: str) -> tuple[str, dict]:
     return "\n".join(lines[index + 1:]).strip(), receipt
 
 
+def _live_census_boundary(root: Path) -> dict:
+    """Read independent root-protected worker qualification in this container."""
+    path = root / "census-worker-qualification.json"
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0
+                or stat.S_IMODE(info.st_mode) & 0o022 or not 0 < info.st_size <= 262144):
+            raise ValueError("root-protected census worker qualification required")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            value = _repair_json(stream.read(262145))
+    finally:
+        os.close(descriptor)
+    boundary = value.get("boundary", {})
+    if (boundary.get("owner_uid") != os.geteuid()
+            or boundary.get("namespaces") != {name: os.readlink("/proc/self/ns/" + name)
+                                             for name in ("pid", "mnt", "net")}):
+        raise ValueError("census qualification differs from current owner container")
+    return value
+
+
+def _run_live_metadata_census(*, state: Path, report: dict, provider_selection: dict,
+                              timeout_seconds: int) -> None:
+    """Use the normal isolated router launcher, stopping before coding dispatch."""
+    from .terminal_live_metadata_census import prepare_terminal_live_metadata_census, _identity as _owner_identity
+    from .terminal_live_census_provenance import validate_live_planning_provenance
+
+    provenance = validate_live_planning_provenance(planning=report["planning"],
+        invocations=report["provider_invocations"], selected_provider=provider_selection,
+        deployment_boundary=_live_census_boundary(ROOT))
+    with prepare_terminal_live_metadata_census(state=state, worktree_root=WORKTREES,
+            worker_writable=True, worker_group_gid=os.getegid()) as prepared:
+        if prepared["metadata"]["planning_metadata_sha256"] != _owner_identity(report["planning"]):
+            raise ValueError("retained owner planning metadata differs from isolated live planning receipt")
+        prepared["metadata"]["retained_owner_planning_receipt_join_verified"] = True
+        options = prepared["runner_kwargs"]
+        command = [str(ROUTER), "--model", provider_selection["model"],
+            "--reasoning-effort", provider_selection["reasoning_effort"],
+            "--purpose", "coding", "--timeout", str(timeout_seconds),
+            "--max-output-tokens", "4096", "--semantic-metadata-census-only",
+            "--semantic-repository", str(options["semantic_repository"]),
+            "--semantic-metadata-view", options["semantic_metadata_view"],
+            "--coding-reply-mode", options["coding_reply_mode"]]
+        for prefix in ("doctor_residual", "public_instruction"):
+            if prefix + "_artifact" in options:
+                for suffix in ("artifact", "sha256", "task_cid"):
+                    command += ["--" + (prefix + "_" + suffix).replace("_", "-"),
+                                str(options[prefix + "_" + suffix])]
+        # The owner streams the private prompt. The worker never receives its
+        # owner state path or signing/database credentials.
+        with prepared["prompt_artifact"].open("rb") as prompt:
+            call = subprocess.run(command, cwd=prepared["workspace"], stdin=prompt,
+                                  capture_output=True, timeout=timeout_seconds)
+        private = state / "live-metadata-census"
+        (private / "router.stdout").write_bytes(call.stdout)
+        (private / "router.stderr").write_bytes(call.stderr)
+        if call.returncode:
+            raise RuntimeError("isolated census worker refused before observation")
+        if len(call.stdout) > 1048576:
+            raise ValueError("bounded census worker observation required")
+        observed = _repair_json(call.stdout)
+        if (observed.get("schema") != "router-semantic-metadata-census@1"
+                or observed.get("native_prompt_sha256") != prepared["metadata"]["native_prompt_sha256"]
+                or observed.get("container_boundary_checked") is not True
+                or observed.get("container_boundary_artifact_sha256") != provenance["worker_boundary_manifest_sha256"]
+                or observed.get("provider") != provider_selection["provider"]
+                or observed.get("model_sha256") != hashlib.sha256(provider_selection["model"].encode()).hexdigest()
+                or observed.get("reasoning_effort") != provider_selection["reasoning_effort"]
+                or observed.get("coding_reply_mode") != "ordinary-completion@1"
+                or observed.get("provider_calls") != 0 or observed.get("router_calls") != 0
+                or observed.get("provider_dispatch_observed") is not False
+                or observed.get("provider_token_usage") is not None
+                or observed.get("doctor_residual_included") is not True
+                or observed.get("public_instruction_included") is not True):
+            raise ValueError("isolated census observation differs from native owner bindings")
+        metadata = prepared["metadata"]
+    # Exit rechecks the current owner/source/world and removes the allocation.
+    report["live_planning_provenance"] = provenance
+    report["metadata_census_context"] = metadata
+    report["metadata_census"] = observed
+    report["metadata_census_succeeded"] = True
+    report["coding_dispatch_possible"] = False
+
+
 def _native_diagnostics(state: Path) -> dict:
     """Retain bounded startup evidence, without prompts or owner credentials."""
     result = {"schema": "native-supervisor-diagnostics@1"}
@@ -582,6 +666,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         provider_profile: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
+        metadata_census_only: bool = False,
         coding_reply_mode: str = "legacy",
         resource_profile: str | None = None,
         model_snapshot: Path | None = None, model_revision="",
@@ -607,6 +692,12 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
         raise ValueError("metadata view requires the original full semantic arm")
     provider_selection = resolve_provider_profile(provider_profile)
+    if type(metadata_census_only) is not bool:
+        raise ValueError("explicit Boolean metadata census selection required")
+    if metadata_census_only and (arm != "full" or semantic_metadata_view != "common-bindings@1"
+            or coding_reply_mode != "ordinary-completion@1" or source384_config is None
+            or provider_selection["provider"] != "codex_cli"):
+        raise ValueError("live census requires Source384 and the full common-bindings ordinary Codex route")
     from .terminal_coding_reply_policy import validate_coding_reply_mode, coding_reply_selection
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=provider_selection["provider"])
     budget = execution_budget(resource_profile)
@@ -668,6 +759,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "native_start_timeout_seconds": budget["native_start_seconds"],
               "production_activation": False, "benchmark_advantage_claimed": False,
               "phases": {}, "remaining_processes": None}
+    if metadata_census_only:
+        report.update(metadata_census_only=True, metadata_census_succeeded=False,
+                      coding_dispatch_possible=False, official_verifier_executed=False)
     if semantic_metadata_view != "legacy":
         report["semantic_metadata_view"] = {"requested_mode": semantic_metadata_view,
             "planning_retained": True, "benchmark_advantage_claimed": False,
@@ -804,6 +898,15 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         admission = json.loads((state / "admission.json").read_text())
         verified = verify_local_benchmark_admission(admission, initial=True)
         task = verified["graph"].tasks[0]
+        if metadata_census_only:
+            phase = "metadata_census"
+            before = time.monotonic()
+            try:
+                _run_live_metadata_census(state=state, report=report, provider_selection=provider_selection,
+                                         timeout_seconds=min(120, remaining(10)))
+            finally:
+                report["phases"]["metadata_census_seconds"] = time.monotonic() - before
+            return report
         doctor = None
         if arm == "full":
             phase = "doctor"
@@ -971,7 +1074,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             and report["stop"]["status"] == "succeeded" and report["remaining_processes"] == 0
         )
     except Exception as error:
-        report["error"] = {"type": type(error).__name__, "message": str(error)[:2048]}
+        report["error"] = ({"type": type(error).__name__} if metadata_census_only else
+                           {"type": type(error).__name__, "message": str(error)[:2048]})
         report["error_phase"] = phase
         try:
             report.update(_failure_diagnostics(error, phase=phase))
@@ -996,6 +1100,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             report["worker_cleanup_error"] = type(error).__name__
         if report.get("worker_cleanup_returncode") != 0:
             report["task_completed"] = False
+            if metadata_census_only:
+                report["metadata_census_succeeded"] = False
         seen = {item["invocation_id"] for item in report["provider_invocations"]}
         for path in state.rglob("*.log"):
             if path.stat().st_size > 8_000_000:
@@ -1022,6 +1128,14 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "phase": "coding", "usage": None,
                 "reason": "implementation_may_have_dispatched_without_a_final_router_receipt",
             }
+        if metadata_census_only:
+            try:
+                from .terminal_live_census_provenance import audit_planning_usage
+                report["planning_usage_audit"] = audit_planning_usage(
+                    report.get("planning") or {}, report["provider_invocations"])
+            except Exception as error:
+                report["planning_usage_audit"] = {"status": "unavailable", "error_type": type(error).__name__,
+                                                 "complete_total_tokens": None}
         _final_context_audit(report, state=state, deadline=deadline)
         try:
             progress.finish(report)
@@ -1055,6 +1169,7 @@ def main():
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA)
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1"])
+    parser.add_argument("--metadata-census-only", action="store_true")
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
         default=DEFAULT_CODING_REPLY_MODE)
@@ -1079,7 +1194,8 @@ def main():
     parser.add_argument("--task-profile", type=Path)
     result = run(**vars(parser.parse_args()))
     print(json.dumps({key: result[key] for key in ("task_completed", "arm", "seconds", "provider_invocations")}))
-    return 0 if result["task_completed"] else 1
+    return 0 if (result.get("metadata_census_succeeded") if result.get("metadata_census_only")
+                 else result["task_completed"]) else 1
 
 
 if __name__ == "__main__":

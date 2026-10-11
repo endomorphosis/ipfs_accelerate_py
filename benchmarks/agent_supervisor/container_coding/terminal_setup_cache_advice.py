@@ -20,7 +20,8 @@ POLICY_V2 = "source384-native-aarch64-dontneed@2"
 POLICIES = (POLICY, POLICY_V2)
 ROOT = "/opt/ipfs-supervisor"
 # Keep this helper self-contained: it also runs under an isolated file loader.
-RESOURCE_PROFILES = ("source384-5cpu-12gib@1", "source384-5cpu-16gib-extended@1")
+RESOURCE_PROFILES = ("source384-5cpu-12gib@1", "source384-5cpu-16gib-extended@1",
+                     "source384-5cpu-20gib-planner180@1")
 PROFILE = "source384-5cpu-12gib@1"
 MAX_MANIFEST = 8 * 1024**2
 MAX_HELPER = 65536
