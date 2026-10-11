@@ -104,6 +104,143 @@ def test_real_pinned_inference_reaches_planner_and_dispatch_without_replay(origi
         load_task_context_nomination(**options)
 
 
+def _authored_source_alignment_case(statuses=("unsupported", "unsupported", "qualified", "qualified")):
+    """Authored decoder predictions with real source qualification; no weights loaded."""
+    from types import SimpleNamespace
+    from ipfs_datasets_py.logic.formalization.autoencoder.source_function_units import extract_function_units
+    from ipfs_datasets_py.logic.formalization.autoencoder.source_program_runtime_384 import SourceProgramDecoder384
+    from ipfs_datasets_py.logic.software_verification.program import ProgramExpression
+
+    source = "\n".join(
+        f"def function_{index}(capacity{': int' if status != 'unsupported' else ''}, "
+        f"threshold{': int' if status != 'unsupported' else ''}) -> bool:\n    return capacity < threshold\n"
+        for index, status in enumerate(statuses))
+    raw = source.encode()
+    inventory = extract_function_units(source_bytes=raw, source_sha256=hashlib.sha256(raw).hexdigest(),
+                                       source_path="bottle.py")
+    predicted = []
+    inputs = []
+    for unit, status in zip(inventory["units"], statuses):
+        operands = ("expr:capacity", "expr:threshold")
+        candidate = dict(kind="program_expression", document=ProgramExpression(
+            "expr:result", "binary", "boolean", operand_ids=operands, evaluation_order=operands,
+            operator="<=" if status == "mismatch" else "<", source_ref_ids=("source",)).to_dict())
+        predicted.append(dict(id=unit["unit_id"], source_sha256=unit["normalized_body_sha256"],
+                              candidate_ir=candidate, status="unqualified_candidate"))
+        inputs.append(dict(id=unit["unit_id"], source_text=unit["normalized_source_text"], embedding=[.125] * 384))
+    runtime = SourceProgramDecoder384(SimpleNamespace(
+        describe=lambda: dict(domain_id="security_ir"),
+        infer=lambda rows: dict(domain_id="security_ir", rows=predicted)), checkpoint_sha256="c" * 64)
+    checked = runtime.infer(inputs)["rows"]
+    assert [row["source_contract"]["status"] for row in checked] == list(statuses)
+    inference = dict(report=dict(key=dict(source_head={"authored": True}, version_id="authored-version"),
+        preparation=dict(files=[dict(path="bottle.py", extraction=inventory)]), coverage={},
+        output=dict(rows=[dict(id=row["id"], candidate=row) for row in checked])))
+    return source, inventory, inference
+
+
+def _authored_summary(inference):
+    return owner._summary(inference, inventory=[dict(path="bottle.py", disposition="captured")],
+                          checkpoint_sha256="c" * 64, inference_sha256=hashlib.sha256(owner._raw(inference)).hexdigest())
+
+
+def test_source_aligned_summary_candidates_are_not_hidden_by_earlier_unsupported_units():
+    _, inventory, inference = _authored_source_alignment_case()
+    before = owner._raw(inference)
+    summary = _authored_summary(inference)
+    assert [r["unit_id"] for r in summary["candidate_samples"]] == [u["unit_id"] for u in inventory["units"][2:]]
+    assert summary["candidate_count"] == 4 and summary["omitted_candidates"] == 2
+    assert summary["source_aligned_candidate_count"] == summary["sampled_source_aligned_candidates"] == 2
+    assert summary["omitted_source_aligned_candidates"] == 0
+    assert summary["candidate_origin"] == "learned_checkpoint_inference"
+    assert summary["candidate_selection"] == "source_alignment_then_path_byte_order@1"
+    assert summary["source_validation_scope"] == "guarded_scalar_source_candidate_alignment"
+    assert summary["source_semantics_verified"] is summary["whole_program_semantics_verified"] is False
+    assert all(row["source_validation_status"] == "qualified" and row["status"] == "unqualified_candidate"
+               and row["proof_authority"] is False and row["source_semantics_verified"] is False
+               for row in summary["candidate_samples"])
+    assert owner._raw(inference) == before and len(owner._raw(summary)) <= 8192
+
+
+def test_source_aligned_summary_preserves_path_byte_order_within_ranks():
+    _, inventory, inference = _authored_source_alignment_case(("unsupported", "mismatch", "qualified"))
+    inference["report"]["output"]["rows"].reverse()
+    summary = _authored_summary(inference)
+    assert [row["unit_id"] for row in summary["candidate_samples"]] == [
+        inventory["units"][2]["unit_id"], inventory["units"][0]["unit_id"]]
+    assert summary["source_aligned_candidate_count"] == summary["sampled_source_aligned_candidates"] == 1
+    assert summary["omitted_candidates"] == 1
+
+
+def test_source_aligned_summary_oversize_omissions_do_not_consume_sample_slots():
+    _, inventory, inference = _authored_source_alignment_case(("unsupported", "qualified", "qualified"))
+    # A long qualified name can exceed the existing per-sample bound.
+    inference["report"]["preparation"]["files"][0]["extraction"]["units"][1]["qualified_name"] = "x" * 2048
+    summary = _authored_summary(inference)
+    assert [row["unit_id"] for row in summary["candidate_samples"]] == [
+        inventory["units"][2]["unit_id"], inventory["units"][0]["unit_id"]]
+    assert summary["source_aligned_candidate_count"] == 2
+    assert summary["sampled_source_aligned_candidates"] == summary["omitted_source_aligned_candidates"] == 1
+    assert summary["omitted_candidates"] == 1
+    assert all(len(owner._raw(row)) <= 2048 for row in summary["candidate_samples"])
+
+
+def test_source_aligned_summary_reaches_actual_planner_before_goals(original, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
+
+    root, instruction, state = original
+    source, inventory, inference = _authored_source_alignment_case()
+    (root / "bottle.py").write_text(source)
+    prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+    result = prep.initial_context(state=state)
+    summary = _authored_summary(inference)
+    config = state / "authored-source384-config.json"
+    config.write_bytes(b'{"scope":"authored-decoder-no-model-execution"}')
+    output = state / "source384-context"
+    output.mkdir()
+    receipt = dict(schema=owner.SCHEMA, repository=str(root), output=str(output),
+        config_path=str(config), config_sha256=hashlib.sha256(config.read_bytes()).hexdigest(),
+        source_hashes={name: row["sha256"] for name, row in prepared["manifest"]["payload"]["sources"].items()},
+        summary=summary, **owner.AUTHORITY)
+    receipt_raw = owner._raw(receipt)
+    (output / "receipt.json").write_bytes(receipt_raw)
+    prep._write(state / "source384-selection.json", dict(config_path=str(config), config_sha256=receipt["config_sha256"]))
+    descriptor_path = root / result["descriptor"]["artifact"]
+    descriptor = json.loads(descriptor_path.read_bytes())
+    descriptor["source384_context"] = receipt
+    descriptor_path.write_bytes(owner._raw(descriptor))
+    result.update(source384_context=receipt, descriptor=initial._reference(root, descriptor_path))
+    prep._write(state / "initial-context-result.json", result)
+    checks = []
+    def authored_currentness(*, repository, expected_receipt):
+        assert repository == root and expected_receipt == receipt
+        assert (output / "receipt.json").read_bytes() == receipt_raw
+        assert hashlib.sha256(config.read_bytes()).hexdigest() == receipt["config_sha256"]
+        assert (root / "bottle.py").read_text() == source
+        checks.append(True)
+        return expected_receipt
+    monkeypatch.setattr(owner, "validate_source384_context", authored_currentness)
+    calls = []
+    def router(prompt, **kwargs):
+        with IntentRepository(state / "intent.duckdb") as intent:
+            assert intent.plan_projection()["tasks"] == []
+        assert checks == [True]
+        for unit in inventory["units"][2:]:
+            assert unit["unit_id"] in prompt
+        for candidate in summary["candidate_samples"]:
+            assert candidate["candidate_sha256"] in prompt
+            assert json.dumps(candidate["candidate_ir_json"]) in prompt
+        assert "learned_checkpoint_inference" in prompt
+        assert "guarded_scalar_source_candidate_alignment" in prompt
+        assert '"source_semantics_verified":false' in prompt.replace(" ", "")
+        calls.append(True)
+        return dict(text=_proposal_json(prepared), observation={}, execution_receipt=None)
+    _version(monkeypatch)
+    planned = prep.plan(state=state, provider_callable=router)
+    assert planned["qualified"] is True and calls == [True] and checks == [True, True]
+    assert planned["initial_indexed_context"]["supplied_to_router"] is True
+
+
 def test_source384_missing_selection_cannot_silently_use_legacy_profile(original, monkeypatch):
     root, instruction, state = original
     prepared = prep.prepare(repository=root, instruction=instruction, state=state)

@@ -3,6 +3,53 @@
 Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
+## Source384 candidate delivery to planning, 2026-10-11
+
+The bounded Source384 planner summary now prioritizes candidates whose native
+source contract is `qualified`. Previously, two earlier unsupported candidates
+could hide a later source-aligned candidate. Within each priority group, sampling
+preserves source path and byte order. The limits remain two candidates, 2,048
+bytes per sample and 8,192 bytes per summary; oversized candidates do not consume
+sample slots. Explicit origin, validation scope and total/aligned omission counts
+distinguish learned checkpoint output from deterministic numerical projections.
+Here, `qualified` means guarded scalar source/candidate alignment. It does not
+establish a proof, whole-program semantics or task correctness, and all authority
+flags remain false.
+
+The [delivery qualification](evidence/source384-planning-delivery-20261011/qualification.json)
+retains four reproduced failures against the previous summary producer and
+**15 passing isolated checks**, including candidate IR and digest delivery to the
+actual planner request before goal creation. Those checks use authored predictions
+and provider responses with the real source binder and native intent owner.
+Two additional existing tests passed with the pinned local Security checkpoint
+and cached GTE embeddings in the native CPU worker: inference reaches planning
+and dispatch without repeating inference, and checkpoint drift during planning
+refuses admission. Together these are **17 distinct passing checks, zero skips**;
+they do not measure numerical reconstruction accuracy.
+
+The first real-checkpoint attempt is preserved as a failed environment run.
+Its isolated worker selected `transformers` 4.52.1 with incompatible `tokenizers`
+0.23.2 and failed before inference. The rerun selected an existing Python
+environment with compatible `tokenizers` 0.21.4 and verified matching parent/child
+module paths and versions. No packages were installed, isolation rules weakened
+or production files changed for that rerun; the qualified source and test hashes
+remained unchanged. This work does not enable a new numerical checkpoint in the
+supervisor.
+
+Worker context propagation remains incomplete. Task bundles carry a validated
+Source384 receipt, but worker nomination currently returns semantic, world and
+retrieval metadata without explicit learned candidate IR or numerical unit-link
+references. Planner delivery therefore does not demonstrate worker-capsule
+delivery. A future change needs task-bound artifact references, currentness
+validation and an observation of the actual worker request. Native source-unit
+inference also retains its first-128-unit selection policy; this summary change
+does not remove those coverage limits or enable trained child checkpoints.
+
+The refreshed isolated Grok metadata probe again reported `unauthenticated` /
+`authentication_refused`. It made one model-list command and zero text-generation
+calls, removed its temporary credential copy, and did not qualify a container.
+There is **no new benchmark score or token-efficiency result** from this work.
+
 ## Sampled function links and matched no-index setup, 2026-10-11
 
 Datasets `d24e15ee7` connects sampled function units to the numerical grammar's

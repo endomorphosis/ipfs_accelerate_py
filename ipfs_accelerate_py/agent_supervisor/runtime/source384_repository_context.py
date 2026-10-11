@@ -188,9 +188,18 @@ def _summary(inference, *, inventory, checkpoint_sha256, inference_sha256, advis
     units = {unit["unit_id"]: (file["path"], unit) for file in report["preparation"]["files"]
              if file.get("extraction") for unit in file["extraction"]["units"]}
     candidates = []
-    total_candidates = sum(row["candidate"] is not None for row in report["output"]["rows"])
-    for row in report["output"]["rows"]:
-        if row["candidate"] is None or len(candidates) >= 2:
+    rows = [row for row in report["output"]["rows"] if row["candidate"] is not None]
+    def source_aligned(row):
+        # This is the native guarded source/candidate alignment result. It is
+        # not proof authority, whole-program semantics, or task correctness.
+        return (row["candidate"].get("source_contract") or {}).get("status") == "qualified"
+    def order(row):
+        path, unit = units[row["id"]]
+        return (not source_aligned(row), path, unit["start_byte"], unit["end_byte"], row["id"])
+    total_candidates = len(rows)
+    aligned_candidates = sum(source_aligned(row) for row in rows)
+    for row in sorted(rows, key=order):
+        if len(candidates) >= 2:
             continue
         path, unit = units[row["id"]]
         candidate = row["candidate"]
@@ -207,6 +216,7 @@ def _summary(inference, *, inventory, checkpoint_sha256, inference_sha256, advis
             # apply. The enclosing native candidate remains separately bound.
             candidate_sha256=_sha(_raw(candidate)),
             candidate_ir_json=_raw(candidate.get("candidate_ir")).decode("utf-8"),
+            candidate_origin="learned_checkpoint_inference",
             status=candidate["status"], source_validation_status=validation.get("status", "unavailable"),
             source_validation_reason=validation.get("reason"),
             source_semantics_verified=False, **AUTHORITY)
@@ -219,6 +229,14 @@ def _summary(inference, *, inventory, checkpoint_sha256, inference_sha256, advis
             row["disposition"] != "captured" for row in inventory),
         coverage=report["coverage"], repository_retention="not_evaluated",
         candidate_samples=candidates, omitted_candidates=total_candidates-len(candidates),
+        candidate_count=total_candidates, candidate_origin="learned_checkpoint_inference",
+        candidate_selection="source_alignment_then_path_byte_order@1",
+        source_validation_scope="guarded_scalar_source_candidate_alignment",
+        source_aligned_candidate_count=aligned_candidates,
+        sampled_source_aligned_candidates=sum(row["source_validation_status"] == "qualified" for row in candidates),
+        omitted_source_aligned_candidates=aligned_candidates-sum(
+            row["source_validation_status"] == "qualified" for row in candidates),
+        source_semantics_verified=False, whole_program_semantics_verified=False,
         training_steps=0, provider_calls=0, model_promotion_performed=False,
         nomination_only=True, **AUTHORITY)
     if program_scope is not None:

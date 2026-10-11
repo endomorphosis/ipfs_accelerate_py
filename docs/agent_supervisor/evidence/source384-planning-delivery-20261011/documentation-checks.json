@@ -1,0 +1,43 @@
+{
+  "changed_document_link_check": {
+    "check_anchors": true,
+    "errors": [],
+    "function": "scripts/docs/check_current_docs_links.py:check_file",
+    "path": "docs/agent_supervisor/durable_cleanup_status.md"
+  },
+  "commands": [
+    {
+      "command": [
+        "/home/barberb/.local/bin/python",
+        "scripts/docs/check_agent_supervisor_docs.py"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n"
+    },
+    {
+      "command": [
+        "/home/barberb/.local/bin/python",
+        "scripts/docs/check_current_docs_links.py"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    }
+  ],
+  "doc_sha256": "26e6cc5fff344aa61416372c616ea5cc374205410f62dbf09626b88ceb7a01d4",
+  "evidence_sha256": "4d627804749d240c3e2a11886db478f70236818487016a7e58ecac3b891e8a78",
+  "passed": true,
+  "schema": "source384-planning-delivery-documentation-checks@1",
+  "scope": "Documentation gates only; no model, provider or benchmark executions."
+}

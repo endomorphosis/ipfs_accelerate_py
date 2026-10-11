@@ -1,0 +1,151 @@
+{
+  "benchmark_score": null,
+  "completion_authority": false,
+  "contract": {
+    "candidate_ir_and_hash_observed_in_authored_planner_request_before_goals": true,
+    "candidate_ir_unchanged": true,
+    "candidate_origin": "learned_checkpoint_inference",
+    "maximum_sample_bytes": 2048,
+    "maximum_samples": 2,
+    "maximum_summary_bytes": 8192,
+    "selection": "source_alignment_then_path_byte_order@1",
+    "source_contract_qualified_is_proof": false,
+    "source_validation_scope": "guarded_scalar_source_candidate_alignment",
+    "total_and_aligned_omissions_accounted": true
+  },
+  "distinct_passing_checks": 17,
+  "evidence_sha256": {
+    "artifacts/supervisor-matched-no-index-20261011/review/host-catalog-probe-02.json": "446edb5df8251edcf79d3769a6b62c0ccd32130699b11a7124d07411cc61afb1",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/before-command.json": "6e157fc661dd27ca7fde598cd5de6587941a6e13c3548423ee1b77854362b8b6",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/before-result.json": "26bfea30cc33c16c35191aa044c97211e0946a42fb754263150768795487f1e6",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/before.xml": "022a0c67de287aed5e2cfe813ebc0f45aefde257a7f127b2fb040de9e861f57f",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/final-01-command.json": "937bdebe5f7adc89f744a02d29a4c4ddda8e333e66bfe7eb3b59cbb0064a78e3",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/final-01-result.json": "011c19681004d7231beffdfd2d1f6e6764fdaccbaa35aff9e873d3d99511511a",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/final-01.xml": "211fd3c7da77df118bd07596aeedd429c8e9c7268686178bd4916f31d4a3e98c",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/qualification.json": "70185c5dbbc73e9fad41860e36f4385c9f368d179141f74ec74a43c8418b7af7",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/real-02-command.json": "c721857fc144aabdd97232be901d91f23cb95c6573e5c38aba836e481aa7b1da",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/real-02-qualification.json": "3a2c420e634f1a1b3a50948ba42d2ed6aa392510bfbd595d39ec03c39b6a1dc9",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/real-02.xml": "c119f62cd0ca462c19692ce3e093de10499d548a41f2de2acf23679251efc4e9",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/real-03-command.json": "76c5791cd224e839cdd3ab4bec6a0ba31eadf6cac71f2ed59545c2a5fcfea9ac",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/real-03-environment-diagnosis.json": "aadcb04a32184268c9a240f5c522210c126ac80d31e0ebc9c0fb65f89135f5b9",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/real-03-import-preflight.json": "5bd783289d2fe08c051e9708135c97f8b84a6846bcccf1db6b03b22f72c5e957",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/real-03-qualification.json": "afa49d18c32815545af7e1afd49a56d8ced041a13c724d188d41a4638663a96a",
+    "artifacts/supervisor-numerical-training-20261011/source384-delivery/real-03.xml": "dba54ff88ad61f144d24628f1bd0ed982257aaa2dfafc29bb273a112f206ad04"
+  },
+  "execution_authority": false,
+  "failed_environment_run": {
+    "before_inference": true,
+    "cause": "Harbor venv site roots selected tokenizers0.23.2, while the native isolated worker fell back to user transformers4.52.1 requiring tokenizers>=0.21,<0.22. Python -I intentionally ignores ambient PYTHONPATH.",
+    "correction": "Select the existing system Python and explicitly match parent package ordering to native site roots plus user site. No dependency installation, production source change or isolation weakening.",
+    "global_installs": 0,
+    "parent_child_actual_module_paths_and_versions_equal": true,
+    "production_source_edits_for_rerun": false,
+    "retained": true
+  },
+  "grok_readiness": {
+    "docker_calls": 0,
+    "evidence": "artifacts/supervisor-matched-no-index-20261011/review/host-catalog-probe-02.json",
+    "host_credential_write_performed": false,
+    "login_performed": false,
+    "new_benchmark_score": null,
+    "observation": {
+      "authentication_authority": false,
+      "cli_version": "1.0.46",
+      "completion_authority": false,
+      "execution_authority": false,
+      "model": "grok-4.7",
+      "models_observed": 0,
+      "native_catalog_commands": 1,
+      "native_command": "models",
+      "native_exit_code": 0,
+      "proof_authority": false,
+      "provider": "grok_cli",
+      "reason": "authentication_refused",
+      "schema": "terminal-grok-credential-readiness@1",
+      "scope": "fresh_host_temporary_home_credential_copy_not_container_qualification",
+      "selected_model_observed": false,
+      "status": "unauthenticated",
+      "stderr_bytes": 0,
+      "stdout_bytes": 144,
+      "text_generation_calls": 0
+    },
+    "temporary_copy_removed": true,
+    "text_generation_calls": 0
+  },
+  "historical_evidence_modified": false,
+  "independent_code_review": {
+    "findings": "Exact alignment rank, canonical path/byte order, bounded omissions and authority flags preserved; actual planner seam exercises candidate digest/IR delivery with explicit authored numerical seams.",
+    "reviewer": "pilot_resume",
+    "source_edits": false,
+    "status": "no_blocker",
+    "tests_rerun": false
+  },
+  "isolated_checks": {
+    "baseline": {
+      "errors": 0,
+      "failures": 4,
+      "skipped": 0,
+      "tests": 4
+    },
+    "final": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 15
+    },
+    "model_inference_calls": 0,
+    "provider_calls": 0,
+    "scope": {
+      "currentness": "authored immutable source/receipt/config test boundary",
+      "embeddings": "authored constant384D test vectors, no embedding model",
+      "indexes_and_goal_owner": "real local initial context and native intent owner",
+      "predictions": "authored",
+      "provider": "authored response callable",
+      "source_qualification": "real SourceProgramDecoder384 with native source/candidate binder"
+    }
+  },
+  "new_numerical_checkpoint_enabled": false,
+  "proof_authority": false,
+  "real_checkpoint_checks": {
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 2
+    },
+    "device": "cpu",
+    "embedding_model": "thenlper/gte-small",
+    "embedding_snapshot": "17e1f347d17fe144873b1201da91788898c639cd",
+    "numerical_accuracy_measured": false,
+    "provider_calls": 0,
+    "scope": "Pinned Security checkpoint and cached GTE consumed by native CPU worker. Tests cover actual inference/planner/dispatch replay and checkpoint-drift refusal; no numerical accuracy or proof claim.",
+    "seconds": 44.21496684802696,
+    "tests": [
+      "test_real_pinned_inference_reaches_planner_and_dispatch_without_replay",
+      "test_checkpoint_change_during_router_is_rejected_before_admission"
+    ]
+  },
+  "remaining_gaps": [
+    "Worker task bundles validate Source384 receipt but return only semantic/world/retrieval metadata; neither learned candidate IR nor numerical links become explicit worker references.",
+    "Native source-unit inference still uses the explicit first128 AST-preserved units policy before token/source-contract screening; later units remain recorded as deferred.",
+    "Pinned unit inference accepts shared_parent, not trained children. Future checkpoint deployment requires an explicit compatible registration/configuration.",
+    "No real-weight accuracy improvement, benchmark success, source semantics proof or task completion is established by these tests."
+  ],
+  "schema": "source384-planning-delivery-publication@1",
+  "skipped_checks": 0,
+  "source_base_head": "6691119e75d96888b106c52ac495e7dccf0dbae4",
+  "source_changes_uncommitted_at_qualification": true,
+  "source_hashes_identical_across_final_isolated_and_real_tests": true,
+  "source_sha256": {
+    ".worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384_v2.py": "fce62d147c82612cf5c59f1bbbbc56516b93e02e4440cc1ada3c5f27071c9a66",
+    ".worktrees/source-unit-numerical-links-20261011/ipfs_datasets_py/logic/formalization/autoencoder/source_program_runtime_384.py": "7bd46875786f05f6cc19fda3cf3ebc1529617fb4a65c9e9000991a906124e277",
+    ".worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py": "095a74fa7c3f26e7973a83595d006a6c0f711a73c7b0a6d2ddf1f5a620ff6f34",
+    ".worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "2a934f1f54b10c88a073863e4af2f282128fdc24907c2169d71666132ce07326"
+  },
+  "status": "qualified_with_explicit_limits",
+  "token_efficiency_measured": false,
+  "training_steps_in_this_change": 0,
+  "whole_program_semantics_verified": false,
+  "worker_delivery_verified": false
+}
