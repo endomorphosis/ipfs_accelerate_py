@@ -5,7 +5,7 @@ import json
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
-    ContextCompiler, build_text_context_references, render_context_capsule,
+    CalibratedTokenEstimator, ContextCompiler, build_text_context_references, render_context_capsule,
 )
 from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextBudget, canonical_context_json_bytes,
@@ -140,6 +140,185 @@ def test_complete_input_selection_counts_all_literal_prefix_and_suffix(native):
     assert receipt["token_proxy"] == "utf8-bytes-ceil-div4@1"
     assert receipt["candidate_complete_proxy_tokens"] < receipt["native_complete_proxy_tokens"]
     assert receipt["fallback_reason"] is None
+    assert receipt["schema"] == view_codec.SELECTION_SCHEMA
+    assert "token_counter_identity" not in receipt
+
+
+def declared_counter(count_function, **overrides):
+    """Authored test counters are estimates, not live provider measurements."""
+    return view_codec.SemanticMetadataTokenCounter(**{
+        "count": count_function, "provider": "authored-provider", "model": "authored-model@1",
+        "tokenizer": "authored-estimator", "tokenizer_revision": "authored-revision@1",
+        "qualification": "estimate", **overrides})
+
+
+def test_complete_prompt_counter_sees_exact_wrapped_strings_and_binds_identity(native):
+    _repository, encoded, _source = native
+    candidate = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    original = "Workspace café.\n" + encoded.provider_prompt + "\nPublic instruction and reply contract."
+    projected = "Workspace café.\n" + candidate.provider_prompt + "\nPublic instruction and reply contract."
+    calls = []
+    def count(text):
+        calls.append(text)
+        return 101 if text == original else 100
+    selection = view_codec.select_semantic_metadata_view(view=candidate,
+        native_complete_prompt=original, candidate_complete_prompt=projected,
+        token_counter=declared_counter(count))
+    assert calls == [original, projected]
+    assert selection.selected_prompt == projected
+    receipt = selection.receipt
+    assert receipt["schema"] == view_codec.TOKEN_SELECTION_SCHEMA
+    assert receipt["selection_basis"] == "token_counter"
+    assert receipt["token_counter_status"] == "counted"
+    identity = receipt["token_counter_identity"]
+    assert identity["provider"] == "authored-provider"
+    assert identity["model"] == "authored-model@1"
+    assert identity["tokenizer"] == "authored-estimator"
+    assert identity["tokenizer_revision"] == "authored-revision@1"
+    assert identity["qualification"] == "estimate"
+    assert identity["measurement_scope"] == "complete-rendered-prompt-text@1"
+    assert identity["identity_caller_supplied"] is True
+    assert identity["provider_usage_verified"] is False
+    assert receipt["token_counter_identity_sha256"] == hashlib.sha256(canonical(identity).encode()).hexdigest()
+    assert receipt["native_complete_tokens"] == 101
+    assert receipt["candidate_complete_tokens"] == receipt["selected_complete_tokens"] == 100
+    assert receipt["native_complete_sha256"] == hashlib.sha256(original.encode()).hexdigest()
+    assert receipt["candidate_complete_sha256"] == receipt["selected_complete_sha256"] == hashlib.sha256(projected.encode()).hexdigest()
+    assert receipt["view_receipt_sha256"] == hashlib.sha256(candidate.receipt_json.encode()).hexdigest()
+    assert receipt["actual_provider_usage_verified"] is False
+    assert receipt["provider_usage_reported"] is False
+    assert receipt["cli_scaffolding_measured"] is False
+    assert receipt["complete_run_token_savings_claimed"] is False
+    assert all(receipt[field] is False for field in view_codec._FALSE_FIELDS)
+
+
+@pytest.mark.parametrize("candidate_tokens", [100, 101])
+def test_byte_reduction_cannot_override_equal_or_larger_counter_result(native, candidate_tokens):
+    _repository, encoded, _source = native
+    candidate = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    assert len(candidate.provider_prompt.encode()) < len(encoded.provider_prompt.encode())
+    selection = view_codec.select_semantic_metadata_view(view=candidate,
+        native_complete_prompt=encoded.provider_prompt, candidate_complete_prompt=candidate.provider_prompt,
+        token_counter=declared_counter(lambda text: 100 if text == encoded.provider_prompt else candidate_tokens))
+    assert selection.selected_mode == "legacy"
+    assert selection.selected_prompt == encoded.provider_prompt
+    assert selection.receipt["candidate_complete_proxy_tokens"] < selection.receipt["native_complete_proxy_tokens"]
+    assert selection.receipt["fallback_reason"] == "complete_input_not_smaller_under_bytes_and_token_counter"
+    assert selection.receipt["selected_complete_tokens"] == 100
+
+
+def test_token_reduction_keeps_existing_complete_byte_gate(native_factory):
+    _repository, encoded, _source = native_factory(0)
+    candidate = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    assert len(candidate.provider_prompt.encode()) > len(encoded.provider_prompt.encode())
+    selection = view_codec.select_semantic_metadata_view(view=candidate,
+        native_complete_prompt=encoded.provider_prompt, candidate_complete_prompt=candidate.provider_prompt,
+        token_counter=declared_counter(lambda text: 101 if text == encoded.provider_prompt else 100))
+    assert selection.selected_mode == "legacy"
+    assert selection.receipt["candidate_complete_tokens"] < selection.receipt["native_complete_tokens"]
+    assert selection.receipt["fallback_reason"] == "complete_input_not_smaller_under_bytes_and_token_counter"
+
+
+@pytest.mark.parametrize("invalid", [True, False, 0, -1, 1.5, "100", None, [1, 2], 2**63])
+def test_invalid_counter_output_falls_back_without_proxy_rescue(native, invalid):
+    _repository, encoded, _source = native
+    candidate = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    selection = view_codec.select_semantic_metadata_view(view=candidate,
+        native_complete_prompt=encoded.provider_prompt, candidate_complete_prompt=candidate.provider_prompt,
+        token_counter=declared_counter(lambda text: 100 if text == encoded.provider_prompt else invalid))
+    assert selection.selected_prompt == encoded.provider_prompt
+    assert selection.receipt["fallback_reason"] == "complete_input_token_counter_failed"
+    assert selection.receipt["token_counter_status"] == "failed"
+    assert all(selection.receipt[key] is None for key in
+               ("native_complete_tokens", "candidate_complete_tokens", "selected_complete_tokens"))
+
+
+def test_counter_exception_falls_back_and_does_not_export_exception_text(native):
+    _repository, encoded, _source = native
+    candidate = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    def fail(text):
+        raise RuntimeError("PRIVATE COUNTER DETAILS " + text)
+    selection = view_codec.select_semantic_metadata_view(view=candidate,
+        native_complete_prompt=encoded.provider_prompt, candidate_complete_prompt=candidate.provider_prompt,
+        token_counter=declared_counter(fail))
+    assert selection.selected_mode == "legacy"
+    assert selection.receipt["fallback_reason"] == "complete_input_token_counter_failed"
+    assert "PRIVATE COUNTER DETAILS" not in selection.receipt_json
+    assert encoded.provider_prompt not in selection.receipt_json
+
+
+@pytest.mark.parametrize("change", [{"provider": ""}, {"model": None}, {"tokenizer": ""},
+                                  {"tokenizer_revision": ""}, {"qualification": "exact"}, {"count": None}])
+def test_invalid_counter_identity_falls_back_before_any_count(native, change):
+    _repository, encoded, _source = native
+    candidate = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    calls = []
+    counter = declared_counter(lambda text: calls.append(text) or 100, **change)
+    selection = view_codec.select_semantic_metadata_view(view=candidate,
+        native_complete_prompt=encoded.provider_prompt, candidate_complete_prompt=candidate.provider_prompt,
+        token_counter=counter)
+    assert calls == []
+    assert selection.selected_mode == "legacy"
+    assert selection.receipt["fallback_reason"] == "complete_input_token_counter_invalid"
+    assert selection.receipt["token_counter_identity"] is None
+    assert selection.receipt["token_counter_identity_sha256"] is None
+
+
+def test_counter_identity_changes_receipt_even_with_identical_counts(native):
+    _repository, encoded, _source = native
+    candidate = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    count = lambda text: 101 if text == encoded.provider_prompt else 100
+    def select(counter):
+        return view_codec.select_semantic_metadata_view(view=candidate,
+            native_complete_prompt=encoded.provider_prompt, candidate_complete_prompt=candidate.provider_prompt,
+            token_counter=counter)
+    first = select(declared_counter(count))
+    for changed in ({"provider": "other-provider"}, {"model": "other-model"},
+                    {"tokenizer": "other-tokenizer"}, {"tokenizer_revision": "other-revision"},
+                    {"qualification": "provider_tokenizer"}):
+        second = select(declared_counter(count, **changed))
+        assert second.selected_prompt == first.selected_prompt
+        assert second.receipt["selected_complete_tokens"] == first.receipt["selected_complete_tokens"]
+        assert second.receipt["token_counter_identity_sha256"] != first.receipt["token_counter_identity_sha256"]
+        assert second.receipt_json != first.receipt_json
+
+
+def test_counter_can_wrap_existing_calibrated_estimator(native):
+    _repository, encoded, _source = native
+    candidate = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    estimator = CalibratedTokenEstimator()
+    selection = view_codec.select_semantic_metadata_view(view=candidate,
+        native_complete_prompt=encoded.provider_prompt, candidate_complete_prompt=candidate.provider_prompt,
+        token_counter=declared_counter(estimator.estimate, tokenizer=estimator.name))
+    assert selection.selected_mode == "common-bindings@1"
+    assert selection.receipt["native_complete_tokens"] == estimator.estimate(encoded.provider_prompt)
+    assert selection.receipt["candidate_complete_tokens"] == estimator.estimate(candidate.provider_prompt)
+    assert selection.receipt["token_counter_identity"]["qualification"] == "estimate"
+    assert selection.receipt["actual_provider_usage_verified"] is False
+
+
+def test_untyped_counter_binding_falls_back_without_invoking_callable(native):
+    _repository, encoded, _source = native
+    candidate = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    calls = []
+    selection = view_codec.select_semantic_metadata_view(view=candidate,
+        native_complete_prompt=encoded.provider_prompt, candidate_complete_prompt=candidate.provider_prompt,
+        token_counter={"count": lambda text: calls.append(text) or 100})
+    assert calls == []
+    assert selection.selected_prompt == encoded.provider_prompt
+    assert selection.receipt["token_counter_status"] == "invalid"
+
+
+def test_injected_counter_does_not_run_before_literal_boundary_validation(native):
+    _repository, encoded, _source = native
+    candidate = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    calls = []
+    with pytest.raises(view_codec.SemanticMetadataViewError, match="prefix or suffix"):
+        view_codec.select_semantic_metadata_view(view=candidate,
+            native_complete_prompt=encoded.provider_prompt,
+            candidate_complete_prompt=candidate.provider_prompt + "changed",
+            token_counter=declared_counter(lambda text: calls.append(text) or 100))
+    assert calls == []
 
 
 def test_real_small_fixture_falls_back_without_altering_native_input(native_factory):
