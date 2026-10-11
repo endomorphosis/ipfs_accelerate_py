@@ -8,20 +8,47 @@ and bounded provenance; the native prompt and operational artifacts stay private
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 import hashlib
 import json
 import os
 from pathlib import Path
 import shlex
 import stat
+from typing import TYPE_CHECKING
 import uuid
 
 from . import terminal_indexed_preparation as prep
 from .terminal_metadata_preflight import _doctor_residual_only, _private_prompt
 
+if TYPE_CHECKING:
+    from ipfs_accelerate_py.agent_supervisor.proof.doctor_proof_cache import DoctorProofCacheGate, DoctorProofCacheKey
+    from ipfs_accelerate_py.agent_supervisor.runtime.doctor_scoped_analysis import ScopedDoctorAnalysis
+
 
 SCHEMA = "terminal-live-metadata-census-context@1"
+FORMAL_STATUS_SCHEMA = "terminal-live-metadata-census-context@2"
 MAX_METADATA_BYTES = 1_048_576
+FORMAL_STATUS_OPERATION_COUNTS = (
+    "current_binding_probe_calls", "gate_lookup_calls", "gate_render_revalidation_calls",
+    "owner_identity_checks", "gate_denial_state_checks",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class TerminalFormalStatusOwner:
+    """Trusted host inputs; neither this type nor its hashes authenticate keys.
+
+    The host admits the complete proof profiles and independently pins their
+    expected population and existing owner. No model or serialized task input
+    may supply these objects. The signed source scope is rechecked by Terminal.
+    """
+
+    scoped_analysis: ScopedDoctorAnalysis
+    gate: DoctorProofCacheGate
+    keys: tuple[DoctorProofCacheKey, ...]
+    owner_path_sha256: str
+    expected_key_ids: tuple[str, ...]
 
 
 def _sha(raw: bytes) -> str:
@@ -172,6 +199,109 @@ def _owner_snapshot(*, state, require_source384):
             "database_identity": (database_info.st_dev, database_info.st_ino)}
 
 
+def _formal_status_context_binding(observed):
+    """Bind observed Terminal custody without inventing a formal proof key."""
+    task, indexed, verified = (observed[key] for key in ("task", "indexed", "verified"))
+    return _identity({
+        "task_cid_sha256": _identity(task["task_cid"]),
+        "task_revision": task["revision"],
+        "task_contract_sha256": _identity(observed["contract"]),
+        "source_manifest_sha256": _identity(verified["manifest"]["sources"]),
+        "context_metadata_sha256": _identity(indexed),
+        "semantic_root_cid_sha256": _identity(indexed["semantic_root_cid"]),
+        "world_snapshot_cid_sha256": _identity(indexed["world_snapshot_cid"]),
+    })
+
+
+def _prepare_formal_owner_observation(*, owner, observed, state, require_source384):
+    """Join existing host inputs to the independently admitted signed scope."""
+    from ipfs_accelerate_py.agent_supervisor.runtime import formal_status_census as formal
+    from ipfs_accelerate_py.agent_supervisor.runtime.doctor_scoped_analysis import ScopedDoctorAnalysis
+    from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import content_identity
+
+    def refused():
+        report = formal.census_formal_status()
+        report.update(status="refused", reason_code="invalid_terminal_native_admission")
+        return report
+
+    scoped = owner.scoped_analysis
+    if type(scoped) is not ScopedDoctorAnalysis:
+        return refused(), None
+    try:
+        scope_id = scoped.report["scope_id"]
+        binding = formal.FormalStatusCensusBinding(
+            task_sha256=_identity(observed["task"]["task_cid"]),
+            revision_sha256=_identity({"revision": observed["task"]["revision"],
+                                      "contract": observed["contract"]}),
+            source_sha256=_identity(observed["verified"]["manifest"]["sources"]),
+            context_sha256=_formal_status_context_binding(observed),
+            candidate_tree_id=scope_id, owner_path_sha256=owner.owner_path_sha256,
+            expected_key_ids=owner.expected_key_ids)
+    except Exception:
+        return refused(), None
+
+    initial_native_owner = None
+
+    def current_binding():
+        nonlocal initial_native_owner
+        current = _owner_snapshot(state=state, require_source384=require_source384)
+        if (current["database_identity"] != observed["database_identity"]
+                or current["retained"] != observed["retained"]
+                or current["task"] != observed["task"]
+                or current["contract"] != observed["contract"]
+                or _formal_status_context_binding(current) != binding.context_sha256):
+            raise ValueError("current Terminal owner binding changed")
+        manifest, verified = current["verified"]["manifest"], current["verified"]
+        spec = current["contract"]["task_spec"]
+        paths = tuple(sorted(set(spec["scope_paths"]) & set(manifest["sources"])))
+        scope = {"schema": "supervisor-doctor-signed-task-scope@1",
+            "manifest_cid": verified["receipt"]["manifest_cid"],
+            "task_cid": current["task"]["task_cid"], "task_spec_cid": content_identity(spec),
+            "source_tree_id": verified["current_source_tree_id"],
+            "sources": {name: manifest["sources"][name] for name in paths}}
+        expected_scope = content_identity(scope)
+        report, roots = scoped.report, scoped.snapshot.roots
+        if (scoped.repository != Path(current["prepared"]["repository"])
+                or scoped.task_cid != current["task"]["task_cid"]
+                or json.loads(scoped._admission_json) != current["admission"]
+                or report["scope_id"] != expected_scope or scope_id != expected_scope
+                or any(report[name] != scope[name] for name in
+                       ("manifest_cid", "task_cid", "task_spec_cid", "source_tree_id"))
+                or roots.repository_id != manifest["repository_cid"]
+                or any(getattr(roots, name) != expected_scope for name in
+                       ("forest_id", "tree_id", "overlay_id"))
+                or any(getattr(key, name).logical_id != expected_scope
+                       for key in owner.keys for name in ("forest", "tree", "overlay", "candidate_tree"))):
+            raise ValueError("native Doctor inputs differ from the admitted signed task scope")
+        scoped.assert_current()
+        # Keep the same admitted owner across both observation passes, rather
+        # than accepting a replacement file on the post-yield pass.
+        cache, path = owner.gate.authoritative_cache, owner.gate.db_path
+        info = path.stat(follow_symlinks=False)
+        native_owner = (cache, path, info.st_dev, info.st_ino)
+        if initial_native_owner is None:
+            initial_native_owner = native_owner
+        elif cache is not initial_native_owner[0] or native_owner[1:] != initial_native_owner[1:]:
+            raise ValueError("admitted native owner changed between observations")
+        return binding
+
+    def observe():
+        result = formal.census_formal_status(binding=binding, gate=owner.gate,
+            keys=owner.keys, current_binding_probe=current_binding)
+        result["binding_admission"] = "terminal-signed-task-scoped-host-owner@1"
+        return result
+
+    return observe(), observe
+
+
+def _invalidate_formal_observation(report):
+    report["formal_status_context_binding_current"] = False
+    nested = report["formal_status_census"]
+    if report.get("formal_status_host_owner_supplied") or nested["observation_current"]:
+        nested.update(status="refused", reason_code="terminal_context_custody_changed",
+                      observation_current=False, accepted_receipts=None)
+
+
 def _worker_readable_directory(path):
     try:
         path.mkdir(mode=0o755)
@@ -189,13 +319,18 @@ def _worker_readable_directory(path):
 @contextmanager
 def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context: bool = True,
                                           require_source384: bool = True, worktree_root: Path | None = None,
-                                          worker_writable: bool = False, worker_group_gid: int | None = None):
+                                          worker_writable: bool = False, worker_group_gid: int | None = None,
+                                          include_formal_status_census: bool = False,
+                                          formal_status_owner: TerminalFormalStatusOwner | None = None):
     """Yield existing live owner inputs and an owned detached census workspace.
 
     ``require_source384=False`` supports native authored lexical boundary tests;
     the output reports that selection honestly. Persisted provider provenance
     is checked against admission, but actual live LLM execution and isolation
     must be established by the caller's normal router custody evidence.
+    The optional formal-status observation accepts only explicitly supplied
+    trusted host objects. Without them proof coverage remains unmeasured.
+    It constructs no proof owner and does not modify the native input.
     """
     from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
     from ipfs_accelerate_py.agent_supervisor.runtime.router_public_instruction import prepare_public_instruction_context
@@ -206,10 +341,14 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
     from .indexed_doctor_lifecycle import _context
 
     if (type(include_doctor_context) is not bool or type(require_source384) is not bool
+            or type(include_formal_status_census) is not bool
             or type(worker_writable) is not bool
             or worker_writable and (type(worker_group_gid) is not int or worker_group_gid < 0)
             or not worker_writable and worker_group_gid is not None):
         raise ValueError("explicit census context selections required")
+    if formal_status_owner is not None and (
+            not include_formal_status_census or type(formal_status_owner) is not TerminalFormalStatusOwner):
+        raise ValueError("explicit typed host owner requires the formal-status census selection")
     state = Path(state).absolute()
     state_identity = _owned_directory(state)
     observed = _owner_snapshot(state=state, require_source384=require_source384)
@@ -312,6 +451,26 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
         "post_yield_admission_task_revalidated": False, "allocated_worktree_removed": False,
         "guarded_cleanup": True, "explicit_external_worktree_root": worktree_root is not None,
         "worker_writable_workspace_selected": worker_writable}
+    if include_formal_status_census:
+        from ipfs_accelerate_py.agent_supervisor.runtime.formal_status_census import census_formal_status
+
+        formal_owner_observe = None
+        if formal_status_owner is None:
+            formal_status = census_formal_status(binding=None, gate=None, keys=None)
+        else:
+            formal_status, formal_owner_observe = _prepare_formal_owner_observation(
+                owner=formal_status_owner, observed=observed, state=state,
+                require_source384=require_source384)
+        formal_status_binding = _formal_status_context_binding(observed)
+        report.update(schema=FORMAL_STATUS_SCHEMA,
+            formal_status_context_binding_sha256=formal_status_binding,
+            formal_status_context_binding_current=True,
+            formal_status_census=formal_status)
+        if formal_status_owner is not None:
+            report.update(formal_status_host_owner_supplied=True,
+                          formal_status_owner_observation_passes=1,
+                          formal_status_native_observation_totals={
+                              name: formal_status[name] for name in FORMAL_STATUS_OPERATION_COUNTS})
     options = {"purpose": "coding", "semantic_repository": root,
         "semantic_transport_schema": "supervisor-semantic-router-input@1",
         "semantic_metadata_view": "common-bindings@1", "census_only": True,
@@ -381,7 +540,17 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                 git_file_sha256=_sha(git_file.read_bytes()))
         return result
 
-    with managed_git_worktree(repo_root=root, worktree_path=workspace,
+    @contextmanager
+    def formal_status_guard():
+        try:
+            yield
+        except BaseException:
+            # Also covers the native worktree helper's exit/cleanup errors.
+            if include_formal_status_census:
+                _invalidate_formal_observation(report)
+            raise
+
+    with formal_status_guard(), managed_git_worktree(repo_root=root, worktree_path=workspace,
             metadata_rel=".runtime/live-metadata-census.json", owner_rel=".runtime/live-metadata-census-owner.json",
             run_command_fn=guarded_command, prune_on_exit=False) as session:
         if not session.ready:
@@ -401,6 +570,16 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                    "prompt_artifact": prompt_path, "runner_kwargs": options, "metadata": report}
         finally:
             # A caller exception never skips current owner/source custody checks.
+            if include_formal_status_census:
+                # The yielded dictionary may have escaped to the caller. Clear
+                # currentness before any check that can raise on custody drift.
+                report["formal_status_context_binding_current"] = False
+                if formal_owner_observe is not None and report["formal_status_census"]["status"] == "measured":
+                    final_formal = formal_owner_observe()
+                    report["formal_status_census"].update(final_formal)
+                    report["formal_status_owner_observation_passes"] += 1
+                    for name in FORMAL_STATUS_OPERATION_COUNTS:
+                        report["formal_status_native_observation_totals"][name] += final_formal[name]
             final = _owner_snapshot(state=state, require_source384=require_source384)
             check_workspace()
             if (final["database_identity"] != observed["database_identity"]
@@ -410,10 +589,17 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                     or prep._git(workspace, "rev-parse", "HEAD") != head
                     or prep._git(workspace, "rev-parse", "--abbrev-ref", "HEAD").strip() != b"HEAD"
                     or local._sources(workspace, sorted(verified["manifest"]["sources"]), max_files=256)
-                        != verified["manifest"]["sources"]):
+                        != verified["manifest"]["sources"]
+                    or include_formal_status_census and _formal_status_context_binding(final)
+                        != formal_status_binding
+                    or include_formal_status_census and report["formal_status_context_binding_sha256"]
+                        != formal_status_binding):
                 raise ValueError("census admission, task revision, contract, sources or baseline changed")
             report["post_yield_admission_task_revalidated"] = True
-    registered = prep._git(root, "worktree", "list", "--porcelain", "-z").decode().split("\0")
-    if workspace.exists() or "worktree " + str(workspace) in registered:
-        raise ValueError("guarded census workspace cleanup incomplete")
-    report["allocated_worktree_removed"] = True
+            if include_formal_status_census:
+                report["formal_status_context_binding_current"] = True
+    with formal_status_guard():
+        registered = prep._git(root, "worktree", "list", "--porcelain", "-z").decode().split("\0")
+        if workspace.exists() or "worktree " + str(workspace) in registered:
+            raise ValueError("guarded census workspace cleanup incomplete")
+        report["allocated_worktree_removed"] = True

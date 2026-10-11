@@ -183,13 +183,19 @@ def authored_isolated_census(tmp_path, monkeypatch):
         "provider_calls": 0, "router_calls": 0, "provider_dispatch_observed": False,
         "provider_token_usage": None, "doctor_residual_included": True, "public_instruction_included": True}
     control = SimpleNamespace(state=state, prepared=prepared, report=report, selected=selected,
-        receipt=receipt, fail_after_yield=False, worker_returncode=0, calls=[], events=[], provenance={
+        receipt=receipt, fail_after_yield=False, worker_returncode=0, calls=[], events=[],
+        helper_calls=[], worker_inputs=[], formal_status_owner=None, provenance={
             "worker_boundary_manifest_sha256": boundary_sha, "authored_control": True})
 
     @contextmanager
     def native_helper(**kwargs):
-        assert kwargs == {"state": state, "worktree_root": driver.WORKTREES,
-                          "worker_writable": True, "worker_group_gid": driver.os.getegid()}
+        expected = {"state": state, "worktree_root": driver.WORKTREES,
+                    "worker_writable": True, "worker_group_gid": driver.os.getegid()}
+        if control.formal_status_owner is not None:
+            expected.update(include_formal_status_census=True,
+                            formal_status_owner=control.formal_status_owner)
+        assert kwargs == expected
+        control.helper_calls.append(kwargs)
         control.events.append("yield")
         yield prepared
         assert report["metadata_census_succeeded"] is False
@@ -209,7 +215,9 @@ def authored_isolated_census(tmp_path, monkeypatch):
     def worker_call(argv, **kwargs):
         assert argv[0] == str(driver.ROUTER)
         assert kwargs["cwd"] == workspace and kwargs["timeout"] == 60
-        assert kwargs["stdin"].read() == b"authored native task context"
+        prompt_bytes = kwargs["stdin"].read()
+        assert prompt_bytes == b"authored native task context"
+        control.worker_inputs.append(prompt_bytes)
         assert "--semantic-metadata-census-only" in argv
         for flag, value in (("--semantic-repository", str(root)),
                 ("--semantic-metadata-view", "common-bindings@1"),
@@ -231,9 +239,9 @@ def authored_isolated_census(tmp_path, monkeypatch):
     return control
 
 
-def _run_authored_census(control):
+def _run_authored_census(control, **kwargs):
     driver._run_live_metadata_census(state=control.state, report=control.report,
-        provider_selection=control.selected, timeout_seconds=60)
+        provider_selection=control.selected, timeout_seconds=60, **kwargs)
 
 
 def test_census_success_is_published_only_after_native_exit_rechecks(authored_isolated_census):
@@ -246,6 +254,42 @@ def test_census_success_is_published_only_after_native_exit_rechecks(authored_is
     assert control.report["metadata_census_context"]["post_yield_admission_task_revalidated"] is True
     assert control.report["metadata_census_context"]["allocated_worktree_removed"] is True
     assert control.report["metadata_census_context"]["retained_owner_planning_receipt_join_verified"] is True
+
+
+@pytest.mark.parametrize("fail_after_yield", [False, True])
+def test_formal_owner_stays_in_host_and_publication_waits_for_native_exit(
+        authored_isolated_census, fail_after_yield):
+    control = authored_isolated_census
+    _run_authored_census(control)
+    default_argv = control.calls[0].copy()
+    default_input = control.worker_inputs[0]
+    default_helper = control.helper_calls[0]
+    assert "formal_status_owner" not in default_helper
+    assert "include_formal_status_census" not in default_helper
+    for name in ("metadata_census", "metadata_census_context", "live_planning_provenance",
+                 "coding_dispatch_possible"):
+        control.report.pop(name)
+    control.report["metadata_census_succeeded"] = False
+    control.events.clear()
+    control.formal_status_owner = object()  # Inert forwarding control; no admission claim.
+    control.fail_after_yield = fail_after_yield
+    if fail_after_yield:
+        with pytest.raises(ValueError, match="source drift"):
+            _run_authored_census(control, formal_status_owner=control.formal_status_owner)
+        assert control.report["metadata_census_succeeded"] is False
+        assert "metadata_census" not in control.report
+        assert "live_planning_provenance" not in control.report
+    else:
+        _run_authored_census(control, formal_status_owner=control.formal_status_owner)
+        assert control.report["metadata_census_succeeded"] is True
+        assert control.report["metadata_census"] == control.receipt
+        assert control.report["metadata_census_context"]["post_yield_admission_task_revalidated"] is True
+    forwarded = control.helper_calls[1]
+    assert forwarded["formal_status_owner"] is control.formal_status_owner
+    assert forwarded["include_formal_status_census"] is True
+    assert control.events == ["yield", "recheck"]
+    assert control.calls[1] == default_argv
+    assert control.worker_inputs[1] == default_input
 
 
 def test_retained_owner_planning_digest_mismatch_refuses_before_worker_launch(authored_isolated_census):

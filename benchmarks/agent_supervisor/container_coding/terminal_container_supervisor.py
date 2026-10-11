@@ -318,7 +318,7 @@ def _live_census_boundary(root: Path) -> dict:
 
 
 def _run_live_metadata_census(*, state: Path, report: dict, provider_selection: dict,
-                              timeout_seconds: int) -> None:
+                              timeout_seconds: int, formal_status_owner=None) -> None:
     """Use the normal isolated router launcher, stopping before coding dispatch."""
     from .terminal_live_metadata_census import prepare_terminal_live_metadata_census, _identity as _owner_identity
     from .terminal_live_census_provenance import validate_live_planning_provenance
@@ -326,8 +326,10 @@ def _run_live_metadata_census(*, state: Path, report: dict, provider_selection: 
     provenance = validate_live_planning_provenance(planning=report["planning"],
         invocations=report["provider_invocations"], selected_provider=provider_selection,
         deployment_boundary=_live_census_boundary(ROOT))
+    owner_options = ({} if formal_status_owner is None else
+        {"include_formal_status_census": True, "formal_status_owner": formal_status_owner})
     with prepare_terminal_live_metadata_census(state=state, worktree_root=WORKTREES,
-            worker_writable=True, worker_group_gid=os.getegid()) as prepared:
+            worker_writable=True, worker_group_gid=os.getegid(), **owner_options) as prepared:
         if prepared["metadata"]["planning_metadata_sha256"] != _owner_identity(report["planning"]):
             raise ValueError("retained owner planning metadata differs from isolated live planning receipt")
         prepared["metadata"]["retained_owner_planning_receipt_join_verified"] = True
