@@ -288,10 +288,19 @@ class NativeProgress:
 
     def finish(self, report: dict) -> None:
         """Keep shutdown/provider outcome metadata even when observation fails."""
+        from ipfs_accelerate_py.agent_supervisor.control.control_contracts import OperationStatus
+
         for name in ("start", "stop"):
             value = report.get(name)
             if type(value) is dict:
-                result = {"status": _closed(value.get("status"), {
+                status = value.get("status")
+                # Native OperationResult.to_dict() retains this exact enum
+                # before JSON serialization. Normalize only that lifecycle
+                # type; arbitrary enums and other observation fields remain
+                # subject to the exact-string closed vocabulary.
+                if type(status) is OperationStatus:
+                    status = status.value
+                result = {"status": _closed(status, {
                     "succeeded", "failed", "denied", "conflict", "not_found", "cancelled", "unavailable"})}
                 for key in ("request_id", "audit_receipt_id"):
                     digest = _identity(value.get(key))

@@ -1,5 +1,6 @@
 """Real bounded-file observations; authored state doubles grant no authority."""
 import copy
+from enum import Enum
 import json
 from types import SimpleNamespace
 
@@ -272,6 +273,63 @@ def test_final_metadata_separates_provider_timeout_from_unattributed_timeout(pha
     assert recorder.report["provider_outcomes"][0]["timeout_seconds"] == 300
     assert recorder.report["stop"]["status"] == "succeeded"
     assert "private" not in json.dumps(recorder.report)
+
+
+@pytest.mark.parametrize("operation", ["start", "stop"])
+def test_final_metadata_accepts_exact_native_lifecycle_result(operation):
+    from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
+        Operation, OperationAuthority, OperationResult, OperationStatus,
+    )
+
+    # Real native results retain their str enum until JSON serialization.
+    # The progress recorder consumes to_dict() directly before that boundary.
+    result = OperationResult(
+        request_id="request:fixture", operation=Operation(operation),
+        authority=OperationAuthority.MUTATION, status=OperationStatus.SUCCEEDED,
+        repository_id="repository:fixture", tree_id="tree:fixture",
+        objective_id="objective:fixture", policy_id="policy:fixture",
+        caller="caller:fixture",
+    ).to_dict()
+    before = copy.deepcopy(result)
+    recorder = progress.NativeProgress(started=100.)
+    recorder.finish({operation: result})
+
+    assert recorder.report[operation]["status"] == "succeeded"
+    assert type(recorder.report[operation]["status"]) is str
+    assert result == before
+    assert all(recorder.report[key] is False for key in
+               ("completion_authority", "settlement_authority", "retry_authority"))
+
+
+class _ForeignLifecycleStatus(str, Enum):
+    SUCCEEDED = "succeeded"
+
+
+class _StatusStringSubclass(str):
+    pass
+
+
+@pytest.mark.parametrize("status", [
+    _ForeignLifecycleStatus.SUCCEEDED, _StatusStringSubclass("succeeded"),
+    {"value": "succeeded"}, None, True, "private_status",
+])
+def test_final_metadata_rejects_foreign_or_malformed_lifecycle_status(status):
+    recorder = progress.NativeProgress(started=100.)
+    recorder.finish({"start": {"status": status}, "stop": {"status": status}})
+
+    assert recorder.report["start"]["status"] == "unrecognized"
+    assert recorder.report["stop"]["status"] == "unrecognized"
+    assert "private_status" not in json.dumps(recorder.report)
+
+
+def test_native_lifecycle_enum_does_not_widen_task_status_projection():
+    from ipfs_accelerate_py.agent_supervisor.control.control_contracts import OperationStatus
+
+    # Task status is untrusted observation data, not the native lifecycle type.
+    projected = progress.project_task(
+        task(status=OperationStatus.FAILED), task_cid="task:fixture",
+    )
+    assert projected["status"] == "unrecognized"
 
 
 @pytest.mark.parametrize("outcome", ["quarantine", "completed", "observation_failure",
