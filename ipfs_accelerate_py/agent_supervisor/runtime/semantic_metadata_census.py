@@ -15,13 +15,14 @@ import re
 from ..context.context_contracts import canonical_context_json_bytes
 from .semantic_metadata_view import (
     GROUP_FIELDS, MAX_ROWS, TOKEN_PROXY, TRANSPORT_SCHEMA, VIEW_SCHEMA,
-    SemanticMetadataView, SemanticMetadataViewError,
+    SemanticMetadataView, SemanticMetadataViewError, SemanticMetadataTokenCounter,
     project_semantic_metadata_view, restore_semantic_metadata_view,
     select_semantic_metadata_view,
 )
 
 
 CENSUS_SCHEMA = "supervisor-semantic-metadata-census@1"
+TOKEN_CENSUS_SCHEMA = "supervisor-semantic-metadata-census@2"
 FIXED_MAX_INPUT_BYTES = 256_000
 MAX_ID_BYTES = 4096
 _FALSE_FIELDS = (
@@ -103,6 +104,7 @@ def _source_counts(native: dict) -> dict:
 def census_semantic_metadata_view(
     *, view: SemanticMetadataView, native_complete_prompt: str,
     candidate_complete_prompt: str, fixed_max_input_bytes: int = FIXED_MAX_INPUT_BYTES,
+    token_counter: SemanticMetadataTokenCounter | None = None,
 ) -> dict:
     """Return closed counts/digests after exact restoration and input selection.
 
@@ -125,6 +127,7 @@ def census_semantic_metadata_view(
         selection = select_semantic_metadata_view(
             view=view, native_complete_prompt=native_complete_prompt,
             candidate_complete_prompt=candidate_complete_prompt,
+            token_counter=token_counter,
         )
         native = json.loads(restored)  # The existing restore already checked canonical bounded JSON.
         candidate = json.loads(view.provider_prompt)
@@ -173,6 +176,26 @@ def census_semantic_metadata_view(
             "actual_provider_tokens_measured": False, "total_token_savings_qualified": False,
             "provider_calls": 0, **{field: False for field in _FALSE_FIELDS},
         }
+        if token_counter is not None:
+            identity = chosen["token_counter_identity"]
+            output.update(
+                schema=TOKEN_CENSUS_SCHEMA, selection_basis="token_counter",
+                token_counter_status=chosen["token_counter_status"],
+                token_counter_identity_sha256=chosen["token_counter_identity_sha256"],
+                token_counter_qualification=identity["qualification"] if identity else None,
+                token_counter_identity_caller_supplied=True,
+                token_counter_identity_verified=False,
+                token_measurement_scope="complete-rendered-prompt-text@1",
+                **{field: chosen[field] for field in (
+                    "native_complete_tokens", "candidate_complete_tokens", "selected_complete_tokens")},
+                provider_usage_reported=False, cli_scaffolding_measured=False,
+                complete_run_token_savings_claimed=False,
+            )
+            # Textual model/tokenizer identities are private owner inputs too.
+            output["token_counter_identity_field_sha256"] = (
+                {field: _sha(identity[field]) for field in
+                 ("provider", "model", "tokenizer", "tokenizer_revision")} if identity else None
+            )
         if len(canonical_context_json_bytes(output)) > 16_384:
             raise SemanticMetadataCensusError("closed census output exceeds bound")
         return output

@@ -86,6 +86,43 @@ def observe(encoded, prefix=PREFIX, suffix=SUFFIX):
     return view, report
 
 
+@pytest.mark.parametrize("qualification", ["estimate", "provider_tokenizer"])
+def test_counter_census_is_closed_preflight_and_not_provider_usage(native_cases, qualification):
+    encoded = native_cases["many"][1]
+    view = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    counter = view_codec.SemanticMetadataTokenCounter(count=len,
+        provider="PRIVATE_PROVIDER_ID", model="PRIVATE_MODEL_ID", tokenizer="PRIVATE_TOKENIZER_ID",
+        tokenizer_revision="PRIVATE_REVISION_ID", qualification=qualification)
+    report = census.census_semantic_metadata_view(view=view,
+        native_complete_prompt=PREFIX + view.native_prompt + SUFFIX,
+        candidate_complete_prompt=PREFIX + view.provider_prompt + SUFFIX, token_counter=counter)
+    assert report["schema"] == census.TOKEN_CENSUS_SCHEMA
+    assert report["token_counter_status"] == "counted"
+    assert report["token_counter_qualification"] == qualification
+    assert report["selected_complete_tokens"] == len(PREFIX + view.provider_prompt + SUFFIX)
+    assert report["actual_provider_tokens_measured"] is False
+    assert report["token_counter_identity_verified"] is False
+    assert report["total_token_savings_qualified"] is False
+    assert report["provider_calls"] == 0
+    encoded_report = canonical(report)
+    for marker in ("PRIVATE_PROVIDER_ID", "PRIVATE_MODEL_ID", "PRIVATE_TOKENIZER_ID", "PRIVATE_REVISION_ID",
+                   TASK_SENTINEL, BODY_SENTINEL, PREFIX.strip(), SUFFIX.strip()):
+        assert marker not in encoded_report
+
+
+def test_failed_counter_census_exports_only_stable_fallback(native_cases):
+    encoded = native_cases["many"][1]
+    view = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+    def broken(text):
+        raise RuntimeError("PRIVATE_COUNTER_EXCEPTION " + text)
+    counter = view_codec.SemanticMetadataTokenCounter(broken, "provider", "model", "tokenizer", "revision", "estimate")
+    report = census.census_semantic_metadata_view(view=view, native_complete_prompt=view.native_prompt,
+        candidate_complete_prompt=view.provider_prompt, token_counter=counter)
+    assert report["token_counter_status"] == "failed" and report["selected_mode"] == "legacy"
+    assert report["native_complete_tokens"] is report["candidate_complete_tokens"] is report["selected_complete_tokens"] is None
+    assert "PRIVATE_COUNTER_EXCEPTION" not in canonical(report)
+
+
 def test_real_native_positive_round_trip_closed_export_and_original_inputs(native_cases):
     repository, encoded, sources = native_cases["many"]
     snapshot = (encoded.native_prompt, encoded.provider_prompt, encoded.receipt_json, encoded.table)
