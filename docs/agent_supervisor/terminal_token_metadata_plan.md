@@ -180,6 +180,17 @@ benchmark input size, behavior, rewards or cumulative tokens.
    render revalidation, including visible revocations, and explicitly reports
    possible bookkeeping writes to the existing owner. It observes the requested
    keys, without an atomic owner snapshot or a reusable proof receipt.
+   The explicit `TerminalFormalStatusOwner` host entry now joins an existing
+   scoped Doctor analysis and native gate/full keys to the actual signed task.
+   It reconstructs the source scope independently, rechecks Terminal/source
+   custody around consultations, fences the same owner across context exit and
+   clears escaped counts on drift or cleanup errors. The container host forwards
+   these trusted objects locally without changing worker input. Authored native
+   owner tests qualify this boundary. The production workflow still needs a
+   reviewed full-key producer: its sealed SQLite receipts and observational
+   indexes are not an admitted Doctor DuckDB cache population. Persist full keys
+   and proof-profile custody when producing proofs, reconnect the same current
+   owner after restart, and then measure actual accepted coverage and repeats.
    No current Terminal proof coverage or token benefit has been established.
 3. **Qualify a bounded owner lookup for progressive disclosure.** Required facts
    stay inline until the model has an actual qualified expansion interface.
