@@ -1,0 +1,216 @@
+{
+  "artifacts": [
+    {
+      "bytes": 456,
+      "path": "artifacts/numerical-supervisor-20261011/integrated-final-exit.json",
+      "sha256": "4a9c0cbc7433a2fdcded6176e8ec217a9df7eccdcd76e4dedd2b5dcd2c9aa7dd"
+    },
+    {
+      "bytes": 23272,
+      "path": "artifacts/numerical-supervisor-20261011/integrated-final.xml",
+      "sha256": "efae3c8413df6ae9aaf11b4af4f48a86427cfe820cbf9010c6690e1be5fd5cef"
+    },
+    {
+      "bytes": 1739,
+      "path": "artifacts/numerical-supervisor-20261011/integrated-final-command.json",
+      "sha256": "9c14b633eb32790178144743974113495fab74a925f36b09c43408334b83b309"
+    },
+    {
+      "bytes": 6151655,
+      "path": "artifacts/numerical-supervisor-20261011/integrated-final-source-before.json",
+      "sha256": "a43c5cd01a681e1fb7e253467f171a66f8360e47a28bc1b26f8801628155311f"
+    },
+    {
+      "bytes": 6151655,
+      "path": "artifacts/numerical-supervisor-20261011/integrated-final-source-after.json",
+      "sha256": "a43c5cd01a681e1fb7e253467f171a66f8360e47a28bc1b26f8801628155311f"
+    },
+    {
+      "bytes": 143,
+      "path": "artifacts/numerical-supervisor-20261011/context-02-exit.json",
+      "sha256": "e1b4380f646df8de8a87cb23dfc71a02d02db1cace9416717022f6c2b58abd7b"
+    },
+    {
+      "bytes": 5988,
+      "path": "artifacts/numerical-supervisor-20261011/public-source-qualification.json",
+      "sha256": "d59b90b52121fc74467e447dcd390224704565cec739652a7203cd735913e187"
+    },
+    {
+      "bytes": 7025,
+      "path": "artifacts/numerical-structural-20261011/merged/exit.json",
+      "sha256": "aded93f693aec667d4bcfa06f5012516a4eb3462827b94f8c043ba92e7ae1f35"
+    },
+    {
+      "bytes": 59427,
+      "path": "artifacts/numerical-structural-20261011/merged/combined.xml",
+      "sha256": "3ea8c64ca2aef3750e45cff821d10221e402d4c1c54af1a1a907547344abe40e"
+    },
+    {
+      "bytes": 897,
+      "path": "artifacts/numerical-structural-20261011/merged/z3-exit.json",
+      "sha256": "59e47cf1289b0a26f8b2b63f501df128b26779aa1bd36324bc50b2ba39daffa1"
+    },
+    {
+      "bytes": 4840,
+      "path": "artifacts/numerical-structural-20261011/merged/public-source-lake.json",
+      "sha256": "07bbe71dff85c4f8a6c426e476d16974428bbb58b9a48c3450da6e2f65721f2d"
+    },
+    {
+      "bytes": 1919,
+      "path": "artifacts/numerical-logic-20261011/outer-wiring/qualification.json",
+      "sha256": "2ac8231fef4c16aba52d4a3fccf93a4e28c6e4a27d887aff2e9a5ad067912bbd"
+    },
+    {
+      "bytes": 16735,
+      "path": "artifacts/supervisor-formalization-budget-20261011/qualification.json",
+      "sha256": "0632c391395a8bd6dfb84f4ee0de81ef33d0c25cf1aaf4bd4682e609b52c2c92"
+    }
+  ],
+  "benchmark_advantage_claimed": false,
+  "budget_regression_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 235
+  },
+  "budget_scope": "Preparation is cumulative across initial and post-plan work. Implementation starts after START; its 60s headroom includes worker checks and settlement.",
+  "budgets_seconds": {
+    "cleanup": 120,
+    "coding_provider": 1800,
+    "driver": 6420,
+    "exec": 6450,
+    "harbor": 6480,
+    "implementation": 1860,
+    "native_owner_lifetime": 2160,
+    "native_setup": 180,
+    "planning": 660,
+    "planning_provider": 600,
+    "preparation": 3600
+  },
+  "datasets_tests": {
+    "followup_z3_passed": 1,
+    "main_optional_z3_skip": 1,
+    "main_passed": 285,
+    "unique_passed": 286,
+    "unresolved_skips": 0
+  },
+  "limitations": [
+    "Structural projections and conditional lemmas do not prove NumPy library/source semantics.",
+    "This profile does not improve learned Source384 coverage.",
+    "Numerical summaries reach initial planning and retained admitted context; direct coding-worker delivery is not established.",
+    "This qualification does not run a fresh long-duration Docker/provider benchmark. Existing benchmark results are unchanged."
+  ],
+  "native_lake": [
+    {
+      "executable_sha256": "f80f50cbab5322e35bcb0bf88937e22e9d908b5e4e336e83ddfc30eb1506aacf",
+      "input_files_sha256": {
+        "NumericalObligations.lean": "8ac08050a6b44d4c49acba4e3f126cc54e14f90411c2952e26579b9b80a80956",
+        "lakefile.toml": "4aaf7be5a06208a9829beec31a519b40c3035d8ad3ac786e630842652931ec81",
+        "lean-toolchain": "d5edba4e4b8faad9c1baeadb265716d20d03be4d1a2647dc5e35b0c0325bea7b"
+      },
+      "lean_source_sha256": "8ac08050a6b44d4c49acba4e3f126cc54e14f90411c2952e26579b9b80a80956",
+      "report_sha256": "dee1bb7e00ddf91fbb25913cc6d27e5731a8e6bf1fae8953f9369e2255748d9e",
+      "returncode": 0,
+      "source_path": "eigen.py",
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "status": "passed",
+      "toolchain": "leanprover/lean4:v4.34.1"
+    },
+    {
+      "executable_sha256": "f80f50cbab5322e35bcb0bf88937e22e9d908b5e4e336e83ddfc30eb1506aacf",
+      "input_files_sha256": {
+        "NumericalObligations.lean": "5cdb90882fe9d8d4b4f7cc7efa4432a9278cdacd5fcce649e5254d612264a8a9",
+        "lakefile.toml": "4aaf7be5a06208a9829beec31a519b40c3035d8ad3ac786e630842652931ec81",
+        "lean-toolchain": "d5edba4e4b8faad9c1baeadb265716d20d03be4d1a2647dc5e35b0c0325bea7b"
+      },
+      "lean_source_sha256": "5cdb90882fe9d8d4b4f7cc7efa4432a9278cdacd5fcce649e5254d612264a8a9",
+      "report_sha256": "b208ef16e46a3901b316d62202824b11a22174cae16b9a42ded83c49c05bd3ed",
+      "returncode": 0,
+      "source_path": "eval.py",
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "status": "passed",
+      "toolchain": "leanprover/lean4:v4.34.1"
+    }
+  ],
+  "new_benchmark_score": null,
+  "numerical_formalization_profile": "python-numerical-structure@1",
+  "official_verifier_executed": false,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "public_source": {
+    "families": [
+      "first_order",
+      "higher_order",
+      "program"
+    ],
+    "function_coverage": [
+      {
+        "function_id": "function:2",
+        "name_truncated": false,
+        "path": "eigen.py",
+        "pending_obligation_count": 9,
+        "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+        "status": "structurally_complete",
+        "structurally_complete": true,
+        "unsupported_construct_count": 0
+      },
+      {
+        "function_id": "function:6",
+        "name_truncated": false,
+        "path": "eval.py",
+        "pending_obligation_count": 9,
+        "qualified_name": "ref_solution",
+        "status": "structurally_complete",
+        "structurally_complete": true,
+        "unsupported_construct_count": 0
+      },
+      {
+        "function_id": "function:81",
+        "name_truncated": false,
+        "path": "eval.py",
+        "pending_obligation_count": 9,
+        "qualified_name": "test_eigen_pair",
+        "status": "partial",
+        "structurally_complete": false,
+        "unsupported_construct_count": 1
+      },
+      {
+        "function_id": "function:243",
+        "name_truncated": false,
+        "path": "eval.py",
+        "pending_obligation_count": 0,
+        "qualified_name": "test_speedup",
+        "status": "partial",
+        "structurally_complete": false,
+        "unsupported_construct_count": 4
+      }
+    ],
+    "functions": 4,
+    "hydrated_catalogs": 3,
+    "hydrated_links": 3,
+    "hydrated_world_records": 1,
+    "partial": 2,
+    "pending_obligations": 27,
+    "receipt_sha256": "7dbbc0757e747e4cfbcf89302029eedec7c58c2d966cd75e98e52e5d7919a2ba",
+    "source_hashes": {
+      "eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    "structurally_complete": 2
+  },
+  "resource_profile": "source384-5cpu-20gib-formalization@1",
+  "schema": "supervisor-numerical-budget-qualification@1",
+  "source_heads": {
+    "datasets": "db432c5a93a207436f9a4279d888fddee931e390",
+    "supervisor": "d5427c0227213e1bdd146a06f92c2d50493f5dba"
+  },
+  "source_obligations_discharged": 0,
+  "source_semantics_verified": false,
+  "supervisor_integrated_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 114
+  },
+  "training_steps": 0
+}

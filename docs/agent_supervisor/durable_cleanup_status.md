@@ -3,6 +3,76 @@
 Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
+## Reserved preparation budget and numerical structure, 2026-10-11
+
+The explicit `source384-5cpu-20gib-formalization@1` resource profile raises the
+previous coding allowance and gives preparation a separate cumulative budget.
+Select it for both comparison arms; older profiles retain their recorded limits.
+Preparation includes initial indexing/formalization and post-plan context/Doctor
+work. Planning pauses that allowance; it cannot refill it or spend the coding
+window. The previous 300-second coding cap already began after preparation;
+the separate outer 900-second deadline also charged preparation.
+
+| Phase | Allowance |
+| --- | ---: |
+| Preparation and formalization, cumulative | 3,600 s |
+| Planning, including a 600 s provider call | 660 s |
+| Native construction/START | 180 s |
+| Coding and settlement, including a 1,800 s provider call | 1,860 s |
+| Cleanup | 120 s |
+| Outer driver / exec / Harbor | 6,420 / 6,450 / 6,480 s |
+
+The native owner starts after preparation and has a separately signed 2,160 s
+lifetime. The named profile reaches the Source384 worker and coding worker;
+historical default ceilings and bounded post-STOP refresh remain unchanged.
+This is a longer finite experiment, not an unlimited process lifetime.
+The implementation window starts after START and includes the worker's final
+context/prompt checks. Its 60 s headroom is shared by those checks and provider
+settlement; arbitrarily slow worker checks are not granted additional time.
+
+The separate opt-in `--numerical-formalization-profile` value
+`python-numerical-structure@1` connects declared public Python functions to the
+datasets library's numerical frontend and shared logic modules. Tuple assignment,
+qualified calls, indexing/slicing, and tuple returns produce native ProgramIR.
+The existing syntax bridge, many-sorted first-order kernel and SMT compiler emit
+source-bound pending obligations; Lean contains definitions and conditional
+finite-index lemmas. TLA+/transition, temporal, separation, concurrency,
+refinement, DCEC, TDFOL and frame semantics remain explicitly unsupported without
+an appropriate source-grounded interpretation. NumPy call behavior is opaque.
+
+The supervisor persists those reports, pending-obligation summaries and world
+records through its native DuckDB/DuckLake owners, then reopens and verifies both
+lakes. It checks exact declared source bytes, producer hashes, report replay and
+artifact inventories before supplying a bounded summary to the initial planner.
+The admitted context retains the same receipt. This supplies the planner before
+goal generation; direct delivery of this new numerical report to the coding
+worker is not claimed. No-index records the selection as disabled. Explicit
+selection requires matching archived producers and matched comparison controls.
+
+An inference-only check of public `largest-eigenval/environment/src/eigen.py`
+and `eval.py` produced four function records: the target and `ref_solution` are
+structurally complete, while `test_eigen_pair` and `test_speedup` retain explicit
+unsupported diagnostics. There are **27 pending obligations, zero discharged**.
+The native lake replay found one world record and three matching catalog/link
+pairs. No benchmark verifier inputs, model calls, training or source execution
+were used for that check. Separate authored Lean qualification passed actual
+`lake build`; removing the nonempty premise from an index lemma correctly failed.
+
+The numerical path is a deterministic grammar extension. It does not improve the
+Source384 checkpoint's learned coverage or prove NumPy semantics. The earlier
+benchmark scores below are unchanged; a newly built archive and a fresh matched
+trial are required to measure this profile's task success and token usage.
+The [closed qualification receipt](evidence/numerical-budget-20261011/qualification.json)
+records the tested source revisions, test counts, public-source coverage, native
+Lake input/tool hashes, and the distinction between compilation and source proofs.
+Final integrated supervisor checks passed **114/114**, with all 33,825 tracked
+Python files across the three selected checkouts unchanged during the run.
+Separate budget regressions passed **235/235**. Datasets qualification passed
+**286 unique tests**: 285 in its development environment and the single optional
+Z3 check using the already-installed host backend. Both actual public-source
+Lean artifacts compiled with Lake 4.34.1. A real timer regression also reproduced
+and fixed suppressed phase expiry, while preserving legacy timeout behavior.
+
 ## Source, lifecycle, and Grok catalog qualification, 2026-10-11
 
 Three targeted fixes passed local validation. The datasets source adapter now
@@ -38,15 +108,11 @@ model promotion. The Doctor abstained, and Intent advice remained
 `fail_open_no_checkpoint`. The six authored Lake examples do not change this
 coverage result for the benchmark's NumPy implementation.
 
-The next coverage step is a proposed opt-in numerical structural profile for the
-public target and `ref_solution`, both straight-line NumPy functions. Their
-structural adapter needs tuple assignment and return handling, preserved qualified
-callee names, and slice/index lowering. Such a profile could expose array-shape,
-eigenpair-residual, and result-selection obligations to the planner while retaining
-opaque `eig` semantics. The existing scalar source binder and native Lean path
-remain unchanged pending reviewed numerical semantics. Loop support is a separate
-need for the other evaluator functions. This profile and its obligations are
-future work; this qualification establishes no numerical proofs.
+At this earlier qualification, a numerical structural profile was proposed for
+the public target and `ref_solution`. That profile and its pending obligations
+are now implemented separately above. The existing scalar source binder and
+native Lean path remain unchanged pending reviewed numerical semantics. This
+earlier qualification establishes no numerical proofs.
 
 The next full trial stopped during setup because its native `grok models`
 output did not match the earlier parser's bare-header grammar. That trial has
