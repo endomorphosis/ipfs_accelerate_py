@@ -99,6 +99,59 @@ runner removes the temporary artifact store afterward and retains content-free
 counts and binding hashes. These artifacts do not form a persistent proof
 cache. Missing usage or incomplete cleanup remains explicit in qualification.
 
+A separate source-representation experiment uses `--source-view-policy
+source-view-raw@1` as the matched control and `--source-view-policy
+source-view-compact@1` as treatment. Both offer the same bounded Python helper
+and hash-checked symbol-edit protocol. Keep the semantic context profile,
+metadata representation, tool-output policy, model, resource limits and task
+inputs fixed. These policies require a fresh runtime archive; `legacy` remains
+the default until provider-token and task-success evidence justifies changing it.
+
+The helper indexes explicit visible Python paths, renders an AST-equivalent
+view, and maps an edited definition back into its canonical file. Original
+identifiers, strings and docstrings remain. An unchanged-AST round trip preserves
+all original bytes; an accepted edit preserves bytes outside the selected
+definition, checks the expected whole-file hash, validates syntax, and returns a
+refreshed view in the selected format. Cooperating edits are serialized. The
+hash check rejects stale snapshots; unrelated editors still need to coordinate
+writes. AST equality does not prove behavioral equivalence under source
+inspection or other reflective behavior, and edited programs need their normal
+tests and acceptance checks.
+
+The initial edit scope is unambiguous top-level functions/classes and direct
+class members with a supported standalone layout. Whole-module replacement,
+renames, nested functions, conditional definitions, non-Python files, hidden
+paths and symlinks are unsupported. Normal tools remain available for required
+original detail. This is a source view over the original checkout, not a
+persistent obfuscated copy or a whole-repository compiler. Provider-owned tools
+are not intercepted. Invocation receipts distinguish the advertised policy
+from observed helper operations; local operation counts are advisory evidence,
+not a security attestation or task acceptance authority.
+
+Run the offline qualification on reviewed Terminal Bench public inputs with:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_source_view_experiment \
+  --dataset /path/to/terminal-bench-2 --output /path/to/new-evidence-directory
+```
+
+It copies the reviewed `llm-inference-batching-scheduler` and `tune-mjcf` inputs,
+checks exact no-op round trips, exercises guarded edits and stale rejection,
+and counts complete request/response traffic for matched read/edit/refresh
+cycles. Public-input edits are harmless probes on disposable copies; an authored
+fixture separately checks a deliberate behavior change. It does not read task
+solutions or hidden verifier contents, solve the public tasks, run a provider,
+or produce official rewards. A cached local tokenizer supplies proxy counts
+when available; no tokenizer is downloaded. Smaller views can lose their token
+advantage once index, mapping and edit overhead is included. Only paired live
+trials with complete native usage and official rewards can establish practical
+benefit. Include failed trials and workers that do not adopt the helper.
+The existing indexed payload still contains capsules, admissions, raw sources
+and the context pack. This experiment adds optional source-view guidance; it
+does not remove duplicated source content from that payload. Live totals include
+both the initial context and subsequent helper traffic. Source/capsule
+deduplication is a separate change that needs its own matched comparison.
+
 Other public Terminal-Bench tasks can use the source-bound task profiles in
 [TERMINAL_SUITE_PROFILES.md](TERMINAL_SUITE_PROFILES.md). The first broader full
 supervisor pilot records two official passes and one native-execution timeout,

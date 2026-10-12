@@ -36,6 +36,10 @@ from .terminal_coding_reply_policy import (
     DEFAULT_CODING_REPLY_MODE, validate_coding_reply_mode, require_coding_reply_archive,
     coding_reply_selection,
 )
+from .terminal_source_view_policy import (
+    DEFAULT_SOURCE_VIEW_POLICY, validate_source_view_policy,
+    source_view_selection, require_source_view_archive,
+)
 from .terminal_tool_output_policy import (
     DEFAULT_TOOL_OUTPUT_POLICY, validate_tool_output_policy,
     tool_output_selection, require_tool_output_archive,
@@ -316,6 +320,7 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
                  coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                  tool_output_policy: str = DEFAULT_TOOL_OUTPUT_POLICY,
+                 source_view_policy: str = DEFAULT_SOURCE_VIEW_POLICY,
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                  semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
                  numerical_formalization_profile: str | None = None,
@@ -326,6 +331,8 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
         self.semantic_context_profile = validate_semantic_context_profile(semantic_context_profile, arm=arm)
         self.semantic_transport_schema = validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
+        self.source_view_policy = validate_source_view_policy(source_view_policy,
+            arm=arm, provider=selected_provider["provider"])
         self.tool_output_policy = validate_tool_output_policy(tool_output_policy,
             arm=arm, provider=selected_provider["provider"])
         self.coding_reply_mode = validate_coding_reply_mode(coding_reply_mode,
@@ -337,6 +344,8 @@ class FullSupervisorAgent(BaseAgent):
         if metadata_census_only and (arm != "full" or self.semantic_metadata_view != "common-bindings@1"
                 or self.coding_reply_mode != "ordinary-completion@1"):
             raise ValueError("live census requires the full common-bindings ordinary-completion route")
+        if metadata_census_only and self.source_view_policy != DEFAULT_SOURCE_VIEW_POLICY:
+            raise ValueError("source view policy requires an executed coding route")
         if metadata_census_only and self.tool_output_policy != DEFAULT_TOOL_OUTPUT_POLICY:
             raise ValueError("tool output policy requires an executed coding route")
         self.metadata_census_only = metadata_census_only
@@ -399,6 +408,10 @@ class FullSupervisorAgent(BaseAgent):
             getattr(self, "tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY), arm=self.arm,
             provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         require_tool_output_archive(manifest, tool_output)
+        source_view = validate_source_view_policy(
+            getattr(self, "source_view_policy", DEFAULT_SOURCE_VIEW_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_source_view_archive(manifest, source_view)
         metadata_view = validate_semantic_metadata_view(
             getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=self.arm,
             transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
@@ -465,6 +478,10 @@ class FullSupervisorAgent(BaseAgent):
             getattr(self, "tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY), arm=self.arm,
             provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         require_tool_output_archive(manifest, tool_output)
+        source_view = validate_source_view_policy(
+            getattr(self, "source_view_policy", DEFAULT_SOURCE_VIEW_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_source_view_archive(manifest, source_view)
         metadata_view = validate_semantic_metadata_view(
             getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=self.arm,
             transport_schema=transport,
@@ -501,6 +518,8 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--semantic-transport-schema", transport]
         if tool_output != DEFAULT_TOOL_OUTPUT_POLICY:
             argv += ["--tool-output-policy", tool_output]
+        if source_view != DEFAULT_SOURCE_VIEW_POLICY:
+            argv += ["--source-view-policy", source_view]
         if reply_mode != DEFAULT_CODING_REPLY_MODE:
             argv += ["--coding-reply-mode", reply_mode]
         if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
@@ -542,6 +561,7 @@ class FullSupervisorAgent(BaseAgent):
                             **semantic_transport_selection(transport),
                             **coding_reply_selection(reply_mode),
                             **tool_output_selection(tool_output),
+                            **source_view_selection(source_view),
                             **semantic_metadata_observation(metadata_view),
                             **semantic_context_selection(semantic_profile),
                             **numerical_observation(numerical_profile, self.arm),

@@ -311,13 +311,14 @@ def _provider_failure_diagnostic(error: BaseException, *, provider: str) -> dict
 
 def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
                         semantic_transport: bool = False,
-                        tool_output_binding: dict | None = None) -> tuple[str, str]:
+                        tool_output_binding: dict | None = None,
+                        source_view_binding: dict | None = None) -> tuple[str, str]:
     """Preserve native task bytes while making the allocated coding path explicit."""
     if purpose not in {"planning", "coding"}:
         raise ValueError("explicit planning or coding purpose required")
     if purpose == "planning":
-        if tool_output_binding is not None:
-            raise ValueError("tool output guidance is coding-only")
+        if tool_output_binding is not None or source_view_binding is not None:
+            raise ValueError("helper guidance is coding-only")
         return prompt, ""
     location = json.dumps(str(workspace), ensure_ascii=True)
     advisory = (
@@ -338,6 +339,9 @@ def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
     if tool_output_binding is not None:
         from .tool_output_policy import validate_binding
         advisory = validate_binding(tool_output_binding, workspace=workspace) + advisory
+    if source_view_binding is not None:
+        from .source_view_policy import validate_binding as validate_source_binding
+        advisory = validate_source_binding(source_view_binding, workspace=workspace) + advisory
     if len(advisory.encode()) > 8192:
         raise ValueError("coding workspace advisory exceeds its byte bound")
     return advisory + prompt, advisory
@@ -350,6 +354,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
         tool_output_policy: str = "legacy",
+        source_view_policy: str = "legacy",
         census_only: bool = False,
         coding_reply_mode: str = "legacy",
         doctor_residual_artifact: Path | None = None,
@@ -380,6 +385,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     validate_coding_reply_mode(mode=coding_reply_mode, purpose=purpose, provider=provider)
     from .tool_output_policy import validate_policy
     validate_policy(tool_output_policy, purpose=purpose, provider=provider)
+    from .source_view_policy import validate_policy as validate_source_policy
+    validate_source_policy(source_view_policy, purpose=purpose, provider=provider)
+    if source_view_policy != "legacy" and (census_only or semantic_repository is None):
+        raise ValueError("source view requires an actual semantic coding invocation")
     if tool_output_policy != "legacy" and census_only:
         raise ValueError("tool output policy requires an actual coding invocation")
     if semantic_transport_schema not in {"supervisor-semantic-router-input@1",
@@ -499,13 +508,17 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         router_prompt += instruction
         required_suffix += instruction
     failure_phase = "model_prompt"
+    source_view_binding = None
+    if source_view_policy != "legacy":
+        from .source_view_policy import create_binding as create_source_binding
+        source_view_binding = create_source_binding(workspace=root, requested_policy=source_view_policy)
     tool_output_binding = None
     if tool_output_policy != "legacy":
         from .tool_output_policy import create_binding
         tool_output_binding = create_binding(workspace=root, requested_policy=tool_output_policy)
     model_prompt, advisory = render_model_prompt(prompt=router_prompt, purpose=purpose, workspace=root,
                                                 semantic_transport=encoded is not None,
-                                                tool_output_binding=tool_output_binding)
+                                                tool_output_binding=tool_output_binding, source_view_binding=source_view_binding)
     coding_reply_receipt = None
     if coding_reply_mode != "legacy":
         failure_phase = "coding_reply_contract"
@@ -525,7 +538,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
         candidate_model, candidate_advisory = render_model_prompt(prompt=candidate_router,
             purpose=purpose, workspace=root, semantic_transport=True,
-            tool_output_binding=tool_output_binding)
+            tool_output_binding=tool_output_binding, source_view_binding=source_view_binding)
         if candidate_advisory != advisory:
             raise ValueError("metadata view changed the workspace advisory")
         if coding_reply_mode != "legacy":
@@ -550,7 +563,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         native_router_prompt = prompt + required_suffix
         native_model_prompt, native_advisory = render_model_prompt(
             prompt=native_router_prompt, purpose=purpose, workspace=root,
-            tool_output_binding=tool_output_binding)
+            tool_output_binding=tool_output_binding, source_view_binding=source_view_binding)
         from .coding_reply_contract import apply_coding_reply_contract, coding_completion_schema
         native_model_prompt, native_reply_receipt = apply_coding_reply_contract(
             model_prompt=native_model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
@@ -687,6 +700,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["coding_reply_contract"] = coding_reply_receipt
     if tool_output_binding is not None:
         receipt["tool_output_policy"] = tool_output_binding
+    if source_view_binding is not None:
+        receipt["source_view_policy"] = source_view_binding
     if metadata_receipt is not None:
         receipt["semantic_metadata_view"] = metadata_receipt
     if metadata_native_reply is not None:
@@ -761,7 +776,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 "plan_admitted": False,
             }
     tool_output_store_identity = None
+    source_view_store_identity = None
     try:
+        if source_view_binding is not None:
+            failure_phase = "source_view_store"
+            from .source_view_policy import create_audit_store
+            source_view_store_identity = create_audit_store(source_view_binding)
+            failure_phase = "provider_invocation"
         if tool_output_binding is not None:
             failure_phase = "tool_output_store"
             from .tool_output_artifact import create_store
@@ -837,6 +858,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 }
         raise
     finally:
+        if source_view_binding is not None:
+            from .source_view_policy import finish_audit_store
+            source_view_binding["usage"] = finish_audit_store(source_view_binding, workspace=root,
+                expected_identity=source_view_store_identity)
         if tool_output_binding is not None:
             try:
                 from .tool_output_artifact import summarize_store
@@ -919,6 +944,8 @@ def main():
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1"])
     from .tool_output_policy import POLICIES as TOOL_OUTPUT_POLICIES
     parser.add_argument("--tool-output-policy", default="legacy", choices=TOOL_OUTPUT_POLICIES)
+    from .source_view_policy import POLICIES as SOURCE_VIEW_POLICIES
+    parser.add_argument("--source-view-policy", default="legacy", choices=SOURCE_VIEW_POLICIES)
     parser.add_argument("--semantic-metadata-census-only", action="store_true",
                         help="Check the complete metadata view and emit only census metadata before provider dispatch")
     parser.add_argument("--coding-reply-mode", default="legacy",
@@ -947,6 +974,7 @@ def main():
                         semantic_transport_schema=args.semantic_transport_schema,
                         semantic_metadata_view=args.semantic_metadata_view,
                         tool_output_policy=args.tool_output_policy,
+                        source_view_policy=args.source_view_policy,
                         census_only=args.semantic_metadata_census_only,
                         coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,

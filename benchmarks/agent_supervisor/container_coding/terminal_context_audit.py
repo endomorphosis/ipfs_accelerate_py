@@ -37,7 +37,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "tool_output_policy")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "tool_output_policy", "source_view_policy")
 
 
 def _sha(raw: bytes) -> str:
@@ -236,6 +236,11 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                 for requirement_id in requirements[key]:
                     _identity(requirement_id)
     reply = result.get("coding_reply_contract")
+    if result.get("source_view_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import validate_binding as validate_source_binding
+        if item.get("provider") != "codex_cli":
+            raise ValueError("source view guidance requires the Codex coding route")
+        validate_source_binding(result["source_view_policy"], workspace=workspace)
     if result.get("tool_output_policy") is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.tool_output_policy import validate_binding
         if item.get("provider") != "codex_cli":
@@ -343,7 +348,12 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None):
             router_prompt_bytes=len(router_prompt.encode()) == receipt["router_prompt_bytes"])
     model, advisory = render_model_prompt(prompt=router_prompt, purpose="coding",
         workspace=Path(receipt["workspace"]), semantic_transport=translated,
-        tool_output_binding=receipt.get("tool_output_policy"))
+        tool_output_binding=receipt.get("tool_output_policy"),
+        source_view_binding=receipt.get("source_view_policy"))
+    if receipt.get("source_view_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime import code_source_view
+        source = Path(code_source_view.__file__).read_bytes()
+        checks["source_view_helper_source"] = _sha(source) == receipt["source_view_policy"]["helper_sha256"]
     if receipt.get("tool_output_policy") is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime import tool_output_artifact
         source = Path(tool_output_artifact.__file__).read_bytes()
@@ -371,7 +381,8 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None):
         candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
         candidate, candidate_advisory = render_model_prompt(prompt=candidate_router, purpose="coding",
             workspace=Path(receipt["workspace"]), semantic_transport=True,
-            tool_output_binding=receipt.get("tool_output_policy"))
+            tool_output_binding=receipt.get("tool_output_policy"),
+            source_view_binding=receipt.get("source_view_policy"))
         if candidate_advisory != advisory:
             raise ValueError("metadata audit changed workspace advisory")
         if reply is not None:
@@ -599,7 +610,8 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
             fields = (*RECEIPT_FIELDS, *TRANSLATION_FIELDS)
             # The child must verify ordinary completion against the recorded
             # provider. Never infer a missing provider from the selected mode.
-            if row.get("coding_reply_contract") is not None or row.get("tool_output_policy") is not None:
+            if (row.get("coding_reply_contract") is not None or row.get("tool_output_policy") is not None
+                    or row.get("source_view_policy") is not None):
                 fields += ("provider",)
             rows.append({key: row[key] for key in fields if key in row})
         request = json.dumps(rows).encode()

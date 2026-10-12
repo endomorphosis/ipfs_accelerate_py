@@ -91,7 +91,7 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "semantic_context_profile", "numerical_formalization_profile", "tool_output_policy"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "semantic_context_profile", "numerical_formalization_profile", "tool_output_policy", "source_view_policy"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         if "numerical_formalization_profile" in kwargs:
             from .terminal_numerical_policy import validate_numerical_profile
@@ -99,6 +99,10 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if "semantic_transport_schema" in kwargs:
             from .terminal_semantic_transport_policy import validate_semantic_transport_schema
             validate_semantic_transport_schema(kwargs["semantic_transport_schema"], arm=kwargs.get("arm"))
+        if "source_view_policy" in kwargs:
+            from .terminal_source_view_policy import validate_source_view_policy
+            validate_source_view_policy(kwargs["source_view_policy"], arm=kwargs.get("arm"),
+                                        provider=selected["provider"])
         if "tool_output_policy" in kwargs:
             from .terminal_tool_output_policy import validate_tool_output_policy
             validate_tool_output_policy(kwargs["tool_output_policy"], arm=kwargs.get("arm"),
