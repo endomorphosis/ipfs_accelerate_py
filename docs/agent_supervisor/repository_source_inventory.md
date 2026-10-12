@@ -149,10 +149,14 @@ through a Terminal worker; existing frozen archives remain historical evidence.
 The first stage qualifies committed source custody and historical byte replay.
 The [reversible source views](reversible_source_views.md) now supply compact
 read-only Python candidates and complete unchanged-source restoration maps.
-Working-overlay candidate refresh, bounded current-owner `source.get`/`capsule.get` through the actual
-coding interface, mapped edits and filesystem materialization remain separate
-stages. Required source stays available in the current prompt until qualified
-expansion exists. Keep existing source execution and acceptance checks.
+The [worker source reader](worker_source_views.md) now supplies bounded compact
+and exact reads plus working-candidate refresh through its admitted semantic
+scope; the [candidate context reader](worker_candidate_context.md) rebuilds
+advisory capsules and numerical formulas. The complete historical inventory is
+not yet that worker's live source provider. That integration, model-facing mapped edits,
+accepted proof/index publication and filesystem materialization remain separate
+stages. Keep existing source execution and acceptance checks, and qualify the
+actual retrieval path before changing required inline source disclosure.
 
 Record source inventory references alongside existing metadata identities while
 preserving the admitted catalog/owner contracts. DuckLake history stays

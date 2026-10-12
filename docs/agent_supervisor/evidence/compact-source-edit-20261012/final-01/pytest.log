@@ -1,0 +1,36 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/compact-source-edit-20261012/final-01/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test
+configfile: pytest.ini
+collected 339 items
+
+test/api/test_source_view_edits.py ..................................... [ 10%]
+...................                                                      [ 16%]
+test/api/test_source_view_edit_adversarial.py ...................        [ 22%]
+test/api/test_source_view_edit_candidate.py ............................ [ 30%]
+.............                                                            [ 34%]
+test/api/test_source_view_edit_formal_refresh.py .                       [ 34%]
+test/api/test_reversible_source_view.py .....................            [ 40%]
+test/api/test_repository_code_view_inventory.py ...................      [ 46%]
+test/api/test_worker_source_views.py ................................... [ 56%]
+.............................                                            [ 65%]
+test/api/test_worker_source_working_views.py ...................         [ 70%]
+test/api/test_worker_candidate_context.py .............................. [ 79%]
+............................                                             [ 87%]
+test/api/semantic_state/test_worktree.py ...................             [ 93%]
+test/api/test_supervisor_staged_file_patching.py ......................  [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/compact-source-edit-20261012/final-01/junit.xml -
+============================= slowest 10 durations =============================
+8.45s call     api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[token-limit]
+3.20s call     api/test_worker_candidate_context.py::test_broker_stop_during_candidate_build_refuses_completed_artifact_and_clears_cache
+3.16s setup    api/test_worker_candidate_context.py::test_broker_stop_during_candidate_build_refuses_completed_artifact_and_clears_cache
+1.51s call     api/test_repository_code_view_inventory.py::test_full_population_keeps_original_bytes_modes_and_explicit_gitlink_frontier
+0.92s call     api/test_source_view_edit_formal_refresh.py::test_native_candidate_formulas_rebuild_after_mapped_patch_and_reject_old_cursor
+0.84s call     api/test_worker_candidate_context.py::test_exact_artifact_reconstruction_and_complete_envelope_bound[capsules]
+0.80s call     api/test_worker_candidate_context.py::test_exact_artifact_reconstruction_and_complete_envelope_bound[summary]
+0.78s call     api/test_worker_candidate_context.py::test_exact_artifact_reconstruction_and_complete_envelope_bound[formal]
+0.50s call     api/test_worker_source_working_views.py::test_working_empty_and_binary_data_round_trip_exactly[binary.dat]
+0.48s call     api/test_supervisor_staged_file_patching.py::test_legacy_adapter_replays_large_exact_newline_patch
+======================= 339 passed in 110.72s (0:01:50) ========================

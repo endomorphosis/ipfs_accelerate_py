@@ -1,0 +1,68 @@
+{
+  "completion_authority": false,
+  "findings_addressed": [
+    "Distinct schemas for pure mapping and owner application receipts.",
+    "Mapper replays pinned original/view/manifest before relying on KEEP offsets.",
+    "Single KEEP containment plus exact post-edit reprojection rejects hidden-comment scope changes and replacement text stripped by codec.",
+    "UTF-8 and CRLF boundaries checked for transformed Python; explicit protected-line policy refuses LF edits.",
+    "Requested/effective profile, fallback reason and codec binding must remain stable.",
+    "Owner requires fresh clean linked native allocation, explicit lease/fence, independently supplied PatchScope and exact generation/source/view/manifest pins.",
+    "Whole admitted candidate byte bound checked before application.",
+    "Postapplication staged path and index bytes checked; admitted source postimage rechecked around refresh and final owner check.",
+    "Read-only worker source socket has no mutation dispatch."
+  ],
+  "limitations": [
+    "Owner application supports fresh clean candidates, not incremental dirty overlays.",
+    "Pure identity mapping permits arbitrary bytes without Python syntax assurance; owner adapter accepts supported UTF-8 text patches only.",
+    "Unsupported patch path quoting, binary patches and create/delete/move operations are outside owner adapter scope.",
+    "Checks are sequential; external writers are not locked out and failed post-write checks may leave an isolated candidate requiring cleanup.",
+    "No broker/model tool or live benchmark arm is exposed by this host API.",
+    "Final broad regression suite was still running when this review was requested; no final suite count claimed here."
+  ],
+  "limits": {
+    "admitted_source_files": 64,
+    "edit_preimage_bytes": 65536,
+    "edit_replacement_bytes": 65536,
+    "edits_per_mapping": 1,
+    "files_per_application": 1,
+    "manifest_bytes": 524288,
+    "owner_patch_bytes": 2000000,
+    "owner_patch_path_bytes": 512,
+    "source_and_candidate_bytes": 1048576,
+    "whole_admitted_source_bytes": 1048576
+  },
+  "module_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py": "b5a6d6634272b8cc03f7ca6207fafaa9e27f1a9319d7ebf315284d5fbac0cec8",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0"
+  },
+  "proof_authority": false,
+  "provider_calls": 0,
+  "provider_tokens": null,
+  "public_fixture": {
+    "all_7_source_pins_unchanged_and_match_current": true,
+    "allocated_worktree_removed": true,
+    "application_receipt_digest_verified": true,
+    "authored_numerical_cases_passed": 11,
+    "canonical_repository_unchanged": true,
+    "command_sha256": "11c5dcde8b3b66687229013c413d719ac8979b7b003f8ff15ddfa0b863af0b3d",
+    "execution_sha256": "e7ea254174924dfd09a8fd1e60ca209e785321bfa3715755455b8e565cc63cb7",
+    "full_supervisor_start": false,
+    "official_reward": null,
+    "official_verifier_executed": false,
+    "old_generation_refused": true,
+    "operation": "Prescribed local variable rename in public largest-eigenval fixture.",
+    "qualification_sha256": "7977aebbdfdc3d27e3152a2ea272dd3c6988cd39118fc1add22581af2422c96e",
+    "worker_socket_mutation": false
+  },
+  "publication_authority": false,
+  "reviewed_docs": {
+    "mapped_edit_scope_matches_implementation": true,
+    "path": "docs/agent_supervisor/reversible_source_views.md",
+    "sha256": "fbd80bb8f2c6cb32e2f0f8e32c9f5eced58db987c4e2f53cadcf4b968a265ec5"
+  },
+  "reviewer": "/root/selective_protocol",
+  "schema": "compact-source-edit-independent-review@1",
+  "source_obligations_discharged": 0,
+  "status": "no_production_blockers_found",
+  "token_savings_measured": false
+}

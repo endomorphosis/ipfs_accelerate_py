@@ -10,8 +10,9 @@ whitespace, by using those bytes from existing source custody.
 
 This is a repository-wide dual representation: original committed bytes remain
 in the current supplied content store; read-only compact candidates are separate
-artifacts. No executable checkout is rewritten. Edited compact views refuse
-restoration; translating edits requires its own mapping contract. The current
+artifacts. No executable checkout is rewritten by the view codec. Edited compact
+views still refuse ordinary restoration; the separately qualified edit mapper
+below constructs original-source candidates through an explicit edit contract. The current
 coding input keeps its required source. An opt-in
 [coding-worker source reader](worker_source_views.md) now serves task-scoped
 compact views and exact original expansion, with counted guidance and explicit
@@ -72,6 +73,79 @@ from exact original bytes and compares the complete candidate/map/manifest.
 It then joins retained view bytes for KEEP ranges with original bytes for DELETE
 ranges and checks exact equality. A rehashed arbitrary deletion map, edited
 view, stale binding or changed profile cannot masquerade as that codec output.
+
+## Map an explicit compact edit to original bytes
+
+[`source_view_edits.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py)
+adds a pure edit mapper. Original bytes and the complete codec map remain with
+the owner. A proposal identifies an exact compact byte range, its preimage and
+replacement; no fuzzy matching or arbitrary whole-file inverse is used.
+
+```python
+from ipfs_accelerate_py.agent_supervisor.runtime.source_view_edits import (
+    map_source_view_edit,
+)
+
+mapped = map_source_view_edit(
+    original=original_bytes, view=candidate.view, manifest=candidate.manifest,
+    expected_manifest_sha256=candidate.manifest_sha256,
+    view_start=start, view_end=end,
+    expected_view_preimage=candidate.view[start:end], replacement=replacement,
+)
+assert mapped.view == candidate.view[:start] + replacement + candidate.view[end:]
+# mapped.candidate contains original-source bytes with only the mapped span changed.
+```
+
+The mapper first authenticates the unchanged original/view/map using the existing
+codec. Nonempty edits must fit inside one retained KEEP interval. Insertions are
+allowed inside that interval or at an exposed file endpoint; collapsed deleted
+regions are ambiguous and refuse. Every byte outside the mapped original range
+is preserved, including hidden comments. Rebuilding the view from the proposed
+original source must produce exactly the requested compact edit under the same
+requested/effective profile, fallback status and codec binding.
+
+For transformed Python, edits preserve UTF-8 character boundaries and whole CRLF
+pairs. When caller-protected physical lines exist, preimage and replacement may
+contain no LF, avoiding protection shifts. Identity views can still contain
+arbitrary bytes and carry no syntax guarantee. Profile/fallback transitions,
+invalid transformed Python, no-op edits, stale pins and failed replay refuse.
+Source/candidate sizes are at most 1 MiB, preimage/replacement at most 64 KiB each,
+and canonical manifests at most 512 KiB. The immutable result provides candidate
+bytes, the rebuilt view/manifest and an advisory mapping receipt.
+
+This checks exact mapping, not behavioral correctness, live source freshness or
+permission to write. The codec reads its own implementation bindings; no target
+source is executed and the pure mapper writes no files.
+
+## Apply through the existing isolated worktree owner
+
+[`source_view_edit_candidate.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py)
+connects that mapper to `IsolatedWorktree.apply_patch`. The caller supplies an
+existing fenced allocation, a matching `WorkerSourceViews` owner and an independently
+authorized `PatchScope`. It requires the generation, source/view/manifest hashes
+returned by a prior working-source read, plus the exact range/preimage/replacement.
+
+The adapter checks owner, task, allocation, source scope and all admitted working
+bytes before mapping and again before native application. It submits a normal
+original-source patch through the existing lease/fence and patch-scope checks.
+Afterward it verifies the staged file and complete admitted source population,
+then explicitly refreshes the working generation. Prior-generation source and
+formal-context continuations can no longer be used. The receipt remains
+`applied_validation_pending`: tests, prover checks and acceptance are separate.
+
+This first adapter accepts one modified file in a fresh clean candidate. It
+supports ordinary unquoted paths and UTF-8 text with LF/CRLF or no final newline.
+Binary patches, special diff-path quoting, creates/deletes/moves and incremental
+patching on a dirty overlay require separate support. It preserves the existing
+writer's staged-candidate behavior; the original repository remains unchanged.
+Checks do not exclude external writers, and failure after native application can
+leave a failed isolated candidate for owner cleanup. No atomic transaction is
+claimed.
+
+The adapter is a host API. The current worker source socket remains read-only;
+this does not yet expose compact edits as an authenticated model tool or enable
+them in a live Terminal-Bench arm. Source fidelity and local application tests
+do not establish provider-token savings.
 
 ## Complete repository inventories in the same CAS
 
@@ -157,12 +231,20 @@ Its host-issued CLI remains a separate typed-owner route. The
 [coding-worker adapter](worker_source_views.md) instead uses the task's already
 verified semantic source scope and the existing isolated child lifecycle. Its
 working-candidate reader now refreshes compact views after original-file edits,
-with generation-bound exact expansion and stale-continuation refusal. Formal
-index/capsule refresh and mapped compact edits remain subsequent integration
-stages; coding edits use exact original files.
+with generation-bound exact expansion and stale-continuation refusal. The
+[candidate context reader](worker_candidate_context.md) now rebuilds advisory
+capsules and numerical formulas for the captured working bytes. Accepted formal
+index publication and model-facing compact edit submission remain subsequent
+integration stages; ordinary coding edits still use exact original files.
 
 The [qualification evidence](evidence/reversible-source-views-20261012/README.md)
 retains 40 passing cases, including a separate-process unchanged inverse without
 the original checkout. Source hashes, exact commands, initial failure and final
 corrected fixture are preserved. Rebuild and qualify a current worker archive
 before operational deployment; this host API is not a live benchmark result.
+
+The [mapped-edit qualification](evidence/compact-source-edit-20261012/README.md)
+retains 339 passing regressions and a public-source fixture with 11 authored
+numerical comparisons. It qualifies host mapping, native application and formal
+context invalidation; model-tool integration and official benchmark performance
+remain unmeasured.
