@@ -151,11 +151,67 @@ when available; no tokenizer is downloaded. Smaller views can lose their token
 advantage once index, mapping and edit overhead is included. Only paired live
 trials with complete native usage and official rewards can establish practical
 benefit. Include failed trials and workers that do not adopt the helper.
-The existing indexed payload still contains capsules, admissions, raw sources
-and the context pack. This experiment adds optional source-view guidance; it
-does not remove duplicated source content from that payload. Live totals include
-both the initial context and subsequent helper traffic. Source/capsule
-deduplication is a separate change that needs its own matched comparison.
+The indexed payload contains selected capsules, admissions, required raw support
+and the context pack. Optional program raw source is already omitted. Some
+capsule facets retain normalized AST projections, with nested definitions
+elided by the producer; this is not another full copy of the repository. The
+helper experiment adds guidance, and live totals include initial context and
+later helper traffic. Measure component costs before choosing a replacement.
+
+The separate `--source-input-policy` experiment puts verified code views in the
+actual coding input, regardless of helper adoption. Its four opt-in settings
+keep source selection fixed:
+
+| Policy | Source rendering | Normalized facet AST in provider input |
+| --- | --- | --- |
+| `source-input-raw@1` | Raw selected source | Retained |
+| `source-input-compact@1` | Compact selected source | Retained |
+| `source-input-ast-ref-raw@1` | Raw selected source | Bound reference |
+| `source-input-ast-ref-compact@1` | Compact selected source | Bound reference |
+
+Compare the first two to isolate rendering, and the raw policies to isolate AST
+replacement. Also include `legacy` to account for the added view instructions
+and binding overhead. Compact rendering can be unprofitable. A compact arm must
+include at least one actual compact view; empty or all-fallback treatments fail
+before the provider call. Indexed selection can nominate only small constants,
+so unsupported or unprofitable tasks must remain in the results.
+
+Canonical capsules, CIDs, proof obligations, admissions and required raw sources
+remain intact. A separately versioned provider presentation replaces only
+allowlisted facet AST slots; retained source and producer evidence reproduce
+the exact original transport. A selected module or class read includes nested
+bodies that its normalized facet projection can elide; both rendering arms
+receive that same source scope, and its added cost remains in the measurement.
+Historical replay uses retained blocks and the bound renderer/Python version
+after the allocated worktree is removed. Operational dispatch checks the complete captured source
+manifest against both canonical and allocated files, including a final check
+before the provider call. These checks establish representation and freshness,
+not program correctness. Exact current source remains required before editing.
+
+The source block is bounded to eight selected views and 32 KiB including framing,
+and 4 MiB of retained source, with the existing 256,000-byte complete-input cap.
+Legacy remains the default. The additive settings compose with metadata
+factoring and native tokenizer fallback. AST-reference v1 explicitly rejects
+metadata factoring and tokenizer selection; it never silently drops treatment.
+Preparation freezes the setting and requires an archive containing matching
+runtime sources. Existing provider cooldowns and resource limits still apply.
+
+Run a model-free comparison of full captured coding inputs with:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_source_input_experiment \
+  --dataset /path/to/terminal-bench-2 --output /path/to/new-input-evidence-directory
+```
+
+This uses the real producer, DuckDB selection, router and retained-evidence
+audit, with a local provider stub. It records complete-input bytes and optional
+local tokenizer proxy counts across legacy and the four settings, checks stale
+source rejection, and replays after worktree removal. It does not execute
+benchmark source or measure model reasoning, later tool calls, provider tokens,
+task success or official reward. Signed supervisor planning and container setup
+are outside this qualification. Live comparisons require fresh frozen sources,
+positive inclusion, complete native usage, official rewards and unchanged
+resource/backoff controls.
 
 Other public Terminal-Bench tasks can use the source-bound task profiles in
 [TERMINAL_SUITE_PROFILES.md](TERMINAL_SUITE_PROFILES.md). The first broader full

@@ -197,6 +197,65 @@ def _selection(source: str, symbol: str, *, tree=None, symbols=None):
     return tree, selected, start, end, indent, type(node).__name__
 
 
+def render_source_bytes(path: str, data: bytes, symbol: str = "module", format: str = "compact", *, read_only_assignment: bool = False) -> dict:
+    """Render already captured bytes without filesystem access or execution.
+
+    Source hashes bind the exact retained bytes; callers own scope, provenance
+    and freshness checks. This rendering does not grant proof or edit authority.
+    """
+    if format not in {"raw", "compact"}:
+        raise SourceViewError("invalid_format")
+    path = _path(path)
+    if type(data) is not bytes or len(data) > MAX_SOURCE_BYTES:
+        raise SourceViewError("source_limit")
+    source, _encoding = _decode(data)
+    if type(read_only_assignment) is not bool:
+        raise SourceViewError("invalid_read_scope")
+    if read_only_assignment:
+        tree = _parse(source)
+        candidates = []
+        for node in tree.body:
+            target = (node.targets[0] if isinstance(node, ast.Assign) and len(node.targets) == 1
+                      else node.target if isinstance(node, ast.AnnAssign) else None)
+            if isinstance(target, ast.Name) and target.id == symbol:
+                candidates.append(node)
+        # Definitions/imports or another assignment with this name are not
+        # silently disambiguated: the verified producer also checks its facet.
+        if len(candidates) != 1 or symbol in _symbols(tree):
+            raise SourceViewError("unsupported_or_missing_symbol")
+        node = candidates[0]
+        selected = ast.get_source_segment(source, node)
+        if selected is None or _ast_key(_parse(selected).body[0]) != _ast_key(node):
+            raise SourceViewError("unsupported_symbol_layout")
+        kind = type(node).__name__
+    else:
+        _tree, selected, _start, _end, _indent, kind = _selection(source, symbol)
+    actual, content, fallback = "raw", selected, None
+    if format == "compact":
+        try:
+            tree = _parse(selected)
+            candidate = ast.unparse(tree) + "\n"
+            if _ast_key(_parse(candidate)) != _ast_key(tree):
+                fallback = "ast_mismatch"
+            else:
+                actual, content = "compact", candidate
+        except (RecursionError, SourceViewError, ValueError):
+            fallback = "unsupported_compact_rendering"
+    if len(content.encode("utf-8")) > MAX_CONTENT_BYTES:
+        raise SourceViewError("view_limit")
+    return dict(schema=SCHEMA, operation="read", path=path,
+                source_sha256=_sha(data), symbol_id=f"{path}::{symbol}",
+                symbol=symbol, kind=kind, requested_format=format, format=actual,
+                fallback_reason=fallback, content=content, ast_equivalent=True,
+                source_bytes=len(data), selected_source_bytes=len(selected.encode("utf-8")),
+                content_bytes=len(content.encode("utf-8")),
+                edit_supported=symbol != "module" and not read_only_assignment,
+                edit_scope="module_definitions_and_direct_class_members",
+                unsupported_edits=["module", "nested_functions", "conditional_definitions", "renames"],
+                behavioral_equivalence_verified=False)
+
+
+
 class CodeSourceView:
     def __init__(self, root: str | Path, *, audit_store: str | Path | None = None):
         absolute = Path(os.path.abspath(root))
@@ -214,33 +273,8 @@ class CodeSourceView:
         return data, info, source, encoding
 
     def _view(self, path: str, symbol: str, format: str) -> dict:
-        if format not in {"raw", "compact"}:
-            raise SourceViewError("invalid_format")
-        data, _info, source, _encoding = self._snapshot(path)
-        _tree, selected, _start, _end, _indent, kind = _selection(source, symbol)
-        actual, content, fallback = "raw", selected, None
-        if format == "compact":
-            try:
-                tree = _parse(selected)
-                candidate = ast.unparse(tree) + "\n"
-                if _ast_key(_parse(candidate)) != _ast_key(tree):
-                    fallback = "ast_mismatch"
-                else:
-                    actual, content = "compact", candidate
-            except (RecursionError, SourceViewError, ValueError):
-                fallback = "unsupported_compact_rendering"
-        if len(content.encode("utf-8")) > MAX_CONTENT_BYTES:
-            raise SourceViewError("view_limit")
-        return dict(schema=SCHEMA, operation="read", path=path,
-                    source_sha256=_sha(data), symbol_id=f"{path}::{symbol}",
-                    symbol=symbol, kind=kind, requested_format=format, format=actual,
-                    fallback_reason=fallback, content=content, ast_equivalent=True,
-                    source_bytes=len(data), selected_source_bytes=len(selected.encode("utf-8")),
-                    content_bytes=len(content.encode("utf-8")),
-                    edit_supported=symbol != "module",
-                    edit_scope="module_definitions_and_direct_class_members",
-                    unsupported_edits=["module", "nested_functions", "conditional_definitions", "renames"],
-                    behavioral_equivalence_verified=False)
+        data, _info, _source, _encoding = self._snapshot(path)
+        return render_source_bytes(path, data, symbol, format)
 
     def _finish(self, result: dict) -> dict:
         operation = result["operation"]

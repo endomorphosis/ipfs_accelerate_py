@@ -37,7 +37,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "tool_output_policy", "source_view_policy")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "tool_output_policy", "source_view_policy", "source_input_policy", "source_input_view", "source_input_dispatched")
 
 
 def _sha(raw: bytes) -> str:
@@ -48,6 +48,27 @@ def _same_json(left, right) -> bool:
     """Compare typed canonical values: false is distinct from zero."""
     options = dict(sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     return json.dumps(left, **options) == json.dumps(right, **options)
+
+
+def source_input_audit_binding_sha256(item: dict) -> str:
+    """Bind a successful audit to its complete bounded coding receipt projection.
+
+    This digest is an audit join key, not evidence of successful reconstruction
+    by itself. Keep it outside the boolean model-input checks.
+    """
+    if (type(item) is not dict or item.get("schema") != "router-implementation-invocation@1"
+            or item.get("phase") != "coding" or item.get("purpose") != "coding"
+            or item.get("provider") != "codex_cli" or item.get("source_input_view") is None
+            or type(item.get("source_input_dispatched")) is not bool):
+        raise ValueError("source input audit binding requires an explicit coding receipt")
+    projection = {key: item[key] for key in RECEIPT_FIELDS}
+    projection.update({key: item[key] for key in TRANSLATION_FIELDS if key in item})
+    projection["provider"] = item["provider"]
+    raw = json.dumps({"schema": "terminal-source-input-audit-binding@1", "receipt": projection},
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    if len(raw) > MAX_REQUEST_BYTES:
+        raise ValueError("source input audit binding exceeds receipt bound")
+    return _sha(raw)
 
 
 def _base(status="unknown", reason="observation_unavailable") -> dict:
@@ -175,8 +196,20 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
             raise ValueError("invalid input byte count")
     translated = result.get("semantic_translation") is not None
     instruction = result.get("public_instruction")
+    source_input = result.get("source_input_view")
+    if source_input is not None or result.get("source_input_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_input_policy import validate_bound_receipt
+        validate_bound_receipt(result.get("source_input_policy"), source_input,
+            semantic_metadata_view="legacy" if result.get("semantic_metadata_view") is None else "common-bindings@1")
+        if item.get("provider") != "codex_cli":
+            raise ValueError("source input requires the Codex coding route")
+        result["provider"] = item["provider"]
+        if type(result.get("source_input_dispatched")) is not bool:
+            raise ValueError("source input requires explicit provider boundary observation")
+        if source_input["factor_ast"] and not translated:
+            raise ValueError("source input AST references require semantic transport")
     router_bytes = result.get("router_prompt_bytes", result["native_prompt_bytes"])
-    if translated or instruction is not None:
+    if translated or instruction is not None or source_input is not None:
         _digest(result["router_prompt_sha256"])
         if type(router_bytes) is not int or not 0 < router_bytes <= 262_144:
             raise ValueError("invalid translated input byte count")
@@ -195,12 +228,12 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                 != "supervisor-semantic-router-input@1"):
             raise ValueError("invalid semantic transport version")
         _identity(translation["translation_cid"])
-    elif instruction is None and (router_bytes != result["native_prompt_bytes"]
+    elif instruction is None and source_input is None and (router_bytes != result["native_prompt_bytes"]
           or result.get("router_prompt_sha256", result["native_prompt_sha256"]) != result["native_prompt_sha256"]):
         raise ValueError("unexplained router projection")
     residual = result.get("doctor_residual_context")
     if residual is not None:
-        if (not translated or not isinstance(residual, dict)
+        if ((not translated and source_input is None) or not isinstance(residual, dict)
                 or residual.get("schema") != "doctor-residual-router-context@1"
                 or residual.get("candidate_only") is not True):
             raise ValueError("invalid Doctor residual receipt")
@@ -318,10 +351,26 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None):
             "semantic_translation_cid": encoded.table.translation_cid == receipt["semantic_translation"]["translation_cid"],
             "semantic_translation_schema": encoded.receipt["schema"] == receipt["semantic_translation"]["schema"],
         }
+    source_input = receipt.get("source_input_view")
+    if source_input is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_input_policy import validate_bound_receipt
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_input_view import replay_source_input_view_for_audit
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation import replay_semantic_router_prompt_for_audit
+        validate_bound_receipt(receipt.get("source_input_policy"), source_input,
+            semantic_metadata_view="legacy" if receipt.get("semantic_metadata_view") is None else "common-bindings@1")
+        if repository is None:
+            raise ValueError("source input requires retained canonical source blocks")
+        source_encoded = encoded if translated else replay_semantic_router_prompt_for_audit(
+            prompt=rendered, repository=repository, transport_schema=source_input["source_transport_schema"])
+        projected = replay_source_input_view_for_audit(encoded=source_encoded, repository=repository, receipt=source_input)
+        router_prompt = projected.provider_prompt if translated else rendered + projected.block
+        checks["source_input_projection"] = True
+        checks["source_input_positive_inclusion"] = True
+        checks["source_input_dispatched"] = receipt.get("source_input_dispatched") is True
     residual = receipt.get("doctor_residual_context")
     if residual is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.doctor_residual_context import load_doctor_residual_advisory
-        if not translated or repository is None:
+        if (not translated and source_input is None) or repository is None:
             raise ValueError("Doctor residual requires a canonical semantic repository")
         advisory, observed = load_doctor_residual_advisory(artifact=Path(residual["artifact"]),
             expected_sha256=residual["artifact_sha256"], repository=repository,
@@ -343,7 +392,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None):
             checks["public_instruction_" + field] = observed[field] == instruction[field]
         if instruction["schema"] == "supervisor-public-instruction-inclusion@2":
             checks["public_instruction_intent_requirements"] = observed.get("intent_requirements") == instruction["intent_requirements"]
-    if translated or instruction is not None:
+    if translated or instruction is not None or source_input is not None:
         checks.update(router_prompt_sha256=_sha(router_prompt.encode()) == receipt["router_prompt_sha256"],
             router_prompt_bytes=len(router_prompt.encode()) == receipt["router_prompt_bytes"])
     model, advisory = render_model_prompt(prompt=router_prompt, purpose="coding",
@@ -556,7 +605,7 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
                         continue
                     model, advisory, checks = _model_projection(rendered=rendered, receipt=receipt,
                         repository=Path(prepared["repository"]) if prepared.get("repository") else None)
-                    result["matches"].append({"capsule_id": observed["capsule_id"],
+                    match = {"capsule_id": observed["capsule_id"],
                         "invocation_id": receipt["invocation_id"],
                         "workspace_sha256": _sha(receipt["workspace"].encode()),
                         "native_prompt_sha256": observed["native_prompt_sha256"],
@@ -564,7 +613,10 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
                         "model_prompt_sha256": _sha(model.encode()), "model_prompt_bytes": len(model.encode()),
                         "workspace_advisory_sha256": _sha(advisory.encode()),
                         "workspace_advisory_bytes": len(advisory.encode()),
-                        "model_input_checks": checks, "model_input_verified": all(checks.values())})
+                        "model_input_checks": checks, "model_input_verified": all(checks.values())}
+                    if match["model_input_verified"] and receipt.get("source_input_view") is not None:
+                        match["source_input_audit_binding_sha256"] = source_input_audit_binding_sha256(receipt)
+                    result["matches"].append(match)
             except Exception as error:
                 result["read_errors"].append({"kind": "capsule", "error_type": type(error).__name__})
     finally:
@@ -611,7 +663,7 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
             # The child must verify ordinary completion against the recorded
             # provider. Never infer a missing provider from the selected mode.
             if (row.get("coding_reply_contract") is not None or row.get("tool_output_policy") is not None
-                    or row.get("source_view_policy") is not None):
+                    or row.get("source_view_policy") is not None or row.get("source_input_view") is not None):
                 fields += ("provider",)
             rows.append({key: row[key] for key in fields if key in row})
         request = json.dumps(rows).encode()

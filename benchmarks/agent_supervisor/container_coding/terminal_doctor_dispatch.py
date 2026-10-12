@@ -242,12 +242,18 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                         semantic_repository: Path | None, doctor: dict | None,
                         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
                         coding_reply_mode: str = "legacy", semantic_metadata_view: str = "legacy",
-                        tool_output_policy: str = "legacy", source_view_policy: str = "legacy") -> list[str]:
+                        tool_output_policy: str = "legacy", source_view_policy: str = "legacy",
+                        source_input_policy: str = "legacy") -> list[str]:
     """Closed choice that the admitted launch signs before any worker starts."""
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
     validate_semantic_transport_schema(semantic_transport_schema)
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, validate_coding_reply_mode
     validate_coding_reply_mode(coding_reply_mode)
+    from .terminal_source_input_policy import validate_source_input_policy
+    validate_source_input_policy(source_input_policy, semantic_metadata_view=semantic_metadata_view)
+    if source_input_policy != "legacy" and (semantic_repository is None
+            or doctor is not None and doctor.get("route") != "model_router"):
+        raise ValueError("source input policy requires a semantic model-router coding route")
     from .terminal_source_view_policy import validate_source_view_policy
     validate_source_view_policy(source_view_policy)
     if source_view_policy != "legacy" and (semantic_repository is None
@@ -289,6 +295,7 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
               if semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA else []),
             *(["--tool-output-policy", tool_output_policy] if tool_output_policy != "legacy" else []),
             *(["--source-view-policy", source_view_policy] if source_view_policy != "legacy" else []),
+            *(["--source-input-policy", source_input_policy] if source_input_policy != "legacy" else []),
             *(["--coding-reply-mode", coding_reply_mode]
               if coding_reply_mode != DEFAULT_CODING_REPLY_MODE else []),
             *(["--semantic-metadata-view", semantic_metadata_view]

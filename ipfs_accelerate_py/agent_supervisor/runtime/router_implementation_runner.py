@@ -355,6 +355,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_metadata_view: str = "legacy",
         tool_output_policy: str = "legacy",
         source_view_policy: str = "legacy",
+        source_input_policy: str = "legacy",
         census_only: bool = False,
         coding_reply_mode: str = "legacy",
         doctor_residual_artifact: Path | None = None,
@@ -385,6 +386,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     validate_coding_reply_mode(mode=coding_reply_mode, purpose=purpose, provider=provider)
     from .tool_output_policy import validate_policy
     validate_policy(tool_output_policy, purpose=purpose, provider=provider)
+    from .source_input_policy import validate_policy as validate_input_policy, projection_options
+    validate_input_policy(source_input_policy, purpose=purpose, provider=provider,
+        semantic_repository=semantic_repository, semantic_metadata_view=semantic_metadata_view,
+        census_only=census_only, prompt_token_counter=prompt_token_counter,
+        prompt_tokenizer_artifact=prompt_tokenizer_artifact, max_input_tokens=max_input_tokens)
     from .source_view_policy import validate_policy as validate_source_policy
     validate_source_policy(source_view_policy, purpose=purpose, provider=provider)
     if source_view_policy != "legacy" and (census_only or semantic_repository is None):
@@ -481,6 +487,18 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,
                                                transport_schema=semantic_transport_schema)
         router_prompt = encoded.provider_prompt
+    source_input_view = None
+    source_input_encoded = encoded
+    if source_input_policy != "legacy":
+        failure_phase = "source_input_view"
+        from .source_input_view import project_source_input_view
+        source_input_view = project_source_input_view(encoded=encoded, repository=semantic_repository,
+            workspace=root, require_current=True, **projection_options(source_input_policy))
+        from .source_input_policy import validate_bound_receipt
+        validate_bound_receipt(source_input_policy, source_input_view.receipt,
+            semantic_metadata_view=semantic_metadata_view)
+        router_prompt = source_input_view.provider_prompt
+        required_suffix += source_input_view.block
     failure_phase = "doctor_residual"
     residual_args = (doctor_residual_artifact, doctor_residual_sha256, doctor_residual_task_cid)
     if any(residual_args):
@@ -702,6 +720,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["tool_output_policy"] = tool_output_binding
     if source_view_binding is not None:
         receipt["source_view_policy"] = source_view_binding
+    if source_input_view is not None:
+        receipt["source_input_policy"] = source_input_policy
+        receipt["source_input_view"] = source_input_view.receipt
+        receipt["source_input_dispatched"] = False
     if metadata_receipt is not None:
         receipt["semantic_metadata_view"] = metadata_receipt
     if metadata_native_reply is not None:
@@ -789,6 +811,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             created_store = create_store(Path(tool_output_binding["store_path"]))
             tool_output_store_identity = created_store["store_identity"]
             failure_phase = "provider_invocation"
+        if source_input_view is not None:
+            failure_phase = "source_input_freshness"
+            from .source_input_view import assert_current_source_input_view
+            assert_current_source_input_view(encoded=source_input_encoded, repository=semantic_repository,
+                workspace=root, receipt=source_input_view.receipt)
+            failure_phase = "provider_invocation"
+            receipt["source_input_dispatched"] = True
         output = generate_text(
             model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
             allow_local_fallback=False, allow_cross_provider_fallback=False,
@@ -946,6 +975,8 @@ def main():
     parser.add_argument("--tool-output-policy", default="legacy", choices=TOOL_OUTPUT_POLICIES)
     from .source_view_policy import POLICIES as SOURCE_VIEW_POLICIES
     parser.add_argument("--source-view-policy", default="legacy", choices=SOURCE_VIEW_POLICIES)
+    from .source_input_policy import POLICIES as SOURCE_INPUT_POLICIES
+    parser.add_argument("--source-input-policy", default="legacy", choices=SOURCE_INPUT_POLICIES)
     parser.add_argument("--semantic-metadata-census-only", action="store_true",
                         help="Check the complete metadata view and emit only census metadata before provider dispatch")
     parser.add_argument("--coding-reply-mode", default="legacy",
@@ -975,6 +1006,7 @@ def main():
                         semantic_metadata_view=args.semantic_metadata_view,
                         tool_output_policy=args.tool_output_policy,
                         source_view_policy=args.source_view_policy,
+                        source_input_policy=args.source_input_policy,
                         census_only=args.semantic_metadata_census_only,
                         coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,
