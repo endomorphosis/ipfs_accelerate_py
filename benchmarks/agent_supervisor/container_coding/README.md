@@ -130,9 +130,32 @@ inputs remain visible in results and cannot establish compression benefit.
 
 This is the repository round-trip foundation. The local CLI and revision
 contract are documented in [runtime/README.md](../../../ipfs_accelerate_py/agent_supervisor/runtime/README.md#reversible-repository-views).
-Native agent tool routing, incremental index refresh and evidence admission
-require their own integration and live qualification. Existing runtime policy
-defaults and provider cooldowns are unchanged.
+The worker integration now exposes repository reads and guarded canonical
+symbol edits through an invocation-scoped MCP server, with datasets-owned
+index refresh. Its scripted transport qualification runs against the same
+reviewed public inputs:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_repository_tools_experiment \
+  --dataset /path/to/terminal-bench-2 --output /path/to/new-repository-tools-evidence
+```
+
+Each original/compact arm starts a real stdio server, discovers its tools,
+checks its native index, reads the reviewed files, performs an authored syntax
+edit, and verifies stale-generation and external-edit refusal followed by
+refresh. The final canonical sources must match across arms. The report counts
+actual JSON-RPC request/response bytes and optional local tokenizer proxies,
+including setup separately and in the total. Only content-free qualification
+data is retained; source-bearing messages stay in memory. No public benchmark
+source is executed, and no provider or container is started.
+
+Use `--repository-source-policy repository-source-raw@1` or
+`repository-source-compact@1` on the coding router to select this integration;
+the older `--source-view-policy` selects the optional shell helper. Container
+launcher propagation and live model adoption still require qualification.
+Existing defaults and provider cooldowns are unchanged. See the
+[native repository tools contract](../../../ipfs_accelerate_py/agent_supervisor/runtime/README.md#native-repository-tools-for-coding-workers)
+for scope, failure recovery and resource limits.
 
 A separate source-representation experiment uses `--source-view-policy
 source-view-raw@1` as the matched control and `--source-view-policy

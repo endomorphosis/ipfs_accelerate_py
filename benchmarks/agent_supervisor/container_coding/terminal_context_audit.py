@@ -37,7 +37,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "tool_output_policy", "source_view_policy", "source_input_policy", "source_input_view", "source_input_dispatched", "query_reference_policy", "query_reference_view", "query_reference_selected", "query_reference_dispatched", "query_reference_provider_attempted")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "tool_output_policy", "source_view_policy", "repository_source_policy", "source_input_policy", "source_input_view", "source_input_dispatched", "query_reference_policy", "query_reference_view", "query_reference_selected", "query_reference_dispatched", "query_reference_provider_attempted")
 
 
 def _sha(raw: bytes) -> str:
@@ -306,6 +306,11 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                 for requirement_id in requirements[key]:
                     _identity(requirement_id)
     reply = result.get("coding_reply_contract")
+    if result.get("repository_source_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_policy import validate_binding as validate_repository_binding
+        if item.get("provider") != "codex_cli" or result.get("source_view_policy") is not None:
+            raise ValueError("repository source tools require an exclusive Codex coding route")
+        validate_repository_binding(result["repository_source_policy"], workspace=workspace)
     if result.get("source_view_policy") is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import validate_binding as validate_source_binding
         if item.get("provider") != "codex_cli":
@@ -454,7 +459,12 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None):
     model, advisory = render_model_prompt(prompt=router_prompt, purpose="coding",
         workspace=Path(receipt["workspace"]), semantic_transport=translated,
         tool_output_binding=receipt.get("tool_output_policy"),
-        source_view_binding=receipt.get("source_view_policy"))
+        source_view_binding=receipt.get("source_view_policy"),
+        repository_source_binding=receipt.get("repository_source_policy"))
+    if receipt.get("repository_source_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime import repository_source_mcp
+        source = Path(repository_source_mcp.__file__).read_bytes()
+        checks["repository_source_helper_source"] = _sha(source) == receipt["repository_source_policy"]["helper_sha256"]
     if receipt.get("source_view_policy") is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime import code_source_view
         source = Path(code_source_view.__file__).read_bytes()
@@ -487,7 +497,8 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None):
         candidate, candidate_advisory = render_model_prompt(prompt=candidate_router, purpose="coding",
             workspace=Path(receipt["workspace"]), semantic_transport=True,
             tool_output_binding=receipt.get("tool_output_policy"),
-            source_view_binding=receipt.get("source_view_policy"))
+            source_view_binding=receipt.get("source_view_policy"),
+            repository_source_binding=receipt.get("repository_source_policy"))
         if candidate_advisory != advisory:
             raise ValueError("metadata audit changed workspace advisory")
         if reply is not None:
@@ -722,6 +733,7 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
             # provider. Never infer a missing provider from the selected mode.
             if (row.get("coding_reply_contract") is not None or row.get("tool_output_policy") is not None
                     or row.get("source_view_policy") is not None or row.get("source_input_view") is not None
+                    or row.get("repository_source_policy") is not None
                     or row.get("query_reference_view") is not None):
                 fields += ("provider",)
             rows.append({key: row[key] for key in fields if key in row})

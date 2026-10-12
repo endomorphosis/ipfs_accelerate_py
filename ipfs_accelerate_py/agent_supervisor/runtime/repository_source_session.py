@@ -1,0 +1,376 @@
+"""Generation-bound repository tools over original source and its native index.
+
+Compact text is a read representation. Writes target the canonical checkout and
+use its whole-file digest; native datasets indexing always consumes original
+bytes. The broker executes no repository code and grants no proof authority.
+"""
+from __future__ import annotations
+
+import copy
+import base64
+import os
+from pathlib import Path
+import stat
+import threading
+import uuid
+
+from . import repository_source_view as views
+from .code_source_view import CodeSourceView, SourceViewError
+
+SCHEMA = "supervisor-repository-source-session@1"
+DEFAULT_LIMITS = dict(max_files=512, max_total_bytes=16 * 1024 * 1024,
+                      max_file_bytes=256 * 1024, max_generations=8)
+
+
+class RepositorySourceSessionError(ValueError):
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
+
+
+def _fail(code):
+    raise RepositorySourceSessionError(code)
+
+
+def _integer(value, lower, upper):
+    return type(value) is int and lower <= value <= upper
+
+
+def _outside_git(path):
+    # Even a .git file identifies an ancestor worktree. The native snapshotter
+    # would otherwise broaden a restored directory to that enclosing checkout.
+    return all(not os.path.lexists(parent / ".git") for parent in (path, *path.parents))
+
+
+class RepositorySourceSession:
+    """A bounded, serialized session; private state is owned by the caller.
+
+    At most eight generations are retained by default, including at most 128 MiB
+    of original source bytes before representation and native-index overhead.
+    ``close`` releases handles; the caller removes its private state directory.
+    """
+
+    def __init__(self, workspace: Path, state_dir: Path, *, representation="compact",
+                 index_factory=None, max_files=512, max_total_bytes=16 * 1024 * 1024,
+                 max_file_bytes=256 * 1024, max_generations=8):
+        if not isinstance(representation, str) or representation not in {"original", "compact"}:
+            _fail("invalid_representation")
+        if not _integer(max_generations, 1, DEFAULT_LIMITS["max_generations"]):
+            _fail("invalid_limits")
+        for value, key in ((max_files, "max_files"), (max_total_bytes, "max_total_bytes"),
+                           (max_file_bytes, "max_file_bytes")):
+            if not _integer(value, 1, DEFAULT_LIMITS[key]):
+                _fail("invalid_limits")
+        self.workspace = views._absolute(workspace)
+        self.state_dir = views._absolute(state_dir)
+        self.representation = representation
+        self.limits = dict(max_files=max_files, max_total_bytes=max_total_bytes,
+                           max_file_bytes=max_file_bytes, max_generations=max_generations)
+        self.session_id = uuid.uuid4().hex
+        self.generation = 0
+        self._lock = threading.RLock()
+        self._closed = False
+        self._refresh_required = True
+        self._index = None
+        self._manifest = self._capture_receipt = self._index_receipt = None
+        self._materialization_receipt = self._package = None
+        self._previous_manifest_sha256 = None
+        self._validate_locations()
+        try:
+            if index_factory is None:
+                from .repository_source_index import NativeRepositoryIndex
+                index_factory = NativeRepositoryIndex
+            self._index = index_factory(self.state_dir / "index")
+            self._capture()
+        except BaseException:
+            self.close()
+            raise
+
+    def _validate_locations(self):
+        views._disjoint(self.workspace, self.state_dir)
+        fd = views._open_directory(self.workspace)
+        os.close(fd)
+        if not _outside_git(self.state_dir):
+            _fail("state_inside_git")
+        # Opening the parent first forbids symlink components, including a
+        # pre-existing state_dir symlink. No caller-owned directory is removed.
+        parent = views._open_directory(self.state_dir.parent)
+        try:
+            try:
+                os.mkdir(self.state_dir.name, 0o700, dir_fd=parent)
+            except FileExistsError:
+                pass
+            fd = os.open(self.state_dir.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                         dir_fd=parent)
+            try:
+                info = os.fstat(fd)
+                if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+                    _fail("state_not_private")
+                self._state_identity = (info.st_dev, info.st_ino)
+                with os.scandir(fd) as iterator:
+                    if next(iterator, None) is not None:
+                        _fail("state_not_empty")
+            finally:
+                os.close(fd)
+        except OSError:
+            _fail("unsafe_state_directory")
+        finally:
+            os.close(parent)
+
+    def _open(self):
+        if self._closed:
+            _fail("session_closed")
+        fd = self._state_fd()
+        os.close(fd)
+
+    def _state_fd(self):
+        fd = views._open_directory(self.state_dir)
+        info = os.fstat(fd)
+        if ((info.st_dev, info.st_ino) != self._state_identity
+                or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700):
+            os.close(fd)
+            _fail("state_replaced")
+        return fd
+
+    def _generation(self, generation):
+        self._open()
+        if not _integer(generation, 1, DEFAULT_LIMITS["max_generations"]):
+            _fail("invalid_generation")
+        if generation != self.generation:
+            _fail("stale_generation")
+
+    def _current(self):
+        if self._refresh_required:
+            _fail("refresh_required")
+        try:
+            views.assert_repository_current(self.workspace, self._manifest)
+        except (views.RepositorySourceViewError, OSError):
+            self._refresh_required = True
+            _fail("stale_source")
+
+    def _identity(self):
+        receipt = self._capture_receipt
+        native = self._index_receipt
+        return copy.deepcopy(dict(schema=SCHEMA, session_id=self.session_id, generation=self.generation,
+                    package_manifest_sha256=receipt["manifest_sha256"],
+                    previous_package_manifest_sha256=self._previous_manifest_sha256,
+                    source_tree_sha256=receipt["source_tree_sha256"],
+                    datasets_head=native["head"], semantic_state_cid=native["semantic_state_cid"],
+                    index_coverage=native["coverage"], representation=self.representation,
+                    proof_authority=False, execution_authority=False, completion_authority=False))
+
+    def _capacity(self):
+        if self.generation >= self.limits["max_generations"]:
+            _fail("generation_limit")
+
+    def _capture(self):
+        self._capacity()
+        self._refresh_required = True
+        # Failed candidates are removed. Only fully indexed, source-current
+        # captures advance the public generation or expose new query handles.
+        name = "generation-" + uuid.uuid4().hex
+        candidate = self.state_dir / name
+        state_fd = self._state_fd()
+        os.mkdir(name, 0o700, dir_fd=state_fd)
+        package, materialized = candidate / "package", candidate / "original"
+        try:
+            receipt = views.create_repository_view(
+                self.workspace, package,
+                **{key: self.limits[key] for key in ("max_files", "max_total_bytes", "max_file_bytes")})
+            manifest = views.load_repository_view(package, expected_manifest_sha256=receipt["manifest_sha256"])
+            materialization = views.restore_repository_view(
+                package, materialized, expected_manifest_sha256=receipt["manifest_sha256"],
+                representation="original")
+            native = self._index.refresh(materialized, manifest)
+            if (not isinstance(native, dict) or "head" not in native
+                    or "semantic_state_cid" not in native or "coverage" not in native
+                    or native.get("source_tree_sha256") != receipt["source_tree_sha256"]
+                    or native.get("package_manifest_sha256") != receipt["manifest_sha256"]
+                    or native.get("source_scope_verified") is not True):
+                _fail("invalid_index_receipt")
+            views.assert_repository_current(self.workspace, manifest)
+            check_fd = self._state_fd()
+            os.close(check_fd)
+        except BaseException:
+            views._cleanup(state_fd, name)
+            raise
+        finally:
+            os.close(state_fd)
+        self._previous_manifest_sha256 = (self._capture_receipt or {}).get("manifest_sha256")
+        self._capture_receipt, self._manifest = receipt, manifest
+        self._index_receipt, self._materialization_receipt = native, materialization
+        self._package = package
+        self.generation += 1
+        self._refresh_required = False
+
+    def status(self) -> dict:
+        with self._lock:
+            self._open()
+            if not self._refresh_required:
+                try:
+                    self._current()
+                except RepositorySourceSessionError:
+                    pass
+            return dict(self._identity(), operation="status", source_current=not self._refresh_required,
+                        refresh_required=self._refresh_required, limits=dict(self.limits),
+                        capture_counts={key: self._capture_receipt[key] for key in
+                                        ("entry_count", "file_count", "original_bytes", "compact_bytes", "compacted_files")},
+                        native_index=copy.deepcopy(self._index_receipt))
+
+    def list_files(self, *, generation: int, offset: int = 0, limit: int = 100) -> dict:
+        with self._lock:
+            self._generation(generation)
+            if not _integer(offset, 0, self.limits["max_files"]) or not _integer(limit, 1, 100):
+                _fail("invalid_pagination")
+            self._current()
+            paths = sorted(self._manifest["entries"])
+            rows = [dict(path=path, **self._manifest["entries"][path]) for path in paths[offset:offset + limit]]
+            self._current()
+            end = offset + len(rows)
+            return dict(self._identity(), operation="list_files", entries=rows, total=len(paths),
+                        next_offset=end if end < len(paths) else None)
+
+    def symbols(self, *, generation: int, path: str | None = None, query: str = "", limit: int = 100) -> dict:
+        with self._lock:
+            self._generation(generation)
+            if (not isinstance(query, str) or len(query.encode("utf-8")) > 1024
+                    or not _integer(limit, 1, 100)):
+                _fail("invalid_query")
+            if path is not None:
+                path = views._relative(path)
+            self._current()
+            try:
+                rows = self._index.symbols(path=path, query=query, limit=limit)
+            except Exception:
+                self._refresh_required = True
+                raise
+            self._current()
+            return dict(self._identity(), operation="symbols", symbols=rows)
+
+    def read(self, *, generation: int, path: str, representation: str | None = None) -> dict:
+        with self._lock:
+            self._generation(generation)
+            self._current()
+            result = views.read_repository_file(
+                self._package, expected_manifest_sha256=self._capture_receipt["manifest_sha256"],
+                path=path, representation=self.representation if representation is None else representation)
+            self._current()
+            identity = self._identity()
+            identity["representation"] = result["representation"]
+            return dict(result, **identity)
+
+    def refresh(self, *, generation: int) -> dict:
+        with self._lock:
+            self._generation(generation)
+            self._capture()
+            return dict(self.status(), operation="refresh")
+
+    def _preflight_edit(self, path, symbol, expected_sha256, replacement, edit_format):
+        """Apply the same editor to a disposable original, never the index root."""
+        retained = views.read_repository_file(
+            self._package, expected_manifest_sha256=self._capture_receipt["manifest_sha256"],
+            path=path, representation="original")
+        data = (retained["content"].encode("utf-8") if retained["encoding"] == "utf-8"
+                else base64.b64decode(retained["content"], validate=True))
+        state_fd = self._state_fd()
+        name = "proposal-" + uuid.uuid4().hex
+        try:
+            os.mkdir(name, 0o700, dir_fd=state_fd)
+            proposal = self.state_dir / name
+            target = proposal / path
+            target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            parent_fd = views._open_directory(target.parent)
+            try:
+                views._write_new(parent_fd, target.name, data, mode=0o600)
+                editor = CodeSourceView(proposal)
+                delivered = editor.read(path, symbol, edit_format)
+                edit = editor.replace(path, symbol, expected_sha256, replacement, format=edit_format)
+                if edit["semantic_no_op"] and replacement != delivered["content"]:
+                    _fail("ambiguous_symbol_noop_use_original_edit")
+                updated, _ = views._read_regular(parent_fd, target.name, self.limits["max_file_bytes"])
+                if (self._capture_receipt["original_bytes"] - len(data) + len(updated)
+                        > self.limits["max_total_bytes"]):
+                    _fail("total_bytes_limit")
+                if views._sha(updated) != edit["result_sha256"]:
+                    _fail("proposal_changed")
+                return edit["result_sha256"]
+            finally:
+                os.close(parent_fd)
+        finally:
+            try:
+                views._cleanup(state_fd, name)
+            finally:
+                os.close(state_fd)
+
+    def replace_symbol(self, *, generation: int, path: str, symbol: str,
+                       expected_sha256: str, replacement: str) -> dict:
+        with self._lock:
+            self._generation(generation)
+            self._capacity()  # Never mutate if the next generation cannot fit.
+            self._current()
+            path = views._relative(path)
+            entry = self._manifest["entries"].get(path)
+            if not entry or entry["kind"] != "file":
+                _fail("not_regular_file")
+            if not views._is_hash(expected_sha256):
+                _fail("invalid_expected_hash")
+            if expected_sha256 != entry["original_sha256"]:
+                _fail("stale_source_hash")
+            if not isinstance(symbol, str) or not symbol or len(symbol) > 512:
+                _fail("invalid_symbol")
+            if not isinstance(replacement, str):
+                _fail("invalid_replacement")
+            try:
+                if len(replacement.encode("utf-8")) > self.limits["max_file_bytes"]:
+                    _fail("replacement_limit")
+            except UnicodeError:
+                _fail("invalid_replacement")
+            edit_format = "compact" if self.representation == "compact" else "raw"
+            proposed_sha256 = self._preflight_edit(path, symbol, expected_sha256, replacement, edit_format)
+            self._current()
+            try:
+                editor = CodeSourceView(self.workspace)
+                edit = editor.replace(path, symbol, expected_sha256, replacement, format=edit_format)
+            except (SourceViewError, OSError, UnicodeError, ValueError):
+                # The editor can raise after atomic replacement. Only a fresh
+                # full-tree observation can establish that bytes are unchanged.
+                try:
+                    views.assert_repository_current(self.workspace, self._manifest)
+                except (views.RepositorySourceViewError, OSError):
+                    self._refresh_required = True
+                    return dict(self._identity(), operation="replace_symbol", path=path,
+                                changed=None, canonical_changed=None, canonical_change="uncertain", refresh_required=True,
+                                error="edit_outcome_uncertain")
+                raise
+            edit.pop("refreshed_view", None)
+            if edit["result_sha256"] != proposed_sha256:
+                self._refresh_required = True
+                return dict(self._identity(), operation="replace_symbol", path=path,
+                            changed=None, canonical_changed=None, canonical_change="uncertain",
+                            refresh_required=True, error="edit_result_differs_from_proposal")
+            try:
+                self._capture()
+            except Exception:
+                self._refresh_required = True
+                return dict(self._identity(), operation="replace_symbol", edit=edit,
+                            changed=edit["changed"], canonical_changed=edit["changed"],
+                            canonical_change="observed" if edit["changed"] else "none",
+                            refresh_required=True, error="index_refresh_failed")
+            return dict(self._identity(), operation="replace_symbol", edit=edit,
+                        changed=edit["changed"], canonical_changed=edit["changed"],
+                        canonical_change="observed" if edit["changed"] else "none",
+                        refresh_required=False)
+
+    def close(self):
+        with self._lock:
+            if not self._closed:
+                self._closed = True
+                if self._index is not None:
+                    self._index.close()
+
+    def __enter__(self):
+        self._open()
+        return self
+
+    def __exit__(self, *_):
+        self.close()

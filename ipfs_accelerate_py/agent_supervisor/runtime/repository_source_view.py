@@ -322,6 +322,40 @@ def _tree_hash(root_mode, entries):
     return _sha(_json(dict(root_mode=root_mode, entries=_original_entries(entries))))
 
 
+def assert_repository_current(repository: Path, manifest: dict) -> dict:
+    """Fence a retained view against the complete current original source tree.
+
+    This is an observation, not a filesystem lease: another process can write
+    immediately afterwards. Callers serving results should check on both sides
+    of their operation. The manifest must already belong to their bound package.
+    """
+    _validate_manifest(manifest)
+    source = _absolute(repository)
+    if str(source) != manifest["source_root"]:
+        _fail("source_root_mismatch")
+    fd = _open_directory(source)
+    try:
+        entries, mode, excluded, identities = _scan(fd, manifest["limits"])
+        if (entries != _original_entries(manifest["entries"])
+                or mode != manifest["root_mode"] or excluded != manifest["excluded_paths"]):
+            _fail("stale_source")
+        after, after_mode, after_excluded, after_identities = _scan(fd, manifest["limits"])
+        if (after != entries or after_mode != mode or after_excluded != excluded
+                or after_identities != identities):
+            _fail("source_changed_during_read")
+        current_fd = _open_directory(source)
+        try:
+            if _identity(os.fstat(current_fd)) != identities[""]:
+                _fail("stale_source")
+        finally:
+            os.close(current_fd)
+        return dict(source_tree_sha256=manifest["source_tree_sha256"], source_current=True)
+    except OSError:
+        _fail("stale_source")
+    finally:
+        os.close(fd)
+
+
 def _counts(manifest):
     files = [entry for entry in manifest["entries"].values() if entry["kind"] == "file"]
     return dict(entry_count=len(manifest["entries"]), file_count=len(files),

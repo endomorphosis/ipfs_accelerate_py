@@ -6394,6 +6394,7 @@ def build_codex_cli_command(
     output_schema: Optional[str | Path] = None,
     json_mode: bool = False,
     resume_session_id: Optional[str] = None,
+    codex_repository_source_binding: Optional[dict] = None,
 ) -> list[str]:
     """Build native Codex argv without launching or changing process custody.
 
@@ -6458,8 +6459,67 @@ def build_codex_cli_command(
         command.extend(["--output-schema", str(output_schema)])
     if json_mode:
         command.append("--json")
+    if codex_repository_source_binding is not None:
+        from .agent_supervisor.runtime.repository_source_policy import native_config_arguments
+        command.extend(native_config_arguments(codex_repository_source_binding))
     command.append("-")
     return command
+
+
+def _run_codex_repository_command(command, *, input, text, capture_output, check, timeout):
+    """Own only the opt-in CLI process group, including its stdio tool servers.
+
+    Native MCP children can outlive a timed-out CLI. Reap or stop this newly
+    allocated group before the caller removes invocation-local repository state.
+    Legacy CLI invocations keep their existing process owner.
+    """
+    import signal
+
+    if text is not True or capture_output is not True or check is not False:
+        raise ValueError("repository Codex process requires the native capture contract")
+    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, start_new_session=True)
+
+    def stop_owned_group():
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        deadline = time.monotonic() + 0.25
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.01)
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    try:
+        try:
+            stdout, stderr = process.communicate(input=input, timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            stop_owned_group()
+            try:
+                stdout, stderr = process.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                # A child that deliberately escaped the owned process group is
+                # outside this owner. Preserve bounded partial native output.
+                stdout, stderr = error.output, error.stderr
+            raise subprocess.TimeoutExpired(command, timeout, output=stdout, stderr=stderr) from None
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    finally:
+        stop_owned_group()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
 
 
 def _get_codex_cli_provider() -> Optional[LLMProvider]:
@@ -6476,6 +6536,16 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                 os.getenv("ipfs_accelerate_py_CODEX_SKIP_GIT_REPO_CHECK", "1") != "0"
             )
             timeout = float(kwargs.get("timeout", 180))
+
+            repository_binding = kwargs.pop("codex_repository_source_binding", None)
+            repository_observation = {}
+            if repository_binding is not None:
+                from .agent_supervisor.runtime.repository_source_policy import validate_binding
+                validate_binding(repository_binding, workspace=Path.cwd(), materialized=True)
+                repository_observation = {
+                    "codex_repository_source_config_sha256": repository_binding["config_sha256"],
+                    "codex_repository_source_configured": True,
+                }
 
             reasoning_effort = kwargs.get("reasoning_effort")
             if reasoning_effort is not None and reasoning_effort not in {
@@ -6535,8 +6605,11 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         output_last_message=last_msg_path, json_mode=json_mode,
                         resume_session_id=resume_session_id,
                         **({"output_schema": schema_path} if schema_requested else {}),
+                        **({"codex_repository_source_binding": repository_binding}
+                           if repository_binding is not None else {}),
                     )
-                    proc = subprocess.run(
+                    execute = _run_codex_repository_command if repository_binding is not None else subprocess.run
+                    proc = execute(
                         cmd,
                         input=str(prompt),
                         text=True,
@@ -6559,6 +6632,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         extra={"model_id": model, "timed_out": True,
                                "session_id": resume_session_id,
                                "reasoning_effort": reasoning_effort,
+                               **repository_observation,
                                **schema_observation},
                     )
                     raise
@@ -6587,6 +6661,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         "exit_code": proc.returncode,
                         "session_id": resume_session_id,
                         "reasoning_effort": reasoning_effort,
+                        **repository_observation,
                         **schema_observation,
                     },
                 )

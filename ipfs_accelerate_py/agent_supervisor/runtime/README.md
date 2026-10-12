@@ -29,7 +29,11 @@ Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resou
 | `operational_campaign` | `runtime/operational_campaign.py` |
 | `provider_batch_scheduler` | `runtime/provider_batch_scheduler.py` |
 | `repository_source_cli` | `runtime/repository_source_cli.py` |
+| `repository_source_index` | `runtime/repository_source_index.py` |
+| `repository_source_mcp` | `runtime/repository_source_mcp.py` |
+| `repository_source_policy` | `runtime/repository_source_policy.py` |
 | `repository_source_revision` | `runtime/repository_source_revision.py` |
+| `repository_source_session` | `runtime/repository_source_session.py` |
 | `repository_source_view` | `runtime/repository_source_view.py` |
 | `resource_scheduler` | `runtime/resource_scheduler.py` |
 | `router_public_instruction` | `runtime/router_public_instruction.py` |
@@ -185,10 +189,77 @@ successor before admitting it as a task result.
 Package hashes identify this presentation artifact. They do not replace
 Datasets semantic CIDs, proof-cache keys, source freshness checks or required
 raw-source obligations. This interface performs no model calls and does not
-redirect native terminal tools. Provider routing, incremental index refresh
-and proof admission remain separate integration steps. Smaller package views
+redirect native terminal tools. The opt-in worker integration below connects
+package reads and source refresh; proof admission remains separate. Smaller package views
 are representation measurements; session token savings require actual agent
 use, complete usage accounting and maintained task success.
+
+## Native repository tools for coding workers
+
+The Codex coding runner accepts `--repository-source-policy
+repository-source-compact@1`, or `repository-source-raw@1` for a matched original
+source comparison. Add that option to an otherwise configured
+`router_implementation_runner` invocation. The default is `legacy` pending live
+task-success and total-token qualification. It cannot be combined with the old
+optional `--source-view-policy` shell helper. Other provider routes are not yet
+integrated with these tools.
+
+The runner adds a private, invocation-scoped stdio MCP server to the native
+CLI configuration. It uses the documented [Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
+and fixed command arguments; user MCP configuration files are not edited.
+The CLI's shell tools remain available. Configuration, successful initialization,
+actual tool calls, compact reads, canonical edits and failures are separate
+receipt counters. Configuration alone is not adoption or evidence of savings.
+
+| Tool | Behavior |
+| --- | --- |
+| `repository_status` | Current generation, source freshness, native head, coverage and resource bounds |
+| `repository_list` | Bounded file inventory with original and compact sizes |
+| `repository_symbols` | Source-current native datasets symbol metadata |
+| `repository_read` | Original or compact content, generation and canonical source SHA256 |
+| `repository_replace_symbol` | Hash-checked Python definition edit in the canonical checkout, followed by refresh |
+| `repository_refresh` | Capture external edits and advance the package/index generation |
+
+Start with status to obtain the generation. Reads, symbol queries and edits
+require it, and reject older generations. Full-tree checks before and after
+reads detect ordinary concurrent shell edits, including added/deleted files,
+permission changes and symlink changes. Call refresh after those edits. Native
+qualified symbol names are structural metadata, not automatically safe editor
+handles; supported replacements use the unambiguous definition name from the
+source read. Comment-only changes require a canonical source editor and refresh.
+
+The session retains original files, creates an original materialization outside
+every Git checkout, and joins every retained file/digest to the datasets-owned
+`RepositoryCodebaseIndex`. DuckDB persists that native projection; Accelerate
+does not introduce another semantic writer. Unchanged AST shards are reused;
+semantic reconstruction remains fresh. Symlinks and non-UTF8 files remain opaque
+to the native index; binary inventory still requires exact original bytes and CID.
+Native snapshot exclusions such as `.venv` cause explicit refusal rather than
+partial indexing. Code is never imported or executed by the server.
+
+Limits are 512 entries, 16 MiB of original source, 256 KiB per file, eight
+successful captures and 512 protocol messages per server. Failed captures do not
+advance the public generation. DuckDB uses one thread, 128 MB memory and 128 MB
+spill; the shared native scheduler applies pressure-aware admission with a
+derived reservation capped at 2 GiB. These are cooperative parser admission and
+SQL bounds, not a hard process RSS guarantee. Private packages, materializations
+and native CAS artifacts are removed after the owned CLI process group stops.
+No network installer or provider request is part of this server.
+
+Single-symbol writes preflight their result and byte limits against retained
+originals. If a canonical edit commits but index refresh fails, the reply says
+`refresh_required`; old reads remain fenced until refresh succeeds. An uncertain
+post-commit error is reported separately. Multi-file revisions remain immutable
+proposals through `repository_source_revision`; this tool does not promote them
+to the canonical checkout.
+
+Full identities are available through status. Routine read replies omit repeated
+native CIDs and index receipts to reduce transport overhead while keeping the
+generation and canonical hash needed for guarded edits. This does not change
+native semantic/proof cache identities. Local stdio tests and public-fixture
+benchmarks verify this transport; they do not establish live worker adoption,
+official Terminal Bench reward or end-to-end provider-token savings. Container
+benchmark launch propagation and matched live qualification remain follow-up work.
 
 ## Extending
 

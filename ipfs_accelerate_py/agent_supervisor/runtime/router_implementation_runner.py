@@ -312,12 +312,14 @@ def _provider_failure_diagnostic(error: BaseException, *, provider: str) -> dict
 def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
                         semantic_transport: bool = False,
                         tool_output_binding: dict | None = None,
-                        source_view_binding: dict | None = None) -> tuple[str, str]:
+                        source_view_binding: dict | None = None,
+                        repository_source_binding: dict | None = None) -> tuple[str, str]:
     """Preserve native task bytes while making the allocated coding path explicit."""
     if purpose not in {"planning", "coding"}:
         raise ValueError("explicit planning or coding purpose required")
     if purpose == "planning":
-        if tool_output_binding is not None or source_view_binding is not None:
+        if (tool_output_binding is not None or source_view_binding is not None
+                or repository_source_binding is not None):
             raise ValueError("helper guidance is coding-only")
         return prompt, ""
     location = json.dumps(str(workspace), ensure_ascii=True)
@@ -342,6 +344,9 @@ def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
     if source_view_binding is not None:
         from .source_view_policy import validate_binding as validate_source_binding
         advisory = validate_source_binding(source_view_binding, workspace=workspace) + advisory
+    if repository_source_binding is not None:
+        from .repository_source_policy import validate_binding as validate_repository_binding
+        advisory = validate_repository_binding(repository_source_binding, workspace=workspace) + advisory
     if len(advisory.encode()) > 8192:
         raise ValueError("coding workspace advisory exceeds its byte bound")
     return advisory + prompt, advisory
@@ -355,6 +360,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_metadata_view: str = "legacy",
         tool_output_policy: str = "legacy",
         source_view_policy: str = "legacy",
+        repository_source_policy: str = "legacy",
         source_input_policy: str = "legacy",
         query_reference_policy: str = "legacy",
         census_only: bool = False,
@@ -398,6 +404,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         prompt_tokenizer_artifact=prompt_tokenizer_artifact, max_input_tokens=max_input_tokens)
     from .source_view_policy import validate_policy as validate_source_policy
     validate_source_policy(source_view_policy, purpose=purpose, provider=provider)
+    from .repository_source_policy import validate_policy as validate_repository_policy
+    validate_repository_policy(repository_source_policy, purpose=purpose, provider=provider,
+        source_view_policy=source_view_policy, census_only=census_only)
     if source_view_policy != "legacy" and (census_only or semantic_repository is None):
         raise ValueError("source view requires an actual semantic coding invocation")
     if tool_output_policy != "legacy" and census_only:
@@ -542,6 +551,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         router_prompt += instruction
         required_suffix += instruction
     failure_phase = "model_prompt"
+    repository_source_binding = None
+    if repository_source_policy != "legacy":
+        from .repository_source_policy import create_binding as create_repository_binding
+        repository_source_binding = create_repository_binding(workspace=root, requested_policy=repository_source_policy)
     source_view_binding = None
     if source_view_policy != "legacy":
         from .source_view_policy import create_binding as create_source_binding
@@ -552,7 +565,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         tool_output_binding = create_binding(workspace=root, requested_policy=tool_output_policy)
     model_prompt, advisory = render_model_prompt(prompt=router_prompt, purpose=purpose, workspace=root,
                                                 semantic_transport=encoded is not None,
-                                                tool_output_binding=tool_output_binding, source_view_binding=source_view_binding)
+                                                tool_output_binding=tool_output_binding, source_view_binding=source_view_binding,
+                                                repository_source_binding=repository_source_binding)
     coding_reply_receipt = None
     if coding_reply_mode != "legacy":
         failure_phase = "coding_reply_contract"
@@ -572,7 +586,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
         candidate_model, candidate_advisory = render_model_prompt(prompt=candidate_router,
             purpose=purpose, workspace=root, semantic_transport=True,
-            tool_output_binding=tool_output_binding, source_view_binding=source_view_binding)
+            tool_output_binding=tool_output_binding, source_view_binding=source_view_binding,
+            repository_source_binding=repository_source_binding)
         if candidate_advisory != advisory:
             raise ValueError("metadata view changed the workspace advisory")
         if coding_reply_mode != "legacy":
@@ -597,7 +612,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         native_router_prompt = prompt + required_suffix
         native_model_prompt, native_advisory = render_model_prompt(
             prompt=native_router_prompt, purpose=purpose, workspace=root,
-            tool_output_binding=tool_output_binding, source_view_binding=source_view_binding)
+            tool_output_binding=tool_output_binding, source_view_binding=source_view_binding,
+            repository_source_binding=repository_source_binding)
         from .coding_reply_contract import apply_coding_reply_contract, coding_completion_schema
         native_model_prompt, native_reply_receipt = apply_coding_reply_contract(
             model_prompt=native_model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
@@ -737,6 +753,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["tool_output_policy"] = tool_output_binding
     if source_view_binding is not None:
         receipt["source_view_policy"] = source_view_binding
+    if repository_source_binding is not None:
+        receipt["repository_source_policy"] = repository_source_binding
     if source_input_view is not None:
         receipt["source_input_policy"] = source_input_policy
         receipt["source_input_view"] = source_input_view.receipt
@@ -759,6 +777,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["prompt_tokenizer_source"] = tokenizer_source
     failure_phase = "provider_invocation"
     provider_options = {}
+    if repository_source_binding is not None:
+        provider_options["codex_repository_source_binding"] = repository_source_binding
     if codex_planning_schema is not None:
         provider_options["codex_output_schema"] = codex_planning_schema
         receipt["provider_invocation_policy"] = {"structured_output": {
@@ -822,7 +842,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             }
     tool_output_store_identity = None
     source_view_store_identity = None
+    repository_store_identity = None
     try:
+        if repository_source_binding is not None:
+            failure_phase = "repository_source_store"
+            from .repository_source_policy import create_runtime_store
+            repository_store_identity = create_runtime_store(repository_source_binding)
+            failure_phase = "provider_invocation"
         if source_view_binding is not None:
             failure_phase = "source_view_store"
             from .source_view_policy import create_audit_store
@@ -862,6 +888,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         )
         failure_phase = "provider_result_validation"
         observation = get_last_cli_observation(provider)
+        if repository_source_binding is not None and (
+                observation.get("codex_repository_source_config_sha256") != repository_source_binding["config_sha256"]
+                or observation.get("codex_repository_source_configured") is not True):
+            raise RuntimeError("repository source native configuration observation is missing or differs")
         if observation.get("exit_code") != 0:
             raise RuntimeError("coding CLI did not return an observed successful exit")
         if not isinstance(output, str) or not output.strip():
@@ -918,6 +948,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 }
         raise
     finally:
+        if repository_source_binding is not None:
+            from .repository_source_policy import finish_runtime_store
+            repository_source_binding["usage"] = finish_runtime_store(repository_source_binding,
+                expected_identity=repository_store_identity)
         if source_view_binding is not None:
             from .source_view_policy import finish_audit_store
             source_view_binding["usage"] = finish_audit_store(source_view_binding, workspace=root,
@@ -952,6 +986,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "prompt_tokens", "completion_tokens", "cached_tokens", "reasoning_tokens",
             "total_cost_usd", "model_id", "session_id", "thread_id", "num_turns", "exit_code", "timed_out",
             "codex_output_schema_sha256", "codex_output_schema_bytes",
+            "codex_repository_source_config_sha256", "codex_repository_source_configured",
         ) if key in observation}
         if provider == "codex_cli":
             from .codex_usage_receipt import recover_codex_usage
@@ -1006,6 +1041,8 @@ def main():
     parser.add_argument("--tool-output-policy", default="legacy", choices=TOOL_OUTPUT_POLICIES)
     from .source_view_policy import POLICIES as SOURCE_VIEW_POLICIES
     parser.add_argument("--source-view-policy", default="legacy", choices=SOURCE_VIEW_POLICIES)
+    from .repository_source_policy import POLICIES as REPOSITORY_SOURCE_POLICIES
+    parser.add_argument("--repository-source-policy", default="legacy", choices=REPOSITORY_SOURCE_POLICIES)
     from .source_input_policy import POLICIES as SOURCE_INPUT_POLICIES
     parser.add_argument("--source-input-policy", default="legacy", choices=SOURCE_INPUT_POLICIES)
     from .query_reference_policy import POLICIES as QUERY_REFERENCE_POLICIES
@@ -1039,6 +1076,7 @@ def main():
                         semantic_metadata_view=args.semantic_metadata_view,
                         tool_output_policy=args.tool_output_policy,
                         source_view_policy=args.source_view_policy,
+                        repository_source_policy=args.repository_source_policy,
                         source_input_policy=args.source_input_policy,
                         query_reference_policy=args.query_reference_policy,
                         census_only=args.semantic_metadata_census_only,
