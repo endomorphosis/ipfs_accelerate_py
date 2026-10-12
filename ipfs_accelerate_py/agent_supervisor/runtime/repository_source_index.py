@@ -24,6 +24,8 @@ MAX_RESULTS = 1000
 MAX_QUERY_BYTES = 4096
 MAX_MEMORY_MB = 2048
 MAX_GENERATIONS = 128
+OPAQUE_CACHE_DIRECTORIES = frozenset({"__pycache__", ".pytest_cache"})
+OPAQUE_CACHE_SCHEMA = "repository-source-retained-opaque-cache@1"
 
 
 class RepositorySourceIndexError(ValueError):
@@ -72,6 +74,57 @@ def _check_materialization(root, manifest):
     _require(not excluded and root_mode == manifest["root_mode"]
              and entries == view._original_entries(manifest["entries"]),
              "materialization_differs_from_package")
+
+
+def _native_scope(manifest):
+    """Partition retained originals without changing native exclusion policy.
+
+    Cache names are a coverage classification, not evidence that their contents
+    were generated or are harmless. Every byte remains in the package and its
+    freshness fences. Only real directories qualify; all other native excluded
+    components still fail closed, even beneath a qualifying cache directory.
+    """
+    from ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot import (
+        _exclusion_raw, _ignored_raw,
+    )
+    exclusions = _exclusion_raw(None)
+    unsupported = tuple(value for value in exclusions
+                        if value not in {os.fsencode(name) for name in OPAQUE_CACHE_DIRECTORIES})
+    entries = manifest["entries"]
+    retained, eligible, roots = {}, {}, set()
+    originals = view._original_entries(entries)
+    for name, entry in entries.items():
+        raw = os.fsencode(name)
+        _require(not _ignored_raw(raw, unsupported), "native_excluded_path_not_supported")
+        components = name.split("/")
+        cache_root = None
+        for offset, component in enumerate(components):
+            if component in OPAQUE_CACHE_DIRECTORIES:
+                prefix = "/".join(components[:offset + 1])
+                _require(entries[prefix]["kind"] == "directory",
+                         "native_cache_name_requires_directory")
+                cache_root = cache_root or prefix
+        if cache_root is not None:
+            # If a native dependency changes its exclusions, this explicit
+            # retained-only classification must not hide newly indexed rows.
+            _require(_ignored_raw(raw, exclusions), "native_cache_policy_differs")
+            roots.add(cache_root)
+            retained[name] = originals[name]
+        else:
+            _require(not _ignored_raw(raw, exclusions), "native_excluded_path_not_supported")
+            if entry["kind"] != "directory":
+                eligible[name] = entry
+    inventory = dict(schema=OPAQUE_CACHE_SCHEMA, roots=sorted(roots),
+                     entries={name: retained[name] for name in sorted(retained)})
+    files = [entry for entry in retained.values() if entry["kind"] == "file"]
+    coverage = dict(inventory, inventory_sha256=_hash(_canonical(inventory)),
+        entry_count=len(retained), file_count=len(files),
+        directory_count=sum(entry["kind"] == "directory" for entry in retained.values()),
+        symlink_count=sum(entry["kind"] == "symlink" for entry in retained.values()),
+        original_bytes=sum(entry["original_bytes"] for entry in files),
+        classification="directory_name_only", native_indexed=False,
+        proof_authority=False, execution_authority=False, completion_authority=False)
+    return eligible, coverage
 
 
 class NativeRepositoryIndex:
@@ -146,8 +199,7 @@ class NativeRepositoryIndex:
     def _join(self, observation, package_manifest, root):
         native = observation.manifest
         _require(native.snapshot.mode == "filesystem", "non_filesystem_snapshot")
-        expected = {name: entry for name, entry in package_manifest["entries"].items()
-                    if entry["kind"] != "directory"}
+        expected, _retained = _native_scope(package_manifest)
         actual = {entry.path: entry for entry in native.snapshot.entries}
         _require(set(actual) == set(expected), "native_snapshot_scope_differs")
         for name, entry in expected.items():
@@ -182,6 +234,10 @@ class NativeRepositoryIndex:
                 raw = self._index.artifacts.get_bytes(captured.source_cid)
             _require(_hash(raw) == entry["original_sha256"], "native_source_digest_differs")
         _require(len(native.semantic_state.symbols) <= MAX_SYMBOLS, "symbol_population_limit")
+        _require(all(symbol.module_path in expected
+                     and expected[symbol.module_path]["kind"] == "file"
+                     for symbol in native.semantic_state.symbols),
+                 "symbol_source_outside_native_scope")
         return native
 
     def refresh(self, materialized_root: Path, manifest: dict) -> dict:
@@ -201,12 +257,8 @@ class NativeRepositoryIndex:
                 view._disjoint(root, self.state_dir)
                 _check_materialization(root, manifest)
                 from ipfs_datasets_py.logic.software_contracts.codebase_ir import CodebaseScanLimits
-                from ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot import (
-                    _exclusion_raw, _ignored_raw,
-                )
-                _require(not any(_ignored_raw(os.fsencode(name), _exclusion_raw(None))
-                                 for name in manifest["entries"]), "native_excluded_path_not_supported")
-                units = [entry for entry in manifest["entries"].values() if entry["kind"] != "directory"]
+                eligible, retained = _native_scope(manifest)
+                units = list(eligible.values())
                 maximum = max((entry.get("original_bytes", 0) for entry in units), default=1)
                 limits = CodebaseScanLimits(max(1, len(units)), max(1, maximum))
                 reservation = max(256, math.ceil(limits.max_entries * limits.max_file_bytes * 16 / (1024 * 1024)))
@@ -229,6 +281,7 @@ class NativeRepositoryIndex:
                 receipt = dict(schema=SCHEMA, package_manifest_sha256=digest,
                     source_tree_sha256=manifest["source_tree_sha256"], head=publication.head.to_dict(),
                     semantic_state_cid=native.semantic_state.state_cid, coverage=native.coverage,
+                    retained_opaque_cache=retained,
                     ast_stats=after, ast_stats_delta={key: after[key] - before.get(key, 0) for key in after},
                     semantic_reconstruction="fresh", source_scope_verified=True,
                     resource_limits=dict(duckdb_threads=1, duckdb_memory="128MB", duckdb_spill="128MB",

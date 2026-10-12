@@ -32,6 +32,7 @@ Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resou
 | `repository_source_index` | `runtime/repository_source_index.py` |
 | `repository_source_mcp` | `runtime/repository_source_mcp.py` |
 | `repository_source_policy` | `runtime/repository_source_policy.py` |
+| `repository_source_probe` | `runtime/repository_source_probe.py` |
 | `repository_source_revision` | `runtime/repository_source_revision.py` |
 | `repository_source_session` | `runtime/repository_source_session.py` |
 | `repository_source_view` | `runtime/repository_source_view.py` |
@@ -199,7 +200,11 @@ use, complete usage accounting and maintained task success.
 The Codex coding runner accepts `--repository-source-policy
 repository-source-compact@1`, or `repository-source-raw@1` for a matched original
 source comparison. Add that option to an otherwise configured
-`router_implementation_runner` invocation. The default is `legacy` pending live
+`router_implementation_runner` invocation, or select it when preparing the
+[full container benchmark](../../../benchmarks/agent_supervisor/container_coding/README.md).
+The benchmark freezes the choice and carries it through deployment, supervisor
+dispatch and the coding router; planning does not receive repository tools.
+The default is `legacy` pending live
 task-success and total-token qualification. It cannot be combined with the old
 optional `--source-view-policy` shell helper. Other provider routes are not yet
 integrated with these tools.
@@ -229,13 +234,28 @@ handles; supported replacements use the unambiguous definition name from the
 source read. Comment-only changes require a canonical source editor and refresh.
 
 The session retains original files, creates an original materialization outside
-every Git checkout, and joins every retained file/digest to the datasets-owned
+every Git checkout, and joins every eligible retained file/digest to the datasets-owned
 `RepositoryCodebaseIndex`. DuckDB persists that native projection; Accelerate
 does not introduce another semantic writer. Unchanged AST shards are reused;
 semantic reconstruction remains fresh. Symlinks and non-UTF8 files remain opaque
 to the native index; binary inventory still requires exact original bytes and CID.
-Native snapshot exclusions such as `.venv` cause explicit refusal rather than
-partial indexing. Code is never imported or executed by the server.
+Actual directories named `__pycache__` or `.pytest_cache` and their descendants
+are retained separately as opaque cache coverage. The package still preserves
+their bytes, modes, empty directories and safe links. Status exposes them under
+`native_index.retained_opaque_cache`, with exact inventory paths, original file
+hashes and sizes, counts, and an inventory SHA256. The native `coverage` field
+remains unchanged and covers only the datasets snapshot. Classification uses
+the directory name alone: even a Python source file placed inside such a tree
+is retained without native indexing or proof authority.
+
+Cache changes participate in the same full-tree freshness checks as other
+files. Test-generated caches therefore require an explicit refresh; their
+creation, deletion or changed contents can advance the session generation
+without reparsing unchanged eligible source. They still consume package entry
+and byte limits. Files or symlinks merely named `__pycache__` or `.pytest_cache`
+are refused. Other native exclusions such as `.venv`, `build`, `dist` and
+`vendor` remain explicit refusals, including when nested inside a cache tree.
+Code is never imported or executed by the server.
 
 Limits are 512 entries, 16 MiB of original source, 256 KiB per file, eight
 successful captures and 512 protocol messages per server. Failed captures do not
@@ -258,8 +278,41 @@ native CIDs and index receipts to reduce transport overhead while keeping the
 generation and canonical hash needed for guarded edits. This does not change
 native semantic/proof cache identities. Local stdio tests and public-fixture
 benchmarks verify this transport; they do not establish live worker adoption,
-official Terminal Bench reward or end-to-end provider-token savings. Container
-benchmark launch propagation and matched live qualification remain follow-up work.
+official Terminal Bench reward or end-to-end provider-token savings.
+
+Status currently returns the full retained cache inventory. A cache-heavy
+checkout can therefore add substantial metadata to the worker's context even
+when source reads are smaller. A pending optimization is to return bounded
+counts and an inventory digest by default, with explicit paginated retrieval of
+the detailed inventory. That change must preserve full package retention and
+freshness checks; measure status and retrieval traffic in future comparisons.
+
+Opt-in container deployment requires an archive matching the current runtime
+and datasets owner sources. Preparation, execution and deployment verify the
+compressed archive digest, inspect the actual member inventory without
+extracting it, and hash the required packaged source bodies against their
+current implementations. Canonical paths, unique regular members, sizes and
+permitted modes must match; extended-header metadata is bounded before parsing.
+Unrelated large model bodies are streamed past, not loaded or individually
+hashed by this source compatibility check. Declared manifest hashes alone do
+not qualify the packaged runtime.
+
+Deployment runs `repository_source_probe` under the
+installed supervisor account on disposable authored source. The real stdio
+server must initialize, expose its tools, report exact retained cache coverage,
+serve a compact read, commit a guarded edit, refresh the index, reject the old
+generation and clean up its private state. The probe returns content-free
+checks and usage counters; it executes no target code and makes no provider
+calls. It qualifies the installed tool runtime, not live model adoption.
+
+The benchmark separately joins each observed coding invocation's retained input
+audit, native configuration receipt and server usage. Qualification requires
+actual successful repository reads, including compact reads for the compact
+policy, complete private-state cleanup and no uncertain edits. Missing startup,
+zero reads, malformed observations and failed provider attempts stay visible;
+configuration cannot substitute for those observations. Matched live trials
+with total provider usage and official task results remain required to establish
+practical savings.
 
 ## Extending
 

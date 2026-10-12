@@ -361,6 +361,65 @@ def test_status_receipts_cannot_mutate_internal_generation_state(source, tmp_pat
         assert session.status()["datasets_head"]["generation"] == 1
 
 
+def test_cache_only_deletion_and_recreation_refresh_native_generations(source, tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_index import NativeRepositoryIndex
+    from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import ProofHostResources
+    from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import (
+        GlobalResourceScheduler, ResourceSchedulerConfig,
+    )
+    scheduler = GlobalResourceScheduler(ResourceSchedulerConfig.for_proof_host(
+        state_path=tmp_path / "resources.json",
+        proof_resource_sampler=lambda: ProofHostResources(8, 16384, 16384),
+        lane_reservations={}, auto_renew_leases=False,
+        proof_backoff_seconds=0, poll_interval_seconds=0.005))
+    cache = source / ".pytest_cache"
+    cache.mkdir(mode=0o750)
+    (cache / "nodeids").write_text("first retained value")
+    with sessions.RepositorySourceSession(source, tmp_path / "state",
+            index_factory=lambda path: NativeRepositoryIndex(path, scheduler=scheduler)) as session:
+        first = session.status()
+        first_original = session._package.parent / "original"
+        first_inventory = first["native_index"]["retained_opaque_cache"]
+        assert first_inventory["roots"] == [".pytest_cache"]
+        assert first_inventory["file_count"] == 1
+        assert first["native_index"]["coverage"] == first["index_coverage"]
+        (cache / "nodeids").unlink()
+        cache.rmdir()
+        assert_error("stale_source", lambda: session.read(generation=1, path="calc.py"))
+        second = session.refresh(generation=1)
+        assert second["generation"] == second["datasets_head"]["generation"] == 2
+        assert second["native_index"]["retained_opaque_cache"]["entry_count"] == 0
+        assert second["native_index"]["ast_stats_delta"]["parse_invocations"] == 0
+        assert second["native_index"]["retained_opaque_cache"]["inventory_sha256"] != first_inventory["inventory_sha256"]
+        assert_error("stale_generation", lambda: session.read(generation=1, path="calc.py"))
+        cache.mkdir(mode=0o750)
+        (cache / "nodeids").write_text("second retained value")
+        assert session.status()["refresh_required"] is True
+        third = session.refresh(generation=2)
+        assert third["generation"] == third["datasets_head"]["generation"] == 3
+        assert third["source_current"] is True
+        assert third["native_index"]["ast_stats_delta"]["parse_invocations"] == 0
+        assert third["native_index"]["retained_opaque_cache"]["inventory_sha256"] != first_inventory["inventory_sha256"]
+        assert session.read(generation=3, path=".pytest_cache/nodeids")["content"] == "second retained value"
+        assert session.symbols(generation=3, query="calc.add")["symbols"]
+        assert session.symbols(generation=3, path=".pytest_cache/nodeids")["symbols"] == []
+        assert (first_original / ".pytest_cache" / "nodeids").read_text() == "first retained value"
+        assert first["native_index"]["coverage"] == third["native_index"]["coverage"]
+    assert scheduler.snapshot()["active_lease_count"] == 0
+
+
+@pytest.mark.parametrize("limits,code", [({"max_files": 2}, "entry_limit"),
+                                         ({"max_file_bytes": 32}, "file_limit"),
+                                         ({"max_total_bytes": 64}, "total_bytes_limit")])
+def test_retained_cache_consumes_full_package_limits(tmp_path, limits, code):
+    source = tmp_path / "source"
+    (source / "__pycache__").mkdir(parents=True)
+    (source / "calc.py").write_text("def real(): return 1\n")
+    (source / "__pycache__" / "retained").write_bytes(b"x" * 128)
+    assert_error(code, lambda: make(source, tmp_path, **limits))
+    assert not list((tmp_path / "state").glob("generation-*"))
+
+
 @pytest.mark.parametrize("generation", [True, 0, -1, "1", None])
 def test_invalid_generation_handles_are_rejected(source, tmp_path, generation):
     with make(source, tmp_path) as session:

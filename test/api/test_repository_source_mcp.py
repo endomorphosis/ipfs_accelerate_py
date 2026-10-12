@@ -139,6 +139,53 @@ def test_real_stdio_canonical_edit_external_change_refresh_and_audit(tmp_path):
     assert "calc.py" not in audit and "return value" not in audit and "source_tree_sha256" not in audit
 
 
+def test_actual_pytest_caches_remain_retained_and_refreshable(tmp_path):
+    """Running authored task checks must not permanently fence the native index."""
+    import base64
+    config, path, digest = configuration(tmp_path)
+    source = Path(config["workspace"])
+    (source / "test_calc.py").write_text("from calc import add\n\ndef test_add():\n    assert add(2) == 3\n")
+    with real_client(path, digest) as client:
+        before, failed = client.call("repository_status")
+        assert not failed and before["generation"] == 1
+        environment = {key: value for key, value in os.environ.items()
+                       if key not in {"PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX", "PYTEST_ADDOPTS"}}
+        environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+        checked = subprocess.run([sys.executable, "-m", "pytest", "-q", "-o", "addopts=", "test_calc.py"],
+            cwd=source, env=environment, capture_output=True, text=True, timeout=30, check=False)
+        assert checked.returncode == 0, checked.stderr
+        assert (source / "__pycache__").is_dir() and (source / ".pytest_cache").is_dir()
+        cached = {p.relative_to(source).as_posix(): p.read_bytes()
+                  for folder in (source / "__pycache__", source / ".pytest_cache")
+                  for p in folder.rglob("*") if p.is_file()}
+        stale, failed = client.call("repository_read", generation=1, path="calc.py")
+        assert failed and stale["error"] == "stale_source"
+        refreshed, failed = client.call("repository_refresh", generation=1)
+        assert not failed and refreshed["generation"] == 2
+        status, failed = client.call("repository_status")
+        assert not failed and status["source_current"] is True
+        retained = status["native_index"]["retained_opaque_cache"]
+        assert retained["roots"] == [".pytest_cache", "__pycache__"]
+        assert retained["native_indexed"] is retained["proof_authority"] is False
+        assert retained["file_count"] == len(cached)
+        assert status["native_index"]["coverage"]["inventory_entries"] == 2
+        for name, original in cached.items():
+            assert retained["entries"][name]["original_sha256"] == hashlib.sha256(original).hexdigest()
+            read, failed = client.call("repository_read", generation=2, path=name, representation="original")
+            assert not failed
+            actual = read["content"].encode() if read["encoding"] == "utf-8" else base64.b64decode(read["content"])
+            assert actual == original
+        symbols, failed = client.call("repository_symbols", generation=2)
+        assert not failed and all(row["path"] in {"calc.py", "test_calc.py"} for row in symbols["symbols"])
+        (source / "calc.py").write_text("def add(value):\n    return value + 2\n")
+        stale, failed = client.call("repository_symbols", generation=2)
+        assert failed and stale["error"] == "stale_source"
+        refreshed, failed = client.call("repository_refresh", generation=2)
+        assert not failed and refreshed["generation"] == 3
+        read, failed = client.call("repository_read", generation=3, path="calc.py")
+        assert not failed and "return value + 2" in read["content"]
+
+
 class FakeSession:
     def __init__(self, *args, **kwargs):
         pass

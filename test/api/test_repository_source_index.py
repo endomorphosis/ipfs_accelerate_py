@@ -52,6 +52,14 @@ def index(tmp_path, scheduler):
     return NativeRepositoryIndex(tmp_path / "index", scheduler=scheduler)
 
 
+def capture_existing(tmp_path, source, name="initial"):
+    package, original = tmp_path / (name + "-package"), tmp_path / (name + "-original")
+    receipt = view.create_repository_view(source, package)
+    manifest = view.load_repository_view(package, expected_manifest_sha256=receipt["manifest_sha256"])
+    view.restore_repository_view(package, original, expected_manifest_sha256=receipt["manifest_sha256"])
+    return original, receipt, manifest
+
+
 def test_native_refresh_is_json_safe_and_remains_datasets_owned(tmp_path, scheduler, monkeypatch):
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_SEMANTIC_TRUTH_AUTHORITY", "ipfs_datasets_py")
     source, _package, original, package_receipt, manifest = snapshot(tmp_path)
@@ -162,13 +170,151 @@ def test_ancestor_git_is_refused_before_native_publication(tmp_path, scheduler):
         assert owner._index.current(owner.repository_id) is None
 
 
-def test_native_excluded_directory_is_explicitly_refused(tmp_path, scheduler):
+@pytest.mark.parametrize("directory", [".venv", "build", "dist", "vendor"])
+@pytest.mark.parametrize("prefix", ["", "__pycache__/"])
+def test_native_excluded_directory_is_explicitly_refused(tmp_path, scheduler, directory, prefix):
     _source, _package, original, _receipt, manifest = snapshot(tmp_path,
-        files={".venv/hidden.py": "def hidden(): return 1\n"})
+        files={prefix + directory + "/hidden.py": "def hidden(): return 1\n"})
     with index(tmp_path, scheduler) as owner:
         with pytest.raises(RepositorySourceIndexError, match="native_excluded_path_not_supported"):
             owner.refresh(original, manifest)
         assert owner._index.current(owner.repository_id) is None
+
+
+def test_generated_cache_is_retained_exactly_with_separate_opaque_coverage(tmp_path, scheduler):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "calc.py").write_text("def real(): return 1\n")
+    (source / "__pycache__").mkdir(mode=0o750)
+    (source / "__pycache__" / "calc.pyc").write_bytes(b"\xa7\r\r\n\x00\xff")
+    (source / "__pycache__" / "calc.pyc").chmod(0o600)
+    # A cache name makes no claim that arbitrary source underneath is generated.
+    (source / "__pycache__" / "source.py").write_text("def hidden(): raise RuntimeError('not executed')\n")
+    (source / "__pycache__" / "alias").symlink_to("source.py")
+    (source / "package" / ".pytest_cache" / "v" / "cache").mkdir(parents=True)
+    (source / "package" / ".pytest_cache" / "v" / "cache" / "nodeids").write_text('["test_calc"]')
+    (source / "package" / ".pytest_cache" / "empty").mkdir()
+    original, captured, manifest = capture_existing(tmp_path, source)
+    with index(tmp_path, scheduler) as owner:
+        receipt = owner.refresh(original, manifest)
+        cache = receipt["retained_opaque_cache"]
+        assert cache["roots"] == ["__pycache__", "package/.pytest_cache"]
+        expected = {name: entry for name, entry in view._original_entries(manifest["entries"]).items()
+                    if name.startswith("__pycache__") or name.startswith("package/.pytest_cache")}
+        assert cache["entries"] == expected
+        payload = {key: cache[key] for key in ("schema", "roots", "entries")}
+        encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False,
+                             separators=(",", ":"), allow_nan=False).encode()
+        assert cache["inventory_sha256"] == hashlib.sha256(encoded).hexdigest()
+        assert cache["entry_count"] == 9
+        assert cache["file_count"] == 3 and cache["directory_count"] == 5 and cache["symlink_count"] == 1
+        assert cache["original_bytes"] == sum(entry.get("original_bytes", 0) for entry in expected.values())
+        assert cache["classification"] == "directory_name_only"
+        assert cache["native_indexed"] is False
+        assert all(cache[key] is False for key in ("proof_authority", "execution_authority", "completion_authority"))
+        assert receipt["coverage"]["inventory_entries"] == 1
+        assert receipt["coverage"]["opaque_entries"] == 0
+        assert receipt["coverage"]["checked_properties"] == receipt["coverage"]["formalized_properties"] == 0
+        assert receipt["ast_stats_delta"]["parse_invocations"] == 1
+        assert receipt["package_manifest_sha256"] == captured["manifest_sha256"]
+        assert owner.symbols(path="__pycache__/source.py") == []
+        assert owner.symbols(query="hidden") == []
+        assert owner.symbols(query="real")
+        assert (original / "__pycache__" / "calc.pyc").read_bytes() == (source / "__pycache__" / "calc.pyc").read_bytes()
+        assert (original / "__pycache__" / "calc.pyc").stat().st_mode & 0o777 == 0o600
+        assert (original / "__pycache__" / "alias").readlink() == Path("source.py")
+        assert (original / "package" / ".pytest_cache" / "empty").is_dir()
+        # Caller mutation of this inventory cannot change its active fence.
+        cache["entries"].clear()
+        assert owner.symbols(query="real")
+
+
+@pytest.mark.parametrize("name", ["__pycache__", ".pytest_cache"])
+@pytest.mark.parametrize("kind", ["file", "symlink"])
+def test_cache_spelling_does_not_exempt_files_or_symlinks(tmp_path, scheduler, name, kind):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "calc.py").write_text("def real(): return 1\n")
+    if kind == "file":
+        (source / name).write_text("must not silently disappear")
+    else:
+        (source / name).symlink_to("calc.py")
+    original, _captured, manifest = capture_existing(tmp_path, source)
+    with index(tmp_path, scheduler) as owner:
+        with pytest.raises(RepositorySourceIndexError, match="native_cache_name_requires_directory"):
+            owner.refresh(original, manifest)
+        assert owner._index.current(owner.repository_id) is None
+
+
+def test_empty_cache_directories_have_coverage_without_native_inventory(tmp_path, scheduler):
+    source = tmp_path / "source"
+    (source / ".pytest_cache" / "empty").mkdir(parents=True)
+    (source / "__pycache__").mkdir()
+    original, _captured, manifest = capture_existing(tmp_path, source)
+    with index(tmp_path, scheduler) as owner:
+        receipt = owner.refresh(original, manifest)
+        assert receipt["coverage"]["inventory_entries"] == 0
+        assert receipt["retained_opaque_cache"]["entry_count"] == 3
+        assert receipt["retained_opaque_cache"]["directory_count"] == 3
+        assert receipt["retained_opaque_cache"]["original_bytes"] == 0
+        assert receipt["ast_stats_delta"]["parse_invocations"] == 0
+        assert owner.symbols() == []
+
+
+@pytest.mark.parametrize("mutation", ["bytes", "added", "deleted", "mode", "empty_directory", "symlink"])
+def test_materialized_cache_drift_fences_native_queries(tmp_path, scheduler, mutation):
+    _source, _package, original, _captured, manifest = snapshot(tmp_path,
+        files={"calc.py": "def real(): return 1\n", ".pytest_cache/retained": "original"})
+    with index(tmp_path, scheduler) as owner:
+        owner.refresh(original, manifest)
+        cache = original / ".pytest_cache"
+        if mutation == "bytes":
+            (cache / "retained").write_text("changed")
+        elif mutation == "added":
+            (cache / "new").write_text("new cache")
+        elif mutation == "deleted":
+            (cache / "retained").unlink()
+        elif mutation == "mode":
+            cache.chmod(0o700)
+        elif mutation == "empty_directory":
+            (cache / "empty").mkdir()
+        else:
+            (cache / "retained").unlink()
+            (cache / "retained").symlink_to("../calc.py")
+        with pytest.raises(RepositorySourceIndexError, match="materialization_differs_from_package"):
+            owner.symbols(query="real")
+        with pytest.raises(RepositorySourceIndexError, match="index_not_current"):
+            owner.symbols()
+
+
+def test_cache_change_during_native_observation_is_fenced(tmp_path, scheduler, monkeypatch):
+    _source, _package, original, _captured, manifest = snapshot(tmp_path,
+        files={"calc.py": "def real(): return 1\n", "__pycache__/retained": "original"})
+    with index(tmp_path, scheduler) as owner:
+        observe = owner._index.observe_current
+        def mutate_cache_after_native_observation(*args, **kwargs):
+            result = observe(*args, **kwargs)
+            (original / "__pycache__" / "retained").write_text("changed outside native snapshot")
+            return result
+        monkeypatch.setattr(owner._index, "observe_current", mutate_cache_after_native_observation)
+        with pytest.raises(RepositorySourceIndexError, match="materialization_differs_from_package"):
+            owner.refresh(original, manifest)
+        with pytest.raises(RepositorySourceIndexError, match="index_not_current"):
+            owner.symbols()
+
+
+def test_native_reservation_uses_eligible_inventory_but_retains_cache_bytes(tmp_path, scheduler):
+    files = {f"__pycache__/empty-{number}": "" for number in range(128)}
+    files["__pycache__/largest"] = "x" * (1024 * 1024)
+    files["calc.py"] = "def real(): return 1\n"
+    _source, _package, original, _captured, manifest = snapshot(tmp_path, files=files)
+    with index(tmp_path, scheduler) as owner:
+        receipt = owner.refresh(original, manifest)
+        assert receipt["coverage"]["inventory_entries"] == 1
+        assert receipt["retained_opaque_cache"]["entry_count"] == 130
+        assert receipt["retained_opaque_cache"]["original_bytes"] == 1024 * 1024
+        assert receipt["resource_limits"]["admission_memory_mb"] == 256
+        assert owner.symbols(query="real")
 
 
 def test_retained_symlink_is_opaque_and_never_followed(tmp_path, scheduler):

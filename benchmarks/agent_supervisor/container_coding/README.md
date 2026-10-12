@@ -150,10 +150,62 @@ data is retained; source-bearing messages stay in memory. No public benchmark
 source is executed, and no provider or container is started.
 
 Use `--repository-source-policy repository-source-raw@1` or
-`repository-source-compact@1` on the coding router to select this integration;
-the older `--source-view-policy` selects the optional shell helper. Container
-launcher propagation and live model adoption still require qualification.
-Existing defaults and provider cooldowns are unchanged. See the
+`--repository-source-policy repository-source-compact@1` when preparing a
+`full_supervisor_benchmark` trial, or on an otherwise configured coding router.
+The container route requires the full Codex semantic coding arm. Preparation
+freezes the choice into comparison controls and Harbor agent configuration;
+deployment, supervisor dispatch and the worker wrapper carry it to the coding
+router. Execute and collect use that frozen choice. The default remains
+`legacy`, and this policy cannot be combined with the older `--source-view-policy`
+optional shell helper. Provider cooldown and admission behavior is unchanged.
+
+A selected repository policy requires a fresh archive matching the current
+Accelerate runtime and datasets owner implementation. Preparation, execution
+and deployment check the compressed archive digest and actual packaged source
+bytes against current implementation hashes, rather than trusting the declared
+source inventory alone. A bounded streaming member check rejects missing,
+duplicate or noncanonical paths, unsupported member types and differing sizes
+or modes. Required source bodies are hashed without extracting them; unrelated
+model bodies are streamed past without being retained or individually hashed
+by this source compatibility check.
+
+Deployment runs an
+installed-runtime stdio probe as the supervisor account, using disposable
+authored source and cache files. It checks initialization, the tool inventory,
+compact reads, a guarded canonical edit and refreshed native symbol, stale
+generation refusal, explicit cache coverage and complete private-state cleanup.
+The probe executes no target code, calls no provider and retains no
+source-bearing messages. This installed-runtime check does not demonstrate
+that a live worker chooses the tools.
+
+Collected opt-in trials include `repository_source_dispatch`. Its
+`effective_repository_tools_observed` field requires every observed coding
+invocation to join the retained exact-input audit and native tool configuration
+to valid server usage, actual successful reads and complete cleanup. The compact
+arm additionally requires actual compact reads; uncertain edits do not qualify.
+Planning remains outside the repository-tool policy. Missing initialization,
+zero-call workers, unavailable observations and failed provider attempts remain
+in the reported population. A configured policy alone cannot qualify tool use,
+task completion or token savings.
+
+Actual `__pycache__` and `.pytest_cache` directories no longer prevent native
+index refresh. Their complete originals remain in the bounded package, with
+separate digest-bound `native_index.retained_opaque_cache` inventory in status.
+Their contents, including any Python source placed there, receive no native
+indexing or proof coverage. Cache changes still invalidate old source views;
+refresh after running tests. Other native exclusions remain refused, even
+inside cache trees, and cache bytes count toward the same package limits.
+
+The complete retained cache inventory currently appears in every status reply.
+For cache-heavy tasks that metadata can add significant context. A future
+optimization should use a bounded count/digest summary and explicit paginated
+inventory retrieval while preserving full retention and freshness checks.
+Include this status/retrieval cost before claiming broad token savings.
+
+Local tests cover real pytest cache creation followed by stdio refresh, reads
+and editing. Live model adoption and official Terminal Bench results for this
+policy remain unqualified; local transport/tokenizer measurements cannot
+establish provider-token savings. See the
 [native repository tools contract](../../../ipfs_accelerate_py/agent_supervisor/runtime/README.md#native-repository-tools-for-coding-workers)
 for scope, failure recovery and resource limits.
 

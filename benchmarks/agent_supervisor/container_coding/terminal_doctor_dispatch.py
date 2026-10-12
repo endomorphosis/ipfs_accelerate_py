@@ -243,6 +243,7 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
                         coding_reply_mode: str = "legacy", semantic_metadata_view: str = "legacy",
                         tool_output_policy: str = "legacy", source_view_policy: str = "legacy",
+                        repository_source_policy: str = "legacy",
                         source_input_policy: str = "legacy", query_reference_policy: str = "legacy") -> list[str]:
     """Closed choice that the admitted launch signs before any worker starts."""
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
@@ -259,6 +260,11 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
     if query_reference_policy != "legacy" and (semantic_repository is None
             or doctor is not None and doctor.get("route") != "model_router"):
         raise ValueError("query reference policy requires a semantic model-router coding route")
+    from .terminal_repository_source_policy import validate_repository_source_policy
+    validate_repository_source_policy(repository_source_policy, source_view_policy=source_view_policy)
+    if repository_source_policy != "legacy" and (semantic_repository is None
+            or doctor is not None and doctor.get("route") != "model_router"):
+        raise ValueError("repository source policy requires a semantic model-router coding route")
     from .terminal_source_view_policy import validate_source_view_policy
     validate_source_view_policy(source_view_policy)
     if source_view_policy != "legacy" and (semantic_repository is None
@@ -300,6 +306,7 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
               if semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA else []),
             *(["--tool-output-policy", tool_output_policy] if tool_output_policy != "legacy" else []),
             *(["--source-view-policy", source_view_policy] if source_view_policy != "legacy" else []),
+            *(["--repository-source-policy", repository_source_policy] if repository_source_policy != "legacy" else []),
             *(["--source-input-policy", source_input_policy] if source_input_policy != "legacy" else []),
             *(["--query-reference-policy", query_reference_policy] if query_reference_policy != "legacy" else []),
             *(["--coding-reply-mode", coding_reply_mode]

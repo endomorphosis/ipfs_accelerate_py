@@ -1185,10 +1185,14 @@ async def deploy_supervisor(
     setup_cache_selection: dict | None = None,
     isolated_uv_bootstrap: bool = False,
     provider: str = "codex_cli",
+    repository_source_policy: str = "legacy",
 ) -> dict:
     """Use actual Harbor exec/upload APIs; does not call any model or verifier."""
     if provider not in {"codex_cli", "grok_cli"}:
         raise ValueError("explicit supported container provider required")
+    if repository_source_policy != "legacy":
+        from .terminal_repository_source_policy import validate_repository_source_policy
+        validate_repository_source_policy(repository_source_policy, arm="full", provider=provider)
     if provider == "grok_cli" and (install_codex or setup_cache_selection is not None or auth_json is None):
         raise ValueError("Grok deployment requires its auth file, no Codex install and no Codex cache policy")
     if auth_json is not None:
@@ -1198,6 +1202,9 @@ async def deploy_supervisor(
     validate_setup_cache_selection(archive_dir, setup_cache_selection)
     validate_setup_cache_prerequisites(setup_cache_selection, install_codex=install_codex, auth_json=auth_json)
     manifest = json.loads((Path(archive_dir) / "manifest.json").read_text())
+    if repository_source_policy != "legacy":
+        from .terminal_repository_source_policy import require_repository_source_archive
+        require_repository_source_archive(manifest, repository_source_policy, archive=Path(archive_dir) / "runtime.tar.gz")
     if install_codex:
         require_runtime_cli_version(manifest)
     output = Path(output)
@@ -1394,6 +1401,13 @@ print(duckdb.__version__,platform)
             )
         ).stdout
     )
+    repository_probe = None
+    if repository_source_policy != "legacy":
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_probe import validate_probe
+        observed = await execute("repository-source-runtime-probe", PYTHON
+            + " -P -m ipfs_accelerate_py.agent_supervisor.runtime.repository_source_probe",
+            user="supervisor", env=runtime_environment(), timeout=75)
+        repository_probe = validate_probe(json.loads(observed.stdout))
     await execute(
         "empty-native-start",
         PYTHON
@@ -1426,6 +1440,8 @@ print(duckdb.__version__,platform)
         "runtime_environment": runtime_environment(),
         "python": PYTHON,
         "imports": imported,
+        **({"repository_source_policy": repository_source_policy,
+            "repository_source_runtime_probe": repository_probe} if repository_probe is not None else {}),
         "steps": steps,
         "codex_installed": install_codex,
         "provider": provider,

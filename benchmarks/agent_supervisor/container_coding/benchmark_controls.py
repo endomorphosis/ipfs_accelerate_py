@@ -91,7 +91,7 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "semantic_context_profile", "numerical_formalization_profile", "tool_output_policy", "source_view_policy", "source_input_policy", "query_reference_policy"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "semantic_context_profile", "numerical_formalization_profile", "tool_output_policy", "source_view_policy", "repository_source_policy", "source_input_policy", "query_reference_policy"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         if "numerical_formalization_profile" in kwargs:
             from .terminal_numerical_policy import validate_numerical_profile
@@ -108,6 +108,10 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
             validate_query_reference_policy(kwargs["query_reference_policy"], arm=kwargs.get("arm"),
                 provider=selected["provider"], semantic_metadata_view=kwargs.get("semantic_metadata_view", "legacy"),
                 source_input_policy=kwargs.get("source_input_policy", "legacy"))
+        if "repository_source_policy" in kwargs:
+            from .terminal_repository_source_policy import validate_repository_source_policy
+            validate_repository_source_policy(kwargs["repository_source_policy"], arm=kwargs.get("arm"),
+                provider=selected["provider"], source_view_policy=kwargs.get("source_view_policy", "legacy"))
         if "source_view_policy" in kwargs:
             from .terminal_source_view_policy import validate_source_view_policy
             validate_source_view_policy(kwargs["source_view_policy"], arm=kwargs.get("arm"),

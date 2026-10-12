@@ -678,6 +678,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         coding_reply_mode: str = "legacy",
         tool_output_policy: str = "legacy",
         source_view_policy: str = "legacy",
+        repository_source_policy: str = "legacy",
         source_input_policy: str = "legacy",
         query_reference_policy: str = "legacy",
         resource_profile: str | None = None,
@@ -717,6 +718,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
     if metadata_census_only and query_reference_policy != "legacy":
         raise ValueError("query reference policy requires an executed coding route")
+    from .terminal_repository_source_policy import validate_repository_source_policy, repository_source_selection
+    validate_repository_source_policy(repository_source_policy, arm=arm, provider=provider_selection["provider"],
+        source_view_policy=source_view_policy)
+    if metadata_census_only and repository_source_policy != "legacy":
+        raise ValueError("repository source policy requires an executed coding route")
     from .terminal_source_view_policy import validate_source_view_policy, source_view_selection
     validate_source_view_policy(source_view_policy, arm=arm, provider=provider_selection["provider"])
     if metadata_census_only and source_view_policy != "legacy":
@@ -794,6 +800,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               **coding_reply_selection(coding_reply_mode),
               **tool_output_selection(tool_output_policy),
               **source_view_selection(source_view_policy),
+              **repository_source_selection(repository_source_policy),
               **source_input_selection(source_input_policy),
               **query_reference_selection(query_reference_policy),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
@@ -1041,6 +1048,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             coding_reply_mode=coding_reply_mode,
             **({"tool_output_policy": tool_output_policy} if tool_output_policy != "legacy" else {}),
             **({"source_view_policy": source_view_policy} if source_view_policy != "legacy" else {}),
+            **({"repository_source_policy": repository_source_policy} if repository_source_policy != "legacy" else {}),
             **({"source_input_policy": source_input_policy} if source_input_policy != "legacy" else {}),
             **({"query_reference_policy": query_reference_policy} if query_reference_policy != "legacy" else {}),
             **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}))
@@ -1308,6 +1316,8 @@ def main():
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES
     from .terminal_tool_output_policy import DEFAULT_TOOL_OUTPUT_POLICY, TOOL_OUTPUT_POLICIES
     parser.add_argument("--tool-output-policy", choices=TOOL_OUTPUT_POLICIES, default=DEFAULT_TOOL_OUTPUT_POLICY)
+    from .terminal_repository_source_policy import DEFAULT_REPOSITORY_SOURCE_POLICY, REPOSITORY_SOURCE_POLICIES
+    parser.add_argument("--repository-source-policy", choices=REPOSITORY_SOURCE_POLICIES, default=DEFAULT_REPOSITORY_SOURCE_POLICY)
     from .terminal_source_view_policy import DEFAULT_SOURCE_VIEW_POLICY, SOURCE_VIEW_POLICIES
     parser.add_argument("--source-view-policy", choices=SOURCE_VIEW_POLICIES, default=DEFAULT_SOURCE_VIEW_POLICY)
     from .terminal_source_input_policy import DEFAULT_SOURCE_INPUT_POLICY, SOURCE_INPUT_POLICIES
