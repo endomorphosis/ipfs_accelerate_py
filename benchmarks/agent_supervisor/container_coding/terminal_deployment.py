@@ -684,6 +684,10 @@ def runtime_environment() -> dict[str, str]:
     }
 
 
+# System package configuration has its own finite allowance; the native npm
+# installer retains its separate shared deadline below. Harbor allows cleanup.
+CODEX_SYSTEM_DEPENDENCIES_TIMEOUT_SEC = 300
+CODEX_SYSTEM_DEPENDENCIES_EXEC_TIMEOUT_SEC = 330
 CODEX_INSTALL_TIMEOUT_SEC = 180
 CODEX_INSTALL_EXEC_TIMEOUT_SEC = 210
 # Independently hashed official npm @openai/codex@0.160.0-linux-x64 payloads;
@@ -1252,10 +1256,11 @@ async def deploy_supervisor(
     if install_codex:
         await execute(
             "codex-system-dependencies",
-            "timeout --signal=TERM --kill-after=5s 120s env DEBIAN_FRONTEND=noninteractive "
+            f"timeout --signal=TERM --kill-after=5s {CODEX_SYSTEM_DEPENDENCIES_TIMEOUT_SEC}s "
+            "env DEBIAN_FRONTEND=noninteractive "
             "apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=30 "
             "-o Acquire::https::Timeout=30 install -y --no-install-recommends nodejs npm",
-            timeout=140,
+            timeout=CODEX_SYSTEM_DEPENDENCIES_EXEC_TIMEOUT_SEC,
         )
     # Native supervisor contracts use Python 3.12 (including hashable
     # mappingproxy defaults); keep the original task interpreter untouched.

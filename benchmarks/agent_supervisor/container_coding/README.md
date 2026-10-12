@@ -18,11 +18,16 @@ not exercise the general supervisor's Grok route or its fallback.
 
 Full-supervisor Codex deployment installs the pinned CLI through a source-owned
 installer with a private npm configuration and cache. Distribution Node.js and
-npm are installed in a bounded dependency step; Node.js must be version 16 or
-newer. Unsupported versions fail before authentication or model execution.
+npm have a separate 300-second system dependency deadline, with TERM followed
+by KILL after five seconds and a 330-second Harbor execution allowance. APT
+retains one retry and 30-second HTTP/HTTPS network timeouts. Node.js must be
+version 16 or newer. Unsupported versions fail before authentication or model execution.
 The installer supports Linux ARM64 and x86-64, with independently pinned hashes
-for both native executables. It has a shared 180-second deadline, bounded
-downloads and output, and process-group cleanup on timeout or cancellation.
+for both native executables. The native installer retains its separate shared
+180-second deadline and 210-second Harbor execution allowance, bounded downloads
+and output, and process-group cleanup on timeout or cancellation. A failed
+system dependency step stops deployment before native installation or credential
+transfer; it does not consume or extend the native installer deadline.
 It checks package and executable versions before exposing the protected runtime.
 Setup receipts contain versions, hashes and phase results without npm output or
 inherited environment values. A failed setup remains a failed campaign attempt;
