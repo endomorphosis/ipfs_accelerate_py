@@ -121,10 +121,9 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if "setup_cache_selection" in kwargs:
             if selected["provider"] != "codex_cli":
                 raise ValueError("Codex cache selection cannot qualify a Grok route")
-            from .terminal_setup_cache_advice import _selection_shape
-            from .benchmark_resource_profile import PROFILES
+            from .terminal_setup_cache_advice import _selection_shape, RESOURCE_PROFILES
             _selection_shape(kwargs["setup_cache_selection"])
-            if kwargs.get("arm") != "full" or kwargs.get("resource_profile") not in PROFILES:
+            if kwargs.get("arm") != "full" or kwargs.get("resource_profile") not in RESOURCE_PROFILES:
                 raise ValueError("setup cache selection requires the full arm and supported resource profile")
             # The complete configuration digest below binds this adapter-specific
             # selection. Common-control equality does not prove equal setup work.

@@ -37,7 +37,8 @@ def test_explicit_20gib_profile_accepts_v2_cache_with_auth_metadata_only(tmp_pat
     assert (before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) == (
         after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
     assert set(cache.RESOURCE_PROFILES) == {
-        "source384-5cpu-12gib@1", "source384-5cpu-16gib-extended@1", PROFILE}
+        "source384-5cpu-12gib@1", "source384-5cpu-16gib-extended@1", PROFILE,
+        "source384-5cpu-20gib-formalization@1"}
 
 
 @pytest.mark.parametrize("profile", [None, "unknown@1", "source384-5cpu-16gib-planner180@1",
