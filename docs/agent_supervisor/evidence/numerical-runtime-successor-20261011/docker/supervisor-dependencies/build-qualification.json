@@ -1,0 +1,6 @@
+{
+  "returncode": 0,
+  "seconds": 3.57234862097539,
+  "base_image_id_after": "sha256:3198b1b627d4084887f01a88eeaba4c6190d0d86a36dbb4892cf569ea1f83bf6",
+  "derived_image_id": "sha256:771900c18b663b33a5bf96e066346b2d5c842506523efb167aebe8d3a99b5c07"
+}

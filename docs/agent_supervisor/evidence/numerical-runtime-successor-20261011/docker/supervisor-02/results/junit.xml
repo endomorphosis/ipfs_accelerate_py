@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="11.506" timestamp="2026-10-11T23:48:55.436068+00:00" hostname="ba807d3eed1a"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration" name="test_unselected_numerical_checkpoint_leaves_default_initial_context_unchanged" time="0.622"><failure message="ModuleNotFoundError: No module named 'jsonschema'">original = (PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/app'), PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/instruction.md'), PosixPath('/tmp/supervisor-pytest/test_unselected_numerical_chec0/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe00135fe47a0&gt;
+
+    def test_unselected_numerical_checkpoint_leaves_default_initial_context_unchanged(original, monkeypatch):
+        from benchmarks.agent_supervisor.container_coding import terminal_initial_context as initial
+        from ipfs_accelerate_py.agent_supervisor.runtime import numerical_selection_context as owner
+        from ipfs_accelerate_py.agent_supervisor.runtime import numerical_selection_config as configuration
+    
+        def forbidden(*args, **kwargs):
+            pytest.fail("default preparation implicitly selected experimental numerical weights")
+    
+        monkeypatch.setattr(owner, "prepare_numerical_selection_context", forbidden)
+        monkeypatch.setattr(configuration, "load_numerical_selection_config", forbidden)
+        root, instruction, state = original
+&gt;       prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/code/source/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py:92: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/code/source/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:510: in prepare
+    provider_request = bind_terminal_task_contract(provider_request, prepared=prepared,
+/code/source/ipfs_accelerate_py/agent_supervisor/runtime/terminal_planner_contract.py:143: in bind_terminal_task_contract
+    contract_from_prompt(encoded)
+/code/source/ipfs_accelerate_py/agent_supervisor/runtime/terminal_planner_contract.py:95: in contract_from_prompt
+    contract = validate_task_contract(payload[FIELD])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = {'completion_authority': False, 'contract_sha256': 'cf937fa3de4017a1fe171cf61d854aa9388fb908807b9e1b1f928e464d6cc29a',...5yudhv662xq', 'baguqeerasmyv3i5ol6hw6sngxqzga5afzbxpexyqsm4dbfwq3263g7zhorca', ...], 'execution_authority': False, ...}
+
+    def validate_task_contract(value):
+        from ipfs_accelerate_py.cli_runtime.grok_structured_output import _bounded_json
+        value = json.loads(_bounded_json(value, MAX_BYTES))
+        fields = {"schema", "request_cid", "scan_cid", "program_root", "policy_root", "manifest_sha256",
+                  "evidence_cids", "tasks", "contract_sha256", "execution_authority", "completion_authority"}
+        if (not isinstance(value, dict) or set(value) != fields or value["schema"] != SCHEMA
+                or value["execution_authority"] is not False or value["completion_authority"] is not False):
+            raise ValueError("exact non-authoritative terminal task contract required")
+        for key in ("request_cid", "scan_cid", "program_root", "policy_root"):
+            if type(value[key]) is not str or not 1 &lt;= len(value[key]) &lt;= 256:
+                raise ValueError("bounded terminal task contract root required")
+        for key in ("manifest_sha256", "contract_sha256"):
+            if (type(value[key]) is not str or len(value[key]) != 64
+                    or any(char not in "0123456789abcdef" for char in value[key])):
+                raise ValueError("exact terminal task contract digest required")
+        unsigned = {key: item for key, item in value.items() if key != "contract_sha256"}
+        if hashlib.sha256(_json(unsigned).encode()).hexdigest() != value["contract_sha256"]:
+            raise ValueError("terminal task contract digest differs")
+        refs = value["evidence_cids"]
+        if (not isinstance(refs, list) or not 1 &lt;= len(refs) &lt;= 16
+                or any(type(item) is not str or not 1 &lt;= len(item) &lt;= 256 for item in refs)
+                or len(set(refs)) != len(refs)):
+            raise ValueError("exact terminal descriptive evidence population required")
+        tasks = value["tasks"]
+        if not isinstance(tasks, list) or len(tasks) != 1 or not isinstance(tasks[0], dict) or set(tasks[0]) != TASK_FIELDS:
+            raise ValueError("one complete terminal task declaration required")
+        task = tasks[0]
+        if task["task_key"] != "TB-CODE-TASK" or task["dependency_task_keys"] != []:
+            raise ValueError("single direct terminal task population required")
+        scopes = task["scope_paths"]
+        if (not isinstance(scopes, list) or not 1 &lt;= len(scopes) &lt;= 256
+                or any(type(name) is not str for name in scopes) or len(set(scopes)) != len(scopes)):
+            raise ValueError("bounded unique terminal scope required")
+        from pathlib import PurePosixPath
+        for name in scopes:
+            if not name or len(name) &gt; 1024 or PurePosixPath(name).is_absolute() or ".." in PurePosixPath(name).parts or "\\" in name or "\x00" in name:
+                raise ValueError("relative terminal scope required")
+        # Reuse the canonical proposal's typed row schemas. This is structural
+        # validation only; the owner separately verifies signature and authority.
+        from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import _proposal_schema
+        from types import SimpleNamespace
+&gt;       from jsonschema import Draft202012Validator
+E       ModuleNotFoundError: No module named 'jsonschema'
+
+/code/source/ipfs_accelerate_py/agent_supervisor/runtime/terminal_planner_contract.py:63: ModuleNotFoundError</failure></testcase></testsuite></testsuites>

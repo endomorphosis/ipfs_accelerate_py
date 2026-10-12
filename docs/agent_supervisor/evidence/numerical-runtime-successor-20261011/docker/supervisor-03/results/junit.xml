@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="2" time="15.269" timestamp="2026-10-11T23:50:11.796193+00:00" hostname="71729af5f182"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration" name="test_unselected_numerical_checkpoint_leaves_default_initial_context_unchanged" time="2.276" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration" name="test_real_numerical_consumer_preserves_mismatch_abstention_and_cached_report" time="1.035"><failure message="ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.ResourceUnavailableError: request exceeds capacity available to its reservation lane">tmp_path = PosixPath('/tmp/supervisor-pytest/test_real_numerical_consumer_p0')
+numerical_config = PosixPath('/tmp/supervisor-pytest/test_real_numerical_consumer_p0/numerical-selection-config.json')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe5fc914c67b0&gt;
+
+    def test_real_numerical_consumer_preserves_mismatch_abstention_and_cached_report(
+            tmp_path, numerical_config, monkeypatch):
+        from ipfs_accelerate_py.agent_supervisor.runtime import numerical_selection_context as owner
+    
+        root = tmp_path / "source-repository"
+        root.mkdir()
+        sources = {"matching.py": MATCHING_SOURCE, "mismatching.py": MISMATCHING_SOURCE,
+                   "unsupported.py": UNSUPPORTED_SOURCE}
+        for name, source in sources.items():
+            (root / name).write_text(source)
+        for args in (("init", "-q"), ("add", "."),
+                     ("-c", "user.name=Qualification", "-c", "user.email=qualification@example.invalid",
+                      "commit", "-qm", "independently authored inference fixtures")):
+            subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+&gt;       receipt = owner.prepare_numerical_selection_context(repository=root,
+            source_hashes={name: _sha(source) for name, source in sources.items()},
+            output=tmp_path / "numerical-owner", config_path=numerical_config,
+            expected_config_sha256=_sha(numerical_config.read_bytes()))
+
+/code/source/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/code/source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_selection_context.py:161: in prepare_numerical_selection_context
+    with acquire_codebase_resources(scheduler=scheduler, parent_lease=parent_lease, cancel_event=cancel_event,
+/usr/local/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+/code/datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py:99: in acquire_codebase_resources
+    lease = owner.acquire(**request)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xe5fc9066c260&gt;
+lane = &lt;ResourceLane.SNAPSHOT_EVALUATION: 'snapshot_evaluation'&gt;, cpu_slots = 3
+memory_mb = 6144, gpu_memory_mb = 0, unified_memory_mb = 0
+child_process_slots = 3, requires_gpu = False, parent_lease = None
+parent = None, timeout = 30.0, cancel_event = None
+request_id = 'codebase-ir:prepare', owner_pid = None
+
+    def acquire(
+        self,
+        lane: Union[str, ResourceLane],
+        *,
+        cpu_slots: int = 1,
+        memory_mb: int = 0,
+        gpu_memory_mb: int = 0,
+        unified_memory_mb: int = 0,
+        child_process_slots: int = 0,
+        requires_gpu: bool = False,
+        parent_lease: Optional[Union[ResourceLease, ResourceLeaseToken, str]] = None,
+        parent: Optional[Union[ResourceLease, ResourceLeaseToken, str]] = None,
+        timeout: Optional[float] = None,
+        cancel_event: Optional[CancellationSignal] = None,
+        request_id: str = "",
+        owner_pid: Optional[int] = None,
+    ) -&gt; ResourceLease:
+        """Wait for and return a root or nested lease.
+    
+        Child resources are bounded by, but do not add to, the parent's
+        global allocation.  ``parent`` is an alias for ``parent_lease``.
+        Cancellation and timeouts remove the durable waiter before raising.
+        """
+    
+        lane_value = self._normalise_lane(lane)
+        if isinstance(cpu_slots, bool) or not isinstance(cpu_slots, int) or cpu_slots &lt;= 0:
+            raise ResourceConfigurationError("cpu_slots must be a positive integer")
+        if isinstance(memory_mb, bool) or not isinstance(memory_mb, int) or memory_mb &lt; 0:
+            raise ResourceConfigurationError("memory_mb must be a non-negative integer")
+        if self.config.proof_safety_enabled and memory_mb == 0:
+            raise ResourceConfigurationError("proof safety requires a positive memory_mb reservation")
+        if (
+            isinstance(gpu_memory_mb, bool)
+            or not isinstance(gpu_memory_mb, int)
+            or gpu_memory_mb &lt; 0
+        ):
+            raise ResourceConfigurationError("gpu_memory_mb must be a non-negative integer")
+        if (
+            isinstance(unified_memory_mb, bool)
+            or not isinstance(unified_memory_mb, int)
+            or unified_memory_mb &lt; 0
+        ):
+            raise ResourceConfigurationError("unified_memory_mb must be a non-negative integer")
+        if (
+            isinstance(child_process_slots, bool)
+            or not isinstance(child_process_slots, int)
+            or child_process_slots &lt; 0
+        ):
+            raise ResourceConfigurationError("child_process_slots must be a non-negative integer")
+        if timeout is not None and (not math.isfinite(float(timeout)) or timeout &lt; 0):
+            raise ResourceConfigurationError("timeout must be non-negative and finite")
+        if parent is not None and parent_lease is not None:
+            raise ResourceConfigurationError("specify only one of parent and parent_lease")
+        parent_id, parent_key = self._parent_authority(parent_lease or parent)
+        if not parent_id:
+            reservations = self.config.reservations()
+            maximum_cpu = self.config.total_cpu_slots - sum(
+                reservation.cpu_slots
+                for reserved_lane, reservation in reservations.items()
+                if reserved_lane != lane_value
+            )
+            maximum_memory = (
+                self.config.total_memory_mb
+                - sum(
+                    reservation.memory_mb
+                    for reserved_lane, reservation in reservations.items()
+                    if reserved_lane != lane_value
+                )
+                - self.config.reserved_memory_mb
+            )
+            if cpu_slots &gt; maximum_cpu or memory_mb &gt; maximum_memory:
+&gt;               raise ResourceUnavailableError(
+                    "request exceeds capacity available to its reservation lane"
+                )
+E               ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.ResourceUnavailableError: request exceeds capacity available to its reservation lane
+
+/code/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py:1715: ResourceUnavailableError</failure></testcase></testsuite></testsuites>

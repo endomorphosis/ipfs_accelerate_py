@@ -1,0 +1,146 @@
+[
+  {
+    "name": "sentence-transformers",
+    "version": "5.4.1",
+    "filename": "sentence_transformers-5.4.1-py3-none-any.whl",
+    "sha256": "a6d640fc363849b63affb8e140e9d328feabab86f83d58ac3e16b1c28140b790",
+    "bytes": 571311,
+    "url": "https://files.pythonhosted.org/packages/c5/d9/3a9b6f2ccdedc9dc00fe37b2fc58f58f8efbff44565cf4bf39d8568bb13a/sentence_transformers-5.4.1-py3-none-any.whl",
+    "acquisition": "copied_pip_cache"
+  },
+  {
+    "name": "transformers",
+    "version": "4.52.1",
+    "filename": "transformers-4.52.1-py3-none-any.whl",
+    "sha256": "604b2bb357c480dc5883b7944e8562c967f6b06f63dfb6a1c4665d13d067148f",
+    "bytes": 10459023,
+    "url": "https://files.pythonhosted.org/packages/b8/1e/2b00e5021c3545d4a0ae32f3d332ae29e62a6259092f1468976e7b9d4adb/transformers-4.52.1-py3-none-any.whl",
+    "acquisition": "copied_pip_cache"
+  },
+  {
+    "name": "safetensors",
+    "version": "0.7.0",
+    "filename": "safetensors-0.7.0-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+    "sha256": "e07d91d0c92a31200f25351f4acb2bc6aff7f48094e13ebb1d0fb995b54b6542",
+    "bytes": 491748,
+    "url": "https://files.pythonhosted.org/packages/f1/06/578ffed52c2296f93d7fd2d844cabfa92be51a587c38c8afbb8ae449ca89/safetensors-0.7.0-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+    "acquisition": "copied_pip_cache"
+  },
+  {
+    "name": "numpy",
+    "version": "1.26.4",
+    "filename": "numpy-1.26.4-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+    "sha256": "9fad7dcb1aac3c7f0584a5a8133e3a43eeb2fe127f47e3632d43d677c66c102b",
+    "bytes": 13925109,
+    "url": "https://files.pythonhosted.org/packages/79/f8/97f10e6755e2a7d027ca783f63044d5b1bc1ae7acb12afe6a9b4286eac17/numpy-1.26.4-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+    "acquisition": "copied_pip_cache"
+  },
+  {
+    "name": "huggingface_hub",
+    "version": "0.36.2",
+    "filename": "huggingface_hub-0.36.2-py3-none-any.whl",
+    "sha256": "48f0c8eac16145dfce371e9d2d7772854a4f591bcb56c9cf548accf531d54270",
+    "bytes": 566395,
+    "url": "https://files.pythonhosted.org/packages/a8/af/48ac8483240de756d2438c380746e7130d1c6f75802ef22f3c6d49982787/huggingface_hub-0.36.2-py3-none-any.whl",
+    "acquisition": "copied_pip_cache"
+  },
+  {
+    "name": "PyYAML",
+    "version": "6.0.3",
+    "filename": "pyyaml-6.0.3-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+    "sha256": "9149cad251584d5fb4981be1ecde53a1ca46c891a79788c0df828d2f166bda28",
+    "bytes": 775116,
+    "url": "https://files.pythonhosted.org/packages/ed/23/7a778b6bd0b9a8039df8b1b1d80e2e2ad78aa04171592c8a5c43a56a6af4/pyyaml-6.0.3-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+    "acquisition": "copied_pip_cache"
+  },
+  {
+    "name": "regex",
+    "version": "2026.9.29",
+    "filename": "regex-2026.9.29-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+    "sha256": "f93bc1c3486ef3747e07c9d7c1d0a147b8fbaab975f80e348aed6f71309dfaca",
+    "bytes": 805885,
+    "url": "https://files.pythonhosted.org/packages/c9/72/67e7a8ce17f1aea49df215564048efb49cc8c2b31a0e0fc30f36838f8516/regex-2026.9.29-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+    "acquisition": "copied_pip_cache"
+  },
+  {
+    "name": "scikit-learn",
+    "version": "1.9.1",
+    "filename": "scikit_learn-1.9.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+    "sha256": "e4c20a6c017d820faa7ac8c783e3d0c6a9a2e297bf9f55332ca17cdf7fd4d04d",
+    "bytes": 8871592,
+    "url": "https://files.pythonhosted.org/packages/78/2b/5721a174406bfba49bce20ae997b3b64cf355c3f623a2638284ab6a82156/scikit_learn-1.9.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+    "acquisition": "copied_pip_cache"
+  },
+  {
+    "name": "scipy",
+    "version": "1.17.1",
+    "filename": "scipy-1.17.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+    "sha256": "e19ebea31758fac5893a2ac360fedd00116cbb7628e650842a6691ba7ca28a21",
+    "bytes": 32927842,
+    "url": "https://files.pythonhosted.org/packages/da/34/16f10e3042d2f1d6b66e0428308ab52224b6a23049cb2f5c1756f713815f/scipy-1.17.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+    "acquisition": "copied_pip_cache"
+  },
+  {
+    "name": "tokenizers",
+    "version": "0.21.4",
+    "filename": "tokenizers-0.21.4-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+    "sha256": "39b376f5a1aee67b4d29032ee85511bbd1b99007ec735f7f35c8a2eb104eade5",
+    "bytes": 3012624,
+    "url": "https://files.pythonhosted.org/packages/aa/8f/24f39d7b5c726b7b0be95dca04f344df278a3fe3a4deb15a975d194cbb32/tokenizers-0.21.4-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+    "acquisition": "copied_pip_cache"
+  },
+  {
+    "name": "tqdm",
+    "version": "4.70.1",
+    "filename": "tqdm-4.70.1-py3-none-any.whl",
+    "sha256": "c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73",
+    "bytes": 80199,
+    "url": "https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl",
+    "acquisition": "copied_pip_cache"
+  },
+  {
+    "name": "hf-xet",
+    "version": "1.7.0",
+    "filename": "hf_xet-1.7.0-cp38-abi3-manylinux_2_28_aarch64.whl",
+    "sha256": "fcfd6c22418e57dd5b3aea649e813b2e2cfb2aebf317b210d90f1fe4b3018b52",
+    "bytes": 3990011,
+    "url": "https://files.pythonhosted.org/packages/49/0c/a2f703a5a78267556e89e03316fa0805c86b72b50829bc67665746e8ebf0/hf_xet-1.7.0-cp38-abi3-manylinux_2_28_aarch64.whl",
+    "acquisition": "normal_package_index_download"
+  },
+  {
+    "name": "joblib",
+    "version": "1.6.0",
+    "filename": "joblib-1.6.0-py3-none-any.whl",
+    "sha256": "3dbbf9f6e4b592a2357b854608e980fe6390d131d7a82f011a377ef2ebef7aba",
+    "bytes": 306115,
+    "url": "https://files.pythonhosted.org/packages/18/53/84099323c2ec4be98d935f63c033ac4151ee83836ca1050ede3b3aadf155/joblib-1.6.0-py3-none-any.whl",
+    "acquisition": "normal_package_index_download"
+  },
+  {
+    "name": "narwhals",
+    "version": "2.27.1",
+    "filename": "narwhals-2.27.1-py3-none-any.whl",
+    "sha256": "d057df13f5852b8e157596e82eb5e955fad267425df5e420e0ee9863da483b31",
+    "bytes": 483211,
+    "url": "https://files.pythonhosted.org/packages/d1/89/5d4c86da1130d9059681e5b6cd7645df5c10279a6a079c5c37dcb2cc6f3f/narwhals-2.27.1-py3-none-any.whl",
+    "acquisition": "normal_package_index_download"
+  },
+  {
+    "name": "threadpoolctl",
+    "version": "3.7.0",
+    "filename": "threadpoolctl-3.7.0-py3-none-any.whl",
+    "sha256": "cd8b60b5641b45c67bbf73c64c843235fc2d8a480c87389f52f5dbee893b86be",
+    "bytes": 26362,
+    "url": "https://files.pythonhosted.org/packages/43/3f/f88a53f60a472b46f4023f56d204dd7de33d34c5d2acbfa0d70a674e639e/threadpoolctl-3.7.0-py3-none-any.whl",
+    "acquisition": "normal_package_index_download"
+  },
+  {
+    "name": "cloudpickle",
+    "version": "3.1.2",
+    "filename": "cloudpickle-3.1.2-py3-none-any.whl",
+    "sha256": "9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a",
+    "bytes": 22228,
+    "url": "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl",
+    "acquisition": "normal_package_index_download"
+  }
+]

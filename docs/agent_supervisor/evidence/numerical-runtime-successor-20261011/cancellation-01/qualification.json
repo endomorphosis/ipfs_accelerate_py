@@ -1,0 +1,68 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "tests/unit/logic/backends/test_codebase_process_parallel_limits.py",
+    "tests/integration/logic/software_contracts/test_codebase_numerical_selection_384.py",
+    "-q",
+    "--color=no",
+    "--override-ini",
+    "addopts=",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-numerical-runtime-20261011/cancellation-01/junit.xml",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/supervisor-numerical-runtime-20261011/cancellation-01/pytest-cache"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011",
+  "environment_overrides": {
+    "CODEBASE384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "CODEBASE384_EMBEDDING_SNAPSHOT": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1",
+    "NUMERICAL_SELECTION384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/supervisor-numerical-training-20261011/release/checkpoint.json",
+    "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "source_before": {
+    "ipfs_datasets_py/logic/backends/codebase_process.py": "297f9b0c88501abd33181c259d302f2f9d67c48b651884aca58a45fe6107ad34",
+    "tests/unit/logic/backends/test_codebase_process_parallel_limits.py": "6f864cd289f7d028cafead94a7114bb4d1e8cde6a87ea53fbc4482a3e2a9b72b",
+    "ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384.py": "3bb7decd669b6baf5cc10e02eaad502f21806502d35e9b1ccbdd29caa4d49e48",
+    "ipfs_datasets_py/logic/formalization/autoencoder/numerical_selection_384.py": "54a5a95769f7ee205226daf03b48f4698acb4c79dbe4c9f667e5a875f77e5855",
+    "tests/integration/logic/software_contracts/test_codebase_numerical_selection_384.py": "1d1a634ddfb72509d9120ea6c062be5d2705fb953c12c80671625c45e6379b8f"
+  },
+  "base_commit": "2a1794e388e88389c48966fb78a1b74c26a0c832",
+  "scope": "Native process-group cancellation and actual cached CPU numerical inference; no provider, training, download, or proof discharge",
+  "pre_fix_regression": {
+    "command": [
+      "/usr/bin/python3",
+      "-m",
+      "pytest",
+      "tests/unit/logic/backends/test_codebase_process_parallel_limits.py::test_outer_alarm_preserves_exception_and_drains_native_child_group",
+      "-q",
+      "--override-ini",
+      "addopts="
+    ],
+    "exit_code": 1,
+    "failure": "After outer SIGALRM, spawned leader process.poll() was None (still alive); regression finally removed test descendants."
+  },
+  "exit_code": 0,
+  "elapsed_seconds": 21.86954392294865,
+  "source_after": {
+    "ipfs_datasets_py/logic/backends/codebase_process.py": "297f9b0c88501abd33181c259d302f2f9d67c48b651884aca58a45fe6107ad34",
+    "tests/unit/logic/backends/test_codebase_process_parallel_limits.py": "6f864cd289f7d028cafead94a7114bb4d1e8cde6a87ea53fbc4482a3e2a9b72b",
+    "ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384.py": "3bb7decd669b6baf5cc10e02eaad502f21806502d35e9b1ccbdd29caa4d49e48",
+    "ipfs_datasets_py/logic/formalization/autoencoder/numerical_selection_384.py": "54a5a95769f7ee205226daf03b48f4698acb4c79dbe4c9f667e5a875f77e5855",
+    "tests/integration/logic/software_contracts/test_codebase_numerical_selection_384.py": "1d1a634ddfb72509d9120ea6c062be5d2705fb953c12c80671625c45e6379b8f"
+  },
+  "source_unchanged": true
+}

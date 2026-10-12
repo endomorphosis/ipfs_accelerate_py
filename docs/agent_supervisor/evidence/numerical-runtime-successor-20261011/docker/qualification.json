@@ -1,0 +1,75 @@
+{
+  "schema": "numerical-container-runtime-qualification@1",
+  "scope": "shared_ipfs_datasets_py_owner_cpu_inference_and_cached_replay_in_container",
+  "passed": true,
+  "base_image_preserved": "sha256:88463ed5d1f72a79fdd4bac5e2ad1c2a0490c1ae24b21365d14eacd5e2a0a879",
+  "development_image_tag": "ipfs-supervisor-numerical-dev:20261011-r1",
+  "development_image_id": "sha256:3198b1b627d4084887f01a88eeaba4c6190d0d86a36dbb4892cf569ea1f83bf6",
+  "network_disabled_for_build": true,
+  "network_disabled_for_inference": true,
+  "checkpoint_file_sha256": "26ccc7cf8420e0ed6cbbe22603e09be0e3572fb32a1e489e877fc5081f506e03",
+  "coverage": {
+    "eligible_files": 3,
+    "file_dispositions": {
+      "selected_for_token_check": 3,
+      "unsupported_profile": 1
+    },
+    "files": 4,
+    "selected_units": 3,
+    "source_aligned_fragments": 1,
+    "source_mismatches": 1,
+    "token_deferred": 1,
+    "unit_dispositions": {
+      "deferred_gte_token_limit": 1,
+      "fail_open_source_mismatch": 1,
+      "source_aligned_fragment": 1
+    }
+  },
+  "projection_families": [
+    "first_order",
+    "higher_order",
+    "program"
+  ],
+  "cold_cache_replay_exact": true,
+  "stale_source_refused": true,
+  "restored_source_validated": true,
+  "source_hashes_unchanged": true,
+  "native_inference_seconds": 6.393546912935562,
+  "replay_validation_seconds": 0.8958760920213535,
+  "container_wall_seconds": 10.509839295060374,
+  "runtime_packages": {
+    "duckdb": "1.5.5",
+    "numpy": "1.26.4",
+    "safetensors": "0.7.0",
+    "sentence-transformers": "5.4.1",
+    "tokenizers": "0.21.4",
+    "torch": "2.13.0+cpu",
+    "transformers": "4.52.1"
+  },
+  "ephemeral_containers_removed": true,
+  "development_image_and_wheels_retained": true,
+  "initial_failure": "inference-01 export directory denied rootless nonroot UID; corrected only isolated export directory permissions",
+  "provider_calls": 0,
+  "training_steps": 0,
+  "model_downloads": 0,
+  "source_obligations_discharged": 0,
+  "proof_authority": false,
+  "full_supervisor_benchmark_executed": false,
+  "artifacts": {
+    "build-verification.json": "14eecce2c547221373523339b44d10dff82129ac1adfbb071b9f98230b65a8db",
+    "wheel-manifest.json": "78595c6a0423704519c5f61d3a8ed6125db6c9bc4efe206dd3ae3fd07f000da0",
+    "build-command.json": "eae28bbfa19895c2318f58de4e8989418fdee6e1c616a7765f3e26001a9d4edd",
+    "build-qualification.json": "271128d54c462c082a49870b31f67ed35632642fb4d566be90f9c1ae14800651",
+    "installed-packages.json": "7092bd77257ee9baefc2fe98407ad06be09a1e2806761bd3bebdc03148f67876",
+    "installed-wheels.json": "6e802735716dca005bb3e44ccf90306507823746d0a33fb966b0f835061c3cc0",
+    "inference-01/qualification.json": "87b0c8609141fb9f898bf4672afcdff03f4e7c215ff369b6a5c8d9628108e261",
+    "inference-02/qualification.json": "d2d6df39101000ca2aa95eb9bde837a9d0e4d510eae833e9b73ccd4c668efb79",
+    "inference-03/qualification.json": "2fbeb1ae7f0f7abcf9457364022387479ed0f9957357f997b3816b8aa42e460b",
+    "inference-03/command.json": "92fc2961caec0d5533e46753ad6c43e19afb9fe657c9d2714526ae2f8d90a97a",
+    "inference-03/results/observation.json": "f6dc394f575ac60f2ce4486bffd34126ff34e7a84eb2218d0ac455496ace63a6",
+    "inference-03/results/native-result.json": "695aa7130d79df825c1cd63046d63a7ce3dcf57950ab732d8b79ff0ecc69b695",
+    "inference-03/results/cached-replay.json": "1e7a3710895e0e7c021564ffd97c7b9c03b71df104088c50b2889193913a0674",
+    "run_offline_qualification.py": "7265baef817275b9fe03e9e254298719cb7c8513a72032f4d647ab864bbda8e7",
+    "inference_probe.py": "21349cf9c69be70e2cd7c46889a940e8d5b41adb06386789c4a6d9c142374624"
+  }
+}

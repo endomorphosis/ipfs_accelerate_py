@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="52.692" timestamp="2026-10-11T23:51:09.854547+00:00" hostname="3c9ebe723133"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration" name="test_unselected_numerical_checkpoint_leaves_default_initial_context_unchanged" time="2.195" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration" name="test_real_numerical_consumer_preserves_mismatch_abstention_and_cached_report" time="13.391" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration" name="test_cached_numerical_checkpoint_reaches_planning_worker_and_historical_audit" time="26.330"><failure message="AssertionError: {'schema': 'terminal-final-context-audit@1', 'status': 'unknown', 'reason': 'audit_process_unavailable', 'any_native_input_verified': None, ...}&#10;assert None is True">original = (PosixPath('/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/app'), PosixPath('/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/instruction.md'), PosixPath('/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state'))
+numerical_config = PosixPath('/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/numerical-selection-config.json')
+provider = ({'reply': 'literal summary', 'after_generate': &lt;function test_cached_numerical_checkpoint_reaches_planning_worker_and...outerDeps(accelerate_managers={}, backend_manager=None, ipfs_backend=None, router_cache={}, remote_cache=None), ...})])
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xf1563a6a0140&gt;
+
+    def test_cached_numerical_checkpoint_reaches_planning_worker_and_historical_audit(
+            original, numerical_config, provider, monkeypatch):
+        root, instruction, state = original
+        monkeypatch.setenv("IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR", str(state / "orchestration"))
+        monkeypatch.delenv("IPFS_ACCELERATE_META_INDEX_DUCKDB", raising=False)
+        (root / "bottle.py").write_text(MATCHING_SOURCE)
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        indexed = prep.initial_context(state=state, numerical_selection_config=numerical_config,
+            numerical_formalization_profile="python-numerical-structure@1")
+        learned = indexed["numerical_selection_384"]
+        assert learned["checkpoint_file_sha256"] == RELEASE_SHA256
+        assert learned["summary"]["head_sha256"] == HEAD_SHA256
+        assert learned["summary"]["projection_sha256"] == PROJECTION_SHA256
+        assert learned["training_steps"] == learned["provider_calls"] == 0
+        assert learned["source_hashes"] == {
+            name: row["sha256"] for name, row in prepared["manifest"]["payload"]["sources"].items()
+        }
+        assert learned["hydration"]["ducklake_verified"] is True
+        samples = learned["summary"]["candidates"]
+        assert len(samples) == 1 and samples[0]["status"] == "source_aligned_fragment"
+        candidate = json.loads(samples[0]["candidate_ir_json"])
+        assert candidate["document"]["operator"] == "numpy.argmax"
+        assert candidate["document"]["operand_ids"][-1] == "expr:parameter:0"
+        _forbid_new_inference(monkeypatch)
+        planning_calls = []
+    
+        def planner(prompt, **kwargs):
+            planning_calls.append(prompt)
+            assert RELEASE_SHA256 in prompt
+            assert json.dumps(samples[0]["candidate_ir_json"]) in prompt
+            return dict(text=_proposal_json(prepared), observation={}, execution_receipt=None)
+    
+        _version(monkeypatch)
+        assert prep.plan(state=state, provider_callable=planner)["qualified"] is True
+        assert len(planning_calls) == 1
+        context = prep.context(state=state)
+        assert context["numerical_selection_384"] == learned
+        bundle = context["context_bundle"]
+        task = json.loads((root / bundle["artifact"]).read_bytes())["tasks"][0]
+        daemon = TodoImplementationDaemon(todo_path=root / ".runtime/numerical.todo.md", repo_root=root,
+            state_path=state / "worker/tasks.json", strategy_path=state / "worker/strategy.json",
+            events_path=state / "worker/events.jsonl", task_header_prefix="## TB-",
+            implementation_log_dir=state / "launch/implementation-logs")
+        daemon._task_context_nomination_bundle = bundle
+        portal = PortalTask(task_id=task["task_id"], canonical_task_cid=task["task_cid"],
+            title="Numerical advisory delivery", status="ready", completion="manual", priority="P2",
+            track="implementation", outputs=["bottle.py", "report.jsonl"], validation=[],
+            acceptance="Observe the exact task-bound numerical candidate.",
+            metadata={"database task cid": task["task_cid"]})
+        try:
+            prompt = daemon._build_implementation_prompt(portal, attempt=1)
+            daemon._persist_implementation_context_receipt(portal, attempt=1)
+            wire, _ = json.JSONDecoder().raw_decode(prompt)
+            refs = [row for row in wire["evidence"] if row["kind"] == "source-formalization-context"]
+            assert refs and all(row["metadata"]["required"] for row in refs)
+            evidence = json.loads("".join(row["summary"] for row in refs))
+            selected = [row for row in evidence["contexts"] if row["summary"] == learned["summary"]]
+            assert len(selected) == 1
+            assert selected[0]["kind"] == "learned-numerical-selection-context"
+            assert evidence["proof_authority"] is evidence["execution_authority"] is False
+            workspace_root = state / "allocated"
+            workspace_root.mkdir()
+            workspace = workspace_root / "worker"
+            subprocess.run(["git", "-C", str(root), "worktree", "add", "--detach", "-q", str(workspace)],
+                check=True, capture_output=True)
+            for name in learned["source_hashes"]:
+                target = workspace / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(root / name, target)
+            monkeypatch.chdir(workspace)
+            provider_state, observed = provider
+            checkpoint = Path(json.loads(numerical_config.read_bytes())["checkpoint_path"])
+            # Every negative precedes the first provider call and restores bytes.
+            for path in (root / "bottle.py", workspace / "bottle.py", checkpoint, numerical_config,
+                         Path(learned["output"]) / "receipt.json"):
+                before = path.read_bytes()
+                try:
+                    path.write_bytes(before + b" ")
+                    with pytest.raises(ValueError):
+                        worker_router.run(prompt=prompt, provider="codex_cli", model="pinned", timeout=1,
+                            max_output_tokens=128, semantic_repository=root)
+                    assert observed == [], str(path)
+                finally:
+                    path.write_bytes(before)
+            provider_state["after_generate"] = lambda: (workspace / "bottle.py").write_text(
+                MATCHING_SOURCE + "\n# authored worker edit\n")
+            output, receipt = worker_router.run(prompt=prompt, provider="codex_cli", model="pinned",
+                timeout=1, max_output_tokens=128, semantic_repository=root)
+            receipt = {"phase": "coding", **receipt}
+            assert output == "literal summary" and len(observed) == 1
+            dispatch = receipt["source_formalization_context"]
+            assert dispatch["validation_phase"] == "before_provider"
+            assert selected[0]["kind"] in dispatch["context_kinds"]
+            assert dispatch["neural_inference_replayed"] is dispatch["proof_authority"] is False
+            assert receipt["model_prompt_sha256"] == _sha(observed[0][0])
+            # Translation's context remains exact even though the provider edits
+            # the allocated source after all pre-dispatch checks have completed.
+            encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=root)
+            _, advisory = worker_router.render_model_prompt(prompt=encoded.provider_prompt,
+                purpose="coding", workspace=workspace, semantic_transport=True)
+            assert codec.restore_semantic_router_prompt(provider_prompt=observed[0][0][len(advisory):],
+                table=encoded.table, repository=root) == prompt
+            (root / "bottle.py").write_text(MATCHING_SOURCE + "\n# later canonical edit\n")
+            with pytest.raises(ValueError):
+                worker_router.run(prompt=prompt, provider="codex_cli", model="pinned", timeout=1,
+                    max_output_tokens=128, semantic_repository=root)
+            historical = audit.collect_terminal_context_audit(state=state, receipts=[receipt],
+                workspace_root=workspace_root, timeout_seconds=10)
+&gt;           assert historical["all_observed_coding_inputs_verified"] is True, historical
+E           AssertionError: {'schema': 'terminal-final-context-audit@1', 'status': 'unknown', 'reason': 'audit_process_unavailable', 'any_native_input_verified': None, ...}
+E           assert None is True
+
+/code/source/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py:279: AssertionError</failure></testcase></testsuite></testsuites>

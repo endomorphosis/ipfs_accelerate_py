@@ -3,7 +3,51 @@
 Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
-## Learned numerical checkpoint consumption, 2026-10-11
+## Offline Docker inference and learned successors, 2026-10-11
+
+The cached numerical checkpoint now executes in a separate development Docker
+image with locally installed, hash-locked Python dependencies. Runtime tests
+disable networking, mount source and model assets read-only, and use private
+writable state. Actual CPU inference covers a source-aligned prediction, an
+unchanged mismatch, an unsupported module and a 926-token deferred module.
+Cached replay performs no new inference and stale-source validation rejects
+changed bytes. The original checkpoint and model snapshot remain unchanged.
+
+The supervisor now admits learned numerical successor refresh before START.
+After accepted publication and native STOP it can regenerate advisory context
+using the same checkpoint, full captured source population and program subset.
+The signed policy binds producer bytes, model lineage, output exclusions and
+private storage. Every selected family needs a policy before any regeneration:
+Source384, deterministic numerical and learned numerical advice remain together.
+New output files do not expand the indexed source population. Reload rechecks
+owner, source and artifact identity without repeating neural inference.
+
+The terminal driver opts into this policy only with an explicit numerical
+checkpoint and the local benchmark profile. Learned refresh uses the remaining
+original work/lifetime budget, capped by the admitted 180- or 3,600-second
+allowance. Source384 starts its separate phase allowance when invoked, bounded
+by that same outer deadline. Native worker cleanup now catches outer
+interruptions and attempts to terminate the retained process group, including
+when another interruption arrives during cleanup.
+
+Comparison reports separate retrieval work from current-call learned inference
+costs. Cached reload records zero new worker/model/embedding work; failed or
+unreceipted attempts retain unknown totals and any observed subtotals. Original
+inference history remains attached to the immutable artifact. Task completion
+is not evidence that inference occurred.
+
+The [qualification ledger](evidence/numerical-runtime-successor-20261011/qualification.json)
+records **509 distinct passing tests, zero failures and zero skips**, together
+with commands, dependency hashes, actual inference observations, test results,
+source stability and corrected diagnostic attempts. Authored planner/provider
+replies and the authored Source384 seam in the mixed-family lifecycle test are
+identified separately from actual learned inference and native owner execution.
+No live provider, training, model download or Hugging Face upload was needed.
+There is no new Terminal Bench reward or token-efficiency score. These candidates
+discharge zero proof obligations, and every successor still requires independent
+admission before a new launch.
+
+## Historical learned numerical checkpoint consumption, 2026-10-11
 
 The separately published experimental NumPy checkpoint now has an explicit
 shared datasets inference owner and supervisor consumer. Actual cached GTE CPU
@@ -30,9 +74,10 @@ Portable archives separately bind model/config/embedding assets and actual
 producer bytes. The no-index arm records learned inference as disabled. See the
 [configuration and scope guide](../../benchmarks/agent_supervisor/container_coding/NUMERICAL_SELECTION_384.md).
 
-After native STOP, learned observations remain historical. A learned successor
-has no admitted refresh policy yet, so mixed selections retain every family and
-return `successor_unavailable` before any partial regeneration.
+At this earlier qualification, learned observations remained historical after
+native STOP. A learned successor had no admitted refresh policy, so mixed
+selections retained every family and returned `successor_unavailable` before
+any partial regeneration. The admitted policy above supersedes that limitation.
 
 The [qualification ledger](evidence/numerical-selection-consumer-20261011/qualification.json)
 records 541 distinct passing checks across seven successful suites, with zero
@@ -42,8 +87,8 @@ checks from authored planning/provider replies and tiny archive fixtures. The
 offline Docker compatibility probe verified the checkpoint and all nine GTE
 assets, but cached image `ipfs-supervisor-preview-worker:20261005-r3` lacks
 `sentence-transformers`, `transformers` and `tokenizers`; it executed no model.
-The new archive declares these dependencies. Installing them and qualifying
-actual container inference remain pending. No new live Terminal Bench score,
+The new archive declared these dependencies; the subsequent offline Docker
+qualification above closes that runtime dependency gap. No new live Terminal Bench score,
 token-efficiency comparison, training or Hugging Face upload occurred. Grok
 authentication was not reprobed.
 

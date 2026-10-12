@@ -1,0 +1,75 @@
+[
+    {
+        "Id": "sha256:3198b1b627d4084887f01a88eeaba4c6190d0d86a36dbb4892cf569ea1f83bf6",
+        "RepoTags": [
+            "ipfs-supervisor-numerical-dev:20261011-r1"
+        ],
+        "RepoDigests": [
+            "ipfs-supervisor-numerical-dev@sha256:3198b1b627d4084887f01a88eeaba4c6190d0d86a36dbb4892cf569ea1f83bf6"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-10-11T23:39:00.123061982Z",
+        "Config": {
+            "User": "supervisor",
+            "Env": [
+                "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LANG=C.UTF-8",
+                "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+                "PYTHON_VERSION=3.12.15",
+                "PYTHON_SHA256=c2c4321961fab0fb999d66e0cecf521c2ab3994c7992873ea99e306c1094fd5a",
+                "PYTHONPATH=/opt/ipfs-supervisor/source:/opt/ipfs-supervisor/datasets:/opt/ipfs-supervisor/kit",
+                "PYTHONDONTWRITEBYTECODE=1",
+                "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+                "HF_HUB_OFFLINE=1",
+                "TRANSFORMERS_OFFLINE=1",
+                "TOKENIZERS_PARALLELISM=false",
+                "OMP_NUM_THREADS=1",
+                "MKL_NUM_THREADS=1"
+            ],
+            "Entrypoint": [
+                "/opt/ipfs-supervisor/venv/bin/python"
+            ],
+            "WorkingDir": "/opt/ipfs-supervisor/source"
+        },
+        "Architecture": "arm64",
+        "Os": "linux",
+        "Size": 608074851,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:055ab12bd547e17a0630037f06a186cf405e3f61bb03a614562ca8f5ab52a8be",
+                "sha256:eadc985f74fcca4e1a34576c6717c80f82b620b24f6521c069d5570dc035c029",
+                "sha256:98a86b50fc8d9605cc0e1794cf298a62bbc8fc052b4f11ac718d6fcb48c51b90",
+                "sha256:721fa33420f50f37b47e07e3680c6fdd4790bce2d11ae5d58419a7df988fccd4",
+                "sha256:2ce0e041b0b3329dbb79c5bfc4ac3524d552fbdd443ee04a8103c3e7c1ff0a61",
+                "sha256:e8023d7b57a88cc796ae46314d0533805e2342e96523a880a1bfe6fed5181600",
+                "sha256:86dffe98630c03011d4e4f589d367aa7c8b95d4cbd1505867712a13d711015a0",
+                "sha256:0ebbce8e41be2a967f36144e5fccd495c5bb9f48eab868653597b80f2bc5ce8f",
+                "sha256:7fdf81b194ee004d06cfdff0b000bec2ccea2170d86cba29e9be5d332835712a",
+                "sha256:d8aae12e391c2274e7058264542b97a120639e3a0e951e95e7287463871b2ca1",
+                "sha256:a8b7d54e5660bb46f04fbb5e4ed36735a6447cc3863c1dbfb4cac23a19319e41",
+                "sha256:8f35ca9a1df6603f7d77a074cbdb7276f950003602be4e5a5cee05516986852b",
+                "sha256:55ffb31934bb6a41c089d8208c0977df8768c1b0976be4f87dd137e7e07f2528",
+                "sha256:eec1d62aa949ced8e6714ff929d803938b98d734f075b28f276e5a7e8c2494bc",
+                "sha256:aeb7d9f6802702bf49a425c53090f54df7116619907dedcced71f66a90490029",
+                "sha256:d60bdc5aee3b958536c807293ed573083835acd5530f2f57c7187356bf3dd5da"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-11T23:39:11.22091454Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:3198b1b627d4084887f01a88eeaba4c6190d0d86a36dbb4892cf569ea1f83bf6",
+            "size": 856
+        },
+        "Identity": {
+            "Build": [
+                {
+                    "Ref": "uvhjbnnluguyjzdduz6n3wjie",
+                    "CreatedAt": "2026-10-11T23:39:14.512026389Z"
+                }
+            ]
+        }
+    }
+]

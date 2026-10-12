@@ -1,0 +1,46 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.15, pytest-9.1.1, pluggy-1.6.0
+cachedir: /tmp/pytest-cache
+rootdir: /code/source
+configfile: pytest.ini
+
+----------------------------- live log collection ------------------------------
+2026-10-11 23:53:10 [    INFO] Using standard filesystem operations (distributed storage disabled) (storage_wrapper.py:99)
+collected 3 items
+
+../code/source/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py::test_unselected_numerical_checkpoint_leaves_default_initial_context_unchanged 
+-------------------------------- live log call ---------------------------------
+2026-10-11 23:53:22 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_unselected_numerical_chec0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:22 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_unselected_numerical_chec0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:22 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_unselected_numerical_chec0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:23 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_unselected_numerical_chec0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 33%]
+../code/source/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py::test_real_numerical_consumer_preserves_mismatch_abstention_and_cached_report PASSED [ 66%]
+../code/source/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py::test_cached_numerical_checkpoint_reaches_planning_worker_and_historical_audit 
+-------------------------------- live log call ---------------------------------
+2026-10-11 23:53:44 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:45 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:46 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:46 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:47 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:48 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:48 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:48 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:49 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:49 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:49 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:51 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/orchestration/daac6a78b65196a5adab/agent-merge-trains/master-18d2ef83953debe3acdd/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-11 23:53:51 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/supervisor-pytest/test_cached_numerical_checkpoi0/state/orchestration/daac6a78b65196a5adab/agent-merge-trains/master-18d2ef83953debe3acdd/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [100%]
+
+------------- generated xml file: /qualification-output/junit.xml --------------
+============================= slowest 10 durations =============================
+21.29s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py::test_cached_numerical_checkpoint_reaches_planning_worker_and_historical_audit
+10.90s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py::test_real_numerical_consumer_preserves_mismatch_abstention_and_cached_report
+2.29s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py::test_unselected_numerical_checkpoint_leaves_default_initial_context_unchanged
+0.13s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py::test_real_numerical_consumer_preserves_mismatch_abstention_and_cached_report
+0.06s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py::test_cached_numerical_checkpoint_reaches_planning_worker_and_historical_audit
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py::test_unselected_numerical_checkpoint_leaves_default_initial_context_unchanged
+
+(3 durations < 0.005s hidden.  Use -vv to show these durations.)
+============================== 3 passed in 45.79s ==============================
