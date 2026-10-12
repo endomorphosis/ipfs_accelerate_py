@@ -112,7 +112,8 @@ yields unavailable counts. An in-flight shutdown cannot claim complete
 accounting. These observations carry no source-correctness, completion or
 proof authority, and bytes do not substitute for native provider tokens.
 
-The provider-free worker qualification uses an authored `generate_text`
+The [provider-free worker qualification](evidence/numerical-obligation-worker-20261012/README.md)
+uses an authored `generate_text`
 response to drive the actual router, launcher and worker CLI. It does not
 establish that a live model chose to invoke retrieval or that complete-run
 tokens decreased. Those require a separately controlled benchmark comparison.

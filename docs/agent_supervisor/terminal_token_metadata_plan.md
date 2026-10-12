@@ -30,7 +30,8 @@ replayed them in a fresh process with the existing DuckLakes, and passed 263
 local tests. A subsequent owner-mediated worker service now lets the isolated
 coding CLI request bounded pages during its existing `llm_router` session.
 Discovery guidance is part of the complete coding input; per-session accounting
-is collected before container removal. Its provider-free qualification is
+is collected before container removal. Its
+[provider-free qualification](evidence/numerical-obligation-worker-20261012/README.md) is
 separate from a live model's tool choices and complete-run token savings.
 
 For repository-wide source views, separate three requirements: exact original
@@ -353,9 +354,10 @@ at a time, and retain every attempt and its native usage.
    expansion tool in the coding CLI route. The [bounded source reader](current_source_lookup.md)
    now attaches `source.get` to that existing owner, joins native task custody,
    verifies selected working bytes and complete response costs, and provides a
-   host-issued subprocess CLI. Coding containers still need their own qualified
-   session/descendant channel; required facts remain inline. Add read-only
-   `capsule.get` and residual-obligation queries separately. Bind host-issued
+   host-issued subprocess CLI. Current-source reads in coding containers still
+   need their own qualified task/descendant route. The numerical endpoint above
+   covers pending numerical obligations; required facts remain inline. Add
+   read-only `capsule.get` and other residual-obligation queries separately. Bind host-issued
    caller grant, task/revision, repository/source scope, root/context, owner
    generation/fence, request identity and byte/result bounds. Recheck current
    workspace source after edits on every read. Return exact identities,

@@ -1,0 +1,110 @@
+{
+  "accelerate_head": "911a1cb0e6dd6585de7d19f1416637031be29961",
+  "checks": [
+    {
+      "check": "router_collector_field_contract",
+      "observation": "Collector closed observation fields match actual router output. external_container_boundary contains manifest_sha256 and owner_uid/worker_uid; driver tags coding phase before collection.",
+      "source_refs": "router_implementation_runner.py:51,620; container_worker_boundary.py:93; terminal_container_supervisor.py:1231; terminal_numerical_retrieval_observation.py:136",
+      "status": "pass"
+    },
+    {
+      "check": "independently_admitted_scope",
+      "observation": "Driver captures task CID/alias from independently verified admission before coding; collector requires the same scope and refuses missing scope.",
+      "source_refs": "terminal_container_supervisor.py:988; terminal_numerical_retrieval_observation.py:193,155",
+      "status": "pass"
+    },
+    {
+      "check": "post_cleanup_collection",
+      "observation": "Driver reaps worker UID, records exact cleanup return code and harvests receipts before collecting audits and writing report; helper refuses nonzero/missing/bool cleanup and incomplete session accounting.",
+      "source_refs": "terminal_container_supervisor.py:1208,1285; terminal_numerical_retrieval_observation.py:197,83",
+      "status": "pass"
+    },
+    {
+      "check": "protected_audit_read",
+      "observation": "Only descriptor-selected session filenames under owner protected parent are read; exact400 mode, same group, single regular link, no-follow and pre/post inode/metadata checks. Missing or mixed-validity sessions are unavailable, not partial/zero.",
+      "source_refs": "terminal_numerical_retrieval_observation.py:202; terminal_output_observation.py:110",
+      "status": "pass"
+    },
+    {
+      "check": "bounded_private_projection",
+      "observation": "Closed bounded canonical audit JSON; all per-record/status/hash/count/budget checks precede aggregate. Export hashes/counts only, no raw requests, responses, code or private database. Prepared and delivered counters separated.",
+      "source_refs": "terminal_numerical_retrieval_observation.py:66,81,160",
+      "status": "pass"
+    },
+    {
+      "check": "sealed_task_factory",
+      "observation": "Factory reads only fully sealed bounded anonymous stdin; derives selected numerical receipt through native task-context loader, never caller-supplied owner artifact. Ordinary prompt is no-op, conflicting descriptor argv refused.",
+      "source_refs": "numerical_obligation_broker.py:323",
+      "status": "pass"
+    },
+    {
+      "check": "peer_and_source_binding",
+      "observation": "Kernel credentials plus original spawned-child PID birth/ancestry gate every read. Context identity and canonical+allocated source bytes checked around native owner pager; request cannot nominate receipt/database path.",
+      "source_refs": "numerical_obligation_broker.py:160,194,216",
+      "status": "pass"
+    },
+    {
+      "check": "lifecycle_cleanup",
+      "observation": "Monitor registers spawned process and closes broker despite cleanup/guard errors; startup cleanup also retires guards. Broker captures file inode before writes; partial writes remove same inode. Close unlinks descriptor/socket and reports incomplete accounting if thread remains.",
+      "source_refs": "container_worker_deployment.py:22,79; numerical_obligation_broker.py:44,298",
+      "status": "pass"
+    },
+    {
+      "check": "archive_closure",
+      "observation": "Opt-in numerical archive requires broker,client,router,deployment,collector,driver producer hashes. Always-used worker capability closure additionally pins broker/client for owner-entry import.",
+      "source_refs": "terminal_numerical_policy.py:10; terminal_worker_capability.py",
+      "status": "pass"
+    }
+  ],
+  "current_hashes_match_running_final_gate": true,
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "1d773e79c7794bffdfa87b6525996cb6f011228a3cac9e38933e2382b8ee26e4",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "872e2625975fe98f9121004d45e6d1a26040c9c1ddb13bc695118404bffd5476",
+    "benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py": "1cfea7dba6fd9b87cb608767944a7aca707a19913166d94bcd6d54917d0e2fc3",
+    "benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py": "28c77990379002c8a6c79d5e9b203e67b3032361247b948c94301923fb8d51a4",
+    "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py": "b22ff1ba85b618c0b763bead05d9d00221378398ec53719052935f88573e7cc9",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "20f470c96d7e5ef458c6ae19b118f19d689fc22d774bf9cb37e6475f299b6687",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py": "624e9f1b75e65ab3af0351b018f3a79fd75f71442d9b6639a0fc9286df2a2d92",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_retrieval_observation.py": "450c4e1764f5638d830ff953291490190ad3006291cee7ec945a428104e60227",
+    "ipfs_accelerate_py/agent_supervisor/runtime/container_worker_boundary.py": "1483fe780f9242354b5f397886f0e9dab971ef7bf353a00ed790190bf386ec8c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "541ab1890a58cf2ebd36456e11ade612a3d6150a19836c03e149655f6b8fd67e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "be96e07f81317dab978e106834044a6885babe6c355dc0451f31597b17888a8e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py": "f575644f0bb71370f1e3a0c48384b49777766a7014d4fed9edc10d2cf06d4197",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "9e168c5f14a60e2adb79ca439f6874cb436b69d06485a0ba963afd426de1b6aa",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef"
+  },
+  "final_gate_compared_files": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": true,
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py": true,
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_retrieval_observation.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": true
+  },
+  "limitations": [
+    "Session accounting is observer evidence and provides no proof, execution, completion or token-saving authority.",
+    "Broker close can truthfully record service_stopped=false if a native replay exceeds the bounded join; collector then refuses a complete count.",
+    "A missing final router receipt leaves selected-session accounting unavailable; collector does not infer zero or discover sessions by directory scan.",
+    "This review does not replace actual distinct-UID Docker validation or final source-bound regression gate."
+  ],
+  "parent_publish_recommendation": {
+    "observed_origin_gitlinks": {
+      "external/ipfs_accelerate": "e8694753cbe11e5b10eaf2d33eb257a705f07783",
+      "external/ipfs_datasets": "f47161b757190380e9898aff155067c1ad609217",
+      "external/ipfs_kit": "8ac00bb1974b1378e12091d546d8425af34049e0"
+    },
+    "observed_parent_origin_main": "e7dd4b6b013058d6592ee880fb19e46a5d19f1fd",
+    "parent_local_head": "fe18069df4203da9bddfb77b1ed41748f4d5fb4d",
+    "recommendation": "Use isolated parent worktree from refreshed origin/main after publishing qualified P merge. Change only external/ipfs_accelerate gitlink and scoped evidence/docs; retain existing D f471 and kit8ac. Current parent working tree contains unrelated user changes and must remain untouched. P origin e869 is not ancestor of current P911: preserve upstream current-source-owner-read work via a reviewed merge after frozen runs close; qualify changed producer overlaps separately."
+  },
+  "review_scope": "Read-only independent review of new collector and root driver/broker; cross-check actual authored router/deployment integration. No test rerun, worker launch, provider call, benchmark, source mutation or proof execution.",
+  "schema": "numerical-obligation-worker-code-review@1",
+  "status": "no_blocker_found"
+}

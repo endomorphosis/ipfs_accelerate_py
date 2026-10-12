@@ -1,0 +1,2 @@
+# Preserve the byte-exact qualified test-command snapshot.
+runners/run_postmerge_tests.py -whitespace

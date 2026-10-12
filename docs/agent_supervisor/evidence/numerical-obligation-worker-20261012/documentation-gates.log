@@ -1,0 +1,11 @@
+Supervisor primary-doc vocabulary
+OK: primary agent-supervisor docs are free of board-prefix ticket IDs
+
+Maintained-surface relative links
+OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)
+
+Packaging version pin alignment
+OK: packaging pins aligned at 0.0.45
+
+Closeout navigation markers
+OK: closeout navigation markers present

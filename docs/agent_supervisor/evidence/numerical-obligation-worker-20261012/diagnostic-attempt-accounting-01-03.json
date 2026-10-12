@@ -1,0 +1,52 @@
+{
+  "schema": "numerical-worker-diagnostic-attempt-accounting@1",
+  "attempts": [
+    {
+      "attempt": 1,
+      "qualification_sha256": "a0917e31386646e6d1b2b4a9ea6e074fcb66db017827c70f657a2e1d2a0110a0",
+      "seconds": 0.9659250309923664,
+      "owner_returncode": 1,
+      "complete": false,
+      "container_removed": true,
+      "source_unchanged": true,
+      "provider_calls": 0,
+      "native_provider_tokens": null,
+      "failure_scope": "fixture cache overwrite and rootless output permissions"
+    },
+    {
+      "attempt": 2,
+      "qualification_sha256": "82f53caf0e45bb58438918f22e467c9392b1f071008330bb3cead664d5f46366",
+      "seconds": 1.1458040269790217,
+      "owner_returncode": 1,
+      "complete": false,
+      "container_removed": true,
+      "source_unchanged": true,
+      "provider_calls": 0,
+      "native_provider_tokens": null,
+      "failure_scope": "fixture deployer missing owner repository directory"
+    },
+    {
+      "attempt": 3,
+      "qualification_sha256": "a30900b702614d711fe157c476583dcecb5b07aa665448eb284aef73482d4c37",
+      "seconds": 23.111460748012178,
+      "owner_returncode": 1,
+      "complete": false,
+      "container_removed": true,
+      "source_unchanged": true,
+      "provider_calls": 0,
+      "native_provider_tokens": null,
+      "failure_scope": "authored provider response omitted successful-exit/schema metadata"
+    }
+  ],
+  "provider_calls": 0,
+  "native_provider_tokens": null,
+  "all_owned_containers_removed": true,
+  "all_attempt_seconds": 25.223189805983566,
+  "diagnostic03_partial_observation": {
+    "uid": 1001,
+    "retrieved_rows": 45,
+    "pages": 12,
+    "private_read_denials": 5,
+    "complete_router_dispatch_qualified": false
+  }
+}

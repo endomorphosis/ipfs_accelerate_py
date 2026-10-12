@@ -1,0 +1,42 @@
+{
+  "all_attempt_outer_seconds": 53.20478600997012,
+  "all_owned_containers_removed": true,
+  "authored_adapter_metadata_only": [
+    "exit_code",
+    "codex_output_schema_bytes",
+    "codex_output_schema_sha256"
+  ],
+  "closed_attempts": 4,
+  "complete": true,
+  "files": {
+    "qualification.json": "0939c36b45b8712ac56224bd51c7f7e44440637a8d90d9c214ad2159f1716fa8",
+    "results/probe-qualification.json": "6fb10c8eba2dd5d0a9dd1af7268703ae31aa5f400538687daf6e3fdc102d19d4",
+    "results/router-observation.json": "498e002897929f768c2c5543577dd1e9d8f9673c061efcfb27692358b83bc8b0",
+    "results/session-observation.json": "ef047cff46a5d8198583e1366900019c14b91e4db5357e5209b4189a5c3fa4a5"
+  },
+  "filter_joins": 7,
+  "intent_autoencoder_disabled": true,
+  "max_primary_response_json_bytes": 6470,
+  "model_calls": 0,
+  "native_provider_tokens": null,
+  "negative_cases": 7,
+  "paid_provider_calls": 0,
+  "paid_token_savings_measured": false,
+  "primary_pages": 12,
+  "primary_response_json_bytes": 60083,
+  "private_audit_published": false,
+  "private_audit_sha256": "48ed89be3d0ce35c3fcd188af7cefa9a969658e9d3a6a01a1126f826cb51f565",
+  "private_read_denials": 5,
+  "schema": "numerical-worker-closed-evidence-review@1",
+  "scope": "Arithmetic checks of bounded Docker receipts; authored provider fixture, no native model decision",
+  "session_delivered_rows_including_filter_repeats": 97,
+  "session_json_response_bytes_including_refusals": 134039,
+  "session_requests": 36,
+  "session_successful_pages": 29,
+  "socket_response_framing_bytes_excluded": 144,
+  "source384_inference": false,
+  "source_and_runner_unchanged": true,
+  "source_obligations_discharged": 0,
+  "source_semantics_verified": false,
+  "unique_primary_obligations": 45
+}

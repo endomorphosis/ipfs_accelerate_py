@@ -1,0 +1,283 @@
+{
+  "files": [
+    {
+      "bytes": 102,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/publication-gitattributes",
+      "path": ".gitattributes",
+      "sha256": "c9c16a8ce6b337cf8344cf4f312efddb3f3629352262918765863949b87988f7"
+    },
+    {
+      "bytes": 1848,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/closed-docker-review-postmerge.json",
+      "path": "closed-docker-review-postmerge.json",
+      "sha256": "82c3c122af7f1db1e323b8e74fddedaa009d0a931d2f95f3e3a04313eaa5a8f7"
+    },
+    {
+      "bytes": 1745,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/closed-docker-review.json",
+      "path": "closed-docker-review.json",
+      "sha256": "30bce0ff134a9f4fb7bd116ed31afbca9428edef75fa6154c12facf596849cec"
+    },
+    {
+      "bytes": 1719,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/diagnostic-attempt-accounting-01-03.json",
+      "path": "diagnostic-attempt-accounting-01-03.json",
+      "sha256": "ec8e4e078a7d48e3b74b2b14a34fd158bc9ae22f78093ef714f1715429fb5429"
+    },
+    {
+      "bytes": 11265,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-final-01/command.json",
+      "path": "docker-final-01/command.json",
+      "sha256": "6ec68d51e0fe1e0c13eb651b97d3051844cd4e965f5c917ca899ff5501fc26cd"
+    },
+    {
+      "bytes": 2440,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-final-01/container-controls.json",
+      "path": "docker-final-01/container-controls.json",
+      "sha256": "22172fcb533f5887bff0a0e7bee273d14a1acf3ece000b92851e87a5b1edfe4b"
+    },
+    {
+      "bytes": 291,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-final-01/owner-command.json",
+      "path": "docker-final-01/owner-command.json",
+      "sha256": "541841abfa9442c0de5d2d8abe061bf3bfd1c521e90a2ef9f0fe630c0d0b42c7"
+    },
+    {
+      "bytes": 2834,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-final-01/results/probe-qualification.json",
+      "path": "docker-final-01/probe-qualification.json",
+      "sha256": "6fb10c8eba2dd5d0a9dd1af7268703ae31aa5f400538687daf6e3fdc102d19d4"
+    },
+    {
+      "bytes": 5186,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-final-01/qualification.json",
+      "path": "docker-final-01/qualification.json",
+      "sha256": "0939c36b45b8712ac56224bd51c7f7e44440637a8d90d9c214ad2159f1716fa8"
+    },
+    {
+      "bytes": 1014,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-final-01/root-setup.stdout",
+      "path": "docker-final-01/root-setup.stdout",
+      "sha256": "beb41573781ed22c2196f40c27e4f8d285ff50da59d6e23ccba149e453fb5948"
+    },
+    {
+      "bytes": 3189,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-final-01/results/router-observation.json",
+      "path": "docker-final-01/router-observation.json",
+      "sha256": "498e002897929f768c2c5543577dd1e9d8f9673c061efcfb27692358b83bc8b0"
+    },
+    {
+      "bytes": 2332,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-final-01/results/session-observation.json",
+      "path": "docker-final-01/session-observation.json",
+      "sha256": "ef047cff46a5d8198583e1366900019c14b91e4db5357e5209b4189a5c3fa4a5"
+    },
+    {
+      "bytes": 12159,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-postmerge-01/command.json",
+      "path": "docker-postmerge-01/command.json",
+      "sha256": "9ac7fedf6b8b0cfa02ad090de3e10433cb1533489bbe886de055556efac23d4e"
+    },
+    {
+      "bytes": 2444,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-postmerge-01/container-controls.json",
+      "path": "docker-postmerge-01/container-controls.json",
+      "sha256": "c7caad08e939b9ce9412cb2bd0f0ea67e16801d08654622d42fb71a1da80112a"
+    },
+    {
+      "bytes": 291,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-postmerge-01/owner-command.json",
+      "path": "docker-postmerge-01/owner-command.json",
+      "sha256": "b49e99687f87a1b4551bb673f5cefae24a0e835ca1032510a259597957b01fcc"
+    },
+    {
+      "bytes": 2835,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-postmerge-01/results/probe-qualification.json",
+      "path": "docker-postmerge-01/probe-qualification.json",
+      "sha256": "368c4e52ac0a316a58d062c01af91bb454a6a95d9e85c4c4ec434064430517fe"
+    },
+    {
+      "bytes": 5187,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-postmerge-01/qualification.json",
+      "path": "docker-postmerge-01/qualification.json",
+      "sha256": "563a2b590a53035b4b50617966dc9cc8f5006d7115f1d19a20c1a33c50a104f5"
+    },
+    {
+      "bytes": 1014,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-postmerge-01/root-setup.stdout",
+      "path": "docker-postmerge-01/root-setup.stdout",
+      "sha256": "1edd1e187bd0177b3e85a26be009133b2be2418d239a1c8fcae6a942ce0b4d2d"
+    },
+    {
+      "bytes": 3189,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-postmerge-01/results/router-observation.json",
+      "path": "docker-postmerge-01/router-observation.json",
+      "sha256": "32315766ee5aecf1e2c2f66879e066eaf7632138f7d507b88a0e3dfb8bfddec3"
+    },
+    {
+      "bytes": 2332,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-postmerge-01/results/session-observation.json",
+      "path": "docker-postmerge-01/session-observation.json",
+      "sha256": "90c861cda14c095cd7ef08b1d972e7961aedb3a0a6ba22a3968cc56e459e4413"
+    },
+    {
+      "bytes": 3418,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/documentation-checks.json",
+      "path": "documentation-checks.json",
+      "sha256": "c7837deb686005f5d9bb6ec46bdc8c99c058a18ab762e9854c56f039dd85d0de"
+    },
+    {
+      "bytes": 366,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/documentation-gates.log",
+      "path": "documentation-gates.log",
+      "sha256": "c8ed6a06e710f53a6ef2315cf60411e320553e68c59455e8e1209f6a8c9b7b6d"
+    },
+    {
+      "bytes": 1469,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/environment-inventory.json",
+      "path": "environment-inventory.json",
+      "sha256": "7e36fc9067827c6d960fb161459b78070f29ed5b2cb72f8beadd9252f774e7c5"
+    },
+    {
+      "bytes": 9154,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/final-code-review.json",
+      "path": "final-code-review.json",
+      "sha256": "6fb9927e9d36d8d1e2b2dc088466a637df5e67c3bb139fed2a5d9cd8725641fe"
+    },
+    {
+      "bytes": 21057,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/postmerge-tests-01/command.json",
+      "path": "postmerge-tests-01/command.json",
+      "sha256": "a37bdeca45edbc8df753db4919670f557c38b89e59d1ee2e1a57e9580b44ffd9"
+    },
+    {
+      "bytes": 112008,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/postmerge-tests-01/junit.xml",
+      "path": "postmerge-tests-01/junit.xml",
+      "sha256": "f1753fd9dccb2a9e4d9fffffe5a814f3cf70adac017344cd9e7c54392b724646"
+    },
+    {
+      "bytes": 5192,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/postmerge-tests-01/pytest.log",
+      "path": "postmerge-tests-01/pytest.log",
+      "sha256": "8533dabee048dfe56137b892a0fc0e5ec3c549aee689c831aca158c5a0687c19"
+    },
+    {
+      "bytes": 17910,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/postmerge-tests-01/qualification.json",
+      "path": "postmerge-tests-01/qualification.json",
+      "sha256": "a8d27621195793e189c3300898bbbf38c26c36926f3244fcb7ac6150daec8f29"
+    },
+    {
+      "bytes": 19405,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/final-tests-01/command.json",
+      "path": "premerge-tests-01/command.json",
+      "sha256": "c487622bbd36658ec356ff37a0a8bbd3c227d27c28dc3ce6ab3c81caf5e65772"
+    },
+    {
+      "bytes": 105736,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/final-tests-01/junit.xml",
+      "path": "premerge-tests-01/junit.xml",
+      "sha256": "afcd3cc70839f7562b5a4979138a223a3493393a5dec47f43e958a20c96bd194"
+    },
+    {
+      "bytes": 4944,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/final-tests-01/pytest.log",
+      "path": "premerge-tests-01/pytest.log",
+      "sha256": "b5af218b1033891efc5755f98cad4e941ad5cc95235f359757de38aa2289c9d1"
+    },
+    {
+      "bytes": 16427,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/final-tests-01/qualification.json",
+      "path": "premerge-tests-01/qualification.json",
+      "sha256": "8a1fe3a02b67139723767b35787ec4ce577ee8979fbaf98484990c62f769b7be"
+    },
+    {
+      "bytes": 7938,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/root-release-final-01.json",
+      "path": "root-release-final-01.json",
+      "sha256": "6364dfa88a63d4e133aaac3f35d8ad92c1306b212c142a859adb026f516205e2"
+    },
+    {
+      "bytes": 9128,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/root-release-postmerge-01.json",
+      "path": "root-release-postmerge-01.json",
+      "sha256": "eb9d108404c2585af7660545ea4aa605751b899c64bc674bc947eb9e53042953"
+    },
+    {
+      "bytes": 13101,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-final-01/runner-snapshot/owner_probe.py",
+      "path": "runners/owner_probe.py",
+      "sha256": "414707cd97db6ef8ddaa35e924fda5c2bc2a6d9158d52c6c9430f95eee2d7199"
+    },
+    {
+      "bytes": 11361,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-final-01/runner-snapshot/run_docker_qualification.py",
+      "path": "runners/run_docker_qualification.py",
+      "sha256": "8901fd519a475c033a406b1d44da738b4005675d3f27d3b8943b16240d73b6f9"
+    },
+    {
+      "bytes": 6035,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/run_final_tests.py",
+      "path": "runners/run_final_tests.py",
+      "sha256": "f1576878478d53ba3ff935fb3c579123a1901ef668ec8999820f45dc1e3d65ff"
+    },
+    {
+      "bytes": 6465,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/run_postmerge_tests.py",
+      "path": "runners/run_postmerge_tests.py",
+      "sha256": "8729439571fcc83541e18d76a5001868b406ca52fe1f0aee3ca325e76cc3213e"
+    },
+    {
+      "bytes": 8992,
+      "copied_exactly": true,
+      "origin": "/home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/docker-final-01/runner-snapshot/worker_probe.py",
+      "path": "runners/worker_probe.py",
+      "sha256": "71fb75da3f68697b1ca7d3891ef44cc8de27800e36c076547780e11387310e10"
+    }
+  ],
+  "manifest_excludes": [
+    "README.md",
+    "artifact-manifest.json"
+  ],
+  "schema": "numerical-worker-public-artifact-manifest@1",
+  "scope": "Explicit bounded allowlist; excludes owner databases, full reports, source/prompt bodies, raw broker audit and private fixture payloads"
+}

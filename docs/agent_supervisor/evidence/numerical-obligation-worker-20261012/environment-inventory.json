@@ -1,0 +1,35 @@
+{
+  "schema": "numerical-worker-environment-inventory@1",
+  "image": {
+    "Id": "sha256:771900c18b663b33a5bf96e066346b2d5c842506523efb167aebe8d3a99b5c07",
+    "Architecture": "arm64",
+    "Os": "linux"
+  },
+  "image_default_user": "supervisor",
+  "source_paths": {
+    "P": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+    "D": "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012",
+    "K": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit"
+  },
+  "native_extensions": [
+    {
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension",
+      "bytes": 32143862,
+      "sha256": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+    },
+    {
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension",
+      "bytes": 19861758,
+      "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9"
+    },
+    {
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+      "bytes": 29708110,
+      "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+    }
+  ],
+  "dependency_runtime": "/opt/ipfs-supervisor/venv/bin/python",
+  "prior_qualified_dependency_recipe": "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/docker-lifecycle-03/command.json",
+  "no_containers_launched": true,
+  "provider_calls": 0
+}

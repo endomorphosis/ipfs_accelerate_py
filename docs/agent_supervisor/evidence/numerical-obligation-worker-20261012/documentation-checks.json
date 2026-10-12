@@ -1,0 +1,50 @@
+{
+  "document_sha256": {
+    "docs/agent_supervisor/evidence/numerical-obligation-worker-20261012/README.md": "a2f7f1c277a647edca583cd59ebfdbc94832022c5a374ebf972cfb34023ef58d",
+    "docs/agent_supervisor/numerical_proof_admission_readiness.md": "ab22172baabd07a1c4f0f70f4d9de174aac7921c549af3d13a620bf4439fa279",
+    "docs/agent_supervisor/terminal_token_metadata_plan.md": "18658328a173ce9531a3791c72d1a52f6b2abc60c8582d5f84d84b7ebd7011df"
+  },
+  "exact_workflow_steps": [
+    {
+      "exit_code": 0,
+      "name": "Supervisor primary-doc vocabulary",
+      "run": "python scripts/docs/check_agent_supervisor_docs.py",
+      "shell": "bash"
+    },
+    {
+      "exit_code": 0,
+      "name": "Maintained-surface relative links",
+      "run": "python scripts/docs/check_current_docs_links.py",
+      "shell": "bash"
+    },
+    {
+      "exit_code": 0,
+      "name": "Packaging version pin alignment",
+      "run": "python - <<'PY'\nfrom __future__ import annotations\n\nimport re\nimport sys\nfrom pathlib import Path\n\nroot = Path(\".\")\n\n\ndef need(path: Path, pattern: str, label: str) -> str:\n    text = path.read_text(encoding=\"utf-8\")\n    match = re.search(pattern, text, flags=re.M)\n    if not match:\n        print(f\"FAIL: {label} not found in {path}\", file=sys.stderr)\n        raise SystemExit(1)\n    return match.group(1)\n\n\npyproject = need(\n    root / \"pyproject.toml\",\n    r'^version\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"pyproject version\",\n)\nsetup = need(\n    root / \"setup.py\",\n    r'^\\s*version\\s*=\\s*\"([^\"]+)\"\\s*,?\\s*$',\n    \"setup.py version\",\n)\npackaging = need(\n    root / \"ipfs_accelerate_py\" / \"__init__.py\",\n    r'^_PACKAGING_VERSION\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"_PACKAGING_VERSION\",\n)\ninit_text = (root / \"ipfs_accelerate_py\" / \"__init__.py\").read_text(\n    encoding=\"utf-8\"\n)\nif not re.search(\n    r'^__version__\\s*=\\s*_PACKAGING_VERSION\\s*$',\n    init_text,\n    flags=re.M,\n):\n    print(\n        \"FAIL: __version__ must be assigned from _PACKAGING_VERSION\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nif not (pyproject == setup == packaging):\n    print(\n        \"FAIL: version pins disagree: \"\n        f\"pyproject={pyproject!r} setup={setup!r} \"\n        f\"_PACKAGING_VERSION={packaging!r}\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nprint(f\"OK: packaging pins aligned at {pyproject}\")\nPY\n",
+      "shell": "bash"
+    },
+    {
+      "exit_code": 0,
+      "name": "Closeout navigation markers",
+      "run": "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"\n",
+      "shell": "bash"
+    }
+  ],
+  "guide_anchor_checks": [
+    {
+      "errors": [],
+      "path": "docs/agent_supervisor/numerical_proof_admission_readiness.md"
+    },
+    {
+      "errors": [],
+      "path": "docs/agent_supervisor/terminal_token_metadata_plan.md"
+    },
+    {
+      "errors": [],
+      "path": "docs/agent_supervisor/evidence/numerical-obligation-worker-20261012/README.md"
+    }
+  ],
+  "python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+  "schema": "numerical-worker-documentation-checks@1",
+  "workflow_sha256": "0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763"
+}

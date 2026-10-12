@@ -1,0 +1,51 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/final-tests-01/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 528 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_retrieval.py . [  0%]
+...........................                                              [  5%]
+benchmarks/agent_supervisor/container_coding/test_numerical_obligation_worker_wiring.py . [  5%]
+........                                                                 [  7%]
+benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py . [  7%]
+................                                                         [ 10%]
+test/api/test_numerical_obligation_router.py ..................          [ 13%]
+test/api/test_source_formalization_router.py .......                     [ 14%]
+test/api/test_container_worker_timeout_contract.py ..................... [ 18%]
+.....                                                                    [ 19%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py . [ 20%]
+........................................................................ [ 33%]
+                                                                         [ 33%]
+benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py . [ 33%]
+........................................................................ [ 47%]
+...............................                                          [ 53%]
+test/api/test_numerical_obligation_client.py ........................... [ 58%]
+...................................................                      [ 68%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py . [ 68%]
+................                                                         [ 71%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py . [ 71%]
+...........................                                              [ 76%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_observation.py . [ 76%]
+..........................................                               [ 84%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py . [ 85%]
+.................                                                        [ 88%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_integration.py . [ 88%]
+....                                                                     [ 89%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_retrieval_observation.py . [ 89%]
+........................................................                 [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/numerical-obligation-worker-20261012/final-tests-01/junit.xml -
+============================= slowest 10 durations =============================
+6.09s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py::test_summary_reaches_router_before_goals_and_retains_admitted_index
+5.82s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[source]
+5.79s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py::test_assertion_summary_reaches_planner_before_goals
+5.76s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_native_start_replays_selected_numerical_context_and_preserves_cleanup[True]
+5.68s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[lake]
+5.65s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_native_start_replays_selected_numerical_context_and_preserves_cleanup[False]
+5.61s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[admitted]
+5.54s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[receipt]
+5.46s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_selected_numerical_preflight_replays_real_source_and_both_lakes_before_goals
+5.45s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[selection]
+======================= 528 passed in 293.21s (0:04:53) ========================
