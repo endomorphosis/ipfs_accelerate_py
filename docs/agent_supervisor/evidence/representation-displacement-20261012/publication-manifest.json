@@ -1,0 +1,203 @@
+{
+  "schema": "supervisor-representation-displacement-publication-manifest@1",
+  "base_revision": "1ec233249317bc4c3772fc4847de27b106eee323",
+  "entry_count": 33,
+  "entries": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "bytes": 59911,
+      "sha256": "72ba6d0b05986334660ba12e5e899dc436e37d0c9c3908868d47d223a1696856"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "bytes": 6395,
+      "sha256": "3645ca1c9a4e438f3b1308ddb70d5cf27e9f008dc2b44ab8667f757d5fc2053c"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "bytes": 6108,
+      "sha256": "7f6edd5dc63cc1fd3e2dc7ae532cd7d544bb6e3b91cb5f66d5d1b99d7f4ae6c1"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "bytes": 16515,
+      "sha256": "faa7f22be028c6f515a266ac4a203688f9a67ab330da2edad0c3d782e1e61dd7"
+    },
+    {
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "bytes": 32567,
+      "sha256": "e829e90b14fd40f900021e56875c33c50eb4acbd1335c2fd61ef723877d00cd6"
+    },
+    {
+      "path": "docs/agent_supervisor/terminal_metadata_census.md",
+      "bytes": 11387,
+      "sha256": "e836631376424e06ec333b91ec8821b82dad7b9c99fcc20ebbe6bb2d3b34a658"
+    },
+    {
+      "path": "docs/agent_supervisor/representation_displacement.md",
+      "bytes": 8543,
+      "sha256": "6839ee923ec1b9c1dab964d5605ffb1e5dede5fdaac4e86d9802b492c9f78606"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "bytes": 66396,
+      "sha256": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py",
+      "bytes": 27512,
+      "sha256": "eb1423b0be436c19eb57ce96dd79667478daebba3923423a88d8fde7ed760f6b"
+    },
+    {
+      "path": "test/api/test_representation_displacement.py",
+      "bytes": 27336,
+      "sha256": "c2e31f35a25711203d2ec0276ce9b3384c9eb3ad3fbccd421bd1ff9dccc6ccd0"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/.gitattributes",
+      "bytes": 36,
+      "sha256": "12bd40ab9c92a762f06d84f63108edc057e2cdadc7e68f321e4354e5cbbe9830"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/README.md",
+      "bytes": 4846,
+      "sha256": "e485bd698a608f5bfb1de24743542bbd85b75d7f1ca9a453eecd543ab2b0afe3"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/corrected-collection.log",
+      "bytes": 80400,
+      "sha256": "82487782253e849ace1448845fdbbf542c446106008d50c5c700d135f1fc7cbd"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/corrected-commands.json",
+      "bytes": 24677,
+      "sha256": "d3d021d0cadb1297579ce801f31d95469216cfd5a77b7448433fea3bcddee21c"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/corrected-junit.xml",
+      "bytes": 103759,
+      "sha256": "eed2e9e033efd65b098dcde35f1fae0651066310e1cc3efd443e66df23694455"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/corrected-nodeids.json",
+      "bytes": 84330,
+      "sha256": "db1c368c09129a23ecd452c7b8d344d550b004944c8d691eca2db0a8e2f3fe3b"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/corrected-tests.log",
+      "bytes": 5271,
+      "sha256": "54f7955e0771cd2f2766e87732aa6f8662118c0743985862c172b2ed680b32b3"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/datasets-scope-equivalence.json",
+      "bytes": 5154,
+      "sha256": "3675e2691faeb1c9f6e5affb529ef9695451162537d063979f69eaa469a96128"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/documentation-checks.json",
+      "bytes": 10445,
+      "sha256": "208be75a37d4cdefdcfa706047baf8d782b2a851053e475cbbfafe8856eb5015"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/documentation-workflow.log",
+      "bytes": 2258,
+      "sha256": "2856055b74d3b14ddc6b3b77b84270906b137e890719f5f08861f93c678109fc"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/final-documentation-checks.json",
+      "bytes": 28476,
+      "sha256": "094ee3d66016289352b02af66099b15949793d6eaaef60593a1cbfb8dee06ed8"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/final-documentation-workflow.log",
+      "bytes": 2258,
+      "sha256": "2856055b74d3b14ddc6b3b77b84270906b137e890719f5f08861f93c678109fc"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/first-collection.log",
+      "bytes": 80111,
+      "sha256": "e9418804c6385fd7ed15a8d996d645e717214dba8877eac2739f627d2a004fbd"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/first-commands.json",
+      "bytes": 22849,
+      "sha256": "97c2a9d5da045f1e2d3c2afa4d5297406eb040a7e194cf34b4483d46eaecf967"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/first-junit.xml",
+      "bytes": 31484,
+      "sha256": "3a0e4d3b8d520ceace64a9f9edc295690a08d04566a0620b2c1f09bcf08aa3ad"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/first-nodeids.json",
+      "bytes": 84027,
+      "sha256": "1b5370c95d3e5b1fc0166d2a81a81136dd93b3e56fc8b6162d0839adf694ce61"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/first-tests.log",
+      "bytes": 19706,
+      "sha256": "ae4ce7e63d5a105e6db217a27910a2e939ba0070a1d848f80c23fecfa2a64423"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/independent-contract-review.json",
+      "bytes": 10155,
+      "sha256": "d7ea4faa608f3d1b17a54fbdbf3fdfd947595dd244d8c18f0695803bca659dea"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/independent-integration-review.json",
+      "bytes": 10016,
+      "sha256": "a160a4e253a26ee62fa4331850ef4d454ba87d4195609cfd381ee78c13bbf3d6"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/initial-sources/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "bytes": 59686,
+      "sha256": "a32f7f161a5de0c0f09f31796df7d361655f9d4c0e33d5dea89fd1b79367f4a4"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/initial-sources/docs/agent_supervisor/evidence/representation-displacement-20261012/qualification_runner.py",
+      "bytes": 6995,
+      "sha256": "459b90dfa79a0bc28d95e7794d16f92442ccbc0ca3efc5c8bf11dc07d90770a8"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/initial-sources/test/api/test_representation_displacement.py",
+      "bytes": 24070,
+      "sha256": "2825bb0699e4782bcf33666896be34cf361b2982a06fcf6c80c05e8f3ca25f80"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/qualification_runner.py",
+      "bytes": 7356,
+      "sha256": "df00512deef6106d04fd0d77c970b05bfb790adbb468ae8081ea6eec85418030"
+    }
+  ],
+  "self_hash_excluded": true,
+  "product_changes": true,
+  "normal_pytest_plugin_autoload": true,
+  "qualification_target_files": 13,
+  "qualification_source_bindings": 40,
+  "corrected_collected_distinct_tests": 553,
+  "corrected_junit": {
+    "tests": 553,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "first_collected_distinct_tests": 551,
+  "first_junit": {
+    "tests": 181,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 0
+  },
+  "new_representation_cases": 51,
+  "datasets_qualification_revision": "f47161b757190380e9898aff155067c1ad609217",
+  "preserved_parent_datasets_revision": "12b2de0f1c949b793772ce29edad84355978b9b7",
+  "existing_model_assets_preserved": true,
+  "historical_evidence_preserved": true,
+  "prepared_input_only": true,
+  "new_live_provider_or_benchmark_run": false,
+  "new_training": false,
+  "new_model_upload": false,
+  "new_formal_proof": false,
+  "provider_delivery_verified": false,
+  "total_token_savings_qualified": false
+}

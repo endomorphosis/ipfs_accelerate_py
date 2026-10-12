@@ -271,6 +271,13 @@ demonstrates.
 
 ## Require evidence of displaced context before claiming compression
 
+The [metadata displacement observer](representation_displacement.md) now joins
+the existing opt-in metadata/instruction projection and selection to one exact
+prepared input. It records UTF-8 transport spans, unchanged wrappers and the
+selected replacement or fallback. Actual delivery, source/capsule/IR decisions,
+required-fact coverage and avoided future reads remain separate qualification
+work; this bounded first step does not implement the general receipt below.
+
 Add a versioned representation-decision receipt at the existing context compiler
 and reader boundaries. For each proposed replacement, retain the task/source
 generation, IR family/schema/checkpoint if used, exact baseline and candidate

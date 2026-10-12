@@ -1,0 +1,57 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 553 items
+
+test/api/test_representation_displacement.py ........................... [  4%]
+........................                                                 [  9%]
+test/api/test_semantic_metadata_view.py ................................ [ 15%]
+.............................................                            [ 23%]
+test/api/test_semantic_instruction_view.py ............................. [ 28%]
+...........                                                              [ 30%]
+test/api/test_semantic_metadata_dispatch.py ..............               [ 32%]
+test/api/test_semantic_instruction_dispatch.py ..........                [ 34%]
+test/api/test_semantic_metadata_token_audit.py ......................... [ 39%]
+...........                                                              [ 41%]
+test/api/test_semantic_metadata_census.py .............................. [ 46%]
+...                                                                      [ 47%]
+test/api/test_semantic_metadata_census_dispatch.py ..............        [ 49%]
+test/api/test_source_lookup_worker_router.py ........                    [ 51%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py . [ 51%]
+.....................................................                    [ 60%]
+benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py . [ 61%]
+........................................................................ [ 74%]
+....                                                                     [ 74%]
+benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py . [ 75%]
+........................................................................ [ 88%]
+..................................                                       [ 94%]
+benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py . [ 94%]
+...............................                                          [100%]
+
+=============================== warnings summary ===============================
+test/api/test_semantic_instruction_dispatch.py::test_signed_instruction_selected_once_with_unchanged_native_prompt_and_historical_replay
+  test/api/test_semantic_instruction_dispatch.py:119: PytestWarning: record_property is incompatible with junit_family 'xunit2' (use 'legacy' or 'xunit1')
+    def test_signed_instruction_selected_once_with_unchanged_native_prompt_and_historical_replay(
+
+test/api/test_semantic_instruction_dispatch.py::test_small_signed_instruction_falls_back_to_exact_native_input
+  test/api/test_semantic_instruction_dispatch.py:168: PytestWarning: record_property is incompatible with junit_family 'xunit2' (use 'legacy' or 'xunit1')
+    def test_small_signed_instruction_falls_back_to_exact_native_input(selected, provider, monkeypatch, record_property):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /tmp/representation-displacement-corrected-20261012-junit.xml -
+============================= slowest 10 durations =============================
+2.75s setup    test/api/test_semantic_metadata_census.py::test_counter_census_is_closed_preflight_and_not_provider_usage[estimate]
+1.16s setup    test/api/test_source_lookup_worker_router.py::test_foreign_prompt_descriptor_cannot_reach_provider
+1.15s setup    test/api/test_source_lookup_worker_router.py::test_admitted_descriptor_is_rechecked_after_provider_initialization
+1.14s setup    test/api/test_source_lookup_worker_router.py::test_opted_in_route_exposes_only_public_endpoint_to_children_and_restores_environment[False]
+1.12s setup    test/api/test_source_lookup_worker_router.py::test_opted_in_route_exposes_only_public_endpoint_to_children_and_restores_environment[True]
+1.01s setup    test/api/test_representation_displacement.py::test_exact_selected_input_is_observed_without_exporting_source_or_owner_text
+0.92s call     test/api/test_semantic_metadata_dispatch.py::test_actual_audit_subprocess_retains_metadata_and_both_reply_layers
+0.90s setup    test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change7]
+0.88s setup    test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[native_core_sha256]
+0.87s setup    test/api/test_semantic_instruction_view.py::test_complete_prompt_requires_exact_retained_block_and_wrappers[changed-block]
+================= 553 passed, 2 warnings in 332.12s (0:05:32) ==================

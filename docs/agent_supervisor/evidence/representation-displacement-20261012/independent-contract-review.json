@@ -1,0 +1,165 @@
+{
+  "checks": [
+    {
+      "finding": "Exact top-level and nested field sets are enforced; counts and offsets require exact integers; all 21 authority, semantic, currentness and usage claims require literal false. The narrow required_source_bytes_preserved field requires literal true.",
+      "name": "closed_typed_schema",
+      "status": "pass"
+    },
+    {
+      "finding": "Every complete-arm identity and byte/proxy count is derived from its exact UTF-8 text. Unique original transport and equal literal prefix/suffix constrain the replacement; transport offsets use encoded byte lengths, and recorded selected-arm identities must match the supplied selected input.",
+      "name": "complete_input_and_utf8_ranges",
+      "status": "pass"
+    },
+    {
+      "finding": "Observer independently rebuilds the fixed metadata or instruction projector, requires exact typed-view equality and restores the original transport. Ordinary metadata keeps all raw source strings unchanged; instruction mode retains the exact source inside the unchanged verbatim block.",
+      "name": "fixed_projector_and_source_preservation",
+      "status": "pass"
+    },
+    {
+      "finding": "The expected closed @1 and @2 selection shapes match current metadata and instruction selectors, including requested_mode only for instruction mode. Counter statuses counted, failed and invalid preserve existing fallback arithmetic; counted measurements require exact bounded positive integers.",
+      "name": "compatible_existing_selection_schemas",
+      "status": "pass"
+    },
+    {
+      "finding": "No callable counter is accepted or invoked by the observer. @1 may replay the existing pure proxy selector; @2 only checks recorded identities, complete-arm bindings and arithmetic. Counter identity authentication, measurement replay and provider-usage verification remain false.",
+      "name": "recorded_counter_without_callback",
+      "status": "pass"
+    },
+    {
+      "finding": "Invalid or failed recorded counters require null token counts and native fallback. Both complete bytes and the recorded compatible token comparison must favor candidate selection; byte reductions cannot rescue an unavailable or larger counter outcome.",
+      "name": "counter_failure_and_fallback",
+      "status": "pass"
+    },
+    {
+      "finding": "Optional reader guidance must occur exactly once in the unchanged suffix and every complete arm; its record explicitly says additive_retained_guidance. Proposed avoided reads remain empty and actual/counterfactual avoided-read savings remain unverified.",
+      "name": "additive_guidance_and_counterfactuals",
+      "status": "pass"
+    },
+    {
+      "finding": "Receipt output is closed and bounded at 16384 bytes. Source bodies, source paths, provider/model names and tokenizer names are not copied into the record; identities are hashed. Stable validation errors do not include prompt text or counter exception messages.",
+      "name": "bounded_hash_only_export",
+      "status": "pass"
+    },
+    {
+      "finding": "Runner attaches the new observation only on the existing metadata opt-in non-census branch. Default legacy prompts, legacy receipt shapes, census output, existing selection receipts, routing and provider billing observations are retained.",
+      "name": "legacy_and_census_compatibility",
+      "status": "pass"
+    },
+    {
+      "finding": "Audit retains the optional observation, validates its selected-input join, independently reconstructs both prepared arms and rebuilds the observer output. Missing trusted @2 counter still leaves existing counter/selection verification false while recorded prepared input can be reconstructed.",
+      "name": "independent_historical_replay",
+      "status": "pass"
+    },
+    {
+      "finding": "Historical loading independently reads the signed Git baseline and checks source/block/task identities, while flipping source_freshness_verified and historical_replay. Final audit now hashes the retained original inclusion receipt in the observer after those independent checks, while the fixed candidate view is rebuilt using the historical observed receipt. This preserves original receipt lineage without claiming currentness.",
+      "name": "instruction_historical_receipt_fix",
+      "status": "pass_after_source_correction"
+    },
+    {
+      "finding": "The final test source adds two real signed-instruction cases for @1 and @2. They compare original versus historical inclusion-receipt hashes, change current canonical files, remove the allocated worktree, replay the historical prompt, require the displacement check to pass and preserve currentness/measurement-replay false. Authored provider output is captured exactly once; @2 replay deliberately has no trusted counter.",
+      "name": "signed_instruction_regressions",
+      "status": "read_only_reviewed"
+    }
+  ],
+  "collection_run_by_reviewer": false,
+  "completion_authority": false,
+  "docker_runs": 0,
+  "execution_authority": false,
+  "limitations": [
+    "Prepared-input observation does not attest provider delivery.",
+    "Byte preservation does not prove required-fact semantic coverage, formal validity, omission permission or successful task execution.",
+    "Counter identities are caller-declared and recorded @2 measurements are not replayed or authenticated here.",
+    "Complete-session token savings, avoided future reads and source-only reader displacement remain unmeasured."
+  ],
+  "model_calls": 0,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "publication_authority": false,
+  "pytest_run_by_reviewer": false,
+  "resolved_finding": {
+    "corrected_audit_sha256": "72ba6d0b05986334660ba12e5e899dc436e37d0c9c3908868d47d223a1696856",
+    "corrected_test_execution_status": "Pending root-owned corrected qualification; no result inferred by this read-only review.",
+    "correction": "Audit passes the retained original instruction receipt to the observer after independent historical binding checks; projector reconstruction continues to use the historically observed receipt.",
+    "first_failure_test": "test_signed_instruction_selected_once_with_unchanged_native_prompt_and_historical_replay",
+    "first_junit_binding": {
+      "bytes": 31484,
+      "sha256": "3a0e4d3b8d520ceace64a9f9edc295690a08d04566a0620b2c1f09bcf08aa3ad"
+    },
+    "first_junit_errors": 0,
+    "first_junit_failures": 1,
+    "first_junit_passed": 180,
+    "first_junit_path": "first-junit.xml",
+    "first_junit_tests": 181,
+    "id": "historical-instruction-whole-receipt-hash",
+    "initial_source_bindings": {
+      "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+        "bytes": 59686,
+        "sha256": "a32f7f161a5de0c0f09f31796df7d361655f9d4c0e33d5dea89fd1b79367f4a4"
+      },
+      "docs/agent_supervisor/evidence/representation-displacement-20261012/qualification_runner.py": {
+        "bytes": 6995,
+        "sha256": "459b90dfa79a0bc28d95e7794d16f92442ccbc0ca3efc5c8bf11dc07d90770a8"
+      },
+      "test/api/test_representation_displacement.py": {
+        "bytes": 24070,
+        "sha256": "2825bb0699e4782bcf33666896be34cf361b2982a06fcf6c80c05e8f3ca25f80"
+      }
+    },
+    "original_problem": "The first audit rebuilt the observer with the historical inclusion receipt, whose freshness/replay fields differ from the original invocation receipt. Full inclusion-receipt hashing therefore produced a legitimate historical mismatch.",
+    "regression_test_sha256": "c2e31f35a25711203d2ec0276ce9b3384c9eb3ad3fbccd421bd1ff9dccc6ccd0"
+  },
+  "reviewed_utc": "2026-10-12T23:39:17.743124+00:00",
+  "reviewer_agent": "/root/displacement_integration_audit",
+  "schema": "supervisor-representation-displacement-independent-contract-review@1",
+  "scope": "Static review of the frozen observer, existing selection contracts, actual router integration, historical audit fix and authored regression source; final execution qualification belongs to the root-owned runner.",
+  "solver_runs": 0,
+  "source_bindings": {
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+      "bytes": 59911,
+      "sha256": "72ba6d0b05986334660ba12e5e899dc436e37d0c9c3908868d47d223a1696856"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py": {
+      "bytes": 27512,
+      "sha256": "eb1423b0be436c19eb57ce96dd79667478daebba3923423a88d8fde7ed760f6b"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 66396,
+      "sha256": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py": {
+      "bytes": 25515,
+      "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py": {
+      "bytes": 13476,
+      "sha256": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": {
+      "bytes": 23539,
+      "sha256": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d"
+    },
+    "test/api/test_agent_supervisor_local_planning_admission.py": {
+      "bytes": 13732,
+      "sha256": "5635419e9d1282ed3b64bd12e9b4f25cf047582d7a31c92554e20bab13f75e39"
+    },
+    "test/api/test_representation_displacement.py": {
+      "bytes": 27336,
+      "sha256": "c2e31f35a25711203d2ec0276ce9b3384c9eb3ad3fbccd421bd1ff9dccc6ccd0"
+    },
+    "test/api/test_semantic_instruction_dispatch.py": {
+      "bytes": 13601,
+      "sha256": "a4cb0aa3d9f78502717cb172d24aa67b0b47ab59703d1e40103fb2eee02f1438"
+    },
+    "test/api/test_semantic_router_integration.py": {
+      "bytes": 13673,
+      "sha256": "bbc1e98dbca9c53428323c08148da41e080893c506ed33b161aaeec90d5099f0"
+    }
+  },
+  "source_edits_by_reviewer": false,
+  "source_hashes_unchanged_during_review": true,
+  "status": "bounded_read_only_review_clear_after_recorded_correction",
+  "syntax_checked_without_import": true,
+  "test_source_cases_from_ast": 51,
+  "test_source_functions": 25,
+  "token_savings_measured": false
+}

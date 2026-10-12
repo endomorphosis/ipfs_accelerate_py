@@ -35,7 +35,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement")
 
 
 def _sha(raw: bytes) -> str:
@@ -372,6 +372,20 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
         if (metadata["selected_complete_bytes"] != result["model_prompt_bytes"]
                 or metadata["selected_complete_sha256"] != result["model_prompt_sha256"]):
             raise ValueError("metadata selection differs from actual provider input")
+    if "representation_displacement" in result:
+        if metadata is None:
+            raise ValueError("displacement observation requires retained metadata selection")
+        for key in ("provider", "model"):
+            value = item.get(key)
+            if type(value) is not str or not value.strip() or len(value.encode()) > 4096:
+                raise ValueError("displacement observation requires recorded provider/model identity")
+            result[key] = value
+        from ipfs_accelerate_py.agent_supervisor.runtime.representation_displacement import (
+            validate_representation_displacement,
+        )
+        result["representation_displacement"] = validate_representation_displacement(
+            result["representation_displacement"], selected_input_sha256=result["model_prompt_sha256"],
+            selected_input_bytes=result["model_prompt_bytes"])
     reply_bytes = 0
     if reply is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.coding_reply_contract import apply_coding_reply_contract
@@ -492,6 +506,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
                     checks["coding_reply_" + field] = reply[field] == expected[field]
     metadata = receipt.get("semantic_metadata_view")
     if metadata is not None:
+        displacement_native_model = model
         if not translated:
             raise ValueError("metadata view requires retained semantic input")
         from ipfs_accelerate_py.agent_supervisor.runtime.semantic_metadata_view import (
@@ -556,6 +571,32 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
                 candidate_complete_prompt=candidate, **selection_options)
             checks["semantic_metadata_selection_receipt"] = _same_json(metadata, selection.receipt)
             model = selection.selected_prompt
+        if "representation_displacement" in receipt:
+            from ipfs_accelerate_py.agent_supervisor.runtime.semantic_metadata_view import (
+                SemanticMetadataSelection, _json as metadata_json,
+            )
+            from ipfs_accelerate_py.agent_supervisor.runtime.representation_displacement import (
+                observe_representation_displacement,
+            )
+            source_guidance = None
+            if source_views is not None:
+                from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_client import guidance
+                source_guidance = guidance(source_views["profile"])
+            # This replays recorded representation identities, not a trusted
+            # counter callback or provider delivery. Existing @2 verification
+            # remains unavailable unless that caller supplies its real counter.
+            recorded_selection = SemanticMetadataSelection(model, metadata["selected_mode"], metadata_json(metadata))
+            observed_displacement = observe_representation_displacement(
+                view=view, selection=recorded_selection, native_complete_prompt=displacement_native_model,
+                candidate_complete_prompt=candidate, provider=receipt["provider"], model=receipt["model"],
+                instruction_block=block if selection_options else None,
+                # Historical loading changes freshness/replay flags. Bind the
+                # original retained inclusion receipt after checking its exact
+                # historical contents above; the rebuilt view uses observed.
+                instruction_receipt=instruction if selection_options else None,
+                source_guidance=source_guidance)
+            checks["representation_displacement_receipt"] = _same_json(
+                receipt["representation_displacement"], observed_displacement)
         if reply is not None:
             checks["semantic_metadata_native_reply_contract"] = (
                 _same_json(receipt.get("semantic_metadata_native_coding_reply_contract"), baseline_reply))
@@ -863,6 +904,8 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
                 # Preserve the caller's exact identities for counter binding.
                 # Neither the selection receipt nor the child creates a trusted
                 # counter, and missing identities must remain missing.
+                fields += ("provider", "model")
+            if "representation_displacement" in row:
                 fields += ("provider", "model")
             rows.append({key: row[key] for key in fields if key in row})
         request = json.dumps(rows).encode()

@@ -26,6 +26,7 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
     "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py",

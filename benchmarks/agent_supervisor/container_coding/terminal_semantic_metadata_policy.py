@@ -27,6 +27,7 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/formal_status_census.py",

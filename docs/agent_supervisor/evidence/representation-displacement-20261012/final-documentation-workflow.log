@@ -1,0 +1,102 @@
+STEP Supervisor primary-doc vocabulary
+COMMAND
+python scripts/docs/check_agent_supervisor_docs.py
+STDOUT
+OK: primary agent-supervisor docs are free of board-prefix ticket IDs
+
+STDERR
+
+EXIT 0
+
+STEP Maintained-surface relative links
+COMMAND
+python scripts/docs/check_current_docs_links.py
+STDOUT
+OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)
+
+STDERR
+
+EXIT 0
+
+STEP Packaging version pin alignment
+COMMAND
+python - <<'PY'
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+root = Path(".")
+
+
+def need(path: Path, pattern: str, label: str) -> str:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(pattern, text, flags=re.M)
+    if not match:
+        print(f"FAIL: {label} not found in {path}", file=sys.stderr)
+        raise SystemExit(1)
+    return match.group(1)
+
+
+pyproject = need(
+    root / "pyproject.toml",
+    r'^version\s*=\s*"([^"]+)"\s*$',
+    "pyproject version",
+)
+setup = need(
+    root / "setup.py",
+    r'^\s*version\s*=\s*"([^"]+)"\s*,?\s*$',
+    "setup.py version",
+)
+packaging = need(
+    root / "ipfs_accelerate_py" / "__init__.py",
+    r'^_PACKAGING_VERSION\s*=\s*"([^"]+)"\s*$',
+    "_PACKAGING_VERSION",
+)
+init_text = (root / "ipfs_accelerate_py" / "__init__.py").read_text(
+    encoding="utf-8"
+)
+if not re.search(
+    r'^__version__\s*=\s*_PACKAGING_VERSION\s*$',
+    init_text,
+    flags=re.M,
+):
+    print(
+        "FAIL: __version__ must be assigned from _PACKAGING_VERSION",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+if not (pyproject == setup == packaging):
+    print(
+        "FAIL: version pins disagree: "
+        f"pyproject={pyproject!r} setup={setup!r} "
+        f"_PACKAGING_VERSION={packaging!r}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+print(f"OK: packaging pins aligned at {pyproject}")
+PY
+
+STDOUT
+OK: packaging pins aligned at 0.0.45
+
+STDERR
+
+EXIT 0
+
+STEP Closeout navigation markers
+COMMAND
+set -euo pipefail
+grep -q 'Documentation baseline' docs/INDEX.md
+grep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md
+test -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md
+echo "OK: closeout navigation markers present"
+
+STDOUT
+OK: closeout navigation markers present
+
+STDERR
+
+EXIT 0
+
