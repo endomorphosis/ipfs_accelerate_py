@@ -1,0 +1,27 @@
+{
+  "schema": "source-worker-premerge-qualification@1",
+  "qualified_base_revision": "74aea306ea0d50e416a04eda3e2f251c95b2c66d",
+  "datasets_revision": "f47161b757190380e9898aff155067c1ad609217",
+  "host_distinct_tests": 247,
+  "new_source_tests": 21,
+  "host_junit": {
+    "tests": 247,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "docker_qualified": true,
+  "source_byte_reconstruction_qualified": true,
+  "qualified_fixture_source_bytes": 5716,
+  "source_only_reply_mode": "legacy",
+  "models_called": 0,
+  "providers_called": 0,
+  "solver_calls": 0,
+  "modern_semantic_source_lookup_qualified": false,
+  "model_tool_choice_qualified": false,
+  "full_automatic_terminal_binding_qualified": false,
+  "total_token_savings_measured": false,
+  "proof_authority": false,
+  "completion_authority": false,
+  "required_fact_omission_authority": false
+}

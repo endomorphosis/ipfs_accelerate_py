@@ -125,7 +125,7 @@ slice while holding the owner lock. Repeated expansion can have substantial
 CPU/I/O and owner contention. This establishes no latency or token improvement;
 a qualified selective frame reader with equivalent custody checks is later work.
 
-## Host child CLI and the coding-container gap
+## Host child CLI and session integration
 
 The [CLI](../../ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup_cli.py)
 performs one actual authenticated read through the existing owner's Unix socket:
@@ -145,22 +145,28 @@ the connection and prints the complete validated canonical reply plus LF.
 Failures emit a fixed error without credential or exception text. A one-call
 child does not provide continuation across new grants.
 
-This is a host-issued subprocess transport. Current Codex/Grok coding containers
-do not yet receive this channel: launcher/provider subprocesses do not preserve
-the descriptor into model-spawned shell descendants, and a descendant is a
-different grant peer. Existing shell access does not establish that custody.
-The operation is not advertised as a registered coding-model expansion tool.
+This credential-pipe CLI remains a host-issued subprocess transport; a new
+model-spawned child is a different native grant peer. The optional
+[coding-worker session bridge](source_lookup_worker.md) provides a separate
+protected public descriptor, exact descendant admission and pinned shell helper
+while keeping one native proxy grant private in the original owner. Its host
+controls and actual UID1001 Docker helper qualification now pass with an authored
+response on the source-only legacy route. The
+[session evidence](evidence/source-lookup-worker-20261012/README.md) records that
+bounded result. Ordinary Terminal Bench tasks still require explicit native
+task/source binding and trusted
+launcher selection; the bridge does not discover or create those admissions.
 
-Next qualify an owned per-coding-session channel and exact descendant grant
-handoff, public path/context admission inside the allocated worker, restart and
-working-overlay refresh. Add capsule reads as a separate closed operation and
-reuse the [published numerical obligation reader](numerical_proof_admission_readiness.md#current-structural-obligation-retrieval)
-through that channel. Its owner API now retrieves all 45 pending public-source
-obligations; isolated model access and source correctness remain separate gaps.
-Rebuild a current worker archive and qualify actual model
-access before moving required source or facts out of the prompt. Compare complete
-rendered inputs and all native planning/coding/lookup/continuation/repair tokens
-against official rewards; count failed/refused lookups and unknown usage too.
+Next qualify that task admission lifecycle, restart and working-overlay refresh.
+Add capsule reads as a separate closed operation. The
+[published numerical obligation worker channel](evidence/numerical-obligation-worker-20261012/README.md)
+already qualifies isolated shell-child retrieval of all 45 pending public-source
+obligations through its own admission. Source correctness, formal proof and live
+model tool choice remain independent of that retrieval result. Qualify actual
+model access before moving required source or facts out of the prompt. Compare
+complete rendered inputs and all native planning/coding/lookup/continuation/repair
+tokens against official rewards; count failed/refused lookups and unknown usage
+too.
 
 The [qualification evidence](evidence/current-source-lookup-20261012/README.md)
 records actual local DuckDB/typed socket and subprocess controls. Its transport

@@ -1,0 +1,54 @@
+{
+  "controls": {
+    "Memory": 12884901888,
+    "NanoCpus": 5000000000,
+    "NetworkMode": "none",
+    "PidsLimit": 128,
+    "Privileged": false,
+    "ReadonlyRootfs": false
+  },
+  "mounts": [
+    {
+      "Destination": "/extensions",
+      "RW": false,
+      "Source": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/qualification/owner_probe.py",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/docs/agent_supervisor/evidence/source-lookup-worker-20261012/runners/owner_probe.py",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/qualification/worker_probe.py",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/docs/agent_supervisor/evidence/source-lookup-worker-20261012/runners/worker_probe.py",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/results",
+      "RW": true,
+      "Source": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/docs/agent_supervisor/evidence/source-lookup-worker-20261012/docker/attempt-01/results",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/mounted/source",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/mounted/datasets",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.worktrees/source-worker-datasets-20261012",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/mounted/kit",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+      "Type": "bind"
+    }
+  ]
+}

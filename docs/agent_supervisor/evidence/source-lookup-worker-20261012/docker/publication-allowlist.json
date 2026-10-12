@@ -1,0 +1,111 @@
+{
+  "artifacts": [
+    {
+      "bytes": 14620,
+      "path": "runners/run_docker_qualification.py",
+      "sha256": "4549258f7f5a8eb260c0e6d87df583357d9c571d9e763461ccb2accb8c83204f"
+    },
+    {
+      "bytes": 16212,
+      "path": "runners/owner_probe.py",
+      "sha256": "38798ea8901a2d98ed5d5eb04672669727ec0918637defa21d3aa46704018dc2"
+    },
+    {
+      "bytes": 7603,
+      "path": "runners/worker_probe.py",
+      "sha256": "3e99030eea106c2b134eeef1074734fcb99797767de166099a8c8a661fc6dbe7"
+    },
+    {
+      "bytes": 7409,
+      "path": "docker/attempt-01/command.json",
+      "sha256": "9a2b6ff2ff7acb63f2411a2da14b26585d04049e7b865c009a5d36ffdea34672"
+    },
+    {
+      "bytes": 1731,
+      "path": "docker/attempt-01/container-controls.json",
+      "sha256": "47548e7db614360b08d0221cd6360840e98a3380d73f170ab7ce839c4751cbec"
+    },
+    {
+      "bytes": 1225,
+      "path": "docker/attempt-01/root-setup.stdout",
+      "sha256": "4611939b912f634bc11bb0b619946f0f8219419d2df271c1389fd650f0c86f0f"
+    },
+    {
+      "bytes": 2216,
+      "path": "docker/attempt-01/qualification.json",
+      "sha256": "97563cb880b4f1135a22eb664e8544a374fc3f7788e4107d91cacbc517ad98ff"
+    },
+    {
+      "bytes": 790,
+      "path": "docker/attempt-01/results/probe-qualification.json",
+      "sha256": "ad091a7057f3407a12b6ba8fa391478b70f66e062d292e5a8bc7eed41c658821"
+    },
+    {
+      "bytes": 997,
+      "path": "docker/attempt-01/private-artifact-shas.json",
+      "sha256": "cb7541d480419b224fbb1118ef7d443a87e11522c8342bc580747864306413ab"
+    },
+    {
+      "bytes": 7409,
+      "path": "docker/attempt-02/command.json",
+      "sha256": "c5a98dfce69c095defe31410d0b86b5029367337bf986ee42f2f24ee412085bc"
+    },
+    {
+      "bytes": 1731,
+      "path": "docker/attempt-02/container-controls.json",
+      "sha256": "edab6059298d57ab2ee08c55e18ff9d92e8540729484a816ebf12aa7bdb183b2"
+    },
+    {
+      "bytes": 1330,
+      "path": "docker/attempt-02/root-setup.stdout",
+      "sha256": "83b6e4c571938e2dd42d0fd520b3ca325b6bcd897eca88bc5ffb3b1dbad478e0"
+    },
+    {
+      "bytes": 4263,
+      "path": "docker/attempt-02/qualification.json",
+      "sha256": "81b48343b27a8b3ca74c652b0e6ef23426b7a4e687affd472525d3efb525d24e"
+    },
+    {
+      "bytes": 2313,
+      "path": "docker/attempt-02/results/probe-qualification.json",
+      "sha256": "d36ff3bfe53ec5248d5251aad064437320afa45cf54c5ebb63f697577494261a"
+    },
+    {
+      "bytes": 1734,
+      "path": "docker/attempt-02/private-artifact-shas.json",
+      "sha256": "436430ab5c9b7da2ba29f25436035c1b04ce62c00249bd3718df043bd2917d4b"
+    }
+  ],
+  "excluded": [
+    "private-diagnostics/**",
+    "results/private-*.json",
+    "owner.stdout",
+    "owner.stderr",
+    "root-setup.stderr",
+    "root-setup.py",
+    "runner-snapshot/**"
+  ],
+  "model_calls": 0,
+  "native_provider_tokens": null,
+  "provider_calls": 0,
+  "public_paths": [
+    "runners/run_docker_qualification.py",
+    "runners/owner_probe.py",
+    "runners/worker_probe.py",
+    "docker/attempt-01/command.json",
+    "docker/attempt-01/container-controls.json",
+    "docker/attempt-01/root-setup.stdout",
+    "docker/attempt-01/qualification.json",
+    "docker/attempt-01/results/probe-qualification.json",
+    "docker/attempt-01/private-artifact-shas.json",
+    "docker/attempt-02/command.json",
+    "docker/attempt-02/container-controls.json",
+    "docker/attempt-02/root-setup.stdout",
+    "docker/attempt-02/qualification.json",
+    "docker/attempt-02/results/probe-qualification.json",
+    "docker/attempt-02/private-artifact-shas.json"
+  ],
+  "raw_owner_state_or_credentials_exported": false,
+  "route": "Generic plain-prompt legacy coding only; modern sealed semantic route and automatic native Terminal task binding remain unqualified.",
+  "schema": "source-worker-publication-allowlist@1"
+}

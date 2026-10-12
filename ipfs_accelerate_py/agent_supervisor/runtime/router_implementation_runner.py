@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import time
@@ -27,6 +28,8 @@ MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
 GROK_PROGRESS_PREFIX = "IPFS_GROK_PROGRESS "
 NUMERICAL_DESCRIPTOR_ENV = "IPFS_SUPERVISOR_NUMERICAL_OBLIGATION_DESCRIPTOR"
 NUMERICAL_DESCRIPTOR_DIGEST_ENV = "IPFS_SUPERVISOR_NUMERICAL_OBLIGATION_DESCRIPTOR_SHA256"
+SOURCE_LOOKUP_DESCRIPTOR_ENV = "IPFS_SUPERVISOR_SOURCE_LOOKUP_DESCRIPTOR"
+SOURCE_LOOKUP_DESCRIPTOR_DIGEST_ENV = "IPFS_SUPERVISOR_SOURCE_LOOKUP_DESCRIPTOR_SHA256"
 
 
 @contextmanager
@@ -77,6 +80,108 @@ def _numerical_broker_observation(*, path, digest, workspace, prompt, boundary_s
         completion_authority=False)
 
 
+@contextmanager
+def _source_lookup_descriptor_environment(path, digest):
+    """Expose only this invocation's public source endpoint, then restore it."""
+    if path is None:
+        yield
+        return
+    selected = {SOURCE_LOOKUP_DESCRIPTOR_ENV: str(path), SOURCE_LOOKUP_DESCRIPTOR_DIGEST_ENV: digest}
+    previous = {key: os.environ.get(key) for key in selected}
+    try:
+        os.environ.update(selected)
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _source_lookup_broker_observation(*, path, digest, workspace, prompt, boundary_sha256,
+                                      formalization_receipt):
+    from .source_lookup_worker_client import load_descriptor
+    from .source_formalization_context import _parts
+
+    descriptor = load_descriptor(path, digest, workspace=workspace)
+    expected = dict(prompt_sha256=hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+                    workspace=str(workspace), boundary_manifest_sha256=boundary_sha256)
+    if any(descriptor[key] != value for key, value in expected.items()):
+        raise ValueError("source descriptor differs from original prompt or worker boundary")
+    parsed = _parts(prompt)
+    if parsed is not None:
+        if (formalization_receipt is None or descriptor["task_cid"] != parsed[0]["task_cid"]
+                or formalization_receipt.get("task_cid") != descriptor["task_cid"]):
+            raise ValueError("source descriptor differs from validated task formalization")
+    helper_path, helper_sha256 = _source_lookup_executable(descriptor)
+    # Context CID and repository ID are the native owner's admitted identities.
+    # A context bundle digest or filesystem path is not an alias for either.
+    return dict(schema="source-lookup-dispatch-observation@1", descriptor_sha256=digest,
+        session_id=descriptor["session_id"], **expected,
+        task_cid=descriptor["task_cid"], task_revision=descriptor["task_revision"],
+        repository_id=descriptor["repository_id"], context_cid=descriptor["context_cid"],
+        source_binding_cid=descriptor["source_binding_cid"],
+        helper_path=str(helper_path), helper_sha256=helper_sha256,
+        source_ref_count=len(descriptor["source_refs"]),
+        source_refs_sha256=hashlib.sha256(json.dumps(descriptor["source_refs"], sort_keys=True,
+            separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")).hexdigest(),
+        max_requests=descriptor["max_requests"], max_response_bytes=descriptor["max_response_bytes"],
+        max_slice_bytes=descriptor["max_slice_bytes"],
+        max_total_response_bytes=descriptor["max_total_response_bytes"],
+        requests_observed=False, actual_tool_usage_unknown=True, source_check_profile="clean-committed-regular@1",
+        proof_authority=False, execution_authority=False, completion_authority=False,
+        required_fact_omission_authority=False, total_token_savings_measured=False)
+
+
+def _source_lookup_executable(descriptor):
+    """Observe the deployer's protected helper, without owner or provider work."""
+    root = Path(descriptor["socket_path"]).parent.parent
+    helper = root / "bin/source-lookup"
+    if helper.resolve(strict=True) != helper:
+        raise ValueError("source helper must be an exact deployed path")
+    for parent in helper.parents:
+        info = parent.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022
+                or os.access(parent, os.W_OK)):
+            raise ValueError("source helper ancestors must be deployer protected")
+    def facts(info):
+        return tuple(getattr(info, key) for key in ("st_dev", "st_ino", "st_mode", "st_uid",
+            "st_gid", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns"))
+    before = helper.lstat()
+    if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0 or before.st_gid != 0
+            or before.st_nlink != 1 or stat.S_IMODE(before.st_mode) != 0o555
+            or not 1 <= before.st_size <= 8192 or not os.access(helper, os.X_OK)):
+        raise ValueError("source helper must be a bounded root-owned executable")
+    fd = os.open(helper, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        raw = os.read(fd, 8193)
+        if facts(before) != facts(os.fstat(fd)) or facts(before) != facts(helper.lstat()):
+            raise ValueError("source helper changed during admission")
+    finally:
+        os.close(fd)
+    if len(raw) != before.st_size:
+        raise ValueError("source helper byte read differs")
+    return helper, hashlib.sha256(raw).hexdigest()
+
+
+def _source_lookup_guidance(receipt):
+    return ("\n\nRead-only exact-source lookup is explicitly available for this coding session. "
+        "Use the pinned shell helper: " + receipt["helper_path"] + ". "
+        "Read source_refs in the public JSON descriptor at "
+        "$IPFS_SUPERVISOR_SOURCE_LOOKUP_DESCRIPTOR for the admitted raw_path_hex/source_cid pairs. "
+        "Send one JSON object on stdin with exactly these fields: "
+        '{"schema":"supervisor-current-source-request@1","binding_cid":"'
+        + receipt["source_binding_cid"] + '","raw_path_hex":"<admitted raw path bytes in lowercase hex>",'
+        '"source_cid":"<host-admitted raw source CID>","offset":0,"max_bytes":'
+        + str(min(4096, receipt["max_slice_bytes"])) + ',"continuation":null}. '
+        'source_scope={"binding_cid":"' + receipt["source_binding_cid"] + '"}. '
+        "Use only admitted path and source CID pairs. For later slices retain max_bytes and use the returned "
+        "end_offset and next_continuation. Only clean committed regular files are supported; reads refuse "
+        "after source edits. Required facts remain inline. Retrieval provides no proof, edit, omission or "
+        "completion authority.\n")
+
+
 def _grok_progress_emitter(invocation_id: str):
     """Keep advisory progress outside native JSON receipt and custody parsers."""
     def emit(value):
@@ -109,6 +214,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "runner_initialization", "argument_validation", "planning_contract",
     "container_boundary", "workspace_identity", "semantic_context", "source_formalization_context",
     "numerical_obligation_descriptor",
+    "source_lookup_descriptor",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "semantic_metadata_view",
     "semantic_metadata_census",
@@ -131,6 +237,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "semantic_metadata_census.py",
     "source_formalization_context.py",
     "numerical_obligation_client.py",
+    "source_lookup_worker_client.py",
 })
 
 
@@ -273,6 +380,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         source_formalization_handoff_sha256: str | None = None,
         numerical_obligation_descriptor: Path | None = None,
         numerical_obligation_descriptor_sha256: str | None = None,
+        source_lookup_descriptor: Path | None = None,
+        source_lookup_descriptor_sha256: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
         semantic_metadata_token_counter: SemanticMetadataTokenCounter | None = None,
@@ -298,6 +407,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             raise ValueError("exact numerical descriptor requires isolated owner formalization coding")
     elif any(key in os.environ for key in (NUMERICAL_DESCRIPTOR_ENV, NUMERICAL_DESCRIPTOR_DIGEST_ENV)):
         raise ValueError("numerical descriptor environment requires explicit owner selection")
+    source_lookup_args = (source_lookup_descriptor, source_lookup_descriptor_sha256)
+    source_lookup_selected = any(value is not None for value in source_lookup_args)
+    if source_lookup_selected:
+        if (not all(source_lookup_args) or purpose != "coding" or container_boundary is None
+                or not container_boundary_sha256 or census_only):
+            raise ValueError("exact source descriptor requires isolated coding dispatch")
+    elif any(key in os.environ for key in (SOURCE_LOOKUP_DESCRIPTOR_ENV, SOURCE_LOOKUP_DESCRIPTOR_DIGEST_ENV)):
+        raise ValueError("source descriptor environment requires explicit owner selection")
     if provider not in {"codex_cli", "grok_cli"}:
         raise ValueError("explicit supported shared-router coding provider required")
     if provider == "grok_cli" and model != "grok-4.7":
@@ -405,6 +522,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         numerical_receipt = _numerical_broker_observation(path=numerical_obligation_descriptor,
             digest=numerical_obligation_descriptor_sha256, workspace=root, prompt=prompt,
             boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
+    source_lookup_receipt = None
+    if source_lookup_selected:
+        failure_phase = "source_lookup_descriptor"
+        source_lookup_receipt = _source_lookup_broker_observation(path=source_lookup_descriptor,
+            digest=source_lookup_descriptor_sha256, workspace=root, prompt=prompt,
+            boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
     failure_phase = "doctor_residual"
     residual_args = (doctor_residual_artifact, doctor_residual_sha256, doctor_residual_task_cid)
     if any(residual_args):
@@ -430,6 +553,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         # Preserve the literal requirements after semantic encoding. Native
         # capsule identity remains the stdin identity, not this projection.
         router_prompt += instruction
+    if source_lookup_receipt is not None:
+        router_prompt += _source_lookup_guidance(source_lookup_receipt)
     failure_phase = "model_prompt"
     model_prompt, advisory = render_model_prompt(prompt=router_prompt, purpose=purpose, workspace=root,
                                                 semantic_transport=encoded is not None)
@@ -544,6 +669,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         }
         if numerical_receipt is not None:
             receipt["numerical_obligation_retrieval"] = numerical_receipt
+        if source_lookup_receipt is not None:
+            receipt["source_lookup_retrieval"] = source_lookup_receipt
         return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     failure_phase = "provider_discovery"
     available = discover_available_providers()
@@ -621,6 +748,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["source_formalization_context"] = formalization_receipt
     if numerical_receipt is not None:
         receipt["numerical_obligation_retrieval"] = numerical_receipt
+    if source_lookup_receipt is not None:
+        receipt["source_lookup_retrieval"] = source_lookup_receipt
     if provider == "grok_cli":
         # Grok treats an empty allowlist as its default toolset. A nonempty
         # singleton followed by its explicit denial requests zero planning
@@ -670,9 +799,18 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
             if current != numerical_receipt:
                 raise ValueError("numerical descriptor changed before provider dispatch")
+        if source_lookup_receipt is not None:
+            failure_phase = "source_lookup_descriptor"
+            current = _source_lookup_broker_observation(path=source_lookup_descriptor,
+                digest=source_lookup_descriptor_sha256, workspace=root, prompt=prompt,
+                boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
+            if current != source_lookup_receipt:
+                raise ValueError("source descriptor changed before provider dispatch")
         failure_phase = "provider_invocation"
         with _numerical_descriptor_environment(numerical_obligation_descriptor,
-                                               numerical_obligation_descriptor_sha256):
+                                               numerical_obligation_descriptor_sha256), \
+                _source_lookup_descriptor_environment(source_lookup_descriptor,
+                                                      source_lookup_descriptor_sha256):
             output = generate_text(
                 model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
                 allow_local_fallback=False, allow_cross_provider_fallback=False,
@@ -796,6 +934,8 @@ def main():
     parser.add_argument("--source-formalization-handoff-sha256")
     parser.add_argument("--numerical-obligation-descriptor", type=Path)
     parser.add_argument("--numerical-obligation-descriptor-sha256")
+    parser.add_argument("--source-lookup-descriptor", type=Path)
+    parser.add_argument("--source-lookup-descriptor-sha256")
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
@@ -823,6 +963,8 @@ def main():
                         source_formalization_handoff_sha256=args.source_formalization_handoff_sha256,
                         numerical_obligation_descriptor=args.numerical_obligation_descriptor,
                         numerical_obligation_descriptor_sha256=args.numerical_obligation_descriptor_sha256,
+                        source_lookup_descriptor=args.source_lookup_descriptor,
+                        source_lookup_descriptor_sha256=args.source_lookup_descriptor_sha256,
                         semantic_transport_schema=args.semantic_transport_schema,
                         semantic_metadata_view=args.semantic_metadata_view,
                         census_only=args.semantic_metadata_census_only,

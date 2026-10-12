@@ -1,0 +1,33 @@
+{
+  "schema": "supervisor-source-worker-independent-review@1",
+  "method": "read-only-source-review",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py": "329036abb35faff7738f3305409c04c169c5cda85af98da72947f8bdfce3e357",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_client.py": "330ab86a0faad1fbdb87653be98403a6fdf39437c7828507e3bc24d7d5204a1e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "2e25a6e1a1d1b57bc0d7dc198d8c7dd01a2175219b496e989babf105c0fef84f",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "c5311169f6382a5aec57d50bc77dbb5b20cf7aaccbb78537d4d8d7f8f3cba27e"
+  },
+  "remaining_concrete_findings": [],
+  "fixed_review_issue": "Native max_slice_bytes exposed/enforced before connect; guidance min(4096,admitted bound)",
+  "checked_boundaries": [
+    "Original native owner/gateway/connection/lock/CAS and grant",
+    "Native task/revision/body and source inventories",
+    "Public-only descriptor/result without native locator/token",
+    "Protected helper/process/peer/socket/cwd/expiry",
+    "Source slice/full CID and frontier",
+    "Full wrapper JSON+LF/wire+3; separate backend-success accounting",
+    "Original-resource cleanup and incomplete-thread accounting"
+  ],
+  "limits": [
+    "Sequential observations; no writer lease",
+    "Explicit prebound trusted-launch opt-in; no ordinary Terminal autoactivation",
+    "Native handshake/error/partial transport costs unknown",
+    "Live model tool choice and total token savings unmeasured"
+  ],
+  "tests_run_by_reviewer": 0,
+  "provider_calls": 0,
+  "proof_authority": false,
+  "execution_authority": false,
+  "completion_authority": false,
+  "required_fact_omission_authority": false
+}

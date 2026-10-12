@@ -1,0 +1,104 @@
+{
+  "completion_authority": false,
+  "execution": "exact-four-workflow-run-blocks-via-bash",
+  "git_head": "74aea306ea0d50e416a04eda3e2f251c95b2c66d",
+  "log_bytes": 2851,
+  "log_path": "documentation-workflow.log",
+  "log_sha256": "060447c1ea6d97a4658f3a0a84719dcffe7227ce9848946509b6e912bc57ec69",
+  "manual_relative_link_checks": [
+    {
+      "check_anchors": true,
+      "errors": [],
+      "exit_status": 0,
+      "input_unchanged": true,
+      "path": "docs/agent_supervisor/source_lookup_worker.md",
+      "sha256": "633a0bf24c715fd0d166359dadc44467879694e60ac48c77dcb550c1e06c4619"
+    },
+    {
+      "check_anchors": true,
+      "errors": [],
+      "exit_status": 0,
+      "input_unchanged": true,
+      "path": "docs/agent_supervisor/current_source_lookup.md",
+      "sha256": "a77784cdbbb739028dd9ec3ee06d4d05f4a18f63117445c389de2aebec1a2bd7"
+    },
+    {
+      "check_anchors": true,
+      "errors": [],
+      "exit_status": 0,
+      "input_unchanged": true,
+      "path": "docs/agent_supervisor/evidence/source-lookup-worker-20261012/README.md",
+      "sha256": "0b9e55d09afcb703e0dae5d1ca5bfc13ac6c39a66bdc5957a1df05c57e9d5b50"
+    }
+  ],
+  "materialized_tracked_docs": [],
+  "model_calls": 0,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "python_version": "Python 3.12.3",
+  "schema": "supervisor-source-worker-documentation-checks@1",
+  "status": "pass",
+  "steps": [
+    {
+      "argv": [
+        "bash",
+        "-c",
+        "python scripts/docs/check_agent_supervisor_docs.py"
+      ],
+      "exit_status": 0,
+      "finished_utc": "2026-10-12T17:35:09.706622+00:00",
+      "name": "Supervisor primary-doc vocabulary",
+      "output_bytes": 70,
+      "output_sha256": "8be454e062447d45dad3557d627eb43375fc1e49d4177aa71cb29bb0402e6555",
+      "run": "python scripts/docs/check_agent_supervisor_docs.py",
+      "started_utc": "2026-10-12T17:35:09.668344+00:00"
+    },
+    {
+      "argv": [
+        "bash",
+        "-c",
+        "python scripts/docs/check_current_docs_links.py"
+      ],
+      "exit_status": 0,
+      "finished_utc": "2026-10-12T17:35:09.818209+00:00",
+      "name": "Maintained-surface relative links",
+      "output_bytes": 88,
+      "output_sha256": "3813659ed5f44a1eb37d0667dfac72ae79955e80939583586d37f18f2dfb8b7a",
+      "run": "python scripts/docs/check_current_docs_links.py",
+      "started_utc": "2026-10-12T17:35:09.706649+00:00"
+    },
+    {
+      "argv": [
+        "bash",
+        "-c",
+        "python - <<'PY'\nfrom __future__ import annotations\n\nimport re\nimport sys\nfrom pathlib import Path\n\nroot = Path(\".\")\n\n\ndef need(path: Path, pattern: str, label: str) -> str:\n    text = path.read_text(encoding=\"utf-8\")\n    match = re.search(pattern, text, flags=re.M)\n    if not match:\n        print(f\"FAIL: {label} not found in {path}\", file=sys.stderr)\n        raise SystemExit(1)\n    return match.group(1)\n\n\npyproject = need(\n    root / \"pyproject.toml\",\n    r'^version\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"pyproject version\",\n)\nsetup = need(\n    root / \"setup.py\",\n    r'^\\s*version\\s*=\\s*\"([^\"]+)\"\\s*,?\\s*$',\n    \"setup.py version\",\n)\npackaging = need(\n    root / \"ipfs_accelerate_py\" / \"__init__.py\",\n    r'^_PACKAGING_VERSION\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"_PACKAGING_VERSION\",\n)\ninit_text = (root / \"ipfs_accelerate_py\" / \"__init__.py\").read_text(\n    encoding=\"utf-8\"\n)\nif not re.search(\n    r'^__version__\\s*=\\s*_PACKAGING_VERSION\\s*$',\n    init_text,\n    flags=re.M,\n):\n    print(\n        \"FAIL: __version__ must be assigned from _PACKAGING_VERSION\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nif not (pyproject == setup == packaging):\n    print(\n        \"FAIL: version pins disagree: \"\n        f\"pyproject={pyproject!r} setup={setup!r} \"\n        f\"_PACKAGING_VERSION={packaging!r}\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nprint(f\"OK: packaging pins aligned at {pyproject}\")\nPY\n"
+      ],
+      "exit_status": 0,
+      "finished_utc": "2026-10-12T17:35:09.851523+00:00",
+      "name": "Packaging version pin alignment",
+      "output_bytes": 37,
+      "output_sha256": "f0dc43d8c650aebdd4176518bdcb44cc085a655144d0b6f629e2f707dc79b780",
+      "run": "python - <<'PY'\nfrom __future__ import annotations\n\nimport re\nimport sys\nfrom pathlib import Path\n\nroot = Path(\".\")\n\n\ndef need(path: Path, pattern: str, label: str) -> str:\n    text = path.read_text(encoding=\"utf-8\")\n    match = re.search(pattern, text, flags=re.M)\n    if not match:\n        print(f\"FAIL: {label} not found in {path}\", file=sys.stderr)\n        raise SystemExit(1)\n    return match.group(1)\n\n\npyproject = need(\n    root / \"pyproject.toml\",\n    r'^version\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"pyproject version\",\n)\nsetup = need(\n    root / \"setup.py\",\n    r'^\\s*version\\s*=\\s*\"([^\"]+)\"\\s*,?\\s*$',\n    \"setup.py version\",\n)\npackaging = need(\n    root / \"ipfs_accelerate_py\" / \"__init__.py\",\n    r'^_PACKAGING_VERSION\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"_PACKAGING_VERSION\",\n)\ninit_text = (root / \"ipfs_accelerate_py\" / \"__init__.py\").read_text(\n    encoding=\"utf-8\"\n)\nif not re.search(\n    r'^__version__\\s*=\\s*_PACKAGING_VERSION\\s*$',\n    init_text,\n    flags=re.M,\n):\n    print(\n        \"FAIL: __version__ must be assigned from _PACKAGING_VERSION\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nif not (pyproject == setup == packaging):\n    print(\n        \"FAIL: version pins disagree: \"\n        f\"pyproject={pyproject!r} setup={setup!r} \"\n        f\"_PACKAGING_VERSION={packaging!r}\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nprint(f\"OK: packaging pins aligned at {pyproject}\")\nPY\n",
+      "started_utc": "2026-10-12T17:35:09.818235+00:00"
+    },
+    {
+      "argv": [
+        "bash",
+        "-c",
+        "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"\n"
+      ],
+      "exit_status": 0,
+      "finished_utc": "2026-10-12T17:35:09.856245+00:00",
+      "name": "Closeout navigation markers",
+      "output_bytes": 40,
+      "output_sha256": "4cf9ea0515604a43f0a1abc22e4a57b7876794fc938373536054115a3b098b1b",
+      "run": "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"\n",
+      "started_utc": "2026-10-12T17:35:09.851546+00:00"
+    }
+  ],
+  "token_savings_measured": false,
+  "workflow_path": ".github/workflows/documentation-gates.yml",
+  "workflow_sha256": "0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763",
+  "workflow_unchanged": true,
+  "working_tree_scope": "frozen-source-worker-product-and-pending-qualification-guides"
+}

@@ -1,0 +1,30 @@
+{
+  "artifact_count": 4,
+  "artifacts": [
+    {
+      "bytes": 945,
+      "path": "private-diagnostics/owner-entry.stderr",
+      "sha256": "6d5a0eb3f17c7b1c793d2e5c9406d533509316ef57a2fca42ae22583956423b0"
+    },
+    {
+      "bytes": 652,
+      "path": "private-diagnostics/owner-launch.json",
+      "sha256": "167a91168f3a72f9989476f55ffb005dfb879880f44a58922c0a15436d651da8"
+    },
+    {
+      "bytes": 714,
+      "path": "private-diagnostics/probe-failure.txt",
+      "sha256": "c9153fdcf46d822b80cc06f044dc34ea47cbb974b37b65565f7ea70524ff4dd6"
+    },
+    {
+      "bytes": 0,
+      "path": "private-diagnostics/worker-result.json",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "attempt": "attempt-01",
+  "owner_database_cas_tokens_dumped": false,
+  "payloads_published": false,
+  "schema": "source-worker-private-artifact-inventory@1",
+  "scope": "SHA256 and sizes only; raw diagnostics, responses, audits and router records remain local."
+}

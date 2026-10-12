@@ -15,6 +15,24 @@ from pathlib import Path
 
 from .terminal_deployment import PYTHON, ROOT, native_codex_exposure_script, runtime_environment
 
+SOURCE_LOOKUP_ENTRY = r"""#!/opt/ipfs-supervisor/venv/bin/python -I
+import os,pathlib,runpy,stat,sys
+root=pathlib.Path('/opt/ipfs-supervisor')
+try:
+ paths=[pathlib.Path(__file__).absolute(),root/'source',root/'datasets']
+ for path in paths:
+  if path.resolve(strict=True)!=path:raise ValueError('exact protected import required')
+  for parent in (path,*path.parents):
+   info=parent.lstat()
+   if info.st_uid!=0 or info.st_mode&0o022:raise ValueError('deployer protection required')
+ if not all(path.is_dir() for path in paths[1:]):raise ValueError('deployed import roots required')
+ sys.path[:0]=[str(root/'source'),str(root/'datasets')]
+ runpy.run_module('ipfs_accelerate_py.agent_supervisor.runtime.source_lookup_worker_client',run_name='__main__')
+except (OSError,ValueError,ImportError,RuntimeError):
+ print('{"reason_code":"transport_error"}',file=sys.stderr)
+ raise SystemExit(2)
+"""
+
 OWNER_MONITOR = r"""
 import signal,subprocess
 process=None
@@ -188,6 +206,8 @@ parser.add_argument('--source-formalization-handoff',type=pathlib.Path)
 parser.add_argument('--source-formalization-handoff-sha256')
 parser.add_argument('--numerical-obligation-descriptor',type=pathlib.Path)
 parser.add_argument('--numerical-obligation-descriptor-sha256')
+parser.add_argument('--source-lookup-descriptor',type=pathlib.Path)
+parser.add_argument('--source-lookup-descriptor-sha256')
 parser.add_argument('--preflight',action='store_true');parser.add_argument('--preflight-sleep',type=int,default=0)
 args=parser.parse_args()
 if args.provider!=selected_provider:raise SystemExit('provider differs from deployed worker route')
@@ -199,6 +219,8 @@ proof_query_values=(args.finite_proof_query_context,args.finite_proof_query_sha2
 instruction_values=(args.public_instruction_artifact,args.public_instruction_sha256,args.public_instruction_task_cid)
 formalization_values=(args.source_formalization_handoff,args.source_formalization_handoff_sha256)
 numerical_obligation_values=(args.numerical_obligation_descriptor,args.numerical_obligation_descriptor_sha256)
+source_lookup_values=(args.source_lookup_descriptor,args.source_lookup_descriptor_sha256)
+if any(value is not None for value in source_lookup_values) and (not all(source_lookup_values) or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('exact source lookup descriptor requires isolated router coding')
 if any(value is not None for value in numerical_obligation_values) and (not all(numerical_obligation_values) or not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact numerical obligation descriptor requires owner formalization coding')
 if any(formalization_values) and (not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact owner formalization handoff requires semantic router coding')
 if args.semantic_metadata_view!='legacy' and (args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('metadata view requires original semantic router coding')
@@ -274,6 +296,7 @@ else:
  if args.public_instruction_artifact is not None:sys.argv+=['--public-instruction-artifact',str(args.public_instruction_artifact),'--public-instruction-sha256',args.public_instruction_sha256,'--public-instruction-task-cid',args.public_instruction_task_cid]
  if args.source_formalization_handoff is not None:sys.argv+=['--source-formalization-handoff',str(args.source_formalization_handoff),'--source-formalization-handoff-sha256',args.source_formalization_handoff_sha256]
  if args.numerical_obligation_descriptor is not None:sys.argv+=['--numerical-obligation-descriptor',str(args.numerical_obligation_descriptor),'--numerical-obligation-descriptor-sha256',args.numerical_obligation_descriptor_sha256]
+ if args.source_lookup_descriptor is not None:sys.argv+=['--source-lookup-descriptor',str(args.source_lookup_descriptor),'--source-lookup-descriptor-sha256',args.source_lookup_descriptor_sha256]
  raise SystemExit(run_with_child_custody(main))
 """
 
@@ -368,6 +391,7 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
             ("owner", OWNER_ENTRY.encode(), ROOT + "/bin/router-worker", "0555"),
             ("validation", VALIDATION_ENTRY.encode(), ROOT + "/bin/validation-worker", "0555"),
             ("worker", WORKER_ENTRY.encode(), ROOT + "/bin/worker-entry", "0555"),
+            ("source-lookup", SOURCE_LOOKUP_ENTRY.encode(), ROOT + "/bin/source-lookup", "0555"),
             ("sudoers", sudoers.encode(), "/etc/sudoers.d/supervisor-worker", "0440"),
         ]:
             path = Path(temporary) / name

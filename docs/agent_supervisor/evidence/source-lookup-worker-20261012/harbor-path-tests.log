@@ -1,0 +1,44 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 247 items
+
+test/api/test_source_lookup_worker_channel.py .............              [  5%]
+test/api/test_source_lookup_worker_router.py ........                    [  8%]
+test/api/test_numerical_obligation_client.py ........................... [ 19%]
+...................................................                      [ 40%]
+test/api/test_numerical_obligation_router.py E
+
+==================================== ERRORS ====================================
+_ ERROR at setup of test_exact_task_bound_descriptor_reaches_child_tool_environment_and_is_restored[False] _
+/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py:924: in pytest_fixture_setup
+    return (yield)
+            ^^^^^
+/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/test/api/test_source_formalization_router.py:97: in worker_case
+    formal = numerical.prepare_numerical_context(repository=root, source_hashes={"mod.py": _sha(SOURCE)},
+/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py:230: in prepare_numerical_context
+    producers = _producers()
+                ^^^^^^^^^^^^
+/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py:63: in _producers
+    from ipfs_datasets_py.logic.software_verification import (
+E   ImportError: cannot import name 'numerical_obligation_retrieval' from 'ipfs_datasets_py.logic.software_verification' (/home/barberb/lift_coding/.worktrees/source-inventory-datasets-20261012/ipfs_datasets_py/logic/software_verification/__init__.py)
+- generated xml file: /tmp/source-lookup-worker-harbor-path-20261012-junit.xml -
+============================= slowest 10 durations =============================
+1.51s setup    test/api/test_source_lookup_worker_router.py::test_admitted_descriptor_is_rechecked_after_provider_initialization
+1.51s setup    test/api/test_source_lookup_worker_router.py::test_foreign_prompt_descriptor_cannot_reach_provider
+1.50s setup    test/api/test_source_lookup_worker_channel.py::test_owner_proxy_keeps_one_native_grant_and_exact_full_response_costs[default-4096]
+1.50s setup    test/api/test_source_lookup_worker_router.py::test_opted_in_route_exposes_only_public_endpoint_to_children_and_restores_environment[False]
+1.47s setup    test/api/test_source_lookup_worker_router.py::test_opted_in_route_exposes_only_public_endpoint_to_children_and_restores_environment[True]
+1.43s call     test/api/test_source_lookup_worker_channel.py::test_canonical_gateway_binding_cannot_be_silently_rebound_to_allocation
+1.40s setup    test/api/test_source_lookup_worker_channel.py::test_real_host_socket_uid_cannot_use_public_descriptor_as_worker_authority
+1.36s setup    test/api/test_source_lookup_worker_channel.py::test_session_close_revokes_original_native_grant_and_removes_channel
+1.36s setup    test/api/test_source_lookup_worker_channel.py::test_owner_proxy_keeps_one_native_grant_and_exact_full_response_costs[smaller-512]
+1.35s setup    test/api/test_source_lookup_worker_channel.py::test_allocated_edit_after_verified_native_reply_cannot_escape_proxy
+=========================== short test summary info ============================
+ERROR test/api/test_numerical_obligation_router.py::test_exact_task_bound_descriptor_reaches_child_tool_environment_and_is_restored[False]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+==================== 99 passed, 1 error in 91.14s (0:01:31) ====================
