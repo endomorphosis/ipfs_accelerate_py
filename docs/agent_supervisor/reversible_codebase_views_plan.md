@@ -33,7 +33,10 @@ inline. The semantic reader now supports a separate working-candidate snapshot
 after edits, with generation-bound expansion and stale-continuation refusal.
 The [candidate context reader](worker_candidate_context.md) separately rebuilds
 session-local capsules and pending formulas; accepted formal-index publication
-remains open.
+remains open. It also exposes a compact catalog and exact path/symbol/function/
+obligation-kind selections. Returned native rows retain their identities and
+explicit filtered-out counts. This is selective disclosure with narrower
+coverage, not lossless compression of a full formal artifact.
 
 The [host-only native task guard](current_source_task_admission.md) now captures
 actual one-attempt claim, daemon grant and full-body custody through the
@@ -227,6 +230,14 @@ accepted DuckLake/proof publication, mapped edits and complete-session token
 savings remain separate qualification work. Full formal artifacts can be much
 larger than source, so the benchmark must charge summaries, expansions and
 refreshes actually requested by the worker.
+
+The [selected-reader Docker probe](evidence/candidate-context-selection-20261012/README.md)
+completely retrieved one catalog, one capsule
+and one obligation in 19,858 wire bytes. Its 4,545-byte obligation selection came
+from a 476,030-byte full formal artifact, while the source file itself was only
+642 bytes. Thus a smaller formal retrieval does not establish an advantage over
+reading source. Keep whole-session usage and official task results as the gate
+for preferring this treatment in a benchmark.
 
 | Stage | Concrete deliverable | Acceptance before advancing |
 | --- | --- | --- |

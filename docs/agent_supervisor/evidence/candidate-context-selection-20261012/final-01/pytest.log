@@ -1,0 +1,62 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/candidate-context-selection-20261012/final-01/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 984 items
+
+test/api/test_worker_candidate_selection.py ............................ [  2%]
+.......................                                                  [  5%]
+test/api/test_worker_candidate_selection_client.py ..................... [  7%]
+........................................................................ [ 14%]
+........................................                                 [ 18%]
+test/api/test_worker_candidate_selection_context.py .................... [ 20%]
+.........................                                                [ 23%]
+test/api/test_worker_candidate_selection_broker.py ......                [ 23%]
+test/api/test_worker_candidate_artifacts.py .........................    [ 26%]
+test/api/test_worker_candidate_context.py .............................. [ 29%]
+............................                                             [ 32%]
+test/api/test_worker_candidate_context_client.py ....................... [ 34%]
+...............................................                          [ 39%]
+test/api/test_worker_candidate_context_broker.py ......                  [ 40%]
+test/api/test_worker_candidate_context_admission.py ...                  [ 40%]
+test/api/test_worker_source_views.py ................................... [ 43%]
+.............................                                            [ 46%]
+test/api/test_worker_source_client.py .................................. [ 50%]
+................                                                         [ 51%]
+test/api/test_worker_source_working_views.py ...................         [ 53%]
+test/api/test_worker_source_working_client.py .......................... [ 56%]
+...............................                                          [ 59%]
+test/api/test_worker_source_broker.py .......................            [ 61%]
+test/api/test_worker_source_working_broker.py .........                  [ 62%]
+test/api/test_semantic_router_integration.py ................            [ 64%]
+test/api/test_numerical_obligation_router.py ..................          [ 66%]
+test/api/test_source_formalization_router.py .......                     [ 67%]
+benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py . [ 67%]
+..............................................                           [ 71%]
+benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py . [ 71%]
+........                                                                 [ 72%]
+benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py . [ 72%]
+........................................................................ [ 80%]
+...............................                                          [ 83%]
+benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py . [ 83%]
+...............................                                          [ 86%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py . [ 86%]
+.....................................................                    [ 92%]
+benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py . [ 92%]
+............................................................             [ 98%]
+test/api/test_current_source_task_admission.py .................         [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/candidate-context-selection-20261012/final-01/junit.xml -
+============================= slowest 10 durations =============================
+3.77s call     test/api/test_worker_candidate_context_admission.py::test_explicit_native_program_selection_preserved_by_broker[explicit-subset]
+3.36s setup    test/api/test_current_source_task_admission.py::test_real_coordinator_lease_transition_invalidates_live_source_proxy[expired]
+3.21s call     test/api/test_worker_candidate_context.py::test_broker_stop_during_candidate_build_refuses_completed_artifact_and_clears_cache
+3.20s setup    test/api/test_current_source_task_admission.py::test_real_coordinator_lease_transition_invalidates_live_source_proxy[released]
+3.19s setup    test/api/test_current_source_task_admission.py::test_task_drift_after_actual_backend_response_refuses_and_retains_incurred_cost
+3.19s setup    test/api/test_current_source_task_admission.py::test_closing_native_clock_callback_source_edit_cannot_escape_final_byte_checks
+3.18s setup    test/api/test_current_source_task_admission.py::test_original_binding_objects_cannot_be_replaced_by_equivalent_looking_inputs[service]
+3.18s setup    test/api/test_current_source_task_admission.py::test_original_binding_objects_cannot_be_replaced_by_equivalent_looking_inputs[cas]
+3.17s setup    test/api/test_current_source_task_admission.py::test_native_revision_full_body_and_claim_phase_changes_refuse_old_admission[revision]
+3.17s setup    test/api/test_current_source_task_admission.py::test_actual_claim_attestation_requires_its_original_peer_and_client[client]
+======================= 984 passed in 373.86s (0:06:13) ========================

@@ -79,7 +79,8 @@ def load_descriptor(path, digest, *, workspace=None):
 
 
 def validate_request(value):
-    if type(value) is dict and value.get("schema") == "supervisor-worker-candidate-context-request@1":
+    if type(value) is dict and value.get("schema") in {
+            "supervisor-worker-candidate-context-request@1", "supervisor-worker-candidate-context-request@2"}:
         from .worker_candidate_context_client import validate_request as validate_candidate_request
         return validate_candidate_request(value)
     _need(type(value) is dict and set(value) == {"schema", "session_id", "request_id", "query"}
@@ -122,7 +123,8 @@ def _validate_cursor(cursor):
 
 
 def validate_response(value, *, request, descriptor=None):
-    if type(request) is dict and request.get("schema") == "supervisor-worker-candidate-context-request@1":
+    if type(request) is dict and request.get("schema") in {
+            "supervisor-worker-candidate-context-request@1", "supervisor-worker-candidate-context-request@2"}:
         from .worker_candidate_context_client import validate_response as validate_candidate_response
         return validate_candidate_response(value, request=request, descriptor=descriptor)
     validate_request(request)
@@ -276,7 +278,11 @@ def guidance(profile):
         "Working snapshots do not refresh or prove the accepted semantic index; treat prior capsules/proofs as stale. "
         "To rebuild advisory capsules and pending formulas for that generation, run the sibling "
         "worker_candidate_context_client.py with --expected-workspace-generation <generation> "
-        "--artifact summary (or capsules/formal for exact JSON artifact pages). Keep that generation "
+        "--select --artifact catalog for compact discovery. Then use --select --artifact capsules "
+        "--path <path> [--symbol-id <id>], or --select --artifact obligations --path <path> "
+        "[--function-id <id>] [--kind <kind>] for exact native subsets. Filters do not establish "
+        "task relevance or complete proof coverage. Omit --select and use --artifact summary, "
+        "capsules or formal for full JSON artifacts. Keep generation, filters and page budget fixed "
         "and pass next_cursor as --cursor for continuation. Candidate context is deterministic, "
         "may have unsupported coverage, and runs no solver or Lake build. It grants no proof authority. "
         "Profile: " + profile + ". "

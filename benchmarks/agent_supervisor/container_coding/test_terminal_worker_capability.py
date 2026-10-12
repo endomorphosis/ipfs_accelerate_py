@@ -66,6 +66,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_artifacts.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_selection.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context_client.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py',

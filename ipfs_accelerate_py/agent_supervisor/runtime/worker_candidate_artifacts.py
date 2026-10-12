@@ -26,6 +26,7 @@ AUTHORITY = dict(read_only=True, baseline_evidence_applicable=False,
 
 _PRODUCERS = (
     __name__,
+    "ipfs_accelerate_py.agent_supervisor.runtime.worker_candidate_selection",
     "ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime",
     "ipfs_accelerate_py.agent_supervisor.runtime.semantic_capsule_selection",
     "ipfs_accelerate_py.agent_supervisor.semantic_state.datasets_adapter",
@@ -37,7 +38,8 @@ _PRODUCERS = (
         'semantic_state.api', 'semantic_state.models', 'semantic_state.capsules',
         'semantic_state.bindings', 'semantic_state.merkle')),
     *('ipfs_datasets_py.logic.software_verification.' + name for name in (
-        'numerical_logic', 'numerical_source', 'source_adapters', 'syntax_bridge', 'program')),
+        'numerical_logic', 'numerical_source', 'numerical_obligation_retrieval',
+        'source_adapters', 'syntax_bridge', 'program')),
     'ipfs_datasets_py.logic.backends.smt.compiler',
     'ipfs_datasets_py.logic.families.registry',
     'ipfs_datasets_py.logic.syntax_core.ast',
