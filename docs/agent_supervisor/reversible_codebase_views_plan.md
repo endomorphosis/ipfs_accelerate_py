@@ -31,7 +31,16 @@ separate from the coding-worker reader, which admits the already verified
 semantic producer scope without copying host credentials. Required facts remain
 inline. The semantic reader now supports a separate working-candidate snapshot
 after edits, with generation-bound expansion and stale-continuation refusal.
-Formal-index rebuilding and capsule expansion remain open.
+The [candidate context reader](worker_candidate_context.md) separately rebuilds
+session-local capsules and pending formulas; accepted formal-index publication
+remains open.
+
+The [host-only native task guard](current_source_task_admission.md) now captures
+actual one-attempt claim, daemon grant and full-body custody through the
+existing coordinator, and can refence the native source broker. It does not
+activate the ordinary Terminal remote allocation, compiled-context or actual
+coding-child handoff. Native restart and working-overlay admission remain
+separate from the semantic candidate-refresh channel.
 
 The proposed design maintains a compact view of an entire admitted repository
 while retaining exact original source in its existing content store. Deliver

@@ -1,0 +1,95 @@
+{
+  "allocation_ownership_verified": false,
+  "checks": [
+    {
+      "finding": "Exact supplied Quack server and process-serialized coordinator types, original gateway/connection/lock/identity/config/process and owner-controlled authority file/parent identities are retained. No separate authority adapter or store is selected by the guard.",
+      "name": "original_existing_authority_custody",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:57"
+    },
+    {
+      "finding": "Actual native task row must be unique and in progress. Alias, exact integer revision, full bounded canonical body and exact admitted phase/claim/process receipt are checked. The full body CID is derived without planning-contract substitution, metadata removal, alias normalization or semantic-ID inference.",
+      "name": "strict_actual_native_task_snapshot",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:138"
+    },
+    {
+      "finding": "Kernel PID/UID/start ticks must reproduce the selected live daemon peer; the original gateway active grant must reproduce the native process attestation and expected daemon client ID. No runtime-bootstrap, allocation or compiled-context receipt is invented.",
+      "name": "active_owner_attested_peer_grant",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:148"
+    },
+    {
+      "finding": "Existing execute_with_task_claim_fence acquires coordinator custody before SERVER. Callback reads repeat the native snapshot; a final SERVER read follows the native coordinator postcheck. Source-only require_source_binding does not acquire the coordinator; lifecycle checks avoid is_open lock acquisition under SERVER.",
+      "name": "native_claim_fence_and_lock_order",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:192"
+    },
+    {
+      "finding": "Native fencing checks current running claim/lease/latest fence/noncompletion before and after the callback, but retains normal metadata/lease-event/expiry effects. Its existing process-serialized opening path is not a zero-write observer or strict read-before-repair integrity audit.",
+      "name": "native_normal_bookkeeping_boundary",
+      "source": "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py:4348"
+    },
+    {
+      "finding": "Actual task CID/revision/fullbody CID are supplied from the pinned snapshot. Caller independently supplies existing CAS/inventory/request/root/context/bounds. Finally retains any actually published reader and marker even when later validation raises; consumed publication is not silently undone or rebound.",
+      "name": "bind_once_partial_publication_custody",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:219"
+    },
+    {
+      "finding": "A guard-marked reader requires the same exact private admission handle in the broker. Original handle identity and same server/reader/CAS/root/canonical task binding are rechecked. Default task_admission=None preserves the existing generic reader path for unmarked readers.",
+      "name": "exact_reader_marker_and_optional_guard",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py:137"
+    },
+    {
+      "finding": "Validated native success response byte/wire counters are charged before a later task fence may refuse publication. Final task fence occurs after canonical CAS replay and before both closing full working-source reads. No zero-cost or no-prior-effect inference follows refusal.",
+      "name": "backend_cost_before_later_refusal",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py:332"
+    },
+    {
+      "finding": "Detached snapshot carries actual bounded task identities and task_content_read_only, with proof/execution/completion/allocation flags false. New task guard data is not added to worker responses; no new owner locator/token/DB path is exposed.",
+      "name": "private_owner_data_and_authority_boundary",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:181"
+    },
+    {
+      "finding": "This component does not alter ordinary Terminal allocation, remote OWNER_ENTRY handoff or direct coding-child Popen registration. Parallel semantic working-source refresh remains separate from the native clean committed-source profile; IR inventories, embeddings and decoder checkpoint assets are unchanged.",
+      "name": "normal_terminal_activation_and_assets",
+      "source": "docs/agent_supervisor/current_source_task_admission.md:10"
+    }
+  ],
+  "completion_authority": false,
+  "concrete_blockers_found": [],
+  "dependency_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py": "13386f3db7a3fee0103c5443416fe036d23c4f92953923e91cbd42f69582008c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py": "195c2c3d5c7173702ab2252b7cbf522fd51bff072e677759f99f7aa15c2e2373",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "90bdfdf7ab2303453a600b953e7728789c48cb08d2d71c5d195d3694b0f0c32b"
+  },
+  "execution_authority": false,
+  "guide_sha256": "916233f2327c3c4171c505b55e4810f1f038a4f2d0f32121133514cb310debef",
+  "method": {
+    "current_broker_optional_guard_diff_and_read_path_reviewed": true,
+    "current_guard_full_source_read": true,
+    "documentation_workflow_execution": false,
+    "existing_native_claim_fence_and_process_serialized_invoke_read": true,
+    "formal_proof": false,
+    "independent_database_connection_or_owner_constructed": false,
+    "product_edits": false,
+    "provider_or_model_execution": false,
+    "test_execution": false
+  },
+  "product_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py": "001c08a02cdef3dcb54e5778fe35a437f3c86cdce1fb6945e62fef450e0a7c5f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py": "a6ade482378c61e45199a19590e0c9143629a8f2a28460b5430c1b7e06bc2774"
+  },
+  "proof_authority": false,
+  "repository_head": "17a1e73fa725effd795aa06dd0fd7257c63345b5",
+  "review_date": "2026-10-12",
+  "reviewer": "terminal_binding_audit",
+  "schema": "supervisor-native-source-task-admission-independent-review@1",
+  "scope_limits": [
+    "The actual existing daemon adapter permits require_existing_authority=False. Its normal native opening path can repair metadata before the claim callback; metadata-only prior corruption may be repaired while a genuine live claim still passes. Strict read-before-repair schema integrity needs a native contract extension or separately qualified existing-only prerequisite.",
+    "Physical authority replacement, absent or foreign native claims and mismatched actual owner/process/task snapshots are checked; this review does not claim every prior schema corruption is rejected.",
+    "Owner-attested active daemon grant is not an independently replayed runtime bootstrap, sealed allocation, compiled context or authenticated remote coding launch.",
+    "The existing direct coding-child Popen registration rule remains. A broader daemon/run root cannot substitute for the actual coding child; normal Terminal transport is not automatically activated.",
+    "Source/currentness and coordinator checks are sequential, without a filesystem writer lease or cross-store atomic transaction. Failed post-publication binding can retain the consumed native reader and host cleanup duty.",
+    "Direct privileged native SDK reads retain generic task-body/source-currentness checks; they do not automatically execute this optional broker coordinator fence.",
+    "Native successful response byte counters exclude unknown handshake/error/partial transport costs and provider input/output/cached usage. No token savings, official reward, live model helper choice or proof/omission/completion authority is established.",
+    "Semantic working-source snapshots can be unverified through their separate channel. Native source edits still require fresh native task/source admission under its clean committed profile."
+  ],
+  "status": "read_only_review_complete_with_explicit_scope_limits"
+}

@@ -24,6 +24,12 @@ canonical repository and allocation must be distinct clean worktrees in the
 same Git repository. An additional canonical reader replays the same inventory
 and CAS; it does not create another owner or storage scope.
 
+The optional [host-only native task guard](current_source_task_admission.md)
+captures and refences an actual one-attempt claim through the existing
+coordinator. A reader bound with that handle requires the same handle as the
+broker's `task_admission`. This supplies task/claim custody without activating
+the ordinary Terminal remote allocation or coding-child handoff.
+
 ```python
 import subprocess
 

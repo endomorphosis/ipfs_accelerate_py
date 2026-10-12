@@ -37,6 +37,12 @@ establish native task custody. The host independently joins that inventory and
 context to an actual native task CID, revision and body. `context_cid` is a
 host-admitted identity; this reader does not compile or semantically validate it.
 
+The optional [host-only native task guard](current_source_task_admission.md)
+captures the actual one-attempt claim, active daemon grant and full native body,
+then can supply those task fields and refence the broker's reads. It retains the
+existing coordinator and owner; the ordinary Terminal remote allocation,
+compiled-context and actual coding-child handoff remain separate work.
+
 Binding occurs once on the live gateway under its original owner lock. It retains
 the exact owner identity, connection, reader and supplied CAS object, plus
 physical/configuration source-store and workspace bindings. The public binding

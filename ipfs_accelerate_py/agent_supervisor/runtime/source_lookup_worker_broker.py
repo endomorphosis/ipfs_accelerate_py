@@ -81,11 +81,17 @@ class SourceLookupWorkerBroker:
     """Trusted launcher opt-in; no database, owner or CAS is constructed."""
 
     def __init__(self, *, server, canonical_repository, workspace, boundary, prompt,
-                 timeout_seconds=90):
+                 timeout_seconds=90, task_admission=None):
         _need(type(self) is SourceLookupWorkerBroker and type(server) is QuackStateServer,
               "original native state owner required")
         _need(type(timeout_seconds) is int and 1 <= timeout_seconds <= MAX_SESSION_SECONDS,
               "bounded source worker session required")
+        self._task_admission = self._original_task_admission = task_admission
+        if task_admission is not None:
+            from .current_source_task_admission import NativeSourceTaskAdmission
+            _need(type(task_admission) is NativeSourceTaskAdmission
+                  and task_admission._server is server, "exact native source task admission required")
+            task_admission.require_current()
         _need(type(prompt) in (str, bytes), "exact source worker prompt required")
         prompt_bytes = prompt.encode("utf-8") if type(prompt) is str else prompt
         prompt_bytes.decode("utf-8", "strict")
@@ -131,6 +137,11 @@ class SourceLookupWorkerBroker:
                 self._service = gateway._current_source_lookup
                 _need(type(self._service) is native.CurrentSourceLookup
                       and self._service._root == self.workspace, "native source binding must name the allocation")
+                attached = getattr(self._service, "_native_source_task_admission", None)
+                _need(attached is None or attached is self._task_admission,
+                      "source worker must retain its native task admission")
+                if self._task_admission is not None:
+                    self._task_admission.require_source_binding(server=server, service=self._service)
                 gateway._assert_current_source_binding(self._service)
                 self._binding = self._service.binding(gateway.identity)
                 self._binding_bytes = canonical_json_bytes(self._binding)
@@ -181,6 +192,7 @@ class SourceLookupWorkerBroker:
             self._client_grant = canonical_json_bytes(dict(self._client.grant))
             with self._owner_lock:
                 self._current_owner()
+            self._task_current()
             owner, now = protocol.process_identity(os.getpid()), time.monotonic_ns()
             self._listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self._listener.bind(str(self.socket_path))
@@ -231,6 +243,10 @@ class SourceLookupWorkerBroker:
             _need(protocol.canonical_json(self.descriptor) == self._descriptor_bytes,
                   "source worker original descriptor changed")
         gateway = self._gateway
+        _need(self._task_admission is self._original_task_admission,
+              "source worker native task admission changed")
+        if self._task_admission is not None:
+            self._task_admission.require_source_binding(server=self._server, service=self._service)
         gateway._assert_current_source_binding(self._service)
         _need(canonical_json_bytes(dict(gateway.identity)) == self._owner_bytes
               and canonical_json_bytes(self._service.binding(gateway.identity)) == self._binding_bytes
@@ -251,6 +267,13 @@ class SourceLookupWorkerBroker:
                   and canonical_json_bytes(dict(self._client.identity)) == self._client_identity
                   and canonical_json_bytes(dict(self._client.grant)) == self._client_grant,
                   "source worker original proxy changed")
+
+    def _task_current(self):
+        """The native claim fence acquires COOR before SERVER, outside owner locks."""
+        _need(self._task_admission is self._original_task_admission,
+              "source worker native task admission changed")
+        if self._task_admission is not None:
+            self._task_admission.require_current()
 
     def _context_current(self):
         _need(self._live() and protocol.canonical_json(self.descriptor) == self._descriptor_bytes,
@@ -313,6 +336,7 @@ class SourceLookupWorkerBroker:
               and payload["raw_path_hex"] in self._service._paths
               and (payload["raw_path_hex"], payload["source_cid"]) in self._source_pairs
               and payload["max_bytes"] <= self._binding["max_slice_bytes"], "source query is outside session scope")
+        self._task_current()
         self._context_current()
         with self._owner_lock:
             self._current_owner()
@@ -325,10 +349,15 @@ class SourceLookupWorkerBroker:
         with self._accounting_lock:
             self._native_response_bytes += response["result"]["response_bytes"]
             self._native_wire_bytes += response["result"]["response_wire_bytes"]
+        # Charge the validated native envelope before a later claim refusal.
+        self._task_current()
         with self._owner_lock:
             self._current_owner()
             selected = self._selected(payload)
-            # Close native task/grant custody after the canonical CAS replay.
+        # The coordinator clock may observe host state. Complete the final
+        # claim fence after CAS replay, before closing exact source bytes.
+        self._task_current()
+        with self._owner_lock:
             self._current_owner()
             self._canonical._check_source()
             self._service._check_source()
@@ -466,6 +495,7 @@ class SourceLookupWorkerBroker:
 
 
 def start_source_lookup_worker_broker(*, server, canonical_repository, workspace, boundary,
-                                    prompt, timeout_seconds=90):
+                                    prompt, timeout_seconds=90, task_admission=None):
     return SourceLookupWorkerBroker(server=server, canonical_repository=canonical_repository,
-        workspace=workspace, boundary=boundary, prompt=prompt, timeout_seconds=timeout_seconds)
+        workspace=workspace, boundary=boundary, prompt=prompt, timeout_seconds=timeout_seconds,
+        task_admission=task_admission)

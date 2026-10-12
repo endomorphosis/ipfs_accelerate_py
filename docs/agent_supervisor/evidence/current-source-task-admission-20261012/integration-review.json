@@ -1,0 +1,82 @@
+{
+  "base_head": "8daaf4356a78c12c36cfcbc692e5feaaf896cad4",
+  "checks": [
+    {
+      "check": "Imported source-view/candidate context route remains distinct",
+      "evidence": "The imported WorkerSourceBroker uses its own source-view descriptor/request schemas and semantic view population. Native source lookup uses source-lookup descriptors and the original CurrentSourceLookup/CAS. prepare_worker_source_broker returns None at the default disabled profile before sealed-stdin, source-view or candidate-context construction.",
+      "result": "No route or schema collision found; imported working-candidate refresh does not adopt or refresh the native committed source/task binding."
+    },
+    {
+      "check": "Shared deployed route and source helper",
+      "evidence": "router_implementation_runner and container_worker_deployment retain the reviewed merged hashes; numeric process/lifecycle helpers are unchanged by the working-candidate import. The new admission adds no worker flags or wire fields.",
+      "result": "No new automatic Quack source service, admission, coordinator or launcher is created by the imported route."
+    },
+    {
+      "check": "Native ownership and exact types",
+      "evidence": "Capture requires exact QuackStateServer and already-open ProcessSerializedDatabaseCoordinator, active owner PID, retained server/gateway/connection/locks/config, native current generation/fence/UUID, exact seven-field claim identity, current admitted receipt, live actual peer, and active grant attestation. Full canonical task alias/revision/body are pinned.",
+      "result": "Detached snapshot dictionaries do not mint admission handles; same owned live lease/grant renewal remains allowed without normalizing the native task body."
+    },
+    {
+      "check": "Lock order and source closing order",
+      "evidence": "require_current invokes execute_with_task_claim_fence before acquiring SERVER in its callback. require_source_binding used under SERVER reads the coordinator closed flag/config/file witnesses without acquiring its lifecycle lock. Broker final task/coordinator check occurs after CAS replay and before both final committed preflight and selected canonical/allocated full-file reads.",
+      "result": "No introduced SERVER-to-COOR lock acquisition or post-file coordinator/CAS-replay callback found."
+    },
+    {
+      "check": "Bind-once and explicit guard retention",
+      "evidence": "Admission binder uses the existing server bind-once API, retains a published source reader even after a later refusal, and attaches its exact private admission marker. A worker broker cannot omit or substitute that marked guard. Native direct privileged source.get remains the unchanged body/source-current operation.",
+      "result": "No silent binding rollback, replacement, rebind or serialization of daemon grant credentials."
+    },
+    {
+      "check": "Cleanup and retained costs",
+      "evidence": "Validated-success native response byte/wire counters are recorded before post-RPC task refusal. Broker shutdown uses only the original proxy grant/client/socket/descriptor, bounded thread join and original inode cleanup; it does not require live admission or revoke the daemon grant/claim. Existing incomplete cleanup/accounting disclosure remains.",
+      "result": "No new resource owner or cleanup dependency on expired task admission."
+    },
+    {
+      "check": "Explicit protected authority prerequisite",
+      "evidence": "Control and coordinator must be canonical owner-UID single-link regular files without group/other write bits, with stable owner-controlled parent directory identity/mode. Ordinary Quack startup does not guarantee these leaf permissions. The first retained test fixture had actual0664 leaves and was refused before successful admission.",
+      "result": "Intentional narrower profile requirement; trusted fixture protects actual files rather than weakening the guard."
+    }
+  ],
+  "docker_runs_by_this_review": false,
+  "initial_failed_fixture_log": "/tmp/current-source-task-admission-first-20261012-tests.log",
+  "material_blockers_for_selected_optional_profile": [],
+  "model_calls": 0,
+  "previous_merged_docker_base_head": "8b39d308faed327dd8fa9c411e35e5ee31574cb9",
+  "prover_calls": 0,
+  "provider_calls": 0,
+  "qualification_status": "Parent owns the active corrected host qualification. This review neither reruns it nor treats its in-progress result as passed.",
+  "review_mode": "read-only source inspection; one new audit receipt only",
+  "runtime_product_edits": false,
+  "schema": "source-task-admission-integration-review@1",
+  "scope_limits": [
+    "No independent AdmittedBenchmarkRuntime bootstrap-receipt join; the current proof is actual owner-attested daemon grant and live native claim custody.",
+    "Host supplies the current source CAS/inventory, allocated root, context CID and public path scope. This handle does not independently prove worktree allocation ownership, compiled task/context correspondence or approved prompt bytes.",
+    "SourceLookupWorkerBroker still requires its actual direct Popen child. The broader native daemon or supervisor cannot substitute for that coding root; no remote daemon-to-owner handoff is implemented here.",
+    "Ordinary single-lane native daemon defaults can use DatabaseCoordinator. This API accepts only ProcessSerializedDatabaseCoordinator; production automatic adoption requires an explicitly qualified ownership/transport lifecycle.",
+    "The original gateway is single-bind. Revision/phase/body changes need explicit new admission and lifecycle; no automatic task switch, service retirement, source successor or candidate refresh is added.",
+    "Imported working candidate source/formal-context observations are distinct from native clean committed source.get. This native lane continues refusing source edits rather than silently promoting candidate observations.",
+    "Native direct privileged source SDK does not acquire the additional task-claim fence. The optional guarded worker lane is where live claim enforcement applies.",
+    "Existing coordinator bookkeeping, lease/events and expiration effects remain. require_existing_authority=False can repair bookkeeping metadata before the callback; metadata-only repaired corruption is not strict read-before-repair schema verification.",
+    "All checks are sequential. There is no atomic filesystem writer lease or operation-wide claim lease spanning the final file reads and response delivery.",
+    "No proof, completion, edit, allocation ownership or automatic Terminal execution authority is granted. No model decision, paid tokens, token saving, reward, training or new Docker qualification is measured by this review."
+  ],
+  "selected_profile": "One host-selected, current in-progress task with its actual live native claim and owner-attested daemon grant, on existing protected owner authority and an explicitly supplied clean committed source reader.",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "9afb32bd0237550567b79dc56fc2c4af7e80263a9e17f027f1b6819c95c60a0d",
+    "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py": "13386f3db7a3fee0103c5443416fe036d23c4f92953923e91cbd42f69582008c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py": "195c2c3d5c7173702ab2252b7cbf522fd51bff072e677759f99f7aa15c2e2373",
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py": "001c08a02cdef3dcb54e5778fe35a437f3c86cdce1fb6945e62fef450e0a7c5f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "7607cfae3eaec33b3a188f26a2ba3d87fc818b22ea529ceeaa40d0048ac46882",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py": "28cfa7637b0f94cd77dec3071600263a2289738ede4ffd696ef4e2de34ffeaf6",
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": "31a03fd79b6e8a74644d73693322e5709961a2fa620f471997643dde7c534d78",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "dae2cae7e22d8bfc35dfbc53fd230d026cd575b587815bfd23ff34afe5f5d72f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py": "a6ade482378c61e45199a19590e0c9143629a8f2a28460b5430c1b7e06bc2774",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py": "98604446b261ebc8cb2cf070b86bb214329b8aedd311d90dc3e85095123a79bb",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "f41159766cbf76c29bf5873af899753edc74ac7b37e817b6973f1c8cd13becb2",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "160e342beb70097509b3f5b6efdad6ab53b5ae204b9d1fa8f8057aa090d3df5d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py": "18a0c6d95c27efeb7eceeb0d79fe92f3a007d67626bcad4271b98ef3e17e9e1b",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "90bdfdf7ab2303453a600b953e7728789c48cb08d2d71c5d195d3694b0f0c32b"
+  },
+  "tests_run_by_this_review": false
+}

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="61.377" timestamp="2026-10-12T21:16:25.963994+00:00" hostname="spark-b271"><testcase classname="test.api.test_current_source_task_admission" name="test_real_typed_claim_derives_full_body_and_retrieves_allocated_source" time="2.823"><error message="failed on setup with &quot;ipfs_accelerate_py.agent_supervisor.runtime.current_source_task_admission.CurrentSourceTaskAdmissionError: native authority requires an existing owner regular file&quot;">test/api/test_current_source_task_admission.py:224: in native
+    with _native_case(tmp_path, monkeypatch) as case:
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+test/api/test_current_source_task_admission.py:183: in _native_case
+    handle = admission.capture_native_source_task_admission(**capture_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:272: in capture_native_source_task_admission
+    return NativeSourceTaskAdmission(_SEAL, server=server, attempt_authority=attempt_authority,
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:97: in __init__
+    self._control_identity = _owned_file(Path(server.config.database_path))
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:47: in _owned_file
+    _need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid()
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:36: in _need
+    raise CurrentSourceTaskAdmissionError(reason)
+E   ipfs_accelerate_py.agent_supervisor.runtime.current_source_task_admission.CurrentSourceTaskAdmissionError: native authority requires an existing owner regular file</error></testcase></testsuite></testsuites>

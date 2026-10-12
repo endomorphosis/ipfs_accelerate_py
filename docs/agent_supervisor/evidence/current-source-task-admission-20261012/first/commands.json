@@ -1,0 +1,460 @@
+{
+  "schema": "supervisor-current-source-task-qualification-command@1",
+  "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+  "interpreter": "/home/barberb/.local/bin/python",
+  "resolved_interpreter": "/usr/bin/python3.12",
+  "python_version": "3.12.3",
+  "targets": [
+    "test/api/test_current_source_task_admission.py",
+    "test/api/test_source_lookup_worker_channel.py",
+    "test/api/test_source_lookup_worker_router.py",
+    "test/api/test_current_source_lookup.py",
+    "test/api/test_current_source_lookup_cli.py",
+    "test/api/test_current_source_lookup_transport.py",
+    "test/api/causal_federation/test_typed_state_owner.py::test_grant_rejects_self_admission_unknown_mutation_and_scope_promotion",
+    "test/api/causal_federation/test_typed_state_owner.py::test_live_grant_revocation_is_checked_on_every_request",
+    "test/api/causal_federation/test_typed_state_owner.py::test_partial_response_timeout_poison_closes_the_client_transport",
+    "test/api/causal_federation/test_typed_state_owner.py::test_grant_is_kernel_bound_to_an_independent_process"
+  ],
+  "accelerator_base_revision": "17a1e73fa725effd795aa06dd0fd7257c63345b5",
+  "datasets_revision": "f47161b757190380e9898aff155067c1ad609217",
+  "before": [
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+      "bytes": 16377,
+      "sha256": "001c08a02cdef3dcb54e5778fe35a437f3c86cdce1fb6945e62fef450e0a7c5f"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "bytes": 29644,
+      "sha256": "a6ade482378c61e45199a19590e0c9143629a8f2a28460b5430c1b7e06bc2774"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_client.py",
+      "bytes": 22699,
+      "sha256": "330ab86a0faad1fbdb87653be98403a6fdf39437c7828507e3bc24d7d5204a1e"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+      "bytes": 27415,
+      "sha256": "195c2c3d5c7173702ab2252b7cbf522fd51bff072e677759f99f7aa15c2e2373"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup_cli.py",
+      "bytes": 4927,
+      "sha256": "706c526fb4ff868ff89517c8a0581ed839071cf05471c6f7f9c4d9bb6ffc584d"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "bytes": 239330,
+      "sha256": "31a03fd79b6e8a74644d73693322e5709961a2fa620f471997643dde7c534d78"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py",
+      "bytes": 18872,
+      "sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+      "bytes": 321499,
+      "sha256": "13386f3db7a3fee0103c5443416fe036d23c4f92953923e91cbd42f69582008c"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "bytes": 620001,
+      "sha256": "90bdfdf7ab2303453a600b953e7728789c48cb08d2d71c5d195d3694b0f0c32b"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+      "bytes": 189019,
+      "sha256": "1bfd5b1233a00511afeecc358e3a76e62ca9f8e9dab5d6c7a3380844d048b0be"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+      "bytes": 58758,
+      "sha256": "ac1ea77073b7a8f8e009722e1c42dbe3e3ffe277cf01252413ca9a57ca724543"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "bytes": 3250459,
+      "sha256": "e199003a7a54d4f012e0c5dc5057d0ec9f23889d45b2e07e552758d4c459fcd8"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "bytes": 65658,
+      "sha256": "dae2cae7e22d8bfc35dfbc53fd230d026cd575b587815bfd23ff34afe5f5d72f"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_current_source_task_admission.py",
+      "bytes": 22032,
+      "sha256": "8d723f0840451d7b92371dd98c3156f2b3ebc33151a11c3314ea193c720991a1"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_source_lookup_worker_channel.py",
+      "bytes": 20716,
+      "sha256": "32ff3f30be446a60672d1e2396f53d06dd7c22efd19c8c70556e342400eed90c"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_source_lookup_worker_router.py",
+      "bytes": 7181,
+      "sha256": "cc0b711f905a02299171c2af92fe9ea80aff4c6618e098e38b50214d843dab3e"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_current_source_lookup.py",
+      "bytes": 21178,
+      "sha256": "a6494c8df9c4ede4e692b740f320f3badac2a50262aec77ba161fd500e1856c6"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_current_source_lookup_cli.py",
+      "bytes": 4890,
+      "sha256": "922313424c9ec3120a9ca538303e0b3114318060a2c7851333f46a74d34525ee"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_current_source_lookup_transport.py",
+      "bytes": 3367,
+      "sha256": "da6f01ddd1bb7bab35431615b30c7f1dcfdc53ebd63d6b1ab71ab13c005c0862"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_repository_source_inventory.py",
+      "bytes": 21232,
+      "sha256": "6ff5c4c8a0ce504d4197e3626a3b9026f655aa8f87aaf9d6ff5d1928fa0d7e3c"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/causal_federation/test_typed_state_owner.py",
+      "bytes": 104227,
+      "sha256": "d185ebfa9072b6ba1b09f38e24a31b8422a38c7ff84dd0ece24e58d4ccd6222e"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/causal_federation/test_bootstrap_runtime.py",
+      "bytes": 12369,
+      "sha256": "0eafa64dca155a15e85dd1cc514b95b52375d28d580dceab1c01757db597d307"
+    },
+    {
+      "repository": "accelerator",
+      "path": "docs/agent_supervisor/evidence/current-source-task-admission-20261012/qualification_runner.py",
+      "bytes": 6471,
+      "sha256": "eda3a26c67b1bfd4629d7ddc667d41b6e803ed55d5e8053d9a69f2220846dc4f"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+      "bytes": 57876,
+      "sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+      "bytes": 22146,
+      "sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py",
+      "bytes": 14891,
+      "sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py",
+      "bytes": 22314,
+      "sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py",
+      "bytes": 22375,
+      "sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
+      "bytes": 6798,
+      "sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f"
+    }
+  ],
+  "invocations": [
+    {
+      "phase": "collection",
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-m",
+        "pytest",
+        "-c",
+        "pytest.ini",
+        "test/api/test_current_source_task_admission.py",
+        "test/api/test_source_lookup_worker_channel.py",
+        "test/api/test_source_lookup_worker_router.py",
+        "test/api/test_current_source_lookup.py",
+        "test/api/test_current_source_lookup_cli.py",
+        "test/api/test_current_source_lookup_transport.py",
+        "test/api/causal_federation/test_typed_state_owner.py::test_grant_rejects_self_admission_unknown_mutation_and_scope_promotion",
+        "test/api/causal_federation/test_typed_state_owner.py::test_live_grant_revocation_is_checked_on_every_request",
+        "test/api/causal_federation/test_typed_state_owner.py::test_partial_response_timeout_poison_closes_the_client_transport",
+        "test/api/causal_federation/test_typed_state_owner.py::test_grant_is_kernel_bound_to_an_independent_process",
+        "--color=no",
+        "-o",
+        "log_cli=false",
+        "--collect-only",
+        "-qq"
+      ],
+      "environment_updates": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUNBUFFERED": "1",
+        "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011:/home/barberb/lift_coding/.worktrees/source-worker-datasets-20261012:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/home/barberb/.local/lib/python3.12/site-packages",
+        "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/current-source-task-admission-first-20261012-collection-state",
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/current-source-task-admission-first-20261012-collection-seal.duckdb"
+      },
+      "log": "/tmp/current-source-task-admission-first-20261012-collection.log",
+      "exit_code": 0,
+      "elapsed_seconds": 61.135,
+      "log_sha256": "bf83451203cae70957e57e9c093123bafc5874b9b2765fbb7db10ec314a51367"
+    },
+    {
+      "phase": "tests",
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-m",
+        "pytest",
+        "-c",
+        "pytest.ini",
+        "test/api/test_current_source_task_admission.py",
+        "test/api/test_source_lookup_worker_channel.py",
+        "test/api/test_source_lookup_worker_router.py",
+        "test/api/test_current_source_lookup.py",
+        "test/api/test_current_source_lookup_cli.py",
+        "test/api/test_current_source_lookup_transport.py",
+        "test/api/causal_federation/test_typed_state_owner.py::test_grant_rejects_self_admission_unknown_mutation_and_scope_promotion",
+        "test/api/causal_federation/test_typed_state_owner.py::test_live_grant_revocation_is_checked_on_every_request",
+        "test/api/causal_federation/test_typed_state_owner.py::test_partial_response_timeout_poison_closes_the_client_transport",
+        "test/api/causal_federation/test_typed_state_owner.py::test_grant_is_kernel_bound_to_an_independent_process",
+        "--color=no",
+        "-o",
+        "log_cli=false",
+        "--maxfail=1",
+        "-q",
+        "--tb=short",
+        "--junitxml=/tmp/current-source-task-admission-first-20261012-junit.xml"
+      ],
+      "environment_updates": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUNBUFFERED": "1",
+        "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011:/home/barberb/lift_coding/.worktrees/source-worker-datasets-20261012:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/home/barberb/.local/lib/python3.12/site-packages",
+        "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/current-source-task-admission-first-20261012-tests-state",
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/current-source-task-admission-first-20261012-tests-seal.duckdb"
+      },
+      "log": "/tmp/current-source-task-admission-first-20261012-tests.log",
+      "exit_code": 1,
+      "elapsed_seconds": 63.382,
+      "log_sha256": "a0c5f4cdd5e3b0b4e4c7f4b7d41d810a802252b78f60d4f83e17e49f7634a3d8"
+    }
+  ],
+  "collected_distinct_tests": 82,
+  "after": [
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+      "bytes": 16377,
+      "sha256": "001c08a02cdef3dcb54e5778fe35a437f3c86cdce1fb6945e62fef450e0a7c5f"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "bytes": 29644,
+      "sha256": "a6ade482378c61e45199a19590e0c9143629a8f2a28460b5430c1b7e06bc2774"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_client.py",
+      "bytes": 22699,
+      "sha256": "330ab86a0faad1fbdb87653be98403a6fdf39437c7828507e3bc24d7d5204a1e"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+      "bytes": 27415,
+      "sha256": "195c2c3d5c7173702ab2252b7cbf522fd51bff072e677759f99f7aa15c2e2373"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup_cli.py",
+      "bytes": 4927,
+      "sha256": "706c526fb4ff868ff89517c8a0581ed839071cf05471c6f7f9c4d9bb6ffc584d"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "bytes": 239330,
+      "sha256": "31a03fd79b6e8a74644d73693322e5709961a2fa620f471997643dde7c534d78"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py",
+      "bytes": 18872,
+      "sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+      "bytes": 321499,
+      "sha256": "13386f3db7a3fee0103c5443416fe036d23c4f92953923e91cbd42f69582008c"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "bytes": 620001,
+      "sha256": "90bdfdf7ab2303453a600b953e7728789c48cb08d2d71c5d195d3694b0f0c32b"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+      "bytes": 189019,
+      "sha256": "1bfd5b1233a00511afeecc358e3a76e62ca9f8e9dab5d6c7a3380844d048b0be"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+      "bytes": 58758,
+      "sha256": "ac1ea77073b7a8f8e009722e1c42dbe3e3ffe277cf01252413ca9a57ca724543"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "bytes": 3250459,
+      "sha256": "e199003a7a54d4f012e0c5dc5057d0ec9f23889d45b2e07e552758d4c459fcd8"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "bytes": 65658,
+      "sha256": "dae2cae7e22d8bfc35dfbc53fd230d026cd575b587815bfd23ff34afe5f5d72f"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_current_source_task_admission.py",
+      "bytes": 22032,
+      "sha256": "8d723f0840451d7b92371dd98c3156f2b3ebc33151a11c3314ea193c720991a1"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_source_lookup_worker_channel.py",
+      "bytes": 20716,
+      "sha256": "32ff3f30be446a60672d1e2396f53d06dd7c22efd19c8c70556e342400eed90c"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_source_lookup_worker_router.py",
+      "bytes": 7181,
+      "sha256": "cc0b711f905a02299171c2af92fe9ea80aff4c6618e098e38b50214d843dab3e"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_current_source_lookup.py",
+      "bytes": 21178,
+      "sha256": "a6494c8df9c4ede4e692b740f320f3badac2a50262aec77ba161fd500e1856c6"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_current_source_lookup_cli.py",
+      "bytes": 4890,
+      "sha256": "922313424c9ec3120a9ca538303e0b3114318060a2c7851333f46a74d34525ee"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_current_source_lookup_transport.py",
+      "bytes": 3367,
+      "sha256": "da6f01ddd1bb7bab35431615b30c7f1dcfdc53ebd63d6b1ab71ab13c005c0862"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_repository_source_inventory.py",
+      "bytes": 21232,
+      "sha256": "6ff5c4c8a0ce504d4197e3626a3b9026f655aa8f87aaf9d6ff5d1928fa0d7e3c"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/causal_federation/test_typed_state_owner.py",
+      "bytes": 104227,
+      "sha256": "d185ebfa9072b6ba1b09f38e24a31b8422a38c7ff84dd0ece24e58d4ccd6222e"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/causal_federation/test_bootstrap_runtime.py",
+      "bytes": 12369,
+      "sha256": "0eafa64dca155a15e85dd1cc514b95b52375d28d580dceab1c01757db597d307"
+    },
+    {
+      "repository": "accelerator",
+      "path": "docs/agent_supervisor/evidence/current-source-task-admission-20261012/qualification_runner.py",
+      "bytes": 6471,
+      "sha256": "eda3a26c67b1bfd4629d7ddc667d41b6e803ed55d5e8053d9a69f2220846dc4f"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+      "bytes": 57876,
+      "sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+      "bytes": 22146,
+      "sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py",
+      "bytes": 14891,
+      "sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py",
+      "bytes": 22314,
+      "sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py",
+      "bytes": 22375,
+      "sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
+      "bytes": 6798,
+      "sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f"
+    }
+  ],
+  "source_before_after_equal": true,
+  "junit": {
+    "tests": 1,
+    "failures": 0,
+    "errors": 1,
+    "skipped": 0
+  },
+  "junit_sha256": "6dc19f2aeb1b3ce0c764318891fa42750c77b6b7bbd84244bf1944cc2b499751"
+}
