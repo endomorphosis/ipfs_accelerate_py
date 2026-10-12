@@ -388,4 +388,7 @@ repairs, cost and latency alongside the original verifier reward, native
 completion/publication and cleanup. Keep embedding/refresh accounting explicit.
 Require final input reconstruction and schema custody. Repeat balanced matched
 pairs before claiming repeatable savings. This first implementation establishes
-representation and integration checks; live token savings remain unmeasured.
+representation and integration checks. The October 12 instruction pair above
+records a small observed native-token difference; repeatable savings remain
+unestablished. Reversible source-view input and complete-run benefits are still
+unmeasured.

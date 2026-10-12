@@ -1,0 +1,17 @@
+{
+  "merged_qualified_product_test_source_hashes_exact": true,
+  "merged_upstream": "d86f3c3724",
+  "new_full_trial_belongs_to_parallel_frozen_runtime_not_source_views": true,
+  "own_tests_not_rerun_for_unrelated_benchmark_changes": true,
+  "parallel_instruction_pair": {
+    "baseline_tokens": 311776,
+    "observed_fewer_tokens": 1963,
+    "official_rewards": [
+      1,
+      1
+    ],
+    "scope": "one independently planned pair; principally cached input; no repeatable savings or cost advantage",
+    "treatment_tokens": 309813
+  },
+  "postmerge_documentation_steps_passed": 4
+}
