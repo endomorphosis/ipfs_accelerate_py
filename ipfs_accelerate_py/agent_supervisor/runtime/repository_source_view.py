@@ -294,6 +294,8 @@ def _scan(root_fd, limits, blobs_fd=None):
                     entry.update(compact_sha256=_put_blob(blobs_fd, compact, seen), compact_bytes=len(compact), rendering=rendering, ast_equivalent=equivalent)
                 entries[relative] = entry
             elif stat.S_ISLNK(info.st_mode):
+                if info.st_nlink != 1:
+                    _fail("unsupported_file")
                 target = _target(os.readlink(name, dir_fd=directory_fd))
                 if _identity(os.stat(name, dir_fd=directory_fd, follow_symlinks=False)) != _identity(info):
                     _fail("source_changed_during_read")
@@ -529,7 +531,7 @@ def _validate_manifest(manifest):
             _fail("invalid_manifest")
         if len(pieces) > 1:
             parent = _relative("/".join(pieces[:-1]))
-            if entries.get(parent, {}).get("kind") != "directory":
+            if type(entries.get(parent)) is not dict or entries[parent].get("kind") != "directory":
                 _fail("invalid_manifest")
     _check_symlinks(entries)
     if _tree_hash(manifest["root_mode"], entries) != manifest["source_tree_sha256"]:

@@ -189,6 +189,14 @@ def test_unsupported_files_are_refused(repository, tmp_path, kind, code):
     assert not (tmp_path / "package").exists()
 
 
+def test_hardlinked_symlinks_are_refused(repository, tmp_path):
+    os.link(repository / "calc-link", repository / "same-link", follow_symlinks=False)
+    assert (repository / "calc-link").lstat().st_nlink == 2
+    assert_error("unsupported_file", lambda: capture(repository, tmp_path))
+    assert not (tmp_path / "package").exists()
+    assert list(tmp_path.glob(".repository-view-*")) == []
+
+
 @pytest.mark.parametrize("target", ["/tmp/outside", "../outside", "lib/../../outside"])
 def test_symlink_escape_refused(repository, tmp_path, target):
     (repository / "bad-link").symlink_to(target)
@@ -244,16 +252,7 @@ def test_origin_anchor_is_retained_and_disjoint(repository, tmp_path):
 
 def test_full_tree_freshness_detects_edit_after_first_capture(repository, tmp_path, monkeypatch):
     render = views._compact
-    changed = False
-    def edit_after_capture(path, data):
-        nonlocal changed
-        if not changed:
-            changed = True
-            (repository / "README.txt").write_bytes(b"external mutation\n")
-        return render(path, data)
-    monkeypatch.setattr(views, "_compact", edit_after_capture)
-    # The first file is .settings/config.py, so changing README before its first
-    # read is still captured consistently. Mutate an already read file instead.
+    # Mutate an already captured file without modifying its parent directory.
     def mutate_captured(path, data):
         if path == ".settings/config.py":
             (repository / path).write_bytes(data + b"# changed\n")
@@ -327,6 +326,19 @@ def test_tampered_manifest_schema_and_topology_refused_even_with_new_pin(reposit
     mutation(manifest)
     pin = replace_manifest(package, manifest)
     assert_error(code, lambda: views.load_repository_view(package, expected_manifest_sha256=pin))
+
+
+def test_child_before_malformed_parent_returns_bounded_error(repository, tmp_path):
+    package, receipt = capture(repository, tmp_path)
+    manifest = load(package, receipt)
+    # Deliberately noncanonical order reaches topology validation before the
+    # malformed parent row's own validation; it must never leak AttributeError.
+    manifest["entries"] = {"lib/calc.py": manifest["entries"]["lib/calc.py"], "lib": []}
+    data = json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode()
+    file = package / "manifest.json"
+    file.chmod(0o644)
+    file.write_bytes(data)
+    assert_error("invalid_path_topology", lambda: views.load_repository_view(package, expected_manifest_sha256=digest(data)))
 
 
 @pytest.mark.parametrize("style,code", [("duplicate", "duplicate_manifest_key"), ("whitespace", "noncanonical_manifest"), ("deep", "manifest_structure_limit")])
