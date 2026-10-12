@@ -686,6 +686,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         provider_profile: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
+        capsule_selection: str = "lexical-query-symbol-name@1",
         metadata_census_only: bool = False,
         coding_reply_mode: str = "legacy",
         resource_profile: str | None = None,
@@ -708,6 +709,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     from .benchmark_provider_profile import resolve_provider_profile
     from .terminal_semantic_transport_policy import validate_semantic_transport_schema, semantic_transport_selection
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
+    from .terminal_capsule_selection_policy import (
+        DEFAULT_CAPSULE_SELECTION, validate_capsule_selection, capsule_selection_observation,
+    )
+    validate_capsule_selection(capsule_selection, arm=arm)
     if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (arm != "full"
@@ -787,6 +792,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "start_cleanup": _empty_start_cleanup_observation("runtime_not_created"),
               "provider_profile": provider_selection,
               **semantic_transport_selection(semantic_transport_schema),
+              **capsule_selection_observation(capsule_selection),
               **coding_reply_selection(coding_reply_mode),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
@@ -919,6 +925,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             before = time.monotonic()
             try:
                 report["initial_context"] = preparation.initial_context(state=state,
+                    **({"capsule_selection": capsule_selection} if capsule_selection != DEFAULT_CAPSULE_SELECTION else {}),
                     model_snapshot=model_snapshot, model_revision=model_revision,
                     **({"numerical_formalization_profile": numerical_formalization_profile}
                        if numerical_formalization_profile is not None else {}),
@@ -940,6 +947,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                         security_initializer=security_initializer,
                         canonical_cve_export=canonical_cve_export,
                         canonical_cve_manifest_sha256=canonical_cve_manifest_sha256)))
+                if report["initial_context"].get("capsule_selection", DEFAULT_CAPSULE_SELECTION) != capsule_selection:
+                    raise ValueError("initial context capsule selection differs from explicit benchmark treatment")
             finally:
                 report["phases"]["initial_context_seconds"] = time.monotonic() - before
         phase = "planning"
@@ -968,6 +977,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             try:
                 context = preparation.context(state=state, model_snapshot=model_snapshot,
                                               model_revision=model_revision)
+                if context.get("capsule_selection", DEFAULT_CAPSULE_SELECTION) != capsule_selection:
+                    raise ValueError("admitted context capsule selection differs from explicit benchmark treatment")
             finally:
                 report["phases"]["context_seconds"] = time.monotonic() - before
             report["context"] = context
@@ -1288,6 +1299,9 @@ def main():
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA)
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
+    from .terminal_capsule_selection_policy import DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS
+    parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
+        help="Retrieval ranking requires an explicit public task profile with a signed program/support partition")
     parser.add_argument("--metadata-census-only", action="store_true")
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,

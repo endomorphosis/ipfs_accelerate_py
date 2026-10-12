@@ -63,9 +63,17 @@ def _version(monkeypatch):
     monkeypatch.setattr(subprocess, "run", run)
 
 
+def _ranked_prepared(original):
+    """Explicit public profile supplies the independently signed partition."""
+    from benchmarks.agent_supervisor.container_coding.test_terminal_task_profile import profile
+    root, instruction, state = original
+    return prep.prepare(repository=root, instruction=instruction, state=state,
+        task_profile=profile(instruction.read_text(), inputs=("bottle.py",), output="bottle.py"))
+
+
 def test_programmatic_retrieval_ranked_capsules_use_same_native_index_and_replay(original):
     root, instruction, state = original
-    prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+    prepared = _ranked_prepared(original)
     result = initial.prepare_initial_context(state=state, prepared=prepared,
         model_snapshot=None, model_revision="", required_raw_paths=[prep.INSTRUCTION, prep.SMOKE],
         retrieval_ranked_capsules=True)
@@ -79,16 +87,21 @@ def test_programmatic_retrieval_ranked_capsules_use_same_native_index_and_replay
     assert loaded["semantic"]["raw_sources"][prep.INSTRUCTION] == prepared["query"]
     assert loaded["semantic"]["raw_sources"][prep.SMOKE] == (root / prep.SMOKE).read_text()
     assert result["provider_calls"] == 0
+    assert result["capsule_selection"] == loaded["descriptor"]["capsule_selection"] == projection["selector"]
     assert not (state / "planner-invoked.json").exists()
     (state / "capsule-selection.json").unlink()
     with pytest.raises(ValueError, match="lack their selected native retrieval"):
         initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
 
 
-def test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world(original, monkeypatch):
+@pytest.mark.parametrize("ranked", [False, True])
+def test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world(original, monkeypatch, ranked):
     root, instruction, state = original
-    prepared = prep.prepare(repository=root, instruction=instruction, state=state)
-    receipt = prep.initial_context(state=state)
+    prepared = (_ranked_prepared(original) if ranked else
+        prep.prepare(repository=root, instruction=instruction, state=state))
+    mode = "verified-retrieval-symbol-rank@1"
+    receipt = prep.initial_context(state=state, **({"capsule_selection": mode} if ranked else {}))
+    assert receipt.get("capsule_selection") == (mode if ranked else None)
     assert receipt["world_task_count"] == 0 and receipt["canonical_tasks_created"] is False
     assert receipt["provider_calls"] == 0 and receipt["learned_embeddings"] is False
     loaded = initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
@@ -107,7 +120,10 @@ def test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world(ori
             assert identity in prompt
         assert "empty-intent-planning-capture" in prompt
         assert '"execution_authority":false' in prompt.replace(" ", "")
-        return {"text": _proposal_json(prepared), "observation": {}, "execution_receipt": None}
+        proposal = json.loads(_proposal_json(prepared))
+        proposal["tasks"][0]["task_key"] = prepared["spec"]["task_key"]
+        proposal["tasks"][0]["predicted_files"] = [row["path"] for row in prepared["spec"]["outputs"]]
+        return {"text": json.dumps(proposal), "observation": {}, "execution_receipt": None}
     _version(monkeypatch)
     planned = prep.plan(state, provider_callable=router)
     assert planned["qualified"], planned
@@ -123,6 +139,7 @@ def test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world(ori
     monkeypatch.setattr(vector_index_preflight, "qualify", lambda *args: pytest.fail("duplicate vector build"))
     result = prep.context(state=state)
     assert result["initial_indexes_reused"] is True and result["new_embedding_calls"] == 0
+    assert result.get("capsule_selection") == (mode if ranked else None)
     assert result["semantic_root_cid"] == receipt["semantic_root_cid"]
     assert result["index_id"] == receipt["index_id"]
     assert result["world_snapshot_cid"] != receipt["world_snapshot_cid"]
@@ -158,4 +175,27 @@ def test_initial_evidence_drift_rejected_before_provider(original, monkeypatch, 
     with pytest.raises(ValueError):
         prep.plan(state, provider_callable=lambda *a, **k: calls.append(a))
     assert calls == []
+    assert not (state / "planner-invoked.json").exists()
+
+
+@pytest.mark.parametrize("mutation", ["result_missing", "descriptor_missing", "both_missing",
+                                      "result_lexical", "descriptor_lexical", "both_lexical"])
+def test_ranked_capsule_receipt_cannot_be_relabelled_on_cold_load(original, mutation):
+    root, instruction, state = original
+    prepared = _ranked_prepared(original)
+    result = prep.initial_context(state=state, capsule_selection="verified-retrieval-symbol-rank@1")
+    descriptor_path = root / result["descriptor"]["artifact"]
+    descriptor = json.loads(descriptor_path.read_bytes())
+    targets = [result, descriptor] if mutation.startswith("both_") else [
+        result if mutation.startswith("result_") else descriptor]
+    for target in targets:
+        if mutation.endswith("missing"):
+            target.pop("capsule_selection")
+        else:
+            target["capsule_selection"] = "lexical-query-symbol-name@1"
+    descriptor_path.write_bytes(initial._bytes(descriptor))
+    result["descriptor"]["sha256"] = hashlib.sha256(descriptor_path.read_bytes()).hexdigest()
+    (state / "initial-context-result.json").write_bytes(initial._bytes(result))
+    with pytest.raises(ValueError, match="capsule selection differs"):
+        initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
     assert not (state / "planner-invoked.json").exists()

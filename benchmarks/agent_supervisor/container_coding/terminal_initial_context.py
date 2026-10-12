@@ -413,6 +413,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "learned_embeddings": bool(model_snapshot) and not empty_population,
         "model_snapshot": str(model_snapshot.resolve(strict=True)) if model_snapshot else None,
         "model_revision": model_revision, "execution_authority": False, "completion_authority": False}
+    if retrieval_ranked_capsules:
+        descriptor["capsule_selection"] = "verified-retrieval-symbol-rank@1"
     if public_profile is not None:
         descriptor["public_task_index_scope"] = {"task_source_paths": vector_paths,
             "instruction_only": False, "source_semantics_verified": False}
@@ -440,6 +442,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "nonoverlapping_seconds": timings, "seconds": time.monotonic() - started,
         "final_result_persistence_included_in_seconds": False,
         "execution_authority": False, "completion_authority": False}
+    if retrieval_ranked_capsules:
+        result["capsule_selection"] = descriptor["capsule_selection"]
     if empty_population:
         result.update({key: retrieval[key] for key in (
             "retrieval_schema", "source_population_cid", "disposition", "embedding_calls")})
@@ -518,6 +522,13 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
     semantic, view, get_block = _semantic_view(root, metadata, alias)
     capsule_selection = state / "capsule-selection.json"
     capsule_policy = semantic.get("worker_projection", {})
+    declared_capsules = descriptor.get("capsule_selection")
+    if ("capsule_selection" in descriptor or "capsule_selection" in result
+            or capsule_policy.get("selector") == "verified-retrieval-symbol-rank@1"):
+        if (declared_capsules != "verified-retrieval-symbol-rank@1"
+                or result.get("capsule_selection") != declared_capsules
+                or capsule_policy.get("selector") != declared_capsules):
+            raise ValueError("initial capsule selection differs from verified projection")
     if capsule_selection.exists():
         if capsule_selection.is_symlink() or capsule_selection.stat().st_size > 32768:
             raise ValueError("capsule retrieval selection is outside bounds")
@@ -789,6 +800,8 @@ def bind_admitted_context(*, state: Path, prepared: dict, admission: dict, verif
         "initial_context_descriptor": loaded["receipt"]["descriptor"], "new_embedding_calls": 0,
         "preparation_mode": "initial-index-reuse-with-new-admitted-world",
         "execution_authority": False, "completion_authority": False, "canonical_task_mutated": False}
+    if "capsule_selection" in descriptor:
+        result["capsule_selection"] = descriptor["capsule_selection"]
     if descriptor.get("codebase_autoencoder") is not None:
         result["codebase_autoencoder"] = descriptor["codebase_autoencoder"]
         result["codebase_autoencoder_catalog"] = descriptor["codebase_autoencoder_catalog"]

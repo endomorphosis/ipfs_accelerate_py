@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="4.491" timestamp="2026-10-12T02:35:48.587425+00:00" hostname="90a8acf4007c"><testcase classname="api.semantic_state.test_ranked_published_task_context" name="test_ranked_successor_replays_native_pinned_policy_root_rebinding" file="api/semantic_state/test_ranked_published_task_context.py" line="71" time="2.541"><failure message="OSError: [Errno 30] Read-only file system: '/home/supervisor/.ipfs_accelerate'">self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains/master-235761b353fb8315405b/pending')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+&gt;           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains/master-235761b353fb8315405b/pending'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains/master-235761b353fb8315405b')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+&gt;           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains/master-235761b353fb8315405b'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+&gt;           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+&gt;           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+&gt;           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+&gt;           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+scenario = {'repository': PosixPath('/tmp/ranked-pytest/test_ranked_successor_replays_0/isolated'), 'manifest': {'payload': {'bas...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xe3e13ccf88c0&gt;, ...}
+tmp_path = PosixPath('/tmp/ranked-pytest/test_ranked_successor_replays_0')
+
+    def test_ranked_successor_replays_native_pinned_policy_root_rebinding(scenario, tmp_path):
+&gt;       with completed_ranked(scenario, tmp_path, vector_builder=pinned_vectors) as (_owner, arguments):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/code/source/test/api/semantic_state/test_ranked_published_task_context.py:73: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+/code/source/test/api/semantic_state/test_ranked_published_task_context.py:30: in completed_ranked
+    transition = native_published_transition(scenario, tmp_path, owner, attempt)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/code/source/test/api/test_local_completion_bridge.py:268: in native_published_transition
+    portal = PortalImplementationDaemon(
+/code/source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:5519: in __init__
+    self.merge_queue = merge_queue or MergeQueue(self.merge_queue_dir)
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/code/source/ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py:1358: in __init__
+    directory.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate'), mode = 511
+parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+&gt;           os.mkdir(self, mode)
+E           OSError: [Errno 30] Read-only file system: '/home/supervisor/.ipfs_accelerate'
+
+/usr/local/lib/python3.12/pathlib.py:1311: OSError</failure></testcase></testsuite></testsuites>

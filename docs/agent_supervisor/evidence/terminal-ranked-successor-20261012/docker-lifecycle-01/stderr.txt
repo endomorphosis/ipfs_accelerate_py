@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/qualification/entry.py", line 15, in <module>
+    shutil.copyfile(original,target);con.execute('LOAD '+name)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+_duckdb.IOException: IO Error: Extension "/home/supervisor/.duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension" could not be loaded: /home/supervisor/.duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension: failed to map segment from shared object

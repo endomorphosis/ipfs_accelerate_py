@@ -91,8 +91,11 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
+        if "capsule_selection" in kwargs:
+            from .terminal_capsule_selection_policy import validate_capsule_selection
+            validate_capsule_selection(kwargs["capsule_selection"], arm=kwargs.get("arm"))
         if "numerical_formalization_profile" in kwargs:
             from .terminal_numerical_policy import validate_numerical_profile
             validate_numerical_profile(kwargs["numerical_formalization_profile"])

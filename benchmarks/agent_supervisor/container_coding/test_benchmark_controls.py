@@ -211,3 +211,28 @@ def test_report_rejects_changed_baseline_even_when_candidate_declaration_matches
     assert all(row["comparison_profile_matches"] is False for row in result["rows"])
     assert not result["all_declared_controls_match"]
     assert not result["runtime_control_enforcement_verified"]
+
+
+def test_ranked_capsule_selection_changes_configuration_binding_and_cannot_be_relabelled():
+    config = supervisor_config(Path("/dataset"), Path("/out"), Path("/archive"), "full")
+    legacy = declaration(config)
+    selected = deepcopy(config)
+    selected["agents"][0]["kwargs"]["capsule_selection"] = "verified-retrieval-symbol-rank@1"
+    ranked = declaration(selected)
+    assert validate_controls(ranked)
+    assert ranked["configuration_sha256"] != legacy["configuration_sha256"]
+    assert compare_controls(observation(config), observation(selected))["matches"] is True
+    # Common controls intentionally match, while the complete frozen config
+    # binds the one treatment selected before a run.
+    selected["agents"][0]["kwargs"]["capsule_selection"] = "lexical-query-symbol-name@1"
+    assert observe_controls({"comparison_controls": ranked}, selected,
+                            current_task_hashes=HASHES)["status"] == "mismatch"
+
+
+@pytest.mark.parametrize("mode,arm", [(True, "full"), (None, "full"), ("unknown", "full"),
+    ("verified-retrieval-symbol-rank@1", "no-index")])
+def test_ranked_capsule_controls_reject_invalid_or_unindexed_selection(mode, arm):
+    config = supervisor_config(Path("/dataset"), Path("/out"), Path("/archive"), arm)
+    config["agents"][0]["kwargs"]["capsule_selection"] = mode
+    with pytest.raises(ValueError, match="capsule"):
+        declaration(config)

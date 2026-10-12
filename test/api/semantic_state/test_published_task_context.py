@@ -99,7 +99,7 @@ def initial_bundle(scenario, owner, *, retrieval=True, vector_builder=vectors, e
     return write_task_context_bundle(repository=root, prepared=[prepared], output=out / "bundle.json")
 
 
-def test_completed_ranked_predecessor_refuses_successor_before_any_preparation(scenario, tmp_path, monkeypatch):
+def test_completed_ranked_predecessor_requires_rebuilder_before_any_preparation(scenario, tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.runtime import published_task_context as owner_runtime
     admission = local.admit_local_benchmark_plan(graph=scenario["graph"], manifest=scenario["manifest"])
     with typed_claim(scenario, tmp_path) as (owner, _daemon, attempt):
@@ -115,8 +115,7 @@ def test_completed_ranked_predecessor_refuses_successor_before_any_preparation(s
         output = scenario["repository"] / ".runtime/ranked-successor"
         with pytest.raises(ValueError, match="requires fresh retrieval"):
             refresh_published_task_context(server=owner.server, admission=admission,
-                predecessor_bundle=bundle, task_cid=attempt.task_cid, output=output,
-                retrieval_rebuilder=vectors)
+                predecessor_bundle=bundle, task_cid=attempt.task_cid, output=output)
         assert not output.exists()
         assert owner.source.get_task(task.task_cid) == before
 

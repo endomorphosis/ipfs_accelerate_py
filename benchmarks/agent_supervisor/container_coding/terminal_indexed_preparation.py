@@ -38,6 +38,7 @@ from .terminal_task_profile import (
     validate_task_profile, validate_task_profile_contract, validate_task_data,
 )
 from .benchmark_provider_profile import CLI_VERSION, resolve_provider_profile
+from .terminal_capsule_selection_policy import DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS, validate_capsule_selection
 
 
 MODEL = "gpt-6.1-sol"
@@ -524,7 +525,8 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
                     numerical_formalization_profile: str | None = None,
                     numerical_selection_config: Path | None = None,
                     numerical_selection_timeout_seconds: float = 180.,
-                    numerical_selection_budget_profile: str | None = None) -> dict:
+                    numerical_selection_budget_profile: str | None = None,
+                    capsule_selection: str = DEFAULT_CAPSULE_SELECTION) -> dict:
     """Prepare source indexes and a real empty-owner observation before planning.
 
     This cost belongs to the full arm's agent time. The subsequent context()
@@ -532,12 +534,18 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
     """
     from .terminal_initial_context import prepare_initial_context
 
+    validate_capsule_selection(capsule_selection, arm="full")
     state = state.resolve(strict=True)
     prepared = _load_prepared(state)
     _require_single_task_context(prepared)
+    if capsule_selection != DEFAULT_CAPSULE_SELECTION:
+        from .terminal_program_population import terminal_program_partition
+        if terminal_program_partition(prepared) is None:
+            raise ValueError("retrieval-ranked capsules require an explicit public task profile with a signed program/support partition")
     return prepare_initial_context(state=state, prepared=prepared,
         model_snapshot=model_snapshot, model_revision=model_revision,
         required_raw_paths=[INSTRUCTION, SMOKE], train_autoencoder=train_autoencoder,
+        **({"retrieval_ranked_capsules": True} if capsule_selection != DEFAULT_CAPSULE_SELECTION else {}),
         weight_transfer=weight_transfer, canonical_cve_training=canonical_cve_training,
         security_checkpoint=security_checkpoint, security_checkpoint_hub=security_checkpoint_hub,
         formula_decoder=formula_decoder, header_protocol=header_protocol,
@@ -1073,6 +1081,8 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
         result["codebase_autoencoder"] = prepared_context["codebase_autoencoder"]
         result["codebase_autoencoder_catalog"] = prepared_context["codebase_autoencoder_catalog"]
         result["new_autoencoder_training_steps"] = prepared_context["new_autoencoder_training_steps"]
+    if "capsule_selection" in prepared_context:
+        result["capsule_selection"] = prepared_context["capsule_selection"]
     for key in ("source384_context", "numerical_formalization", "numerical_selection_384"):
         if prepared_context.get(key) is not None:
             result[key] = prepared_context[key]
@@ -1108,6 +1118,8 @@ def main():
     initial.add_argument("--state", type=Path, required=True)
     initial.add_argument("--model-snapshot", type=Path)
     initial.add_argument("--model-revision", default="")
+    initial.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
+        help="Retrieval ranking requires an explicit public task profile with a signed program/support partition")
     args = vars(parser.parse_args())
     action = args.pop("action")
     result = {"prepare": prepare, "context": context, "initial-context": initial_context}[action](**args)

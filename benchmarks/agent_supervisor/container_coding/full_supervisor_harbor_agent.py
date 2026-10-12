@@ -40,6 +40,10 @@ from .terminal_semantic_metadata_policy import (
     DEFAULT_SEMANTIC_METADATA_VIEW, validate_semantic_metadata_view,
     semantic_metadata_observation, require_semantic_metadata_archive,
 )
+from .terminal_capsule_selection_policy import (
+    DEFAULT_CAPSULE_SELECTION, validate_capsule_selection,
+    capsule_selection_observation, require_capsule_selection_archive,
+)
 from .terminal_numerical_policy import (
     validate_numerical_profile, numerical_observation, require_numerical_archive,
 )
@@ -307,12 +311,14 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
                  coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+                 capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                  numerical_formalization_profile: str | None = None,
                  metadata_census_only: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         selected_provider = resolve_provider_profile(provider_profile)
         if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
+        self.capsule_selection = validate_capsule_selection(capsule_selection, arm=arm)
         self.semantic_transport_schema = validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
         self.coding_reply_mode = validate_coding_reply_mode(coding_reply_mode,
             arm=arm, provider=selected_provider["provider"])
@@ -387,6 +393,9 @@ class FullSupervisorAgent(BaseAgent):
             transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
             provider=selected_provider["provider"])
         require_semantic_metadata_archive(manifest, metadata_view)
+        capsule_selection = validate_capsule_selection(
+            getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
+        require_capsule_selection_archive(manifest, capsule_selection)
         require_retrieval_revision(manifest, self.arm, getattr(self, "model_revision", ""))
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
@@ -446,6 +455,9 @@ class FullSupervisorAgent(BaseAgent):
             transport_schema=transport,
             provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         require_semantic_metadata_archive(manifest, metadata_view)
+        capsule_selection = validate_capsule_selection(
+            getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
+        require_capsule_selection_archive(manifest, capsule_selection)
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
         from .terminal_worker_capability import require_worker_capability
@@ -480,6 +492,8 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--coding-reply-mode", reply_mode]
         if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
             argv += ["--semantic-metadata-view", metadata_view]
+        if capsule_selection != DEFAULT_CAPSULE_SELECTION:
+            argv += ["--capsule-selection", capsule_selection]
         if getattr(self, "metadata_census_only", False):
             argv += ["--metadata-census-only"]
         task_profile = getattr(self, "task_profile", None)
@@ -516,6 +530,7 @@ class FullSupervisorAgent(BaseAgent):
                             **semantic_transport_selection(transport),
                             **coding_reply_selection(reply_mode),
                             **semantic_metadata_observation(metadata_view),
+                            **capsule_selection_observation(capsule_selection),
                             **numerical_observation(numerical_profile, self.arm),
                             **_intent_selection(requirement_contract),
                             "runtime_archive_sha256": manifest["archive_sha256"],

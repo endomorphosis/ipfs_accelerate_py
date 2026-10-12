@@ -36,6 +36,15 @@ from .task_context_bundle import (
 SCHEMA = "supervisor-published-task-context@1"
 EMPTY_RETRIEVAL_POLICY = "native-empty-program-scope@1"
 EMPTY_RETRIEVAL_POLICY_SCHEMA = "supervisor-published-empty-retrieval-policy@1"
+RANKED_CAPSULE_SELECTOR = "verified-retrieval-symbol-rank@1"
+
+
+class RankedRetrievalRefreshUnavailable(ValueError):
+    """No ranked successor can be prepared without its source-current retrieval."""
+
+    def __init__(self, observation):
+        super().__init__("retrieval-ranked capsule successor requires fresh retrieval")
+        self.observation = json.loads(json.dumps(observation))
 
 
 @dataclass(frozen=True)
@@ -233,7 +242,27 @@ def _verify_predecessor(*, root, result):
             or world["semantic_root_cid"] != semantic["semantic_root_cid"]
             or world["world_snapshot_cid"] != result["predecessor_world_snapshot_cid"]):
         raise ValueError("predecessor context lineage differs")
+    ranked = _ranked_capsule_binding(semantic, metadata)
+    current_metadata = {key.lower(): value for key, value in result["metadata"].items()}
+    _, current_semantic = _load_semantic_payload(repository=root,
+        artifact=current_metadata["semantic context artifact"],
+        expected_sha256=current_metadata["semantic context sha256"],
+        task_id=result["task_id"], verify_sources=False)
+    current_ranked = _ranked_capsule_binding(current_semantic, current_metadata)
+    if (ranked is None) != (current_ranked is None):
+        raise ValueError("published context cannot add or omit retrieval-ranked capsule selection")
+    if ranked is not None:
+        _verify_ranked_predecessor(root=root, metadata=metadata, task_id=result["task_id"])
+        old_policy, new_policy = semantic["worker_projection"], current_semantic["worker_projection"]
+        if (result["semantic"].get("worker_projection") != new_policy
+                or any(old_policy.get(key) != new_policy.get(key) for key in (
+                    "schema", "selector", "query", "max_capsules", "max_bytes", "unranked_policy"))):
+            raise ValueError("published context changed ranked capsule selection policy")
     previous_retrieval = _previous_retrieval(root, metadata, result["task_id"])
+    if ranked is not None:
+        _verify_ranked_retrieval_lineage(root=root, result=result,
+            previous=previous_retrieval, previous_binding=ranked,
+            current_metadata=current_metadata, current_binding=current_ranked)
     if previous_retrieval is not None and previous_retrieval[1] is None:
         payload = previous_retrieval[2]
         observed = result["retrieval"]
@@ -394,6 +423,61 @@ def _block_reader(directory):
     return get_block
 
 
+def _ranked_capsule_binding(semantic, metadata):
+    policy = semantic.get("worker_projection", {})
+    if policy.get("selector") != RANKED_CAPSULE_SELECTOR:
+        return None
+    expected = {"artifact": metadata.get("code retrieval artifact"),
+                "sha256": metadata.get("code retrieval sha256")}
+    if any(value is None for value in expected.values()) or policy.get("retrieval") != expected:
+        raise ValueError("ranked capsule retrieval differs from independently selected metadata")
+    return expected
+
+
+def _verify_ranked_predecessor(*, root, metadata, task_id):
+    # Reconstruct retained sources/capsules and replay the old native query. A
+    # rehashed nomination may not substitute arbitrary old ranking identities.
+    from .semantic_router_translation import _verified_semantic
+    path = metadata["semantic context artifact"]
+    raw = retrieval_context._read(retrieval_context._path(root, path), 2_000_000)
+    if hashlib.sha256(raw).hexdigest() != metadata["semantic context sha256"]:
+        raise ValueError("ranked predecessor changed during historical replay")
+    return _verified_semantic(root, artifact=path, text=raw.decode(), task_id=task_id, current=False)[0]
+
+
+def _verify_ranked_retrieval_lineage(*, root, result, previous, previous_binding,
+                                     current_metadata, current_binding):
+    current = _previous_retrieval(root, current_metadata, result["task_id"])
+    if (previous is None or previous[1] is None or current is None or current[1] is None
+            or current[0]["status"] != "current"):
+        raise ValueError("ranked successor requires its current native vector population")
+    old_context, old_snapshot, old_hits = previous
+    context, snapshot, hits = current
+    observed = result["retrieval"]
+    if (observed.get("status") != "current" or context["query_text"] != old_context["query_text"]
+            or observed.get("previous_index_id") != old_snapshot.index_id
+            or observed.get("previous_config_id") != old_snapshot.config.config_id
+            or observed.get("index_id") != snapshot.index_id):
+        raise ValueError("ranked successor retrieval lineage differs")
+    if observed.get("reason") == "verified_unchanged_source_scope":
+        if current_binding != previous_binding or snapshot != old_snapshot or hits != old_hits:
+            raise ValueError("ranked successor changed its unchanged retrieval selection")
+        return
+    if observed.get("reason") != "rebuilt_with_pinned_configuration":
+        raise ValueError("ranked successor lacks a pinned retrieval rebuild")
+    value = (snapshot, hits)
+    lineage = observed.get("policy_lineage")
+    if lineage is not None:
+        from ..integrations.ipfs_datasets_embedding_provider import PinnedEmbeddingPolicy
+        value = PinnedRetrievalRebuild(snapshot, hits,
+            PinnedEmbeddingPolicy.from_dict(lineage["previous_policy"]),
+            PinnedEmbeddingPolicy.from_dict(lineage["current_policy"]), lineage.get("embedding_receipt"))
+    _, _, verified_lineage = _verify_retrieval_rebuild(value, old_snapshot, old_hits)
+    if (verified_lineage != lineage or observed.get("result_id") != hits.result_id
+            or observed.get("config_id") != snapshot.config.config_id):
+        raise ValueError("ranked successor pinned retrieval observation differs")
+
+
 def _previous_retrieval(root, metadata, task_id):
     """Use the native loader before exposing its authenticated snapshot."""
     from ..analysis.code_symbol_vector_index import CodeVectorIndexSnapshot, CodeVectorSearchResult
@@ -521,6 +605,54 @@ def _refresh_empty_retrieval(*, root, metadata, context, payload, task_id, outpu
     return successor, retrieval
 
 
+def _refresh_vector_retrieval(*, root, old_retrieval, previous, metadata, task_id,
+                              output, retrieval_rebuilder, checkpoint):
+    """Retain the existing pinned vector refresh checks for either call order."""
+    successor = {}
+    context, snapshot, query_result = old_retrieval
+    if not set(snapshot.included_paths) <= set(previous["manifest"]):
+        raise ValueError("predecessor retrieval scope exceeds semantic scope")
+    retrieval = {"status": "unavailable", "reason": "source_changed_and_pinned_rebuilder_unavailable",
+                 "previous_index_id": snapshot.index_id, "previous_config_id": snapshot.config.config_id,
+                 "stale_paths": context["stale_paths"]}
+    if context["status"] == "current":
+        successor.update({"Code retrieval artifact": metadata["code retrieval artifact"],
+                          "Code retrieval sha256": metadata["code retrieval sha256"]})
+        retrieval.update(status="current", reason="verified_unchanged_source_scope", index_id=snapshot.index_id)
+    elif retrieval_rebuilder is not None:
+        from .published_retrieval import RetrievalRefreshUnavailable
+        try:
+            checkpoint()
+            rebuilt_value = retrieval_rebuilder(repository=root, previous_snapshot=snapshot,
+                previous_result=query_result, query_text=context["query_text"], output=output / "vectors")
+            checkpoint()
+        except RetrievalRefreshUnavailable as unavailable:
+            retrieval["reason"] = unavailable.reason
+            if getattr(unavailable, "receipt", None) is not None:
+                retrieval["embedding_receipt"] = _verify_embedding_observation(unavailable.receipt, snapshot)
+        else:
+            rebuilt, hits, policy_lineage = _verify_retrieval_rebuild(rebuilt_value, snapshot, query_result)
+            produced = retrieval_context.prepare_code_retrieval_context(
+                repository=root, task_id=task_id, query_text=context["query_text"],
+                snapshot=rebuilt, result=hits, output=output / "code-retrieval.json")
+            successor.update(produced["metadata"])
+            retrieval.update(status="current", reason="rebuilt_with_pinned_configuration",
+                             index_id=rebuilt.index_id, result_id=hits.result_id,
+                             config_id=rebuilt.config.config_id, policy_lineage=policy_lineage)
+            from .supervisor_meta_index import SupervisorMetaIndex
+            meta = SupervisorMetaIndex(output / "retrieval-metadata.duckdb", output / "retrieval-metadata-lake")
+            catalog = meta.register_catalog(kind="vector", locator_ref=str(output / "code-retrieval.json"),
+                tree_id=rebuilt.tree_id, project=False)
+            for offset in range(0, len(rebuilt.rows), 10_000):
+                meta.link_identities([dict(subject_kind="path", subject_ref=row.path,
+                    catalog_id=catalog["catalog_id"], record_kind="code_symbol", record_ref=row.row_id)
+                    for row in rebuilt.rows[offset:offset + 10_000]], project=False)
+            retrieval["ducklake"] = meta.project_ducklake()
+            if retrieval["ducklake"]["status"] != "projected":
+                raise ValueError("refreshed vector metadata did not project to DuckLake")
+    return successor, retrieval
+
+
 def refresh_published_task_context(*, server, admission, predecessor_bundle,
                                    task_cid: str, output: Path,
                                    retrieval_rebuilder=None, source384_output: Path | None = None,
@@ -605,11 +737,10 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
         expected_sha256=metadata["semantic context sha256"], task_id=binding["task_id"],
         verify_sources=False,
     )
-    if previous.get("worker_projection", {}).get("selector") == "verified-retrieval-symbol-rank@1":
-        # A successor needs fresh retrieval before selecting its capsules. This
-        # pipeline currently regenerates retrieval afterward; refuse the opt-in
-        # predecessor before producing any partial successor or dropping rank.
-        raise ValueError("retrieval-ranked capsule successor requires fresh retrieval before semantic preparation")
+    ranked_predecessor = _ranked_capsule_binding(previous, metadata)
+    if ranked_predecessor is not None:
+        _verify_ranked_predecessor(root=root, metadata=metadata, task_id=binding["task_id"])
+        checkpoint()
     previous_world = load_intent_world_context(
         artifact=root / metadata["world context artifact"],
         expected_sha256=metadata["world context sha256"], task_id=binding["task_id"],
@@ -629,6 +760,20 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
     permitted = set(task["body"][local.CONTRACT_KEY]["payload"]["task_spec"]["scope_paths"])
     if not set(previous["manifest"]) <= permitted:
         raise ValueError("predecessor semantic scope exceeds the signed task scope")
+    ranked_metadata = ranked_retrieval = None
+    if ranked_predecessor is not None:
+        old_retrieval = _previous_retrieval(root, metadata, binding["task_id"])
+        if old_retrieval is None or old_retrieval[1] is None:
+            raise ValueError("ranked predecessor requires its native vector retrieval")
+        ranked_metadata, ranked_retrieval = _refresh_vector_retrieval(root=root,
+            old_retrieval=old_retrieval, previous=previous, metadata=metadata,
+            task_id=binding["task_id"], output=output,
+            retrieval_rebuilder=retrieval_rebuilder, checkpoint=checkpoint)
+        checkpoint()
+        if _owner_state(server=server, admission=admission, task_cid=task_cid)[1] != binding:
+            raise ValueError("publication changed during ranked retrieval preparation")
+        if ranked_retrieval["status"] != "current":
+            raise RankedRetrievalRefreshUnavailable(ranked_retrieval)
     numerical = learned_numerical = None
     if numerical_policy is not None:
         from .published_numerical import prepare_successor
@@ -679,6 +824,10 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
         worker_query=projection.get("query", ""),
         worker_capsule_limit=projection.get("max_capsules", 8),
         worker_max_bytes=projection.get("max_bytes", 32768),
+        **({"worker_retrieval": {
+            "artifact": ranked_metadata["Code retrieval artifact"],
+            "sha256": ranked_metadata["Code retrieval sha256"]}}
+           if ranked_metadata is not None else {}),
         **({"program_paths": previous["program_paths"]} if "program_paths" in previous else {}),
         **({"defer_task_data": True} if "task_data_projection" in previous else {}),
         _refresh_lineage={
@@ -699,9 +848,13 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
         "Semantic context sha256": semantic["worker_payload_sha256"],
         "Semantic context refresh": "true",
     }
-    old_retrieval = _previous_retrieval(root, metadata, binding["task_id"])
+    old_retrieval = (_previous_retrieval(root, metadata, binding["task_id"])
+                     if ranked_metadata is None else None)
     retrieval = {"status": "unavailable", "reason": "predecessor_has_no_retrieval"}
-    if old_retrieval is not None and old_retrieval[1] is None:
+    if ranked_metadata is not None:
+        successor.update(ranked_metadata)
+        retrieval = ranked_retrieval
+    elif old_retrieval is not None and old_retrieval[1] is None:
         context, _, population = old_retrieval
         if retrieval_rebuilder is not None:
             raise ValueError("empty retrieval cannot select a vector producer without independent admission")
@@ -713,47 +866,10 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
             declared_outputs=[item["path"] for item in task["body"][local.CONTRACT_KEY]["payload"]["task_spec"]["outputs"]])
         successor.update(empty_metadata)
     elif old_retrieval is not None:
-        context, snapshot, query_result = old_retrieval
-        if not set(snapshot.included_paths) <= set(previous["manifest"]):
-            raise ValueError("predecessor retrieval scope exceeds semantic scope")
-        retrieval = {"status": "unavailable", "reason": "source_changed_and_pinned_rebuilder_unavailable",
-                     "previous_index_id": snapshot.index_id, "previous_config_id": snapshot.config.config_id,
-                     "stale_paths": context["stale_paths"]}
-        if context["status"] == "current":
-            successor.update({"Code retrieval artifact": metadata["code retrieval artifact"],
-                              "Code retrieval sha256": metadata["code retrieval sha256"]})
-            retrieval.update(status="current", reason="verified_unchanged_source_scope", index_id=snapshot.index_id)
-        elif retrieval_rebuilder is not None:
-            from .published_retrieval import RetrievalRefreshUnavailable
-            try:
-                checkpoint()
-                rebuilt_value = retrieval_rebuilder(repository=root, previous_snapshot=snapshot,
-                    previous_result=query_result, query_text=context["query_text"], output=output / "vectors")
-                checkpoint()
-            except RetrievalRefreshUnavailable as unavailable:
-                retrieval["reason"] = unavailable.reason
-                if getattr(unavailable, "receipt", None) is not None:
-                    retrieval["embedding_receipt"] = _verify_embedding_observation(unavailable.receipt, snapshot)
-            else:
-                rebuilt, hits, policy_lineage = _verify_retrieval_rebuild(rebuilt_value, snapshot, query_result)
-                produced = retrieval_context.prepare_code_retrieval_context(
-                    repository=root, task_id=binding["task_id"], query_text=context["query_text"],
-                    snapshot=rebuilt, result=hits, output=output / "code-retrieval.json")
-                successor.update(produced["metadata"])
-                retrieval.update(status="current", reason="rebuilt_with_pinned_configuration",
-                                 index_id=rebuilt.index_id, result_id=hits.result_id,
-                                 config_id=rebuilt.config.config_id, policy_lineage=policy_lineage)
-                from .supervisor_meta_index import SupervisorMetaIndex
-                meta = SupervisorMetaIndex(output / "retrieval-metadata.duckdb", output / "retrieval-metadata-lake")
-                catalog = meta.register_catalog(kind="vector", locator_ref=str(output / "code-retrieval.json"),
-                    tree_id=rebuilt.tree_id, project=False)
-                for offset in range(0, len(rebuilt.rows), 10_000):
-                    meta.link_identities([dict(subject_kind="path", subject_ref=row.path,
-                        catalog_id=catalog["catalog_id"], record_kind="code_symbol", record_ref=row.row_id)
-                        for row in rebuilt.rows[offset:offset + 10_000]], project=False)
-                retrieval["ducklake"] = meta.project_ducklake()
-                if retrieval["ducklake"]["status"] != "projected":
-                    raise ValueError("refreshed vector metadata did not project to DuckLake")
+        vector_metadata, retrieval = _refresh_vector_retrieval(root=root, old_retrieval=old_retrieval,
+            previous=previous, metadata=metadata, task_id=binding["task_id"], output=output,
+            retrieval_rebuilder=retrieval_rebuilder, checkpoint=checkpoint)
+        successor.update(vector_metadata)
     checkpoint()
     get_block = _block_reader(output / "semantic/blocks")
     view = IpfsDatasetsSemanticStateProvider().open_verified_view(semantic["semantic_root_cid"], get_block)

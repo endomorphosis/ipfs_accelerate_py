@@ -1,0 +1,194 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.15, pytest-9.1.1, pluggy-1.6.0
+cachedir: /tmp/pytest-cache
+rootdir: /code/source/test
+configfile: pytest.ini
+collected 16 items
+
+../code/source/test/api/semantic_state/test_ranked_published_task_context.py::test_ranked_successor_replays_native_pinned_policy_root_rebinding 
+-------------------------------- live log setup --------------------------------
+2026-10-12 02:35:49 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+-------------------------------- live log call ---------------------------------
+2026-10-12 02:35:50 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-12 02:35:50 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-12 02:35:50 [    INFO] capability admitted status=compatible fingerprint=sha256:b705554ff20ec1416fcd6ee5a5fdb5f93d678652489e29c7e4ff41c20e5edad8 (quack_state_server.py:4359)
+2026-10-12 02:35:50 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-12 02:35:50 [    INFO] control-plane schema migration complete before ready (quack_state_server.py:4359)
+2026-10-12 02:35:50 [    INFO] state-owner ready server_id=server:a3869a3d-042d-4a9a-be60-1b835ec6c7e7 listen_uri=quack:127.0.0.1:46515 (quack_state_server.py:4359)
+2026-10-12 02:35:50 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-12 02:35:50 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [  6%]
+
+=================================== FAILURES ===================================
+______ test_ranked_successor_replays_native_pinned_policy_root_rebinding _______
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains/master-235761b353fb8315405b/pending')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains/master-235761b353fb8315405b/pending'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains/master-235761b353fb8315405b')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains/master-235761b353fb8315405b'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0/agent-merge-trains'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration/61ee9f2c8fb4420113d0'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor/orchestration'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate/agent_supervisor')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           os.mkdir(self, mode)
+E           FileNotFoundError: [Errno 2] No such file or directory: '/home/supervisor/.ipfs_accelerate/agent_supervisor'
+
+/usr/local/lib/python3.12/pathlib.py:1311: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+scenario = {'repository': PosixPath('/tmp/ranked-pytest/test_ranked_successor_replays_0/isolated'), 'manifest': {'payload': {'bas...': <ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xe3e13ccf88c0>, ...}
+tmp_path = PosixPath('/tmp/ranked-pytest/test_ranked_successor_replays_0')
+
+    def test_ranked_successor_replays_native_pinned_policy_root_rebinding(scenario, tmp_path):
+>       with completed_ranked(scenario, tmp_path, vector_builder=pinned_vectors) as (_owner, arguments):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/code/source/test/api/semantic_state/test_ranked_published_task_context.py:73: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+/code/source/test/api/semantic_state/test_ranked_published_task_context.py:30: in completed_ranked
+    transition = native_published_transition(scenario, tmp_path, owner, attempt)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/code/source/test/api/test_local_completion_bridge.py:268: in native_published_transition
+    portal = PortalImplementationDaemon(
+/code/source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:5519: in __init__
+    self.merge_queue = merge_queue or MergeQueue(self.merge_queue_dir)
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/code/source/ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py:1358: in __init__
+    directory.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+/usr/local/lib/python3.12/pathlib.py:1315: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/supervisor/.ipfs_accelerate'), mode = 511
+parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           os.mkdir(self, mode)
+E           OSError: [Errno 30] Read-only file system: '/home/supervisor/.ipfs_accelerate'
+
+/usr/local/lib/python3.12/pathlib.py:1311: OSError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-12 02:35:49,846 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+----------------------------- Captured stderr call -----------------------------
+2026-10-12 02:35:50,331 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-12 02:35:50,483 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-12 02:35:50,562 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - capability admitted status=compatible fingerprint=sha256:b705554ff20ec1416fcd6ee5a5fdb5f93d678652489e29c7e4ff41c20e5edad8
+2026-10-12 02:35:50,563 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-12 02:35:50,642 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - control-plane schema migration complete before ready
+2026-10-12 02:35:50,768 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - state-owner ready server_id=server:a3869a3d-042d-4a9a-be60-1b835ec6c7e7 listen_uri=quack:127.0.0.1:46515
+2026-10-12 02:35:50,865 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-12 02:35:50,887 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 capability admitted status=compatible fingerprint=sha256:b705554ff20ec1416fcd6ee5a5fdb5f93d678652489e29c7e4ff41c20e5edad8
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 control-plane schema migration complete before ready
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 state-owner ready server_id=server:a3869a3d-042d-4a9a-be60-1b835ec6c7e7 listen_uri=quack:127.0.0.1:46515
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/ranked-pytest/test_ranked_successor_replays_0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------- generated xml file: /qualification-output/junit.xml --------------
+============================= slowest 10 durations =============================
+2.13s call     api/semantic_state/test_ranked_published_task_context.py::test_ranked_successor_replays_native_pinned_policy_root_rebinding
+0.41s setup    api/semantic_state/test_ranked_published_task_context.py::test_ranked_successor_replays_native_pinned_policy_root_rebinding
+
+(1 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED ../code/source/test/api/semantic_state/test_ranked_published_task_context.py::test_ranked_successor_replays_native_pinned_policy_root_rebinding
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+============================== 1 failed in 4.50s ===============================

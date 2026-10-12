@@ -162,8 +162,19 @@ the existing live census route. The default remains `legacy`; preparation,
 archive and signed router checks still apply. This treatment does not change
 planning or the provider selected through `llm_router`.
 
-Capsule priority can additionally consume the existing retrieval index rather
-than relying only on words in symbol names and paths. The programmatic
+Capsule priority can additionally consume the existing retrieval index. Select
+`--capsule-selection verified-retrieval-symbol-rank@1` during full-supervisor
+benchmark preparation, with an explicit public `--task-profile` and a rebuilt
+runtime archive. The default remains `lexical-query-symbol-name@1`; absent
+options retain the existing configuration and receipt shapes. The selection is
+bound through benchmark controls, Harbor arguments, the container driver,
+initial indexes and admitted task context. Configuration drift or a returned
+context with a different selection refuses execution. The no-index arm cannot
+select ranking. Legacy profiles without an independently signed program/support
+partition refuse before indexing or planning; an empty program population also
+cannot supply ranked capsules.
+
+The underlying
 `prepare_initial_context(..., retrieval_ranked_capsules=True)` profile prepares
 retrieval before capsules, then passes its artifact and digest to
 `prepare_semantic_context(..., worker_retrieval=...)`. The owner replays the
@@ -174,10 +185,19 @@ freshness/admission checks, capsule count and byte limits still apply. Rankings
 cannot confer proof or permission to omit a required fact. The descriptor and
 cold reload retain the exact selected retrieval binding. Historical audit
 reconstructs the original ranking from retained sources, AST and query evidence
-after code edits; it does not label those historical sources current. This remains a
-programmatic profile, with no benchmark CLI flag. Published successors refuse
-this profile until fresh retrieval regeneration is integrated; the ordinary
-profile remains available for complete multi-step benchmark runs.
+after code edits; it does not label those historical sources current.
+
+Published successors now authenticate the prior ranking and prepare current
+retrieval before compiling new semantic capsules. Unchanged source scope reuses
+its verified retrieval; changed source scope requires the pinned native rebuild
+policy. Missing, stale or failed retrieval refuses the ranked successor before
+semantic preparation. The successor retains the selected query and capsule
+bounds, and cold reload independently checks the old-to-new retrieval lineage.
+Owner changes during refresh also refuse. This preserves current-source checks
+while allowing retained historical replay. It does not establish ranking
+quality, proof coverage or reduced token use. Current behavior and qualification
+status are recorded in
+[the ranked-successor evidence](evidence/terminal-ranked-successor-20261012/README.md).
 
 Comparison output now includes **total native tokens per official pass** and
 **reported provider USD per official pass**. Each numerator includes all
@@ -209,6 +229,12 @@ at a time, and retain every attempt and its native usage.
    owner/world, schema custody and cleanup checks passed. This completes the
    input census gate; the result remains byte evidence, without complete-run
    savings or benchmark reward. See the [live observation](terminal_metadata_census.md#actual-live-source384-census-2026-10-11).
+   A later instruction-deduplication census used the actual public
+   `largest-eigenval` sources with an **authored administrative plan** and
+   measured **57,423 to 56,452 bytes**, a 971-byte reduction (1.69%), with exact
+   restoration and zero real planning or coding calls. It is a separate scope
+   from the live Source384 result above. A fresh live-planned instruction census
+   remains pending; neither byte result measures provider-token savings.
 2. **Use current formal status capsules to prevent redundant reasoning.** Resolve
    an accepted native receipt through the supported proof-cache gate, including
    render/commit revalidation. Present property, verdict, assumptions, dependency
@@ -296,7 +322,13 @@ at a time, and retain every attempt and its native usage.
 6. **Evaluate retrieval separately.** Rank task dependency closures and proof
    obligations with the available autoencoders/embeddings. Measure required-fact
    coverage, missing/stale evidence and expansion cost before claiming omission
-   is safe. Keep new training out of the first metadata-only comparison.
+   is safe. The versioned ranked-capsule CLI and pinned successor refresh now
+   support a separately controlled full-supervisor treatment on explicitly
+   signed public task profiles. Complete its native lifecycle and rebuilt-archive
+   qualification, then census ranked input and run matched lexical/ranked trials
+   with the same metadata view. Retain refresh failures and embedding costs as
+   part of each attempt. Keep new training out of the first metadata-only
+   comparison.
 
 ## Decide success from the complete run
 

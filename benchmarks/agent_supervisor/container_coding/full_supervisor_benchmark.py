@@ -35,6 +35,10 @@ from .terminal_semantic_metadata_policy import (
     DEFAULT_SEMANTIC_METADATA_VIEW, SEMANTIC_METADATA_VIEWS, validate_semantic_metadata_view,
     semantic_metadata_selection, semantic_metadata_observation, require_semantic_metadata_archive,
 )
+from .terminal_capsule_selection_policy import (
+    DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS, validate_capsule_selection,
+    capsule_selection_options, capsule_selection_observation, require_capsule_selection_archive,
+)
 from .terminal_numerical_policy import (
     PROFILES as NUMERICAL_PROFILES, validate_numerical_profile, numerical_selection,
     numerical_observation, require_numerical_archive,
@@ -175,9 +179,11 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+               capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                numerical_formalization_profile: str | None = None,
                model_revision: str = "") -> dict:
     validate_numerical_profile(numerical_formalization_profile)
+    validate_capsule_selection(capsule_selection, arm=arm)
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
@@ -199,7 +205,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **semantic_transport_selection(semantic_transport_schema),
                    **coding_reply_selection(coding_reply_mode),
                    **numerical_selection(numerical_formalization_profile),
-                   **semantic_metadata_selection(semantic_metadata_view)},
+                   **semantic_metadata_selection(semantic_metadata_view),
+                   **capsule_selection_options(capsule_selection)},
     }]
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
@@ -246,8 +253,10 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
             coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+            capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
             numerical_formalization_profile: str | None = None) -> dict:
     validate_numerical_profile(numerical_formalization_profile)
+    validate_capsule_selection(capsule_selection, arm=arm)
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
@@ -271,6 +280,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_semantic_transport_archive(manifest, semantic_transport_schema)
     require_coding_reply_archive(manifest, coding_reply_mode)
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
+    require_capsule_selection_archive(manifest, capsule_selection)
     require_numerical_archive(manifest, numerical_formalization_profile)
     if selected_provider["provider"] == "grok_cli":
         from .terminal_grok_deployment import verify_grok_archive
@@ -313,6 +323,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         semantic_transport_schema=semantic_transport_schema,
         coding_reply_mode=coding_reply_mode,
         semantic_metadata_view=semantic_metadata_view,
+        capsule_selection=capsule_selection,
         numerical_formalization_profile=numerical_formalization_profile,
         **({"provider_profile": provider_profile} if provider_profile is not None else {}))
     if (selected_source384 is not None or selected_numerical is not None) and arm == "full":
@@ -344,6 +355,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **semantic_transport_selection(semantic_transport_schema),
               **coding_reply_selection(coding_reply_mode),
               **semantic_metadata_observation(semantic_metadata_view),
+              **capsule_selection_observation(capsule_selection),
               **numerical_observation(numerical_formalization_profile, arm),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
@@ -387,6 +399,10 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     configured_metadata_view = validate_semantic_metadata_view(
         config["agents"][0].get("kwargs", {}).get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
         arm=prepared["arm"], transport_schema=configured_transport)
+    capsule_selection = validate_capsule_selection(
+        prepared.get("capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=prepared["arm"])
+    configured_capsules = validate_capsule_selection(
+        config["agents"][0].get("kwargs", {}).get("capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=prepared["arm"])
     selection = {key: prepared.get(key, value) for key, value in _intent_selection(None).items()}
     configured_selection = _intent_selection(config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"))
     job = Path(config["jobs_dir"]) / config["job_name"]
@@ -413,6 +429,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **semantic_transport_selection(transport),
               **coding_reply_selection(reply_mode),
               **semantic_metadata_observation(metadata_view),
+              **capsule_selection_observation(capsule_selection),
+              **({"capsule_selection_config_unchanged": configured_capsules == capsule_selection}
+                 if "capsule_selection" in prepared or "capsule_selection" in config["agents"][0].get("kwargs", {}) else {}),
               **numerical_observation(numerical_profile, prepared["arm"]),
               **({"numerical_formalization_config_unchanged": configured_numerical == numerical_profile}
                  if numerical_profile is not None or configured_numerical is not None else {}),
@@ -430,7 +449,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file()
                   and configured_transport == transport and configured_reply_mode == reply_mode
                   and configured_numerical == numerical_profile
-                  and configured_metadata_view == metadata_view,
+                  and configured_metadata_view == metadata_view
+                  and configured_capsules == capsule_selection,
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
               "intent_action_384": prepared.get("intent_action_384"),
@@ -471,6 +491,12 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         arm=prepared["arm"], transport_schema=transport)
     if metadata_view != configured_metadata_view:
         raise ValueError("prepared semantic metadata view selection changed")
+    capsule_selection = validate_capsule_selection(
+        prepared.get("capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=prepared["arm"])
+    configured_capsules = validate_capsule_selection(
+        config["agents"][0].get("kwargs", {}).get("capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=prepared["arm"])
+    if capsule_selection != configured_capsules:
+        raise ValueError("prepared capsule selection changed")
     if _task_hashes(task) != prepared["task_input_sha256"]:
         raise ValueError("original task changed")
     if _hash(Path(prepared["archive"]) / "runtime.tar.gz") != prepared["archive_sha256"]:
@@ -480,6 +506,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     current_manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
     require_coding_reply_archive(current_manifest, reply_mode)
     require_semantic_metadata_archive(current_manifest, metadata_view)
+    require_capsule_selection_archive(current_manifest, capsule_selection)
     require_numerical_archive(current_manifest, numerical_profile)
     from .terminal_numerical_selection_deployment import require_numerical_selection_archive
     require_numerical_selection_archive(current_manifest)
@@ -521,6 +548,8 @@ def main():
     parser.add_argument("--semantic-metadata-view", choices=SEMANTIC_METADATA_VIEWS,
         default=DEFAULT_SEMANTIC_METADATA_VIEW,
         help="Experimental readable coding metadata view; planning unchanged and selection frozen by preparation")
+    parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
+        help="Experimental source-bound capsule ranking; requires an explicit public task profile and is frozen by preparation")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
     parser.add_argument("--numerical-formalization-profile", choices=NUMERICAL_PROFILES,
         help="Opt-in source-bound numerical obligations; frozen equally for both arms, consumed only by full")
@@ -541,6 +570,8 @@ def main():
         parser.error("coding reply mode is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
         parser.error("semantic metadata view is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.capsule_selection != DEFAULT_CAPSULE_SELECTION:
+        parser.error("capsule selection is frozen by preparation; collect/execute cannot select it")
     if args.operation == "prepare":
         if args.dataset is None or args.archive is None:
             parser.error("prepare requires --dataset and --archive")
@@ -554,6 +585,7 @@ def main():
                          semantic_transport_schema=args.semantic_transport_schema,
                          coding_reply_mode=args.coding_reply_mode,
                          semantic_metadata_view=args.semantic_metadata_view,
+                         capsule_selection=args.capsule_selection,
                          numerical_formalization_profile=args.numerical_formalization_profile)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)
