@@ -36,6 +36,10 @@ from .terminal_source_input_policy import (
     DEFAULT_SOURCE_INPUT_POLICY, SOURCE_INPUT_POLICIES, validate_source_input_policy,
     source_input_selection, require_source_input_archive, source_input_dispatch_observation,
 )
+from .terminal_query_reference_policy import (
+    DEFAULT_QUERY_REFERENCE_POLICY, QUERY_REFERENCE_POLICIES, validate_query_reference_policy,
+    query_reference_selection, require_query_reference_archive, query_reference_dispatch_observation,
+)
 from .terminal_source_view_policy import (
     DEFAULT_SOURCE_VIEW_POLICY, SOURCE_VIEW_POLICIES, validate_source_view_policy,
     source_view_selection, require_source_view_archive, source_view_dispatch_observation,
@@ -193,6 +197,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                tool_output_policy: str = DEFAULT_TOOL_OUTPUT_POLICY,
                source_view_policy: str = DEFAULT_SOURCE_VIEW_POLICY,
                source_input_policy: str = DEFAULT_SOURCE_INPUT_POLICY,
+               query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
@@ -207,6 +212,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     validate_source_view_policy(source_view_policy, arm=arm, provider=selected_provider["provider"])
     validate_source_input_policy(source_input_policy, arm=arm, provider=selected_provider["provider"],
         semantic_metadata_view=semantic_metadata_view)
+    validate_query_reference_policy(query_reference_policy, arm=arm, provider=selected_provider["provider"],
+        semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
     if arm not in {"full", "no-index"}:
         raise ValueError("unknown supervisor ablation")
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
@@ -227,6 +234,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **tool_output_selection(tool_output_policy),
                    **source_view_selection(source_view_policy),
                    **source_input_selection(source_input_policy),
+                   **query_reference_selection(query_reference_policy),
                    **numerical_selection(numerical_formalization_profile),
                    **semantic_metadata_selection(semantic_metadata_view),
                    **semantic_context_selection(semantic_context_profile)},
@@ -277,6 +285,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             tool_output_policy: str = DEFAULT_TOOL_OUTPUT_POLICY,
             source_view_policy: str = DEFAULT_SOURCE_VIEW_POLICY,
             source_input_policy: str = DEFAULT_SOURCE_INPUT_POLICY,
+            query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
             coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
             semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
@@ -290,6 +299,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     validate_source_view_policy(source_view_policy, arm=arm, provider=selected_provider["provider"])
     validate_source_input_policy(source_input_policy, arm=arm, provider=selected_provider["provider"],
         semantic_metadata_view=semantic_metadata_view)
+    validate_query_reference_policy(query_reference_policy, arm=arm, provider=selected_provider["provider"],
+        semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
     validate_semantic_metadata_view(semantic_metadata_view, arm=arm,
         transport_schema=semantic_transport_schema, provider=selected_provider["provider"])
     from harbor.models.job.config import JobConfig
@@ -312,6 +323,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_tool_output_archive(manifest, tool_output_policy)
     require_source_view_archive(manifest, source_view_policy)
     require_source_input_archive(manifest, source_input_policy)
+    require_query_reference_archive(manifest, query_reference_policy)
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
     require_semantic_context_archive(manifest, semantic_context_profile)
     require_numerical_archive(manifest, numerical_formalization_profile)
@@ -354,6 +366,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         tool_output_policy=tool_output_policy,
         source_view_policy=source_view_policy,
         source_input_policy=source_input_policy,
+        query_reference_policy=query_reference_policy,
         semantic_metadata_view=semantic_metadata_view,
         semantic_context_profile=semantic_context_profile,
         numerical_formalization_profile=numerical_formalization_profile,
@@ -389,6 +402,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **tool_output_selection(tool_output_policy),
               **source_view_selection(source_view_policy),
               **source_input_selection(source_input_policy),
+              **query_reference_selection(query_reference_policy),
               **semantic_metadata_observation(semantic_metadata_view),
               **semantic_context_selection(semantic_context_profile),
               **numerical_observation(numerical_formalization_profile, arm),
@@ -555,10 +569,20 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
         prepared.get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY), arm=prepared["arm"],
         provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"],
         semantic_metadata_view=prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+    query_reference = validate_query_reference_policy(
+        prepared.get("query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"],
+        semantic_metadata_view=prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+        source_input_policy=prepared.get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
     configured_source_input = validate_source_input_policy(
         config["agents"][0].get("kwargs", {}).get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY),
         arm=prepared["arm"], semantic_metadata_view=config["agents"][0].get("kwargs", {}).get(
             "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+    configured_query_reference = validate_query_reference_policy(
+        config["agents"][0].get("kwargs", {}).get("query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY),
+        arm=prepared["arm"], semantic_metadata_view=config["agents"][0].get("kwargs", {}).get(
+            "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+        source_input_policy=config["agents"][0].get("kwargs", {}).get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
     transport = validate_semantic_transport_schema(
         prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=prepared["arm"])
     configured_transport = validate_semantic_transport_schema(
@@ -600,6 +624,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                        **({"provider_stop": provider_stop} if provider_stop is not None else {}),
                        **({"source_input_dispatch": source_input_dispatch_observation(report, source_input)}
                           if source_input != DEFAULT_SOURCE_INPUT_POLICY else {}),
+                       **({"query_reference_dispatch": query_reference_dispatch_observation(report, query_reference)}
+                          if query_reference != DEFAULT_QUERY_REFERENCE_POLICY else {}),
                        **({"source_view_dispatch": source_view_dispatch_observation(report, source_view)}
                           if source_view != DEFAULT_SOURCE_VIEW_POLICY else {}),
                        **({"tool_output_dispatch": tool_output_dispatch_observation(report, tool_output)}
@@ -618,8 +644,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **tool_output_selection(tool_output),
               **source_view_selection(source_view),
               **source_input_selection(source_input),
+              **query_reference_selection(query_reference),
               **({"source_input_config_unchanged": configured_source_input == source_input}
                  if "source_input_policy" in prepared or "source_input_policy" in config["agents"][0].get("kwargs", {}) else {}),
+              **({"query_reference_config_unchanged": configured_query_reference == query_reference}
+                 if "query_reference_policy" in prepared or "query_reference_policy" in config["agents"][0].get("kwargs", {}) else {}),
               **({"source_view_config_unchanged": configured_source_view == source_view}
                  if "source_view_policy" in prepared or "source_view_policy" in config["agents"][0].get("kwargs", {}) else {}),
               **({"tool_output_config_unchanged": configured_tool_output == tool_output}
@@ -647,6 +676,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and configured_source_input == source_input
                   and (source_input == DEFAULT_SOURCE_INPUT_POLICY or
                        trials[0]["source_input_dispatch"]["effective_input_observed"] is True)
+                  and configured_query_reference == query_reference
+                  and (query_reference == DEFAULT_QUERY_REFERENCE_POLICY or
+                       trials[0]["query_reference_dispatch"]["effective_input_observed"] is True)
                   and configured_source_view == source_view
                   and (source_view == DEFAULT_SOURCE_VIEW_POLICY or
                        trials[0]["source_view_dispatch"]["effective_advisory_observed"] is True)
@@ -703,14 +735,26 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
         prepared.get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY), arm=prepared["arm"],
         provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"],
         semantic_metadata_view=prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+    query_reference = validate_query_reference_policy(
+        prepared.get("query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"],
+        semantic_metadata_view=prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+        source_input_policy=prepared.get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
     configured_source_input = validate_source_input_policy(
         config["agents"][0].get("kwargs", {}).get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY),
         arm=prepared["arm"], semantic_metadata_view=config["agents"][0].get("kwargs", {}).get(
             "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+    configured_query_reference = validate_query_reference_policy(
+        config["agents"][0].get("kwargs", {}).get("query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY),
+        arm=prepared["arm"], semantic_metadata_view=config["agents"][0].get("kwargs", {}).get(
+            "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+        source_input_policy=config["agents"][0].get("kwargs", {}).get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
     transport = validate_semantic_transport_schema(
         prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=prepared["arm"])
     if source_input != configured_source_input:
         raise ValueError("prepared source input policy selection changed")
+    if query_reference != configured_query_reference:
+        raise ValueError("prepared query reference policy selection changed")
     if source_view != configured_source_view:
         raise ValueError("prepared source view policy selection changed")
     if tool_output != configured_tool_output:
@@ -744,6 +788,7 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     require_tool_output_archive(current_manifest, tool_output)
     require_source_view_archive(current_manifest, source_view)
     require_source_input_archive(current_manifest, source_input)
+    require_query_reference_archive(current_manifest, query_reference)
     require_semantic_metadata_archive(current_manifest, metadata_view)
     require_semantic_context_archive(current_manifest, semantic_profile)
     require_numerical_archive(current_manifest, numerical_profile)
@@ -864,6 +909,8 @@ def main():
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, help="Explicit coding-context transport; planning remains unchanged")
     parser.add_argument("--source-input-policy", choices=SOURCE_INPUT_POLICIES,
         default=DEFAULT_SOURCE_INPUT_POLICY, help="Frozen explicit raw/compact code input and optional AST references")
+    parser.add_argument("--query-reference-policy", choices=QUERY_REFERENCE_POLICIES,
+        default=DEFAULT_QUERY_REFERENCE_POLICY, help="Frozen reference to the exact required inline instruction")
     parser.add_argument("--source-view-policy", choices=SOURCE_VIEW_POLICIES,
         default=DEFAULT_SOURCE_VIEW_POLICY, help="Opt-in matched raw/compact source view; frozen by preparation")
     parser.add_argument("--tool-output-policy", choices=TOOL_OUTPUT_POLICIES,
@@ -896,6 +943,8 @@ def main():
         parser.error("semantic transport is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.source_input_policy != DEFAULT_SOURCE_INPUT_POLICY:
         parser.error("source input policy is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.query_reference_policy != DEFAULT_QUERY_REFERENCE_POLICY:
+        parser.error("query reference policy is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.source_view_policy != DEFAULT_SOURCE_VIEW_POLICY:
         parser.error("source view policy is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.tool_output_policy != DEFAULT_TOOL_OUTPUT_POLICY:
@@ -921,6 +970,7 @@ def main():
                          tool_output_policy=args.tool_output_policy,
                          source_view_policy=args.source_view_policy,
                          source_input_policy=args.source_input_policy,
+                         query_reference_policy=args.query_reference_policy,
                          semantic_metadata_view=args.semantic_metadata_view,
                          semantic_context_profile=args.semantic_context_profile,
                          numerical_formalization_profile=args.numerical_formalization_profile)

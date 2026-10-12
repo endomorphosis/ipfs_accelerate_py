@@ -146,6 +146,7 @@ parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion
 parser.add_argument('--tool-output-policy',choices=['legacy','artifact-preview@1','artifact-preview@2'],default='legacy')
 parser.add_argument('--source-view-policy',choices=['legacy','source-view-raw@1','source-view-compact@1'],default='legacy')
 parser.add_argument('--source-input-policy',choices=['legacy','source-input-raw@1','source-input-compact@1','source-input-ast-ref-raw@1','source-input-ast-ref-compact@1'],default='legacy')
+parser.add_argument('--query-reference-policy',choices=['legacy','required-instruction-ref@1'],default='legacy')
 parser.add_argument('--doctor-candidate-artifact',type=pathlib.Path)
 parser.add_argument('--doctor-candidate-sha256')
 parser.add_argument('--doctor-task-cid')
@@ -179,6 +180,7 @@ if args.semantic_transport_schema!='supervisor-semantic-router-input@1' and (arg
 if args.tool_output_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('tool output policy requires semantic Codex router coding')
 if args.source_view_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('source view policy requires semantic Codex router coding')
 if args.source_input_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('source input policy requires semantic Codex router coding')
+if args.query_reference_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or args.semantic_metadata_view!='legacy' or args.source_input_policy!='legacy' or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('query reference policy requires semantic Codex router coding')
 if args.coding_reply_mode!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('ordinary completion requires semantic Codex router coding')
 if any(finite_values) and (not all(finite_values) or any(contract_values) or any(doctor_values) or any(residual_values) or any(instruction_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact finite repository candidate invocation required')
 if any(proof_query_values) and (not all(proof_query_values) or not all(finite_values) or any(contract_values) or any(doctor_values) or any(residual_values) or any(instruction_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact finite proof-query context invocation required')
@@ -248,6 +250,7 @@ else:
  if args.tool_output_policy!='legacy':sys.argv+=['--tool-output-policy',args.tool_output_policy]
  if args.source_view_policy!='legacy':sys.argv+=['--source-view-policy',args.source_view_policy]
  if args.source_input_policy!='legacy':sys.argv+=['--source-input-policy',args.source_input_policy]
+ if args.query_reference_policy!='legacy':sys.argv+=['--query-reference-policy',args.query_reference_policy]
  if args.doctor_residual_artifact is not None:sys.argv+=['--doctor-residual-artifact',str(args.doctor_residual_artifact),'--doctor-residual-sha256',args.doctor_residual_sha256,'--doctor-residual-task-cid',args.doctor_residual_task_cid]
  if args.public_instruction_artifact is not None:sys.argv+=['--public-instruction-artifact',str(args.public_instruction_artifact),'--public-instruction-sha256',args.public_instruction_sha256,'--public-instruction-task-cid',args.public_instruction_task_cid]
  raise SystemExit(run_with_child_custody(main))

@@ -356,6 +356,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         tool_output_policy: str = "legacy",
         source_view_policy: str = "legacy",
         source_input_policy: str = "legacy",
+        query_reference_policy: str = "legacy",
         census_only: bool = False,
         coding_reply_mode: str = "legacy",
         doctor_residual_artifact: Path | None = None,
@@ -386,6 +387,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     validate_coding_reply_mode(mode=coding_reply_mode, purpose=purpose, provider=provider)
     from .tool_output_policy import validate_policy
     validate_policy(tool_output_policy, purpose=purpose, provider=provider)
+    from .query_reference_policy import validate_policy as validate_query_policy
+    validate_query_policy(query_reference_policy, purpose=purpose, provider=provider,
+        semantic_repository=semantic_repository, semantic_metadata_view=semantic_metadata_view,
+        source_input_policy=source_input_policy, census_only=census_only)
     from .source_input_policy import validate_policy as validate_input_policy, projection_options
     validate_input_policy(source_input_policy, purpose=purpose, provider=provider,
         semantic_repository=semantic_repository, semantic_metadata_view=semantic_metadata_view,
@@ -487,6 +492,17 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,
                                                transport_schema=semantic_transport_schema)
         router_prompt = encoded.provider_prompt
+    query_reference_view = None
+    query_reference_encoded = encoded
+    query_reference_selected = False
+    if query_reference_policy != "legacy":
+        failure_phase = "query_reference_view"
+        from .semantic_query_reference import project_semantic_query_reference
+        from .query_reference_policy import validate_bound_receipt as validate_query_receipt
+        query_reference_view = project_semantic_query_reference(provider_prompt=encoded.provider_prompt)
+        validate_query_receipt(query_reference_policy, query_reference_view.receipt)
+        router_prompt = query_reference_view.provider_prompt
+        query_reference_selected = True
     source_input_view = None
     source_input_encoded = encoded
     if source_input_policy != "legacy":
@@ -604,6 +620,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             router_prompt, advisory = native_router_prompt, native_advisory
             coding_reply_receipt = native_reply_receipt
             encoded = None
+            query_reference_selected = False
             # The earlier proxy receipt describes an evaluated candidate; it
             # must not attest metadata transport that the tokenizer rejected.
             metadata_candidate_receipt = metadata_receipt
@@ -724,6 +741,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["source_input_policy"] = source_input_policy
         receipt["source_input_view"] = source_input_view.receipt
         receipt["source_input_dispatched"] = False
+    if query_reference_view is not None:
+        receipt["query_reference_policy"] = query_reference_policy
+        receipt["query_reference_view"] = query_reference_view.receipt
+        receipt["query_reference_selected"] = query_reference_selected
+        receipt["query_reference_dispatched"] = False
+        receipt["query_reference_provider_attempted"] = False
     if metadata_receipt is not None:
         receipt["semantic_metadata_view"] = metadata_receipt
     if metadata_native_reply is not None:
@@ -818,6 +841,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 workspace=root, receipt=source_input_view.receipt)
             failure_phase = "provider_invocation"
             receipt["source_input_dispatched"] = True
+        if query_reference_view is not None:
+            failure_phase = "query_reference_freshness"
+            from .source_input_view import recheck_source_input_freshness
+            recheck_source_input_freshness(encoded=query_reference_encoded, repository=semantic_repository,
+                workspace=root)
+            failure_phase = "provider_invocation"
+            receipt["query_reference_dispatched"] = query_reference_selected
+            receipt["query_reference_provider_attempted"] = True
         output = generate_text(
             model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
             allow_local_fallback=False, allow_cross_provider_fallback=False,
@@ -977,6 +1008,8 @@ def main():
     parser.add_argument("--source-view-policy", default="legacy", choices=SOURCE_VIEW_POLICIES)
     from .source_input_policy import POLICIES as SOURCE_INPUT_POLICIES
     parser.add_argument("--source-input-policy", default="legacy", choices=SOURCE_INPUT_POLICIES)
+    from .query_reference_policy import POLICIES as QUERY_REFERENCE_POLICIES
+    parser.add_argument("--query-reference-policy", default="legacy", choices=QUERY_REFERENCE_POLICIES)
     parser.add_argument("--semantic-metadata-census-only", action="store_true",
                         help="Check the complete metadata view and emit only census metadata before provider dispatch")
     parser.add_argument("--coding-reply-mode", default="legacy",
@@ -1007,6 +1040,7 @@ def main():
                         tool_output_policy=args.tool_output_policy,
                         source_view_policy=args.source_view_policy,
                         source_input_policy=args.source_input_policy,
+                        query_reference_policy=args.query_reference_policy,
                         census_only=args.semantic_metadata_census_only,
                         coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,

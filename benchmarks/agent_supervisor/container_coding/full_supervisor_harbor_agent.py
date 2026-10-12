@@ -40,6 +40,10 @@ from .terminal_source_input_policy import (
     DEFAULT_SOURCE_INPUT_POLICY, validate_source_input_policy,
     source_input_selection, require_source_input_archive,
 )
+from .terminal_query_reference_policy import (
+    DEFAULT_QUERY_REFERENCE_POLICY, validate_query_reference_policy,
+    query_reference_selection, require_query_reference_archive,
+)
 from .terminal_source_view_policy import (
     DEFAULT_SOURCE_VIEW_POLICY, validate_source_view_policy,
     source_view_selection, require_source_view_archive,
@@ -326,6 +330,7 @@ class FullSupervisorAgent(BaseAgent):
                  tool_output_policy: str = DEFAULT_TOOL_OUTPUT_POLICY,
                  source_view_policy: str = DEFAULT_SOURCE_VIEW_POLICY,
                  source_input_policy: str = DEFAULT_SOURCE_INPUT_POLICY,
+                 query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                  semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
                  numerical_formalization_profile: str | None = None,
@@ -338,6 +343,8 @@ class FullSupervisorAgent(BaseAgent):
         self.semantic_transport_schema = validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
         self.source_input_policy = validate_source_input_policy(source_input_policy,
             arm=arm, provider=selected_provider["provider"], semantic_metadata_view=semantic_metadata_view)
+        self.query_reference_policy = validate_query_reference_policy(query_reference_policy,
+            arm=arm, provider=selected_provider["provider"], semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
         self.source_view_policy = validate_source_view_policy(source_view_policy,
             arm=arm, provider=selected_provider["provider"])
         self.tool_output_policy = validate_tool_output_policy(tool_output_policy,
@@ -353,6 +360,8 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("live census requires the full common-bindings ordinary-completion route")
         if metadata_census_only and self.source_input_policy != DEFAULT_SOURCE_INPUT_POLICY:
             raise ValueError("source input policy requires an executed coding route")
+        if metadata_census_only and self.query_reference_policy != DEFAULT_QUERY_REFERENCE_POLICY:
+            raise ValueError("query reference policy requires an executed coding route")
         if metadata_census_only and self.source_view_policy != DEFAULT_SOURCE_VIEW_POLICY:
             raise ValueError("source view policy requires an executed coding route")
         if metadata_census_only and self.tool_output_policy != DEFAULT_TOOL_OUTPUT_POLICY:
@@ -425,7 +434,13 @@ class FullSupervisorAgent(BaseAgent):
             getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY), arm=self.arm,
             provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
             semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+        query_reference = validate_query_reference_policy(
+            getattr(self, "query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
+            semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            source_input_policy=getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
         require_source_input_archive(manifest, source_input)
+        require_query_reference_archive(manifest, query_reference)
         metadata_view = validate_semantic_metadata_view(
             getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=self.arm,
             transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
@@ -500,7 +515,13 @@ class FullSupervisorAgent(BaseAgent):
             getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY), arm=self.arm,
             provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
             semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+        query_reference = validate_query_reference_policy(
+            getattr(self, "query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
+            semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            source_input_policy=getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
         require_source_input_archive(manifest, source_input)
+        require_query_reference_archive(manifest, query_reference)
         metadata_view = validate_semantic_metadata_view(
             getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=self.arm,
             transport_schema=transport,
@@ -541,6 +562,8 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--source-view-policy", source_view]
         if source_input != DEFAULT_SOURCE_INPUT_POLICY:
             argv += ["--source-input-policy", source_input]
+        if query_reference != DEFAULT_QUERY_REFERENCE_POLICY:
+            argv += ["--query-reference-policy", query_reference]
         if reply_mode != DEFAULT_CODING_REPLY_MODE:
             argv += ["--coding-reply-mode", reply_mode]
         if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
@@ -584,6 +607,7 @@ class FullSupervisorAgent(BaseAgent):
                             **tool_output_selection(tool_output),
                             **source_view_selection(source_view),
                             **source_input_selection(source_input),
+                            **query_reference_selection(query_reference),
                             **semantic_metadata_observation(metadata_view),
                             **semantic_context_selection(semantic_profile),
                             **numerical_observation(numerical_profile, self.arm),

@@ -679,6 +679,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         tool_output_policy: str = "legacy",
         source_view_policy: str = "legacy",
         source_input_policy: str = "legacy",
+        query_reference_policy: str = "legacy",
         resource_profile: str | None = None,
         model_snapshot: Path | None = None, model_revision="",
         security_initializer: Path | None = None, canonical_cve_export: Path | None = None,
@@ -711,6 +712,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         semantic_metadata_view=semantic_metadata_view)
     if metadata_census_only and source_input_policy != "legacy":
         raise ValueError("source input policy requires an executed coding route")
+    from .terminal_query_reference_policy import validate_query_reference_policy, query_reference_selection
+    validate_query_reference_policy(query_reference_policy, arm=arm, provider=provider_selection["provider"],
+        semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
+    if metadata_census_only and query_reference_policy != "legacy":
+        raise ValueError("query reference policy requires an executed coding route")
     from .terminal_source_view_policy import validate_source_view_policy, source_view_selection
     validate_source_view_policy(source_view_policy, arm=arm, provider=provider_selection["provider"])
     if metadata_census_only and source_view_policy != "legacy":
@@ -789,6 +795,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               **tool_output_selection(tool_output_policy),
               **source_view_selection(source_view_policy),
               **source_input_selection(source_input_policy),
+              **query_reference_selection(query_reference_policy),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
               "work_cutoff_seconds": timeout_seconds - reserved_cleanup_seconds,
@@ -1035,6 +1042,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             **({"tool_output_policy": tool_output_policy} if tool_output_policy != "legacy" else {}),
             **({"source_view_policy": source_view_policy} if source_view_policy != "legacy" else {}),
             **({"source_input_policy": source_input_policy} if source_input_policy != "legacy" else {}),
+            **({"query_reference_policy": query_reference_policy} if query_reference_policy != "legacy" else {}),
             **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}))
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
             implementation += ["--provider", provider_selection["provider"]]
@@ -1304,6 +1312,8 @@ def main():
     parser.add_argument("--source-view-policy", choices=SOURCE_VIEW_POLICIES, default=DEFAULT_SOURCE_VIEW_POLICY)
     from .terminal_source_input_policy import DEFAULT_SOURCE_INPUT_POLICY, SOURCE_INPUT_POLICIES
     parser.add_argument("--source-input-policy", choices=SOURCE_INPUT_POLICIES, default=DEFAULT_SOURCE_INPUT_POLICY)
+    from .terminal_query_reference_policy import DEFAULT_QUERY_REFERENCE_POLICY, QUERY_REFERENCE_POLICIES
+    parser.add_argument("--query-reference-policy", choices=QUERY_REFERENCE_POLICIES, default=DEFAULT_QUERY_REFERENCE_POLICY)
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
         default=DEFAULT_CODING_REPLY_MODE)
     parser.add_argument("--resource-profile", choices=PROFILES)

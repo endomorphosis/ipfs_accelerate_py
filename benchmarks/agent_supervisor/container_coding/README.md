@@ -213,6 +213,51 @@ are outside this qualification. Live comparisons require fresh frozen sources,
 positive inclusion, complete native usage, official rewards and unchanged
 resource/backoff controls.
 
+`--query-reference-policy required-instruction-ref@1` tests a separate source
+of repeated text: the worker query can contain exactly the instruction already
+present in required raw support. This opt-in provider presentation replaces that
+one query slot with a versioned reference to the still-inline required value.
+It requires a unique, nonempty, byte-identical match with a verified source
+manifest. It does not trim, summarize or reinterpret the instruction. Canonical
+capsules, source text, selection, admissions and proof obligations stay intact.
+
+The reference codec restores the exact original transport and checks its hash.
+Receipts bind the allowed slot, required source, original and candidate bytes,
+and codec identity. They stay outside the model input. A candidate that does
+not reduce transport bytes is refused before dispatch; complete-input tokenizer
+proxies and native usage must still be measured separately. Source freshness is
+checked immediately before dispatch, including when a configured tokenizer
+selects native input. Such a fallback records `query_reference_selected: false`
+and cannot qualify as an observed reference treatment.
+
+Legacy remains the default. Version one supports native semantic transports
+with the existing Doctor, public instruction, workspace, helper and coding reply
+wrappers. Runtime combinations with metadata factoring or source-input views
+are explicitly unsupported. Preparation freezes the policy and requires a
+current source-bound archive. Retained input audits reconstruct the complete
+input and bind the complete invocation receipt; a changed receipt cannot reuse
+an earlier successful audit. Representation checks establish exact restoration
+and inclusion, without granting new proof or execution authority.
+
+Run the paired public-input qualification with:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_query_reference_experiment \
+  --dataset /path/to/terminal-bench-2 --output /path/to/new-query-evidence-directory
+```
+
+It uses the same reviewed batching and MJCF inputs, real producer and DuckDB
+selection, and a captured local provider boundary. The comparison includes
+the workspace and ordinary-completion reply wrappers, checks unchanged literal
+instruction and selection, and retains exact replay evidence after temporary
+worktree removal. Ineligible attempts remain in the results. This measures
+complete coding-input bytes and optional local tokenizer proxies; provider
+usage, later tool traffic and official task rewards require a fresh live run.
+The native reply schema is a separate provider argument. Its bytes and hash are
+recorded separately and must match across arms; provider framing is unmeasured.
+Live trials retain failures and fallbacks under the existing serial resource
+limits and shared provider cooldowns.
+
 Other public Terminal-Bench tasks can use the source-bound task profiles in
 [TERMINAL_SUITE_PROFILES.md](TERMINAL_SUITE_PROFILES.md). The first broader full
 supervisor pilot records two official passes and one native-execution timeout,
