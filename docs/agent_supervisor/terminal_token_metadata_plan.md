@@ -7,6 +7,19 @@ results should identify which obligations remain, and semantic capsules should
 give the model the relevant current evidence without repeating its bookkeeping.
 Minification is a representation step within that workflow.
 
+The [October 12 full coding pair](evidence/terminal-instruction-dedup-pair-20261012/README.md)
+passed both official tasks. Instruction deduplication used 309,813 versus
+311,776 total native tokens (0.63% fewer), principally cached input; uncached
+input fell by 32 and output increased by 245. Agent execution and setup took
+longer. This single independently planned pair establishes no repeatable token
+or cost advantage. The existing extended formalization budget now works with
+pinned setup-cache handling. Actual Source384 coverage remained 0/4 aligned,
+and IntentIR failed open without a checkpoint. A separate deterministic
+numerical probe linked all four functions, structurally translated two, and
+replayed the real DuckLakes; generated Lean compiled, but all 45 source
+obligations remain pending. Its bounded obligation retrieval and grammar gaps
+are the next concrete integration targets.
+
 For repository-wide source views, separate three requirements: exact original
 restoration, preservation of accepted edits, and measured complete-run tokens.
 The current JSON/metadata codecs restore their transports; they do not transform

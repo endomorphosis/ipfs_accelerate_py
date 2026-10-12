@@ -1,0 +1,124 @@
+{
+  "actual_trials": 2,
+  "archive_sha256": "96aa70a6e10667ee9ca6d54a8baaae2a18378cdab22414c3bb32cc9fd65ed607",
+  "archive_unchanged_after_pair": true,
+  "automatic_retries": 0,
+  "closed_at": "2026-10-12T05:23:17.340555+00:00",
+  "evidence": [
+    {
+      "bytes": 7797,
+      "path": "live-full-pair-02/pair-preparation.json",
+      "sha256": "086969f6e4df87ad322d4f52c9957cef087d162a41d8a5f2f213862db23b8d7a"
+    },
+    {
+      "bytes": 1602,
+      "path": "live-full-pair-02/independent-preparation-review.json",
+      "sha256": "35a9d6b2aa6c037ada8b415da981730ab57b32499ade02a5aafb7db57c4ad0ef"
+    },
+    {
+      "bytes": 923,
+      "path": "live-full-pair-02/paired-live-release.json",
+      "sha256": "1e837903998758cdb21a39746156730924574ef2658a091e4166904d6ded4c61"
+    },
+    {
+      "bytes": 404,
+      "path": "live-full-pair-02/baseline-closed.json",
+      "sha256": "94e5e5eab9ea6df80bfd15d7318c791e816d21ef147a56993462c99380bd262a"
+    },
+    {
+      "bytes": 422,
+      "path": "live-full-pair-02/baseline-cleanup.json",
+      "sha256": "a9f9dae847fbec70b71cc41a6c3aef37cd52ea7c48d579de0352e8679adf23f8"
+    },
+    {
+      "bytes": 11360,
+      "path": "live-full-pair-02/baseline-runtime-observation-v2.json",
+      "sha256": "8a700adcabf917eba29bdd56a0b8909649afb99875178bff38368e695bae0033"
+    },
+    {
+      "bytes": 229295,
+      "path": "live-full-pair-02/baseline/receipt.json",
+      "sha256": "f3dad37ee15384360e1a2f475d67ef98ab554efdfe21b8ee5f81ecd64a0f3f2c"
+    },
+    {
+      "bytes": 305,
+      "path": "live-full-pair-02/baseline/invocation.json",
+      "sha256": "bc541ea00df08b075316cdbb2a101d241ad09207797e4f73e74b253bb9c0ff1e"
+    },
+    {
+      "bytes": 415,
+      "path": "live-full-pair-02/instruction-dedup-closed.json",
+      "sha256": "ae06ec5e8c195670d7470dd477011b914a2097f054d784b1dd3ddeffdef7bbf1"
+    },
+    {
+      "bytes": 431,
+      "path": "live-full-pair-02/instruction-dedup-cleanup.json",
+      "sha256": "b600b0eac821dccd7dae9322156d9434977046fdba182f08febc34290d19dfc6"
+    },
+    {
+      "bytes": 12920,
+      "path": "live-full-pair-02/instruction-dedup-runtime-observation-v2.json",
+      "sha256": "bff947b780758685b97f12a8f15a00f27eb7df1b588f7afe6182d53a0287f886"
+    },
+    {
+      "bytes": 233149,
+      "path": "live-full-pair-02/instruction-dedup/receipt.json",
+      "sha256": "8efecfe0a367296ad390acf6364b2d5cfcddb3e29cd0346740a11fe42b42b20d"
+    },
+    {
+      "bytes": 314,
+      "path": "live-full-pair-02/instruction-dedup/invocation.json",
+      "sha256": "00b53faad70437657a900606496fe0dd4e2076e4c0b7dc458b0ca52d2aed3fb7"
+    }
+  ],
+  "interpretation": "One sequential observed pair; independent plans and cache history differ. No causal savings or bill verification claim; setup variance retained.",
+  "invocations_per_arm": {
+    "baseline": 2,
+    "instruction-dedup": 2
+  },
+  "manifest_sha256": "75cefe4581781b1d8dc87f71137eb1f4b7495c4ca5883f4699f5a57a6905fca5",
+  "no_further_live_calls": true,
+  "official_passes": {
+    "baseline": true,
+    "instruction-dedup": true
+  },
+  "owned_cleanup_verified": true,
+  "planning_identity_comparison": {
+    "initial_context_descriptor_sha256": false,
+    "initial_semantic_root_cid": true,
+    "model_request_sha256": false,
+    "task_cids": false
+  },
+  "preparation_native_usage": "not a model execution; no fabricated token count inferred from absent ledger",
+  "provider_free_preparations_separate_from_trials": [
+    {
+      "artifact": "live-full-pair-01/baseline-prepare-status.json",
+      "exit_code": 1,
+      "provider_calls": 0,
+      "seconds": 19.715677683940157,
+      "sha256": "403eede3138ccf407d2962bdd88d51dc01485fcb8767bfb5dfa19d75e4964344"
+    },
+    {
+      "artifact": "live-full-pair-02/baseline-prepare-status.json",
+      "exit_code": 0,
+      "provider_calls": 0,
+      "seconds": 20.265864646993577,
+      "sha256": "cf17c27af78735478799aee30ad35525307c4ea70f8a639904f5ff61e238f9eb"
+    },
+    {
+      "artifact": "live-full-pair-02/instruction-dedup-prepare-status.json",
+      "exit_code": 0,
+      "provider_calls": 0,
+      "seconds": 20.362777882022783,
+      "sha256": "4fcc7a18968a47d800729ef7107fe2b22e97f88ac57e59193b96dc84297c1e43"
+    }
+  ],
+  "run_order": [
+    "baseline",
+    "instruction-dedup"
+  ],
+  "schema": "terminal-full-pair-execution-closure@1",
+  "source_unchanged_after_pair": true,
+  "total_actual_execution_outer_seconds": 1929.8805062599713,
+  "unrelated_containers_modified": false
+}

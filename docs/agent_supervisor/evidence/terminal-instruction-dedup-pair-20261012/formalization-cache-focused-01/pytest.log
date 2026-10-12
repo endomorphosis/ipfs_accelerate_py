@@ -1,0 +1,30 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/formalization-cache-focused-01/cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 138 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_formalization_cache_profile.py . [  0%]
+................                                                         [ 12%]
+benchmarks/agent_supervisor/container_coding/test_terminal_live_census_cache_profile.py . [ 13%]
+..................                                                       [ 26%]
+benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py . [ 26%]
+........................                                                 [ 44%]
+benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py . [ 44%]
+........................................................................ [ 97%]
+....                                                                     [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/formalization-cache-focused-01/junit.xml -
+============================= slowest 10 durations =============================
+0.50s call     benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py::test_131_finite_population_hashes_every_body_before_first_hint
+0.11s setup    benchmarks/agent_supervisor/container_coding/test_terminal_formalization_cache_profile.py::test_formalization_cache_uses_exact_shared_resources_and_independent_phase_budgets
+0.05s call     benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py::test_isolated_loader_binds_dependencies_and_protects_receipt_before_main
+0.02s call     benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py::test_qualifier_runs_same_boundary_advice_order_and_preserves_cleanup[False]
+0.01s call     benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py::test_harbor_selected_order_is_deploy_boundary_then_advice
+0.01s call     benchmarks/agent_supervisor/container_coding/test_terminal_formalization_cache_profile.py::test_formalization_cache_uses_exact_shared_resources_and_independent_phase_budgets
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py::test_registered_advice_alarm_propagates_and_cleans_up[fdatasync-codex]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py::test_registered_advice_alarm_propagates_and_cleans_up[posix_fadvise-codex_v2]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py::test_registered_advice_alarm_propagates_and_cleans_up[posix_fadvise-codex]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py::test_131_finite_population_hashes_every_body_before_first_hint
+============================= 138 passed in 41.33s =============================

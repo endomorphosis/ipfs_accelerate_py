@@ -1,0 +1,27 @@
+{
+  "all_checks_pass": true,
+  "checks": {
+    "cold_native_ducklake_replayed": true,
+    "eigen.py_native_lean_passed_and_bound": true,
+    "eigen.py_programir_roundtrip": true,
+    "eigen.py_three_abstract_sat_queries": true,
+    "eval.py_native_lean_passed_and_bound": true,
+    "eval.py_programir_roundtrip": true,
+    "eval.py_three_abstract_sat_queries": true,
+    "negative_premise_removal_rejected": true,
+    "no_model_or_benchmark_execution": true,
+    "original_full_benchmark_inputs_unchanged": true,
+    "pending_not_proved": true,
+    "probe_complete": true,
+    "production_pins_unchanged": true,
+    "public_copy_exact": true,
+    "runner_hash_bound": true,
+    "structural_partial_coverage_explicit": true,
+    "summary_loss_explicit": true
+  },
+  "interpretation": "Two generated Lean modules compile and premise-removal control fails; six abstract negated-obligation SMT queries are satisfiable. Four functions link into deterministic IR, two structurally complete, with 45 pending obligations and zero discharged. Learned decoder coverage is unchanged; summary omits all detailed obligations explicitly.",
+  "probe_seconds": 8.062223940971307,
+  "qualification_sha256": "554ab986573f16e15572b5e8a81535a368bb1564b478feec0365c5c6b9223517",
+  "schema": "independent-public-numerical-probe-review@1",
+  "scope": "Read-only artifact and hash review. Original complete benchmark input inventory remains unchanged; only isolated copied public sources were projected. No test rerun, solver execution, inference, provider call, or database read by reviewer."
+}

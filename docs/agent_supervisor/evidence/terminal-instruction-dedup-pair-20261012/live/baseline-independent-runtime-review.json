@@ -1,0 +1,53 @@
+{
+  "actual_model_prompt_bytes": 66486,
+  "all_checks_pass": true,
+  "checks": {
+    "baseline_legacy_selected": true,
+    "checkpoint_bound": true,
+    "closed_receipt_hash": true,
+    "context_bindings_verified": true,
+    "external_cleanup_twice": true,
+    "historical_dispatch_join": true,
+    "input_hashes_match": true,
+    "intent_fail_open_not_supplied": true,
+    "learned_inference_identity_preserved": true,
+    "native_arithmetic_and_subsets": true,
+    "native_input_reconstruction_verified": true,
+    "native_result_hash": true,
+    "native_usage_complete": true,
+    "official_reward_bound_and_passed": true,
+    "one_planning_one_coding": true,
+    "producer_current_pins": true,
+    "source384_no_false_proof": true,
+    "source_and_task_unchanged": true,
+    "source_current_before_dispatch": true,
+    "stop_and_runtime_close": true,
+    "task_completed_without_exception": true
+  },
+  "container_actions_by_reviewer": 0,
+  "intent_status": "fail_open_no_checkpoint",
+  "label": "baseline",
+  "native_usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 236800,
+    "input_tokens": 305941,
+    "output_tokens": 5835,
+    "reasoning_output_tokens": 1396,
+    "total_tokens": 311776
+  },
+  "official_reward": 1.0,
+  "phase_total_tokens": {
+    "coding": 286315,
+    "planning": 25461
+  },
+  "provider_calls_by_reviewer": 0,
+  "raw_provider_bodies_read": false,
+  "schema": "independent-full-arm-runtime-review@1",
+  "scope": "Independent bounded receipt, file hash and source pin review. Native input and source-currentness are sealed runtime observations; no inference replay. Baseline alone does not establish treatment savings or formal proof.",
+  "source384_candidate_statuses": {
+    "fail_open_source_contract_unsupported": 4
+  },
+  "source384_selected_candidates": 4,
+  "source384_source_aligned_candidates": 0,
+  "source_receipt_sha256": "f3dad37ee15384360e1a2f475d67ef98ab554efdfe21b8ee5f81ecd64a0f3f2c"
+}

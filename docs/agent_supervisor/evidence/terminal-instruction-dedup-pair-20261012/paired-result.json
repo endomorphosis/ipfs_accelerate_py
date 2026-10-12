@@ -1,0 +1,911 @@
+{
+  "all_pair_checks_pass": true,
+  "billing_total_verified": false,
+  "causal_claim": false,
+  "comparison_source_sha256": "8e0107ec1ba9a6a9c0c437429719b1ebba01283cc884bb4a4d593b7891ef9e8b",
+  "controls": [
+    {
+      "checks": {
+        "all_other_config_controls_equal": true,
+        "common_declared_controls_match": true,
+        "complete_single_trial_receipt": true,
+        "native_agent_context_bound_largest-eigenval__zJ9gZLA": true,
+        "native_exception_bound_largest-eigenval__zJ9gZLA": true,
+        "native_result_hash_bound_largest-eigenval__zJ9gZLA": true,
+        "native_reward_bound_largest-eigenval__zJ9gZLA": true,
+        "native_task_identity_bound_largest-eigenval__zJ9gZLA": true,
+        "native_usage_arithmetic_largest-eigenval__zJ9gZLA": true,
+        "original_task_inputs_unchanged": true,
+        "prepared_config_unchanged": true,
+        "prepared_controls_recomputed": true,
+        "receipt_controls_bound_to_preparation": true,
+        "receipt_identity_bound_to_preparation": true,
+        "runtime_archive_bound_largest-eigenval__zJ9gZLA": true,
+        "supervisor_report_bound_largest-eigenval__zJ9gZLA": true,
+        "verifier_enabled": true
+      },
+      "common_control_comparison": {
+        "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+        "differences": [],
+        "matches": true,
+        "status": "matched"
+      },
+      "label": "full-lexical-baseline",
+      "receipt_sha256": "f3dad37ee15384360e1a2f475d67ef98ab554efdfe21b8ee5f81ecd64a0f3f2c"
+    },
+    {
+      "checks": {
+        "all_other_config_controls_equal": true,
+        "common_declared_controls_match": true,
+        "complete_single_trial_receipt": true,
+        "native_agent_context_bound_largest-eigenval__iwu4BgF": true,
+        "native_exception_bound_largest-eigenval__iwu4BgF": true,
+        "native_result_hash_bound_largest-eigenval__iwu4BgF": true,
+        "native_reward_bound_largest-eigenval__iwu4BgF": true,
+        "native_task_identity_bound_largest-eigenval__iwu4BgF": true,
+        "native_usage_arithmetic_largest-eigenval__iwu4BgF": true,
+        "original_task_inputs_unchanged": true,
+        "prepared_config_unchanged": true,
+        "prepared_controls_recomputed": true,
+        "receipt_controls_bound_to_preparation": true,
+        "receipt_identity_bound_to_preparation": true,
+        "runtime_archive_bound_largest-eigenval__iwu4BgF": true,
+        "supervisor_report_bound_largest-eigenval__iwu4BgF": true,
+        "verifier_enabled": true
+      },
+      "common_control_comparison": {
+        "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+        "differences": [],
+        "matches": true,
+        "status": "matched"
+      },
+      "label": "full-instruction-dedup",
+      "receipt_sha256": "8efecfe0a367296ad390acf6364b2d5cfcddb3e29cd0346740a11fe42b42b20d"
+    }
+  ],
+  "label_totals": {
+    "full-instruction-dedup": {
+      "known_reported_cost_subtotal_usd": null,
+      "known_token_subtotals": {
+        "cached_input_tokens": 234624,
+        "input_tokens": 303733,
+        "output_tokens": 6080,
+        "total_tokens": 309813
+      },
+      "observed_efficiency": {
+        "billing_total_verified": false,
+        "cache_included_in_input": true,
+        "causal_claim": false,
+        "cost_ratio_unavailable_reasons": [
+          "incomplete_reported_provider_cost"
+        ],
+        "denominator": "official_reward_equals_one",
+        "numerator_scope": "all_retained_attempts_in_aggregate",
+        "reported_cost_usd_per_official_pass": null,
+        "schema": "terminal-observed-efficiency@1",
+        "token_count_basis": "sum_of_complete_reported_native_total_tokens",
+        "token_ratio_unavailable_reasons": [],
+        "total_tokens_per_official_pass": 309813.0
+      },
+      "observed_official_passes": 1,
+      "provider_calls": 2,
+      "receipts_without_native_trials": 0,
+      "reported_cost_usd": null,
+      "retained_receipt_count": 1,
+      "tokens": {
+        "cached_input_tokens": 234624,
+        "input_tokens": 303733,
+        "output_tokens": 6080,
+        "total_tokens": 309813
+      },
+      "trials": 1,
+      "unknown_reward_trials": 0,
+      "unknown_token_trials": {
+        "cached_input_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    "full-lexical-baseline": {
+      "known_reported_cost_subtotal_usd": null,
+      "known_token_subtotals": {
+        "cached_input_tokens": 236800,
+        "input_tokens": 305941,
+        "output_tokens": 5835,
+        "total_tokens": 311776
+      },
+      "observed_efficiency": {
+        "billing_total_verified": false,
+        "cache_included_in_input": true,
+        "causal_claim": false,
+        "cost_ratio_unavailable_reasons": [
+          "incomplete_reported_provider_cost"
+        ],
+        "denominator": "official_reward_equals_one",
+        "numerator_scope": "all_retained_attempts_in_aggregate",
+        "reported_cost_usd_per_official_pass": null,
+        "schema": "terminal-observed-efficiency@1",
+        "token_count_basis": "sum_of_complete_reported_native_total_tokens",
+        "token_ratio_unavailable_reasons": [],
+        "total_tokens_per_official_pass": 311776.0
+      },
+      "observed_official_passes": 1,
+      "provider_calls": 2,
+      "receipts_without_native_trials": 0,
+      "reported_cost_usd": null,
+      "retained_receipt_count": 1,
+      "tokens": {
+        "cached_input_tokens": 236800,
+        "input_tokens": 305941,
+        "output_tokens": 5835,
+        "total_tokens": 311776
+      },
+      "trials": 1,
+      "unknown_reward_trials": 0,
+      "unknown_token_trials": {
+        "cached_input_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0
+      }
+    }
+  },
+  "native_codex_harness_compared": false,
+  "native_task_matching_source_sha256": "67ac1a31d475518714d71a17841f3080fff77ac94efb164977d52a6202b567b5",
+  "native_usage_accounting_source_sha256": "a21c831eed08c9c1692121f912000ebc03a7c7d04adf9a68fd0dcba0d61cc67e",
+  "notes": [
+    "Native receipt arms remain full; treatment labels are separate report keys.",
+    "All supplied attempts are retained and charged; no retry is discarded.",
+    "Counts cover complete native provider sessions, including planning and coding.",
+    "Cache and reasoning categories are subsets, not additional total tokens.",
+    "Setup, indexing, and nested phase durations are not added twice.",
+    "A single paired task is descriptive and does not establish repeatable savings."
+  ],
+  "observed_token_ratio": 0.9937038129939444,
+  "outputs": [
+    {
+      "label": "full-lexical-baseline",
+      "rows": [
+        {
+          "additional_native_usage_categories": [
+            {
+              "cache_already_in_input": true,
+              "cache_write_input_tokens": 0,
+              "extra_categories_added_to_total": false,
+              "invocation_id": "b5f03894c5de40dd8564ee5713c5f940",
+              "known_cache_write_input_tokens": 0,
+              "known_reasoning_output_tokens": 149,
+              "phase": "planning",
+              "reasoning_already_in_output": true,
+              "reasoning_output_tokens": 149
+            },
+            {
+              "cache_already_in_input": true,
+              "cache_write_input_tokens": 0,
+              "extra_categories_added_to_total": false,
+              "invocation_id": "ddcc2b6f2b2e4f69bbbb4b78e42e8935",
+              "known_cache_write_input_tokens": 0,
+              "known_reasoning_output_tokens": 1247,
+              "phase": "coding",
+              "reasoning_already_in_output": true,
+              "reasoning_output_tokens": 1247
+            }
+          ],
+          "arm": "full",
+          "billing_total_verified": false,
+          "cache_included_in_input": true,
+          "cli_version": "0.160.0",
+          "code_learning_observation": null,
+          "comparison_label": "full-lexical-baseline",
+          "context_input_audit": {
+            "all_observed_coding_inputs_verified": true,
+            "any_model_input_verified": true,
+            "any_native_input_verified": true,
+            "coding_receipts_seen": 1,
+            "error_type": null,
+            "invocations": [
+              {
+                "invocation_id": "ddcc2b6f2b2e4f69bbbb4b78e42e8935",
+                "model_input_verified": true,
+                "native_input_verified": true,
+                "reason": "exact_context_and_input_digests_match",
+                "status": "verified_exact_model_input"
+              }
+            ],
+            "reason": "per_invocation_context_and_input_comparison",
+            "seconds": 2.4823450029361993,
+            "source_formalization": [
+              {
+                "capsule_id": "baguqeeraluiwdlewdhuhti4xg5dnri4sjrys26hwcmmmlg4b57g7hlp2ux3q",
+                "chunks": 1,
+                "completion_authority": false,
+                "contexts": [
+                  {
+                    "kind": "source384-candidate-context",
+                    "receipt_sha256": "df222945543c1924ba7160aa96298d101aef390020729c7d0e808aa3a84a2983",
+                    "source_hashes_sha256": "5f92038ce9e9024ba07e9af22184e92fff7df4bd983287081265a84821c0f1b1",
+                    "summary_sha256": "6e91b9292d3521cc79accb9aeb84adf967f37df42595225a7fc8cf333224d9da"
+                  }
+                ],
+                "current_sources_checked": false,
+                "dispatched_context_bundle_sha256": "c90740af50037ce90113ab8b162f084cf2c6db600b79c1fff932378570c21828",
+                "execution_authority": false,
+                "expected_context_bundle_sha256": "c90740af50037ce90113ab8b162f084cf2c6db600b79c1fff932378570c21828",
+                "formalization_authority": false,
+                "historical_receipt_bindings_verified": true,
+                "matched_invocation_ids": [
+                  "ddcc2b6f2b2e4f69bbbb4b78e42e8935"
+                ],
+                "neural_inference_replayed": false,
+                "proof_authority": false,
+                "reported_model_input_verified": true,
+                "schema": "terminal-historical-source-formalization-observation@1",
+                "source_files": 5,
+                "source_obligations_discharged": 0,
+                "source_semantics_verified": false,
+                "task_cid": "baguqeeraoeym2tcgzxx44pz3h53jc5n4jdyqzxoifp2h5ct4qqpfjiewrzxq",
+                "task_id": "TB-CODE-TASK",
+                "whole_program_semantics_verified": false,
+                "worker_evidence_sha256": "5b39a5e96da1c494367f18ddf2630cd4ba16778ef6fe8a99e2972f2b6d36594e"
+              }
+            ],
+            "status": "verified_all_observed_model_inputs",
+            "task_correctness_established": false,
+            "usable_coding_receipts": 1
+          },
+          "context_seconds": 3.367240414954722,
+          "declared_output_observation": {
+            "allocation_path_sha256": null,
+            "attempt_id_sha256": "27c995d88d0c70f9e2bf0a5637793024d7eacbc5886f1a745477148209bb61f4",
+            "baseline_commit": "ad8e647c12da70c1641190f11873df46cb998cf4",
+            "completion_authority": false,
+            "invocation_id_sha256": null,
+            "observation_only": true,
+            "original_allocation_inode_verified": false,
+            "outputs": [],
+            "owner_events_sha256": null,
+            "patch_application_established": false,
+            "portal_attempt": null,
+            "reason": "reported_declared_byte_observation",
+            "schema": "terminal-declared-output-observation@1",
+            "settlement_authority": false,
+            "status": "unavailable",
+            "task_cid_sha256": "87a498736d4ab843ea73e1825d2f21abe10cf6fdad7aa10845998ec9bd939e9a",
+            "task_correctness_established": false,
+            "writer_identity_established": false
+          },
+          "doctor_observation": {
+            "candidate_materializations_observed": null,
+            "local_contract_proof_status": null,
+            "observed_worker_receipts": null,
+            "provider_calls": 0,
+            "residual_context_prepared": true,
+            "residual_successors": 1,
+            "residual_work_proposals": 0,
+            "route": "model_router",
+            "selection_is_publication_or_completion_evidence": false,
+            "status": "residual",
+            "whole_program_proved": false
+          },
+          "durations_seconds": {
+            "agent_execution": 249.831696,
+            "agent_setup": 341.364304,
+            "environment_setup": 3.626745,
+            "verifier": 7.47089
+          },
+          "exception_type": null,
+          "indexed_context_observation": {
+            "context_preparation_is_dispatch_evidence": false,
+            "doctor_repair_status": "abstained",
+            "full_capsules": 8,
+            "indexed_symbols": 4,
+            "initial_indexes_reused": true,
+            "learned_embeddings": false,
+            "native_fact_rows_replayed": 4,
+            "new_embedding_calls": 0,
+            "prepared": true,
+            "worker_capsules": 4,
+            "worker_semantic_bytes": 31939
+          },
+          "initial_indexed_context_observation": {
+            "canonical_tasks_created": false,
+            "full_capsules": 8,
+            "indexed_symbols": 4,
+            "learned_embeddings": false,
+            "planning_model_request_sha256": "3a5b9540332c48f3b8d043e4bbe854737f93347e38faa5b6d319d4eee0a75571",
+            "preparation_is_provider_dispatch_evidence": false,
+            "prepared": true,
+            "provider_calls": 0,
+            "summary_sha256": "5dd95cec522be86efd2cca1a21b5e52d164715a9fb2b7e5fd6679180b5c8f970",
+            "supplied_to_planning_router": true,
+            "world_task_count": 0
+          },
+          "intent_preplanning_status": {
+            "status": "fail_open_no_checkpoint"
+          },
+          "invocations": [
+            {
+              "billing_total_verified": false,
+              "cache_included_in_input": true,
+              "error_type": null,
+              "input_observation": {
+                "doctor_residual_context": null,
+                "input_reconstruction_verified_by_receipt_presence": false,
+                "measurements_are_token_savings": false,
+                "model_prompt_bytes": 26168,
+                "model_prompt_sha256": "3a5b9540332c48f3b8d043e4bbe854737f93347e38faa5b6d319d4eee0a75571",
+                "native_prompt_bytes": 26168,
+                "native_prompt_sha256": "3a5b9540332c48f3b8d043e4bbe854737f93347e38faa5b6d319d4eee0a75571",
+                "router_prompt_bytes": 26168,
+                "router_prompt_sha256": "3a5b9540332c48f3b8d043e4bbe854737f93347e38faa5b6d319d4eee0a75571",
+                "semantic_translation": null,
+                "workspace_advisory_bytes": 0,
+                "workspace_advisory_sha256": null
+              },
+              "invocation_id": "b5f03894c5de40dd8564ee5713c5f940",
+              "known_reported_cost_subtotal_usd": null,
+              "known_token_subtotals": {
+                "cached_input_tokens": 0,
+                "input_tokens": 23800,
+                "output_tokens": 1661,
+                "total_tokens": 25461
+              },
+              "model": "gpt-6.1-sol",
+              "native_grok_progress": null,
+              "native_task_complete_observed": true,
+              "native_usage_complete_observed": true,
+              "observed_counts_are_lower_bounds": true,
+              "phase": "planning",
+              "provider": "codex_cli",
+              "reported_cost_usd": null,
+              "seconds": 44.02921391394921,
+              "status": "provider_returned",
+              "timeout_seconds": 600,
+              "token_count_scope": "native_session_cumulative",
+              "tokens": {
+                "cached_input_tokens": 0,
+                "input_tokens": 23800,
+                "output_tokens": 1661,
+                "total_tokens": 25461
+              }
+            },
+            {
+              "billing_total_verified": false,
+              "cache_included_in_input": true,
+              "error_type": null,
+              "input_observation": {
+                "doctor_residual_context": {
+                  "advisory_bytes": 2109,
+                  "advisory_sha256": "ddd9ec9a0d5bacd21ab931417f9bc1344f15ebe13c7bcbb56ec0842d1dc09e7a",
+                  "candidate_only": true,
+                  "context_cid": "baguqeeraxca2cjtubv3s6cdnqvd4ak5zdleyigoglhie7ttiejathcpilmlq",
+                  "derived_runtime_admitted": false,
+                  "extra_provider_calls": 0,
+                  "native_capsule_id": "baguqeerajwghcxf5vetldkopvgkqxamr3odkucjdizkjlniuodl3vwkp6ssq",
+                  "schema": "doctor-residual-router-context@1",
+                  "source_freshness_verified": true
+                },
+                "input_reconstruction_verified_by_receipt_presence": false,
+                "measurements_are_token_savings": false,
+                "model_prompt_bytes": 66486,
+                "model_prompt_sha256": "92fed8505c0e7419e09b6118cd4245b3ee4b7365e474c33b5c18cf731bdfaadf",
+                "native_prompt_bytes": 69198,
+                "native_prompt_sha256": "b5711418e12c783f636d4afe868d7b238448743daecf80677bc0801fd47f7df6",
+                "router_prompt_bytes": 65090,
+                "router_prompt_sha256": "0ff373e1a70a9fdb7191362601846b8bac69fca317d69f9f8c601b6910b45de0",
+                "semantic_translation": {
+                  "freshness_checked": true,
+                  "identifier_mappings": 19,
+                  "identifier_occurrences": 50,
+                  "native_prompt_bytes": 69198,
+                  "provider_prompt_bytes": 61755,
+                  "schema": "supervisor-semantic-router-encoding@1",
+                  "translation_cid": "bafkreicxrmrnkspayhoemv73ltj3md5izvsqwhprwu6a72ll4zhm4i2cuy"
+                },
+                "workspace_advisory_bytes": 890,
+                "workspace_advisory_sha256": "ea9f23e5a1ecff21ccad4dea4c2e53e647e953e41635aac11524e2b68b5987fc"
+              },
+              "invocation_id": "ddcc2b6f2b2e4f69bbbb4b78e42e8935",
+              "known_reported_cost_subtotal_usd": null,
+              "known_token_subtotals": {
+                "cached_input_tokens": 236800,
+                "input_tokens": 282141,
+                "output_tokens": 4174,
+                "total_tokens": 286315
+              },
+              "model": "gpt-6.1-sol",
+              "native_grok_progress": null,
+              "native_task_complete_observed": true,
+              "native_usage_complete_observed": true,
+              "observed_counts_are_lower_bounds": true,
+              "phase": "coding",
+              "provider": "codex_cli",
+              "reported_cost_usd": null,
+              "seconds": 126.31611166894436,
+              "status": "provider_returned",
+              "timeout_seconds": 1800,
+              "token_count_scope": "native_session_cumulative",
+              "tokens": {
+                "cached_input_tokens": 236800,
+                "input_tokens": 282141,
+                "output_tokens": 4174,
+                "total_tokens": 286315
+              }
+            }
+          ],
+          "known_reported_cost_subtotal_usd": null,
+          "known_token_subtotals": {
+            "cached_input_tokens": 236800,
+            "input_tokens": 305941,
+            "output_tokens": 5835,
+            "total_tokens": 311776
+          },
+          "label": "Supervisor: full indexed context",
+          "model": "gpt-6.1-sol",
+          "native_completion_applicable": true,
+          "native_result_sha256": "b37c2c0608ea306019c9e6ce073dac6ff145cb096a6ff92cbc47e43cc29b675f",
+          "native_task_completed": true,
+          "native_total_seconds": null,
+          "native_usage_complete_observed": true,
+          "observed_counts_are_lower_bounds": true,
+          "observed_provider_invocations": 2,
+          "official_reward": 1.0,
+          "original_task_inputs_unchanged": true,
+          "outcome": "official_verifier_passed",
+          "post_publication_context": {
+            "budget_seconds": 104.07220135605894,
+            "embedding_accounting": {
+              "all_refreshes_receipted": false,
+              "known_subtotals": {
+                "local_embedding_calls": null,
+                "local_embedding_texts": null,
+                "remote_embedding_calls": null,
+                "text_generation_calls": null
+              },
+              "totals": {
+                "local_embedding_calls": null,
+                "local_embedding_texts": null,
+                "remote_embedding_calls": null,
+                "text_generation_calls": null
+              }
+            },
+            "embedding_calls": null,
+            "error_type": null,
+            "learned_numerical_accounting": null,
+            "reason": null,
+            "refresh_seconds": 13.082335960003547,
+            "status": "refreshed",
+            "task_completion_is_context_refresh_evidence": false
+          },
+          "post_publication_proof_index": null,
+          "preparation_seconds": 0.7917659939266741,
+          "provider_calls": 2,
+          "reasoning_effort": "high",
+          "reported_cost_usd": null,
+          "retained_trial": true,
+          "runtime_archive_sha256": "96aa70a6e10667ee9ca6d54a8baaae2a18378cdab22414c3bb32cc9fd65ed607",
+          "source_receipts": [
+            {
+              "invocation_seconds": 618.1318813679973,
+              "path": "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/current-comparison-archive-05/live-full-pair-02/baseline/receipt.json",
+              "sha256": "f3dad37ee15384360e1a2f475d67ef98ab554efdfe21b8ee5f81ecd64a0f3f2c",
+              "trial_count": 1
+            }
+          ],
+          "supervisor_error_type": null,
+          "supervisor_phases_seconds": {
+            "context_seconds": 3.367240414954722,
+            "doctor_seconds": 1.5735082629835233,
+            "initial_context_seconds": 14.095677979988977,
+            "planning_seconds": 51.49593217601068,
+            "post_publication_refresh_seconds": 13.082335960003547,
+            "prepare_seconds": 0.7917659939266741
+          },
+          "supervisor_seconds": 248.4406990580028,
+          "task": "largest-eigenval",
+          "tokens": {
+            "cached_input_tokens": 236800,
+            "input_tokens": 305941,
+            "output_tokens": 5835,
+            "total_tokens": 311776
+          },
+          "trial": "largest-eigenval__zJ9gZLA",
+          "unreceipted_provider_attempt": false
+        }
+      ],
+      "source": {
+        "invocation_seconds": 618.1318813679973,
+        "path": "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/current-comparison-archive-05/live-full-pair-02/baseline/receipt.json",
+        "sha256": "f3dad37ee15384360e1a2f475d67ef98ab554efdfe21b8ee5f81ecd64a0f3f2c",
+        "trial_count": 1
+      },
+      "source384_selected": true
+    },
+    {
+      "label": "full-instruction-dedup",
+      "rows": [
+        {
+          "additional_native_usage_categories": [
+            {
+              "cache_already_in_input": true,
+              "cache_write_input_tokens": 0,
+              "extra_categories_added_to_total": false,
+              "invocation_id": "7fee8c574f8a46738396ee36db6aacbd",
+              "known_cache_write_input_tokens": 0,
+              "known_reasoning_output_tokens": 200,
+              "phase": "planning",
+              "reasoning_already_in_output": true,
+              "reasoning_output_tokens": 200
+            },
+            {
+              "cache_already_in_input": true,
+              "cache_write_input_tokens": 0,
+              "extra_categories_added_to_total": false,
+              "invocation_id": "dd970e77a19e4949accb6b6a08721064",
+              "known_cache_write_input_tokens": 0,
+              "known_reasoning_output_tokens": 1253,
+              "phase": "coding",
+              "reasoning_already_in_output": true,
+              "reasoning_output_tokens": 1253
+            }
+          ],
+          "arm": "full",
+          "billing_total_verified": false,
+          "cache_included_in_input": true,
+          "cli_version": "0.160.0",
+          "code_learning_observation": null,
+          "comparison_label": "full-instruction-dedup",
+          "context_input_audit": {
+            "all_observed_coding_inputs_verified": true,
+            "any_model_input_verified": true,
+            "any_native_input_verified": true,
+            "coding_receipts_seen": 1,
+            "error_type": null,
+            "invocations": [
+              {
+                "invocation_id": "dd970e77a19e4949accb6b6a08721064",
+                "model_input_verified": true,
+                "native_input_verified": true,
+                "reason": "exact_context_and_input_digests_match",
+                "status": "verified_exact_model_input"
+              }
+            ],
+            "reason": "per_invocation_context_and_input_comparison",
+            "seconds": 2.502967047970742,
+            "source_formalization": [
+              {
+                "capsule_id": "baguqeera5ya2j5f77h62km5jd5boo7qu2vd3k3hw5cy7546zq5caqnoiy6yq",
+                "chunks": 1,
+                "completion_authority": false,
+                "contexts": [
+                  {
+                    "kind": "source384-candidate-context",
+                    "receipt_sha256": "2c8504e3a58b53202565dd7ba959d407c406b6871b7d621f52405c43183f9ed2",
+                    "source_hashes_sha256": "5f92038ce9e9024ba07e9af22184e92fff7df4bd983287081265a84821c0f1b1",
+                    "summary_sha256": "63d1c6a1eb4f9971cc2299132e18eab82137962921a8db13721c85c2204d4256"
+                  }
+                ],
+                "current_sources_checked": false,
+                "dispatched_context_bundle_sha256": "9589d810679fb08032ea38098ff487e14cdc3deabf7e86547bf5bdf3e271b0e8",
+                "execution_authority": false,
+                "expected_context_bundle_sha256": "9589d810679fb08032ea38098ff487e14cdc3deabf7e86547bf5bdf3e271b0e8",
+                "formalization_authority": false,
+                "historical_receipt_bindings_verified": true,
+                "matched_invocation_ids": [
+                  "dd970e77a19e4949accb6b6a08721064"
+                ],
+                "neural_inference_replayed": false,
+                "proof_authority": false,
+                "reported_model_input_verified": true,
+                "schema": "terminal-historical-source-formalization-observation@1",
+                "source_files": 5,
+                "source_obligations_discharged": 0,
+                "source_semantics_verified": false,
+                "task_cid": "baguqeera7xwsdyott2fd6eebrxfbzmzwen4ovw4qmu54r43bqi2mo6myxddq",
+                "task_id": "TB-CODE-TASK",
+                "whole_program_semantics_verified": false,
+                "worker_evidence_sha256": "2b5a1aeab89f0f1c36a6de313cba22dfe96c357c330f61759dbaab9e8a0486cd"
+              }
+            ],
+            "status": "verified_all_observed_model_inputs",
+            "task_correctness_established": false,
+            "usable_coding_receipts": 1
+          },
+          "context_seconds": 3.418065072968602,
+          "declared_output_observation": {
+            "allocation_path_sha256": null,
+            "attempt_id_sha256": "801eab1e49ff5f17f9d56f4941dd5ab4fbffd557458b74af4c576daaaf2595e6",
+            "baseline_commit": "5839db731a9227d4a64254426b4070d1c8d5f3b6",
+            "completion_authority": false,
+            "invocation_id_sha256": null,
+            "observation_only": true,
+            "original_allocation_inode_verified": false,
+            "outputs": [],
+            "owner_events_sha256": null,
+            "patch_application_established": false,
+            "portal_attempt": null,
+            "reason": "reported_declared_byte_observation",
+            "schema": "terminal-declared-output-observation@1",
+            "settlement_authority": false,
+            "status": "unavailable",
+            "task_cid_sha256": "d20e07072f782f862dafc97762b4c1083db523895ae2a1e315830200936c4ecc",
+            "task_correctness_established": false,
+            "writer_identity_established": false
+          },
+          "doctor_observation": {
+            "candidate_materializations_observed": null,
+            "local_contract_proof_status": null,
+            "observed_worker_receipts": null,
+            "provider_calls": 0,
+            "residual_context_prepared": true,
+            "residual_successors": 1,
+            "residual_work_proposals": 0,
+            "route": "model_router",
+            "selection_is_publication_or_completion_evidence": false,
+            "status": "residual",
+            "whole_program_proved": false
+          },
+          "durations_seconds": {
+            "agent_execution": 283.817674,
+            "agent_setup": 993.437822,
+            "environment_setup": 3.020117,
+            "verifier": 11.48597
+          },
+          "exception_type": null,
+          "indexed_context_observation": {
+            "context_preparation_is_dispatch_evidence": false,
+            "doctor_repair_status": "abstained",
+            "full_capsules": 8,
+            "indexed_symbols": 4,
+            "initial_indexes_reused": true,
+            "learned_embeddings": false,
+            "native_fact_rows_replayed": 4,
+            "new_embedding_calls": 0,
+            "prepared": true,
+            "worker_capsules": 4,
+            "worker_semantic_bytes": 31939
+          },
+          "initial_indexed_context_observation": {
+            "canonical_tasks_created": false,
+            "full_capsules": 8,
+            "indexed_symbols": 4,
+            "learned_embeddings": false,
+            "planning_model_request_sha256": "02e5abe3e6b21ddb8ce6b354eaacdbb05ea53582c396878dae4b1b659a40842e",
+            "preparation_is_provider_dispatch_evidence": false,
+            "prepared": true,
+            "provider_calls": 0,
+            "summary_sha256": "bb82de4c89869ecf56ac7278dab41a5b03b8d5e50870265e90546fa70aa32e9c",
+            "supplied_to_planning_router": true,
+            "world_task_count": 0
+          },
+          "intent_preplanning_status": {
+            "status": "fail_open_no_checkpoint"
+          },
+          "invocations": [
+            {
+              "billing_total_verified": false,
+              "cache_included_in_input": true,
+              "error_type": null,
+              "input_observation": {
+                "doctor_residual_context": null,
+                "input_reconstruction_verified_by_receipt_presence": false,
+                "measurements_are_token_savings": false,
+                "model_prompt_bytes": 26168,
+                "model_prompt_sha256": "02e5abe3e6b21ddb8ce6b354eaacdbb05ea53582c396878dae4b1b659a40842e",
+                "native_prompt_bytes": 26168,
+                "native_prompt_sha256": "02e5abe3e6b21ddb8ce6b354eaacdbb05ea53582c396878dae4b1b659a40842e",
+                "router_prompt_bytes": 26168,
+                "router_prompt_sha256": "02e5abe3e6b21ddb8ce6b354eaacdbb05ea53582c396878dae4b1b659a40842e",
+                "semantic_translation": null,
+                "workspace_advisory_bytes": 0,
+                "workspace_advisory_sha256": null
+              },
+              "invocation_id": "7fee8c574f8a46738396ee36db6aacbd",
+              "known_reported_cost_subtotal_usd": null,
+              "known_token_subtotals": {
+                "cached_input_tokens": 0,
+                "input_tokens": 23822,
+                "output_tokens": 1790,
+                "total_tokens": 25612
+              },
+              "model": "gpt-6.1-sol",
+              "native_grok_progress": null,
+              "native_task_complete_observed": true,
+              "native_usage_complete_observed": true,
+              "observed_counts_are_lower_bounds": true,
+              "phase": "planning",
+              "provider": "codex_cli",
+              "reported_cost_usd": null,
+              "seconds": 54.19175231899135,
+              "status": "provider_returned",
+              "timeout_seconds": 600,
+              "token_count_scope": "native_session_cumulative",
+              "tokens": {
+                "cached_input_tokens": 0,
+                "input_tokens": 23822,
+                "output_tokens": 1790,
+                "total_tokens": 25612
+              }
+            },
+            {
+              "billing_total_verified": false,
+              "cache_included_in_input": true,
+              "error_type": null,
+              "input_observation": {
+                "doctor_residual_context": {
+                  "advisory_bytes": 2109,
+                  "advisory_sha256": "44cd1c428fc413832eeac57e4c4d6f91cbd433b816c39d86fe2977fba3595005",
+                  "candidate_only": true,
+                  "context_cid": "baguqeera45i2diq3u2tc6cycgl4cv3bhyc7mezc7chzh2sayaeqxcpwwnxoq",
+                  "derived_runtime_admitted": false,
+                  "extra_provider_calls": 0,
+                  "native_capsule_id": "baguqeeraz6boum6cgy3l3ymwsn5qsm67xgzgmcj2vonafyapgdnirugacmvq",
+                  "schema": "doctor-residual-router-context@1",
+                  "source_freshness_verified": true
+                },
+                "input_reconstruction_verified_by_receipt_presence": false,
+                "measurements_are_token_savings": false,
+                "model_prompt_bytes": 65850,
+                "model_prompt_sha256": "5861b99a760d396862958b68fd83094266dc9b8432f637ac42ff08e094bc5ed0",
+                "native_prompt_bytes": 69530,
+                "native_prompt_sha256": "7ccfb560d97ea85876825a07bb635fc616eb2860a23475b35b806ce9f2f14a7e",
+                "router_prompt_bytes": 65422,
+                "router_prompt_sha256": "d235797359cdb6ff1e7584143b830f177129d99b4b091b76ef8d17d794eaf4e9",
+                "semantic_metadata_view": {
+                  "candidate_complete_bytes": 65850,
+                  "candidate_complete_proxy_tokens": 16463,
+                  "candidate_complete_sha256": "5861b99a760d396862958b68fd83094266dc9b8432f637ac42ff08e094bc5ed0",
+                  "complete_run_token_savings_claimed": false,
+                  "fallback_reason": null,
+                  "measurement_scope": "complete-rendered-prompt-text@1",
+                  "native_complete_bytes": 66818,
+                  "native_complete_proxy_tokens": 16705,
+                  "native_complete_sha256": "debb3672d103a0d2c2f77019222ad2384be86736b830a405a8ee9ba2eb050b95",
+                  "provider_usage_reported": false,
+                  "requested_mode": "common-bindings-instruction@1",
+                  "schema": "supervisor-semantic-metadata-selection@1",
+                  "selected_complete_bytes": 65850,
+                  "selected_complete_proxy_tokens": 16463,
+                  "selected_complete_sha256": "5861b99a760d396862958b68fd83094266dc9b8432f637ac42ff08e094bc5ed0",
+                  "selected_mode": "common-bindings-instruction@1",
+                  "selection_basis": "byte_proxy",
+                  "status": "reported",
+                  "token_proxy": "utf8-bytes-ceil-div4@1",
+                  "tokenizer_compatibility_verified": false,
+                  "view_receipt_sha256": "1f11ca6865603ea766603c3bda73babb30876ff020ea7d6efc52b45e39e3b78a"
+                },
+                "semantic_translation": {
+                  "freshness_checked": true,
+                  "identifier_mappings": 19,
+                  "identifier_occurrences": 50,
+                  "native_prompt_bytes": 69530,
+                  "provider_prompt_bytes": 62087,
+                  "schema": "supervisor-semantic-router-encoding@1",
+                  "translation_cid": "bafkreifrqoohvfnpq3r5v5mdtm47rxob72sv4jrfn3oxb3te4zihoftva4"
+                },
+                "workspace_advisory_bytes": 890,
+                "workspace_advisory_sha256": "fc7f580227da164fc4473f33f8b4b9bbad51fb8ef527599ce811e7c86426b884"
+              },
+              "invocation_id": "dd970e77a19e4949accb6b6a08721064",
+              "known_reported_cost_subtotal_usd": null,
+              "known_token_subtotals": {
+                "cached_input_tokens": 234624,
+                "input_tokens": 279911,
+                "output_tokens": 4290,
+                "total_tokens": 284201
+              },
+              "model": "gpt-6.1-sol",
+              "native_grok_progress": null,
+              "native_task_complete_observed": true,
+              "native_usage_complete_observed": true,
+              "observed_counts_are_lower_bounds": true,
+              "phase": "coding",
+              "provider": "codex_cli",
+              "reported_cost_usd": null,
+              "seconds": 149.84506781201344,
+              "status": "provider_returned",
+              "timeout_seconds": 1800,
+              "token_count_scope": "native_session_cumulative",
+              "tokens": {
+                "cached_input_tokens": 234624,
+                "input_tokens": 279911,
+                "output_tokens": 4290,
+                "total_tokens": 284201
+              }
+            }
+          ],
+          "known_reported_cost_subtotal_usd": null,
+          "known_token_subtotals": {
+            "cached_input_tokens": 234624,
+            "input_tokens": 303733,
+            "output_tokens": 6080,
+            "total_tokens": 309813
+          },
+          "label": "Supervisor: full indexed context",
+          "model": "gpt-6.1-sol",
+          "native_completion_applicable": true,
+          "native_result_sha256": "972e4e51be170ea0d096211c4f336c56f47cb92111ed6ecac5a70551d5da2c54",
+          "native_task_completed": true,
+          "native_total_seconds": null,
+          "native_usage_complete_observed": true,
+          "observed_counts_are_lower_bounds": true,
+          "observed_provider_invocations": 2,
+          "official_reward": 1.0,
+          "original_task_inputs_unchanged": true,
+          "outcome": "official_verifier_passed",
+          "post_publication_context": {
+            "budget_seconds": 104.02654978295323,
+            "embedding_accounting": {
+              "all_refreshes_receipted": false,
+              "known_subtotals": {
+                "local_embedding_calls": null,
+                "local_embedding_texts": null,
+                "remote_embedding_calls": null,
+                "text_generation_calls": null
+              },
+              "totals": {
+                "local_embedding_calls": null,
+                "local_embedding_texts": null,
+                "remote_embedding_calls": null,
+                "text_generation_calls": null
+              }
+            },
+            "embedding_calls": null,
+            "error_type": null,
+            "learned_numerical_accounting": null,
+            "reason": null,
+            "refresh_seconds": 13.364538331050426,
+            "status": "refreshed",
+            "task_completion_is_context_refresh_evidence": false
+          },
+          "post_publication_proof_index": null,
+          "preparation_seconds": 0.7864367279689759,
+          "provider_calls": 2,
+          "reasoning_effort": "high",
+          "reported_cost_usd": null,
+          "retained_trial": true,
+          "runtime_archive_sha256": "96aa70a6e10667ee9ca6d54a8baaae2a18378cdab22414c3bb32cc9fd65ed607",
+          "source_receipts": [
+            {
+              "invocation_seconds": 1308.7536143660545,
+              "path": "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/current-comparison-archive-05/live-full-pair-02/instruction-dedup/receipt.json",
+              "sha256": "8efecfe0a367296ad390acf6364b2d5cfcddb3e29cd0346740a11fe42b42b20d",
+              "trial_count": 1
+            }
+          ],
+          "supervisor_error_type": null,
+          "supervisor_phases_seconds": {
+            "context_seconds": 3.418065072968602,
+            "doctor_seconds": 1.6163390160072595,
+            "initial_context_seconds": 13.461078888969496,
+            "planning_seconds": 61.604864671011455,
+            "post_publication_refresh_seconds": 13.364538331050426,
+            "prepare_seconds": 0.7864367279689759
+          },
+          "supervisor_seconds": 282.3578647969989,
+          "task": "largest-eigenval",
+          "tokens": {
+            "cached_input_tokens": 234624,
+            "input_tokens": 303733,
+            "output_tokens": 6080,
+            "total_tokens": 309813
+          },
+          "trial": "largest-eigenval__iwu4BgF",
+          "unreceipted_provider_attempt": false
+        }
+      ],
+      "source": {
+        "invocation_seconds": 1308.7536143660545,
+        "path": "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/current-comparison-archive-05/live-full-pair-02/instruction-dedup/receipt.json",
+        "sha256": "8efecfe0a367296ad390acf6364b2d5cfcddb3e29cd0346740a11fe42b42b20d",
+        "trial_count": 1
+      },
+      "source384_selected": true
+    }
+  ],
+  "receipts_without_trials": [],
+  "report_source_sha256": "77516f9a4bad02b20ab45820ddc32b72ab7f049bd3267626e0bd4584e5117b0a",
+  "schema": "terminal-labeled-full-supervisor-pair@1",
+  "unknown_fields_are_zero": false
+}

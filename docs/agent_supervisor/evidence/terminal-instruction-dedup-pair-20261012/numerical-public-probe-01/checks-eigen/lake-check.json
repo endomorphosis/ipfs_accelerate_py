@@ -1,0 +1,22 @@
+{
+  "backend_executed": true,
+  "command": [
+    "/home/barberb/.elan/toolchains/leanprover--lean4---v4.29.1/bin/lake",
+    "build",
+    "NumericalObligations"
+  ],
+  "executable_sha256": "4c391bb878ede19c51e809c167d0536efff1f7f72ac41cbae441d6248d509505",
+  "input_files_sha256": {
+    "NumericalObligations.lean": "3b15a14e1ec469d9f6c618766ec43edda88edfcc764c68dfbb964f3a302d4a32",
+    "lakefile.toml": "4aaf7be5a06208a9829beec31a519b40c3035d8ad3ac786e630842652931ec81",
+    "lean-toolchain": "7dc000621e0046d1aada809e2b7177e64454645cf4c741e9daaf79c99ec2e7a2"
+  },
+  "output_truncated": false,
+  "returncode": 0,
+  "status": "passed",
+  "stderr": "info: native_family_numericalobligations: no previous manifest, creating one from scratch\ninfo: toolchain not updated; already up-to-date\n",
+  "stdout": "\u2714 [2/3] Built NumericalObligations (2.0s)\nBuild completed successfully (3 jobs).\n",
+  "timed_out": false,
+  "toolchain": "leanprover/lean4:v4.29.1",
+  "workspace_limit_exceeded": false
+}

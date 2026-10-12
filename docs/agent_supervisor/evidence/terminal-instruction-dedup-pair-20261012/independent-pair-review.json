@@ -1,0 +1,95 @@
+{
+  "all_checks_pass": true,
+  "checks": {
+    "all_accounting_binding_checks_pass": true,
+    "arithmetic_delta": true,
+    "baseline_complete_phases_retained": true,
+    "baseline_native_totals_match": true,
+    "baseline_official_pass_retained": true,
+    "baseline_receipt_identity": true,
+    "baseline_runtime_qualified": true,
+    "baseline_unknown_cost_preserved": true,
+    "correct_report_scope": true,
+    "earlier_provider_free_preparation_retained": true,
+    "exact_two_retained_trials": true,
+    "independent_plans_not_equal": true,
+    "instruction-dedup_complete_phases_retained": true,
+    "instruction-dedup_native_totals_match": true,
+    "instruction-dedup_official_pass_retained": true,
+    "instruction-dedup_receipt_identity": true,
+    "instruction-dedup_runtime_qualified": true,
+    "instruction-dedup_unknown_cost_preserved": true,
+    "reporter_current_and_qualified": true,
+    "total_ratio_matches": true
+  },
+  "container_actions_by_reviewer": 0,
+  "fixture_qualification_sha256": "4e50c96d68d5e3d7f039de89be899047d635a93e1f9c272ffd0f6e457ffc8fca",
+  "limitations": [
+    "Cache is included in input; reasoning is included in output. Most total-token delta is cached input; billing cost is unknown.",
+    "Independent planning identities and actual complete inputs differ, so paired native-token difference is observational.",
+    "Wrapper, native-collector invocation, agent setup/execution and supervisor times are nested or differently bounded and must not be summed.",
+    "Treatment took longer in this pair; setup accounted for most elapsed difference.",
+    "Both Source384 runs decoded four unsupported candidates and IntentIR failed open without a checkpoint. Official reward does not discharge source proof obligations."
+  ],
+  "native_usage": {
+    "baseline": {
+      "cache_write_input_tokens": 0,
+      "cached_input_tokens": 236800,
+      "input_tokens": 305941,
+      "output_tokens": 5835,
+      "reasoning_output_tokens": 1396,
+      "total_tokens": 311776
+    },
+    "instruction-dedup": {
+      "cache_write_input_tokens": 0,
+      "cached_input_tokens": 234624,
+      "input_tokens": 303733,
+      "output_tokens": 6080,
+      "reasoning_output_tokens": 1453,
+      "total_tokens": 309813
+    }
+  },
+  "native_usage_delta_treatment_minus_baseline": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": -2176,
+    "input_tokens": -2208,
+    "output_tokens": 245,
+    "reasoning_output_tokens": 57,
+    "total_tokens": -1963
+  },
+  "observed_token_ratio": 0.9937038129939444,
+  "observed_total_token_reduction_percent": 0.629618700605563,
+  "pair_report_sha256": "07ba595f07fa42b24b088ca68f1f31b9a20f37ea4bc1ea272f2f834e22b1135b",
+  "provider_calls_by_reviewer": 0,
+  "raw_provider_bodies_read": false,
+  "schema": "independent-full-pair-outcome-review@1",
+  "scope": "Two actual full-supervisor trials, one per treatment; all planning and coding usage retained. Earlier failed provider-free preparation stays separate from native trials. Native Codex baseline and repeatable/causal savings were not established.",
+  "timings_and_planning_identities": {
+    "baseline": {
+      "agent_execution_seconds": 249.831696,
+      "agent_setup_seconds": 341.364304,
+      "native_collector_invocation_seconds": 618.1318813679973,
+      "planning_model_request_sha256": "3a5b9540332c48f3b8d043e4bbe854737f93347e38faa5b6d319d4eee0a75571",
+      "supervisor_seconds": 248.4406990580028,
+      "task_cids": [
+        "baguqeeraoeym2tcgzxx44pz3h53jc5n4jdyqzxoifp2h5ct4qqpfjiewrzxq"
+      ],
+      "wrapper_seconds": 619.589790678001
+    },
+    "instruction-dedup": {
+      "agent_execution_seconds": 283.817674,
+      "agent_setup_seconds": 993.437822,
+      "native_collector_invocation_seconds": 1308.7536143660545,
+      "planning_model_request_sha256": "02e5abe3e6b21ddb8ce6b354eaacdbb05ea53582c396878dae4b1b659a40842e",
+      "supervisor_seconds": 282.3578647969989,
+      "task_cids": [
+        "baguqeera7xwsdyott2fd6eebrxfbzmzwen4ovw4qmu54r43bqi2mo6myxddq"
+      ],
+      "wrapper_seconds": 1310.2907155819703
+    }
+  },
+  "uncached_input_tokens": {
+    "baseline": 69141,
+    "instruction-dedup": 69109
+  }
+}

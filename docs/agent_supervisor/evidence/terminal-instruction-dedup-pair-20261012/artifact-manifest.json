@@ -1,0 +1,420 @@
+{
+  "datasets_head": "c1b1f65f254f5f3ee8f307cdddf923c62450f78e",
+  "file_bytes": 414581,
+  "file_count": 53,
+  "files": [
+    {
+      "authored_for_publication": true,
+      "bytes": 7199,
+      "copied_exactly": false,
+      "path": "README.md",
+      "sha256": "9690885e64f4d6d922b2c848ab00162b4e75162e2901dc299dd945814d9a986c",
+      "source_relative_to_run_root": null
+    },
+    {
+      "bytes": 475,
+      "copied_exactly": true,
+      "path": "archive-05/archive-readiness-05.json",
+      "sha256": "405f491fcf537114b331c67c5ad2169567dfbcb96be0eebcf6ed9d1edbe668cf",
+      "source_relative_to_run_root": "current-comparison-archive-05/archive-readiness-05.json"
+    },
+    {
+      "bytes": 1572,
+      "copied_exactly": true,
+      "path": "archive-05/full-pair-profile-amendment.json",
+      "sha256": "1a5904fd13066ed86d59b7e3af3d98d3c510e2dffcdca4d12dfd3f3a1b79d6e9",
+      "source_relative_to_run_root": "current-comparison-archive-05/full-pair-profile-amendment.json"
+    },
+    {
+      "bytes": 1854,
+      "copied_exactly": true,
+      "path": "archive-05/host-execution-environment.json",
+      "sha256": "40d8579da1cbd18115ec06dd68f771a97b24cd327de5db9b9123b85fdb40bdb0",
+      "source_relative_to_run_root": "current-comparison-archive-05/host-execution-environment.json"
+    },
+    {
+      "bytes": 709,
+      "copied_exactly": true,
+      "path": "archive-05/isolated-host-environment-check.json",
+      "sha256": "1ef9e25dcc729416fd46b261460a99c5a441e8addf35cf3258e119da3db1a7bb",
+      "source_relative_to_run_root": "current-comparison-archive-05/isolated-host-environment-check.json"
+    },
+    {
+      "bytes": 596,
+      "copied_exactly": true,
+      "path": "archive-05/root-source-release.json",
+      "sha256": "1ad66f8c7c0c97cfd2238b30035373a86518bcd225d90ee9330891b1353738e8",
+      "source_relative_to_run_root": "current-comparison-archive-05/root-source-release.json"
+    },
+    {
+      "bytes": 63512,
+      "copied_exactly": true,
+      "path": "archive-05/source-freeze-05.json",
+      "sha256": "a55beaa409c544d79743e24086113b5fdb749d15bf90ef3031b20c2f9647245b",
+      "source_relative_to_run_root": "current-comparison-archive-05/source-freeze-05.json"
+    },
+    {
+      "bytes": 17136,
+      "copied_exactly": false,
+      "derived_from": "explicitly bound baseline report fields, permitted public source AST shapes and source_references in this diagnostic",
+      "path": "diagnostics/public-source-formalization-gaps.json",
+      "sha256": "f1c7f9ccd37e49e2c5735959ba3b9e96af0e6fc1d5fb7b152aac720e02a7b210"
+    },
+    {
+      "bytes": 3687,
+      "copied_exactly": true,
+      "path": "formalization-cache-focused-01/command.json",
+      "sha256": "8ddb9f5a138d16da6dc0d5c05cf6aa1e67c211f50cfb8214075e8290383b563e",
+      "source_relative_to_run_root": "formalization-cache-focused-01/command.json"
+    },
+    {
+      "bytes": 28556,
+      "copied_exactly": true,
+      "path": "formalization-cache-focused-01/junit.xml",
+      "sha256": "be3b0c2155de3f2525f9a91a7f69c480c3f4ffdd156b2468b367b5ff2a121655",
+      "source_relative_to_run_root": "formalization-cache-focused-01/junit.xml"
+    },
+    {
+      "bytes": 3184,
+      "copied_exactly": true,
+      "path": "formalization-cache-focused-01/pytest.log",
+      "sha256": "43e9d04de162deb121c90dcedb5ca7101c04b5b4b68734a87f178c560f7d944f",
+      "source_relative_to_run_root": "formalization-cache-focused-01/pytest.log"
+    },
+    {
+      "bytes": 1348,
+      "copied_exactly": true,
+      "path": "formalization-cache-focused-01/qualification.json",
+      "sha256": "b1eba46c19804c14cf4753d25112aa77094086a441e6312e93cab3a922d48edf",
+      "source_relative_to_run_root": "formalization-cache-focused-01/qualification.json"
+    },
+    {
+      "bytes": 4168,
+      "copied_exactly": true,
+      "path": "independent-pair-review.json",
+      "sha256": "e6c4c76c1283fbab1c1cd9deb78d4da7ec207a432825890c96cae97033f59370",
+      "source_relative_to_run_root": "full-coding-comparison/independent-pair-review-02.json"
+    },
+    {
+      "bytes": 422,
+      "copied_exactly": true,
+      "path": "live/baseline-cleanup.json",
+      "sha256": "a9f9dae847fbec70b71cc41a6c3aef37cd52ea7c48d579de0352e8679adf23f8",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-02/baseline-cleanup.json"
+    },
+    {
+      "bytes": 404,
+      "copied_exactly": true,
+      "path": "live/baseline-closed.json",
+      "sha256": "94e5e5eab9ea6df80bfd15d7318c791e816d21ef147a56993462c99380bd262a",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-02/baseline-closed.json"
+    },
+    {
+      "bytes": 1953,
+      "copied_exactly": true,
+      "path": "live/baseline-independent-runtime-review.json",
+      "sha256": "5c4e81283ddfaf711c58c999024620c1ecb67ffe9aef93f69fb008f2d21d8f76",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-02/baseline-independent-runtime-review.json"
+    },
+    {
+      "bytes": 11360,
+      "copied_exactly": true,
+      "path": "live/baseline-runtime-observation-v2.json",
+      "sha256": "8a700adcabf917eba29bdd56a0b8909649afb99875178bff38368e695bae0033",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-02/baseline-runtime-observation-v2.json"
+    },
+    {
+      "bytes": 431,
+      "copied_exactly": true,
+      "path": "live/instruction-dedup-cleanup.json",
+      "sha256": "b600b0eac821dccd7dae9322156d9434977046fdba182f08febc34290d19dfc6",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-02/instruction-dedup-cleanup.json"
+    },
+    {
+      "bytes": 415,
+      "copied_exactly": true,
+      "path": "live/instruction-dedup-closed.json",
+      "sha256": "ae06ec5e8c195670d7470dd477011b914a2097f054d784b1dd3ddeffdef7bbf1",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-02/instruction-dedup-closed.json"
+    },
+    {
+      "bytes": 3358,
+      "copied_exactly": true,
+      "path": "live/instruction-dedup-independent-runtime-review.json",
+      "sha256": "8dbf16b474fc77aca4a7bf60944750737e4cdfa768d1a827f845ac65643dc9c1",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-02/instruction-dedup-independent-runtime-review.json"
+    },
+    {
+      "bytes": 12920,
+      "copied_exactly": true,
+      "path": "live/instruction-dedup-runtime-observation-v2.json",
+      "sha256": "bff947b780758685b97f12a8f15a00f27eb7df1b588f7afe6182d53a0287f886",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-02/instruction-dedup-runtime-observation-v2.json"
+    },
+    {
+      "bytes": 4462,
+      "copied_exactly": true,
+      "path": "live/pair-closure.json",
+      "sha256": "14059f37abc9675c81b3b16878ed1862a140ea1395e18625c4316eee72bf55ae",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-02/pair-closure.json"
+    },
+    {
+      "bytes": 5644,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eigen/NumericalObligations.lean",
+      "sha256": "3b15a14e1ec469d9f6c618766ec43edda88edfcc764c68dfbb964f3a302d4a32",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eigen/NumericalObligations.lean"
+    },
+    {
+      "bytes": 999,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eigen/lake-check.json",
+      "sha256": "0a55f90bb6c304269e3730000dc1f9e6848d9eb6bcd65c0c9cd5b6c279914c09",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eigen/lake-check.json"
+    },
+    {
+      "bytes": 1859,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eigen/negative-lake-check.json",
+      "sha256": "309ed28fa6fa82d5c05842af3710bbedef452f5a49cc82d2dae52298da41e554",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eigen/negative-lake-check.json"
+    },
+    {
+      "bytes": 5621,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eigen/negative-missing-nonempty-premise.lean",
+      "sha256": "1dfcc7bb53c4406a4890726ff345b4f077dff4a0d392233e0abf693f6f7c4ec6",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eigen/negative-missing-nonempty-premise.lean"
+    },
+    {
+      "bytes": 492,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eigen/obligation-000.smt2",
+      "sha256": "75033336e7cf649a3e628abfaeef5e37417c63ca4a8266a014b8f9457473de0e",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eigen/obligation-000.smt2"
+    },
+    {
+      "bytes": 501,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eigen/obligation-001.smt2",
+      "sha256": "712388a4be1677be02b6a264d21e02fe3418f38bb65fb68edc5bc1dbc90cd356",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eigen/obligation-001.smt2"
+    },
+    {
+      "bytes": 501,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eigen/obligation-002.smt2",
+      "sha256": "8b09999b0a569bb1bdc25a2a5ed645ec8a8799971179448159817a733ce10b35",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eigen/obligation-002.smt2"
+    },
+    {
+      "bytes": 758,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eigen/smt-checks.json",
+      "sha256": "f4d007b0d9bad735d412b31d26f3d95dd62264d564701925c14618e02438ae33",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eigen/smt-checks.json"
+    },
+    {
+      "bytes": 6978,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eval/NumericalObligations.lean",
+      "sha256": "3208073c5b6528cd75f035eab5002f8c670c418f5ae7aa30c4ed8293162079e1",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eval/NumericalObligations.lean"
+    },
+    {
+      "bytes": 1000,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eval/lake-check.json",
+      "sha256": "bdfec895aaaf43faaaef52c8efff157a9dafdbc0a813e8d6eaa77ad4e4485b5e",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eval/lake-check.json"
+    },
+    {
+      "bytes": 492,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eval/obligation-000.smt2",
+      "sha256": "ae10accfe26e5ae96e96889d4da7f383de69a01e82aded7864156548702b72e8",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eval/obligation-000.smt2"
+    },
+    {
+      "bytes": 501,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eval/obligation-001.smt2",
+      "sha256": "893184b59244b8019946421021c80ba571f76a65a403b7f3f7924b2690c3b713",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eval/obligation-001.smt2"
+    },
+    {
+      "bytes": 501,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eval/obligation-002.smt2",
+      "sha256": "39fad477591ccf19c18bda3e231a6ba43773f5ff5760b546c52faa2db66a0b10",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eval/obligation-002.smt2"
+    },
+    {
+      "bytes": 759,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/checks-eval/smt-checks.json",
+      "sha256": "f0be1406de45164dbe34eab830633ca44a59f9dc03f0777afbe635cbd39bb570",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/checks-eval/smt-checks.json"
+    },
+    {
+      "bytes": 180,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/cold-replay.json",
+      "sha256": "c2400baee5d6e3943f3dd6643bdc9928042f9e706dca40742397d6a4670fb0da",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/cold-replay.json"
+    },
+    {
+      "bytes": 6896,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/command.json",
+      "sha256": "2262de103c6bac46b83f639bd25817687188ab3d73603e2a957ba8236339fb70",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/command.json"
+    },
+    {
+      "bytes": 1572,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/independent-review.json",
+      "sha256": "4874f3a4e999dd6ccd2fc313c183063c96eb00f903f997b9b46eebaac4d011b4",
+      "source_relative_to_run_root": "full-coding-comparison/independent-numerical-probe-review.json"
+    },
+    {
+      "bytes": 14236,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/probe_public_numerical.py",
+      "sha256": "a38f2739d1257b69300c6a06b42033cafbdd0a82b21f2a1d897b44752d5f1632",
+      "source_relative_to_run_root": "full-coding-comparison/probe_public_numerical.py"
+    },
+    {
+      "bytes": 39160,
+      "copied_exactly": true,
+      "path": "numerical-public-probe-01/qualification.json",
+      "sha256": "554ab986573f16e15572b5e8a81535a368bb1564b478feec0365c5c6b9223517",
+      "source_relative_to_run_root": "full-coding-comparison/numerical-public-probe-01/qualification.json"
+    },
+    {
+      "bytes": 41199,
+      "copied_exactly": true,
+      "path": "paired-result.json",
+      "sha256": "07ba595f07fa42b24b088ca68f1f31b9a20f37ea4bc1ea272f2f834e22b1135b",
+      "source_relative_to_run_root": "full-coding-comparison/paired-result-02.json"
+    },
+    {
+      "bytes": 77,
+      "copied_exactly": true,
+      "path": "preparation-01/baseline-prepare-status.json",
+      "sha256": "403eede3138ccf407d2962bdd88d51dc01485fcb8767bfb5dfa19d75e4964344",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-01/baseline-prepare-status.json"
+    },
+    {
+      "bytes": 1602,
+      "copied_exactly": true,
+      "path": "preparation-02/independent-preparation-review.json",
+      "sha256": "35a9d6b2aa6c037ada8b415da981730ab57b32499ade02a5aafb7db57c4ad0ef",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-02/independent-preparation-review.json"
+    },
+    {
+      "bytes": 7797,
+      "copied_exactly": true,
+      "path": "preparation-02/pair-preparation.json",
+      "sha256": "086969f6e4df87ad322d4f52c9957cef087d162a41d8a5f2f213862db23b8d7a",
+      "source_relative_to_run_root": "current-comparison-archive-05/live-full-pair-02/pair-preparation.json"
+    },
+    {
+      "bytes": 14272,
+      "copied_exactly": true,
+      "path": "reporter-current/compare_pair.py",
+      "sha256": "77516f9a4bad02b20ab45820ddc32b72ab7f049bd3267626e0bd4584e5117b0a",
+      "source_relative_to_run_root": "full-coding-comparison/compare_pair.py"
+    },
+    {
+      "bytes": 3272,
+      "copied_exactly": true,
+      "path": "reporter-current/prior-qualification-02.json",
+      "sha256": "b7da53fdd1324c3784328a3851f56e428382fdcea24d19a38967d6893eb8cbb8",
+      "source_relative_to_run_root": "full-coding-comparison/reporter-fixtures-02/qualification.json"
+    },
+    {
+      "bytes": 3272,
+      "copied_exactly": true,
+      "path": "reporter-current/qualification.json",
+      "sha256": "4e50c96d68d5e3d7f039de89be899047d635a93e1f9c272ffd0f6e457ffc8fca",
+      "source_relative_to_run_root": "full-coding-comparison/reporter-fixtures-03/qualification.json"
+    },
+    {
+      "bytes": 13816,
+      "copied_exactly": true,
+      "path": "reporter-current/reporter_fixture_runner.py",
+      "sha256": "35f05aabc439c08c7f53b42e01f672a2829013918f80cd6fb8552feb26cdf873",
+      "source_relative_to_run_root": "full-coding-comparison/reporter_fixture_runner.py"
+    },
+    {
+      "bytes": 41080,
+      "copied_exactly": true,
+      "path": "reporter-initial/failed-pair-report.json",
+      "sha256": "9255748398a8bd70bbcae712019a913cffd450e7913ed4c998549368f889a6b7",
+      "source_relative_to_run_root": "full-coding-comparison/paired-result-01.json"
+    },
+    {
+      "bytes": 13965,
+      "copied_exactly": true,
+      "path": "reporter/compare_pair.py",
+      "sha256": "dc76053d23b3dc6df308de352fbb83626c71b618935f5b9b92d446f627bd3920",
+      "source_relative_to_run_root": "full-coding-comparison/compare_pair.py"
+    },
+    {
+      "bytes": 3119,
+      "copied_exactly": true,
+      "path": "reporter/reporter-fixtures-01/qualification.json",
+      "sha256": "38db5ee3031e3e96c21d98700470eaacc7ccb4ef00898262d94ce5bbd5272a2b",
+      "source_relative_to_run_root": "full-coding-comparison/reporter-fixtures-01/qualification.json"
+    },
+    {
+      "bytes": 12739,
+      "copied_exactly": true,
+      "path": "reporter/reporter_fixture_runner.py",
+      "sha256": "0174229aa63cc9a3197208cf7b70a6dcffe302729f45a44223c1f2e9ef021d9a",
+      "source_relative_to_run_root": "full-coding-comparison/reporter_fixture_runner.py"
+    }
+  ],
+  "interpretation": [
+    "Profile amendment and source release are preparation-time records; their waiting/zero-launch fields are preserved exactly, not restated as current runtime status.",
+    "The initial preparation failure and isolated host dependency failure are retained; both made zero provider calls.",
+    "Archive readiness verifies source bytes and closure, not live provider availability or execution.",
+    "Synthetic reporter arithmetic tests make no benchmark performance claim.",
+    "This staging step does not alter frozen production source, launch a container, or call a model.",
+    "Post-pair numerical probe reused existing deterministic projection and native lake APIs on only hash-matched public source files. Lean compilation and abstract SMT checks do not establish numerical correctness; all45 source obligations remain pending. No target code or learned model was executed."
+  ],
+  "qualification_counts": {
+    "authored_reporter_cases_passed": 21,
+    "cache_tests_failed": 0,
+    "cache_tests_passed": 138,
+    "cache_tests_skipped": 0,
+    "current_reporter_fixtures": 23,
+    "independent_numerical_probe_checks": 17,
+    "independent_pair_checks": 20,
+    "independent_preparation_checks_passed": 27,
+    "native_lean_authored_negative_rejected": 1,
+    "native_lean_generated_modules_passed": 2,
+    "native_z3_satisfiable_negated_queries": 6,
+    "numerical_linked_source_units": 4,
+    "numerical_pending_obligations": 45,
+    "numerical_public_functions": 4,
+    "numerical_source_obligations_discharged": 0,
+    "numerical_structurally_complete_functions": 2
+  },
+  "review": {
+    "absolute_local_paths_retained_for_provenance": true,
+    "archive_or_checkpoint_asset_bodies_included": false,
+    "credential_pattern_matches": 0,
+    "explicit_allowlist_only": true,
+    "manual_content_review": true,
+    "owner_database_bodies_included": false,
+    "raw_provider_bodies_included": false,
+    "raw_supervisor_or_native_receipts_included": false,
+    "synthetic_per_case_receipts_included": false,
+    "utf8_text_only": true
+  },
+  "schema": "terminal-full-pair-publication-staging@1",
+  "scope": "Bounded public full-supervisor comparison evidence; private raw provider and owner bodies excluded. Prior failed reporter and preparation retained.",
+  "source_head": "c3d4f873acdb62fd5b124328b3e3f28accd8dbdb"
+}

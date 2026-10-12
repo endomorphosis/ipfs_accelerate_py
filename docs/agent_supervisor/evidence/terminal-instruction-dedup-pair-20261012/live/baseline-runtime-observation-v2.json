@@ -1,0 +1,272 @@
+{
+  "complete_single_trial_receipt": true,
+  "context_input_audit": {
+    "all_observed_coding_inputs_verified": true,
+    "any_model_input_verified": true,
+    "any_native_input_verified": true,
+    "coding_receipts_seen": 1,
+    "formalization_authority": false,
+    "input_scope": "router task prompt; provider harness/system context is outside this digest",
+    "invocations": [
+      {
+        "invocation_id": "ddcc2b6f2b2e4f69bbbb4b78e42e8935",
+        "model_input_verified": true,
+        "native_input_verified": true,
+        "reason": "exact_context_and_input_digests_match",
+        "status": "verified_exact_model_input"
+      }
+    ],
+    "matches": [
+      {
+        "capsule_id": "baguqeeraluiwdlewdhuhti4xg5dnri4sjrys26hwcmmmlg4b57g7hlp2ux3q",
+        "invocation_id": "ddcc2b6f2b2e4f69bbbb4b78e42e8935",
+        "model_input_checks": {
+          "coding_reply_automatic_retry_admitted": true,
+          "coding_reply_completion_authority": true,
+          "coding_reply_execution_authority": true,
+          "coding_reply_instruction_bytes": true,
+          "coding_reply_instruction_sha256": true,
+          "coding_reply_mode": true,
+          "coding_reply_model_prompt_after_bytes": true,
+          "coding_reply_model_prompt_after_sha256": true,
+          "coding_reply_model_prompt_before_bytes": true,
+          "coding_reply_model_prompt_before_sha256": true,
+          "coding_reply_native_output_schema_bytes": true,
+          "coding_reply_native_output_schema_requested": true,
+          "coding_reply_native_output_schema_sha256": true,
+          "coding_reply_owner_selected": true,
+          "coding_reply_residual_task_family_selected": true,
+          "coding_reply_schema": true,
+          "coding_reply_settlement_authority": true,
+          "doctor_residual_advisory_bytes": true,
+          "doctor_residual_advisory_sha256": true,
+          "doctor_residual_context_cid": true,
+          "doctor_residual_native_capsule_id": true,
+          "model_prompt_bytes": true,
+          "model_prompt_sha256": true,
+          "public_instruction_block_bytes": true,
+          "public_instruction_block_sha256": true,
+          "public_instruction_context_cid": true,
+          "public_instruction_manifest_cid": true,
+          "public_instruction_schema": true,
+          "public_instruction_source_bytes": true,
+          "public_instruction_source_path": true,
+          "public_instruction_source_sha256": true,
+          "public_instruction_task_id": true,
+          "router_prompt_bytes": true,
+          "router_prompt_sha256": true,
+          "semantic_translation_cid": true,
+          "semantic_translation_schema": true,
+          "source_formalization_dispatch": true,
+          "workspace_advisory_bytes": true,
+          "workspace_advisory_sha256": true
+        },
+        "model_input_verified": true,
+        "model_prompt_bytes": 66486,
+        "model_prompt_sha256": "92fed8505c0e7419e09b6118cd4245b3ee4b7365e474c33b5c18cf731bdfaadf",
+        "native_prompt_bytes": 69198,
+        "native_prompt_sha256": "b5711418e12c783f636d4afe868d7b238448743daecf80677bc0801fd47f7df6",
+        "workspace_advisory_bytes": 890,
+        "workspace_advisory_sha256": "ea9f23e5a1ecff21ccad4dea4c2e53e647e953e41635aac11524e2b68b5987fc",
+        "workspace_sha256": "ab752982b8d7125acf5718e5b52a14d6d7fe8d2a8d626041bf0a352a6a1e98ae"
+      }
+    ],
+    "proof_authority": false,
+    "provider_calls": 0,
+    "raw_prompts_exported": false,
+    "read_errors": [],
+    "reason": "per_invocation_context_and_input_comparison",
+    "schema": "terminal-final-context-audit@1",
+    "source_obligations_discharged": 0,
+    "status": "verified_all_observed_model_inputs",
+    "task_correctness_established": false,
+    "usable_coding_receipts": 1
+  },
+  "durations_seconds": {
+    "agent_execution": 249.831696,
+    "agent_setup": 341.364304,
+    "environment_setup": 3.626745,
+    "verifier": 7.47089
+  },
+  "error": null,
+  "graph_or_prompt_text_exported": false,
+  "intent_preplanning": {
+    "advice_sha256": "623983b9eb00d3d50197038186d06ea9986a40e858bb6e08094d474958d79881",
+    "artifact_persisted": true,
+    "before_goal_decomposition": true,
+    "completion_authority": false,
+    "execution_authority": false,
+    "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+    "status": "fail_open_no_checkpoint",
+    "supplied_to_router": false
+  },
+  "interpretation": "Observed run; provider tokens are native cumulative counts. Prompt bytes do not establish token savings; official pass does not establish formal proof.",
+  "label": "baseline",
+  "official_exception_type": null,
+  "official_reward": {
+    "reward": 1.0
+  },
+  "original_task_inputs_unchanged": true,
+  "owner_databases_read": false,
+  "phases": {
+    "context_seconds": 3.367240414954722,
+    "doctor_seconds": 1.5735082629835233,
+    "initial_context_seconds": 14.095677979988977,
+    "planning_seconds": 51.49593217601068,
+    "post_publication_refresh_seconds": 13.082335960003547,
+    "prepare_seconds": 0.7917659939266741
+  },
+  "planning_identity": {
+    "context_bundle_sha256": "c90740af50037ce90113ab8b162f084cf2c6db600b79c1fff932378570c21828",
+    "goals_count": 2,
+    "initial_context_descriptor_sha256": "a783a6f5506c9f9b7bf226a60a6164c1cbc690ac41a3fd8259db6de12e44190c",
+    "initial_semantic_root_cid": "baguqeeraal5jpaoe5gflml5cndgiuno4n64d65tuybpgt2yfoeevsrdpbnna",
+    "initial_world_snapshot_cid": "sha256:f4734d7a6192b7f7a693b48a054db0cd0a38e36c607126f070e53bbbaad2c585",
+    "model_request_sha256": "3a5b9540332c48f3b8d043e4bbe854737f93347e38faa5b6d319d4eee0a75571",
+    "task_cids": [
+      "baguqeeraoeym2tcgzxx44pz3h53jc5n4jdyqzxoifp2h5ct4qqpfjiewrzxq"
+    ],
+    "tasks_count": 1
+  },
+  "provider_invocations": [
+    {
+      "invocation_id": "b5f03894c5de40dd8564ee5713c5f940",
+      "model": "gpt-6.1-sol",
+      "model_prompt_bytes": 26168,
+      "model_prompt_sha256": "3a5b9540332c48f3b8d043e4bbe854737f93347e38faa5b6d319d4eee0a75571",
+      "native_accounting": {
+        "billing_total_verified": false,
+        "cache_included_in_input": true,
+        "dollar_cost": null,
+        "observed_token_count_records": 1,
+        "rollout_sha256": "b7c904e72215870f4e2e604f1d3fcefb6b73bc4af9e4d3e4b9bf612dfed312ec",
+        "schema": "native-codex-cumulative-usage@1",
+        "task_complete_observed": true,
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 0,
+          "input_tokens": 23800,
+          "output_tokens": 1661,
+          "reasoning_output_tokens": 149,
+          "total_tokens": 25461
+        },
+        "usage_available": true
+      },
+      "native_prompt_bytes": 26168,
+      "native_prompt_sha256": "3a5b9540332c48f3b8d043e4bbe854737f93347e38faa5b6d319d4eee0a75571",
+      "phase": "planning",
+      "provider": "codex_cli",
+      "reasoning_effort": "high",
+      "router_prompt_bytes": 26168,
+      "router_prompt_sha256": "3a5b9540332c48f3b8d043e4bbe854737f93347e38faa5b6d319d4eee0a75571",
+      "seconds": 44.02921391394921,
+      "status": "provider_returned",
+      "timeout_seconds": 600,
+      "workspace_advisory_bytes": 0,
+      "workspace_advisory_sha256": null
+    },
+    {
+      "invocation_id": "ddcc2b6f2b2e4f69bbbb4b78e42e8935",
+      "metadata_selection_observation": {
+        "reason": "legacy_requested_no_experimental_selection",
+        "requested_mode": "legacy",
+        "selected_mode": "legacy"
+      },
+      "model": "gpt-6.1-sol",
+      "model_prompt_bytes": 66486,
+      "model_prompt_sha256": "92fed8505c0e7419e09b6118cd4245b3ee4b7365e474c33b5c18cf731bdfaadf",
+      "native_accounting": {
+        "billing_total_verified": false,
+        "cache_included_in_input": true,
+        "dollar_cost": null,
+        "observed_token_count_records": 7,
+        "rollout_sha256": "3d071aa38bbe01b9665ac0aea5b6627fa635fa8b60fe7f720892a7b066bf81a9",
+        "schema": "native-codex-cumulative-usage@1",
+        "task_complete_observed": true,
+        "usage": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 236800,
+          "input_tokens": 282141,
+          "output_tokens": 4174,
+          "reasoning_output_tokens": 1247,
+          "total_tokens": 286315
+        },
+        "usage_available": true
+      },
+      "native_prompt_bytes": 69198,
+      "native_prompt_sha256": "b5711418e12c783f636d4afe868d7b238448743daecf80677bc0801fd47f7df6",
+      "phase": "coding",
+      "provider": "codex_cli",
+      "reasoning_effort": "high",
+      "requested_metadata_mode": "legacy",
+      "router_prompt_bytes": 65090,
+      "router_prompt_sha256": "0ff373e1a70a9fdb7191362601846b8bac69fca317d69f9f8c601b6910b45de0",
+      "seconds": 126.31611166894436,
+      "status": "provider_returned",
+      "timeout_seconds": 1800,
+      "workspace_advisory_bytes": 890,
+      "workspace_advisory_sha256": "ea9f23e5a1ecff21ccad4dea4c2e53e647e953e41635aac11524e2b68b5987fc"
+    }
+  ],
+  "raw_provider_bodies_read": false,
+  "receipt_sha256": "f3dad37ee15384360e1a2f475d67ef98ab554efdfe21b8ee5f81ecd64a0f3f2c",
+  "remaining_processes": 0,
+  "reserved_phase_budgets_seconds": {
+    "implementation": 1860,
+    "native_setup": 180,
+    "planning": 660,
+    "preparation": 3600
+  },
+  "resource_profile": "source384-5cpu-20gib-formalization@1",
+  "schema": "terminal-paired-bounded-runtime-observation@1",
+  "source384": {
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "completion_authority": false,
+    "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+    "execution_authority": false,
+    "formalization_authority": false,
+    "inference_sha256": "660f69c3bd9bc889cb434fc00891992a2836af49e02e62192c0b71efe3d374d6",
+    "neural_inference_replayed": false,
+    "proof_authority": false,
+    "seconds": 9.302844605990686,
+    "source_head": {
+      "ast_revision_id": "rev:terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4:snapshot:baguqeeran47nv33zwjtzhoqiftopdmfws26kmvsi2uxo2jde2gzx5t3jg2wa",
+      "generation": 1,
+      "manifest_cid": "baguqeeraudi7hc3hueq2saxp3txhnzur6he3utwxyltevojia26ubvmkpwoa",
+      "receipt_cid": "baguqeerapj4dxx5hfbgey57qlcu6xa6smyweeazmwzgat3eg6gfl7hm74jfq",
+      "repository_id": "terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeran47nv33zwjtzhoqiftopdmfws26kmvsi2uxo2jde2gzx5t3jg2wa"
+    },
+    "training_steps": 0
+  },
+  "source384_summary": {
+    "candidate_count": 4,
+    "coverage": {
+      "candidate_statuses": {
+        "fail_open_source_contract_unsupported": 4
+      },
+      "file_dispositions": {
+        "inventoried": 2
+      },
+      "files": 2,
+      "functions": 4,
+      "selected_units": 4,
+      "unit_dispositions": {
+        "decoded_unverified_candidate": 4
+      }
+    },
+    "harness_support_files": 3,
+    "inference_python_files": 2,
+    "mode": "pinned_parent",
+    "program_source_files": 2,
+    "provider_calls": 0,
+    "source_aligned_candidate_count": 0,
+    "source_semantics_verified": false,
+    "source_validation_scope": "guarded_scalar_source_candidate_alignment",
+    "training_steps": 0,
+    "whole_program_semantics_verified": false
+  },
+  "supervisor_seconds": 248.4406990580028,
+  "task_completed": true
+}
