@@ -133,6 +133,66 @@ capsules covered two public source paths. Their common-field populations differ.
 The table is offline representation evidence and cannot predict actual
 benchmark input size, behavior, rewards or cumulative tokens.
 
+## Additional token-efficiency controls (2026-10-12)
+
+The opt-in `common-bindings-instruction@1` treatment extends the readable shared
+metadata view. The current supervisor carries the public instruction both in
+`semantic.raw_sources` and in the separately admitted verbatim requirements
+block. This view replaces only the exact duplicated raw-source entry with a
+path/hash/byte-bound reference to that block. The complete public instruction
+remains inline. Other source text, native task state, Doctor context, workspace
+mapping and reply instructions remain available. It requires the independently
+admitted public-instruction receipt and matching captured source bytes; a
+missing or stale binding refuses before provider discovery.
+
+The original semantic input restores byte-for-byte. Selection compares both
+complete rendered inputs, with byte/proxy selection or an explicitly injected
+token counter. A candidate that does not shrink both required measurements
+retains the original input and records the requested treatment and fallback.
+Counter failure also retains the original input. Census stops before provider
+discovery and emits measurements and identities, without source bodies. A
+retained historical audit reconstructs the actual selected input even after the
+code changes or the temporary checkout is removed. A retained token-counter
+receipt alone cannot qualify an unavailable counter.
+
+Use `--semantic-metadata-view common-bindings-instruction@1` when preparing a
+full-supervisor experiment with `supervisor-semantic-router-input@1` and a rebuilt
+runtime archive containing the current policy closure. It is also accepted by
+the existing live census route. The default remains `legacy`; preparation,
+archive and signed router checks still apply. This treatment does not change
+planning or the provider selected through `llm_router`.
+
+Capsule priority can additionally consume the existing retrieval index rather
+than relying only on words in symbol names and paths. The programmatic
+`prepare_initial_context(..., retrieval_ranked_capsules=True)` profile prepares
+retrieval before capsules, then passes its artifact and digest to
+`prepare_semantic_context(..., worker_retrieval=...)`. The owner replays the
+query, verifies its exact source population, and maps hits to native symbols
+using source and line-span identities. Up to 20 verified hits lead the order;
+remaining symbols retain lexical priority. Existing required raw sources,
+freshness/admission checks, capsule count and byte limits still apply. Rankings
+cannot confer proof or permission to omit a required fact. The descriptor and
+cold reload retain the exact selected retrieval binding. Historical audit
+reconstructs the original ranking from retained sources, AST and query evidence
+after code edits; it does not label those historical sources current. This remains a
+programmatic profile, with no benchmark CLI flag. Published successors refuse
+this profile until fresh retrieval regeneration is integrated; the ordinary
+profile remains available for complete multi-step benchmark runs.
+
+Comparison output now includes **total native tokens per official pass** and
+**reported provider USD per official pass**. Each numerator includes all
+supplied retained attempts, including failures. Unknown official rewards,
+missing usage/cost or zero passes leave the affected ratio unavailable, with
+explicit reasons. Cache inclusion semantics remain visible. These are observed
+ratios for the supplied attempts, not verified bills or causal savings.
+
+Qualification measurements and source-bound commands are retained in
+[evidence/terminal-token-efficiency-20261012](evidence/terminal-token-efficiency-20261012/README.md).
+No live token reduction or new official Terminal Bench reward is established by
+these implementation tests. The next comparison should hold task, provider,
+model, planning strategy, budget and reply contract fixed, change one treatment
+at a time, and retain every attempt and its native usage.
+
 ## Next changes, in measurement order
 
 1. **Census the actual prepared coding view.** Let the verified owner emit only

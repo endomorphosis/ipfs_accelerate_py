@@ -1,0 +1,61 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.15, pytest-9.1.1, pluggy-1.6.0
+cachedir: /tmp/pytest-cache
+rootdir: /code/source/test
+configfile: pytest.ini
+collected 10 items
+
+../code/source/test/api/test_semantic_instruction_dispatch.py::test_signed_instruction_selected_once_with_unchanged_native_prompt_and_historical_replay 
+-------------------------------- live log setup --------------------------------
+2026-10-12 02:02:55 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/instruction-pytest/test_signed_instruction_select0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 10%]
+../code/source/test/api/test_semantic_instruction_dispatch.py::test_counter_can_select_or_refuse_instruction_view_and_replays_after_source_change[90-common-bindings-instruction@1] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 02:02:57 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/instruction-pytest/test_counter_can_select_or_ref0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 20%]
+../code/source/test/api/test_semantic_instruction_dispatch.py::test_counter_can_select_or_refuse_instruction_view_and_replays_after_source_change[200-legacy] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 02:02:57 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/instruction-pytest/test_counter_can_select_or_ref1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 30%]
+../code/source/test/api/test_semantic_instruction_dispatch.py::test_small_signed_instruction_falls_back_to_exact_native_input 
+-------------------------------- live log setup --------------------------------
+2026-10-12 02:02:58 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/instruction-pytest/test_small_signed_instruction_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 40%]
+../code/source/test/api/test_semantic_instruction_dispatch.py::test_instruction_view_rejects_stale_or_absent_requirements_before_provider[canonical_instruction] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 02:02:59 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/instruction-pytest/test_instruction_view_rejects_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 50%]
+../code/source/test/api/test_semantic_instruction_dispatch.py::test_instruction_view_rejects_stale_or_absent_requirements_before_provider[worker_instruction] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 02:03:00 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/instruction-pytest/test_instruction_view_rejects_1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 60%]
+../code/source/test/api/test_semantic_instruction_dispatch.py::test_instruction_view_rejects_stale_or_absent_requirements_before_provider[missing_raw_source] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 02:03:01 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/instruction-pytest/test_instruction_view_rejects_2/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 70%]
+../code/source/test/api/test_semantic_instruction_dispatch.py::test_instruction_view_rejects_stale_or_absent_requirements_before_provider[missing_binding] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 02:03:02 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/instruction-pytest/test_instruction_view_rejects_3/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 80%]
+../code/source/test/api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[False] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 02:03:02 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/instruction-pytest/test_instruction_census_has_ex0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 90%]
+../code/source/test/api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[True] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 02:03:03 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/instruction-pytest/test_instruction_census_has_ex1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [100%]
+
+------------- generated xml file: /qualification-output/junit.xml --------------
+============================= slowest 10 durations =============================
+1.09s call     api/test_semantic_instruction_dispatch.py::test_signed_instruction_selected_once_with_unchanged_native_prompt_and_historical_replay
+0.72s setup    api/test_semantic_instruction_dispatch.py::test_signed_instruction_selected_once_with_unchanged_native_prompt_and_historical_replay
+0.52s call     api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[True]
+0.51s call     api/test_semantic_instruction_dispatch.py::test_small_signed_instruction_falls_back_to_exact_native_input
+0.48s call     api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[False]
+0.48s call     api/test_semantic_instruction_dispatch.py::test_counter_can_select_or_refuse_instruction_view_and_replays_after_source_change[200-legacy]
+0.47s call     api/test_semantic_instruction_dispatch.py::test_counter_can_select_or_refuse_instruction_view_and_replays_after_source_change[90-common-bindings-instruction@1]
+0.47s setup    api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[True]
+0.44s setup    api/test_semantic_instruction_dispatch.py::test_instruction_view_rejects_stale_or_absent_requirements_before_provider[canonical_instruction]
+0.42s setup    api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[False]
+============================== 10 passed in 9.87s ==============================

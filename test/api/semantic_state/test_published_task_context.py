@@ -41,16 +41,26 @@ def vectors(repository, previous_snapshot=None, previous_result=None, query_text
     return snapshot, search_code_symbol_vector_index(snapshot, vector(query_text), max_results=5)
 
 
-def initial_bundle(scenario, owner, *, retrieval=True, vector_builder=vectors, empty_population=None):
+def initial_bundle(scenario, owner, *, retrieval=True, vector_builder=vectors, empty_population=None,
+                   ranked_capsules=False):
     from ipfs_accelerate_py.agent_supervisor.runtime.code_retrieval_context import prepare_code_retrieval_context
     from ipfs_accelerate_py.agent_supervisor.semantic_state.datasets_adapter import IpfsDatasetsSemanticStateProvider
     root = scenario["repository"]
     out = root / ".runtime/predecessor"
     alias = scenario["graph"].tasks[0].task_key
+    ranked_retrieval = None
+    if ranked_capsules:
+        snapshot, hits = vector_builder(root)
+        ranked_retrieval = prepare_code_retrieval_context(repository=root, task_id=alias,
+            query_text="answer", snapshot=snapshot, result=hits, output=out / "retrieval.json")
     semantic = prepare_semantic_context(repository=root, paths=["answer.py", "test_answer.py"],
         required_raw_paths=["test_answer.py"], objective="Repair the answer", task_id=alias,
         output=out / "semantic", **({"program_paths": empty_population["program_paths"]}
-            if empty_population is not None else {}))
+            if empty_population is not None else {}), **({"program_paths": ["answer.py"],
+                "worker_query": "answer", "worker_retrieval": {
+                    "artifact": ranked_retrieval["metadata"]["Code retrieval artifact"],
+                    "sha256": ranked_retrieval["sha256"]}}
+                if ranked_retrieval is not None else {}))
     get_block = lambda cid: (out / "semantic/blocks" / cid).read_bytes()
     view = IpfsDatasetsSemanticStateProvider().open_verified_view(semantic["semantic_root_cid"], get_block)
     with owner.server._lock:
@@ -78,6 +88,8 @@ def initial_bundle(scenario, owner, *, retrieval=True, vector_builder=vectors, e
         from ipfs_accelerate_py.agent_supervisor.runtime.empty_code_retrieval import prepare_empty_code_retrieval_context
         metadata.update(prepare_empty_code_retrieval_context(repository=root, task_id=alias,
             query_text="answer", output=out / "retrieval.json", **empty_population)["metadata"])
+    elif ranked_retrieval is not None:
+        metadata.update(ranked_retrieval["metadata"])
     elif retrieval:
         snapshot, hits = vector_builder(root)
         metadata.update(prepare_code_retrieval_context(repository=root, task_id=alias,
@@ -85,6 +97,28 @@ def initial_bundle(scenario, owner, *, retrieval=True, vector_builder=vectors, e
     prepared = {"schema": "supervisor-task-context-preparation@1", "task_cid": scenario["task_cid"],
                 "task_id": alias, "metadata": metadata}
     return write_task_context_bundle(repository=root, prepared=[prepared], output=out / "bundle.json")
+
+
+def test_completed_ranked_predecessor_refuses_successor_before_any_preparation(scenario, tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.runtime import published_task_context as owner_runtime
+    admission = local.admit_local_benchmark_plan(graph=scenario["graph"], manifest=scenario["manifest"])
+    with typed_claim(scenario, tmp_path) as (owner, _daemon, attempt):
+        bundle = initial_bundle(scenario, owner, ranked_capsules=True)
+        task = owner.source.get_task(attempt.task_cid)
+        transition = native_published_transition(scenario, tmp_path, owner, attempt)
+        passed = run_owner_local_task_validations(server=owner.server, task_cid=task.task_cid,
+            attempt_id=attempt.attempt_id, expected_revision=task.revision, source_transition=transition)
+        assert passed["passed"] is True
+        complete(owner, attempt, passed["results"][0]["evidence_digest"])
+        before = owner.source.get_task(task.task_cid)
+        monkeypatch.setattr(owner_runtime, "prepare_semantic_context", lambda **kwargs: pytest.fail("partial successor"))
+        output = scenario["repository"] / ".runtime/ranked-successor"
+        with pytest.raises(ValueError, match="requires fresh retrieval"):
+            refresh_published_task_context(server=owner.server, admission=admission,
+                predecessor_bundle=bundle, task_cid=attempt.task_cid, output=output,
+                retrieval_rebuilder=vectors)
+        assert not output.exists()
+        assert owner.source.get_task(task.task_cid) == before
 
 
 @pytest.mark.parametrize("rebuild", [False, True])

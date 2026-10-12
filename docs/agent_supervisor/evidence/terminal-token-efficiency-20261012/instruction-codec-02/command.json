@@ -1,0 +1,35 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "test/api/test_semantic_instruction_view.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-token-context-20261012/instruction-codec-02/junit.xml",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/supervisor-token-context-20261012/instruction-codec-02/pytest-cache"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_overrides": {
+    "CODEBASE384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "CODEBASE384_EMBEDDING_SNAPSHOT": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-token-context-20261012/instruction-codec-02/seal.duckdb",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/test_semantic_instruction_view.py": "184fcd96c7fff72cba513cb58672f7e56b387eacabfa03db99f41bb7b04fd029"
+  }
+}

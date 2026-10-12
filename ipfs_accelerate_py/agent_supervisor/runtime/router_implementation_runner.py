@@ -75,7 +75,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "semantic_router_translation.py", "doctor_residual_context.py",
     "router_public_instruction.py", "local_planning_admission.py",
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
-    "semantic_metadata_view.py",
+    "semantic_metadata_view.py", "semantic_instruction_view.py",
     "semantic_metadata_census.py",
     "source_formalization_context.py",
 })
@@ -252,14 +252,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if (semantic_transport_schema != "supervisor-semantic-router-input@1"
             and (purpose != "coding" or semantic_repository is None)):
         raise ValueError("compact semantic transport requires a semantic coding route")
-    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1"}:
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (purpose != "coding" or semantic_repository is None
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
         raise ValueError("metadata view requires the original semantic coding transport")
     if semantic_metadata_token_counter is not None:
         from .semantic_metadata_view import SemanticMetadataTokenCounter
-        if semantic_metadata_view != "common-bindings@1":
+        if semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}:
             raise ValueError("metadata token counter requires the explicit metadata view")
         if (type(semantic_metadata_token_counter) is not SemanticMetadataTokenCounter
                 or semantic_metadata_token_counter.provider != provider
@@ -267,7 +267,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             raise ValueError("metadata token counter must match the pinned provider and model")
     if type(census_only) is not bool:
         raise ValueError("explicit Boolean census selection required")
-    if census_only and semantic_metadata_view != "common-bindings@1":
+    if census_only and semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}:
         raise ValueError("metadata census requires the explicit common-bindings coding view")
     if not prompt.strip() or len(prompt.encode()) > 256_000:
         raise ValueError("implementation prompt exceeds its byte bound")
@@ -347,6 +347,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         router_prompt += residual_advisory
     failure_phase = "public_instruction"
     instruction_receipt = None
+    instruction = None
     instruction_args = (public_instruction_artifact, public_instruction_sha256, public_instruction_task_cid)
     if any(instruction_args):
         if not all(instruction_args) or purpose != "coding":
@@ -374,7 +375,18 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if semantic_metadata_view != "legacy":
         failure_phase = "semantic_metadata_view"
         from .semantic_metadata_view import project_semantic_metadata_view, select_semantic_metadata_view
-        view = project_semantic_metadata_view(encoded.provider_prompt)
+        selection_options = {}
+        selector = select_semantic_metadata_view
+        if semantic_metadata_view == "common-bindings-instruction@1":
+            if instruction is None or instruction_receipt is None:
+                raise ValueError("instruction metadata view requires admitted public requirements")
+            from .semantic_instruction_view import project_instruction_view, select_instruction_view
+            view = project_instruction_view(encoded.provider_prompt,
+                instruction_block=instruction, instruction_receipt=instruction_receipt)
+            selector = select_instruction_view
+            selection_options["instruction_block"] = instruction
+        else:
+            view = project_semantic_metadata_view(encoded.provider_prompt)
         if not router_prompt.startswith(encoded.provider_prompt):
             raise ValueError("metadata view differs from the verified semantic transport")
         candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
@@ -397,12 +409,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             from .semantic_metadata_census import census_semantic_metadata_view
             metadata_census = census_semantic_metadata_view(view=view,
                 native_complete_prompt=model_prompt, candidate_complete_prompt=candidate_model,
-                token_counter=semantic_metadata_token_counter)
-            if metadata_census["selected_mode"] == "common-bindings@1":
+                token_counter=semantic_metadata_token_counter, **selection_options,
+                **({"instruction_receipt": instruction_receipt} if selection_options else {}))
+            if metadata_census["selected_mode"] != "legacy":
                 model_prompt = candidate_model
         else:
-            selection = select_semantic_metadata_view(view=view, native_complete_prompt=model_prompt,
-                candidate_complete_prompt=candidate_model, token_counter=semantic_metadata_token_counter)
+            selection = selector(view=view, native_complete_prompt=model_prompt,
+                candidate_complete_prompt=candidate_model, token_counter=semantic_metadata_token_counter,
+                **selection_options)
             model_prompt, metadata_receipt = selection.selected_prompt, selection.receipt
         if coding_reply_mode != "legacy" and model_prompt == candidate_model:
             coding_reply_receipt = candidate_reply
@@ -698,7 +712,7 @@ def main():
     parser.add_argument("--source-formalization-handoff-sha256")
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
-    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1"])
+    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
     parser.add_argument("--semantic-metadata-census-only", action="store_true",
                         help="Check the complete metadata view and emit only census metadata before provider dispatch")
     parser.add_argument("--coding-reply-mode", default="legacy",

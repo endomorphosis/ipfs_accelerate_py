@@ -1,0 +1,65 @@
+{
+  "base_commit": "ab2938bbae44106df268b1d074c8ff90ad3dbb71",
+  "datasets_commit": "fd4be4da2a3976a8e40f47d7337cebb6332c95f3",
+  "diagnostics_not_in_final_counts": [
+    "metadata-regression-01 passed 249 during concurrent source edits; superseded by native-final-01",
+    "harbor-diagnostic-01 passed 231 before six additional routing controls; superseded by harbor-final-01",
+    "docker-instruction-01 failed before imports due generated script escaping; corrected script compiled and passed attempt02"
+  ],
+  "distinct_host_tests_passed": 786,
+  "docker_repeated_tests_passed": 10,
+  "host_runs": [
+    {
+      "junit_sha256": "3e548752e4617b25071b824ffb91dc2d72a3e55583d1b75d7da1f7b61fcf0a5b",
+      "passed": 40,
+      "run": "instruction-codec-02",
+      "skipped": 0,
+      "source_unchanged": true
+    },
+    {
+      "junit_sha256": "f2490c291c5d6858ccf00338a0aa17f9ff9cb9b5f745e0d1362deff663274c20",
+      "passed": 11,
+      "run": "instruction-audit-edges-01",
+      "skipped": 0,
+      "source_unchanged": true
+    },
+    {
+      "junit_sha256": "2828de476dafd69dd9378fa1be0ddc2de5621810523197a661a6ae00a6213449",
+      "passed": 89,
+      "run": "dispatch-metrics-final-01",
+      "skipped": 0,
+      "source_unchanged": true
+    },
+    {
+      "junit_sha256": "7a00e59c8cbe306e5bb41dd5b0905105f3fef6d78d8b0e8a29d17b73f4002a96",
+      "passed": 120,
+      "run": "retrieval-historical-01",
+      "skipped": 0,
+      "source_unchanged": true
+    },
+    {
+      "junit_sha256": "4f944a6609a8b5d98c5ec4c0a0f0020c90c60381541f97f7b3c7d15781c20651",
+      "passed": 237,
+      "run": "harbor-final-01",
+      "skipped": 0,
+      "source_unchanged": true
+    },
+    {
+      "junit_sha256": "4c4eefa9f38b549b4eb52ab54b870e13ece6c72e82991262ccb336dce1d6a292",
+      "passed": 289,
+      "run": "native-final-01",
+      "skipped": 0,
+      "source_unchanged": true
+    }
+  ],
+  "host_skips": 0,
+  "kit_commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+  "live_provider_calls": 0,
+  "live_total_token_savings_measured": false,
+  "model_downloads": 0,
+  "official_terminal_bench_score": null,
+  "retrieval_ranked_successors": "refused_until_fresh_retrieval_precedes_semantic_preparation",
+  "schema": "supervisor-token-efficiency-qualification@1",
+  "source_manifest_sha256": "26a474534e6574e49885f8807e35fac2270fedf5a7e2b9c1e40998ef5aa9d05f",
+  "training_steps": 0
+}

@@ -409,7 +409,8 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                                           require_source384: bool = True, worktree_root: Path | None = None,
                                           worker_writable: bool = False, worker_group_gid: int | None = None,
                                           include_formal_status_census: bool = False,
-                                          formal_status_owner: TerminalFormalStatusOwner | None = None):
+                                          formal_status_owner: TerminalFormalStatusOwner | None = None,
+                                          semantic_metadata_view: str = "common-bindings@1"):
     """Yield existing live owner inputs and an owned detached census workspace.
 
     ``require_source384=False`` supports native authored lexical boundary tests;
@@ -428,6 +429,8 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import managed_git_worktree
     from .indexed_doctor_lifecycle import _context
 
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}:
+        raise ValueError("explicit supported census metadata view required")
     if (type(include_doctor_context) is not bool or type(require_source384) is not bool
             or type(include_formal_status_census) is not bool
             or type(worker_writable) is not bool
@@ -575,7 +578,7 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                               name: formal_status[name] for name in formal_operation_counts})
     options = {"purpose": "coding", "semantic_repository": root,
         "semantic_transport_schema": "supervisor-semantic-router-input@1",
-        "semantic_metadata_view": "common-bindings@1", "census_only": True,
+        "semantic_metadata_view": semantic_metadata_view, "census_only": True,
         "coding_reply_mode": "ordinary-completion@1", "public_instruction_artifact": Path(instruction["artifact"]),
         "public_instruction_sha256": instruction["sha256"], "public_instruction_task_cid": task["task_cid"]}
     if doctor and doctor.get("residual_context"):

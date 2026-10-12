@@ -105,6 +105,7 @@ def census_semantic_metadata_view(
     *, view: SemanticMetadataView, native_complete_prompt: str,
     candidate_complete_prompt: str, fixed_max_input_bytes: int = FIXED_MAX_INPUT_BYTES,
     token_counter: SemanticMetadataTokenCounter | None = None,
+    instruction_block: str | None = None, instruction_receipt: dict | None = None,
 ) -> dict:
     """Return closed counts/digests after exact restoration and input selection.
 
@@ -117,17 +118,32 @@ def census_semantic_metadata_view(
     if type(fixed_max_input_bytes) is not int or fixed_max_input_bytes != FIXED_MAX_INPUT_BYTES:
         raise SemanticMetadataCensusError("fixed census complete-input bound required")
     try:
-        restored = restore_semantic_metadata_view(provider_prompt=view.provider_prompt, receipt=view.receipt)
+        instruction_selected = instruction_block is not None or instruction_receipt is not None
+        selection_options = {}
+        selector = select_semantic_metadata_view
+        if instruction_selected:
+            from .semantic_instruction_view import (
+                project_instruction_view, restore_instruction_view, select_instruction_view,
+            )
+            restored = restore_instruction_view(provider_prompt=view.provider_prompt,
+                receipt=view.receipt, instruction_block=instruction_block)
+            projected = project_instruction_view(restored, instruction_block=instruction_block,
+                instruction_receipt=instruction_receipt)
+            selector = select_instruction_view
+            selection_options["instruction_block"] = instruction_block
+        else:
+            restored = restore_semantic_metadata_view(provider_prompt=view.provider_prompt, receipt=view.receipt)
+            projected = project_semantic_metadata_view(restored)
         if restored != view.native_prompt:
             raise SemanticMetadataCensusError("census exact restoration differs")
         # Require the fixed upstream projector's actual candidate, rather than
         # a caller-selected alternate representation with a self-rehashed receipt.
-        if project_semantic_metadata_view(restored) != view:
+        if projected != view:
             raise SemanticMetadataCensusError("census projected candidate differs")
-        selection = select_semantic_metadata_view(
+        selection = selector(
             view=view, native_complete_prompt=native_complete_prompt,
             candidate_complete_prompt=candidate_complete_prompt,
-            token_counter=token_counter,
+            token_counter=token_counter, **selection_options,
         )
         native = json.loads(restored)  # The existing restore already checked canonical bounded JSON.
         candidate = json.loads(view.provider_prompt)
@@ -143,7 +159,7 @@ def census_semantic_metadata_view(
         # Export a fixed construction, never either upstream receipt wholesale.
         output = {
             "schema": CENSUS_SCHEMA, "source_transport_schema": TRANSPORT_SCHEMA,
-            "view_schema": VIEW_SCHEMA, "token_proxy": TOKEN_PROXY,
+            "view_schema": receipt["view_schema"], "token_proxy": TOKEN_PROXY,
             "fixed_max_input_bytes": FIXED_MAX_INPUT_BYTES,
             "task_id_sha256": _sha(_identity(receipt["task_id"])),
             "translation_cid_sha256": _sha(_identity(receipt["translation_cid"])),
@@ -166,7 +182,7 @@ def census_semantic_metadata_view(
             "eligible_for_matched_input_comparison": (
                 chosen["native_complete_bytes"] <= FIXED_MAX_INPUT_BYTES
                 and chosen["candidate_complete_bytes"] <= FIXED_MAX_INPUT_BYTES
-                and selection.selected_mode == "common-bindings@1"
+                and selection.selected_mode != "legacy"
             ),
             "candidate_complete_byte_reduction": chosen["native_complete_bytes"] - chosen["candidate_complete_bytes"],
             "selected_complete_byte_reduction": chosen["native_complete_bytes"] - chosen["selected_complete_bytes"],
@@ -176,6 +192,10 @@ def census_semantic_metadata_view(
             "actual_provider_tokens_measured": False, "total_token_savings_qualified": False,
             "provider_calls": 0, **{field: False for field in _FALSE_FIELDS},
         }
+        if instruction_selected:
+            output.update(requested_mode="common-bindings-instruction@1",
+                instruction_reference_verified=True,
+                candidate_duplicate_source_bytes=view.receipt["instruction_binding"]["source_bytes"])
         if token_counter is not None:
             identity = chosen["token_counter_identity"]
             output.update(

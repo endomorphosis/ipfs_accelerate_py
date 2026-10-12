@@ -188,6 +188,11 @@ def _token_selection_receipt(metadata: dict, item: dict) -> None:
         "native_complete_tokens", "candidate_complete_tokens", "selected_complete_tokens",
         "selection_basis", "actual_provider_usage_verified", "provider_usage_reported",
         "cli_scaffolding_measured", "complete_run_token_savings_claimed"}
+    if "requested_mode" in metadata:
+        base_fields.add("requested_mode")
+    requested = metadata.get("requested_mode", "common-bindings@1")
+    if type(requested) is not str or requested not in {"common-bindings@1", "common-bindings-instruction@1"}:
+        raise ValueError("invalid requested metadata representation")
     if (set(metadata) != base_fields | token_fields
             or metadata["selection_basis"] != "token_counter"
             or metadata["token_proxy"] != "utf8-bytes-ceil-div4@1"
@@ -241,7 +246,7 @@ def _token_selection_receipt(metadata: dict, item: dict) -> None:
         selected = False
         fallback = "complete_input_token_counter_" + status
     chosen = "candidate" if selected else "native"
-    if (metadata["selected_mode"] != ("common-bindings@1" if selected else "legacy")
+    if (metadata["selected_mode"] != (requested if selected else "legacy")
             or metadata["fallback_reason"] != fallback
             or any(metadata["selected_complete_" + field] != metadata[chosen + "_complete_" + field]
                    for field in ("sha256", "bytes", "proxy_tokens", "tokens"))
@@ -344,12 +349,17 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                 or metadata.get("schema") not in {"supervisor-semantic-metadata-selection@1",
                                                    "supervisor-semantic-metadata-selection@2"}
                 or type(metadata.get("selected_mode")) is not str
-                or metadata.get("selected_mode") not in {"legacy", "common-bindings@1"}
+                or metadata.get("selected_mode") not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}
                 or metadata.get("candidate_only") is not True
                 or any(metadata.get(key) is not False for key in (
                     "source_freshness_verified", "program_semantics_proved", "omission_authority",
                     "proof_authority", "execution_authority", "completion_authority", "publication_authority"))):
             raise ValueError("metadata coding view requires a verified original semantic transport")
+        requested = metadata.get("requested_mode", "common-bindings@1")
+        if (type(requested) is not str or requested not in {"common-bindings@1", "common-bindings-instruction@1"}
+                or metadata["selected_mode"] not in {"legacy", requested}
+                or (requested == "common-bindings-instruction@1" and instruction is None)):
+            raise ValueError("metadata selection differs from requested representation")
         for key in ("view_receipt_sha256", "native_complete_sha256", "candidate_complete_sha256", "selected_complete_sha256"):
             _digest(metadata.get(key))
         for key in ("native_complete_bytes", "candidate_complete_bytes", "selected_complete_bytes",
@@ -436,6 +446,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
         for field in ("context_cid", "native_capsule_id", "advisory_sha256", "advisory_bytes"):
             checks["doctor_residual_" + field] = observed[field] == residual[field]
     instruction = receipt.get("public_instruction")
+    block = observed_instruction = None
     if instruction is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.router_public_instruction import load_public_instruction
         if repository is None:
@@ -443,6 +454,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
         block, observed = load_public_instruction(artifact=Path(instruction["artifact"]),
             expected_sha256=instruction["artifact_sha256"], repository=repository,
             task_cid=instruction["task_cid"], prompt=rendered, require_current_source=False)
+        observed_instruction = observed
         router_prompt += block
         for field in ("schema", "context_cid", "manifest_cid", "task_id", "source_path", "source_sha256",
                       "source_bytes", "block_sha256", "block_bytes"):
@@ -471,7 +483,21 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
         from ipfs_accelerate_py.agent_supervisor.runtime.semantic_metadata_view import (
             project_semantic_metadata_view, select_semantic_metadata_view,
         )
-        view = project_semantic_metadata_view(encoded.provider_prompt)
+        selection_options = {}
+        selector = select_semantic_metadata_view
+        requested = metadata.get("requested_mode", "common-bindings@1")
+        if requested == "common-bindings-instruction@1":
+            if block is None or observed_instruction is None:
+                raise ValueError("instruction metadata view lacks admitted public requirements")
+            from ipfs_accelerate_py.agent_supervisor.runtime.semantic_instruction_view import (
+                project_instruction_view, select_instruction_view,
+            )
+            view = project_instruction_view(encoded.provider_prompt,
+                instruction_block=block, instruction_receipt=observed_instruction)
+            selector = select_instruction_view
+            selection_options["instruction_block"] = block
+        else:
+            view = project_semantic_metadata_view(encoded.provider_prompt)
         if not router_prompt.startswith(encoded.provider_prompt):
             raise ValueError("metadata audit differs from reconstructed native transport")
         candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
@@ -488,7 +514,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             # for an unavailable @2 counter or claim to have replayed it.
             _token_selection_receipt(metadata, receipt)
             native = model
-            chosen = candidate if metadata["selected_mode"] == "common-bindings@1" else native
+            chosen = candidate if metadata["selected_mode"] != "legacy" else native
             checks["semantic_metadata_recorded_prompt_identities"] = (
                 metadata["view_receipt_sha256"] == _sha(view.receipt_json.encode())
                 and all(metadata[arm + "_complete_sha256"] == _sha(text.encode())
@@ -504,16 +530,16 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
                     and token_counter.provider == receipt["provider"]
                     and token_counter.model == receipt["model"])
                 if caller_matches:
-                    selection = select_semantic_metadata_view(view=view, native_complete_prompt=native,
-                        candidate_complete_prompt=candidate, token_counter=token_counter)
+                    selection = selector(view=view, native_complete_prompt=native,
+                        candidate_complete_prompt=candidate, token_counter=token_counter, **selection_options)
                     matched = _same_json(metadata, selection.receipt)
                     checks["semantic_metadata_selection_receipt"] = matched
                     checks["semantic_metadata_token_counter_verified"] = (
                         matched and metadata["token_counter_status"] == "counted")
             model = chosen
         else:
-            selection = select_semantic_metadata_view(view=view, native_complete_prompt=model,
-                candidate_complete_prompt=candidate)
+            selection = selector(view=view, native_complete_prompt=model,
+                candidate_complete_prompt=candidate, **selection_options)
             checks["semantic_metadata_selection_receipt"] = _same_json(metadata, selection.receipt)
             model = selection.selected_prompt
         if reply is not None:

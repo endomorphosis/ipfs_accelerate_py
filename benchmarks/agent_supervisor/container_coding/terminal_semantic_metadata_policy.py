@@ -8,7 +8,8 @@ from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEM
 
 DEFAULT_SEMANTIC_METADATA_VIEW = "legacy"
 COMMON_BINDINGS_METADATA_VIEW = "common-bindings@1"
-SEMANTIC_METADATA_VIEWS = (DEFAULT_SEMANTIC_METADATA_VIEW, COMMON_BINDINGS_METADATA_VIEW)
+INSTRUCTION_METADATA_VIEW = "common-bindings-instruction@1"
+SEMANTIC_METADATA_VIEWS = (DEFAULT_SEMANTIC_METADATA_VIEW, COMMON_BINDINGS_METADATA_VIEW, INSTRUCTION_METADATA_VIEW)
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
     "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
@@ -25,6 +26,8 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
     "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/formal_status_census.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_proof.py",

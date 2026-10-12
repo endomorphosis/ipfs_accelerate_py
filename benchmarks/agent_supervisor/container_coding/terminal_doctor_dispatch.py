@@ -247,7 +247,7 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
     validate_semantic_transport_schema(semantic_transport_schema)
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, validate_coding_reply_mode
     validate_coding_reply_mode(coding_reply_mode)
-    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1"}:
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (semantic_repository is None
             or semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA

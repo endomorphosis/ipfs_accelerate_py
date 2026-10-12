@@ -318,7 +318,8 @@ def _live_census_boundary(root: Path) -> dict:
 
 
 def _run_live_metadata_census(*, state: Path, report: dict, provider_selection: dict,
-                              timeout_seconds: int, formal_status_owner=None) -> None:
+                              timeout_seconds: int, formal_status_owner=None,
+                              semantic_metadata_view="common-bindings@1") -> None:
     """Use the normal isolated router launcher, stopping before coding dispatch."""
     from .terminal_live_metadata_census import prepare_terminal_live_metadata_census, _identity as _owner_identity
     from .terminal_live_census_provenance import validate_live_planning_provenance
@@ -328,6 +329,8 @@ def _run_live_metadata_census(*, state: Path, report: dict, provider_selection: 
         deployment_boundary=_live_census_boundary(ROOT))
     owner_options = ({} if formal_status_owner is None else
         {"include_formal_status_census": True, "formal_status_owner": formal_status_owner})
+    if semantic_metadata_view != "common-bindings@1":
+        owner_options["semantic_metadata_view"] = semantic_metadata_view
     with prepare_terminal_live_metadata_census(state=state, worktree_root=WORKTREES,
             worker_writable=True, worker_group_gid=os.getegid(), **owner_options) as prepared:
         if prepared["metadata"]["planning_metadata_sha256"] != _owner_identity(report["planning"]):
@@ -373,6 +376,10 @@ def _run_live_metadata_census(*, state: Path, report: dict, provider_selection: 
                 or observed.get("doctor_residual_included") is not True
                 or observed.get("public_instruction_included") is not True):
             raise ValueError("isolated census observation differs from native owner bindings")
+        census = observed.get("census", {})
+        if (type(census) is not dict
+                or census.get("requested_mode", "common-bindings@1") != semantic_metadata_view):
+            raise ValueError("isolated census used a different metadata treatment")
         metadata = prepared["metadata"]
     # Exit rechecks the current owner/source/world and removes the allocation.
     report["live_planning_provenance"] = provenance
@@ -701,7 +708,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     from .benchmark_provider_profile import resolve_provider_profile
     from .terminal_semantic_transport_policy import validate_semantic_transport_schema, semantic_transport_selection
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
-    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1"}:
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (arm != "full"
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
@@ -709,7 +716,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     provider_selection = resolve_provider_profile(provider_profile)
     if type(metadata_census_only) is not bool:
         raise ValueError("explicit Boolean metadata census selection required")
-    if metadata_census_only and (arm != "full" or semantic_metadata_view != "common-bindings@1"
+    if metadata_census_only and (arm != "full" or semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}
             or coding_reply_mode != "ordinary-completion@1" or source384_config is None
             or provider_selection["provider"] != "codex_cli"):
         raise ValueError("live census requires Source384 and the full common-bindings ordinary Codex route")
@@ -981,7 +988,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             before = time.monotonic()
             try:
                 _run_live_metadata_census(state=state, report=report, provider_selection=provider_selection,
-                                         timeout_seconds=min(120, remaining(10)))
+                                         timeout_seconds=min(120, remaining(10)),
+                    **({"semantic_metadata_view": semantic_metadata_view}
+                       if semantic_metadata_view != "common-bindings@1" else {}))
             finally:
                 report["phases"]["metadata_census_seconds"] = time.monotonic() - before
             return report
@@ -1278,7 +1287,7 @@ def main():
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, SEMANTIC_TRANSPORT_SCHEMAS
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA)
-    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1"])
+    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
     parser.add_argument("--metadata-census-only", action="store_true")
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,

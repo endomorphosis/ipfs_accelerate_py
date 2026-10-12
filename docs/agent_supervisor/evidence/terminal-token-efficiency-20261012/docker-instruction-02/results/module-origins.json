@@ -1,0 +1,22 @@
+{
+  "ipfs_accelerate_py.agent_supervisor.runtime.semantic_instruction_view": {
+    "path": "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+    "sha256": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4"
+  },
+  "ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation": {
+    "path": "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+    "sha256": "f177adbddff6409960c2f5ce47b61c1f62560cbe334d61812e2ea4b221afb3d8"
+  },
+  "ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner": {
+    "path": "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "sha256": "1dde092af6060e1d28d46a6deb5a033413fd7f26366f3de39f13c83d2d717f6d"
+  },
+  "ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime": {
+    "path": "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+    "sha256": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829"
+  },
+  "benchmarks.agent_supervisor.container_coding.terminal_context_audit": {
+    "path": "/code/source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+    "sha256": "ec83cc31365b9f6181e991fccbbd4da61404792faf88ea21c364c135dab503f4"
+  }
+}

@@ -1,0 +1,66 @@
+/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py:299: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the "fixture" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to "function" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/supervisor-token-context-20261012/instruction-audit-edges-01/pytest-cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+
+----------------------------- live log collection ------------------------------
+2026-10-12 01:56:10 [    INFO] Using standard filesystem operations (distributed storage disabled) (storage_wrapper.py:99)
+collected 11 items
+
+test/api/test_semantic_instruction_audit_edges.py::test_historical_instruction_audit_without_counter_keeps_recorded_delivery_only[90-common-bindings-instruction@1] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:56:25 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-106/test_historical_instruction_au0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  9%]
+test/api/test_semantic_instruction_audit_edges.py::test_historical_instruction_audit_without_counter_keeps_recorded_delivery_only[200-legacy] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:56:27 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-106/test_historical_instruction_au1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 18%]
+test/api/test_semantic_instruction_audit_edges.py::test_selected_instruction_view_cannot_be_relabelled_by_receipt[None] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:56:28 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-106/test_selected_instruction_view0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 27%]
+test/api/test_semantic_instruction_audit_edges.py::test_selected_instruction_view_cannot_be_relabelled_by_receipt[requested1] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:56:29 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-106/test_selected_instruction_view1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 36%]
+test/api/test_semantic_instruction_audit_edges.py::test_selected_instruction_view_cannot_be_relabelled_by_receipt[legacy] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:56:31 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-106/test_selected_instruction_view2/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 45%]
+test/api/test_semantic_instruction_audit_edges.py::test_selected_instruction_view_cannot_be_relabelled_by_receipt[common-bindings@1] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:56:32 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-106/test_selected_instruction_view3/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 54%]
+test/api/test_semantic_instruction_audit_edges.py::test_selected_instruction_view_cannot_be_relabelled_by_receipt[foreign@1] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:56:33 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-106/test_selected_instruction_view4/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 63%]
+test/api/test_semantic_instruction_audit_edges.py::test_fallback_cannot_hide_instruction_treatment_by_deleting_requested_mode 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:56:34 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-106/test_fallback_cannot_hide_inst0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 72%]
+test/api/test_semantic_instruction_audit_edges.py::test_census_requires_independent_matching_instruction_binding[missing-both] PASSED [ 81%]
+test/api/test_semantic_instruction_audit_edges.py::test_census_requires_independent_matching_instruction_binding[missing-receipt] PASSED [ 90%]
+test/api/test_semantic_instruction_audit_edges.py::test_census_requires_independent_matching_instruction_binding[foreign-context] PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-token-context-20261012/instruction-audit-edges-01/junit.xml -
+============================= slowest 10 durations =============================
+1.24s call     api/test_semantic_instruction_audit_edges.py::test_historical_instruction_audit_without_counter_keeps_recorded_delivery_only[90-common-bindings-instruction@1]
+0.86s setup    api/test_semantic_instruction_audit_edges.py::test_historical_instruction_audit_without_counter_keeps_recorded_delivery_only[90-common-bindings-instruction@1]
+0.81s setup    api/test_semantic_instruction_audit_edges.py::test_fallback_cannot_hide_instruction_treatment_by_deleting_requested_mode
+0.78s setup    api/test_semantic_instruction_audit_edges.py::test_census_requires_independent_matching_instruction_binding[missing-receipt]
+0.74s setup    api/test_semantic_instruction_audit_edges.py::test_census_requires_independent_matching_instruction_binding[foreign-context]
+0.72s setup    api/test_semantic_instruction_audit_edges.py::test_selected_instruction_view_cannot_be_relabelled_by_receipt[None]
+0.71s setup    api/test_semantic_instruction_audit_edges.py::test_census_requires_independent_matching_instruction_binding[missing-both]
+0.68s setup    api/test_semantic_instruction_audit_edges.py::test_selected_instruction_view_cannot_be_relabelled_by_receipt[common-bindings@1]
+0.67s setup    api/test_semantic_instruction_audit_edges.py::test_selected_instruction_view_cannot_be_relabelled_by_receipt[foreign@1]
+0.67s setup    api/test_semantic_instruction_audit_edges.py::test_selected_instruction_view_cannot_be_relabelled_by_receipt[requested1]
+============================= 11 passed in 29.69s ==============================

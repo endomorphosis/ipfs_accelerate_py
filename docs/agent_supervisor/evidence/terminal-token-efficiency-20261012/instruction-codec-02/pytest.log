@@ -1,0 +1,71 @@
+/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py:299: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the "fixture" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to "function" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/supervisor-token-context-20261012/instruction-codec-02/pytest-cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+
+----------------------------- live log collection ------------------------------
+2026-10-12 01:52:06 [    INFO] Using standard filesystem operations (distributed storage disabled) (storage_wrapper.py:99)
+collected 40 items
+
+test/api/test_semantic_instruction_view.py::test_real_native_transport_and_native_prompt_round_trip PASSED [  2%]
+test/api/test_semantic_instruction_view.py::test_current_and_historical_bindings_make_identical_candidates PASSED [  5%]
+test/api/test_semantic_instruction_view.py::test_only_exact_selected_entry_changes_other_equal_source_and_unknown_fields_remain PASSED [  7%]
+test/api/test_semantic_instruction_view.py::test_unicode_and_embedded_delimiters_use_byte_length_not_delimiter_search PASSED [ 10%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change0] PASSED [ 12%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change1] PASSED [ 15%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change2] PASSED [ 17%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change3] PASSED [ 20%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change4] PASSED [ 22%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change5] PASSED [ 25%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change6] PASSED [ 27%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change7] PASSED [ 30%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change8] PASSED [ 32%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change9] PASSED [ 35%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change10] PASSED [ 37%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change11] PASSED [ 40%]
+test/api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change12] PASSED [ 42%]
+test/api/test_semantic_instruction_view.py::test_source_population_or_exact_text_mismatch_refuses[absent] PASSED [ 45%]
+test/api/test_semantic_instruction_view.py::test_source_population_or_exact_text_mismatch_refuses[different] PASSED [ 47%]
+test/api/test_semantic_instruction_view.py::test_source_population_or_exact_text_mismatch_refuses[manifest] PASSED [ 50%]
+test/api/test_semantic_instruction_view.py::test_source_population_or_exact_text_mismatch_refuses[reference] PASSED [ 52%]
+test/api/test_semantic_instruction_view.py::test_candidate_or_retained_receipt_tamper_refuses[source] PASSED [ 55%]
+test/api/test_semantic_instruction_view.py::test_candidate_or_retained_receipt_tamper_refuses[reference] PASSED [ 57%]
+test/api/test_semantic_instruction_view.py::test_candidate_or_retained_receipt_tamper_refuses[instructions] PASSED [ 60%]
+test/api/test_semantic_instruction_view.py::test_candidate_or_retained_receipt_tamper_refuses[base] PASSED [ 62%]
+test/api/test_semantic_instruction_view.py::test_candidate_or_retained_receipt_tamper_refuses[binding] PASSED [ 65%]
+test/api/test_semantic_instruction_view.py::test_candidate_or_retained_receipt_tamper_refuses[extra] PASSED [ 67%]
+test/api/test_semantic_instruction_view.py::test_receipt_rejects_equal_python_values_with_different_json_types[completion_authority] PASSED [ 70%]
+test/api/test_semantic_instruction_view.py::test_receipt_rejects_equal_python_values_with_different_json_types[candidate_only] PASSED [ 72%]
+test/api/test_semantic_instruction_view.py::test_receipt_rejects_equal_python_values_with_different_json_types[capsule_count] PASSED [ 75%]
+test/api/test_semantic_instruction_view.py::test_receipt_rejects_equal_python_values_with_different_json_types[native_transport_bytes] PASSED [ 77%]
+test/api/test_semantic_instruction_view.py::test_complete_prompt_requires_exact_retained_block_and_wrappers[missing-block] PASSED [ 80%]
+test/api/test_semantic_instruction_view.py::test_complete_prompt_requires_exact_retained_block_and_wrappers[changed-block] PASSED [ 82%]
+test/api/test_semantic_instruction_view.py::test_complete_prompt_requires_exact_retained_block_and_wrappers[duplicate-block] PASSED [ 85%]
+test/api/test_semantic_instruction_view.py::test_complete_prompt_requires_exact_retained_block_and_wrappers[prefix] PASSED [ 87%]
+test/api/test_semantic_instruction_view.py::test_short_source_falls_back_with_requested_mode_and_native_bytes PASSED [ 90%]
+test/api/test_semantic_instruction_view.py::test_complete_token_counter_selection_and_failure_fallback[selected] PASSED [ 92%]
+test/api/test_semantic_instruction_view.py::test_complete_token_counter_selection_and_failure_fallback[tie] PASSED [ 95%]
+test/api/test_semantic_instruction_view.py::test_complete_token_counter_selection_and_failure_fallback[failed] PASSED [ 97%]
+test/api/test_semantic_instruction_view.py::test_complete_token_counter_selection_and_failure_fallback[invalid] PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-token-context-20261012/instruction-codec-02/junit.xml -
+============================= slowest 10 durations =============================
+1.18s setup    api/test_semantic_instruction_view.py::test_real_native_transport_and_native_prompt_round_trip
+0.84s setup    api/test_semantic_instruction_view.py::test_complete_prompt_requires_exact_retained_block_and_wrappers[changed-block]
+0.76s setup    api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change12]
+0.76s setup    api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change2]
+0.74s setup    api/test_semantic_instruction_view.py::test_receipt_rejects_equal_python_values_with_different_json_types[native_transport_bytes]
+0.74s setup    api/test_semantic_instruction_view.py::test_unicode_and_embedded_delimiters_use_byte_length_not_delimiter_search
+0.74s setup    api/test_semantic_instruction_view.py::test_current_and_historical_bindings_make_identical_candidates
+0.73s setup    api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change0]
+0.73s setup    api/test_semantic_instruction_view.py::test_complete_prompt_requires_exact_retained_block_and_wrappers[missing-block]
+0.73s setup    api/test_semantic_instruction_view.py::test_foreign_stale_malformed_and_authority_bindings_refuse[change1]
+============================= 40 passed in 45.36s ==============================

@@ -52,7 +52,8 @@ def immutable_bundle_capsule_reader(bundle, *, root_cid):
 
 
 def select_worker_capsules(*, bundle, view, provider, symbols, sources, required,
-                          worker_query, worker_capsule_limit, worker_max_bytes):
+                          worker_query, worker_capsule_limit, worker_max_bytes,
+                          worker_ranked_symbol_ids=None):
     from ..semantic_state.capsules import admit_capsule
 
     read_capsule = immutable_bundle_capsule_reader(bundle, root_cid=view.root.root_cid)
@@ -64,6 +65,17 @@ def select_worker_capsules(*, bundle, view, provider, symbols, sources, required
                 (symbol.qualified_name + " " + symbol.module_path).lower()))),
             symbol.module_path, symbol.qualified_name, symbol.stable_id,
         ))
+    if worker_ranked_symbol_ids is not None:
+        known = {symbol.stable_id for symbol in candidates}
+        if (not worker_query or type(worker_ranked_symbol_ids) not in (list, tuple)
+                or len(worker_ranked_symbol_ids) > 20
+                or any(type(value) is not str or value not in known for value in worker_ranked_symbol_ids)
+                or len(set(worker_ranked_symbol_ids)) != len(worker_ranked_symbol_ids)):
+            raise ValueError("retrieval ranking requires unique current native symbol identities")
+        ranks = {value: index for index, value in enumerate(worker_ranked_symbol_ids)}
+        # Stable sort retains the existing lexical order after the retrieved
+        # symbols. Ranking changes priority, never the source or admission scope.
+        candidates.sort(key=lambda symbol: ranks.get(symbol.stable_id, len(ranks)))
     capsules, admissions, selected_symbols = [], [], []
     used = 8192 + sum(len(sources[name]) for name in required)
     for symbol in candidates:
@@ -89,3 +101,47 @@ def select_worker_capsules(*, bundle, view, provider, symbols, sources, required
         capsules.append(payload)
         admissions.append(admission)
     return capsules, admissions, selected_symbols
+
+
+def resolve_worker_retrieval(*, repository, selection, task_id, worker_query,
+                             manifest, program_paths, symbols, retained_sources=None):
+    """Resolve a verified, current retrieval result to native capsule identities.
+
+    The retrieval owner independently replays the query and its complete source
+    AST. A path/name match alone cannot nominate a capsule from another source
+    generation. This does not qualify the embedding model or retrieval quality.
+    """
+    from .code_retrieval_context import load_code_retrieval_context, replay_code_retrieval_context_for_audit
+
+    if (type(selection) is not dict or set(selection) != {"artifact", "sha256"}
+            or type(selection["artifact"]) is not str
+            or type(selection["sha256"]) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", selection["sha256"]) is None):
+        raise ValueError("exact retrieval artifact and digest required for capsule ranking")
+    arguments = dict(repository=repository, artifact=selection["artifact"],
+        expected_sha256=selection["sha256"], task_id=task_id)
+    context = json.loads(load_code_retrieval_context(**arguments) if retained_sources is None else
+        replay_code_retrieval_context_for_audit(**arguments,
+            retained_sources={name: retained_sources[name] for name in program_paths}))
+    expected_sources = {name: manifest[name]["sha256"] for name in program_paths}
+    if (context["status"] != ("current" if retained_sources is None else "historical")
+            or context["query_text"] != worker_query
+            or context["source_sha256"] != expected_sources):
+        raise ValueError("capsule retrieval ranking differs from current source/query scope")
+    by_name = {}
+    for symbol in symbols:
+        by_name.setdefault((symbol.module_path, symbol.qualified_name), []).append(symbol)
+    ranked = []
+    for hit in context["hits"]:
+        matches = by_name.get((hit["path"], hit["symbol"]), [])
+        if len(matches) != 1:
+            raise ValueError("retrieval hit does not identify one current native symbol")
+        symbol = matches[0]
+        if (symbol.source_cid != manifest[hit["path"]]["source_cid"]
+                or symbol.span is None or symbol.span.path != hit["path"]
+                or symbol.span.start_line != hit["line_start"]
+                or symbol.span.end_line != hit["line_end"]
+                or symbol.stable_id in ranked):
+            raise ValueError("retrieval hit differs from native symbol source/span identity")
+        ranked.append(symbol.stable_id)
+    return ranked

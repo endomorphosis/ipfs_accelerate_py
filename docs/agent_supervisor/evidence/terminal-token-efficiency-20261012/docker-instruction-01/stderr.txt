@@ -1,0 +1,4 @@
+  File "/qualification/entry.py", line 14
+    Path('/qualification-output/module-origins.json').write_text(json.dumps(modules,indent=2)+'
+                                                                                              ^
+SyntaxError: unterminated string literal (detected at line 14)

@@ -9,7 +9,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.analysis.program_ast_adapters import build_program_evidence_index
 from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index import build_code_symbol_vector_index
 from ipfs_accelerate_py.agent_supervisor.runtime.code_retrieval_context import (
-    prepare_code_retrieval_context, load_code_retrieval_context,
+    prepare_code_retrieval_context, load_code_retrieval_context, replay_code_retrieval_context_for_audit,
 )
 
 
@@ -112,6 +112,10 @@ def test_large_index_uses_exact_bounded_persistence_reference(tmp_path, monkeypa
     assert (repo / "bounded.json").stat().st_size <= limit
     context = json.loads(load_code_retrieval_context(**args))
     assert context["index_id"] == index.index_id and context["hits"][0]["symbol"] == "worker.calculate"
+    retained = {"worker.py": (repo / "worker.py").read_bytes()}
+    historical = json.loads(replay_code_retrieval_context_for_audit(**args, retained_sources=retained))
+    assert historical["status"] == "historical" and historical["freshness_checked"] is False
+    assert historical["hits"] == context["hits"]
     snapshot_path = repo / referenced["snapshot_ref"]["path"]
     snapshot_raw = snapshot_path.read_bytes()
     snapshot_path.write_bytes(b" " + snapshot_raw[1:])
@@ -123,3 +127,48 @@ def test_large_index_uses_exact_bounded_persistence_reference(tmp_path, monkeypa
     (repo / "bounded.json").write_bytes(raw)
     with pytest.raises(ValueError, match="escapes"):
         load_code_retrieval_context(**{**args, "expected_sha256": hashlib.sha256(raw).hexdigest()})
+
+
+def test_historical_retrieval_replays_retained_bytes_without_claiming_currentness(tmp_path):
+    repo, _, _, _, args = prepare(tmp_path)
+    retained = {"worker.py": (repo / "worker.py").read_bytes()}
+    current = json.loads(load_code_retrieval_context(**args))
+    (repo / "worker.py").unlink()
+    assert json.loads(load_code_retrieval_context(**args))["status"] == "stale"
+    historical = json.loads(replay_code_retrieval_context_for_audit(**args, retained_sources=retained))
+    assert historical["status"] == "historical" and historical["historical_replay"] is True
+    assert historical["freshness_checked"] is False
+    assert historical["hits"] == current["hits"]
+    assert historical["source_sha256"] == current["source_sha256"]
+    assert historical["execution_authority"] is historical["completion_authority"] is False
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra", "changed", "text", "foreign_task"])
+def test_historical_retrieval_rejects_foreign_or_incomplete_retained_population(tmp_path, mutation):
+    repo, _, _, _, args = prepare(tmp_path)
+    retained = {"worker.py": (repo / "worker.py").read_bytes()}
+    if mutation == "missing":
+        retained.clear()
+    elif mutation == "extra":
+        retained["other.py"] = retained["worker.py"]
+    elif mutation == "changed":
+        retained["worker.py"] += b"\n# changed\n"
+    elif mutation == "text":
+        retained["worker.py"] = retained["worker.py"].decode()
+    else:
+        args = {**args, "task_id": "FOREIGN"}
+    with pytest.raises(ValueError):
+        replay_code_retrieval_context_for_audit(**args, retained_sources=retained)
+
+
+def test_rehashed_historical_sources_still_require_matching_native_ast_snapshot(tmp_path):
+    repo, _, _, _, args = prepare(tmp_path)
+    retained = {"worker.py": b"def foreign():\n    return 7\n"}
+    path = repo / "retrieval.json"
+    payload = json.loads(path.read_bytes())
+    payload["source_sha256"] = {"worker.py": hashlib.sha256(retained["worker.py"]).hexdigest()}
+    raw = json.dumps(payload).encode()
+    path.write_bytes(raw)
+    with pytest.raises(ValueError, match="complete native source scan"):
+        replay_code_retrieval_context_for_audit(**{**args, "expected_sha256": hashlib.sha256(raw).hexdigest()},
+                                              retained_sources=retained)

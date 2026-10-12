@@ -320,7 +320,7 @@ class FullSupervisorAgent(BaseAgent):
             arm=arm, transport_schema=self.semantic_transport_schema, provider=selected_provider["provider"])
         if type(metadata_census_only) is not bool:
             raise ValueError("explicit Boolean metadata census selection required")
-        if metadata_census_only and (arm != "full" or self.semantic_metadata_view != "common-bindings@1"
+        if metadata_census_only and (arm != "full" or self.semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}
                 or self.coding_reply_mode != "ordinary-completion@1"):
             raise ValueError("live census requires the full common-bindings ordinary-completion route")
         self.metadata_census_only = metadata_census_only

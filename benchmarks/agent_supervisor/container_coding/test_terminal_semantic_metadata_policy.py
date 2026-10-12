@@ -53,17 +53,18 @@ def test_legacy_omits_selection_and_preserves_configuration_shape(tmp_path, arm,
     policy.require_semantic_metadata_archive(True, "legacy")
 
 
-def test_opt_in_configuration_and_full_controls_are_bound(tmp_path):
+@pytest.mark.parametrize("mode", [MODE, policy.INSTRUCTION_METADATA_VIEW])
+def test_opt_in_configuration_and_full_controls_are_bound(tmp_path, mode):
     args = (tmp_path, tmp_path / "out", tmp_path / "archive", "full")
     legacy = benchmark.config_for(*args)
-    selected = benchmark.config_for(*args, semantic_metadata_view=MODE)
-    assert selected["agents"][0]["kwargs"] == {**legacy["agents"][0]["kwargs"], "semantic_metadata_view": MODE}
+    selected = benchmark.config_for(*args, semantic_metadata_view=mode)
+    assert selected["agents"][0]["kwargs"] == {**legacy["agents"][0]["kwargs"], "semantic_metadata_view": mode}
     assert "intent_requirement_contract" not in selected["agents"][0]["kwargs"]
     def controls(config):
         return build_controls(config, task_input_sha256={"instruction.md": "a" * 64}, task=benchmark.TASK,
             model=benchmark.MODEL, reasoning_effort="high", cli_version=CLI_VERSION)
     assert controls(legacy)["configuration_sha256"] != controls(selected)["configuration_sha256"]
-    assert policy.semantic_metadata_observation(MODE) == dict(semantic_metadata_view=MODE,
+    assert policy.semantic_metadata_observation(mode) == dict(semantic_metadata_view=mode,
         semantic_metadata_token_savings_claimed=False, semantic_metadata_authority=False)
 
 
@@ -125,7 +126,8 @@ def test_current_inventory_passes_without_claiming_actual_archive_execution():
     policy.require_semantic_metadata_archive(inventory(), MODE)
 
 
-def test_prepare_freezes_selection_and_default_receipt_shape(tmp_path, monkeypatch):
+@pytest.mark.parametrize("mode", [MODE, policy.INSTRUCTION_METADATA_VIEW])
+def test_prepare_freezes_selection_and_default_receipt_shape(tmp_path, monkeypatch, mode):
     dataset, _ = authored_task(tmp_path)
     archive = tmp_path / "archive"
     archive.mkdir()
@@ -144,12 +146,12 @@ def test_prepare_freezes_selection_and_default_receipt_shape(tmp_path, monkeypat
         return SimpleNamespace(returncode=0, stdout="Authored dry-run fixture", stderr="")
     monkeypatch.setattr(benchmark.subprocess, "run", dry_run)
     selected = benchmark.prepare(dataset=dataset, output=tmp_path / "selected", archive=archive,
-                                  arm="full", semantic_metadata_view=MODE)
-    assert selected["semantic_metadata_view"] == MODE
+                                  arm="full", semantic_metadata_view=mode)
+    assert selected["semantic_metadata_view"] == mode
     assert selected["semantic_metadata_token_savings_claimed"] is False
     assert selected["semantic_metadata_authority"] is False
     assert selected["provider_calls"] == 0
-    assert json.loads((tmp_path / "selected/config.json").read_text())["agents"][0]["kwargs"]["semantic_metadata_view"] == MODE
+    assert json.loads((tmp_path / "selected/config.json").read_text())["agents"][0]["kwargs"]["semantic_metadata_view"] == mode
     default = benchmark.prepare(dataset=dataset, output=tmp_path / "legacy", archive=archive, arm="full")
     assert not any(key.startswith("semantic_metadata") for key in default)
     assert all("--dry-run" in argv for argv in commands)
@@ -171,7 +173,7 @@ def test_adapter_rejects_unbound_archive_before_upload_setup_or_run(tmp_path):
     environment.download_file.assert_not_awaited()
 
 
-@pytest.mark.parametrize("mode", ["legacy", MODE])
+@pytest.mark.parametrize("mode", ["legacy", MODE, policy.INSTRUCTION_METADATA_VIEW])
 def test_adapter_driver_pass_through_preserves_direct_planning(tmp_path, monkeypatch, mode):
     from harbor.models.agent.context import AgentContext
     from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as adapter
@@ -200,7 +202,7 @@ def test_adapter_driver_pass_through_preserves_direct_planning(tmp_path, monkeyp
         assert not any(key.startswith("semantic_metadata") for key in context.metadata)
     else:
         assert calls[0].count("--semantic-metadata-view") == 1
-        assert calls[0][calls[0].index("--semantic-metadata-view") + 1] == MODE
+        assert calls[0][calls[0].index("--semantic-metadata-view") + 1] == mode
         assert context.metadata["semantic_metadata_token_savings_claimed"] is False
         assert context.metadata["semantic_metadata_authority"] is False
 
@@ -230,15 +232,16 @@ def test_collect_and_execute_refuse_qualification_on_selection_drift(tmp_path, m
     assert not (output / "invocation.json").exists()
 
 
-def test_cli_selection_is_allowed_only_during_prepare(tmp_path, monkeypatch):
+@pytest.mark.parametrize("mode", [MODE, policy.INSTRUCTION_METADATA_VIEW])
+def test_cli_selection_is_allowed_only_during_prepare(tmp_path, monkeypatch, mode):
     calls = []
     monkeypatch.setattr(benchmark, "prepare", lambda **kwargs: calls.append(kwargs) or {"prepared": True})
     monkeypatch.setattr(sys, "argv", ["benchmark", "prepare", "--dataset", str(tmp_path),
-        "--archive", str(tmp_path / "archive"), "--output", str(tmp_path / "out"), "--semantic-metadata-view", MODE])
+        "--archive", str(tmp_path / "archive"), "--output", str(tmp_path / "out"), "--semantic-metadata-view", mode])
     benchmark.main()
-    assert calls[0]["semantic_metadata_view"] == MODE
+    assert calls[0]["semantic_metadata_view"] == mode
     assert calls[0]["intent_requirement_contract"] is None
     for operation in ("collect", "execute"):
-        monkeypatch.setattr(sys, "argv", ["benchmark", operation, "--output", str(tmp_path), "--semantic-metadata-view", MODE])
+        monkeypatch.setattr(sys, "argv", ["benchmark", operation, "--output", str(tmp_path), "--semantic-metadata-view", mode])
         with pytest.raises(SystemExit) as error: benchmark.main()
         assert error.value.code == 2

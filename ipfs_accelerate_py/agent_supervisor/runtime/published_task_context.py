@@ -605,6 +605,11 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
         expected_sha256=metadata["semantic context sha256"], task_id=binding["task_id"],
         verify_sources=False,
     )
+    if previous.get("worker_projection", {}).get("selector") == "verified-retrieval-symbol-rank@1":
+        # A successor needs fresh retrieval before selecting its capsules. This
+        # pipeline currently regenerates retrieval afterward; refuse the opt-in
+        # predecessor before producing any partial successor or dropping rank.
+        raise ValueError("retrieval-ranked capsule successor requires fresh retrieval before semantic preparation")
     previous_world = load_intent_world_context(
         artifact=root / metadata["world context artifact"],
         expected_sha256=metadata["world context sha256"], task_id=binding["task_id"],

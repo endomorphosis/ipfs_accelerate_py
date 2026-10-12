@@ -1,0 +1,19 @@
+{
+  "schema": "instruction-metadata-offline-docker-smoke@1",
+  "returncode": 1,
+  "error": null,
+  "seconds": 0.6555680829333141,
+  "counts": {},
+  "source_hashes_unchanged": true,
+  "source_and_test_file_count": 12287,
+  "container_removed": true,
+  "image_id": "sha256:771900c18b663b33a5bf96e066346b2d5c842506523efb167aebe8d3a99b5c07",
+  "archive_sha256": "25a83f461c081130c482b5b1703f6dceaeb0ca22ea4b99892e1147c928bb397d",
+  "full_runtime_deployment_qualified": false,
+  "official_terminal_bench_score": null,
+  "live_provider_calls": 0,
+  "model_downloads": 0,
+  "training_steps": 0,
+  "input_byte_observations": [],
+  "results": {}
+}
