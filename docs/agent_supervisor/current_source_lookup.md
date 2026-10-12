@@ -153,8 +153,11 @@ The operation is not advertised as a registered coding-model expansion tool.
 
 Next qualify an owned per-coding-session channel and exact descendant grant
 handoff, public path/context admission inside the allocated worker, restart and
-working-overlay refresh. Then add capsule/residual-obligation reads as separate
-closed operations. Rebuild a current worker archive and qualify actual model
+working-overlay refresh. Add capsule reads as a separate closed operation and
+reuse the [published numerical obligation reader](numerical_proof_admission_readiness.md#current-structural-obligation-retrieval)
+through that channel. Its owner API now retrieves all 45 pending public-source
+obligations; isolated model access and source correctness remain separate gaps.
+Rebuild a current worker archive and qualify actual model
 access before moving required source or facts out of the prompt. Compare complete
 rendered inputs and all native planning/coding/lookup/continuation/repair tokens
 against official rewards; count failed/refused lookups and unknown usage too.

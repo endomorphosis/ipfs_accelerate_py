@@ -39,3 +39,13 @@ and a rebuilt live coding archive remain separate qualification stages.
 
 Historical source/view/model assets remain unchanged. The qualification does
 not alter the 8D/384D/768D or family/schema/version/decoder-task separation.
+
+Parallel main was merged before publication, including the
+[numerical obligation retrieval](../numerical-obligation-retrieval-20261012/README.md)
+and legal storage/training closeout. That owner API recovered all 45 pending
+rows, with isolated model access still unqualified. Its 263-test result is a
+separate qualification and is not added to this suite's 44 cases.
+The source reader was tested against datasets `c18390b3`; the parent retains
+the newer `f47161b7` pin. Their complete `logic/software_contracts` trees are
+identical, and all selected datasets source hashes remain exact. Publication
+checks retain these joins without rerunning unchanged source tests.

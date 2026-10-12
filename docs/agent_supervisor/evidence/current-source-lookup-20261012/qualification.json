@@ -45,5 +45,7 @@
       "reason": "CRLF write left a stale Git index stat and failed the intended clean-status premise. Both conversion fixtures refresh the same blob and assert unchanged HEAD/tree/blob identities."
     }
   ],
-  "product_change_between_test_runs": "Only indexed DuckDBRow value decoding; subsequent CRLF correction changed fixtures only."
+  "product_change_between_test_runs": "Only indexed DuckDBRow value decoding; subsequent CRLF correction changed fixtures only.",
+  "local_documentation_workflow_steps_passed": 4,
+  "changed_guide_link_checks_passed": 6
 }
