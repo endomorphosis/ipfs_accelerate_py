@@ -74,6 +74,10 @@ def _unlink_same(path, identity):
 class NumericalObligationBroker:
     """Owner-created invocation service; use the sealed-prompt factory below."""
 
+    protocol = protocol
+    audit_schema = AUDIT_SCHEMA
+    file_prefix = "numerical"
+
     def __init__(self, *, repository, workspace, boundary, payload, evidence_text,
                  selection, timeout_seconds):
         from . import source_formalization_context as guard
@@ -101,12 +105,22 @@ class NumericalObligationBroker:
                 self.sources[name] = digest
         if len(self.sources) > 768:
             raise ValueError("numerical broker source population exceeds bound")
+        identity = dict(task_id=payload["task_id"], task_cid=payload["task_cid"],
+            context_bundle_sha256=payload["context_bundle"]["sha256"],
+            context_receipt_sha256=self.receipt["receipt_sha256"],
+            source_tree_id=self.receipt["record"]["source_tree_id"])
+        self._start_session(identity=identity, boundary_sha=boundary_sha, timeout_seconds=timeout_seconds)
+
+    def _start_session(self, *, identity, boundary_sha, timeout_seconds):
+        """Shared bounded socket lifecycle; callers independently admit source semantics."""
+        from . import source_formalization_context as guard
+
         self.parent = self.boundary.parent / "worker-observations"
         guard._protected_directory(self.parent, owner=self.owner_uid, group=self.owner_uid)
         session = uuid.uuid4().hex
-        self.socket_path = self.parent / ("numerical-" + session + ".sock")
-        self.descriptor_path = self.parent / ("numerical-" + session + ".json")
-        self.audit_path = self.parent / ("numerical-" + session + "-audit.json")
+        self.socket_path = self.parent / (self.file_prefix + "-" + session + ".sock")
+        self.descriptor_path = self.parent / (self.file_prefix + "-" + session + ".json")
+        self.audit_path = self.parent / (self.file_prefix + "-" + session + "-audit.json")
         self._socket_identity = self._descriptor_identity = None
         self._stop = threading.Event()
         self._registered = threading.Event()
@@ -123,31 +137,28 @@ class NumericalObligationBroker:
         self._listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._listener.settimeout(0.2)
         now = time.monotonic_ns()
-        owner = protocol.process_identity(os.getpid())
+        owner = self.protocol.process_identity(os.getpid())
         try:
             self._listener.bind(str(self.socket_path))
             info = self.socket_path.lstat()
             self._socket_identity = info.st_dev, info.st_ino
             os.chmod(self.socket_path, 0o660)
-            self.descriptor = dict(schema=protocol.DESCRIPTOR_SCHEMA, session_id=session,
+            self.descriptor = dict(schema=self.protocol.DESCRIPTOR_SCHEMA, session_id=session,
                 owner_uid=self.owner_uid, worker_uid=self.worker_uid, owner_pid=owner["pid"],
                 owner_start_time_ticks=owner["start_time_ticks"], workspace=str(self.workspace),
-                task_id=payload["task_id"], task_cid=payload["task_cid"],
-                context_bundle_sha256=payload["context_bundle"]["sha256"],
-                context_receipt_sha256=self.receipt["receipt_sha256"],
-                source_tree_id=self.receipt["record"]["source_tree_id"],
+                **identity,
                 boundary_manifest_sha256=boundary_sha,
                 socket_path=str(self.socket_path), socket_device=info.st_dev, socket_inode=info.st_ino,
                 issued_monotonic_ns=now, expires_monotonic_ns=now+timeout_seconds*1_000_000_000,
                 max_requests=MAX_REQUESTS, max_total_response_bytes=MAX_TOTAL_RESPONSE_BYTES,
                 proof_authority=False, execution_authority=False, completion_authority=False)
-            protocol.validate_descriptor(self.descriptor)
+            self.protocol.validate_descriptor(self.descriptor)
             self._current_context()
             self.descriptor_sha256, self._descriptor_identity = _write_new(self.descriptor_path, self.descriptor, 0o440)
-            self.extra_argv = [protocol.DESCRIPTOR_FLAG, str(self.descriptor_path),
-                               protocol.DIGEST_FLAG, self.descriptor_sha256]
+            self.extra_argv = [self.protocol.DESCRIPTOR_FLAG, str(self.descriptor_path),
+                               self.protocol.DIGEST_FLAG, self.descriptor_sha256]
             self._listener.listen(4)
-            self._thread = threading.Thread(target=self._serve, name="numerical-obligation-reader", daemon=True)
+            self._thread = threading.Thread(target=self._serve, name=self.file_prefix + "-reader", daemon=True)
             self._thread.start()
         except BaseException:
             self._listener.close()
@@ -158,7 +169,7 @@ class NumericalObligationBroker:
     def note_spawned(self, process):
         if self._closed or self._registered.is_set() or process.poll() is not None:
             raise ValueError("numerical broker requires one live spawned child")
-        child = protocol.process_identity(process.pid)
+        child = self.protocol.process_identity(process.pid)
         if child["parent_pid"] != os.getpid():
             raise ValueError("numerical broker child belongs to another owner")
         self._child, self._process = child, process
@@ -176,7 +187,7 @@ class NumericalObligationBroker:
         pid, uid, _ = struct.unpack("3i", channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
         if uid != self.worker_uid:
             raise ValueError("numerical retrieval peer uid differs")
-        first = protocol.process_identity(pid)
+        first = self.protocol.process_identity(pid)
         if first["uid"] != uid:
             raise ValueError("numerical retrieval peer changed uid")
         current, seen = first, set()
@@ -185,15 +196,15 @@ class NumericalObligationBroker:
                 break
             seen.add(current["pid"])
             if current["pid"] == self._child["pid"]:
-                actual = protocol.process_identity(current["pid"])
+                actual = self.protocol.process_identity(current["pid"])
                 if (actual["start_time_ticks"] != self._child["start_time_ticks"]
                         or actual["parent_pid"] != os.getpid()
-                        or protocol.process_identity(pid) != first):
+                        or self.protocol.process_identity(pid) != first):
                     break
                 return first
             if current["parent_pid"] <= 1 or current["parent_pid"] == os.getpid():
                 break
-            current = protocol.process_identity(current["parent_pid"])
+            current = self.protocol.process_identity(current["parent_pid"])
         raise ValueError("numerical retrieval peer is outside the launched child")
 
     def _current_context(self):
@@ -210,13 +221,13 @@ class NumericalObligationBroker:
         # separately replays its live numerical owner via the native pager.
         current = read_task_context_historical_selection(repository=root, artifact=binding["artifact"],
             expected_sha256=binding["sha256"], task_cid=self.payload["task_cid"], task_id=self.payload["task_id"])
-        if protocol.canonical_json(current) != protocol.canonical_json(self.selection):
+        if self.protocol.canonical_json(current) != self.protocol.canonical_json(self.selection):
             raise ValueError("numerical retrieval task selection changed")
         guard._current_sources(root, self.sources)
         guard._current_sources(allocated, self.sources)
 
     def _response(self, request, *, page=None, reason=None):
-        return dict(schema=protocol.RESPONSE_SCHEMA, session_id=self.descriptor["session_id"],
+        return dict(schema=self.protocol.RESPONSE_SCHEMA, session_id=self.descriptor["session_id"],
             request_id=request["request_id"], ok=reason is None, page=page, reason_code=reason)
 
     def _answer(self, request, channel):
@@ -239,7 +250,7 @@ class NumericalObligationBroker:
             return self._response(request, reason="stale_context")
         # Reserve the exact transport overhead before invoking the native page
         # builder. Fixed-width request/session IDs keep continuation budgets stable.
-        overhead = len(protocol.canonical_json(self._response(request, page={}))) - 2
+        overhead = len(self.protocol.canonical_json(self._response(request, page={}))) - 2
         query = dict(request["query"], max_bytes=request["query"]["max_bytes"] - overhead)
         try:
             page = retrieve_numerical_obligations(repository=self.repository, expected_receipt=self.receipt, **query)
@@ -251,9 +262,13 @@ class NumericalObligationBroker:
         except (OSError, ValueError, RuntimeError):
             return self._response(request, reason="stale_context")
         response = self._response(request, page=page)
-        if len(protocol.canonical_json(response)) > request["query"]["max_bytes"]:
+        if len(self.protocol.canonical_json(response)) > request["query"]["max_bytes"]:
             return self._response(request, reason="retrieval_refused")
         return response
+
+    def _record_details(self, response=None):
+        return dict(returned_rows=response["page"]["returned_count"]
+            if response is not None and response["ok"] else 0)
 
     def _serve(self):
         accepted = 0
@@ -270,25 +285,25 @@ class NumericalObligationBroker:
                 self._inflight = accepted
             started = time.monotonic_ns()
             record = dict(ordinal=accepted, status="invalid_request", request_sha256=None,
-                response_sha256=None, response_bytes=0, returned_rows=0, delivered=False)
+                response_sha256=None, response_bytes=0, delivered=False, **self._record_details())
             with channel:
                 channel.settimeout(2.)
                 try:
-                    request = protocol.validate_request(protocol.receive_frame(channel))
-                    record["request_sha256"] = _sha(protocol.canonical_json(request))
+                    request = self.protocol.validate_request(self.protocol.receive_frame(channel))
+                    record["request_sha256"] = _sha(self.protocol.canonical_json(request))
                     response = self._answer(request, channel)
                     if self._stop.is_set():
                         raise ValueError("numerical retrieval stopped before response")
                     if not self._live():
                         response = self._response(request, reason="session_closed")
-                    raw = protocol.canonical_json(response)
+                    raw = self.protocol.canonical_json(response)
                     record.update(status="ok" if response["ok"] else response["reason_code"],
                         response_sha256=_sha(raw), response_bytes=len(raw),
-                        returned_rows=response["page"]["returned_count"] if response["ok"] else 0)
+                        **self._record_details(response))
                     # Account bytes prepared even if the requesting process exits.
                     with self._accounting_lock:
                         self._response_bytes += len(raw)
-                    protocol.send_frame(channel, response)
+                    self.protocol.send_frame(channel, response)
                     record["delivered"] = True
                 except (OSError, ValueError, RuntimeError, RecursionError):
                     pass
@@ -316,7 +331,7 @@ class NumericalObligationBroker:
             total = self._response_bytes
             accepted, inflight = self._accepted, self._inflight
         stopped = self._thread is None or not self._thread.is_alive()
-        _write_new(self.audit_path, dict(schema=AUDIT_SCHEMA, session=self.descriptor,
+        _write_new(self.audit_path, dict(schema=self.audit_schema, session=self.descriptor,
             descriptor_sha256=self.descriptor_sha256, requests=records,
             accepted_requests=accepted, inflight_request=inflight, response_bytes=total,
             service_stopped=stopped, accounting_complete=stopped and accepted == len(records),

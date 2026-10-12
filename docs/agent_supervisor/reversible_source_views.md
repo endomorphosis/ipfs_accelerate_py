@@ -12,8 +12,10 @@ This is a repository-wide dual representation: original committed bytes remain
 in the current supplied content store; read-only compact candidates are separate
 artifacts. No executable checkout is rewritten. Edited compact views refuse
 restoration; translating edits requires its own mapping contract. The current
-coding input and its required source remain unchanged until model-tool access
-and complete-input selection are qualified.
+coding input keeps its required source. An opt-in
+[coding-worker source reader](worker_source_views.md) now serves task-scoped
+compact views and exact original expansion, with counted guidance and explicit
+stale-source refusal. Selecting source omissions requires separate qualification.
 
 ## Profiles and fidelity
 
@@ -151,9 +153,11 @@ retain their schema/version/decoder-task and 8D/384D/768D separation. This reuse
 exact source custody without inference, training, embedding regeneration or
 new model assets. A separate [current-owner source read](current_source_lookup.md)
 now checks original bytes through native task custody and the working filesystem.
-Its host-issued CLI still needs a qualified coding-container channel. Capsule
-expansion, original-source editing, working-overlay refresh and later mapped
-compact edits remain the next integration stages.
+Its host-issued CLI remains a separate typed-owner route. The
+[coding-worker adapter](worker_source_views.md) instead uses the task's already
+verified semantic source scope and the existing isolated child lifecycle.
+Capsule expansion, working-overlay refresh and later mapped compact edits
+remain subsequent integration stages; coding edits use exact original files.
 
 The [qualification evidence](evidence/reversible-source-views-20261012/README.md)
 retains 40 passing cases, including a separate-process unchanged inverse without

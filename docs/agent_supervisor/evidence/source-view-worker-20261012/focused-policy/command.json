@@ -1,0 +1,52 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-o",
+    "addopts=",
+    "--color=no",
+    "-q",
+    "test/api/test_worker_source_views.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source-view-worker-20261012/policy-tests-02/junit.xml",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/source-view-worker-20261012/policy-tests-02/pytest-cache",
+    "-o",
+    "log_cli=false",
+    "--tb=short"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/policy-tests-02/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/policy-tests-02/seal.duckdb",
+    "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_before": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py": "3dc4352cddf703b23936684fce36b417d3a760b85419f1fbfb5b49bef5f9f969",
+    "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py": "1437b8e44eb8a27295d5d54ce4c09567f8b700380d43c6e8d3748aa88ebc633e",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "18868e63f8600ac6fb79e8368ab4dc0a6d15a5e072226b665da077140ae4f377",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "a9881646059882ed5d1b8cf17f77b82d0cf774e75ff5edcc454fc081cbe945b0",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "915854e4b1a6f07dc13aeee831fa4ea7fe987de4129bf7eb03c0351b3be72cdf",
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "18b9d45fad438a2b02ad9a9965ef5ea0520989fd233f1bcd3db84bf583acaa19",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "990ec26662d66f8acc755a06a9def543944c80f6672bab02a6dfedf3a4aa08b0",
+    "test/api/test_worker_source_views.py": "4aaedef11cf17d43fc0e565f7f6c4a03d72e53a356854e2d2b23d63fb83a008f",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py": "c67bb3bedeb015187b6e6babf4d734b0a8d9238af502fa1d7411d9dca0037ff4"
+  },
+  "scope": "Authored exact-source and benchmark policy offline tests; no paid calls or Docker."
+}

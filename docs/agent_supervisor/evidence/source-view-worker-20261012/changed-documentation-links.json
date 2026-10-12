@@ -1,0 +1,11 @@
+{
+  "checks": {
+    "docs/agent_supervisor/evidence/source-view-worker-20261012/README.md": [],
+    "docs/agent_supervisor/reversible_codebase_views_plan.md": [],
+    "docs/agent_supervisor/reversible_source_views.md": [],
+    "docs/agent_supervisor/terminal_token_metadata_plan.md": [],
+    "docs/agent_supervisor/worker_source_views.md": []
+  },
+  "passed": true,
+  "schema": "source-view-worker-changed-documentation-links@1"
+}

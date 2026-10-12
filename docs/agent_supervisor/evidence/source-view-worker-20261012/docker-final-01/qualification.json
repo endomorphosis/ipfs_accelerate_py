@@ -1,0 +1,191 @@
+{
+  "complete": true,
+  "container_id": "359a14a17c0b4dc9708442804b7663cf928f6ab4fd57120a80d831d35b8e682f",
+  "container_name": "source-view-ipc-1791826125056277904",
+  "container_removed": true,
+  "cpu_limit": 5,
+  "full_runtime_deployment_qualified": false,
+  "image_id": "sha256:771900c18b663b33a5bf96e066346b2d5c842506523efb167aebe8d3a99b5c07",
+  "memory_limit_bytes": 12884901888,
+  "model_calls": 0,
+  "native_provider_tokens": null,
+  "network": "none",
+  "official_terminal_bench_score": null,
+  "owner_returncode": 0,
+  "paid_token_savings_measured": false,
+  "pids_limit": 128,
+  "private-fixture-ipc_retained": true,
+  "private-state_retained": true,
+  "private-worker-observations_retained": true,
+  "privileged": false,
+  "probe": {
+    "all_cli_calls": 22,
+    "all_cli_printed_json_bytes": 41624,
+    "all_cli_returned_source_bytes": 16650,
+    "authored_planning": true,
+    "authored_router_calls": 1,
+    "broker_counts": {
+      "accepted_requests": 24,
+      "delivered_pages": 13,
+      "delivered_response_bytes": 45303,
+      "delivered_responses": 24,
+      "delivered_source_bytes": 16650,
+      "prepared_pages": 13,
+      "prepared_source_bytes": 16650,
+      "request_hash_count": 24,
+      "response_bytes": 45303,
+      "response_hash_count": 24,
+      "sessions": 1,
+      "unique_request_hash_count": 24,
+      "unique_response_hash_count": 24
+    },
+    "broker_stopped": true,
+    "collection_status": "observed",
+    "complete": true,
+    "default_cli_projection_bytes": 3507,
+    "default_projection_checks": [
+      {
+        "default_model_json_bytes": 938,
+        "exact_source_pins_and_slice": true,
+        "original_envelope_bytes": 2497,
+        "path": "eigen.py",
+        "request_cursor_binding_preserved": true
+      },
+      {
+        "default_model_json_bytes": 2523,
+        "exact_source_pins_and_slice": true,
+        "original_envelope_bytes": 4096,
+        "path": "eval.py",
+        "request_cursor_binding_preserved": true
+      }
+    ],
+    "descriptor_and_socket_removed": true,
+    "edits_mapped": false,
+    "full_live_supervisor_deployment_qualified": false,
+    "intent_autoencoder_disabled": true,
+    "learned_source384_inference": false,
+    "max_primary_envelope_bytes": 4096,
+    "model_calls": 0,
+    "native_provider_tokens": null,
+    "negative_checks": [
+      {
+        "case": "wrong_peer_uid1000",
+        "reason_code": "peer_refused"
+      },
+      {
+        "case": "unrelated_peer_uid1001",
+        "reason_code": "peer_refused"
+      },
+      {
+        "case": "outside_source_scope",
+        "reason_code": "retrieval_refused"
+      },
+      {
+        "case": "wrong_expansion_source_pin",
+        "reason_code": "retrieval_refused"
+      },
+      {
+        "case": "forged_cursor",
+        "reason_code": "retrieval_refused"
+      },
+      {
+        "case": "consumed_cursor",
+        "reason_code": "retrieval_refused"
+      },
+      {
+        "case": "crossed_path_cursor",
+        "reason_code": "retrieval_refused"
+      },
+      {
+        "case": "crossed_view_cursor",
+        "reason_code": "retrieval_refused"
+      },
+      {
+        "case": "stale_canonical",
+        "reason_code": "stale_context"
+      },
+      {
+        "case": "stale_allocated",
+        "reason_code": "stale_context"
+      }
+    ],
+    "official_verifier_executed": false,
+    "owner_uid": 1000,
+    "paid_token_savings_measured": false,
+    "per_file": {
+      "eigen.py": {
+        "compact": {
+          "bytes": 607,
+          "complete_envelope_bytes": [
+            2497
+          ],
+          "effective_profile": "python-comments@1",
+          "fallback_reason": null,
+          "pages": 1,
+          "sha256": "65f8544bf32190de79e8b9649b10033d5cb20c4752c365709cf595de3d161b96"
+        },
+        "original": {
+          "bytes": 642,
+          "complete_envelope_bytes": [
+            2533
+          ],
+          "effective_profile": "python-comments@1",
+          "fallback_reason": null,
+          "pages": 1,
+          "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+        }
+      },
+      "eval.py": {
+        "compact": {
+          "bytes": 2246,
+          "complete_envelope_bytes": [
+            4096,
+            2206
+          ],
+          "effective_profile": "identity@1",
+          "fallback_reason": "unsupported_fstrings",
+          "pages": 2,
+          "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+        },
+        "original": {
+          "bytes": 2246,
+          "complete_envelope_bytes": [
+            4096,
+            2208
+          ],
+          "effective_profile": "identity@1",
+          "fallback_reason": "unsupported_fstrings",
+          "pages": 2,
+          "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+        }
+      }
+    },
+    "primary_complete_response_envelope_utf8_bytes": 17636,
+    "primary_page_count": 6,
+    "private_read_denial_count": 1,
+    "provider_calls": 0,
+    "public_source_hashes": {
+      "eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    "raw_cli_envelope_bytes": 38117,
+    "retrieved_compact_bytes": 2853,
+    "retrieved_source_bytes": 2888,
+    "schema": "source-view-worker-docker-probe@1",
+    "seconds": 24.927992085926235,
+    "solver_calls": 0,
+    "source_obligations_discharged": 0,
+    "source_restored": true,
+    "source_semantics_verified": false,
+    "source_view_profile": "python-comments@1",
+    "worker_uid": 1001
+  },
+  "provider_calls": 0,
+  "read_only_base": false,
+  "root_setup_required_for_existing_sudo_worker_transition": true,
+  "runner_unchanged": true,
+  "schema": "source-view-worker-offline-docker-qualification@1",
+  "seconds": 26.179516878095455,
+  "source_unchanged": true,
+  "worker_no_new_privileges_and_zero_caps_required": true
+}

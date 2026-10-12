@@ -39,6 +39,10 @@ from .terminal_capsule_selection_policy import (
     DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS, validate_capsule_selection,
     capsule_selection_options, capsule_selection_observation, require_capsule_selection_archive,
 )
+from .terminal_source_view_policy import (
+    DEFAULT_SOURCE_VIEW_PROFILE, SOURCE_VIEW_PROFILES, validate_source_view_profile,
+    source_view_selection, source_view_observation, require_source_view_archive,
+)
 from .terminal_numerical_policy import (
     PROFILES as NUMERICAL_PROFILES, validate_numerical_profile, numerical_selection,
     numerical_observation, require_numerical_archive,
@@ -180,10 +184,12 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
+               source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
                numerical_formalization_profile: str | None = None,
                model_revision: str = "") -> dict:
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
+    validate_source_view_profile(source_view_profile, arm=arm)
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
@@ -206,7 +212,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **coding_reply_selection(coding_reply_mode),
                    **numerical_selection(numerical_formalization_profile),
                    **semantic_metadata_selection(semantic_metadata_view),
-                   **capsule_selection_options(capsule_selection)},
+                   **capsule_selection_options(capsule_selection),
+                   **source_view_selection(source_view_profile)},
     }]
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
@@ -254,9 +261,11 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
+            source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
             numerical_formalization_profile: str | None = None) -> dict:
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
+    validate_source_view_profile(source_view_profile, arm=arm)
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
@@ -281,6 +290,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_coding_reply_archive(manifest, coding_reply_mode)
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
     require_capsule_selection_archive(manifest, capsule_selection)
+    require_source_view_archive(manifest, source_view_profile, resource_profile)
     require_numerical_archive(manifest, numerical_formalization_profile)
     if selected_provider["provider"] == "grok_cli":
         from .terminal_grok_deployment import verify_grok_archive
@@ -324,6 +334,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         coding_reply_mode=coding_reply_mode,
         semantic_metadata_view=semantic_metadata_view,
         capsule_selection=capsule_selection,
+        source_view_profile=source_view_profile,
         numerical_formalization_profile=numerical_formalization_profile,
         **({"provider_profile": provider_profile} if provider_profile is not None else {}))
     if (selected_source384 is not None or selected_numerical is not None) and arm == "full":
@@ -356,6 +367,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **coding_reply_selection(coding_reply_mode),
               **semantic_metadata_observation(semantic_metadata_view),
               **capsule_selection_observation(capsule_selection),
+              **source_view_observation(source_view_profile),
               **numerical_observation(numerical_formalization_profile, arm),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
@@ -403,6 +415,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
         prepared.get("capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=prepared["arm"])
     configured_capsules = validate_capsule_selection(
         config["agents"][0].get("kwargs", {}).get("capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=prepared["arm"])
+    source_view = validate_source_view_profile(
+        prepared.get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=prepared["arm"])
+    configured_source_view = validate_source_view_profile(
+        config["agents"][0].get("kwargs", {}).get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
+        arm=prepared["arm"])
     selection = {key: prepared.get(key, value) for key, value in _intent_selection(None).items()}
     configured_selection = _intent_selection(config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"))
     job = Path(config["jobs_dir"]) / config["job_name"]
@@ -430,6 +447,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **coding_reply_selection(reply_mode),
               **semantic_metadata_observation(metadata_view),
               **capsule_selection_observation(capsule_selection),
+              **source_view_observation(source_view),
+              **({"source_view_config_unchanged": configured_source_view == source_view}
+                 if "source_view_profile" in prepared or "source_view_profile" in config["agents"][0].get("kwargs", {}) else {}),
               **({"capsule_selection_config_unchanged": configured_capsules == capsule_selection}
                  if "capsule_selection" in prepared or "capsule_selection" in config["agents"][0].get("kwargs", {}) else {}),
               **numerical_observation(numerical_profile, prepared["arm"]),
@@ -450,7 +470,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and configured_transport == transport and configured_reply_mode == reply_mode
                   and configured_numerical == numerical_profile
                   and configured_metadata_view == metadata_view
-                  and configured_capsules == capsule_selection,
+                  and configured_capsules == capsule_selection
+                  and configured_source_view == source_view,
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
               "intent_action_384": prepared.get("intent_action_384"),
@@ -497,6 +518,13 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         config["agents"][0].get("kwargs", {}).get("capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=prepared["arm"])
     if capsule_selection != configured_capsules:
         raise ValueError("prepared capsule selection changed")
+    source_view = validate_source_view_profile(
+        prepared.get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=prepared["arm"])
+    configured_source_view = validate_source_view_profile(
+        config["agents"][0].get("kwargs", {}).get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
+        arm=prepared["arm"])
+    if source_view != configured_source_view:
+        raise ValueError("prepared source view profile changed")
     if _task_hashes(task) != prepared["task_input_sha256"]:
         raise ValueError("original task changed")
     if _hash(Path(prepared["archive"]) / "runtime.tar.gz") != prepared["archive_sha256"]:
@@ -507,6 +535,8 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     require_coding_reply_archive(current_manifest, reply_mode)
     require_semantic_metadata_archive(current_manifest, metadata_view)
     require_capsule_selection_archive(current_manifest, capsule_selection)
+    require_source_view_archive(current_manifest, source_view,
+        config["agents"][0].get("kwargs", {}).get("resource_profile"))
     require_numerical_archive(current_manifest, numerical_profile)
     from .terminal_numerical_selection_deployment import require_numerical_selection_archive
     require_numerical_selection_archive(current_manifest)
@@ -550,6 +580,8 @@ def main():
         help="Experimental readable coding metadata view; planning unchanged and selection frozen by preparation")
     parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
         help="Experimental source-bound capsule ranking; requires an explicit public task profile and is frozen by preparation")
+    parser.add_argument("--source-view-profile", choices=SOURCE_VIEW_PROFILES, default=DEFAULT_SOURCE_VIEW_PROFILE,
+        help="Opt-in read-only coding source views; full indexed arm only and frozen by preparation")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
     parser.add_argument("--numerical-formalization-profile", choices=NUMERICAL_PROFILES,
         help="Opt-in source-bound numerical obligations; frozen equally for both arms, consumed only by full")
@@ -572,6 +604,8 @@ def main():
         parser.error("semantic metadata view is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_selection != DEFAULT_CAPSULE_SELECTION:
         parser.error("capsule selection is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE:
+        parser.error("source view profile is frozen by preparation; collect/execute cannot select it")
     if args.operation == "prepare":
         if args.dataset is None or args.archive is None:
             parser.error("prepare requires --dataset and --archive")
@@ -586,6 +620,7 @@ def main():
                          coding_reply_mode=args.coding_reply_mode,
                          semantic_metadata_view=args.semantic_metadata_view,
                          capsule_selection=args.capsule_selection,
+                         source_view_profile=args.source_view_profile,
                          numerical_formalization_profile=args.numerical_formalization_profile)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)

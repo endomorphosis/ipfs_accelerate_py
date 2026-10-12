@@ -241,12 +241,18 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
 def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: int,
                         semantic_repository: Path | None, doctor: dict | None,
                         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
-                        coding_reply_mode: str = "legacy", semantic_metadata_view: str = "legacy") -> list[str]:
+                        coding_reply_mode: str = "legacy", semantic_metadata_view: str = "legacy",
+                        source_view_profile: str = "disabled") -> list[str]:
     """Closed choice that the admitted launch signs before any worker starts."""
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
     validate_semantic_transport_schema(semantic_transport_schema)
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, validate_coding_reply_mode
     validate_coding_reply_mode(coding_reply_mode)
+    from .terminal_source_view_policy import DEFAULT_SOURCE_VIEW_PROFILE, validate_source_view_profile
+    validate_source_view_profile(source_view_profile)
+    if source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE and (semantic_repository is None
+            or doctor is not None and doctor.get("route") != "model_router"):
+        raise ValueError("source views require a semantic model-router coding route")
     if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (semantic_repository is None
@@ -280,6 +286,8 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
               if coding_reply_mode != DEFAULT_CODING_REPLY_MODE else []),
             *(["--semantic-metadata-view", semantic_metadata_view]
               if semantic_metadata_view != "legacy" else []),
+            *(["--source-view-profile", source_view_profile]
+              if source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE else []),
             *(["--doctor-residual-artifact", doctor["residual_context"]["artifact"],
                "--doctor-residual-sha256", doctor["residual_context"]["sha256"],
                "--doctor-residual-task-cid", doctor["residual_context"]["task_cid"]]

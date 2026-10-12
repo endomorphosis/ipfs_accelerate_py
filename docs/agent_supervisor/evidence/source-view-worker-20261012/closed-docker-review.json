@@ -1,0 +1,138 @@
+{
+  "accelerate_head": "74aea306ea0d50e416a04eda3e2f251c95b2c66d",
+  "all_attempt_seconds": 50.52440125809517,
+  "all_retained_attempts": [
+    {
+      "complete": false,
+      "failure": "Final collector returned evidence_unavailable after real transport/source checks; the fixture selected-profile declaration was corrected and the current collector qualified in final01. Original refusal location was not traced inside that closed container.",
+      "model_calls": 0,
+      "name": "docker-diagnostic-01",
+      "provider_calls": 0,
+      "seconds": 24.344884379999712
+    },
+    {
+      "complete": true,
+      "model_calls": 0,
+      "name": "docker-final-01",
+      "provider_calls": 0,
+      "seconds": 26.179516878095455
+    }
+  ],
+  "bindings": {
+    "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/qualification.json": "83dc05b0beae5c94ef6240555621744559eaaa950ff7d1975c6e3e2431abc731",
+    "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/results/probe-qualification.json": "9ccb119f5cd581b0d37e7452c2052becdc3bc9e4e7f4f46653f31dac9b68e08b",
+    "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/results/router-observation.json": "50ba0d6432a180cf4b2a94511c3aa84e7b206e2ae353040f11815bbac29dc072",
+    "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/results/session-observation.json": "cd6c15c8512899c947351b04214c4db44f619b6f05b9d6204dfc68fd8b77be97",
+    "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/root-release-final-01.json": "99f190c1b922081987f9e5dce9c58273b12908f6e32eb513e8bf056a74bcb3c2"
+  },
+  "check_count": 23,
+  "checks": {
+    "actual_resources": true,
+    "actual_worker_identity": true,
+    "all_requests_and_repeated_bytes": true,
+    "authored_call_only": true,
+    "cached_image_exact": true,
+    "complete_envelope_bound": true,
+    "completed_with_exact_probe": true,
+    "default_projection_preserves_slice_and_pins": true,
+    "durable_collector_matches": true,
+    "earlier_failure_retained": true,
+    "explicit_identity_fallback": true,
+    "no_token_proof_score_claim": true,
+    "original_and_compact_totals": true,
+    "owned_container_absent_again": true,
+    "primary_page_count_bytes": true,
+    "printed_scope_separate": true,
+    "release_command_hash": true,
+    "runners_current_and_snapshots_match": true,
+    "source_before_current_unchanged": true,
+    "source_mounts_read_only": true,
+    "source_restore_endpoint_cleanup": true,
+    "ten_negative_controls_and_one_private_database": true,
+    "unique_public_source_current": true
+  },
+  "complete": true,
+  "limits": [
+    "Actual generated OWNER_ENTRY and root-owned WORKER_ENTRY with explicit authored generate_text hook; no real provider decision",
+    "Preflight plan authored; no full supervisor START, official verifier or learned inference",
+    "Default JSON byte reduction excludes tool wrappers/newlines and does not measure provider tokens",
+    "Source bytes include repeated pages and both representations; no unique-source claim for16,650",
+    "Historical codec minifies eigen by35bytes and preserves unsupported fstring eval exactly",
+    "Initial required source remains inline; no omission authority, mapped edits or whole-program proof",
+    "Uses owner-admitted semantic source-view service and existing source custody, not a newly qualified typed-owner source.get worker grant"
+  ],
+  "native_provider_tokens": null,
+  "publication_exclusions": [
+    "private-state/**",
+    "private-fixture-ipc/**",
+    "private-worker-observations/**",
+    "owner stdout/stderr",
+    "raw source pages/prompts/databases/auth/model assets"
+  ],
+  "review_scope": "Agent-owned bounded closure audit; independent teammate review separate",
+  "runner_files": 3,
+  "safe_publication_allowlist": [
+    {
+      "bytes": 19591,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/root-release-final-01.json",
+      "sha256": "99f190c1b922081987f9e5dce9c58273b12908f6e32eb513e8bf056a74bcb3c2"
+    },
+    {
+      "bytes": 5920,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/qualification.json",
+      "sha256": "83dc05b0beae5c94ef6240555621744559eaaa950ff7d1975c6e3e2431abc731"
+    },
+    {
+      "bytes": 22867,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/command.json",
+      "sha256": "0d6cc6f863d32d4c80eeebd03157b3c3480d8fdfc0af53c3672d275306cfba2e"
+    },
+    {
+      "bytes": 291,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/owner-command.json",
+      "sha256": "510c13986b556cbff6a08e549d00e541b28072b7467de7fe818c7c1bcede16d4"
+    },
+    {
+      "bytes": 2413,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/container-controls.json",
+      "sha256": "ceb2c05bd0876a69a92c3862119e1da9d58b5cba30065e149b6357df3dea1ba3"
+    },
+    {
+      "bytes": 3471,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/results/probe-qualification.json",
+      "sha256": "9ccb119f5cd581b0d37e7452c2052becdc3bc9e4e7f4f46653f31dac9b68e08b"
+    },
+    {
+      "bytes": 1946,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/results/session-observation.json",
+      "sha256": "cd6c15c8512899c947351b04214c4db44f619b6f05b9d6204dfc68fd8b77be97"
+    },
+    {
+      "bytes": 3311,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/results/router-observation.json",
+      "sha256": "50ba0d6432a180cf4b2a94511c3aa84e7b206e2ae353040f11815bbac29dc072"
+    },
+    {
+      "bytes": 81,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/results/collector-diagnostic.json",
+      "sha256": "435b978c84bb636cf74d8fd537e9cc496bb976a6b4e6a22f583b645fcfb5a17f"
+    },
+    {
+      "bytes": 11344,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/runner-snapshot/run_docker_qualification.py",
+      "sha256": "23797cf7953e4e16d365a9c8b1f123f2700d34d220bd241d27d604c4b62aff6f"
+    },
+    {
+      "bytes": 13859,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/runner-snapshot/owner_probe.py",
+      "sha256": "f8945ff24d5bad1f67196ea51fcc540fd7d391c6b277fe718b86274758d24b5b"
+    },
+    {
+      "bytes": 11044,
+      "path": "/home/barberb/lift_coding/artifacts/source-view-worker-20261012/docker-final-01/runner-snapshot/worker_probe.py",
+      "sha256": "df22646971fd79f8565a7fc9978124fef0ee64aae6738c3c7039ab578b9e6708"
+    }
+  ],
+  "schema": "source-view-worker-closed-docker-review@1",
+  "source_files": 84
+}

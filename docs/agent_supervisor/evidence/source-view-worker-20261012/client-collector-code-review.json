@@ -1,0 +1,53 @@
+{
+  "checks": [
+    "Actual WorkerSourceViews pages, including empty/binary/compact/original and continuation, pass exact client vocabulary and byte/content hashes.",
+    "Foreign semantic/task/scope/prompt/manifest/profile/session bindings and malformed sizes/flags/content/cursors refuse.",
+    "Source descriptor loader uses explicit shared validator; numerical default rejects source descriptor and existing 78 numerical client tests pass.",
+    "New source collector distinguishes selected missing/incomplete evidence from measured zero; cross-profile/task/semantic/owner and nonprivate/mutable audit paths refuse.",
+    "Existing 57 numerical collector tests pass unchanged with parameterized shared record accounting.",
+    "Historical context audit reconstructs exact guidance/model bytes with real semantic encoder; falsified source manifest hash produces failed binding check.",
+    "Model-facing projection preserves original slice and expansion/cursor pins while being strictly smaller than the complete full JSON envelope including final LF."
+  ],
+  "counts_by_file": {
+    "benchmarks.agent_supervisor.container_coding.test_terminal_numerical_retrieval_observation": 57,
+    "benchmarks.agent_supervisor.container_coding.test_terminal_source_view_observation": 47,
+    "test.api.test_numerical_obligation_client": 78,
+    "test.api.test_worker_source_client": 50
+  },
+  "fixes": [
+    {
+      "change": "Validate optional descriptor and bind response session to descriptor; canonical base64 pad bits required.",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+    },
+    {
+      "change": "After full validation, CLI defaults to compact read projection preserving content, source/view pins and cursor. Explicit --raw-response retains full transport JSON.",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+    },
+    {
+      "change": "Join actual source_view_profile report field to selected receipt; selected missing session remains unavailable; impossible source-byte count exceeding response body refuses.",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py"
+    }
+  ],
+  "limits": [
+    "Printed projection bytes and complete wire bytes are separate; session audit counts full wire response bodies only. No tokenizer/native token savings claim.",
+    "The compact output renderer expects the response already fully validated by request_page; it does not confer source correctness or native task authority.",
+    "Actual cross-UID Docker and the final aggregate source-bound gate remain separate qualification scopes."
+  ],
+  "qualification_path": "/home/barberb/lift_coding/artifacts/worker-source-view-20261012/client-collector-tests-02/qualification.json",
+  "qualification_sha256": "76024afa2de7ddc7cb45f0c404bb676bccda751c26803b9c1cdc3d5c382557d1",
+  "schema": "worker-source-client-collector-review@1",
+  "scope": "Focused independent review of initial root client/collector/audit integration; owned fixes and new adversarial tests independently exercise actual core pages and historical semantic reconstruction. No provider, model, benchmark or solver calls.",
+  "source_hashes": {
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "477222288475a86d1887c5343fe87f51a553579dbad50e3136e70ac0f817a296",
+    "benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py": "37b0a40c2958d864d013c11a8044f7b5ecdc79abe030c04d465aa80ea3615ff1",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "7291c2600fcb799d238766dfc34e32326b4f9cfa623c12077c6e864cbf01d8b2",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py": "ebc38bbbc6b697f9323dfe0c48123d49e850edb45adcb5b6b86dcbbb4b7860c0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "7607cfae3eaec33b3a188f26a2ba3d87fc818b22ea529ceeaa40d0048ac46882",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py": "28cfa7637b0f94cd77dec3071600263a2289738ede4ffd696ef4e2de34ffeaf6",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "2316a4dc7ef1e316d78cc599c014f12e4f7494bf1e637f144450cf71412df7df",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "98fd2438b5d55ec9b43860967ffb8262a2058aad7b56dc68e2694a61ebebb8a0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py": "3dc4352cddf703b23936684fce36b417d3a760b85419f1fbfb5b49bef5f9f969",
+    "test/api/test_worker_source_client.py": "dbb8d58a07b8674ab5ef0b3776a127430c7a5ca35c3c573ffcd7e5d5a8751cb5"
+  },
+  "status": "passed"
+}

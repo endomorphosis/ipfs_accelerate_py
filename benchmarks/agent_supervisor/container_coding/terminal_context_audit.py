@@ -35,7 +35,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval")
 
 
 def _sha(raw: bytes) -> str:
@@ -434,6 +434,20 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             "semantic_translation_cid": encoded.table.translation_cid == receipt["semantic_translation"]["translation_cid"],
             "semantic_translation_schema": encoded.receipt["schema"] == receipt["semantic_translation"]["schema"],
         })
+    source_views = receipt.get("source_view_retrieval")
+    if source_views is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_client import BINDING_FIELDS, guidance, canonical_json
+        if not translated:
+            raise ValueError("source view guidance requires retained semantic input")
+        table = encoded.table.to_dict()
+        expected = {**{key: table[key] for key in BINDING_FIELDS if key not in {
+            "profile", "source_manifest_sha256"}}, "profile": source_views["profile"],
+            "source_manifest_sha256": _sha(canonical_json(table["source_manifest"]))}
+        advice = guidance(source_views["profile"])
+        checks["source_view_semantic_binding"] = all(source_views.get(key) == value for key, value in expected.items())
+        checks["source_view_guidance"] = (_sha(advice.encode()) == source_views.get("guidance_sha256")
+            and len(advice.encode()) == source_views.get("guidance_bytes"))
+        router_prompt += advice
     residual = receipt.get("doctor_residual_context")
     if residual is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.doctor_residual_context import load_doctor_residual_advisory

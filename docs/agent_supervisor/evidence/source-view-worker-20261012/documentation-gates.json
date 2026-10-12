@@ -1,0 +1,32 @@
+{
+  "schema": "source-view-worker-local-documentation-gates@1",
+  "checks": [
+    {
+      "name": "scripts/docs/check_agent_supervisor_docs.py",
+      "exit_code": 0,
+      "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n",
+      "stderr": ""
+    },
+    {
+      "name": "scripts/docs/check_current_docs_links.py",
+      "exit_code": 0,
+      "stdout": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n",
+      "stderr": ""
+    },
+    {
+      "name": "packaging_version_alignment",
+      "passed": true,
+      "versions": [
+        "0.0.45",
+        "0.0.45",
+        "0.0.45"
+      ]
+    },
+    {
+      "name": "closeout_navigation",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "hosted_ci_executed": false
+}
