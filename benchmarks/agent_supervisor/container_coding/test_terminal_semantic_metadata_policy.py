@@ -1,10 +1,12 @@
 """Explicit metadata coding treatment is frozen without provider/Docker calls."""
 import asyncio
 import hashlib
+import io
 import json
 from pathlib import Path
 import shlex
 import sys
+import tarfile
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -127,7 +129,12 @@ def test_prepare_freezes_selection_and_default_receipt_shape(tmp_path, monkeypat
     dataset, _ = authored_task(tmp_path)
     archive = tmp_path / "archive"
     archive.mkdir()
-    raw = b"AUTHORED-no-executable-archive"
+    # The numerical-selection verifier now reads even an unselected archive.
+    # This valid, empty authored bundle tests selection plumbing, not execution.
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:gz"):
+        pass
+    raw = stream.getvalue()
     (archive / "runtime.tar.gz").write_bytes(raw)
     (archive / "manifest.json").write_text(json.dumps(_supervisor_manifest({**inventory(),
         "archive_sha256": hashlib.sha256(raw).hexdigest(), "codex_version": CLI_VERSION})))

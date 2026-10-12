@@ -180,6 +180,11 @@ benchmark input size, behavior, rewards or cumulative tokens.
    render revalidation, including visible revocations, and explicitly reports
    possible bookkeeping writes to the existing owner. It observes the requested
    keys, without an atomic owner snapshot or a reusable proof receipt.
+   The scoped header workflow now retains [complete key inputs and restart
+   custody](header_proof_key_custody.md) in its existing sealed native owner.
+   Rebuilt preparation and fresh native kernel replay qualify native reuse.
+   A reviewed bridge to the generic receipt/evidence contract remains required
+   before Gate admission or measured accepted Terminal coverage.
    The explicit `TerminalFormalStatusOwner` host entry now joins an existing
    scoped Doctor analysis and native gate/full keys to the actual signed task.
    It reconstructs the source scope independently, rechecks Terminal/source

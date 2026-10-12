@@ -69,6 +69,65 @@ def test_absent_prover_retains_explicit_unavailability_without_creating_state(sc
     assert not state.exists()
 
 
+@pytest.mark.parametrize('security_ir_bound', [False, True])
+def test_real_scoped_proof_retains_complete_key_and_replays_after_restart(
+        scenario, tmp_path, monkeypatch, security_ir_bound):
+    from test.api.test_doctor_contract_key_custody import _profiles
+    from ipfs_accelerate_py.agent_supervisor.proof.doctor_proof_cache import DoctorSealedReceiptRef
+    from ipfs_accelerate_py.agent_supervisor.runtime.doctor_contract_proof_custody import (
+        replay_header_proof_key_custody,
+    )
+
+    inputs, scoped = _scoped(scenario, tmp_path)
+    inputs = _provers(inputs)
+    candidate = analyze().candidate
+    contract = dict(candidate.contract)
+    if security_ir_bound:
+        analysis = analyze()
+        compiled = proof_module.security_ir_bridge.compile_header_security_ir(
+            scoped=scoped, analyses=[{'path': 'answer.py', 'status': analysis.status,
+                'reason_codes': list(analysis.reason_codes), 'source_sha256': analysis.source_sha256,
+                'contracts': list(analysis.contracts), 'open_frontiers': list(analysis.open_frontiers)}])
+        contract.update(security_ir_declaration_cid=compiled.report['declaration_cid'],
+                        security_ir_formalization_cid=compiled.report['artifact_cid'])
+    profiles = _profiles()  # Authored declarations; no isolation-enforcement claim.
+    arguments = dict(scoped=scoped, contract=contract,
+        candidate_cid=content_identity(candidate.to_dict()),
+        lean=inputs['kernel_executable'], z3=inputs['solver_executable'],
+        proof_key_profiles=profiles)
+    state = tmp_path / 'real-key-proof'
+    report, proof = proof_module.prove_header_contract(**arguments, state=state)
+    assert proof is not None and proof.mutation_capable
+    assert report['proof']['authority_store_ref'] == proof.authority_store_ref.to_dict()
+    assert report['security_ir_bindings_verified'] is security_ir_bound
+    assert report['security_ir_obligations_discharged'] is False
+    assert report['native_key_custody']['generic_cache_admission_supported'] is False
+
+    # Independently rebuild current inputs and reopen exactly the retained owner.
+    current = proof_module.prepare_header_contract_proof(**arguments)
+    retained_store = proof_module.DoctorSealedReceiptStore(
+        state / 'proof.sqlite', authority_id=proof.authority_store.authority_id)
+    hammer = proof_module.DeterministicDoctorHammer(bounds=current.bounds,
+        authoritative_store=retained_store,
+        trusted_executable_pins=(current.solver_pin, current.kernel_pin))
+    actual_run = proof_module.DeterministicDoctorHammer._run_pinned
+    replay_calls = []
+    def record_actual_run(self, pin, request):
+        replay_calls.append(pin.role.value)
+        return actual_run(self, pin, request)
+    monkeypatch.setattr(proof_module.DeterministicDoctorHammer, '_run_pinned', record_actual_run)
+    replayed = replay_header_proof_key_custody(prepared=current, hammer=hammer,
+        custody_ref=DoctorSealedReceiptRef.from_dict(report['native_key_custody']['ref']),
+        expected_key_id=current.key.key_id)
+    assert report['native_key_custody']['key_id'] == current.key.key_id
+    assert replayed.mutation_capable and replayed.authority_store is retained_store
+    # Fresh deterministic replay may retain the same content-addressed receipt.
+    assert replay_calls == ['kernel']
+    assert replayed.theorem.premise_ids == (report['contract_cid'],)
+    assert replayed.theorem.assumption_ids == proof.theorem.assumption_ids
+    assert (scenario['repository'] / 'answer.py').read_text() == PROGRAM
+
+
 def test_source_drift_refuses_before_prover_or_catalog_write(scenario, tmp_path):
     inputs, scoped = _scoped(scenario, tmp_path)
     (scenario['repository'] / 'answer.py').write_text(PROGRAM + '\n# changed\n')
@@ -275,19 +334,30 @@ def test_security_ir_implementation_artifacts_are_in_pinned_identity(tmp_path, m
     assert {k: v for k, v in before.items() if k != key} == {k: v for k, v in after.items() if k != key}
 
 
-def test_implementation_drift_during_real_proof_is_not_returned_as_success(scenario, tmp_path, monkeypatch):
+@pytest.mark.parametrize('boundary', ['preparation', 'execution'])
+def test_implementation_drift_is_not_returned_as_success(scenario, tmp_path, monkeypatch, boundary):
     inputs, scoped = _scoped(scenario, tmp_path)
     original = proof_module._implementation_bindings
     calls = 0
+    proof_executed = False
     def changing_bindings():
         nonlocal calls
         calls += 1
         value = original()
-        if calls > 1:
+        if (boundary == 'preparation' and calls > 1) or proof_executed:
             value['header_ast_translator_sha256'] = '0' * 64
         return value
     monkeypatch.setattr(proof_module, '_implementation_bindings', changing_bindings)
+    if boundary == 'execution':
+        verify = proof_module.DeterministicDoctorHammer.verify_authoritative
+        def changing_after_verify(self, *args, **kwargs):
+            nonlocal proof_executed
+            result = verify(self, *args, **kwargs)
+            proof_executed = True
+            return result
+        monkeypatch.setattr(proof_module.DeterministicDoctorHammer, 'verify_authoritative', changing_after_verify)
     state = tmp_path / 'drifting-proof'
-    with pytest.raises(ValueError, match='changed during proof execution'):
+    with pytest.raises(ValueError, match='changed during proof ' + boundary):
         _prove(inputs, scoped, state)
     assert not (state / 'proof-report.json').exists()
+    assert state.exists() is (boundary == 'execution')

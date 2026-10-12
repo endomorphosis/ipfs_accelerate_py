@@ -70,8 +70,10 @@ initial owner-file checks and before gate consultation. A scope mismatch makes
 no native gate calls, but this is not a promise of zero filesystem observations.
 
 Current production Doctor workflows persist sealed SQLite receipts and an
-observational proof-scope index. They do not produce the DuckDB Gate/full-key
-population required by this opt-in. The existing transaction cache-binding
+observational proof-scope index. The scoped header recipe can now retain a
+[complete prepared key and native restart custody](header_proof_key_custody.md)
+with explicitly admitted profiles, but it does not produce the accepted generic
+receipt/Gate population required by this opt-in. The existing transaction cache-binding
 probe is injectable but has no production producer here. The new host path is
 qualified with authored temporary native owners and kernel-acceptance fixtures;
 it establishes no real theorem, live Terminal proof coverage or token benefit.
@@ -126,14 +128,20 @@ coverage and complete-run token savings remain unmeasured in both lanes.
 
 ## Next qualification
 
-Implement a reviewed native owner/key producer in the production proof workflow
-and supply it through the explicit Terminal host route before measuring real
-receipt coverage. The producer must retain the full typed keys and their
-canonical input custody when proofs are made, pin the actual proof profiles and
-expected population independently, and reconnect the same current owner after
-restart. Sealed receipt-store entries and observational indexes must not be
-silently relabeled as native Doctor cache hits. Keep schema/version, decoder
-task and IR family/dimension inventories in their existing namespaces.
+The scoped header producer now retains complete typed keys, canonical inputs,
+actual executable pins and explicitly admitted proof profiles beside its native
+sealed proof. Restart replay requires independently current preparation and a
+full expected key identity, checks original owner/seal custody and reruns the
+native kernel. Its versioned source-premise projection preserves every public
+AST observation and has an exact inverse to the original contract. Defaults
+still produce no complete key or generic accepted receipt.
+
+Review and qualify a supported native-proof-to-generic-evidence bridge before
+admission to a Doctor Gate and supply through the explicit Terminal host route.
+Native local proof scope, reviewed translation/protocol assumptions and residual
+SecurityIR obligations must remain explicit. Sealed receipt-store entries and
+observational indexes cannot silently become positive cache hits. Keep schema/
+version, decoder task and IR family/dimension inventories in their namespaces.
 
 Then identify exact repeated
 status material and its complete required-fact closure. Replacement must retain
