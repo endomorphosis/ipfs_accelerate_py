@@ -7,6 +7,11 @@ complete committed Git population in an existing datasets `ImmutableCAS`, then
 reconstructs exact historical bytes without the original checkout or Git objects.
 It returns data records, not a restored filesystem or accepted semantic state.
 
+The separate [current-owner source lookup](current_source_lookup.md) reuses this
+inventory and existing CAS, adds native task custody and full selected working-file
+checks, and exposes a bounded host-issued subprocess read. It does not make the
+historical inventory a current-source or coding-model authority on its own.
+
 The producer reuses `preflight_committed_repository`,
 `snapshot_chunked_repository` and `read_chunked_blob_frame`. The consumer reuses
 `parse_chunked_snapshot_manifest` for closed canonical DAG, population, order,

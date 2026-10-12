@@ -349,9 +349,13 @@ at a time, and retain every attempt and its native usage.
    model-facing arbitrary SQL and assumptions about the generic Quack gateway.
    A source-only audit found reusable verified capsule/index readers, sealed
    producer-bound source materialization and bounded symbol-query primitives,
-   but no capsule/source operation in the current Quack registry or qualified
-   expansion tool in the coding CLI route. Start with read-only `capsule.get`
-   and `source.get` attached to the existing current owner. Bind host-issued
+   but initially no capsule/source operation in the Quack registry or qualified
+   expansion tool in the coding CLI route. The [bounded source reader](current_source_lookup.md)
+   now attaches `source.get` to that existing owner, joins native task custody,
+   verifies selected working bytes and complete response costs, and provides a
+   host-issued subprocess CLI. Coding containers still need their own qualified
+   session/descendant channel; required facts remain inline. Add read-only
+   `capsule.get` and residual-obligation queries separately. Bind host-issued
    caller grant, task/revision, repository/source scope, root/context, owner
    generation/fence, request identity and byte/result bounds. Recheck current
    workspace source after edits on every read. Return exact identities,

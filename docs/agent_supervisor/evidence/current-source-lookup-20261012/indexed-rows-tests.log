@@ -1,0 +1,46 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 44 items
+
+test/api/test_current_source_lookup.py ...................F
+
+=================================== FAILURES ===================================
+______ test_clean_crlf_checkout_is_not_admitted_as_exact_committed_bytes _______
+test/api/test_current_source_lookup.py:263: in test_clean_crlf_checkout_is_not_admitted_as_exact_committed_bytes
+    assert _git(case.root, "status", "--porcelain") == ""
+E   AssertionError: assert 'M module.py' == ''
+E     
+E     + M module.py
+----------------------------- Captured stderr call -----------------------------
+2026-10-12 06:34:57,326 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - capability admitted status=compatible fingerprint=sha256:abababababababababababababababababababababababababababababababab
+2026-10-12 06:34:57,326 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-237/test_clean_crlf_checkout_is_no0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-12 06:34:57,684 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - control-plane schema migration complete before ready
+2026-10-12 06:34:57,689 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-237/test_clean_crlf_checkout_is_no0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-12 06:34:57,767 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - state-owner ready server_id=server:264c5d79-a933-4ede-b22b-99e6e3f1269d listen_uri=quack:127.0.0.1:44361
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 capability admitted status=compatible fingerprint=sha256:abababababababababababababababababababababababababababababababab
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-237/test_clean_crlf_checkout_is_no0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 control-plane schema migration complete before ready
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-237/test_clean_crlf_checkout_is_no0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 state-owner ready server_id=server:264c5d79-a933-4ede-b22b-99e6e3f1269d listen_uri=quack:127.0.0.1:44361
+- generated xml file: /tmp/current-source-lookup-indexed-rows-20261012-junit.xml -
+============================= slowest 10 durations =============================
+1.68s call     test/api/test_current_source_lookup.py::test_complete_serialized_envelope_limits_and_continuations_cover_every_byte[escaped-utf8]
+1.41s call     test/api/test_current_source_lookup.py::test_complete_serialized_envelope_limits_and_continuations_cover_every_byte[binary]
+1.38s call     test/api/test_current_source_lookup.py::test_non_utf8_raw_name_never_aliases_malformed_display_label
+1.28s call     test/api/test_current_source_lookup.py::test_clean_crlf_checkout_is_not_admitted_as_exact_committed_bytes
+1.06s setup    test/api/test_current_source_lookup.py::test_native_task_row_drift_refuses_unchanged_repository[revision]
+1.04s setup    test/api/test_current_source_lookup.py::test_actual_scoped_owner_returns_exact_source_without_sql_authority
+1.03s setup    test/api/test_current_source_lookup.py::test_stale_dirty_or_hidden_overlay_refuses_current_source[assume]
+1.02s setup    test/api/test_current_source_lookup.py::test_foreign_identity_scope_or_invalid_bound_refuses_before_raw_reads[binding]
+1.01s setup    test/api/test_current_source_lookup.py::test_foreign_identity_scope_or_invalid_bound_refuses_before_raw_reads[outside]
+1.01s setup    test/api/test_current_source_lookup.py::test_native_task_row_drift_refuses_unchanged_repository[body]
+=========================== short test summary info ============================
+FAILED test/api/test_current_source_lookup.py::test_clean_crlf_checkout_is_not_admitted_as_exact_committed_bytes
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+======================== 1 failed, 19 passed in 59.56s =========================

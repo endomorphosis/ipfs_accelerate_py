@@ -149,8 +149,11 @@ experiments. Identity fallback and edited-view refusal remain explicit.
 Existing LegalIR, SecurityIR, CodebaseIR and IntentIR inventories/checkpoints
 retain their schema/version/decoder-task and 8D/384D/768D separation. This reuses
 exact source custody without inference, training, embedding regeneration or
-new model assets. Current-owner expansion, original-source editing, working-overlay
-refresh and later mapped compact edits remain the next integration stages.
+new model assets. A separate [current-owner source read](current_source_lookup.md)
+now checks original bytes through native task custody and the working filesystem.
+Its host-issued CLI still needs a qualified coding-container channel. Capsule
+expansion, original-source editing, working-overlay refresh and later mapped
+compact edits remain the next integration stages.
 
 The [qualification evidence](evidence/reversible-source-views-20261012/README.md)
 retains 40 passing cases, including a separate-process unchanged inverse without

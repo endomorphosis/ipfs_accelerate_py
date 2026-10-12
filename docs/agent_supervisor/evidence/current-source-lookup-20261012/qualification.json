@@ -1,0 +1,51 @@
+{
+  "schema": "supervisor-current-source-lookup-qualification@1",
+  "accelerator_base_revision": "a5c1ca93931445f1a91d3b187efd542efd774a53",
+  "datasets_revision": "c18390b350c7ab40f5bd342578204a03dc34fe05",
+  "passing_distinct_tests": 44,
+  "source_lookup_cases": 29,
+  "cli_cases": 4,
+  "transport_cases": 7,
+  "existing_owner_regressions": 4,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "normal_pytest_ast_sealing": true,
+  "isolated_process_state": true,
+  "final_source_before_after_hashes_equal": true,
+  "actual_local_DuckDB": true,
+  "actual_typed_unix_socket": true,
+  "actual_host_child_credential_pipe": true,
+  "native_quack_extension_network_qualified": false,
+  "coding_container_model_tool_access_qualified": false,
+  "provider_calls": 0,
+  "training_calls": 0,
+  "model_inference_calls": 0,
+  "embedding_regeneration_calls": 0,
+  "provider_token_counts": null,
+  "total_token_savings_established": false,
+  "existing_model_assets_changed": false,
+  "prior_historical_source_view_runtime_changed": false,
+  "atomic_filesystem_lease": false,
+  "one_binding_per_gateway": true,
+  "retained_failed_runs": [
+    {
+      "label": "initial",
+      "stage": "collection",
+      "reason": "A pre-existing legacy test imports the removed MUTATION_REQUEST_NAME; replaced selected targets with current typed-owner regressions; no tests executed."
+    },
+    {
+      "label": "current-suite",
+      "stage": "test_setup",
+      "reason": "Product generation check iterated DuckDBRow keys. Corrected comparison to its indexed values without changing the fence."
+    },
+    {
+      "label": "indexed-rows",
+      "stage": "test_fixture",
+      "reason": "CRLF write left a stale Git index stat and failed the intended clean-status premise. Both conversion fixtures refresh the same blob and assert unchanged HEAD/tree/blob identities."
+    }
+  ],
+  "product_change_between_test_runs": "Only indexed DuckDBRow value decoding; subsequent CRLF correction changed fixtures only.",
+  "local_documentation_workflow_steps_passed": 4,
+  "changed_guide_link_checks_passed": 6
+}

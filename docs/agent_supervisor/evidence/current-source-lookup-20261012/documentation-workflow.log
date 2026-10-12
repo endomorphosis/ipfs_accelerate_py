@@ -1,0 +1,4 @@
+OK: primary agent-supervisor docs are free of board-prefix ticket IDs
+OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)
+OK: packaging pins aligned at 0.0.45
+OK: closeout navigation markers present

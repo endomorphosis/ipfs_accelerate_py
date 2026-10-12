@@ -445,6 +445,7 @@ _STATUS_SESSION_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
 )
 _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
+        "source.get",
         "local.task.validation.run",
         "derived.coordination.read",
         "derived.coordination.write",
@@ -5273,16 +5274,35 @@ def _receive_exact(channel: socket.socket, length: int, *, deadline_monotonic=No
     return b"".join(chunks)
 
 
-def _receive_frame(channel: socket.socket, *, deadline_monotonic=None) -> dict[str, Any]:
+def _receive_frame(
+    channel: socket.socket, *, deadline_monotonic=None, maximum_bytes=MAX_FRAME_BYTES,
+    require_canonical=False,
+) -> dict[str, Any]:
+    if type(maximum_bytes) is not int or not 2 <= maximum_bytes <= MAX_FRAME_BYTES:
+        raise TypedStateOwnerProtocolError("typed state-owner receive bound is invalid")
+    if type(require_canonical) is not bool:
+        raise TypedStateOwnerProtocolError("typed state-owner canonical receive flag is invalid")
     size = int.from_bytes(_receive_exact(channel, 4, deadline_monotonic=deadline_monotonic), "big")
-    if size < 2 or size > MAX_FRAME_BYTES:
+    if size < 2 or size > maximum_bytes:
         raise TypedStateOwnerProtocolError("typed state-owner frame size is invalid")
+    body = _receive_exact(channel, size, deadline_monotonic=deadline_monotonic)
     try:
-        value = json.loads(_receive_exact(channel, size, deadline_monotonic=deadline_monotonic).decode("utf-8"))
+        value = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise TypedStateOwnerProtocolError("typed state-owner frame is not JSON") from exc
+    except (ValueError, RecursionError) as exc:
+        if require_canonical:
+            raise TypedStateOwnerProtocolError("typed state-owner frame is not canonical JSON") from exc
+        raise
     if not isinstance(value, dict):
         raise TypedStateOwnerProtocolError("typed state-owner frame must be an object")
+    if require_canonical:
+        try:
+            canonical = canonical_json_bytes(value)
+        except (TypeError, ValueError, RecursionError) as exc:
+            raise TypedStateOwnerProtocolError("typed state-owner frame is not canonical JSON") from exc
+        if body != canonical:
+            raise TypedStateOwnerProtocolError("typed state-owner frame is not canonical JSON")
     return value
 
 
@@ -5475,6 +5495,10 @@ class TypedStateOwnerGateway:
         self._legacy_merge_queue_service: Any | None = None
         self._legacy_merge_recovery_service: Any | None = None
         self._derived_coordination_service: Any | None = None
+        self._current_source_lookup: Any | None = None
+        self._current_source_lookup_binding: bytes | None = None
+        self._current_source_lookup_owner: bytes | None = None
+        self._current_source_lookup_connection: Any | None = None
         self._derived_bootstrap_token_digest: bytes | None = None
         self._fleet_read_bootstrap_token_digest: bytes | None = None
         self._event_wait_handler: Any | None = None
@@ -5520,6 +5544,56 @@ class TypedStateOwnerGateway:
             raise TypedStateOwnerAuthorizationError(
                 "EAAEF binding requires a live server-owned gateway"
             )
+
+    def bind_current_source_lookup(self, **configuration: Any) -> dict[str, Any]:
+        """Bind one host-admitted source reader to this existing owner."""
+        from ..runtime.current_source_lookup import CurrentSourceLookup
+
+        with self._transaction_lock:
+            self._require_live_server_binding()
+            if self._current_source_lookup is not None:
+                raise TypedStateOwnerAuthorizationError("current source lookup is already bound")
+            service = CurrentSourceLookup(**configuration)
+            service.check_native(self._connection, self.identity)
+            binding = service.binding(self.identity)
+            if type(binding) is not dict:
+                raise TypedStateOwnerProtocolError("current source binding must be an object")
+            body = canonical_json_bytes(binding)
+            owner = canonical_json_bytes(dict(self.identity))
+            self._require_live_server_binding()
+            self._current_source_lookup = service
+            self._current_source_lookup_binding = body
+            self._current_source_lookup_owner = owner
+            self._current_source_lookup_connection = self._connection
+            self._assert_current_source_binding(service)
+            return json.loads(body)
+
+    def _assert_current_source_binding(self, service: Any) -> None:
+        from ..runtime.current_source_lookup import CurrentSourceLookup
+
+        self._require_live_server_binding()
+        if (
+            type(service) is not CurrentSourceLookup
+            or self._current_source_lookup is not service
+            or self._connection is not self._current_source_lookup_connection
+            or canonical_json_bytes(dict(self.identity)) != self._current_source_lookup_owner
+            or canonical_json_bytes(service.binding(self.identity)) != self._current_source_lookup_binding
+        ):
+            raise TypedStateOwnerAuthorizationError("original current source owner binding changed")
+
+    def _authorize_source_grant(self, grant: OwnerClientGrant, service: Any) -> None:
+        self._assert_current_source_binding(service)
+        binding = json.loads(self._current_source_lookup_binding)
+        expected = {"task_cid": binding["task_cid"],
+                    "repository_id": binding["repository_id"], "tree_id": binding["expected_tree"]}
+        if (
+            type(grant) is not OwnerClientGrant
+            or grant.allowed_operations != frozenset({"source.get"})
+            or grant.allowed_command_operations
+            or grant.allowed_database_task_commands
+            or dict(grant.entity_scopes) != expected
+        ):
+            raise TypedStateOwnerAuthorizationError("source read requires its exact source-only scoped grant")
 
     def _retire_borrowed_owner_connection(self, connection: Any) -> None:
         """Owner-held transaction lock guards freezing its exact shared handle."""
@@ -6143,6 +6217,9 @@ class TypedStateOwnerGateway:
             issued_at=issued_at,
             expires_at=issued_at + int(ttl * 1_000),
         )
+        if "source.get" in operations:
+            with self._transaction_lock:
+                self._authorize_source_grant(grant, self._current_source_lookup)
         token = uuid.uuid4().hex + uuid.uuid4().hex
         with self._grants_lock:
             self._purge_expired_grants_locked(now_ms=issued_at)
@@ -6425,6 +6502,10 @@ class TypedStateOwnerGateway:
                     command_service.close()
                 self._eaaef_plan_r2_owner_service = None
                 self._eaaef_typed_owner_command_service = None
+            self._current_source_lookup = None
+            self._current_source_lookup_binding = None
+            self._current_source_lookup_owner = None
+            self._current_source_lookup_connection = None
         self._thread = None
         try:
             self.socket_path.unlink()
@@ -6461,6 +6542,9 @@ class TypedStateOwnerGateway:
             "status_bootstrap_configured": status_configured,
             "status_bootstrap_scope_bound": status_scope_bound,
             "typed_event_wait_bound": self._event_wait_handler is not None,
+            # Binding diagnostic only; each source read revalidates its grant,
+            # current owner, repository and exact selected working bytes.
+            "current_source_lookup_bound": self._current_source_lookup is not None,
             # Owner status is canonical DAG-JSON and therefore float-free.
             "database_task_command_bound": (
                 self._database_task_command_handler is not None
@@ -7158,6 +7242,34 @@ class TypedStateOwnerGateway:
                         finally:
                             self._transaction_lock.release()
                         response = {"ok": True, "result": result}
+                    elif action == "source.get":
+                        fields = {"schema", "action", "request_id", "payload"}
+                        if set(request) != fields or request.get("schema") != TYPED_STATE_OWNER_SCHEMA:
+                            raise TypedStateOwnerProtocolError("source read request fields differ")
+                        if transaction_active:
+                            raise TypedStateOwnerAuthorizationError("source reads are unavailable inside a transaction")
+                        payload = request["payload"]
+                        if type(payload) is not dict:
+                            raise TypedStateOwnerProtocolError("source read payload must be an object")
+                        if not self._transaction_lock.acquire(timeout=5):
+                            raise TypedStateOwnerProtocolError("current source owner is busy")
+                        try:
+                            grant = self._require_active_grant(
+                                grant, peer_identity=peer_identity, session_id=session_id,
+                            )
+                            service = self._current_source_lookup
+                            self._authorize_source_grant(grant, service)
+                            response = service.execute(payload, owner_identity=self.identity,
+                                grant=grant, connection=self._connection, request_id=request_id)
+                            if (type(response) is not dict or set(response) != {"ok", "result"}
+                                    or response["ok"] is not True or type(response["result"]) is not dict):
+                                raise TypedStateOwnerProtocolError("source read response differs")
+                            grant = self._require_active_grant(
+                                grant, peer_identity=peer_identity, session_id=session_id,
+                            )
+                            self._authorize_source_grant(grant, service)
+                        finally:
+                            self._transaction_lock.release()
                     elif action == "derived.coordination":
                         self._reject_unknown(request, {"schema", "action", "request_id", "payload"},
                                              "derived coordination request")
@@ -13796,8 +13908,15 @@ class TypedStateOwnerConnection:
                     },
                 )
                 deadline = self._local_completion_deadline if action == "local.task.validation.run" else None
-                response = (_receive_frame(self._socket) if deadline is None
-                    else _receive_frame(self._socket, deadline_monotonic=deadline))
+                receive_kwargs = {}
+                if deadline is not None:
+                    receive_kwargs["deadline_monotonic"] = deadline
+                if action == "source.get":
+                    from ..runtime.current_source_lookup import MAX_RESPONSE_BYTES
+
+                    receive_kwargs["maximum_bytes"] = MAX_RESPONSE_BYTES
+                    receive_kwargs["require_canonical"] = True
+                response = _receive_frame(self._socket, **receive_kwargs)
                 if deadline is not None and time.monotonic() >= deadline:
                     raise TimeoutError("typed owner completion response exceeded its deadline")
             except (OSError, TypedStateOwnerProtocolError):
@@ -13855,6 +13974,21 @@ class TypedStateOwnerConnection:
                     str(response.get("error_type") or ""),
                 )
             return response
+
+    def source_get(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Return one complete validated source-read envelope without SQL."""
+        from ..runtime.current_source_lookup import validate_source_response
+
+        if self._active or type(payload) is not dict:
+            raise TypedStateOwnerProtocolError("source reads require a standalone typed payload")
+        if (self.grant.get("allowed_operations") != ["source.get"]
+                or self.grant.get("allowed_command_operations")
+                or self.grant.get("allowed_database_task_commands")):
+            raise TypedStateOwnerAuthorizationError("source read is outside the exact client grant")
+        selected = json.loads(canonical_json_bytes(payload))
+        response = self._request("source.get", payload=selected)
+        validate_source_response(response, payload=selected, owner_identity=self.identity, grant=self.grant)
+        return response
 
     def hash_observation(self, request: Mapping[str, Any]) -> dict[str, Any]:
         """Coordinate bounded hash reuse through the exclusive DuckDB owner."""
