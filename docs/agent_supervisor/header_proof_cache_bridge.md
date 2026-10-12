@@ -93,6 +93,11 @@ independently expected key/receipt/path identities without storage I/O.
 the signed analysis. `assert_current` executes the retained guard without kernel
 execution. Recursive same-handle currentness or stage operations refuse.
 
+The [sealed inventory](header_proof_inventory.md) retains independently expected
+key/receipt populations and original custody references for explicit restart.
+`import_header_proof_to_cache(..., expected_receipt_id=...)` checks that expected
+generic identity after fresh kernel replay and before its positive-cache write.
+
 Each stage checks current signed source, retained wrapper, AST translator and
 SecurityIR compiler implementations, profiles, both executable pins, requested
 bounds, original sealed proof/custody lineage and the

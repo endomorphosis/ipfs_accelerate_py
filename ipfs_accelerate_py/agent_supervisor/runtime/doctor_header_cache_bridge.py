@@ -72,6 +72,11 @@ def _implementation_bindings():
             Path(receipt_contracts.__file__).resolve(strict=True).read_bytes()).hexdigest()}
 
 
+def header_proof_implementation_bindings():
+    """Current emitter/codec byte provenance; this confers no proof authority."""
+    return dict(_implementation_bindings())
+
+
 class _CacheFence:
     def __init__(self, gate, expected_path_sha256):
         _require(type(gate) is DoctorProofCacheGate
@@ -430,6 +435,38 @@ class HeaderProofCacheAdmission:
             expected_key_id=expected_key_id, expected_receipt_id=expected_receipt_id,
             expected_owner_path_sha256=expected_owner_path_sha256)
 
+    def inventory_binding(self, *, hammer, gate, scoped_analysis, expected_key_id,
+                          expected_receipt_id, expected_native_owner_path_sha256,
+                          expected_cache_owner_path_sha256):
+        """Snapshot original custody for an independently admitted sealed inventory.
+
+        This checks current source and both original owners without a kernel call.
+        Returned identifiers are custody inputs, never a replacement for replay.
+        """
+        with public_replay_without_metadata():
+            self.assert_bound(gate=gate, scoped_analysis=scoped_analysis,
+                expected_key_id=expected_key_id, expected_receipt_id=expected_receipt_id,
+                expected_owner_path_sha256=expected_cache_owner_path_sha256)
+            guard = self._guard
+            _require(hammer is guard.hammer and hammer._authoritative_store is guard.store
+                     and type(expected_native_owner_path_sha256) is str
+                     and _sha(str(guard.native_fence.path)) == expected_native_owner_path_sha256,
+                     "original native proof owner differs from independently admitted inventory")
+            guard.check()
+            receipt = ProofReceipt.from_dict(json.loads(guard.receipt_json))
+            result = {"key_id": expected_key_id, "generic_receipt_id": expected_receipt_id,
+                "custody_ref": guard.reference.to_dict(), "task_cid": scoped_analysis.task_cid,
+                "repository_id": guard.prepared.theorem.roots.repository_id,
+                "scope_id": scoped_analysis.report["scope_id"],
+                "native_owner_path_sha256": expected_native_owner_path_sha256,
+                "cache_owner_path_sha256": expected_cache_owner_path_sha256,
+                "generic_receipt_implementations": dict(
+                    receipt.metadata["generic_receipt_implementations"])}
+            guard.check()
+            _require(result["generic_receipt_implementations"] == _implementation_bindings(),
+                     "current receipt implementations differ from original inventory binding")
+            return result
+
     def revalidate_for_render(self):
         return self._guard.revalidate(DoctorCacheStage.RENDER)
 
@@ -438,7 +475,8 @@ class HeaderProofCacheAdmission:
 
 
 def import_header_proof_to_cache(*, prepared, hammer, custody_ref, expected_key_id,
-                                 gate, expected_owner_path_sha256) -> HeaderProofCacheAdmission:
+                                 gate, expected_owner_path_sha256,
+                                 expected_receipt_id=None) -> HeaderProofCacheAdmission:
     """Replay the actual pinned kernel, then store only the exact local theorem.
 
     The caller independently supplies current preparation, both instantiated
@@ -447,17 +485,28 @@ def import_header_proof_to_cache(*, prepared, hammer, custody_ref, expected_key_
     checks subsequently reload original custody/lineage and current source, but
     do not rerun the kernel. Their checks are sequential and may write existing
     native gate bookkeeping; no failed final check returns an accepted handle.
+    An optional independent generic receipt identity is checked after fresh
+    kernel replay and before the positive cache write. Earlier native bookkeeping
+    and executable effects remain possible.
     """
     try:
         with public_replay_without_metadata():
             _require(type(expected_key_id) is str and expected_key_id,
                      "independently expected full native key identity required")
+            _require(expected_receipt_id is None or (
+                type(expected_receipt_id) is str and expected_receipt_id
+                and expected_receipt_id == expected_receipt_id.strip()
+                and len(expected_receipt_id.encode("utf-8")) <= 1024
+                and all(ord(char) >= 32 for char in expected_receipt_id)),
+                "bounded independently expected generic receipt identity required")
             guard = _AdmissionGuard(prepared, hammer, custody_ref, expected_key_id,
                                     gate, expected_owner_path_sha256)
             guard.proof = custody.replay_header_proof_key_custody(prepared=prepared, hammer=hammer,
                 custody_ref=guard.reference, expected_key_id=expected_key_id)
             guard.check()
             receipt = _receipt(prepared, guard.proof, guard.reference)
+            _require(expected_receipt_id is None or receipt.receipt_id == expected_receipt_id,
+                     "fresh local receipt differs from independently expected generic identity")
             guard.receipt_json = _json(receipt.to_dict())
             guard.check()
             stored = gate.put(prepared.key, receipt, complete=True)
@@ -481,4 +530,5 @@ def import_header_proof_to_cache(*, prepared, hammer, custody_ref, expected_key_
         raise HeaderProofCacheBridgeError("current native header cache admission refused; existing owners may have been written") from exc
 
 
-__all__ = ["HeaderProofCacheBridgeError", "HeaderProofCacheAdmission", "import_header_proof_to_cache"]
+__all__ = ["HeaderProofCacheBridgeError", "HeaderProofCacheAdmission", "import_header_proof_to_cache",
+           "header_proof_implementation_bindings"]
