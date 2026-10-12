@@ -104,6 +104,36 @@ runner removes the temporary artifact store afterward and retains content-free
 counts and binding hashes. These artifacts do not form a persistent proof
 cache. Missing usage or incomplete cleanup remains explicit in qualification.
 
+A repository package experiment qualifies whole-tree retention and restoration
+on the reviewed public COPY inputs:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_repository_view_experiment \
+  --dataset /path/to/terminal-bench-2 --output /path/to/new-repository-view-evidence
+```
+
+It packages every reviewed input, deletes the disposable source copy, restores
+original and compact trees, and compares their bytes, paths and modes. Paired
+API reads, guarded edits and refreshed reads use identical file selections.
+An authored fixture checks actual changed behavior and batched additions,
+deletions and renames. Public benchmark source receives syntax probes only and
+is never executed. Stale revisions, damaged blobs and incorrect manifest hashes
+must be rejected. The original dataset remains unchanged.
+
+Counts distinguish full synthetic read/edit request-response traffic from
+host-side package blobs and mapping storage. Optional local tokenizer counts
+are proxies; model reasoning, provider framing, planning, retries and conversation
+history are outside this offline measurement. No provider or container runs,
+official rewards or live worker adoption are implied. Coverage is the complete
+reviewed fixture tree, not the hidden container filesystem. Pass-through-only
+inputs remain visible in results and cannot establish compression benefit.
+
+This is the repository round-trip foundation. The local CLI and revision
+contract are documented in [runtime/README.md](../../../ipfs_accelerate_py/agent_supervisor/runtime/README.md#reversible-repository-views).
+Native agent tool routing, incremental index refresh and evidence admission
+require their own integration and live qualification. Existing runtime policy
+defaults and provider cooldowns are unchanged.
+
 A separate source-representation experiment uses `--source-view-policy
 source-view-raw@1` as the matched control and `--source-view-policy
 source-view-compact@1` as treatment. Both offer the same bounded Python helper

@@ -28,6 +28,9 @@ Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resou
 | `multi_supervisor_runner` | `runtime/multi_supervisor_runner.py` |
 | `operational_campaign` | `runtime/operational_campaign.py` |
 | `provider_batch_scheduler` | `runtime/provider_batch_scheduler.py` |
+| `repository_source_cli` | `runtime/repository_source_cli.py` |
+| `repository_source_revision` | `runtime/repository_source_revision.py` |
+| `repository_source_view` | `runtime/repository_source_view.py` |
 | `resource_scheduler` | `runtime/resource_scheduler.py` |
 | `router_public_instruction` | `runtime/router_public_instruction.py` |
 | `runtime_cas` | `runtime/runtime_cas.py` |
@@ -110,6 +113,82 @@ Its synthetic fixtures report local representation tokens and diagnostic
 preparation time. They do not establish Terminal Bench success or cumulative
 provider-token savings. Live comparisons must count all planning, coding,
 retry and expansion turns, include failed attempts, and preserve task success.
+
+## Reversible repository views
+
+`repository_source_view` retains a bounded complete filesystem snapshot and a
+compact presentation of supported Python files in a local immutable package.
+Every original byte remains in SHA256-addressed blobs. Files whose rendering is
+unsupported or does not reduce bytes pass through unchanged. Hidden files,
+binary files, empty directories, permission bits and safe relative symlinks are
+represented; `.git` metadata is explicitly excluded at every depth. Ownership,
+timestamps, ACLs and extended attributes are outside the restoration contract.
+Special files, hard links, escaping symlinks and privileged mode bits are refused.
+
+The package can restore original source after its input checkout is removed.
+It can also materialize a compact view for inspection. Compact Python retains
+identifiers, strings and docstrings, but omits ordinary comments and formatting.
+The package retains the original source required to restore those details.
+AST comparison checks rendering structure; it does not establish behavior under
+reflection, source inspection or tools that interpret comments.
+
+```sh
+python -m ipfs_accelerate_py.agent_supervisor.runtime.repository_source_cli \
+  create /path/to/repository /path/to/new-package
+# Use manifest_sha256 from the creation receipt in subsequent commands.
+python -m ipfs_accelerate_py.agent_supervisor.runtime.repository_source_cli \
+  read /path/to/new-package src/example.py --expected-manifest-sha256 HASH
+python -m ipfs_accelerate_py.agent_supervisor.runtime.repository_source_cli \
+  restore /path/to/new-package /path/to/new-original-tree --expected-manifest-sha256 HASH
+python -m ipfs_accelerate_py.agent_supervisor.runtime.repository_source_cli \
+  restore /path/to/new-package /path/to/new-compact-tree --representation compact \
+  --expected-manifest-sha256 HASH
+```
+
+Creation, validation and restoration enforce file, byte and topology bounds.
+Version one allows at most 4,096 entries, 64 MiB of source and 1 MiB per file;
+creation options can lower these limits. Exceeding a limit fails the operation
+instead of producing a partial repository. Outputs must be new, disjoint paths.
+Publication uses Linux `renameat2` after staging and verification; existing
+destinations are never replaced. Receipts report whether the parent directory
+was successfully synced after publication. Source rereads detect changes during capture; callers should
+still use an isolated checkout when other processes may edit the source.
+
+`repository_source_revision` constructs a new package from a bounded batch of
+hash-checked operations: `replace_symbol`, `write_file`, `delete_file` and
+`rename_file`. It restores the parent into private temporary storage, applies
+the batch there and publishes a complete successor. Parent source and packages
+remain unchanged. Overlapping operation paths and stale hashes are rejected.
+Symbol changes reuse the existing supported Python definition edit protocol;
+arbitrary edited compact trees are not automatically reconciled. Use an
+explicit full-source `write_file` for whole-file or comment-only changes.
+
+For example, an operations JSON array can add a file:
+
+```json
+[{"operation":"write_file","path":"settings.json","expected_sha256":null,"content":"{}\n"}]
+```
+
+```sh
+python -m ipfs_accelerate_py.agent_supervisor.runtime.repository_source_cli \
+  revise /path/to/package /path/to/new-successor --expected-manifest-sha256 HASH \
+  --operations /path/to/operations.json
+```
+
+Existing-file operations require `expected_sha256` for the parent's original
+file. A symbol replacement adds `symbol` and `replacement`; a rename adds
+`destination`. A full-source write adds `content` and optionally `mode` (an
+integer permission mask). Edits to symlinks or through symlink ancestors are
+refused; unrelated safe links remain unchanged. Test the restored canonical
+successor before admitting it as a task result.
+
+Package hashes identify this presentation artifact. They do not replace
+Datasets semantic CIDs, proof-cache keys, source freshness checks or required
+raw-source obligations. This interface performs no model calls and does not
+redirect native terminal tools. Provider routing, incremental index refresh
+and proof admission remain separate integration steps. Smaller package views
+are representation measurements; session token savings require actual agent
+use, complete usage accounting and maintained task success.
 
 ## Extending
 
