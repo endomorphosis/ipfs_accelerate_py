@@ -1,0 +1,26 @@
+{
+  "changed_guide_link_checks_passed": 3,
+  "edited_source_roundtrip_demonstrated": false,
+  "exact_source_roundtrip_demonstrated": false,
+  "historical_controls": 3,
+  "historical_replay_output_matches_independent_observation": true,
+  "local_documentation_workflow_steps_passed": 4,
+  "model_assets_changed": false,
+  "notes": [
+    "Ranked benchmark/successor work from concurrent main integrated before plan drafting.",
+    "Historical helper retained solely as replay evidence, not added to production runtime.",
+    "Repository-wide source restoration, model-tool expansion, mid-coding candidate refresh and mapped edits are proposed work."
+  ],
+  "production_implementation_changed": false,
+  "production_test_count": 0,
+  "provider_calls": 0,
+  "provider_token_counts": null,
+  "schema": "reversible-source-view-plan-qualification@1",
+  "scope": "read-only source audit, historical helper authored observation and documentation checks",
+  "source_base_revision": "ffc6643826e546e5a0b3436b766b22f39f243b71",
+  "source_files_bound_and_unchanged": 13,
+  "tokenizer_calls": 0,
+  "total_token_savings_established": false,
+  "training_calls": 0,
+  "whole_repository_minified_execution_qualified": false
+}

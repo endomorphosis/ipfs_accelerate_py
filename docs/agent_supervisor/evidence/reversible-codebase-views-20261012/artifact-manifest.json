@@ -1,0 +1,66 @@
+{
+  "../../reversible_codebase_views_plan.md": {
+    "bytes": 17543,
+    "sha256": "cba33839c18328797df41fbec954a05b6b1c6c1006b3042b8708df354611d77d"
+  },
+  "../../terminal_token_metadata_plan.md": {
+    "bytes": 25603,
+    "sha256": "dde98f7148e4ac2a489632cafc38a6f7c5638ddce7beb9c76d79fedd74162de7"
+  },
+  "README.md": {
+    "bytes": 3330,
+    "sha256": "aa3976f2390616a9a30c981e89266ba45a1abe3340ab6a00ff866958ab38b5e1"
+  },
+  "command.json": {
+    "bytes": 683,
+    "sha256": "d8a3895f47d6c212084a6d184572ec50496c44ac953fec9a458af9e3283cd86e"
+  },
+  "documentation-checks.json": {
+    "bytes": 538,
+    "sha256": "dff2ad81488c7c2ea1cb67d2a8589d600a25218edc017a854277e8b703d40e25"
+  },
+  "documentation-commands.json": {
+    "bytes": 2893,
+    "sha256": "1360b49f9a5fd9274dca1ce4ca1b4b5a16c0d59efdf53d818a78e14fc1bfa8eb"
+  },
+  "documentation-gate-1.log": {
+    "bytes": 70,
+    "sha256": "8be454e062447d45dad3557d627eb43375fc1e49d4177aa71cb29bb0402e6555"
+  },
+  "documentation-gate-2.log": {
+    "bytes": 88,
+    "sha256": "3813659ed5f44a1eb37d0667dfac72ae79955e80939583586d37f18f2dfb8b7a"
+  },
+  "documentation-gate-3.log": {
+    "bytes": 37,
+    "sha256": "f0dc43d8c650aebdd4176518bdcb44cc085a655144d0b6f629e2f707dc79b780"
+  },
+  "documentation-gate-4.log": {
+    "bytes": 40,
+    "sha256": "4cf9ea0515604a43f0a1abc22e4a57b7876794fc938373536054115a3b098b1b"
+  },
+  "historical_code_view_snapshot.py": {
+    "bytes": 11212,
+    "sha256": "0c3ed9348189ed0bf5f45a1c11c24fc3a6acff9c45d9400c853181fe58e3bebd"
+  },
+  "observation.json": {
+    "bytes": 1837,
+    "sha256": "152a308d2e50867300243251914344198d86df66c3c1c7d308e3d05cf4e03d95"
+  },
+  "observation.stderr.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "observe_historical_preview.py": {
+    "bytes": 6510,
+    "sha256": "2f63d0f29feec86a7b8ee2c1410bca4673a02c3a394bf2ff37f644edf1001ccd"
+  },
+  "qualification.json": {
+    "bytes": 1208,
+    "sha256": "a1aee4a1c35f61150192922c2d9fe69c9d704bcc7ab9c23b9d5876b8672829e9"
+  },
+  "source-audit.json": {
+    "bytes": 4861,
+    "sha256": "5acbf07c32c272cb72c08c41ce28cea7e7440da7347f9922bd992e22ee757a20"
+  }
+}
