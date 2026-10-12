@@ -1,0 +1,128 @@
+{
+  "excludes": [
+    "manifest.json"
+  ],
+  "files": {
+    "README.md": {
+      "bytes": 4772,
+      "sha256": "4f10fd66a00201e1dd328c2d7cfaf8f440ea358d6b198fd435a2d8d405672ad6"
+    },
+    "changed-documentation-links.json": {
+      "bytes": 431,
+      "sha256": "2d1d8c8aaf838d5f8f87f94d81979c45373246d113d0567925f0f611ad444399"
+    },
+    "client-collector-code-review.json": {
+      "bytes": 4719,
+      "sha256": "f475d9f06222bd6b3af433876108a99865a6d9b39a25bda2bb3ae099d7735ff3"
+    },
+    "closed-docker-review.json": {
+      "bytes": 6830,
+      "sha256": "738859dab6c249a056414730359e62582557aa959e6026e0d8912fff21c02444"
+    },
+    "docker-final-01/command.json": {
+      "bytes": 22867,
+      "sha256": "0d6cc6f863d32d4c80eeebd03157b3c3480d8fdfc0af53c3672d275306cfba2e"
+    },
+    "docker-final-01/container-controls.json": {
+      "bytes": 2413,
+      "sha256": "ceb2c05bd0876a69a92c3862119e1da9d58b5cba30065e149b6357df3dea1ba3"
+    },
+    "docker-final-01/owner-command.json": {
+      "bytes": 291,
+      "sha256": "510c13986b556cbff6a08e549d00e541b28072b7467de7fe818c7c1bcede16d4"
+    },
+    "docker-final-01/qualification.json": {
+      "bytes": 5920,
+      "sha256": "83dc05b0beae5c94ef6240555621744559eaaa950ff7d1975c6e3e2431abc731"
+    },
+    "docker-final-01/results/collector-diagnostic.json": {
+      "bytes": 81,
+      "sha256": "435b978c84bb636cf74d8fd537e9cc496bb976a6b4e6a22f583b645fcfb5a17f"
+    },
+    "docker-final-01/results/probe-qualification.json": {
+      "bytes": 3471,
+      "sha256": "9ccb119f5cd581b0d37e7452c2052becdc3bc9e4e7f4f46653f31dac9b68e08b"
+    },
+    "docker-final-01/results/router-observation.json": {
+      "bytes": 3311,
+      "sha256": "50ba0d6432a180cf4b2a94511c3aa84e7b206e2ae353040f11815bbac29dc072"
+    },
+    "docker-final-01/results/session-observation.json": {
+      "bytes": 1946,
+      "sha256": "cd6c15c8512899c947351b04214c4db44f619b6f05b9d6204dfc68fd8b77be97"
+    },
+    "docker-final-01/runner-snapshot/owner_probe.py": {
+      "bytes": 13859,
+      "sha256": "f8945ff24d5bad1f67196ea51fcc540fd7d391c6b277fe718b86274758d24b5b"
+    },
+    "docker-final-01/runner-snapshot/run_docker_qualification.py": {
+      "bytes": 11344,
+      "sha256": "23797cf7953e4e16d365a9c8b1f123f2700d34d220bd241d27d604c4b62aff6f"
+    },
+    "docker-final-01/runner-snapshot/worker_probe.py": {
+      "bytes": 11044,
+      "sha256": "df22646971fd79f8565a7fc9978124fef0ee64aae6738c3c7039ab578b9e6708"
+    },
+    "documentation-gates.json": {
+      "bytes": 791,
+      "sha256": "2cec0b58fff4811cdc818689a8af2e1f6753dff14f50605b79c0ad99b8029f30"
+    },
+    "final-tests-01/command.json": {
+      "bytes": 18270,
+      "sha256": "993524f5d9850ca3dd8af34acda0d670f3ad87795bd3cf74cf0e5f52639d8004"
+    },
+    "final-tests-01/junit.xml": {
+      "bytes": 204067,
+      "sha256": "4e23ba092b294ce4658debface353ee02689656ba0bbf5b86ceee5b6031f366e"
+    },
+    "final-tests-01/pytest.log": {
+      "bytes": 6826,
+      "sha256": "e959971446cb132d4e89f2a80f7ab2b526f136bdc287036d12d675023a6ccb32"
+    },
+    "final-tests-01/qualification.json": {
+      "bytes": 14651,
+      "sha256": "d43d8933c0e249f97b4021b0a26c4dd5458d083bc2b81f3e0f549fe682cfb899"
+    },
+    "focused-broker/command.json": {
+      "bytes": 16338,
+      "sha256": "6131cd6d3e7bded68e7543b87fabbf3d766c16018a97bb2c6bca86566b45932f"
+    },
+    "focused-broker/qualification.json": {
+      "bytes": 14493,
+      "sha256": "cf6ced781e12780b76724e41b68a88c09478fbe12b060a948f37a09cf7ef15cf"
+    },
+    "focused-client-collector/command.json": {
+      "bytes": 17845,
+      "sha256": "229aae2706cbc473775f90fbe6b38c77ede664ec06547bff36cec1fc7221995b"
+    },
+    "focused-client-collector/qualification.json": {
+      "bytes": 15816,
+      "sha256": "76024afa2de7ddc7cb45f0c404bb676bccda751c26803b9c1cdc3d5c382557d1"
+    },
+    "focused-policy/command.json": {
+      "bytes": 3514,
+      "sha256": "91ebd44aed031b8c18a3646b0b2ef7c67ce26ab199e8a3ded9cab4f5f424f696"
+    },
+    "focused-policy/qualification.json": {
+      "bytes": 3416,
+      "sha256": "6d6d6b6578fa272cbfd37fe866a8e2a353d3507c0b064876f3a4e63d9cf8d09a"
+    },
+    "focused-wiring/command.json": {
+      "bytes": 15882,
+      "sha256": "e502061cd25a18d4d772e533e016f25fbebbf03ab37ee684b4e6adcb3ad44ee7"
+    },
+    "focused-wiring/qualification.json": {
+      "bytes": 14098,
+      "sha256": "c5f8960647cc8a854f7ec9a119e313c338fbc5b5d892b5b4196af52da9a5742f"
+    },
+    "root-release-final-01.json": {
+      "bytes": 19591,
+      "sha256": "99f190c1b922081987f9e5dce9c58273b12908f6e32eb513e8bf056a74bcb3c2"
+    },
+    "run_final_tests.py": {
+      "bytes": 3646,
+      "sha256": "58772b7abd5df5adc3fcb6977f2e0693c3207142f5c2544fdbb0314e37cbe814"
+    }
+  },
+  "schema": "source-view-worker-publication-manifest@1"
+}

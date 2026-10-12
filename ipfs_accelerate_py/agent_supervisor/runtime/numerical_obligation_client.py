@@ -145,12 +145,19 @@ def process_identity(pid):
 
 def validate_descriptor(value):
     """Validate the public descriptor shape; filesystem checks are separate."""
-    _need(type(value) is dict and set(value) == _DESCRIPTOR_FIELDS
-          and value["schema"] == DESCRIPTOR_SCHEMA, "invalid descriptor schema")
+    return _validate_descriptor(value, schema=DESCRIPTOR_SCHEMA, fields=_DESCRIPTOR_FIELDS,
+        digest_fields=("context_bundle_sha256", "context_receipt_sha256", "boundary_manifest_sha256"),
+        identity_fields=("task_id", "task_cid", "source_tree_id"))
+
+
+def _validate_descriptor(value, *, schema, fields, digest_fields, identity_fields):
+    """Shared closed descriptor checks; each service supplies a fixed vocabulary."""
+    _need(type(value) is dict and set(value) == fields
+          and value["schema"] == schema, "invalid descriptor schema")
     _need(_hex(value["session_id"], 32), "invalid session identity")
-    for name in ("context_bundle_sha256", "context_receipt_sha256", "boundary_manifest_sha256"):
+    for name in digest_fields:
         _need(_hex(value[name]), "invalid descriptor digest")
-    for name in ("task_id", "task_cid", "source_tree_id"):
+    for name in identity_fields:
         _need(_text(value[name], 512), "invalid descriptor identity")
     for name in ("workspace", "socket_path"):
         _need(_text(value[name]) and Path(value[name]).is_absolute()
@@ -199,7 +206,7 @@ def _socket_identity(value, parent, group):
           "socket identity differs")
 
 
-def load_descriptor(path, digest, *, workspace=None):
+def load_descriptor(path, digest, *, workspace=None, validator=None):
     _need(_hex(digest), "descriptor digest required")
     path = Path(path)
     _need(path.is_absolute() and path.resolve(strict=True) == path, "canonical descriptor path required")
@@ -221,7 +228,7 @@ def load_descriptor(path, digest, *, workspace=None):
               and hashlib.sha256(raw).hexdigest() == digest, "descriptor bytes changed")
     finally:
         os.close(fd)
-    value = validate_descriptor(strict_json_loads(raw))
+    value = (validate_descriptor if validator is None else validator)(strict_json_loads(raw))
     _need(raw == canonical_json(value), "canonical descriptor bytes required")
     _need(os.getuid() == os.geteuid() == value["worker_uid"], "selected worker UID required")
     _need(parent.st_uid == value["owner_uid"], "descriptor parent owner differs")

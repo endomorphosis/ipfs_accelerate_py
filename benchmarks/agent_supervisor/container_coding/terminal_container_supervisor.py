@@ -686,6 +686,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         provider_profile: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
+        source_view_profile: str = "disabled",
         capsule_selection: str = "lexical-query-symbol-name@1",
         metadata_census_only: bool = False,
         coding_reply_mode: str = "legacy",
@@ -713,6 +714,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         DEFAULT_CAPSULE_SELECTION, validate_capsule_selection, capsule_selection_observation,
     )
     validate_capsule_selection(capsule_selection, arm=arm)
+    from .terminal_source_view_policy import validate_source_view_profile, source_view_observation
+    validate_source_view_profile(source_view_profile, arm=arm)
+    if source_view_profile != "disabled" and metadata_census_only:
+        raise ValueError("source view qualification requires the coding worker route")
     if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (arm != "full"
@@ -793,6 +798,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "provider_profile": provider_selection,
               **semantic_transport_selection(semantic_transport_schema),
               **capsule_selection_observation(capsule_selection),
+              **source_view_observation(source_view_profile),
               **coding_reply_selection(coding_reply_mode),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
@@ -1034,6 +1040,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         # Candidate routes carry no provider timeout. Check the same work
         # deadline without charging them the model route's unused reserve.
         provider_free_candidate = report["implementation_route"] in {"doctor_candidate", "doctor_contract_candidate"}
+        if source_view_profile != "disabled" and report["implementation_route"] != "model_router":
+            raise ValueError("source view profile requires the model router implementation")
         implementation_budget = (budget["implementation_seconds"] if reserved_phases else
                                  remaining() if provider_free_candidate else
                                  min(coding_timeout_seconds(resource_profile), remaining(25)))
@@ -1048,6 +1056,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor,
             semantic_transport_schema=semantic_transport_schema,
             coding_reply_mode=coding_reply_mode,
+            **({"source_view_profile": source_view_profile} if source_view_profile != "disabled" else {}),
             **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}))
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
             implementation += ["--provider", provider_selection["provider"]]
@@ -1292,6 +1301,16 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "reason": "observer_unavailable", "observation_only": True,
                 "proof_authority": False, "execution_authority": False, "completion_authority": False,
             }
+        try:
+            from .terminal_source_view_observation import collect as collect_source_views
+            report["source_view_retrieval_observation"] = collect_source_views(
+                parent=ROOT / "worker-observations", scope=output_observation_scope, report=report)
+        except Exception:
+            report["source_view_retrieval_observation"] = {
+                "schema": "terminal-source-view-observation@1", "status": "unavailable",
+                "reason": "observer_unavailable", "counts": None, "observation_only": True,
+                "proof_authority": False, "execution_authority": False, "completion_authority": False,
+            }
         report["seconds"] = time.monotonic() - started
         _write(report_path, report)
     return report
@@ -1309,6 +1328,8 @@ def main():
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA)
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
+    from .terminal_source_view_policy import SOURCE_VIEW_PROFILES, DEFAULT_SOURCE_VIEW_PROFILE
+    parser.add_argument("--source-view-profile", default=DEFAULT_SOURCE_VIEW_PROFILE, choices=SOURCE_VIEW_PROFILES)
     from .terminal_capsule_selection_policy import DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS
     parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
         help="Retrieval ranking requires an explicit public task profile with a signed program/support partition")

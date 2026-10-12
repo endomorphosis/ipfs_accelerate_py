@@ -18,15 +18,18 @@ complete KEEP/DELETE byte maps and repository-wide view inventories in the same
 CAS. Default Python views preserve comments; comment removal is a distinct
 opt-in profile. Unsupported source remains exact and Gitlink frontiers stay
 explicit. Deterministic replay restores unchanged source and refuses edited
-views. This does not qualify mapped edits, current-source model access or token
-savings; those remain separate stages.
+views. Mapped edits and token savings remain separate stages. The opt-in
+[worker source reader](worker_source_views.md) now supplies task-scoped compact
+views and exact expansion using the same codec and isolated child lifecycle.
 
 The [current-source lookup](current_source_lookup.md) now attaches a bounded
 original-source operation to the existing typed owner. It separately checks
 native task custody, historical CAS bytes and clean selected working-file
 equality, with grant-bound continuation and full response byte accounting.
-A host-issued subprocess CLI exercises that operation. Current coding containers
-still need a qualified session/descendant channel; required facts remain inline.
+A host-issued subprocess CLI exercises that operation. Its typed grant remains
+separate from the coding-worker reader, which admits the already verified
+semantic producer scope without copying host credentials. Required facts remain
+inline; automatic working-overlay refresh and capsule expansion remain open.
 
 The proposed design maintains a compact view of an entire admitted repository
 while retaining exact original source in its existing content store. Deliver

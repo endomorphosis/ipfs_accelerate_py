@@ -53,6 +53,11 @@ they do not replace current required source or qualify a model expansion tool.
 The [reversible read-only source views](reversible_source_views.md) additionally
 retain complete byte maps for exact unchanged-source restoration. Raw candidate
 byte reductions exclude guidance, sidecars and tool costs; edited views refuse.
+An opt-in [worker source reader](worker_source_views.md) now connects compact
+navigation and exact-source expansion to the isolated `llm_router` session.
+Its profile is frozen through benchmark preparation and its guidance contributes
+to complete input accounting. Required prompt source remains present; this
+integration alone establishes no complete-run token saving.
 
 The [qualified prior comparison](evidence/terminal-reply-contract-pair-20261007/README.md)
 used 246,992 baseline tokens and 327,117 compact-transport tokens. Compact used
@@ -354,8 +359,10 @@ at a time, and retain every attempt and its native usage.
    expansion tool in the coding CLI route. The [bounded source reader](current_source_lookup.md)
    now attaches `source.get` to that existing owner, joins native task custody,
    verifies selected working bytes and complete response costs, and provides a
-   host-issued subprocess CLI. Current-source reads in coding containers still
-   need their own qualified task/descendant route. The numerical endpoint above
+   host-issued subprocess CLI. The opt-in [worker source reader](worker_source_views.md)
+   now provides a separate semantic-source-bound descendant route for compact
+   views and exact expansion; it does not forward a typed-owner host grant.
+   The numerical endpoint above
    covers pending numerical obligations; required facts remain inline. Add
    read-only `capsule.get` and other residual-obligation queries separately. Bind host-issued
    caller grant, task/revision, repository/source scope, root/context, owner

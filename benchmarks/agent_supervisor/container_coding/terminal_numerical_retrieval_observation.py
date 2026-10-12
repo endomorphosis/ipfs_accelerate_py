@@ -81,22 +81,23 @@ def _parse(raw):
     return value
 
 
-def _records(audit, descriptor):
+def _records(audit, descriptor, *, detail_field="returned_rows", max_detail=8, count_noun="rows"):
     records = audit["requests"]
     _need(type(records) is list and len(records) <= descriptor["max_requests"]
           and _integer(audit["accepted_requests"], 0, 64)
           and audit["accepted_requests"] == len(records)
           and audit["inflight_request"] is None and audit["service_stopped"] is True
           and audit["accounting_complete"] is True)
-    counts = dict.fromkeys(_COUNT_FIELDS, 0)
+    counts = dict.fromkeys((key.replace("rows", count_noun) for key in _COUNT_FIELDS), 0)
+    record_fields = (_RECORD_FIELDS - {"returned_rows"}) | {detail_field}
     statuses, request_hashes, response_hashes = {}, set(), set()
     for ordinal, row in enumerate(records, 1):
-        _need(type(row) is dict and set(row) == _RECORD_FIELDS
+        _need(type(row) is dict and set(row) == record_fields
               and type(row["ordinal"]) is int and row["ordinal"] == ordinal
               and type(row["status"]) is str and row["status"] in {"ok", *protocol.REASON_CODES}
               and type(row["delivered"]) is bool
               and _integer(row["response_bytes"], 0, protocol.MAX_FRAME_BYTES)
-              and _integer(row["returned_rows"], 0, 8)
+              and _integer(row[detail_field], 0, max_detail)
               and _integer(row["elapsed_ns"], 0, 3600 * 1_000_000_000))
         for key in ("request_sha256", "response_sha256"):
             _need(row[key] is None or _digest(row[key]))
@@ -104,18 +105,18 @@ def _records(audit, descriptor):
         _need(has_response == (row["response_bytes"] > 0)
               and (not has_response or row["request_sha256"] is not None)
               and (not row["delivered"] or has_response)
-              and (row["status"] == "ok" or row["returned_rows"] == 0)
+              and (row["status"] == "ok" or row[detail_field] == 0)
               and (row["status"] != "ok" or has_response)
               and (has_response or row["status"] == "invalid_request"))
         counts["accepted_requests"] += 1
         counts["response_bytes"] += row["response_bytes"]
         counts["prepared_pages"] += row["status"] == "ok"
-        counts["prepared_rows"] += row["returned_rows"]
+        counts["prepared_" + count_noun] += row[detail_field]
         if row["delivered"]:
             counts["delivered_responses"] += 1
             counts["delivered_response_bytes"] += row["response_bytes"]
             counts["delivered_pages"] += row["status"] == "ok"
-            counts["delivered_rows"] += row["returned_rows"]
+            counts["delivered_" + count_noun] += row[detail_field]
         if row["request_sha256"] is not None:
             counts["request_hash_count"] += 1
             request_hashes.add(row["request_sha256"])
