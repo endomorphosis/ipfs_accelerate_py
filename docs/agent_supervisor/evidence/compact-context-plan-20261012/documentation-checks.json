@@ -1,0 +1,144 @@
+{
+  "bundle_readme_sha256": "b4e83b18f364899216a833e4e9c0980626fc874291a5877f0d2b859ad3dfda45",
+  "completion_authority": false,
+  "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+  "docker_run": false,
+  "execution": "exact-four-workflow-run-blocks-via-bash",
+  "git_branch": "agent/context-displacement-plan-20261012",
+  "git_head": "48f442b4ca468b8cf2e858bca72a676812344302",
+  "log_bytes": 2258,
+  "log_path": "documentation-workflow.log",
+  "log_sha256": "2856055b74d3b14ddc6b3b77b84270906b137e890719f5f08861f93c678109fc",
+  "manual_relative_link_checks": [
+    {
+      "check_anchors": true,
+      "errors": [],
+      "exit_status": 0,
+      "input_unchanged": true,
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "61e920acba6029076bcd02b95c7a8c9cd657cc7d89d632620f8c8f867dd8955a"
+    },
+    {
+      "check_anchors": true,
+      "errors": [],
+      "exit_status": 0,
+      "input_unchanged": true,
+      "path": "docs/agent_supervisor/evidence/compact-context-plan-20261012/README.md",
+      "sha256": "b4e83b18f364899216a833e4e9c0980626fc874291a5877f0d2b859ad3dfda45"
+    }
+  ],
+  "materialized_tracked_docs": [],
+  "model_calls": 0,
+  "plan_sha256": "61e920acba6029076bcd02b95c7a8c9cd657cc7d89d632620f8c8f867dd8955a",
+  "product_edits": false,
+  "product_hashes_unchanged": true,
+  "product_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py": "001c08a02cdef3dcb54e5778fe35a437f3c86cdce1fb6945e62fef450e0a7c5f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py": "bb9a242e92ec3057c927dec0be350dbe73eec2be1e7fd0c66234bb1d77fd19a7",
+    "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "653c9217c29149cd7f2e8e9a64c5be25fed2e956649ee3eeaea8a538de2b8c88",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+    "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py": "9689548701f833b3c7acd8b91a17cd21cfc114c4d0e3588efb191c2c1488893f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_client.py": "330ab86a0faad1fbdb87653be98403a6fdf39437c7828507e3bc24d7d5204a1e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_selection.py": "ac1da0918f2c1363b8e3541bf586d92f099e7db1b7c6b353df8ff274efff9999",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "faa0e1e4920c1d8cb386a3c86858befe0585f7ca44e6e09e65dd1a89c0d5ef8f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "77f483a8bbff65ced9229233293c2b557164b5745d6d34b9faf90042c4c43647",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py": "18a0c6d95c27efeb7eceeb0d79fe92f3a007d67626bcad4271b98ef3e17e9e1b"
+  },
+  "proof_authority": false,
+  "provider_calls": 0,
+  "pytest_run": false,
+  "python_version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+  "schema": "supervisor-compact-context-plan-documentation-checks@1",
+  "solver_run": false,
+  "status": "pass",
+  "steps": [
+    {
+      "argv": [
+        "bash",
+        "-c",
+        "python scripts/docs/check_agent_supervisor_docs.py"
+      ],
+      "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+      "exit_status": 0,
+      "finished_utc": "2026-10-12T23:11:59.466828+00:00",
+      "name": "Supervisor primary-doc vocabulary",
+      "run": "python scripts/docs/check_agent_supervisor_docs.py",
+      "started_utc": "2026-10-12T23:11:59.446995+00:00",
+      "stderr": "",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n",
+      "stdout_bytes": 70,
+      "stdout_sha256": "8be454e062447d45dad3557d627eb43375fc1e49d4177aa71cb29bb0402e6555"
+    },
+    {
+      "argv": [
+        "bash",
+        "-c",
+        "python scripts/docs/check_current_docs_links.py"
+      ],
+      "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+      "exit_status": 0,
+      "finished_utc": "2026-10-12T23:11:59.560216+00:00",
+      "name": "Maintained-surface relative links",
+      "run": "python scripts/docs/check_current_docs_links.py",
+      "started_utc": "2026-10-12T23:11:59.466848+00:00",
+      "stderr": "",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n",
+      "stdout_bytes": 88,
+      "stdout_sha256": "3813659ed5f44a1eb37d0667dfac72ae79955e80939583586d37f18f2dfb8b7a"
+    },
+    {
+      "argv": [
+        "bash",
+        "-c",
+        "python - <<'PY'\nfrom __future__ import annotations\n\nimport re\nimport sys\nfrom pathlib import Path\n\nroot = Path(\".\")\n\n\ndef need(path: Path, pattern: str, label: str) -> str:\n    text = path.read_text(encoding=\"utf-8\")\n    match = re.search(pattern, text, flags=re.M)\n    if not match:\n        print(f\"FAIL: {label} not found in {path}\", file=sys.stderr)\n        raise SystemExit(1)\n    return match.group(1)\n\n\npyproject = need(\n    root / \"pyproject.toml\",\n    r'^version\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"pyproject version\",\n)\nsetup = need(\n    root / \"setup.py\",\n    r'^\\s*version\\s*=\\s*\"([^\"]+)\"\\s*,?\\s*$',\n    \"setup.py version\",\n)\npackaging = need(\n    root / \"ipfs_accelerate_py\" / \"__init__.py\",\n    r'^_PACKAGING_VERSION\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"_PACKAGING_VERSION\",\n)\ninit_text = (root / \"ipfs_accelerate_py\" / \"__init__.py\").read_text(\n    encoding=\"utf-8\"\n)\nif not re.search(\n    r'^__version__\\s*=\\s*_PACKAGING_VERSION\\s*$',\n    init_text,\n    flags=re.M,\n):\n    print(\n        \"FAIL: __version__ must be assigned from _PACKAGING_VERSION\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nif not (pyproject == setup == packaging):\n    print(\n        \"FAIL: version pins disagree: \"\n        f\"pyproject={pyproject!r} setup={setup!r} \"\n        f\"_PACKAGING_VERSION={packaging!r}\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nprint(f\"OK: packaging pins aligned at {pyproject}\")\nPY\n"
+      ],
+      "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+      "exit_status": 0,
+      "finished_utc": "2026-10-12T23:11:59.591355+00:00",
+      "name": "Packaging version pin alignment",
+      "run": "python - <<'PY'\nfrom __future__ import annotations\n\nimport re\nimport sys\nfrom pathlib import Path\n\nroot = Path(\".\")\n\n\ndef need(path: Path, pattern: str, label: str) -> str:\n    text = path.read_text(encoding=\"utf-8\")\n    match = re.search(pattern, text, flags=re.M)\n    if not match:\n        print(f\"FAIL: {label} not found in {path}\", file=sys.stderr)\n        raise SystemExit(1)\n    return match.group(1)\n\n\npyproject = need(\n    root / \"pyproject.toml\",\n    r'^version\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"pyproject version\",\n)\nsetup = need(\n    root / \"setup.py\",\n    r'^\\s*version\\s*=\\s*\"([^\"]+)\"\\s*,?\\s*$',\n    \"setup.py version\",\n)\npackaging = need(\n    root / \"ipfs_accelerate_py\" / \"__init__.py\",\n    r'^_PACKAGING_VERSION\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"_PACKAGING_VERSION\",\n)\ninit_text = (root / \"ipfs_accelerate_py\" / \"__init__.py\").read_text(\n    encoding=\"utf-8\"\n)\nif not re.search(\n    r'^__version__\\s*=\\s*_PACKAGING_VERSION\\s*$',\n    init_text,\n    flags=re.M,\n):\n    print(\n        \"FAIL: __version__ must be assigned from _PACKAGING_VERSION\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nif not (pyproject == setup == packaging):\n    print(\n        \"FAIL: version pins disagree: \"\n        f\"pyproject={pyproject!r} setup={setup!r} \"\n        f\"_PACKAGING_VERSION={packaging!r}\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nprint(f\"OK: packaging pins aligned at {pyproject}\")\nPY\n",
+      "started_utc": "2026-10-12T23:11:59.560242+00:00",
+      "stderr": "",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "OK: packaging pins aligned at 0.0.45\n",
+      "stdout_bytes": 37,
+      "stdout_sha256": "f0dc43d8c650aebdd4176518bdcb44cc085a655144d0b6f629e2f707dc79b780"
+    },
+    {
+      "argv": [
+        "bash",
+        "-c",
+        "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"\n"
+      ],
+      "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+      "exit_status": 0,
+      "finished_utc": "2026-10-12T23:11:59.594720+00:00",
+      "name": "Closeout navigation markers",
+      "run": "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"\n",
+      "started_utc": "2026-10-12T23:11:59.591362+00:00",
+      "stderr": "",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "OK: closeout navigation markers present\n",
+      "stdout_bytes": 40,
+      "stdout_sha256": "4cf9ea0515604a43f0a1abc22e4a57b7876794fc938373536054115a3b098b1b"
+    }
+  ],
+  "token_savings_measured": false,
+  "tracked_non_documentation_changes_after": [],
+  "tracked_non_documentation_changes_before": [],
+  "training_run": false,
+  "workflow_path": ".github/workflows/documentation-gates.yml",
+  "workflow_sha256": "0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763",
+  "workflow_unchanged": true
+}

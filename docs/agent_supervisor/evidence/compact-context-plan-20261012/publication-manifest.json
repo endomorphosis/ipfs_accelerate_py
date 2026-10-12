@@ -1,0 +1,51 @@
+{
+  "schema": "supervisor-compact-context-plan-publication-manifest@1",
+  "base_revision": "48f442b4ca468b8cf2e858bca72a676812344302",
+  "datasets_audit_revision": "12b2de0f1c949b793772ce29edad84355978b9b7",
+  "documentation_only": true,
+  "entry_count": 7,
+  "entries": [
+    {
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "bytes": 32097,
+      "sha256": "61e920acba6029076bcd02b95c7a8c9cd657cc7d89d632620f8c8f867dd8955a"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/compact-context-plan-20261012/.gitattributes",
+      "bytes": 18,
+      "sha256": "0ded296e877d1b2a383ec19feee9b1536073a064a02e90a23f4a62d84bdef214"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/compact-context-plan-20261012/README.md",
+      "bytes": 1257,
+      "sha256": "b4e83b18f364899216a833e4e9c0980626fc874291a5877f0d2b859ad3dfda45"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/compact-context-plan-20261012/documentation-checks.json",
+      "bytes": 10769,
+      "sha256": "ac2d938ebb681ad56f4a688e5fe0d22f08d97aa957be432741775ca43d036d0d"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/compact-context-plan-20261012/documentation-workflow.log",
+      "bytes": 2258,
+      "sha256": "2856055b74d3b14ddc6b3b77b84270906b137e890719f5f08861f93c678109fc"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/compact-context-plan-20261012/ir-routing-review.json",
+      "bytes": 11050,
+      "sha256": "f7505ffa251a288947ee77a8fbb3b2242e7c8c61591e68789138b9b05979b1fc"
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/compact-context-plan-20261012/minification-review.json",
+      "bytes": 10712,
+      "sha256": "7d5256e47f9da70611e1944fce4659c243b4f971e801b86f66443568ead907a0"
+    }
+  ],
+  "self_hash_excluded": true,
+  "product_changes": false,
+  "new_training": false,
+  "new_model_upload": false,
+  "new_provider_or_benchmark_run": false,
+  "new_test_execution": false,
+  "existing_model_assets_preserved": true
+}

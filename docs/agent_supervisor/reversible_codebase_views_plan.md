@@ -5,6 +5,15 @@ accelerator `1f6d998a92db4024f35b57bbdb183a6626a7fa31` and incorporates parallel
 work published through `ffc6643826e546e5a0b3436b766b22f39f243b71`.
 The contracts and stages below are proposed unless explicitly marked current.
 
+The October 12 follow-up audit includes publications through
+`48f442b4ca468b8cf2e858bca72a676812344302`. Unchanged repository restoration
+already works. The next token-efficiency priority is to identify which source
+reads and prompt content a representation actually replaces, then measure the
+complete session. Editable compact workspaces and uniform UI/UX IR model
+routing remain distinct proposed capabilities. The [follow-up audit and
+documentation checks](evidence/compact-context-plan-20261012/README.md) retain
+the source/research scope of this plan change.
+
 Stage 1 now has a [retained committed-source inventory API](repository_source_inventory.md).
 It reuses the datasets complete chunked producer and caller-owned CAS, then
 replays exact historical bytes and Git modes after the original checkout is
@@ -58,6 +67,48 @@ apply accepted edits to the original bytes. This can reduce repeated source
 and reasoning in the model's conversation. It needs both source/edit fidelity
 and complete-run measurement; an inverse alone establishes neither token
 savings nor correct execution of transformed source.
+
+## What moving the whole codebase to and from a compact state means
+
+The complete admitted committed-source inventory and its reversible views
+already cover available source blobs, with explicit Gitlink and unsupported
+frontiers. The [cold restoration qualification](evidence/reversible-source-views-20261012/README.md)
+restores bytes after the original checkout is deleted. Restoration uses the
+original blobs retained in CAS; compact text alone cannot recover discarded
+comments or formatting. The current transform preserves paths, identifiers,
+imports, strings, indentation and physical lines. Its default removes trailing
+trivia; additional comment removal is opt-in.
+
+The model-facing [worker reader](worker_source_views.md#select-and-freeze-the-treatment)
+has a different population: at most 64 admitted semantic-manifest files and
+1 MiB total. Required source remains inline, and the reader does not rewrite
+the executable checkout. Its working refresh covers that same population;
+new files remain unadmitted and renamed/deleted files refuse. Repository-wide
+storage therefore does not yet mean repository-wide worker navigation or
+replacement of the original conversation content.
+
+| Contract | Current capability | Next acceptance condition |
+| --- | --- | --- |
+| Restore an unchanged snapshot | Exact bytes from retained original blobs and deterministic view maps | Already qualified within the admitted inventory; retain explicit coverage frontiers |
+| Navigate a complete admitted repository | Complete stored inventory; smaller bounded coding-reader population | Page repository-wide path/symbol discovery into task-specific read scopes without sending every body or removing response bounds |
+| Preserve edits made while using compact views | Edit expanded original source and refresh admitted working files | Add versioned preimage-bound mapped edits and explicit population deltas for supported create/move/delete operations |
+| Execute a physically minified checkout | No such profile | Separate language/runtime/import/reflection/tooling validation and original-task acceptance |
+| Reduce total provider tokens | No qualified compact-source session benefit | Show displaced content and repeated reads, then compare complete native usage at equal official success |
+
+A physical shadow checkout may be useful for familiar navigation tools, but it
+must be derived from the same inventory and mappings. A read-only export is a
+different deliverable from an editable virtual filesystem. Arbitrary shell,
+editor and build-tool writes cannot be translated merely by saving an old
+snapshot. Until every supported write has an explicit mapping and conflict
+contract, edit the expanded originals. Running tests against those originals
+also avoids assuming that a renamed/minified execution environment is equivalent.
+
+Whole-repository reversible minification is neither necessary nor sufficient
+for token savings. Selective exact reads can avoid irrelevant or repeated text
+while the operational source stays ordinary. Conversely, a reversible view can
+cost more through guidance, aliases, expansion and repair. The immediate
+experiment should isolate context displacement and retrieval behavior before
+adding a more aggressive source transform.
 
 ## What the audit found
 
@@ -159,13 +210,102 @@ scope. A content hash associates bytes; owner admission and currentness remain
 separate checks. A missing blob or stale mapping requires expansion/rebuild or
 refusal, never an approximate inverse.
 
-LegalIR, SecurityIR, CodebaseIR and IntentIR keep their separate inventories,
+LegalIR, SecurityIR, CodebaseIR, IntentIR and UI/UX IR keep separate inventories,
 DuckDB/DuckLake namespaces and existing Hugging Face/checkpoint identities.
 Within each, retain family, schema/version, decoder task, 8D/384D/768D dimension
-and token profile. Reuse prior embeddings and checkpoints. Source-view fidelity
+and token profile. The existing four-family/twelve-cell inventory is not proof
+that all five families have three ready trained profiles. Extend routing and
+inventory versions additively for UI/UX IR, preserving previous manifests and
+explicitly declaring missing checkpoints or unsupported decoder tasks. Reuse
+prior embeddings and checkpoints when their producer, source and profile pins
+match. Source-view fidelity
 is an exact-byte storage/codec responsibility; a semantic decoder's training
 loss cannot certify original comments, formatting or arbitrary source edits.
 No new training is needed for the first source-view experiment.
+
+## Route IRs to current code and disclose only useful results
+
+Use the existing metadata owners to join task requirements to current source,
+then select relevant evidence. Each IR has a separate role and supported subset:
+
+| Family | Task contribution | Model-facing result |
+| --- | --- | --- |
+| IntentIR | Requirements, actions, preconditions, effects and plan coverage | Required conditions, candidate actions and unresolved requirements |
+| CodebaseIR | Source-grounded symbols, dependencies and supported behavior | Relevant spans/contracts and mismatches with intent |
+| UI/UX IR | Interaction states, flows, affordances and accessibility constraints | Relevant UI transitions and observable acceptance conditions |
+| SecurityIR | Supported security properties and policy constraints | Applicable risks, assumptions and checked or pending obligations |
+| LegalIR | Applicable legal/normative requirements for tasks needing them | Relevant constraints and their source provenance |
+
+These are proposed routing roles, not a claim that each learned decoder is
+ready for arbitrary Terminal Bench tasks. UI/UX IR semantics, a shared
+autoencoder family wrapper, a 384D candidate decoder and checkpoint publication
+receipts already exist and must be reused. Uniform fifteen-cell routing and
+successful task-specific reconstruction still require their own inventory and
+evaluation evidence; publication or registration alone does not qualify a
+decoder. Do not generate every family for every file.
+
+Codebase-specific adaptation should start from retained source-bound assets
+and checkpoints, with the repository revision, training split, encoder,
+dimension/window and decoder task pinned. Evaluate retrieved requirement/source
+alignment and held-out semantic reconstruction before using learned rankings.
+A source-feature ranker is not automatically a learned code-to-formula decoder.
+Keep local inference/training time visible, and charge any LLM-generated labels
+or repairs to the native token ledger. Report cold-start and reused-index/model
+cost separately rather than hiding target-specific setup in a warm result.
+
+An 8D/384D/768D latent is an internal model representation, not that number of
+provider tokens. The coding model needs a supported decoded capsule or tool
+result; serializing a vector does not teach it the decoder. GTE window/tokenizer
+limits describe the encoder and cannot measure the coding provider's usage.
+
+DuckDB indexes locate current spans and dependencies. Quack serves bounded
+admitted queries through the existing owner. DuckLake retains revision and
+publication lineage. The proof cache contributes only supported, independently
+checked facts with property, assumptions, native verdict and source/toolchain
+dependencies. Changed dependencies invalidate current reuse; candidate snapshots
+and pending formulas remain labelled as such. Retrieve a small useful statement
+and its evidence reference rather than automatically printing a complete formal
+derivation. A 4,545-byte selected obligation can still exceed a 642-byte source
+file, as the [existing selection observation](evidence/candidate-context-selection-20261012/README.md)
+demonstrates.
+
+## Require evidence of displaced context before claiming compression
+
+Add a versioned representation-decision receipt at the existing context compiler
+and reader boundaries. For each proposed replacement, retain the task/source
+generation, IR family/schema/checkpoint if used, exact baseline and candidate
+rendered identities, required-fact coverage, provider/model/counter identity,
+and the original spans or repeated reads expected to be avoided. Keep restoration
+maps, full indexes and translation dictionaries host-side unless requested.
+Selecting a new tool while retaining all baseline text is an additive treatment;
+record that fact rather than claiming the text was displaced. A declared
+displacement remains a proposal until the delivered input confirms which spans
+were replaced. Avoided future reads are counterfactual; matched complete runs
+are needed to assess repeated-read behavior and net benefit.
+
+Use the existing complete-input counter/fallback pattern. Choose a replacement
+only when required coverage and the real coding-route expansion lifecycle are
+qualified, and the full rendered candidate is smaller with the same compatible
+counter. Counter failure, missing coverage, unsupported source or a larger
+candidate retains exact source. A smaller initial prompt does not guarantee a
+smaller run: separately measure tool-guidance overhead, discovery, expansions,
+generated output and repairs. Do not silently remove required source while the
+actual native coding-child handoff remains unfinished.
+
+The run total is the sum of final native input plus output over actual planning,
+coding and any additional LLM sessions. Tool text and reasoning already included
+by the provider are not added again; cached input is a subset, not an additional
+total. Non-provider database, codec, verifier and local-model work has its own
+time/compute ledger. Token benefit requires that avoided input and reasoning
+exceed added guidance, retrieval, expansion and repair across the complete run.
+
+Prioritize three independent steps: qualify repository-wide discovery feeding
+bounded task-specific scopes; implement the displacement receipt and complete
+input selection gate; then run the same-channel exact-versus-compact treatment
+with official verification. Optional mapped edits and aggressive executable
+minification follow after that evidence. The existing native bootstrap/context/
+actual-child and source-CAS integration prerequisites remain necessary for
+operational deployment; the allocation guard alone does not activate them.
 
 ## Provide repository-wide views with explicit edit handling
 
@@ -210,7 +350,7 @@ No new training is needed for the first source-view experiment.
 7. **Refresh against the appropriate source state.** The coding worker's
    [source reader](worker_source_views.md#read-working-files-after-edits) now
    provides a session-local candidate refresh boundary for source views.
-   Mid-coding formal indexes still need a separate rebuild boundary. Bind
+   Accepted formal-index publication still needs its separate boundary. Bind
    the working source revision, label it candidate, and refuse prior proof reuse
    after dependency drift. The existing ranked successor API requires accepted
    publication and a completed native task; it is not that mid-coding API.
@@ -264,8 +404,12 @@ restart and actual forward/inverse application. A diff containing expected hash
 strings is insufficient. Use meaningful byte/preimage assertions and ordinary
 runtime tests; keep AST checks distinct from correctness claims.
 
-First complete the already prepared lexical baseline versus instruction
-deduplication comparison and, separately, lexical versus ranked capsules. The
+The instruction-deduplication [live pair](evidence/terminal-instruction-dedup-pair-20261012/README.md)
+has now completed: 311,776 baseline versus 309,813 treatment native tokens,
+with both official rewards equal to one. Its 0.63% difference, mostly cached
+input, comes from one independently planned pair and establishes no repeatable
+or causal saving. Lexical versus ranked capsules and exact versus compact
+source remain distinct experiments. The
 [archive04 recipes](evidence/terminal-ranked-successor-20261012/archive-04/matched-comparison-recipes.json)
 are preparations, not new deployment or live results. Their admitted default
 Intent handling differs from the census's disabled Intent profile; preserve
