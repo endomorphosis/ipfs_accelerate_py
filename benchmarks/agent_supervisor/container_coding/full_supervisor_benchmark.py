@@ -498,6 +498,7 @@ def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
 
 
 def collect(output: Path, *, task_name: str | None = None) -> dict:
+    from .terminal_provider_stop import provider_stop_observation
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
@@ -543,6 +544,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
         native = json.loads(path.read_text())
         report_path = path.parent / "agent/supervisor-result.json"
         report = json.loads(report_path.read_text()) if report_path.is_file() else None
+        provider_stop = provider_stop_observation(report) if type(report) is dict else None
         durations = {}
         for field in ("environment_setup", "agent_setup", "agent_execution", "verifier"):
             phase = native.get(field) or {}
@@ -553,7 +555,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                        "reward": (native.get("verifier_result") or {}).get("rewards"),
                        "exception_type": (native.get("exception_info") or {}).get("exception_type"),
                        "durations_seconds": durations, "agent_context": native.get("agent_result"),
+                       "native_agent_execution_started": bool((native.get("agent_execution") or {}).get("started_at")),
                        "supervisor": report,
+                       **({"provider_stop": provider_stop} if provider_stop is not None else {}),
                        **({"tool_output_dispatch": tool_output_dispatch_observation(report, tool_output)}
                           if tool_output != DEFAULT_TOOL_OUTPUT_POLICY else {}),
                        **({"semantic_metadata_dispatch": _metadata_dispatch_observation(report, metadata_view)}
@@ -610,7 +614,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     return result
 
 
-def execute(output: Path, *, task_name: str | None = None) -> dict:
+def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
@@ -687,10 +691,92 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     return result
 
 
+def execute(output: Path, *, task_name: str | None = None,
+            provider_backoff_directory: Path | None = None, provider_max_wait_seconds=0) -> dict:
+    """Admit fresh work through shared cooldown; dispatched trials never replay."""
+    from .terminal_provider_backoff import ProviderBackoff, BackoffStateError
+    from .terminal_provider_stop import provider_stop_observation
+    output = Path(output).absolute()
+    # Check the one-shot boundary before touching any recovery state.
+    if (output / 'invocation.json').exists():
+        raise FileExistsError('trial already invoked; prepare a fresh trial')
+    prepared = json.loads((output / 'preparation.json').read_text())
+    selected = resolve_provider_profile(prepared.get('provider_profile'))
+    provider = selected['provider']
+    try:
+        gate = ProviderBackoff(provider_backoff_directory)
+        permit = gate.acquire_with_wait(provider, max_wait_seconds=provider_max_wait_seconds)
+    except (BackoffStateError, OSError) as error:
+        result = {'schema': 'terminal-provider-deferral@1', 'state': 'provider_deferred',
+                  'provider': provider, 'reason': 'provider_admission_unavailable',
+                  'error_type': type(error).__name__, 'retry_after_seconds': None,
+                  'provider_calls': 0, 'containers_launched': 0, 'trial_invoked': False,
+                  'automatic_replay_allowed': False}
+        _json(output / 'provider-deferral.json', result)
+        return result
+    if not permit.allowed:
+        result = {'schema': 'terminal-provider-deferral@1', 'state': 'provider_deferred',
+                  **permit.observation(), 'provider_calls': 0, 'containers_launched': 0,
+                  'trial_invoked': False}
+        result['schema'] = 'terminal-provider-deferral@1'
+        _json(output / 'provider-deferral.json', result)
+        return result
+    result = None
+    try:
+        # Full preparation and source validation happens AFTER any waiting.
+        result = _execute_once(output, task_name=task_name)
+        trials = result.get('trials', [])
+        single_trial = type(trials) is list and len(trials) == 1 and type(trials[0]) is dict
+        exact_trial = single_trial and trials[0].get('exact_trial_task_matches') is True
+        report = trials[0].get('supervisor') if single_trial else {}
+        report = report if type(report) is dict else {}
+        stop = provider_stop_observation(report)
+        rows = report.get('provider_invocations', [])
+        receipts_bound = (type(rows) is list and bool(rows) and len(rows) <= 1024
+                     and all(type(row) is dict and row.get('status') in {'provider_returned', 'failed'}
+                             and row.get('schema') == 'router-implementation-invocation@1'
+                             and type(row.get('invocation_id')) is str and 0 < len(row['invocation_id']) <= 256
+                             and row.get('model') == selected['model']
+                             and row.get('provider') == provider for row in rows)
+                     and len({row['invocation_id'] for row in rows}) == len(rows))
+        outcome_unknown = (bool(report.get('unreceipted_provider_attempt'))
+                           or (bool(rows) and not receipts_bound)
+                           or (single_trial and trials[0].get('native_agent_execution_started') is True
+                               and not receipts_bound)
+                           or (bool(trials) and not single_trial))
+        recovered = (exact_trial and receipts_bound and not outcome_unknown
+                     and all(row['status'] == 'provider_returned' for row in rows))
+        result['provider_admission'] = permit.observation()
+        result['provider_backoff'] = gate.settle(permit, stop=stop, provider_succeeded=recovered,
+                                               outcome_unknown=outcome_unknown)
+        _json(output / 'receipt.json', result)
+        return result
+    except BaseException as error:
+        if (output / 'invocation.json').exists():
+            try:
+                gate.mark_unsettled(permit)
+            except Exception as persistence_error:
+                error.add_note('Provider admission blocker could not be persisted: '
+                               + type(persistence_error).__name__)
+        raise
+    finally:
+        # Unsettled recovery retains its persisted marker. After a crash or
+        # failed receipt collection, another process cannot assume availability.
+        try:
+            if not permit._settled and not (output / 'invocation.json').exists():
+                gate.abandon_before_dispatch(permit)
+        finally:
+            permit.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=("prepare", "execute", "collect"))
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--provider-backoff-directory", type=Path,
+                        help="Shared host provider cooldown state; execute only")
+    parser.add_argument("--provider-max-wait-seconds", type=float, default=0,
+                        help="Bounded pre-dispatch wait, 0..60 seconds; default returns a deferral")
     parser.add_argument("--dataset", type=Path)
     parser.add_argument("--task", help="Dataset task name; prepare defaults to fix-code-vulnerability")
     parser.add_argument("--task-profile", type=Path,
@@ -722,6 +808,8 @@ def main():
     parser.add_argument("--intent-requirement-contract", type=Path,
         help="Use source-bound @1 provider coverage or @2 reviewed symbolic operations before admission")
     args = parser.parse_args()
+    if args.operation != 'execute' and (args.provider_backoff_directory is not None or args.provider_max_wait_seconds != 0):
+        parser.error('provider admission options apply only to execute')
     if args.operation != "prepare" and args.numerical_formalization_profile is not None:
         parser.error("numerical formalization is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
@@ -750,9 +838,15 @@ def main():
                          semantic_metadata_view=args.semantic_metadata_view,
                          semantic_context_profile=args.semantic_context_profile,
                          numerical_formalization_profile=args.numerical_formalization_profile)
+    elif args.operation == 'execute':
+        result = execute(args.output, task_name=args.task,
+                         provider_backoff_directory=args.provider_backoff_directory,
+                         provider_max_wait_seconds=args.provider_max_wait_seconds)
     else:
-        result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)
+        result = collect(args.output, task_name=args.task)
     print(json.dumps(result, sort_keys=True, indent=2))
+    if result.get('state') == 'provider_deferred':
+        raise SystemExit(75)
 
 
 if __name__ == "__main__":

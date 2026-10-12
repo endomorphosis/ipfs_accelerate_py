@@ -51,6 +51,7 @@ from .terminal_semantic_context_policy import (
 from .terminal_numerical_policy import (
     validate_numerical_profile, numerical_observation, require_numerical_archive,
 )
+from .terminal_provider_stop import provider_stop_observation
 
 
 def measured_usage(report: dict) -> dict:
@@ -111,6 +112,9 @@ def measured_usage(report: dict) -> dict:
         and type(result["cache_included_in_input"]) is bool
         and all(type(result.get(key)) is int and result[key] >= 0 for key in (
             "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")))
+    # A native task_complete event can close a failed session with no token
+    # counters. Preserve that event separately from complete accounting.
+    result["usage_accounting_complete"] = result["harbor_usage_exportable"]
     result["billing_total_verified"] = False
     result["dollar_cost"] = None
     return result
@@ -575,6 +579,9 @@ class FullSupervisorAgent(BaseAgent):
             try:
                 await asyncio.wait_for(environment.download_file(report_path, self.logs_dir / "supervisor-result.json"), timeout=5)
                 report = json.loads((self.logs_dir / "supervisor-result.json").read_text())
+                provider_stop = provider_stop_observation(report)
+                if provider_stop is not None:
+                    context.metadata["provider_stop"] = provider_stop
                 usage = measured_usage(report)
                 populate_harbor_usage(context, usage)
                 context.metadata.update(task_completed=report["task_completed"], usage=usage,

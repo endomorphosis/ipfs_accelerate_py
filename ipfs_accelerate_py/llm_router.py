@@ -3707,6 +3707,158 @@ def _classify_codex_error_kind(*, stdout: str, stderr: str) -> Optional[str]:
     return None
 
 
+MAX_PROVIDER_RETRY_AFTER_SECONDS = 7 * 24 * 60 * 60
+
+
+def _bounded_provider_retry_hint(value: object, *, unbounded: object = False) -> dict:
+    """Project relative seconds; a longer valid hint must never be shortened.
+
+    This is metadata, not permission to retry a dispatched operation. Missing,
+    nonfinite, boolean, string and nonpositive values remain unknown. An exact
+    true unbounded marker prevents a shorter numeric value becoming authority.
+    """
+    if unbounded is True:
+        return {"retry_after_unbounded": True}
+    if type(value) not in (int, float) or (type(value) is float and not math.isfinite(value)):
+        return {}
+    if value <= 0:
+        return {}
+    if value > MAX_PROVIDER_RETRY_AFTER_SECONDS:
+        return {"retry_after_unbounded": True}
+    return {"retry_after_seconds": value}
+
+
+_CODEX_RATE_ERROR_TYPES = frozenset({"rate_limit", "rate_limit_error", "rate_limit_exceeded", "usage_limit", "usage_limit_reached"})
+_CODEX_AUTH_ERROR_TYPES = frozenset({"authentication_error", "invalid_api_key"})
+_CODEX_BILLING_ERROR_TYPES = frozenset({"insufficient_quota", "billing_error"})
+
+
+def _codex_native_error_envelopes(stdout: str) -> list[dict]:
+    """Return bounded native error envelopes from one invocation, never model text.
+
+    Accept native ``error`` and ``turn.failed`` records and their direct error
+    body. A native error message may itself contain one JSON error envelope.
+    Never recursively search tool results, assistant text, usage or arbitrary
+    JSON for similarly named fields. The final error determines classification;
+    earlier typed rate errors may conservatively extend its cooldown.
+    """
+    if type(stdout) is not str or len(stdout) > 262144:
+        return []
+    try:
+        if len(stdout.encode("utf-8")) > 262144:
+            return []
+    except UnicodeError:
+        return []
+    lines = stdout.splitlines()
+    if len(lines) > 1024:
+        return []
+
+    def reject_constant(_):
+        raise ValueError("nonfinite native error value")
+
+    def unique_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate native error key")
+            result[key] = value
+        return result
+
+    def envelope(raw):
+        if type(raw) is not str or len(raw) > 16384:
+            return None
+        try:
+            if len(raw.encode("utf-8")) > 16384:
+                return None
+            value = json.loads(raw, object_pairs_hook=unique_keys, parse_constant=reject_constant)
+        except (ValueError, TypeError, RecursionError, OverflowError, UnicodeError):
+            return None
+        return value if type(value) is dict else None
+
+    selected = []
+    for line in lines:
+        record = envelope(line)
+        if record is None or type(record.get("type")) is not str or record.get("type") not in {"error", "turn.failed"}:
+            continue
+        body = record.get("error")
+        body = body if type(body) is dict else {}
+        native_message = record.get("message") if record.get("type") == "error" else body.get("message")
+        nested = envelope(native_message)
+        _, outer_status, outer_codes = _codex_error_envelope_fields(record)
+        outer_hard_stop = (outer_status in {401, 402, 403}
+                           or bool(outer_codes & (_CODEX_AUTH_ERROR_TYPES | _CODEX_BILLING_ERROR_TYPES)))
+        if not outer_hard_stop and nested is not None and nested.get("type") == "error":
+            record = nested
+        selected.append(record)
+    return selected
+
+
+def _codex_native_error_envelope(stdout: str) -> dict:
+    records = _codex_native_error_envelopes(stdout)
+    return records[-1] if records else {}
+
+
+def _codex_error_envelope_fields(record: dict) -> tuple[dict, int | None, set[str]]:
+    body = record.get("error")
+    body = body if type(body) is dict else {}
+    status = record.get("status")
+    status = status if type(status) is int and 100 <= status <= 599 else None
+    codes = [record.get("code"), body.get("type"), body.get("code")]
+    return body, status, {code for code in codes if type(code) is str}
+
+
+def _codex_error_envelope_kind(record: dict, *, fallback: str = ""):
+    from .llm_allocation.observations import CallErrorKind, classify_provider_failure
+
+    body, status, codes = _codex_error_envelope_fields(record)
+    diagnostic = next((text for text in (body.get("message"), record.get("message"), fallback)
+                       if type(text) is str and text.strip()), "")[:16384]
+    kind = classify_provider_failure("codex_cli", diagnostic, status_code=status).kind
+    # Explicit terminal authentication/billing errors are hard stops, even
+    # when their explanatory text also mentions a rate or usage limit.
+    if status == 401 or codes & _CODEX_AUTH_ERROR_TYPES:
+        return CallErrorKind.AUTHENTICATION
+    if status == 402 or codes & _CODEX_BILLING_ERROR_TYPES:
+        return CallErrorKind.BILLING
+    if status == 403:
+        return CallErrorKind.POLICY
+    if codes & _CODEX_RATE_ERROR_TYPES and kind is not CallErrorKind.BILLING:
+        return CallErrorKind.RATE_LIMIT
+    if kind is CallErrorKind.UNKNOWN and (status == 400 or "invalid_request_error" in codes):
+        return CallErrorKind.INVALID_REQUEST
+    return kind
+
+
+def _codex_retry_after_hint(stdout: str) -> dict:
+    """Keep the longest typed reset while the final native failure is rate-limited.
+
+    HTTP-date and epoch reset values are not interpreted as durations.
+    A generic final wrapper may omit timing, so earlier typed rate-limit
+    records in the same invocation conservatively extend the wait. Only
+    explicit native rate envelopes supply timing; prose supplies no hints.
+    """
+    from .llm_allocation.observations import CallErrorKind
+
+    records = _codex_native_error_envelopes(stdout)
+    if not records or _codex_error_envelope_kind(records[-1]) is not CallErrorKind.RATE_LIMIT:
+        return {}
+    selected = {}
+    for record in records:
+        body, status, codes = _codex_error_envelope_fields(record)
+        if status in {401, 402, 403} or codes & (_CODEX_AUTH_ERROR_TYPES | _CODEX_BILLING_ERROR_TYPES):
+            continue
+        if status != 429 and not codes & _CODEX_RATE_ERROR_TYPES:
+            continue
+        for mapping in (record, body):
+            for key in ("retry_after_seconds", "retry_after", "resets_in_seconds", "reset_in_seconds"):
+                hint = _bounded_provider_retry_hint(mapping.get(key))
+                if hint.get("retry_after_unbounded") is True:
+                    return hint
+                if hint.get("retry_after_seconds", 0) > selected.get("retry_after_seconds", 0):
+                    selected = hint
+    return selected
+
+
 def _codex_cli_failure(message: str, *, stdout: str, stderr: str) -> LLMRouterError:
     """Keep the existing exception text and attach only closed diagnostics.
 
@@ -3716,34 +3868,23 @@ def _codex_cli_failure(message: str, *, stdout: str, stderr: str) -> LLMRouterEr
     """
     error = LLMRouterError(message)
     try:
-        from .llm_allocation.observations import CallErrorKind, classify_provider_failure
+        from .llm_allocation.observations import CallErrorKind
 
-        diagnostic = _extract_first_error_message_from_codex_jsonl((stdout or "")[:262144])
-        diagnostic = (diagnostic or stderr or message)[:16384]
-        status = None
-        native_error_type = None
-        try:
-            nested = json.loads(diagnostic)
-        except (ValueError, TypeError, RecursionError):
-            nested = None
-        if type(nested) is dict and nested.get("type") == "error":
-            supplied_status = nested.get("status")
-            if type(supplied_status) is int and 100 <= supplied_status <= 599:
-                status = supplied_status
-            body = nested.get("error")
-            if type(body) is dict:
-                native_error_type = body.get("type")
-        failure = classify_provider_failure("codex_cli", diagnostic, status_code=status)
-        kind = failure.kind
-        if kind is CallErrorKind.UNKNOWN and (
-                status == 400 or native_error_type == "invalid_request_error"):
-            kind = CallErrorKind.INVALID_REQUEST
+        native = _codex_native_error_envelope(stdout)
+        _body, status, _codes = _codex_error_envelope_fields(native)
+        kind = _codex_error_envelope_kind(native, fallback=stderr or message)
         if isinstance(kind, CallErrorKind) and kind is not CallErrorKind.SUCCESS:
             error.codex_error_kind = kind
         if status is not None:
             # Deliberately not status_code: this diagnostic must not alter the
             # generic retry/fallback classifier's existing decision inputs.
             error.codex_error_status = status
+        if kind is CallErrorKind.RATE_LIMIT:
+            hint = _codex_retry_after_hint(stdout)
+            if "retry_after_seconds" in hint:
+                error.codex_retry_after_seconds = hint["retry_after_seconds"]
+            if hint.get("retry_after_unbounded") is True:
+                error.codex_retry_after_unbounded = True
     except Exception:
         pass
     return error
@@ -6475,13 +6616,11 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                     pass
 
             kind = _classify_codex_error_kind(stdout=proc.stdout or "", stderr=proc.stderr or "")
-            resets = _extract_resets_in_seconds_from_codex_jsonl(proc.stdout or "")
             if kind == "quota_exceeded":
                 raise _codex_cli_failure("Codex quota exceeded (billing/plan hard limit)",
                     stdout=proc.stdout or "", stderr=proc.stderr or "")
             if kind == "usage_limit":
-                suffix = f" (resets in ~{resets}s)" if isinstance(resets, int) else ""
-                raise _codex_cli_failure(f"Codex usage limit reached{suffix}",
+                raise _codex_cli_failure("Codex usage limit reached",
                     stdout=proc.stdout or "", stderr=proc.stderr or "")
             raise _codex_cli_failure(proc.stderr.strip() or "codex exec failed",
                 stdout=proc.stdout or "", stderr=proc.stderr or "")

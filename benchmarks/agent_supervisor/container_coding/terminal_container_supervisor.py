@@ -1213,6 +1213,15 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "phase": "coding", "usage": None,
                 "reason": "implementation_may_have_dispatched_without_a_final_router_receipt",
             }
+        try:
+            from .terminal_provider_stop import provider_stop_observation
+            provider_stop = provider_stop_observation(report)
+            if provider_stop is not None:
+                report["provider_stop"] = provider_stop
+        except Exception:
+            # Failed attempts and cleanup remain durable if optional stop
+            # metadata is invalid. The launcher rederives before dispatch.
+            report["provider_stop_unavailable"] = True
         if metadata_census_only:
             try:
                 from .terminal_live_census_provenance import audit_planning_usage

@@ -295,6 +295,17 @@ def _provider_failure_diagnostic(error: BaseException, *, provider: str) -> dict
     status = getattr(error, "codex_error_status", None) if provider == "codex_cli" else None
     if type(status) is int and 100 <= status <= 599:
         result["http_status"] = status
+    if reason is CallErrorKind.RATE_LIMIT:
+        from ipfs_accelerate_py.llm_router import _bounded_provider_retry_hint
+        prefix = "codex_" if provider == "codex_cli" else ""
+        try:
+            result.update(_bounded_provider_retry_hint(
+                getattr(error, prefix + "retry_after_seconds", None),
+                unbounded=getattr(error, prefix + "retry_after_unbounded", False),
+            ))
+        except Exception:
+            # Optional timing diagnostics cannot mask the native failure.
+            pass
     return result
 
 

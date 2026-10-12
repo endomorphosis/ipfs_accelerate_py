@@ -205,6 +205,68 @@ native completion, cleanup, and all observed provider usage remain separate
 measurements. See [INDEXED_ABLATIONS.md](INDEXED_ABLATIONS.md) for the larger
 planned matrix and unmeasured parallel-worker comparisons.
 
+### Provider cooldown and recovery
+
+`full_supervisor_benchmark execute` enables provider admission by default for
+both Codex and Grok profiles. It shares private state between processes of the
+same OS user under
+`${XDG_STATE_HOME:-$HOME/.local/state}/ipfs_accelerate_py/terminal-provider-backoff`.
+The scope is provider-wide, so switching models cannot bypass a stop. Use
+`--provider-backoff-directory /path/to/private-state` for an isolated campaign;
+all cooperating launchers must use that same directory. Other entry points,
+including direct router calls and `native_codex_baseline`, do not use this gate.
+
+A retained rate-limit failure starts a 60-second cooldown, doubling on failed
+recovery attempts to a one-hour local cap, with bounded positive jitter.
+Structured relative reset hints can extend the wait to seven days. Longer
+hints require an operator reset; they are never shortened into an early retry.
+Text from a prompt, tool result, or free-form exception cannot set a delay.
+The gate does not estimate quota capacity or issue proactive provider requests.
+
+While blocked, execution writes `provider-deferral.json`, returns
+`state: provider_deferred`, and exits with status **75** before invoking Harbor
+or creating `invocation.json`. `--provider-max-wait-seconds N` optionally waits
+up to 60 seconds before fresh work; the default returns immediately. Waiting
+holds no state lock and rechecks the current cooldown. After expiry, exactly
+one new trial holds the provider's recovery lock through its execution.
+Other launchers defer. A verified provider return clears availability; it does
+not establish task success, benchmark reward, or complete token accounting.
+
+Planning and coding calls can modify a checkout before failing, so failed
+trials are never automatically replayed or routed to another model/provider.
+Already admitted healthy trials may finish. Billing, authentication, quota,
+invalid stop metadata, and unverified recovery results require explicit
+operator intervention. A crashed recovery probe remains blocked even after its
+OS lock is released. Caught post-dispatch collection errors and failed state
+commits also leave a durable uncertainty marker. Missing provider receipts
+after recorded agent execution block admission; setup-only
+failures without evidence of a provider attempt do not create a new cooldown.
+State corruption or unavailable storage prevents new admission; no
+cross-process durability can be guaranteed
+if the filesystem cannot persist either the state or its fallback marker.
+
+After resolving the provider or interrupted-trial problem, reset the shared
+gate explicitly, then prepare a fresh trial:
+
+```bash
+PYTHONPATH=. python -m benchmarks.agent_supervisor.container_coding.terminal_provider_backoff reset \
+  --provider codex_cli
+```
+
+For an isolated directory, add `--directory /path/to/private-state`. Reset
+refuses an active recovery probe and requires readable, valid state. Preserve
+and repair corrupt state before resetting; do not discard failed trial
+receipts. Native session closure and `usage_accounting_complete` remain
+separate observations: missing token counters stay `null`. CPU/memory
+admission and external-pressure backoff still apply independently.
+
+Offline regressions cover typed provider failures, the real native adapter
+with an authored local CLI, the public benchmark CLI with an authored Harbor
+fixture, and 32-process recovery contention. These checks establish dispatch
+and recovery behavior without claiming a live provider benchmark or token
+savings. Run the provider tests together with router diagnostics and the
+existing Harbor, task-binding, and benchmark-comparison suites.
+
 For a matched capsule-budget experiment, prepare two `--arm full` trials with
 `--semantic-context-profile indexed-default@1` and
 `--semantic-context-profile indexed-compact@1`. Both use current-source DuckDB
