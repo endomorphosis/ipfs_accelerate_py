@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "python",
+    "-m",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "test/api/semantic_state/test_reconstruction.py",
+    "--maxfail=1",
+    "-q",
+    "-o",
+    "log_cli=false",
+    "--tb=short",
+    "--junitxml=/tmp/source-inventory-reconstruction-tests-20261012.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+  "environment_overrides": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONUNBUFFERED": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/source-inventory-reconstruction-orchestration-20261012",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/source-inventory-reconstruction-seal-20261012.duckdb",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011:/home/barberb/lift_coding/.worktrees/source-inventory-datasets-20261012"
+  },
+  "exit_code": 0,
+  "log": "reconstruction-tests.log",
+  "junit": "reconstruction-junit.xml",
+  "case_count": 26,
+  "resolved_python_executable": "/home/barberb/.local/bin/python",
+  "shell": "bash",
+  "login_shell": true
+}

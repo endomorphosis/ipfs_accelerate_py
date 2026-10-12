@@ -1,0 +1,68 @@
+{
+  "accelerator_base_revision": "22e3eabcb47523cbf6940534bd1ad52dc959ca6e",
+  "datasets_revision": "c18390b350c7ab40f5bd342578204a03dc34fe05",
+  "files": [
+    {
+      "bytes": 18872,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py",
+      "repository": "accelerator",
+      "sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab"
+    },
+    {
+      "bytes": 21232,
+      "path": "test/api/test_repository_source_inventory.py",
+      "repository": "accelerator",
+      "sha256": "6ff5c4c8a0ce504d4197e3626a3b9026f655aa8f87aaf9d6ff5d1928fa0d7e3c"
+    },
+    {
+      "bytes": 8951,
+      "path": "test/api/semantic_state/test_reconstruction.py",
+      "repository": "accelerator",
+      "sha256": "24cb86ad5e1bf7eec2771f7b29a0810e2f82f7e3a6583fde91c7312ec6a5e8ef"
+    },
+    {
+      "bytes": 57876,
+      "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+      "repository": "datasets",
+      "sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f"
+    },
+    {
+      "bytes": 22146,
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+      "repository": "datasets",
+      "sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df"
+    },
+    {
+      "bytes": 14891,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py",
+      "repository": "datasets",
+      "sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15"
+    },
+    {
+      "bytes": 22314,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py",
+      "repository": "datasets",
+      "sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d"
+    },
+    {
+      "bytes": 22375,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py",
+      "repository": "datasets",
+      "sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68"
+    },
+    {
+      "bytes": 3783,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/git_decoder_profile.py",
+      "repository": "datasets",
+      "sha256": "e52fff88abf1ff6d6a6be3e781bd917a187d318e935094a14ef58382ccf0ab07"
+    },
+    {
+      "bytes": 48191,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+      "repository": "datasets",
+      "sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6"
+    }
+  ],
+  "native_sources_unchanged_from_preceding_parent_pin": true,
+  "new_accelerator_sources_identified_by_qualified_hash": true
+}

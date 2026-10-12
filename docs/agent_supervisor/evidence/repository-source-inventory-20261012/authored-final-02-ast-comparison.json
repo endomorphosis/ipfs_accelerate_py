@@ -1,0 +1,8 @@
+{
+  "change": "remove one trailing blank line; retain single final newline",
+  "bytes_removed": 1,
+  "ast_unchanged_including_attributes": true,
+  "ast_sha256": "8d0ddac1b2e6d86b4f53ac3d098e82b49b8afd6af4ca276d1a8930a896736948",
+  "before_test_sha256": "763147547922dd4a80ec535507b650811e50b62b66d1d4b0b8e48791b0ff7261",
+  "after_test_sha256": "6ff5c4c8a0ce504d4197e3626a3b9026f655aa8f87aaf9d6ff5d1928fa0d7e3c"
+}
