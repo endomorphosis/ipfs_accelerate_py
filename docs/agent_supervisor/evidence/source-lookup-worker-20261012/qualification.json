@@ -1,0 +1,94 @@
+{
+  "schema": "source-worker-merged-qualification@1",
+  "qualified_merged_base_revision": "8b39d308faed327dd8fa9c411e35e5ee31574cb9",
+  "imported_parallel_revision": "21457b554254b48b51930fa1a5d39cd563fe1bef",
+  "datasets_revision": "f47161b757190380e9898aff155067c1ad609217",
+  "datasets_software_contracts_tree": "7fe1e1ff1deaaa90f7e3bba88d53b2d13635de96",
+  "tests": {
+    "distinct": 537,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "disjoint_groups": [
+      247,
+      290
+    ],
+    "normal_ast_sealing": true,
+    "source_before_after_equal": true
+  },
+  "docker": {
+    "attempt": "attempt-03",
+    "qualified": true,
+    "owner_uid": 1000,
+    "worker_uid": 1001,
+    "exact_fixture_bytes": 5716,
+    "fixture_files": 3,
+    "primary_pages": 8,
+    "distinct_helper_processes": 11,
+    "broker_requests": 13,
+    "successes": 9,
+    "refusals": 4,
+    "worker_response_bytes": 20904,
+    "backend_success_response_bytes": 33421,
+    "backend_success_wire_bytes": 33448,
+    "backend_accounting_scope": "validated-source-success-envelopes",
+    "handshake_error_byte_costs": null,
+    "original_grant_revoked": true,
+    "service_stopped": true,
+    "descriptor_socket_removed": true,
+    "container_removed": true
+  },
+  "scope": {
+    "source_only_coding_reply_mode": "legacy",
+    "modern_sealed_semantic_native_lookup_qualified": false,
+    "full_automatic_terminal_binding_qualified": false,
+    "actual_model_tool_choice_qualified": false,
+    "native_quack_extension_network_qualified": false,
+    "total_token_savings_measured": false,
+    "provider_tokens": null,
+    "proof_authority": false,
+    "execution_authority": false,
+    "completion_authority": false,
+    "required_fact_omission_authority": false
+  },
+  "provider_calls": 0,
+  "model_calls": 0,
+  "solver_calls": 0,
+  "qualified_artifacts": [
+    {
+      "path": "merged-source-views-commands.json",
+      "bytes": 19183,
+      "sha256": "5453318a1f413aac146f7bec8c5010c8b1f9cb5678e7f19d27e1f0795aaed8c4"
+    },
+    {
+      "path": "merged-views-extra-commands.json",
+      "bytes": 25413,
+      "sha256": "41d8dc2b1938a99b2ed34a4514e8b49dfa6d5071014996964681588589c9b5a9"
+    },
+    {
+      "path": "merged-nodeids.json",
+      "bytes": 81442,
+      "sha256": "e8efb8ec1926495e93d4b2237ef89a41b5a71babdd87f8c1e88f232d2fd2a313"
+    },
+    {
+      "path": "source-manifest.json",
+      "bytes": 10494,
+      "sha256": "1d7d9eb75f7663b35904f6ef50da830abce3a2973711af3d3a803f774e5e69cc"
+    },
+    {
+      "path": "docker/attempt-03/qualification.json",
+      "bytes": 4263,
+      "sha256": "c2d602b0b2223b0ffb46d1b5f71126686435cf1fcda2778cb8cec044472ac5ff"
+    },
+    {
+      "path": "postmerge-review.json",
+      "bytes": 6335,
+      "sha256": "e1b345f22ad84e1e5b58c2fcb3e8ff65b06a6370b7d361a90da19890bc82154d"
+    },
+    {
+      "path": "postmerge-documentation-checks.json",
+      "bytes": 7087,
+      "sha256": "0812a9a9841835b2602b8471091a19306a3c34a80a55bbaa5b81c3d0b06507cb"
+    }
+  ]
+}

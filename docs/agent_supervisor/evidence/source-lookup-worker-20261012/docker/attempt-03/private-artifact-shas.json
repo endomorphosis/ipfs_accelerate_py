@@ -1,0 +1,50 @@
+{
+  "artifact_count": 8,
+  "artifacts": [
+    {
+      "bytes": 160,
+      "path": "private-diagnostics/owner-entry.stderr",
+      "sha256": "7c9249b80f990db498a24f03f58876cda18657f340390aa84d75c218ff62b272"
+    },
+    {
+      "bytes": 3661,
+      "path": "private-diagnostics/owner-entry.stdout",
+      "sha256": "b372e5de8effa439a03690018744887aceec91489922385b77c804dd10e7340d"
+    },
+    {
+      "bytes": 652,
+      "path": "private-diagnostics/owner-launch.json",
+      "sha256": "5e4790e2b5c0f6c6d5e9016e4057e354dd865c1f1c8eb6a1c74cab5b293cf319"
+    },
+    {
+      "bytes": 6002,
+      "path": "private-diagnostics/source-99251d680fff4d63a3b7663192cc5c9d-audit.json",
+      "sha256": "91b0e88f15aea86837ad7330f6cc69ed8dc076bc440dbd7b8a3c73791c9c76b2"
+    },
+    {
+      "bytes": 490,
+      "path": "private-diagnostics/unrelated-peer-diagnostic.json",
+      "sha256": "408af3e1afd9b2bba8b079e788ce482849b9315a1c9fac5b66bcd20e57614fab"
+    },
+    {
+      "bytes": 21057,
+      "path": "private-diagnostics/worker-result.json",
+      "sha256": "475c33875cc54565411c83e0eed93ff1d70284770b495def568accbbd9210abe"
+    },
+    {
+      "bytes": 6002,
+      "path": "results/private-broker-audit.json",
+      "sha256": "91b0e88f15aea86837ad7330f6cc69ed8dc076bc440dbd7b8a3c73791c9c76b2"
+    },
+    {
+      "bytes": 2876,
+      "path": "results/private-router-observation.json",
+      "sha256": "fcd2f8ba0872cb287c9603aa929f640668b5058c90c4999883d2b5a21f8ff4ab"
+    }
+  ],
+  "attempt": "attempt-03",
+  "owner_database_cas_tokens_dumped": false,
+  "payloads_published": false,
+  "schema": "source-worker-private-artifact-inventory@1",
+  "scope": "SHA256 and sizes only; raw diagnostics, responses, audits and router records remain local."
+}

@@ -1,0 +1,7 @@
+/attempt-*/private-diagnostics/
+/attempt-*/owner.stdout
+/attempt-*/owner.stderr
+/attempt-*/root-setup.py
+/attempt-*/root-setup.stderr
+/attempt-*/runner-snapshot/
+/attempt-*/results/private-*.json

@@ -194,6 +194,7 @@ def _source_lookup_guidance(receipt):
         "end_offset and next_continuation. Only clean committed regular files are supported; reads refuse "
         "after source edits. Required facts remain inline. Retrieval provides no proof, edit, omission or "
         "completion authority.\n")
+
 def _source_broker_observation(*, path, digest, workspace, encoded, boundary_sha256, profile):
     from .worker_source_client import load_descriptor, semantic_binding, guidance
 

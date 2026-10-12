@@ -1,6 +1,6 @@
 {
-  "schema": "source-worker-qualified-source-bindings@1",
-  "accelerator_base_revision": "74aea306ea0d50e416a04eda3e2f251c95b2c66d",
+  "schema": "source-worker-merged-source-bindings@1",
+  "qualified_merged_base_revision": "8b39d308faed327dd8fa9c411e35e5ee31574cb9",
   "datasets_revision": "f47161b757190380e9898aff155067c1ad609217",
   "source_bindings": [
     {
@@ -18,14 +18,14 @@
     {
       "repository": "accelerator",
       "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
-      "bytes": 61405,
-      "sha256": "2e25a6e1a1d1b57bc0d7dc198d8c7dd01a2175219b496e989babf105c0fef84f"
+      "bytes": 65658,
+      "sha256": "dae2cae7e22d8bfc35dfbc53fd230d026cd575b587815bfd23ff34afe5f5d72f"
     },
     {
       "repository": "accelerator",
       "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
-      "bytes": 33690,
-      "sha256": "c5311169f6382a5aec57d50bc77dbb5b20cf7aaccbb78537d4d8d7f8f3cba27e"
+      "bytes": 35358,
+      "sha256": "9afb32bd0237550567b79dc56fc2c4af7e80263a9e17f027f1b6819c95c60a0d"
     },
     {
       "repository": "accelerator",
@@ -60,14 +60,14 @@
     {
       "repository": "accelerator",
       "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py",
-      "bytes": 18521,
-      "sha256": "f575644f0bb71370f1e3a0c48384b49777766a7014d4fed9edc10d2cf06d4197"
+      "bytes": 18893,
+      "sha256": "28cfa7637b0f94cd77dec3071600263a2289738ede4ffd696ef4e2de34ffeaf6"
     },
     {
       "repository": "accelerator",
       "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
-      "bytes": 18359,
-      "sha256": "be96e07f81317dab978e106834044a6885babe6c355dc0451f31597b17888a8e"
+      "bytes": 19087,
+      "sha256": "7607cfae3eaec33b3a188f26a2ba3d87fc818b22ea529ceeaa40d0048ac46882"
     },
     {
       "repository": "accelerator",
@@ -126,8 +126,8 @@
     {
       "repository": "accelerator",
       "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
-      "bytes": 15009,
-      "sha256": "f9caccab9a76009dbc13e28e2f5f1bb41dec9f53f43a358e8dbcc964c67117f3"
+      "bytes": 16017,
+      "sha256": "f8a03c41a5aa25702cae78e7efafc090010e2a3444d72067a37220c2eb9cb214"
     },
     {
       "repository": "accelerator",
@@ -182,6 +182,84 @@
       "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
       "bytes": 6798,
       "sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_worker_source_views.py",
+      "bytes": 14823,
+      "sha256": "4aaedef11cf17d43fc0e565f7f6c4a03d72e53a356854e2d2b23d63fb83a008f"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_worker_source_broker.py",
+      "bytes": 10011,
+      "sha256": "b3d022cfb0af458a7f2e96102af72b04ea64e2d0a5688140a464855b0fc86737"
+    },
+    {
+      "repository": "accelerator",
+      "path": "test/api/test_worker_source_client.py",
+      "bytes": 10344,
+      "sha256": "dbb8d58a07b8674ab5ef0b3776a127430c7a5ca35c3c573ffcd7e5d5a8751cb5"
+    },
+    {
+      "repository": "accelerator",
+      "path": "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py",
+      "bytes": 13166,
+      "sha256": "b3ca3996fa6c44d525fe65c020ddb97a778c2c3a9dd3d81c8945e2394b63dc99"
+    },
+    {
+      "repository": "accelerator",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py",
+      "bytes": 12822,
+      "sha256": "c67bb3bedeb015187b6e6babf4d734b0a8d9238af502fa1d7411d9dca0037ff4"
+    },
+    {
+      "repository": "accelerator",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py",
+      "bytes": 10951,
+      "sha256": "ebc38bbbc6b697f9323dfe0c48123d49e850edb45adcb5b6b86dcbbb4b7860c0"
+    },
+    {
+      "repository": "accelerator",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py",
+      "bytes": 12685,
+      "sha256": "624e9f1b75e65ab3af0351b018f3a79fd75f71442d9b6639a0fc9286df2a2d92"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
+      "bytes": 17405,
+      "sha256": "3dc4352cddf703b23936684fce36b417d3a760b85419f1fbfb5b49bef5f9f969"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "bytes": 6947,
+      "sha256": "2316a4dc7ef1e316d78cc599c014f12e4f7494bf1e637f144450cf71412df7df"
+    },
+    {
+      "repository": "accelerator",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "bytes": 15425,
+      "sha256": "98fd2438b5d55ec9b43860967ffb8262a2058aad7b56dc68e2694a61ebebb8a0"
+    },
+    {
+      "repository": "accelerator",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py",
+      "bytes": 1451,
+      "sha256": "1437b8e44eb8a27295d5d54ce4c09567f8b700380d43c6e8d3748aa88ebc633e"
+    },
+    {
+      "repository": "accelerator",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+      "bytes": 8442,
+      "sha256": "7291c2600fcb799d238766dfc34e32326b4f9cfa623c12077c6e864cbf01d8b2"
+    },
+    {
+      "repository": "accelerator",
+      "path": "docs/agent_supervisor/evidence/source-lookup-worker-20261012/qualification_runner_extra.py",
+      "bytes": 7278,
+      "sha256": "f4f68d9c687e0669f8e65a0b30aaf603359595a848aaca8347a718832cb34e84"
     }
   ],
   "source_before_after_equal": true

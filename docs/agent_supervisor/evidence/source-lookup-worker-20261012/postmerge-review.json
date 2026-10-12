@@ -1,0 +1,173 @@
+{
+  "completion_authority": false,
+  "default_selections": {
+    "numerical_obligation_descriptor": null,
+    "numerical_obligation_descriptor_sha256": null,
+    "source_lookup_descriptor": null,
+    "source_lookup_descriptor_sha256": null,
+    "source_view_descriptor": null,
+    "source_view_descriptor_sha256": null,
+    "source_view_profile": "disabled"
+  },
+  "distinct_public_environment_variables": {
+    "NUMERICAL_DESCRIPTOR_DIGEST_ENV": "IPFS_SUPERVISOR_NUMERICAL_OBLIGATION_DESCRIPTOR_SHA256",
+    "NUMERICAL_DESCRIPTOR_ENV": "IPFS_SUPERVISOR_NUMERICAL_OBLIGATION_DESCRIPTOR",
+    "SOURCE_DESCRIPTOR_DIGEST_ENV": "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR_SHA256",
+    "SOURCE_DESCRIPTOR_ENV": "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR",
+    "SOURCE_LOOKUP_DESCRIPTOR_DIGEST_ENV": "IPFS_SUPERVISOR_SOURCE_LOOKUP_DESCRIPTOR_SHA256",
+    "SOURCE_LOOKUP_DESCRIPTOR_ENV": "IPFS_SUPERVISOR_SOURCE_LOOKUP_DESCRIPTOR"
+  },
+  "entry_invariants": {
+    "OWNER_ENTRY_equals_upstream_parent": true,
+    "OWNER_MONITOR_equals_upstream_parent": true,
+    "SOURCE_LOOKUP_ENTRY_equals_own_parent": true,
+    "native_source_factory_absent_from_OWNER_ENTRY": true,
+    "native_source_factory_absent_from_OWNER_MONITOR": true
+  },
+  "execution_authority": false,
+  "function_invariants": [
+    {
+      "functions": [
+        {
+          "ast_unchanged": true,
+          "function": "_source_lookup_descriptor_environment"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_source_lookup_broker_observation"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_source_lookup_executable"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_source_lookup_guidance"
+        }
+      ],
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "reference_commit": "961bb87be67a29220b0bedda2261ab5701f07b1f"
+    },
+    {
+      "functions": [
+        {
+          "ast_unchanged": true,
+          "function": "_numerical_descriptor_environment"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_source_descriptor_environment"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_descriptor_environment"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_source_broker_observation"
+        }
+      ],
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "reference_commit": "21457b554254b48b51930fa1a5d39cd563fe1bef"
+    },
+    {
+      "functions": [
+        {
+          "ast_unchanged": true,
+          "function": "canonical_json"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "strict_json_loads"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "send_frame"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "receive_frame"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_exact"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "process_identity"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_protected_parent"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_socket_identity"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_verify_peer"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_integer"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_text"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_hex"
+        }
+      ],
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py",
+      "reference_commit": "961bb87be67a29220b0bedda2261ab5701f07b1f"
+    },
+    {
+      "functions": [
+        {
+          "ast_unchanged": true,
+          "function": "_write_new"
+        },
+        {
+          "ast_unchanged": true,
+          "function": "_unlink_same"
+        }
+      ],
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
+      "reference_commit": "961bb87be67a29220b0bedda2261ab5701f07b1f"
+    }
+  ],
+  "git_head": "8b39d308faed327dd8fa9c411e35e5ee31574cb9",
+  "model_calls": 0,
+  "native_lifecycle": "original ready Quack owner hosts native source broker and registers OWNER_ENTRY externally; upstream numerical/source-view brokers keep their OWNER_ENTRY worker-child lifecycle",
+  "own_parent": "961bb87be67a29220b0bedda2261ab5701f07b1f",
+  "proof_authority": false,
+  "provider_calls": 0,
+  "provider_environment_context_order": [
+    "_numerical_descriptor_environment",
+    "_source_descriptor_environment",
+    "_source_lookup_descriptor_environment"
+  ],
+  "remaining_concrete_findings": [],
+  "required_fact_omission_authority": false,
+  "review_method": "read-only-AST-and-literal-preservation-review",
+  "schema": "supervisor-source-worker-postmerge-read-only-review@1",
+  "scope_limits": [
+    "AST preservation is not a formal proof or combined-execution qualification",
+    "descriptor hashes are provenance, not caller authentication",
+    "checks are sequential without a filesystem writer lease",
+    "live model tool choice and total token savings remain unmeasured"
+  ],
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "9afb32bd0237550567b79dc56fc2c4af7e80263a9e17f027f1b6819c95c60a0d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "7607cfae3eaec33b3a188f26a2ba3d87fc818b22ea529ceeaa40d0048ac46882",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py": "28cfa7637b0f94cd77dec3071600263a2289738ede4ffd696ef4e2de34ffeaf6",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "dae2cae7e22d8bfc35dfbc53fd230d026cd575b587815bfd23ff34afe5f5d72f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py": "329036abb35faff7738f3305409c04c169c5cda85af98da72947f8bdfce3e357",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_client.py": "330ab86a0faad1fbdb87653be98403a6fdf39437c7828507e3bc24d7d5204a1e"
+  },
+  "tests_run_by_reviewer": 0,
+  "upstream_parent": "21457b554254b48b51930fa1a5d39cd563fe1bef"
+}

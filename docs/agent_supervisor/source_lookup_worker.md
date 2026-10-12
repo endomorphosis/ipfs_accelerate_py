@@ -197,7 +197,7 @@ source after the last observation.
 ## Qualification and remaining work
 
 The [qualification bundle](evidence/source-lookup-worker-20261012/README.md)
-records 247 distinct passing host regressions and an actual UID1000-owner to
+records 537 distinct passing merged host regressions and an actual UID1000-owner to
 UID1001-worker container exercise. An authored response drove the real router
 and protected helper: three inert files reconstructed exactly across eight
 primary pages and 11 distinct helper processes sharing one private native grant.
@@ -211,6 +211,11 @@ An authored response establishes helper access, while live model tool choice,
 formal proof, official task reward and total token savings remain unmeasured.
 The router's closed observation records `requests_observed=False`,
 `actual_tool_usage_unknown=True` and `total_token_savings_measured=False`.
+
+The concurrent [semantic source-view channel](worker_source_views.md) provides
+compact navigation and exact-original expansion through its own semantic
+admission. That channel retains semantic source custody and an 8 KiB response profile; this bridge preserves the original Quack owner's source grant.
+Both channels default to disabled until their respective host admission is selected.
 
 Next integrate explicit task/source admission into the ordinary Terminal
 launcher lifecycle, qualify restart and working-overlay refresh, and add capsule

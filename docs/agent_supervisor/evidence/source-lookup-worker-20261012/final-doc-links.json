@@ -3,7 +3,7 @@
   "checks": [
     {
       "path": "docs/agent_supervisor/source_lookup_worker.md",
-      "sha256": "fcb3adf2cdaa834efde3ef9e26502999d481d09cf4e5cc3d004a4ac8eef76a9d",
+      "sha256": "665311aaf035383cd6e9c81a0c6a8d6519cd65eb83d432b2203cbba889b85089",
       "errors": [],
       "check_anchors": true,
       "source_unchanged": true
@@ -17,7 +17,7 @@
     },
     {
       "path": "docs/agent_supervisor/evidence/source-lookup-worker-20261012/README.md",
-      "sha256": "52ec938d0edf01b6ef1b751b7cc5ec7ba9d88b21b30764056cd2e2ac03a5c137",
+      "sha256": "6dcdb0d1dafec05dc882c11a82b264cc5163dc77ee9ccc7054f61ea3bf103b02",
       "errors": [],
       "check_anchors": true,
       "source_unchanged": true

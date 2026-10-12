@@ -74,6 +74,36 @@
       "bytes": 1734,
       "path": "docker/attempt-02/private-artifact-shas.json",
       "sha256": "436430ab5c9b7da2ba29f25436035c1b04ce62c00249bd3718df043bd2917d4b"
+    },
+    {
+      "bytes": 7409,
+      "path": "docker/attempt-03/command.json",
+      "sha256": "91af5c9850aecd4b621dfc0351568b822c9010933d520e0732b862464c59ac43"
+    },
+    {
+      "bytes": 1731,
+      "path": "docker/attempt-03/container-controls.json",
+      "sha256": "5fb4ff7e6423804730d51f2c76e35e4871da94ac4fa8a15aad8ba6cde87dd863"
+    },
+    {
+      "bytes": 1330,
+      "path": "docker/attempt-03/root-setup.stdout",
+      "sha256": "b8257252c7bde78034d3979fa16a4f6a9021cb275012f3d43e2d4bb138e62c27"
+    },
+    {
+      "bytes": 4263,
+      "path": "docker/attempt-03/qualification.json",
+      "sha256": "c2d602b0b2223b0ffb46d1b5f71126686435cf1fcda2778cb8cec044472ac5ff"
+    },
+    {
+      "bytes": 2313,
+      "path": "docker/attempt-03/results/probe-qualification.json",
+      "sha256": "22c755bfc7191cbd5abe66c0bc934e623f8984b6a7fa137d89bcbf4cd970d01c"
+    },
+    {
+      "bytes": 1734,
+      "path": "docker/attempt-03/private-artifact-shas.json",
+      "sha256": "794eb8ba3d8288568ddac0d34d7137e29b8c81e032fb91e5bdb3c47f656dc30a"
     }
   ],
   "excluded": [
@@ -103,7 +133,13 @@
     "docker/attempt-02/root-setup.stdout",
     "docker/attempt-02/qualification.json",
     "docker/attempt-02/results/probe-qualification.json",
-    "docker/attempt-02/private-artifact-shas.json"
+    "docker/attempt-02/private-artifact-shas.json",
+    "docker/attempt-03/command.json",
+    "docker/attempt-03/container-controls.json",
+    "docker/attempt-03/root-setup.stdout",
+    "docker/attempt-03/qualification.json",
+    "docker/attempt-03/results/probe-qualification.json",
+    "docker/attempt-03/private-artifact-shas.json"
   ],
   "raw_owner_state_or_credentials_exported": false,
   "route": "Generic plain-prompt legacy coding only; modern sealed semantic route and automatic native Terminal task binding remain unqualified.",
