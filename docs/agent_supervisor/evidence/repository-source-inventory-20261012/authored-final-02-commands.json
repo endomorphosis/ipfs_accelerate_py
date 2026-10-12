@@ -1,0 +1,63 @@
+{
+  "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+  "datasets_path": "/home/barberb/lift_coding/.worktrees/source-inventory-datasets-20261012",
+  "datasets_commit": "c18390b350c7ab40f5bd342578204a03dc34fe05",
+  "before": {
+    "product_sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+    "test_sha256": "6ff5c4c8a0ce504d4197e3626a3b9026f655aa8f87aaf9d6ff5d1928fa0d7e3c"
+  },
+  "ast_equality_record": "/tmp/repository-source-inventory-final-02-ast-20261012.json",
+  "repeats_original_28_cases": true,
+  "collection": {
+    "command": [
+      "/usr/bin/python3",
+      "-m",
+      "pytest",
+      "-c",
+      "pytest.ini",
+      "--collect-only",
+      "-qq",
+      "--color=no",
+      "test/api/test_repository_source_inventory.py"
+    ],
+    "environment_overrides": {
+      "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011:/home/barberb/lift_coding/.worktrees/source-inventory-datasets-20261012:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONUNBUFFERED": "1",
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/repository-source-inventory-final-02-collect-seal-20261012.duckdb",
+      "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/repository-source-inventory-final-02-collect-orchestration-20261012"
+    },
+    "log": "/tmp/repository-source-inventory-final-02-collection-20261012.log",
+    "exit_code": 0,
+    "nodeids": "/tmp/repository-source-inventory-final-02-nodeids-20261012.json",
+    "count": 28,
+    "original_inventory_identical": true
+  },
+  "qualification": {
+    "command": [
+      "/usr/bin/python3",
+      "-m",
+      "pytest",
+      "-c",
+      "pytest.ini",
+      "-q",
+      "--color=no",
+      "test/api/test_repository_source_inventory.py",
+      "--junitxml=/tmp/repository-source-inventory-final-02-junit-20261012.xml"
+    ],
+    "environment_overrides": {
+      "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011:/home/barberb/lift_coding/.worktrees/source-inventory-datasets-20261012:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONUNBUFFERED": "1",
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/repository-source-inventory-final-02-qualification-seal-20261012.duckdb",
+      "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/repository-source-inventory-final-02-qualification-orchestration-20261012"
+    },
+    "log": "/tmp/repository-source-inventory-final-02-tests-20261012.log",
+    "junit": "/tmp/repository-source-inventory-final-02-junit-20261012.xml",
+    "exit_code": 0
+  },
+  "after": {
+    "product_sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+    "test_sha256": "6ff5c4c8a0ce504d4197e3626a3b9026f655aa8f87aaf9d6ff5d1928fa0d7e3c"
+  }
+}

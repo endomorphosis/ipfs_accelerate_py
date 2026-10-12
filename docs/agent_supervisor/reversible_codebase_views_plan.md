@@ -5,6 +5,14 @@ accelerator `1f6d998a92db4024f35b57bbdb183a6626a7fa31` and incorporates parallel
 work published through `ffc6643826e546e5a0b3436b766b22f39f243b71`.
 The contracts and stages below are proposed unless explicitly marked current.
 
+Stage 1 now has a [retained committed-source inventory API](repository_source_inventory.md).
+It reuses the datasets complete chunked producer and caller-owned CAS, then
+replays exact historical bytes and Git modes after the original checkout is
+unavailable. It preserves explicit Gitlink references and provides bounded host
+metadata pages. It creates no filesystem checkout, compact source transform,
+current-source authority or coding-model expansion tool. Those remain later
+stages; byte fidelity alone establishes no token savings.
+
 The proposed design maintains a compact view of an entire admitted repository
 while retaining exact original source in its existing content store. Deliver
 only the current task's relevant views, fetch exact source when needed, and

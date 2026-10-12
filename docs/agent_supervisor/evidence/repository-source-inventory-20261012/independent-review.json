@@ -1,0 +1,18 @@
+{
+  "scope": "independent source/design review; no additional tests",
+  "qualified_product_sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+  "runtime_material_issues_remaining": false,
+  "corrections_verified": [
+    "Duplicate page references and accumulated metadata records bounded before traversal.",
+    "Caller request/limits privately copied and original bodies guarded around callbacks.",
+    "Predicted Git frame-read/rehash budget checked before acquisition.",
+    "Stored root and retained bytes replayed after publication before final source checks."
+  ],
+  "documented_limits": [
+    "Historical data only; no filesystem/current source/proof/Quack expansion authority.",
+    "Git modes and committed blob bytes only, with explicit Gitlink frontier.",
+    "Sequential checks without source/store lease; orphan immutable artifacts possible.",
+    "Native/CAS exception classes remain visible.",
+    "Cold reads apply per declared chunk occurrence; native export rehashes entire blobs per frame."
+  ]
+}

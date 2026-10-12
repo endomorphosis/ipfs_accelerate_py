@@ -1,0 +1,25 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 26 items
+
+test/api/semantic_state/test_reconstruction.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [ 96%]
+[0m[32m.[0m[32m                                                                        [100%][0m
+
+- generated xml file: /tmp/source-inventory-reconstruction-tests-20261012.xml --
+============================= slowest 10 durations =============================
+0.17s call     test/api/semantic_state/test_reconstruction.py::test_repository_identity_and_limits_bind_configuration
+0.13s call     test/api/semantic_state/test_reconstruction.py::test_cold_rebuild_and_nomination_use_real_datasets
+0.13s call     test/api/semantic_state/test_reconstruction.py::test_missing_transitive_block_in_matching_nomination_is_rejected
+0.13s call     test/api/semantic_state/test_reconstruction.py::test_stale_valid_nomination_rejected_after_real_source_change
+0.09s call     test/api/semantic_state/test_reconstruction.py::test_opaque_source_stays_visible_and_target_is_not_executed
+0.08s call     test/api/semantic_state/test_reconstruction.py::test_gitlink_is_an_explicit_opaque_input_not_nested_acceptance
+0.08s call     test/api/semantic_state/test_reconstruction.py::test_non_utf8_source_name_preserves_population
+0.06s call     test/api/semantic_state/test_reconstruction.py::test_corrupt_block_cannot_be_presented_as_valid_nomination
+0.06s call     test/api/semantic_state/test_reconstruction.py::test_source_drift_during_producer_is_rejected
+0.05s call     test/api/semantic_state/test_reconstruction.py::test_issuer_shaped_dict_cannot_replace_bundle
+[32m============================= [32m[1m26 passed[0m[32m in 17.19s[0m[32m ==============================[0m
