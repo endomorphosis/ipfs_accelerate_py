@@ -1,0 +1,95 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 40 items
+
+test/api/test_reversible_source_view.py::test_crlf_unicode_literals_docstrings_and_default_comments_have_exact_inverse PASSED [  2%]
+test/api/test_reversible_source_view.py::test_comment_profile_retains_headers_directives_security_contract_and_caller_lines PASSED [  5%]
+test/api/test_reversible_source_view.py::test_inline_comment_offsets_are_utf8_bytes_without_splitting_retained_literal PASSED [  7%]
+test/api/test_reversible_source_view.py::test_identity_profile_preserves_arbitrary_bytes_without_python_parsing PASSED [ 10%]
+test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[non-utf8] PASSED [ 12%]
+test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[malformed] FAILED [ 15%]
+test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[encoding] PASSED [ 17%]
+test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[lone-cr] PASSED [ 20%]
+test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[large] PASSED [ 22%]
+test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[piece-limit] PASSED [ 25%]
+test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[token-limit] PASSED [ 27%]
+test/api/test_reversible_source_view.py::test_valid_fstrings_conservatively_fall_back_to_identity[ordinary-fstring] PASSED [ 30%]
+test/api/test_reversible_source_view.py::test_valid_fstrings_conservatively_fall_back_to_identity[nested-expression-comment] PASSED [ 32%]
+test/api/test_reversible_source_view.py::test_empty_source_has_empty_partition_and_exact_inverse PASSED [ 35%]
+test/api/test_reversible_source_view.py::test_edited_compact_view_is_refused_without_an_edit_mapper PASSED [ 37%]
+test/api/test_reversible_source_view.py::test_self_consistent_rehashed_alternative_map_cannot_change_profile_recipe PASSED [ 40%]
+test/api/test_reversible_source_view.py::test_rehashed_partition_gap_is_refused_even_with_independently_nominated_new_hash PASSED [ 42%]
+test/api/test_reversible_source_view.py::test_same_length_original_source_change_invalidates_inverse PASSED [ 45%]
+test/api/test_reversible_source_view.py::test_codec_implementation_copy_drift_invalidates_retained_manifest PASSED [ 47%]
+test/api/test_reversible_source_view.py::test_rehashed_manifest_cannot_grant_completion_authority PASSED [ 50%]
+test/api/test_reversible_source_view.py::test_deterministic_results_do_not_share_mutable_manifest_state PASSED [ 52%]
+test/api/test_repository_code_view_inventory.py::test_full_population_keeps_original_bytes_modes_and_explicit_gitlink_frontier PASSED [ 55%]
+test/api/test_repository_code_view_inventory.py::test_fresh_process_restores_original_and_view_after_source_repository_is_deleted PASSED [ 57%]
+test/api/test_repository_code_view_inventory.py::test_corrupt_view_original_chunk_or_sidecar_cannot_return_restored_inventory[view] PASSED [ 60%]
+test/api/test_repository_code_view_inventory.py::test_corrupt_view_original_chunk_or_sidecar_cannot_return_restored_inventory[source] PASSED [ 62%]
+test/api/test_repository_code_view_inventory.py::test_corrupt_view_original_chunk_or_sidecar_cannot_return_restored_inventory[sidecar] PASSED [ 65%]
+test/api/test_repository_code_view_inventory.py::test_wrong_independent_bindings_refuse_before_raw_artifact_reads[source_inventory] PASSED [ 67%]
+test/api/test_repository_code_view_inventory.py::test_wrong_independent_bindings_refuse_before_raw_artifact_reads[task] PASSED [ 70%]
+test/api/test_repository_code_view_inventory.py::test_wrong_independent_bindings_refuse_before_raw_artifact_reads[profile] PASSED [ 72%]
+test/api/test_repository_code_view_inventory.py::test_wrong_independent_bindings_refuse_before_raw_artifact_reads[protected_lines] PASSED [ 75%]
+test/api/test_repository_code_view_inventory.py::test_rehashed_source_as_view_and_keep_map_cannot_replace_whitespace_recipe PASSED [ 77%]
+test/api/test_repository_code_view_inventory.py::test_opt_in_comment_policy_reuses_same_source_assets_and_preserves_caller_lines PASSED [ 80%]
+test/api/test_repository_code_view_inventory.py::test_callback_input_drift_cannot_change_view_replay_custody[request] PASSED [ 82%]
+test/api/test_repository_code_view_inventory.py::test_callback_input_drift_cannot_change_view_replay_custody[limits] PASSED [ 85%]
+test/api/test_repository_code_view_inventory.py::test_callback_input_drift_cannot_change_view_replay_custody[policy] PASSED [ 87%]
+test/api/test_repository_code_view_inventory.py::test_store_directory_replacement_during_compact_view_read_refuses PASSED [ 90%]
+test/api/test_repository_code_view_inventory.py::test_codec_implementation_drift_cannot_reinterpret_retained_code_views PASSED [ 92%]
+test/api/test_repository_code_view_inventory.py::test_unknown_profile_version_is_refused_before_existing_cas_is_consulted PASSED [ 95%]
+test/api/test_repository_code_view_inventory.py::test_final_inventory_publication_poisoning_view_returns_no_successful_ref PASSED [ 97%]
+test/api/test_repository_code_view_inventory.py::test_protected_lines_for_a_foreign_source_cannot_expand_inventory_scope PASSED [100%]
+
+=================================== FAILURES ===================================
+_ test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[malformed] _
+
+source = b'def broken(\n', reason = 'invalid_python'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xeeca33c82cc0>
+
+    @pytest.mark.parametrize("source,reason", [
+        (b"\xff\x80\n", "non_utf8"),
+        (b"def broken(\n", "invalid_python"),
+        (b"# coding: latin-1\nVALUE = 1\n", "unsupported_encoding"),
+        (b"VALUE = 1\rVALUE = 2\r", "unsupported_newlines"),
+        (b"#" * (1024 * 1024 + 1), "source_too_large"),
+        (b"VALUE = 1   \n" * 3000, "piece_limit"),
+        (b"VALUES = [" + b"0," * 65537 + b"0]\n", "unsupported_tokens"),
+    ], ids=["non-utf8", "malformed", "encoding", "lone-cr", "large", "piece-limit", "token-limit"])
+    def test_unsupported_or_unbounded_transform_falls_back_to_exact_identity(source, reason, monkeypatch):
+        with monkeypatch.context() as context:
+            if reason == "unsupported_tokens":
+                context.setattr(ast, "parse", lambda *a, **k: pytest.fail("unbounded tokens reached AST parser"))
+            result = codec.build_source_view(source)
+            assert result.view == source
+            assert result.manifest["requested_profile"] == "python-whitespace@1"
+            assert result.manifest["effective_profile"] == "identity@1"
+>           assert result.manifest["fallback_reason"] == reason
+E           AssertionError: assert 'unsupported_tokens' == 'invalid_python'
+E             
+E             - invalid_python
+E             + unsupported_tokens
+
+test/api/test_reversible_source_view.py:141: AssertionError
+-- generated xml file: /tmp/reversible-source-views-stage2-junit-20261012.xml --
+============================= slowest 10 durations =============================
+8.41s call     test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[token-limit]
+1.48s call     test/api/test_repository_code_view_inventory.py::test_full_population_keeps_original_bytes_modes_and_explicit_gitlink_frontier
+0.42s setup    test/api/test_repository_code_view_inventory.py::test_unknown_profile_version_is_refused_before_existing_cas_is_consulted
+0.41s call     test/api/test_repository_code_view_inventory.py::test_final_inventory_publication_poisoning_view_returns_no_successful_ref
+0.39s setup    test/api/test_repository_code_view_inventory.py::test_corrupt_view_original_chunk_or_sidecar_cannot_return_restored_inventory[source]
+0.39s setup    test/api/test_repository_code_view_inventory.py::test_fresh_process_restores_original_and_view_after_source_repository_is_deleted
+0.38s setup    test/api/test_repository_code_view_inventory.py::test_callback_input_drift_cannot_change_view_replay_custody[request]
+0.38s setup    test/api/test_repository_code_view_inventory.py::test_rehashed_source_as_view_and_keep_map_cannot_replace_whitespace_recipe
+0.38s setup    test/api/test_repository_code_view_inventory.py::test_codec_implementation_drift_cannot_reinterpret_retained_code_views
+0.38s setup    test/api/test_repository_code_view_inventory.py::test_callback_input_drift_cannot_change_view_replay_custody[limits]
+=========================== short test summary info ============================
+FAILED test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[malformed]
+======================== 1 failed, 39 passed in 21.49s =========================

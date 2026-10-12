@@ -1,0 +1,73 @@
+{
+  "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+  "datasets_path": "/home/barberb/lift_coding/.worktrees/source-inventory-datasets-20261012",
+  "datasets_commit": "c18390b350c7ab40f5bd342578204a03dc34fe05",
+  "before": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py": "5bc6b1c38a376db73e840dac84c5db4ab95223ab834fd4d6d2eb9b6835626cc2",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+    "test/api/test_reversible_source_view.py": "7570ccf71539743ea92d42b9af6fd6c11f31d136d99d1bcb2023bf410c0e8722",
+    "test/api/test_repository_code_view_inventory.py": "247d2a0587b571139ef7538354b8330b8364fff9eddc1ab98af88f885cfc571a"
+  },
+  "expected_codec_cases": 21,
+  "expected_inventory_cases": 19,
+  "preserved_initial_log": "/tmp/reversible-source-views-stage2-tests-20261012.log",
+  "initial_result": "39 passed; 1 fixture reason mismatch corrected to tokenizable invalid syntax",
+  "collection": {
+    "command": [
+      "/usr/bin/python3",
+      "-m",
+      "pytest",
+      "-c",
+      "pytest.ini",
+      "--collect-only",
+      "-qq",
+      "--color=no",
+      "test/api/test_reversible_source_view.py",
+      "test/api/test_repository_code_view_inventory.py"
+    ],
+    "environment_overrides": {
+      "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011:/home/barberb/lift_coding/.worktrees/source-inventory-datasets-20261012:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONUNBUFFERED": "1",
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/reversible-source-views-stage2-final-02-collect-seal-20261012.duckdb",
+      "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/reversible-source-views-stage2-final-02-collect-orchestration-20261012"
+    },
+    "log": "/tmp/reversible-source-views-stage2-final-02-collection-20261012.log",
+    "exit_code": 0,
+    "nodeids": "/tmp/reversible-source-views-stage2-final-02-nodeids-20261012.json",
+    "count": 40,
+    "original_inventory_identical": true
+  },
+  "qualification": {
+    "command": [
+      "/usr/bin/python3",
+      "-m",
+      "pytest",
+      "-c",
+      "pytest.ini",
+      "-q",
+      "--color=no",
+      "test/api/test_reversible_source_view.py",
+      "test/api/test_repository_code_view_inventory.py",
+      "--junitxml=/tmp/reversible-source-views-stage2-final-02-junit-20261012.xml"
+    ],
+    "environment_overrides": {
+      "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011:/home/barberb/lift_coding/.worktrees/source-inventory-datasets-20261012:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONUNBUFFERED": "1",
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/reversible-source-views-stage2-final-02-qualification-seal-20261012.duckdb",
+      "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/reversible-source-views-stage2-final-02-qualification-orchestration-20261012"
+    },
+    "log": "/tmp/reversible-source-views-stage2-final-02-tests-20261012.log",
+    "junit": "/tmp/reversible-source-views-stage2-final-02-junit-20261012.xml",
+    "exit_code": 0
+  },
+  "after": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py": "5bc6b1c38a376db73e840dac84c5db4ab95223ab834fd4d6d2eb9b6835626cc2",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+    "test/api/test_reversible_source_view.py": "7570ccf71539743ea92d42b9af6fd6c11f31d136d99d1bcb2023bf410c0e8722",
+    "test/api/test_repository_code_view_inventory.py": "247d2a0587b571139ef7538354b8330b8364fff9eddc1ab98af88f885cfc571a"
+  }
+}

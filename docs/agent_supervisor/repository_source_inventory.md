@@ -142,8 +142,9 @@ through a Terminal worker; existing frozen archives remain historical evidence.
 ## Next integration
 
 The first stage qualifies committed source custody and historical byte replay.
-Compact Python views and exact restoration maps, working-overlay candidate
-refresh, bounded current-owner `source.get`/`capsule.get` through the actual
+The [reversible source views](reversible_source_views.md) now supply compact
+read-only Python candidates and complete unchanged-source restoration maps.
+Working-overlay candidate refresh, bounded current-owner `source.get`/`capsule.get` through the actual
 coding interface, mapped edits and filesystem materialization remain separate
 stages. Required source stays available in the current prompt until qualified
 expansion exists. Keep existing source execution and acceptance checks.

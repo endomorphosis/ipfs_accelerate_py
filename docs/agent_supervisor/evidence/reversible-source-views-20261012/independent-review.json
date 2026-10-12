@@ -1,0 +1,20 @@
+{
+  "checks": [
+    "Canonical root comparisons prevent bool/int aliases.",
+    "Canonical page partitions, exact row/storage identities and source population rejoined.",
+    "Full unchanged inverse verifies hashes/maps and deterministic profile.",
+    "Fstrings conservative identity fallback avoids nested-expression comment deletion.",
+    "No per-callback executable rehash or complete runtime attestation claim."
+  ],
+  "limits": [
+    "Historical read-only bytes; no edit mapping, source writer, model tool or proof.",
+    "Implementation source-file hashing and token/AST replay still incur local work.",
+    "Partial immutable artifacts and sequential checks without a lease."
+  ],
+  "material_integrity_findings_remaining": false,
+  "production_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py": "5bc6b1c38a376db73e840dac84c5db4ab95223ab834fd4d6d2eb9b6835626cc2",
+    "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011"
+  },
+  "scope": "independent source review plus explicit f-string boundary correction"
+}

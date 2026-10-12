@@ -23,6 +23,9 @@ The [retained committed-source inventory](repository_source_inventory.md) now
 implements exact historical byte custody through the existing content store.
 Its host metadata pages retain complete committed scope and Gitlink frontiers;
 they do not replace current required source or qualify a model expansion tool.
+The [reversible read-only source views](reversible_source_views.md) additionally
+retain complete byte maps for exact unchanged-source restoration. Raw candidate
+byte reductions exclude guidance, sidecars and tool costs; edited views refuse.
 
 The [qualified prior comparison](evidence/terminal-reply-contract-pair-20261007/README.md)
 used 246,992 baseline tokens and 327,117 compact-transport tokens. Compact used

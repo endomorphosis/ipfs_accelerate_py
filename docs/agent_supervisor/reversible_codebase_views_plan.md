@@ -13,6 +13,14 @@ metadata pages. It creates no filesystem checkout, compact source transform,
 current-source authority or coding-model expansion tool. Those remain later
 stages; byte fidelity alone establishes no token savings.
 
+The [reversible read-only source views](reversible_source_views.md) now add
+complete KEEP/DELETE byte maps and repository-wide view inventories in the same
+CAS. Default Python views preserve comments; comment removal is a distinct
+opt-in profile. Unsupported source remains exact and Gitlink frontiers stay
+explicit. Deterministic replay restores unchanged source and refuses edited
+views. This does not qualify mapped edits, current-source model access or token
+savings; those remain separate stages.
+
 The proposed design maintains a compact view of an entire admitted repository
 while retaining exact original source in its existing content store. Deliver
 only the current task's relevant views, fetch exact source when needed, and
