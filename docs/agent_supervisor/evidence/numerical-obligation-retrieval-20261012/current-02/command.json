@@ -1,0 +1,54 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualify_public_retrieval_v2.py",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualification-02",
+    "--release",
+    "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/root-release-02.json"
+  ],
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualification-02/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualification-02/seal.duckdb",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONNOUSERSITE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "interpreter": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+  "public_source_hashes": {
+    "eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+    "eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+  },
+  "root_release_sha256": "5bf369857e7a5ea130cb6084f70d14da6ca5fdf433f0699c3158331a0f78669a",
+  "runner_sha256": "bf3f2753a0ad509c9e95b262170749bafb380ceb521b02907d60b7791bdb2583",
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_corpus.py": "3f7f9443be1cf122d019f5936f0650b13da185686cbbc205d98e61098f9fca1c",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/source_screening.py": "f53a59b989274d7944628017a3baae2ebd66dc432855a7aa92033774d7c41eab",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/software_verification/program.py": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/software_verification/syntax_bridge.py": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "2199289bd0088887d21115e65f518c2d62df230808112cfbe8b44a00eb2d49b8",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "58dc1077e82e731b7fcddfa5eb73ae88fe5e292a456bc1cfc6528933ef5903e0",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py": "fa15255c0373ed4c3c27a654af030b9c50c614a7d49222079a9fe4952fdd69da",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "e536eb34f9d2a833d0613f5cdd7c24ad1ca4874f3e649286177e1e5048fcef53",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py": "a3b3943bacb0becc7789c86414adab9f92e6977021919fb3e84b5e3c2baba491",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "133b253df6a08865e7f16f1ad923b2ca481a674c79adbf160542a4a9ec3f01d4",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_database.py": "17c8657257e93b03a36fce807d5a7d698d1cf038f65da15245535b3d0a6aacb7"
+  }
+}

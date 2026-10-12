@@ -34,6 +34,7 @@ DATASET_PATHS = (
     "ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py",
     "ipfs_datasets_py/logic/software_verification/numerical_source.py",
     "ipfs_datasets_py/logic/software_verification/numerical_logic.py",
+    "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
     "ipfs_datasets_py/logic/software_verification/__init__.py",
     "ipfs_datasets_py/logic/software_verification/program.py",
     "ipfs_datasets_py/logic/software_verification/source_adapters.py",

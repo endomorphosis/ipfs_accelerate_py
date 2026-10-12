@@ -17,8 +17,18 @@ pinned setup-cache handling. Actual Source384 coverage remained 0/4 aligned,
 and IntentIR failed open without a checkpoint. A separate deterministic
 numerical probe linked all four functions, structurally translated two, and
 replayed the real DuckLakes; generated Lean compiled, but all 45 source
-obligations remain pending. Its bounded obligation retrieval and grammar gaps
-are the next concrete integration targets.
+obligations remain pending. The subsequent
+[bounded obligation retrieval](numerical_proof_admission_readiness.md#current-structural-obligation-retrieval)
+keeps complete kind counts in the planning summary and exposes exact,
+receipt-bound pages of full unresolved rows. It reuses existing reports and
+lakes within the same summary bound. Planning remains a single request;
+automatic model tool use, wider grammar and token savings still need separate
+qualification.
+Its [source-bound qualification](evidence/numerical-obligation-retrieval-20261012/README.md)
+recovered all 45 pending public-source obligations across 12 bounded pages,
+replayed them in a fresh process with the existing DuckLakes, and passed 263
+local tests. The API currently runs on the owner side; an isolated-agent
+retrieval request/response path remains to be qualified.
 
 For repository-wide source views, separate three requirements: exact original
 restoration, preservation of accepted edits, and measured complete-run tokens.

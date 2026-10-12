@@ -1,0 +1,62 @@
+{
+  "all_review_checks_pass": true,
+  "checks": {
+    "adversarial_tests_cover_post_validation_index_locator_and_report_mutation": true,
+    "archive_closure_includes_datasets_pager": true,
+    "canonical_type_equality_rejects_boolean_integer_substitution_in_owner_evidence": true,
+    "complete_utf8_response_is_bounded_without_partial_rows_or_nonprogress_cursor": true,
+    "continuations_bind_owner_source_report_filters_and_page_budgets": true,
+    "datasets_reviewed_bytes_match_prior_test_qualification": true,
+    "docs_distinguish_owner_retrieval_from_automatic_model_tool_use": true,
+    "docs_preserve_pending_obligations_and_make_no_token_savings_claim": true,
+    "final_fence_rechecks_selected_sources_producers_inventory_and_receipt": true,
+    "report_locator_derived_from_sorted_selected_source_population": true,
+    "reread_index_bound_to_retained_inventory_before_json_parse": true,
+    "reread_report_bytes_match_index_and_retained_inventory_before_json_parse": true,
+    "source_report_replay_precedes_pending_row_selection": true,
+    "summary_keeps_complete_kind_counts_and_explicit_omissions": true
+  },
+  "containers_started_during_final_review": 0,
+  "datasets_commit": "f47161b757190380e9898aff155067c1ad609217",
+  "limitations": [
+    "The qualified expansion API executes on the current context owner. Delivery of a receipt reference to coding evidence does not qualify an isolated coding RPC, an automatic model tool loop, or private-lake access.",
+    "Pending rows and successful replay establish retained, source-bound unresolved work; no source obligations are discharged and no accepted proof, execution authority, completion authority, or token saving is established.",
+    "This record contains code review and prior-test references. It does not certify a new benchmark run, a new provider call, or the separately running accelerator test suites.",
+    "Retained receipts require their original producer snapshot. This change does not make historical receipts current under changed source or producer code."
+  ],
+  "model_inference_calls_during_final_review": 0,
+  "prior_datasets_test_evidence": {
+    "counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 42
+    },
+    "exit_code": 0,
+    "junit_path": "artifacts/supervisor-numerical-obligation-retrieval-20261012/datasets-targeted-01/junit.xml",
+    "junit_sha256": "00c440454fad4c10953e7fe2e32f927073afaefb6c687c8321835255c0a24900",
+    "qualification_path": "artifacts/supervisor-numerical-obligation-retrieval-20261012/datasets-targeted-01/qualification.json",
+    "qualification_sha256": "3c6bee5c05eb0a4d5b4193d7084b5d0d5831ee6aa02902760618b0cac887948c",
+    "rerun_during_final_review": false,
+    "source_unchanged": true
+  },
+  "provider_calls_during_final_review": 0,
+  "pushed_by_reviewer": false,
+  "review_date_utc": "2026-10-12",
+  "review_scope": "Read-only independent accelerator integration and documentation review; final datasets source-byte verification. The reviewer authored the datasets pager; a separate agent provided its independent read-only review.",
+  "reviewed_accelerator_files_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py": "71f29c0fe17016a36bbda59184e893758553e0850433b1b30e7687c63e7fcef1",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_retrieval.py": "2b518210364770b3f3dafb0e7881cdd7510d500acd6dfdbb5be24bb38df2c6aa",
+    "docs/agent_supervisor/numerical_proof_admission_readiness.md": "8b6a12fbc26e87f862b99a3edc4c950d8b8f0158b2b8582732c48b9216ee5562",
+    "docs/agent_supervisor/terminal_token_metadata_plan.md": "5feecbdc0c2b8a8da6e1173a116a7cd7d4067ffbb0df781bf6f251ed7f9f33de",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "e536eb34f9d2a833d0613f5cdd7c24ad1ca4874f3e649286177e1e5048fcef53"
+  },
+  "reviewed_datasets_files_sha256": {
+    "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+    "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py": "97d7f34ce0521cb27c12fd05fb5a3a4ac2462a26567e21236e43021fedd3b567"
+  },
+  "reviewer": "dedup_review",
+  "schema": "numerical-obligation-independent-review@1",
+  "status": "no_material_blocker_found",
+  "tests_run_during_final_review": 0
+}

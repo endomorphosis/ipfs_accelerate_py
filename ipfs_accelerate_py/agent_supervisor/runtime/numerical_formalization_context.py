@@ -7,6 +7,7 @@ then replays the source interpretation before a planner may use the summary.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 
 from ..proof.formal_verification_contracts import content_identity
@@ -17,6 +18,10 @@ from .security_autoencoder_advisor import _bytes, _sha, _read, _write, _inventor
 PROFILE = "python-numerical-structure@1"
 SCHEMA = "supervisor-numerical-formalization@1"
 OPERATION = "numerical_structure_observation"
+RETRIEVAL_SCHEMA = "supervisor-numerical-obligation-retrieval@1"
+PAGE_SCHEMA = "supervisor-numerical-obligation-page@1"
+MAX_PAGE_BYTES = 8192
+MAX_PAGE_ROWS = 8
 AUTHORITY = dict(proof_authority=False, completion_authority=False,
     execution_authority=False, source_semantics_verified=False,
     whole_program_semantics_verified=False, source_obligations_discharged=0,
@@ -55,7 +60,9 @@ def _sources(repository, source_hashes):
 
 
 def _producers():
-    from ipfs_datasets_py.logic.software_verification import numerical_logic, numerical_source
+    from ipfs_datasets_py.logic.software_verification import (
+        numerical_logic, numerical_source, numerical_obligation_retrieval,
+    )
     from ipfs_datasets_py.logic.software_contracts import source_unit_numerical_links
     from ipfs_datasets_py.logic.formalization.autoencoder import source_function_units, source_screening
     from ipfs_datasets_py.logic.formalization.autoencoder.security import (
@@ -64,6 +71,7 @@ def _producers():
     return {name: _sha(_read(Path(path).resolve(), 2_000_000)) for name, path in (
         ("consumer", __file__), ("grammar", numerical_source.__file__),
         ("projections", numerical_logic.__file__),
+        ("obligation_retrieval", numerical_obligation_retrieval.__file__),
         ("unit_links", source_unit_numerical_links.__file__),
         ("function_units", source_function_units.__file__),
         ("unit_span_validation", security_formula_corpus.__file__),
@@ -122,6 +130,12 @@ def _summary(reports, tree, unit_links=None):
         partial_or_unsupported_functions=sum(r["partial_or_unsupported_functions"] for r in summaries),
         families_with_artifacts=sorted({f for r in summaries for f in r["families_with_artifacts"]}),
         pending_obligation_count=len(pending), per_function=rows[:8],
+        pending_obligation_kinds=dict(sorted(Counter(row["kind"] for row in pending).items())),
+        obligation_retrieval=dict(schema=RETRIEVAL_SCHEMA,
+            api="ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context.retrieve_numerical_obligations",
+            requires_validated_context_receipt=True, max_page_bytes=MAX_PAGE_BYTES,
+            max_page_rows=MAX_PAGE_ROWS, source_paths=sorted(reports)[:8],
+            omitted_source_paths=max(0, len(reports)-8)),
         pending_obligations=pending[:8], omitted_function_summaries=count-min(len(rows), 8),
         omitted_obligation_summaries=max(0, len(pending)-8),
         compound_contract_count=contract_count, compound_contracts=contracts[:4],
@@ -153,6 +167,11 @@ def _summary(reports, tree, unit_links=None):
                                      "assertion_requirements")
                     if result.get(name)), None)
         if key is None:
+            retrieval = result["obligation_retrieval"]
+            if retrieval["source_paths"]:
+                retrieval["source_paths"].pop()
+                retrieval["omitted_source_paths"] += 1
+                continue
             raise ValueError("numerical planning summary exceeds bound")
         result[key].pop()
         omitted = {"pending_obligations": "omitted_obligation_summaries",
@@ -173,7 +192,7 @@ def _catalogs(output, record, world_cid):
 def _hydrate(output, record):
     world = ProgramWorldDatabase(output / "world.duckdb", output / "world-lake")
     found = world.records_for_decision(task_id=record["task_id"], operation=OPERATION)
-    if found["n"] != 1 or found["records"][0]["payload"] != record:
+    if found["n"] != 1 or _bytes(found["records"][0]["payload"]) != _bytes(record):
         raise ValueError("numerical world observation differs")
     world_cid = found["records"][0]["record_cid"]
     meta = SupervisorMetaIndex(output / "metadata.duckdb", output / "metadata-lake")
@@ -251,9 +270,10 @@ def validate_numerical_context(*, repository, expected_receipt):
         raise ValueError("exact non-authoritative numerical receipt required")
     output = _output(repository, receipt["output"])
     raw = _read(output / "receipt.json")
-    if _sha(raw) != receipt.get("receipt_sha256") or json.loads(raw) != {k: v for k, v in receipt.items() if k != "receipt_sha256"}:
+    if (_sha(raw) != receipt.get("receipt_sha256")
+            or _bytes(json.loads(raw)) != _bytes({k: v for k, v in receipt.items() if k != "receipt_sha256"})):
         raise ValueError("numerical receipt changed")
-    if _inventory(output) != receipt["files"] or _producers() != receipt["producers"]:
+    if _bytes(_inventory(output)) != _bytes(receipt["files"]) or _producers() != receipt["producers"]:
         raise ValueError("numerical artifacts or producers changed")
     sources = _sources(repository, receipt["source_hashes"])
     index = json.loads(_read(output / "reports.json"))
@@ -280,11 +300,86 @@ def validate_numerical_context(*, repository, expected_receipt):
     tree = content_identity(dict(schema=SCHEMA, sources=receipt["source_hashes"]))
     summary = _summary(reports, tree, unit_links)
     record = _record(repository, receipt["source_hashes"], receipt["producers"], index, summary)
-    if (summary != receipt["summary"] or json.loads(_read(output / "planning-summary.json")) != summary
-            or record != receipt["record"] or _hydrate(output, record) != receipt["hydration"]):
+    if (_bytes(summary) != _bytes(receipt["summary"])
+            or _bytes(json.loads(_read(output / "planning-summary.json"))) != _bytes(summary)
+            or _bytes(record) != _bytes(receipt["record"])
+            or _bytes(_hydrate(output, record)) != _bytes(receipt["hydration"])):
         raise ValueError("numerical planning/world evidence differs")
     if (_sources(repository, receipt["source_hashes"]) != sources
-            or _producers() != receipt["producers"] or _inventory(output) != receipt["files"]
+            or _producers() != receipt["producers"] or _bytes(_inventory(output)) != _bytes(receipt["files"])
             or _sha(_read(output / "receipt.json")) != receipt["receipt_sha256"]):
         raise ValueError("numerical evidence changed during replay")
     return receipt
+
+
+def _page_bytes(value):
+    """Match the datasets pager's canonical UTF-8 byte budget."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                     ensure_ascii=False, allow_nan=False).encode("utf-8")
+
+
+def retrieve_numerical_obligations(*, repository, expected_receipt, path, cursor=None,
+                                   function_id=None, kind=None, limit=8, max_bytes=8192):
+    """Read a bounded page of unresolved work from the current, replayed owner.
+
+    The receipt is supplied by the selected context owner, not inferred from a
+    model-nominated path. Continuations bind to this exact receipt as well as
+    the datasets report/query. No row is promoted to a discharged proof.
+    """
+    from ipfs_datasets_py.logic.software_verification import numerical_obligation_retrieval as pager
+
+    if type(max_bytes) is not int or not 1 <= max_bytes <= MAX_PAGE_BYTES:
+        raise ValueError("bounded numerical page byte limit required")
+    if type(limit) is not int or not 1 <= limit <= MAX_PAGE_ROWS:
+        raise ValueError("bounded numerical page row limit required")
+    root = Path(repository).resolve(strict=True)
+    receipt = validate_numerical_context(repository=root, expected_receipt=expected_receipt)
+    if type(path) is not str or path not in receipt["source_hashes"]:
+        raise ValueError("numerical retrieval requires an exact selected source path")
+    owner = receipt["receipt_sha256"]
+    if cursor is not None:
+        if (type(cursor) is not dict or set(cursor) != {"context_receipt_sha256", "cursor"}
+                or cursor["context_receipt_sha256"] != owner or cursor["cursor"] is None):
+            raise ValueError("numerical continuation differs from selected context receipt")
+        cursor = cursor["cursor"]
+    output = _output(root, receipt["output"])
+    raw = _read(output / "reports.json")
+    if _sha(raw) != receipt["files"]["reports.json"]["sha256"]:
+        raise ValueError("numerical retrieval index changed after owner replay")
+    index = json.loads(raw)
+    artifact = f"report-{sorted(receipt['source_hashes']).index(path):04d}.json"
+    if index[path]["artifact"] != artifact:
+        raise ValueError("numerical retrieval index changed its canonical report locator")
+    raw = _read(output / artifact)
+    if (_sha(raw) != index[path]["sha256"]
+            or _sha(raw) != receipt["files"][artifact]["sha256"]):
+        raise ValueError("numerical retrieval report changed after owner replay")
+    report = json.loads(raw)
+    source = _sources(root, receipt["source_hashes"])[path]
+
+    def wrap(page):
+        return dict(page, schema=PAGE_SCHEMA, dataset_schema=page["schema"],
+            context_receipt_sha256=owner, source_tree_id=receipt["record"]["source_tree_id"],
+            max_page_bytes=max_bytes,
+            next_cursor=(dict(context_receipt_sha256=owner, cursor=page["next_cursor"])
+                         if page["next_cursor"] is not None else None))
+
+    # Reserve the exact wrapper overhead for a nonterminal cursor. The final
+    # page is smaller; row contents and Unicode remain untouched.
+    empty = dict(schema=pager.PAGE_SCHEMA, next_cursor={})
+    overhead = len(_page_bytes(wrap(empty))) - len(_page_bytes(empty))
+    if max_bytes <= overhead:
+        raise ValueError("numerical page cannot fit its owner binding")
+    page = pager.page_numerical_obligations(report=report, source_text=source, path=path,
+        cursor=cursor, function_id=function_id, kind=kind, limit=limit, max_bytes=max_bytes-overhead)
+    result = wrap(page)
+    if len(_page_bytes(result)) > max_bytes:
+        raise ValueError("numerical page exceeds selected byte limit")
+    # Fence edits during projection without claiming that a historical receipt
+    # remains current after source or producer changes.
+    if (_sources(root, receipt["source_hashes"])[path] != source
+            or _producers() != receipt["producers"]
+            or _bytes(_inventory(output)) != _bytes(receipt["files"])
+            or _sha(_read(output / "receipt.json")) != owner):
+        raise ValueError("numerical evidence changed during retrieval")
+    return result

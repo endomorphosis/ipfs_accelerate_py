@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-numerical-obligation-retrieval-20261012/datasets-targeted-01/junit.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012",
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONNOUSERSITE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py": "97d7f34ce0521cb27c12fd05fb5a3a4ac2462a26567e21236e43021fedd3b567"
+  }
+}

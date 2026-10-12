@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "model_inference_calls": 0,
+  "provider_calls": 0,
+  "seconds": 1.4683785400120541,
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py": "97d7f34ce0521cb27c12fd05fb5a3a4ac2462a26567e21236e43021fedd3b567"
+  },
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012/tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py": "97d7f34ce0521cb27c12fd05fb5a3a4ac2462a26567e21236e43021fedd3b567"
+  },
+  "source_unchanged": true
+}

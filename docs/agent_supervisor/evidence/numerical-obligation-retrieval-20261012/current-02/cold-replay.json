@@ -1,0 +1,28 @@
+{
+  "exact_pages_replayed": true,
+  "hydration": {
+    "catalog_count": 3,
+    "ducklake_catalogs": 3,
+    "ducklake_links": 3,
+    "ducklake_verified": true,
+    "ducklake_world_records": 1,
+    "world_record_cid": "bafkreih6kkppptuk5omfpqc2fpucxorfdfwjstacsgo5lpmkxsgfcgrv3q"
+  },
+  "model_runs": 0,
+  "per_file": {
+    "eigen.py": {
+      "page_count": 4,
+      "pages_sha256": "d15ee99afcc5cf60654a0525eebd213ece0d9fa1fd2926dc1052ea0cbbff820d",
+      "rows": 16
+    },
+    "eval.py": {
+      "page_count": 8,
+      "pages_sha256": "01df149e11b23e7e7b2832132181a06581655380b622790050372ef3e5b717a6",
+      "rows": 29
+    }
+  },
+  "provider_calls": 0,
+  "real_ducklake_verified": true,
+  "schema": "numerical-obligation-cold-replay@1",
+  "source_executed": false
+}

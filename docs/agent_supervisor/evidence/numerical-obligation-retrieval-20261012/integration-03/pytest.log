@@ -1,0 +1,33 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/integration-03/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 193 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_integration.py . [  0%]
+....                                                                     [  2%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py . [  3%]
+...........................                                              [ 17%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py . [ 17%]
+...................................................................      [ 52%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_observation.py . [ 52%]
+..........................................                               [ 74%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py . [ 75%]
+.................                                                        [ 83%]
+test/api/test_published_numerical.py ............................        [ 98%]
+test/integration/test_admitted_numerical_successor.py ...                [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/integration-03/junit.xml -
+============================= slowest 10 durations =============================
+7.20s call     test/integration/test_admitted_numerical_successor.py::test_numerical_successor_preserves_mixed_scope_and_owner_currentness[combined]
+7.10s call     test/integration/test_admitted_numerical_successor.py::test_numerical_successor_preserves_mixed_scope_and_owner_currentness[dirty_reload]
+5.91s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py::test_assertion_summary_reaches_planner_before_goals
+5.88s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[selection]
+5.84s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_native_start_replays_selected_numerical_context_and_preserves_cleanup[True]
+5.84s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_native_start_replays_selected_numerical_context_and_preserves_cleanup[False]
+5.83s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[receipt]
+5.81s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[lake]
+5.79s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_selected_numerical_preflight_replays_real_source_and_both_lakes_before_goals
+5.77s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[admitted]
+======================= 193 passed in 214.89s (0:03:34) ========================

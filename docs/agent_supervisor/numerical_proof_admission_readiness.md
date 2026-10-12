@@ -12,6 +12,77 @@ download, checkpoint replacement or Hugging Face publication in the next phase.
 It also leaves native validation, publication and task completion with their
 existing owners.
 
+## Current structural-obligation retrieval
+
+The opt-in `python-numerical-structure@1` context now exposes bounded retrieval
+of its pending source obligations. This is separate from the spectral
+qualification record proposed below. It reuses the existing source-replayed
+reports, metadata DuckLake and world DuckLake; it creates no accepted proof.
+Select it during benchmark preparation with
+`--numerical-formalization-profile python-numerical-structure@1` and a newly
+qualified archive containing both current producers. It remains opt-in; the
+no-index arm records the selection but does not consume the indexed context.
+
+The 8,192-byte planning summary retains `pending_obligation_kinds`, an exact
+count by kind over the full retained population, even when all individual rows
+are omitted. `obligation_retrieval` identifies the API, limits and a bounded
+list of source paths with an explicit omission count. The complete selected
+path population remains in the owner receipt. Detailed rows continue to live
+in the already retained per-source reports.
+
+`ipfs_datasets_py.logic.software_verification.numerical_obligation_retrieval`
+owns source-to-report replay, exact function/kind filtering and deterministic
+paging. The accelerator consumer additionally validates the selected receipt,
+source population, producer pins, complete artifact inventory and lake replay.
+It checks currentness again after constructing each page. The following uses
+the receipt selected by `load_task_context_selection`, which validates the
+task/context binding before returning `numerical_formalization`:
+
+```python
+from ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context import (
+    retrieve_numerical_obligations,
+)
+
+receipt = selected_context["numerical_formalization"]
+cursor = None
+while True:
+    page = retrieve_numerical_obligations(
+        repository=repository,
+        expected_receipt=receipt,
+        path="eigen.py",  # An exact path from receipt["source_hashes"].
+        cursor=cursor,
+        limit=4,
+        max_bytes=8192,
+    )
+    consume_pending_rows(page["rows"])
+    cursor = page["next_cursor"]
+    if cursor is None:
+        break
+```
+
+Optional `function_id` and `kind` filters match exactly. Keep filters, row limit
+and byte budget fixed across continuations. The complete UTF-8 response,
+including owner binding and continuation, must fit the requested byte bound;
+rows are never cut in half. An insufficient bound raises an error. Empty
+filters report zero matches and the full unfiltered count; this is not proof
+of an obligation-free program. `exhausted` means that this query has no more
+rows, not that its obligations were discharged.
+
+Each continuation binds the context receipt, source path/hash, complete native
+report and query. An obligation ID alone is insufficient: local IDs can remain
+the same across different source bytes. Source edits, changed reports, different
+owners or changed query budgets require a new validated query. The byte count
+is a transport measurement, not a provider token estimate.
+
+Planning remains a single provider request: it receives the kind counts and
+retrieval description, not an automatic tool-use loop. Coding evidence carries
+the checked owner receipt reference; expansion currently runs on the owner
+side. An isolated coding process has no newly qualified RPC or tool for reading
+owner-private lakes. No claim is made that a live model invoked this API or
+that complete-run tokens decreased.
+The retained producer pins also mean old receipts require their original
+producer snapshot; this change does not make them current under new code.
+
 ## Audited baseline and available evidence
 
 The source audit used accelerator revision
