@@ -21,7 +21,8 @@ from ..proof.doctor_proof_cache import (
 )
 from ..proof.formal_verification_cache import FormalVerificationCache
 from ..proof.formal_verification_contracts import (
-    AssuranceLevel, EvidenceFreshness, ProofReceipt, ProofVerdict, ResourceBudget, canonical_json,
+    AssuranceLevel, EvidenceFreshness, ProofReceipt, ScopedProofReceipt, ProofVerdict,
+    ResourceBudget, canonical_json,
 )
 from .supervisor_meta_index import public_replay_without_metadata
 
@@ -154,7 +155,7 @@ def _result(result, key: DoctorProofCacheKey, stage: DoctorCacheStage):
         raise ValueError("native exact audit required")
     receipt = result.receipt
     if receipt is not None:
-        if type(receipt) is not ProofReceipt:
+        if type(receipt) not in (ProofReceipt, ScopedProofReceipt):
             raise ValueError("native receipt required")
         body = _bounded_json(receipt.to_dict(), MAX_RECEIPT_BYTES)
         receipt = ProofReceipt.from_dict(json.loads(body))

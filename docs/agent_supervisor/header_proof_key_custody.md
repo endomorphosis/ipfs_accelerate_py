@@ -2,8 +2,10 @@
 
 The scoped header proof workflow can retain a complete native Doctor key and
 its canonical preparation beside the actual sealed proof. This closes an input
-custody gap in the production recipe. It does not supply the generic positive
-receipt accepted by `DoctorProofCacheGate`, or measured Terminal proof coverage.
+custody gap in the production recipe. Custody itself does not supply the generic
+positive receipt accepted by `DoctorProofCacheGate`. The separate reviewed
+[scoped header cache bridge](header_proof_cache_bridge.md) performs that admission
+after fresh native kernel replay. Actual Terminal proof coverage remains unmeasured.
 
 ## Prepare the current inputs
 
@@ -51,8 +53,8 @@ extra fields and private fields refuse. The inverse must recover the original
 canonical contract and its CID, with equality to the independently replayed
 contract. The projection has its own strict-artifact CID; its logical premise
 reference remains the actual original contract CID. The general private-key
-classifier is unchanged. A future generic proof bridge must explicitly review
-this correspondence; a projected identity cannot stand in for accepted proof.
+classifier is unchanged. The reviewed generic bridge checks this correspondence;
+a projected identity cannot stand in for accepted proof.
 
 ## Retain the original native owner
 
@@ -98,15 +100,15 @@ the native loader's lineage-prefix work; qualify that cost before model access.
 
 ## Remaining qualification
 
-1. Review a supported semantic bridge between native sealed Doctor proofs and
-   the generic receipt/evidence contract. It must preserve local proof scope,
-   reviewed translation/protocol assumptions, residual SecurityIR obligations,
-   exact source-premise correspondence and independently derived assurance.
-   Do not manufacture generic `ProofEvidence` flags from a sealed envelope.
-2. Qualify admission to an existing `DoctorProofCacheGate`, expected population
-   and fresh render/commit checks, then supply the explicit Terminal host owner.
-   Keep sealed SQLite custody and observational DuckDB/DuckLake indexes distinct
-   from generic positive-cache acceptance.
+1. Use the separately qualified [scoped bridge](header_proof_cache_bridge.md) for
+   fresh native-proof admission and bound render/commit checks. Its typed receipt
+   retains local scope, assumptions and residuals, with task completion denied.
+   Preserve the sealed SQLite custody, generic Doctor acceptance and
+   observational DuckDB/DuckLake indexes in their respective roles.
+2. Wire a typed bound bridge admission through the Terminal host, including
+   current native custody, profiles, executable/implementation pins and expected
+   generic receipt identity. The present task/source/context probe alone does
+   not carry this producer's complete reuse checks. Then measure actual coverage.
 3. Census actual accepted receipts and repeated-status material. Keep required
    facts inline until bounded source/receipt expansion is qualified. Replace
    repeated material only when property, verdict, assumptions, dependency

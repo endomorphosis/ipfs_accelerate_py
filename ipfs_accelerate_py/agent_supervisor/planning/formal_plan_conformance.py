@@ -35,6 +35,7 @@ from .formal_planning_contracts import (
 from ..proof.formal_verification_contracts import (
     AssuranceLevel,
     ProofReceipt,
+    ScopedProofReceipt,
     assurance_satisfies,
     canonical_json,
     content_identity,
@@ -2479,6 +2480,8 @@ def evaluate_requires_proof_preconditions(
         )
 
         reasons: list[str] = []
+        if isinstance(receipt, ScopedProofReceipt):
+            reasons.append("conditional_local_proof_requires_scope_aware_consumer")
         if not assurance_satisfies(derived, required):
             if derived is AssuranceLevel.CANDIDATE:
                 reasons.append("candidate_only")

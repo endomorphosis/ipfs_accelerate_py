@@ -1,5 +1,5 @@
 """Real native owner observations with closed, non-authoritative exports."""
-from dataclasses import replace
+from dataclasses import fields, replace
 import hashlib
 import json
 from pathlib import Path
@@ -11,6 +11,9 @@ from ipfs_accelerate_py.agent_supervisor.proof.doctor_proof_cache import (
     DoctorIdentityBinding, DoctorProofCacheGate,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import formal_status_census as census
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    LocalProofScope, ProofReceipt, ScopedProofReceipt, content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import public_replay_without_metadata
 from test.api.test_agent_supervisor_doctor_proof_cache import _key, _receipt, _identity
 
@@ -73,6 +76,31 @@ def test_explicit_hit_is_observed_without_exported_bodies_or_authority(native):
     assert report["native_gate_bookkeeping_may_write_existing_owner"] is True
     assert report["storage_read_only"] is False
     assert_closed(report)
+
+
+def test_scoped_positive_receipt_is_counted_without_task_completion_authority(tmp_path):
+    key, base = _key(), _receipt()
+    scope = LocalProofScope(obligation_id=base.obligation_id,
+        theorem_cid=content_identity({'authored': 'conditional-local-census-theorem'}),
+        property_id='property:authored-local', consequence_ref='consequence:authored-local',
+        proof_scope='Authored local theorem under explicit assumptions.',
+        premise_ids=base.premise_ids, assumption_ids=('assumption:authored-local',),
+        residual_obligation_ids=('obligation:authored-unresolved',))
+    receipt = ScopedProofReceipt(**{field.name: getattr(base, field.name)
+                                  for field in fields(ProofReceipt)}, scope=scope)
+    with public_replay_without_metadata():
+        gate = DoctorProofCacheGate(tmp_path / 'authored-scoped-census-owner')
+        assert gate.put(key, receipt).stored
+    binding = census.FormalStatusCensusBinding(task_sha256=sha('PRIVATE_TASK'),
+        revision_sha256=sha('PRIVATE_REVISION'), source_sha256=sha('PRIVATE_SOURCE'),
+        context_sha256=sha('PRIVATE_CONTEXT'), candidate_tree_id=key.tree.logical_id,
+        owner_path_sha256=sha(str(gate.db_path)), expected_key_ids=(key.key_id,))
+    report = observe((gate, key, binding))
+    assert report['status'] == 'measured' and report['accepted_receipts'] == 1
+    assert_closed(report)
+    restored = gate.revalidate_for_render(key).receipt
+    assert type(restored) is ScopedProofReceipt and restored.scope == scope
+    assert restored.completion_reference()['assurance_satisfied'] is False
 
 
 @pytest.mark.parametrize("missing", ["binding", "gate", "keys", "current_binding_probe"])

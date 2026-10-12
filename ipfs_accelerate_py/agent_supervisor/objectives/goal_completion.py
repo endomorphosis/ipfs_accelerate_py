@@ -1267,6 +1267,7 @@ class CompletionEvidence:
             and _proof_freshness(self.proof_freshness) is receipt.freshness
             and receipt.freshness is EvidenceFreshness.CURRENT
             and assurance_satisfies(receipt.authoritative_assurance, required)
+            and receipt.satisfies_completion(required)
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -2069,11 +2070,20 @@ def validate_completion_evidence(
                         "required_assurance_not_satisfied",
                         "Produce fresh trusted proof evidence at the criterion's required assurance level.",
                     )
+                if (required is not None and receipt_verdict is ProofVerdict.PROVED
+                        and receipt_freshness is EvidenceFreshness.CURRENT
+                        and assurance_satisfies(receipt_assurance, required)
+                        and not trusted_receipt.satisfies_completion(required)):
+                    reject(
+                        "conditional_local_proof_cannot_complete_task",
+                        "Use a completion-eligible proof with its assumptions and residual obligations discharged.",
+                    )
                 assurance_ok = bool(
                     required is not None
                     and receipt_verdict is ProofVerdict.PROVED
                     and receipt_freshness is EvidenceFreshness.CURRENT
                     and assurance_satisfies(receipt_assurance, required)
+                    and trusted_receipt.satisfies_completion(required)
                     and evidence.proof_receipt_id == trusted_receipt.receipt_id
                     and evidence.obligation_id == trusted_receipt.obligation_id
                     and evidence.repository_tree == trusted_receipt.repository_tree_id

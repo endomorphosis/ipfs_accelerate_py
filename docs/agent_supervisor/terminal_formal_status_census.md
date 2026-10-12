@@ -72,8 +72,11 @@ no native gate calls, but this is not a promise of zero filesystem observations.
 Current production Doctor workflows persist sealed SQLite receipts and an
 observational proof-scope index. The scoped header recipe can now retain a
 [complete prepared key and native restart custody](header_proof_key_custody.md)
-with explicitly admitted profiles, but it does not produce the accepted generic
-receipt/Gate population required by this opt-in. The existing transaction cache-binding
+with explicitly admitted profiles. The separate [scoped header bridge](header_proof_cache_bridge.md)
+can admit its local proof to an existing generic Gate after fresh native replay.
+The current Terminal host probe does not yet retain that bridge's current native
+custody, implementation, executable and profile checks. Its actual accepted
+Terminal population remains unmeasured. The existing transaction cache-binding
 probe is injectable but has no production producer here. The new host path is
 qualified with authored temporary native owners and kernel-acceptance fixtures;
 it establishes no real theorem, live Terminal proof coverage or token benefit.
@@ -120,6 +123,12 @@ Recorded and derived verdicts must retain their own meanings; this positive
 cache is not a six-verdict accepted population. Cancelled, error, unsupported,
 inconclusive and disproved records cannot become accepted proof cards.
 
+The census also preserves canonical `ScopedProofReceipt` (`proof-receipt@2`)
+hits. Counting a proved local lemma grants no task completion or whole-program
+authority; its typed assumptions and residual obligations remain intact. A host
+using the new header bridge must supply its complete current binding rather than
+relying on historical admission or a raw gate/key lookup alone.
+
 All observations cover the explicitly requested key set at native validation
 points. Sequential checks are not an atomic owner snapshot, and eligibility at
 future rendering or commit remains unverified. A census report cannot replace
@@ -136,10 +145,13 @@ native kernel. Its versioned source-premise projection preserves every public
 AST observation and has an exact inverse to the original contract. Defaults
 still produce no complete key or generic accepted receipt.
 
-Review and qualify a supported native-proof-to-generic-evidence bridge before
-admission to a Doctor Gate and supply through the explicit Terminal host route.
-Native local proof scope, reviewed translation/protocol assumptions and residual
-SecurityIR obligations must remain explicit. Sealed receipt-store entries and
+The [reviewed scoped header bridge](header_proof_cache_bridge.md) now qualifies
+native-proof-to-generic-evidence admission and bound render/commit checks. Next,
+supply a typed bound admission and expected generic receipt identity through the
+Terminal host route. Its current probe must retain native custody, implementation,
+profile and executable checks in addition to task/source/context checks. Native
+local proof scope, reviewed translation/protocol assumptions and residual
+SecurityIR obligations remain explicit. Sealed receipt-store entries and
 observational indexes cannot silently become positive cache hits. Keep schema/
 version, decoder task and IR family/dimension inventories in their namespaces.
 

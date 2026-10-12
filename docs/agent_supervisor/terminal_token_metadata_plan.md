@@ -183,19 +183,23 @@ benchmark input size, behavior, rewards or cumulative tokens.
    The scoped header workflow now retains [complete key inputs and restart
    custody](header_proof_key_custody.md) in its existing sealed native owner.
    Rebuilt preparation and fresh native kernel replay qualify native reuse.
-   A reviewed bridge to the generic receipt/evidence contract remains required
-   before Gate admission or measured accepted Terminal coverage.
+   The reviewed [scoped header bridge](header_proof_cache_bridge.md) now admits
+   a native local lemma after fresh kernel replay and provides bound render/commit
+   checks. A typed `@2` receipt preserves assumptions and actual residual IDs;
+   local assurance cannot authorize task completion. The flat completion, claim,
+   policy and planning consumers refuse scope loss.
    The explicit `TerminalFormalStatusOwner` host entry now joins an existing
    scoped Doctor analysis and native gate/full keys to the actual signed task.
    It reconstructs the source scope independently, rechecks Terminal/source
    custody around consultations, fences the same owner across context exit and
    clears escaped counts on drift or cleanup errors. The container host forwards
    these trusted objects locally without changing worker input. Authored native
-   owner tests qualify this boundary. The production workflow still needs a
-   reviewed full-key producer: its sealed SQLite receipts and observational
-   indexes are not an admitted Doctor DuckDB cache population. Persist full keys
-   and proof-profile custody when producing proofs, reconnect the same current
-   owner after restart, and then measure actual accepted coverage and repeats.
+   owner tests qualify this boundary. Its current task/source/context probe still
+   needs a typed binding to the new bridge's current native custody, profiles,
+   implementations and executables, plus an independently expected generic
+   receipt identity. Historical acceptance or a raw gate/key lookup cannot supply
+   those checks. Reconnect the same current owners after restart, reimport with
+   fresh native replay, then measure actual accepted coverage and repeats.
    No current Terminal proof coverage or token benefit has been established.
 3. **Qualify a bounded owner lookup for progressive disclosure.** Required facts
    stay inline until the model has an actual qualified expansion interface.

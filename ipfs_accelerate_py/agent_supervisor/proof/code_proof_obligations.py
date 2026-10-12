@@ -33,6 +33,7 @@ from .formal_verification_contracts import (
     ContractValidationError,
     EvidenceFreshness,
     ProofReceipt,
+    ScopedProofReceipt,
     ProofVerdict,
     assurance_satisfies,
     canonical_json,
@@ -3071,6 +3072,9 @@ def validate_code_proof_receipt_bindings(
             reasons.append(code)
         stale = stale or is_stale
         contradictory = contradictory or is_contradictory
+
+    if isinstance(proof, ScopedProofReceipt):
+        reject("conditional_local_proof_requires_scope_aware_consumer")
 
     if obligation_set is not None and obligation_set.incomplete_reason_codes:
         reject("implementation_obligation_set_incomplete")

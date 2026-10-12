@@ -41,6 +41,7 @@ from .formal_verification_contracts import (
     ProofEvidence,
     ProofReceipt,
     ProofVerdict,
+    ScopedProofReceipt,
     assess_assurance,
     assurance_satisfies,
     content_identity,
@@ -980,6 +981,10 @@ def claim_from_receipt(
 
     if not isinstance(receipt, ProofReceipt):
         raise CodeClaimContractError("receipt must be a ProofReceipt")
+    if isinstance(receipt, ScopedProofReceipt):
+        raise CodeClaimContractError(
+            "conditional local proof requires a scope-aware code claim consumer"
+        )
 
     assessment = assess_assurance(
         receipt.evidence,

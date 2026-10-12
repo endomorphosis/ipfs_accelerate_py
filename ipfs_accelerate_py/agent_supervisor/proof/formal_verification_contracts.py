@@ -35,10 +35,18 @@ PROOF_PLAN_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-plan@1"
 PROOF_PLAN_STEP_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-plan-step@1"
 PROOF_ATTEMPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-attempt@1"
 PROOF_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-receipt@1"
+SCOPED_PROOF_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-receipt@2"
+LOCAL_PROOF_SCOPE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/local-proof-scope@1"
 PROOF_EVIDENCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-evidence@1"
 RESOURCE_BUDGET_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-resource-budget@1"
 ASSURANCE_ASSESSMENT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/assurance-assessment@1"
 MAX_REJECTION_REASON_CHARS = 256
+MAX_LOCAL_PROOF_ID_BYTES = 1024
+MAX_LOCAL_PROOF_SCOPE_TEXT_BYTES = 8192
+MAX_LOCAL_PROOF_SCOPE_IDS = 256
+MAX_LOCAL_PROOF_SCOPE_BYTES = 256 * 1024
+MAX_SCOPED_PROOF_RECEIPT_BYTES = 1024 * 1024
+LOCAL_PROOF_COMPLETION_REJECTION = "conditional_local_proof_cannot_complete_task"
 
 # Canonical proof contracts are durable/public artifacts.  Private proving
 # inputs must remain in backend-owned memory and must never be smuggled into a
@@ -1560,6 +1568,104 @@ def _mirror_kernel_verified_receipt(receipt: ProofReceipt) -> None:
 
 
 @dataclass(frozen=True)
+class LocalProofScope(CanonicalContract):
+    """Exact conditional theorem boundary, never task completion authority.
+
+    This records the theorem's scope and outstanding conditions. It does not
+    establish the theorem, discharge assumptions, or discharge residual work.
+    """
+
+    SCHEMA: ClassVar[str] = LOCAL_PROOF_SCOPE_SCHEMA
+
+    obligation_id: str
+    theorem_cid: str
+    property_id: str
+    consequence_ref: str
+    proof_scope: str
+    premise_ids: Tuple[str, ...]
+    assumption_ids: Tuple[str, ...]
+    residual_obligation_ids: Tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        for name in ("obligation_id", "theorem_cid", "property_id", "consequence_ref", "proof_scope"):
+            raw = getattr(self, name)
+            value = _text(raw, field_name=name, required=True)
+            maximum = MAX_LOCAL_PROOF_SCOPE_TEXT_BYTES if name == "proof_scope" else MAX_LOCAL_PROOF_ID_BYTES
+            if type(raw) is not str or value != raw or len(value.encode("utf-8")) > maximum:
+                raise ContractValidationError("bounded exact local proof scope text required")
+        for name in ("premise_ids", "assumption_ids", "residual_obligation_ids"):
+            raw = getattr(self, name)
+            if type(raw) is not tuple or len(raw) > MAX_LOCAL_PROOF_SCOPE_IDS:
+                raise ContractValidationError("bounded exact local proof scope tuples required")
+            if any(type(item) is not str or not item or item != item.strip()
+                   or len(item.encode("utf-8")) > MAX_LOCAL_PROOF_ID_BYTES for item in raw):
+                raise ContractValidationError("bounded exact local proof scope identities required")
+            normalized = _ids(raw, field_name=name)
+            if len(normalized) != len(raw):
+                raise ContractValidationError("duplicate local proof scope identities are unsupported")
+            object.__setattr__(self, name, normalized)
+        if len(self.to_json().encode("utf-8")) > MAX_LOCAL_PROOF_SCOPE_BYTES:
+            raise ContractValidationError("local proof scope exceeds canonical byte bound")
+
+    @property
+    def whole_program_proved(self) -> bool:
+        return False
+
+    @property
+    def completion_authority(self) -> bool:
+        return False
+
+    @property
+    def mutation_authority(self) -> bool:
+        return False
+
+    @property
+    def execution_authority(self) -> bool:
+        return False
+
+    def _payload(self) -> Dict[str, Any]:
+        return {
+            "contract_version": 1,
+            "obligation_id": self.obligation_id,
+            "theorem_cid": self.theorem_cid,
+            "property_id": self.property_id,
+            "consequence_ref": self.consequence_ref,
+            "proof_scope": self.proof_scope,
+            "premise_ids": self.premise_ids,
+            "assumption_ids": self.assumption_ids,
+            "residual_obligation_ids": self.residual_obligation_ids,
+            "whole_program_proved": False,
+            "completion_authority": False,
+            "mutation_authority": False,
+            "execution_authority": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "LocalProofScope":
+        fields = {"obligation_id", "theorem_cid", "property_id", "consequence_ref", "proof_scope",
+                  "premise_ids", "assumption_ids", "residual_obligation_ids"}
+        flags = {"whole_program_proved", "completion_authority", "mutation_authority", "execution_authority"}
+        required = {"schema", "contract_version", *fields, *flags}
+        if (type(payload) is not dict or set(payload) - {"content_id"} != required
+                or payload.get("schema") != cls.SCHEMA
+                or type(payload.get("contract_version")) is not int or payload["contract_version"] != 1
+                or any(payload.get(name) is not False for name in flags)
+                or len(canonical_json(payload).encode("utf-8")) > MAX_LOCAL_PROOF_SCOPE_BYTES):
+            raise ContractValidationError("closed bounded local proof scope without authority required")
+        values = {name: payload[name] for name in fields}
+        for name in ("premise_ids", "assumption_ids", "residual_obligation_ids"):
+            if type(values[name]) is not list:
+                raise ContractValidationError("canonical local proof scope identity arrays required")
+            values[name] = tuple(values[name])
+        result = cls(**values)
+        body = {name: value for name, value in payload.items() if name != "content_id"}
+        if (canonical_json(body) != result.to_json()
+                or payload.get("content_id", result.content_id) != result.content_id):
+            raise ContractValidationError("local proof scope canonical identity differs")
+        return result
+
+
+@dataclass(frozen=True)
 class ProofReceipt(CanonicalContract):
     """Immutable proof result binding all semantic and execution inputs.
 
@@ -1841,8 +1947,18 @@ class ProofReceipt(CanonicalContract):
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProofReceipt":
+        if (cls is ProofReceipt and isinstance(payload, Mapping)
+                and payload.get("schema") == SCOPED_PROOF_RECEIPT_SCHEMA):
+            return ScopedProofReceipt.from_dict(payload)
         _schema(payload, cls.SCHEMA)
-        _contract_version(payload)
+        scoped = cls is ScopedProofReceipt
+        if scoped:
+            if (type(payload) is not dict or payload.get("schema") != cls.SCHEMA
+                    or type(payload.get("contract_version")) is not int or payload["contract_version"] != 2
+                    or len(canonical_json(payload).encode("utf-8")) > MAX_SCOPED_PROOF_RECEIPT_BYTES):
+                raise ContractValidationError("closed bounded versioned scoped proof receipt required")
+        else:
+            _contract_version(payload)
         _reject_unknown_fields(
             payload,
             {
@@ -1878,7 +1994,7 @@ class ProofReceipt(CanonicalContract):
                 "metadata",
                 "receipt_id",
                 "content_id",
-            },
+            } | ({"scope"} if scoped else set()),
             artifact_name="proof receipt",
         )
         result = cls(
@@ -1908,6 +2024,7 @@ class ProofReceipt(CanonicalContract):
             finished_at=payload.get("finished_at", ""),
             resource_usage=payload.get("resource_usage") or {},
             metadata=payload.get("metadata") or {},
+            **({"scope": LocalProofScope.from_dict(payload.get("scope"))} if scoped else {}),
         )
         claimed = payload.get("authoritative_assurance")
         if (
@@ -1948,7 +2065,70 @@ class ProofReceipt(CanonicalContract):
         claimed_id = payload.get("receipt_id") or payload.get("content_id")
         if claimed_id and claimed_id != result.receipt_id:
             raise ContractValidationError("receipt content identity does not match payload")
+        if scoped:
+            canonical_body = {name: value for name, value in payload.items()
+                              if name not in {"content_id", "receipt_id"}}
+            if (canonical_json(canonical_body) != result.to_json()
+                    or any(payload[name] != result.receipt_id
+                           for name in ("content_id", "receipt_id") if name in payload)):
+                raise ContractValidationError("scoped receipt requires its complete canonical body and identity")
         return result
+
+
+@dataclass(frozen=True)
+class ScopedProofReceipt(ProofReceipt):
+    """Kernel assurance for an exact local theorem without task completion.
+
+    The versioned scope survives canonical cache decoding. Its conditions are
+    typed inputs; metadata cannot remove them or confer broader authority.
+    """
+
+    SCHEMA: ClassVar[str] = SCOPED_PROOF_RECEIPT_SCHEMA
+    scope: LocalProofScope = field(kw_only=True)
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if (type(self.scope) is not LocalProofScope or self.scope.obligation_id != self.obligation_id
+                or self.scope.premise_ids != self.premise_ids):
+            raise ContractValidationError("exact local scope obligation and premise joins required")
+        if len(self.to_json().encode("utf-8")) > MAX_SCOPED_PROOF_RECEIPT_BYTES:
+            raise ContractValidationError("scoped proof receipt exceeds canonical byte bound")
+
+    @property
+    def schema_version(self) -> int:
+        return 2
+
+    @property
+    def completion_authority(self) -> bool:
+        return False
+
+    def completion_reference(
+        self, required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+    ) -> Dict[str, Any]:
+        reference = super().completion_reference(required_assurance)
+        reference["assurance_satisfied"] = False
+        reference["completion_authority"] = False
+        reference["reason_codes"] = sorted(
+            {code for code in reference["reason_codes"] if code != "required_assurance_satisfied"}
+            | {LOCAL_PROOF_COMPLETION_REJECTION})
+        return reference
+
+    def satisfies_completion(
+        self, required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+    ) -> bool:
+        _enum(required_assurance, AssuranceLevel, field_name="required_assurance")
+        return False
+
+    def _payload(self) -> Dict[str, Any]:
+        payload = super()._payload()
+        payload.update(contract_version=2, scope=self.scope)
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ScopedProofReceipt":
+        if cls is not ScopedProofReceipt:
+            raise ContractValidationError("exact scoped proof receipt class required")
+        return ProofReceipt.from_dict.__func__(cls, payload)
 
 
 __all__ = [
@@ -1960,6 +2140,9 @@ __all__ = [
     "PROOF_PLAN_SCHEMA",
     "PROOF_PLAN_STEP_SCHEMA",
     "PROOF_RECEIPT_SCHEMA",
+    "SCOPED_PROOF_RECEIPT_SCHEMA",
+    "LOCAL_PROOF_SCOPE_SCHEMA",
+    "LOCAL_PROOF_COMPLETION_REJECTION",
     "RESOURCE_BUDGET_SCHEMA",
     "SCHEMA_VERSION",
     "MAX_REJECTION_REASON_CHARS",
@@ -1981,6 +2164,8 @@ __all__ = [
     "ProofPlan",
     "ProofPlanStep",
     "ProofReceipt",
+    "LocalProofScope",
+    "ScopedProofReceipt",
     "ProofStage",
     "ProofVerdict",
     "RequiredAssuranceLevel",

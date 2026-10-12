@@ -38,6 +38,7 @@ from .formal_verification_contracts import (
     ContractValidationError,
     ProofPlan,
     ProofReceipt,
+    ScopedProofReceipt,
     ProofVerdict,
     assurance_satisfies,
     canonical_json,
@@ -1221,6 +1222,8 @@ class ProofOutcome(CanonicalContract):
     def from_receipt(cls, requirement_id: str, receipt: ProofReceipt) -> "ProofOutcome":
         if not isinstance(receipt, ProofReceipt):
             raise PolicyValidationError("receipt must be a ProofReceipt")
+        if isinstance(receipt, ScopedProofReceipt):
+            raise PolicyValidationError("conditional local proof requires a scope-aware policy consumer")
         status = {
             ProofVerdict.PROVED: ProofResultStatus.PROVED,
             ProofVerdict.DISPROVED: ProofResultStatus.DISPROVED,

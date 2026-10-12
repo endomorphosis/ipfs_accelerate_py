@@ -30,6 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
     AssuranceLevel,
     EvidenceFreshness,
     ProofReceipt,
+    ScopedProofReceipt,
     ProofVerdict,
 )
 
@@ -515,6 +516,13 @@ def adapt_proof_receipt(receipt: ProofReceipt) -> AdaptationResult:
             code="not_a_proof_receipt",
             legacy_kind="ProofReceipt",
             message="adapt_proof_receipt requires a ProofReceipt instance",
+        )
+
+    if isinstance(receipt, ScopedProofReceipt):
+        return _incompat(
+            code="conditional_local_proof_requires_scope_aware_consumer",
+            legacy_kind="ScopedProofReceipt",
+            message="The flat claim envelope cannot retain local proof assumptions and residual obligations.",
         )
 
     authoritative = receipt.authoritative_assurance
