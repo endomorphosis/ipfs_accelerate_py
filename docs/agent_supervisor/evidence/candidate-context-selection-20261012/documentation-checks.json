@@ -1,0 +1,37 @@
+{
+  "commands": [
+    {
+      "command": [
+        "python",
+        "scripts/docs/check_agent_supervisor_docs.py"
+      ],
+      "exit_code": 0,
+      "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python",
+        "scripts/docs/check_current_docs_links.py"
+      ],
+      "exit_code": 0,
+      "stdout": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "extra_link_checks": {
+    "docs/agent_supervisor/evidence/candidate-context-selection-20261012/README.md": [],
+    "docs/agent_supervisor/worker_candidate_context.md": [],
+    "docs/agent_supervisor/reversible_codebase_views_plan.md": []
+  }
+}

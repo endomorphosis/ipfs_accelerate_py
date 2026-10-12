@@ -1,0 +1,80 @@
+{
+  "added_repository_test_cases": [
+    {
+      "classname": "test.api.test_worker_candidate_selection",
+      "name": "test_catalog_is_independent_of_captured_mapping_insertion_order"
+    },
+    {
+      "classname": "test.api.test_worker_candidate_selection",
+      "name": "test_multiple_native_pages_are_collected_without_omitting_or_rewriting_rows"
+    }
+  ],
+  "caveat": "The main run passed 984 tests while one test file gained two cases. Production sources did not change. The final selector file then passed 53 tests unchanged. JUnit classname prefixes differ between the broad and focused invocations; literal pair union 1037 double-counts 51 physical tests. Report 986 distinct repository tests passing across two runs, not one unchanged 986-test run.",
+  "changed_test_final_hash_verified_in_unchanged_rerun": true,
+  "exact_junit_pair_intersection_count": 0,
+  "exact_junit_pair_union_count": 1037,
+  "exact_junit_pair_union_sha256": "32f8125652d1ccf073f548247e0e81e965d8e23ea43501ce565845d1fca0410e",
+  "production_source_changes": [],
+  "provider_tokens": null,
+  "repository_file_normalized_overlap": 51,
+  "repository_file_normalized_unique_tests": 986,
+  "reviewer": "/root/selective_protocol",
+  "runs": {
+    "final-01": {
+      "artifact_sha256": {
+        "command.json": "352bec717db3861852578d09bc83872a773c494eded80f0660c8e2d3ba3d8391",
+        "junit.xml": "9e414daab2a36e3ecde0ae9e3984bf2180d08c7a2b2c3687e179052c41085c65",
+        "pytest.log": "da4460c2ccb1e792516ec35e47e1c23dc7db0ad91611d8839e6406ac67ef116f",
+        "qualification.json": "597f18a6eb0c66cfc9abe3fc45b80291e8c688c7e75d055c5e58c3fd2eb7db50"
+      },
+      "current_source_hashes_match_after": true,
+      "errors": 0,
+      "exit_code": 0,
+      "failures": 0,
+      "identity_set_sha256": "111a269e6908330f15c959957ae8d1621e75c0898419d899032388444215ce13",
+      "passed": 984,
+      "skipped": 0,
+      "source_changes": {
+        "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/test_worker_candidate_selection.py": {
+          "after": "a699b45834df68e09aa8a16134bb3f3f34c477293f73c694d995fad99365faf4",
+          "before": "6c2c9fd941a97a6f4b27699d7fcf50d78854c31d7544b2f1b326c0dbe34f6122"
+        }
+      },
+      "source_pin_count": 89,
+      "source_unchanged_recorded": false,
+      "test_cases": 984,
+      "unique_exact_classname_name_pairs": 984
+    },
+    "selector-final-02": {
+      "artifact_sha256": {
+        "command.json": "34104b51a976efbb14482ec233e02c55130f824295feeea8af684d2db1abb16d",
+        "junit.xml": "e85305ac75a2774384149deb01967c3f3c13ce6a47ade96375f88ad0f5d048d8",
+        "pytest.log": "c58fc3a9582a857e40004c3ff22fd627f5d90011aafd5e412b7210a6fae186b5",
+        "qualification.json": "f38b2d04126105a9c2d0294d7eb1dcc82c9db0e38f6c69918320e82bcbe5c680"
+      },
+      "current_source_hashes_match_after": true,
+      "errors": 0,
+      "exit_code": 0,
+      "failures": 0,
+      "identity_set_sha256": "3cbbe7726a16a79dfa45ace40a8adefb232447c1346c9fbe16b8d5020313d2d7",
+      "passed": 53,
+      "skipped": 0,
+      "source_changes": {},
+      "source_pin_count": 82,
+      "source_unchanged_recorded": true,
+      "test_cases": 53,
+      "unique_exact_classname_name_pairs": 53
+    }
+  },
+  "same_repository_file_alias": {
+    "final-01_classname": "test.api.test_worker_candidate_selection",
+    "path": "test/api/test_worker_candidate_selection.py",
+    "selector-final-02_classname": "api.test_worker_candidate_selection"
+  },
+  "schema": "candidate-selection-final-test-review@1",
+  "test_identity_definition": [
+    "classname",
+    "name"
+  ],
+  "total_token_savings_measured": false
+}

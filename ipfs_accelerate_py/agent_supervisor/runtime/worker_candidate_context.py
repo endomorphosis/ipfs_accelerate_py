@@ -15,6 +15,7 @@ import threading
 from .worker_source_views import MAX_FILES, MAX_SOURCE_BYTES, canonical_json, _path
 
 PAGE_SCHEMA = "supervisor-worker-candidate-context-page@1"
+SELECTED_PAGE_SCHEMA = "supervisor-worker-candidate-context-page@2"
 CURSOR_SCHEMA = "supervisor-worker-candidate-context-cursor@1"
 ARTIFACTS = frozenset({"summary", "capsules", "formal"})
 MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
@@ -38,7 +39,12 @@ def _digest(value):
 
 
 class WorkerCandidateContext:
-    """One bounded candidate cache, served only while every source stays current."""
+    """One candidate generation and one selection, each bounded to 16 MiB.
+
+    Changing the selected artifact evicts only its bytes. Previously issued
+    cursors remain usable after deterministic recomputation of their selection,
+    provided the generation and all producer/source bindings remain current.
+    """
 
     def __init__(self, views, program_paths, builder=None):
         _need(type(program_paths) in (tuple, list) and len(program_paths) <= MAX_FILES,
@@ -58,6 +64,8 @@ class WorkerCandidateContext:
         self._generation = None
         self._producers = None
         self._artifacts = {}
+        self._selection_key = None
+        self._selected_artifact = None
         self._continuations = {}
         self._lock = threading.Lock()
 
@@ -65,6 +73,8 @@ class WorkerCandidateContext:
         self._generation = None
         self._producers = None
         self._artifacts.clear()
+        self._selection_key = None
+        self._selected_artifact = None
         self._continuations.clear()
 
     def clear(self):
@@ -116,19 +126,42 @@ class WorkerCandidateContext:
             "exact native candidate producer binding required")
         return canonical_json(producers)
 
-    def page(self, *, artifact, expected_workspace_generation, cursor=None, max_bytes=8192):
+    def page(self, *, artifact, expected_workspace_generation, cursor=None, max_bytes=8192,
+            selection=None):
         with self._lock:
             try:
                 return self._page(artifact=artifact, generation=expected_workspace_generation,
-                    cursor=cursor, max_bytes=max_bytes)
+                    cursor=cursor, max_bytes=max_bytes, selection=selection)
             except Exception:
                 # Even malformed continuations discard the cache. No refusal
                 # can leave a previous candidate available for accidental reuse.
                 self._discard()
                 raise
 
-    def _page(self, *, artifact, generation, cursor, max_bytes):
-        _need(type(artifact) is str and artifact in ARTIFACTS, "unsupported candidate artifact")
+    def _selected_bytes(self, *, sources, artifact, selection):
+        key = canonical_json(dict(artifact=artifact, selection=selection))
+        if self._selection_key != key:
+            from .worker_candidate_selection import select_candidate_artifact
+            raw = select_candidate_artifact(artifacts=self._artifacts, sources=sources,
+                artifact=artifact, selection=dict(selection))
+            _need(type(raw) is bytes and 0 < len(raw) <= MAX_ARTIFACT_BYTES,
+                "bounded selected candidate artifact required")
+            try:
+                value = json.loads(raw)
+            except (ValueError, UnicodeError, RecursionError) as exc:
+                raise ValueError("selected candidate artifact must be canonical JSON") from exc
+            _need(type(value) is dict and canonical_json(value) == raw,
+                "selected candidate artifact must be a canonical JSON object")
+            self._selection_key = key
+            self._selected_artifact = raw
+        return self._selected_artifact
+
+    def _page(self, *, artifact, generation, cursor, max_bytes, selection):
+        if selection is None:
+            _need(type(artifact) is str and artifact in ARTIFACTS, "unsupported candidate artifact")
+        else:
+            from .worker_candidate_selection import validate_selection
+            selection = validate_selection(artifact, selection)
         _need(_digest(generation), "exact working source generation required")
         _need(type(max_bytes) is int and 1024 <= max_bytes <= MAX_PAGE_BYTES,
             "invalid complete candidate page byte bound")
@@ -147,10 +180,13 @@ class WorkerCandidateContext:
             self._generation = generation
             self._producers = producers
         _need(self._producers == producers, "candidate producer sources changed")
-        raw = self._artifacts[artifact]
+        raw = (self._artifacts[artifact] if selection is None else
+            self._selected_bytes(sources=sources, artifact=artifact, selection=selection))
         artifact_sha256 = _sha(raw)
         query = dict(baseline_scope_sha256=self._scope_sha256, workspace_generation=generation,
             artifact=artifact, artifact_sha256=artifact_sha256, max_bytes=max_bytes)
+        if selection is not None:
+            query.update(schema=SELECTED_PAGE_SCHEMA, selection=selection)
         request_sha256 = _sha(canonical_json(query))
         offset = 0
         if cursor is not None:
@@ -172,12 +208,15 @@ class WorkerCandidateContext:
                 content, encoding = base64.b64encode(part).decode("ascii"), "base64"
             successor = None if end == len(raw) else dict(schema=CURSOR_SCHEMA,
                 request_sha256=request_sha256, offset=end, token=token)
-            return dict(schema=PAGE_SCHEMA, binding=dict(self._binding), workspace_generation=generation,
+            page = dict(schema=PAGE_SCHEMA, binding=dict(self._binding), workspace_generation=generation,
                 source_state="working-candidate", baseline_evidence_applicable=False,
                 proof_authority=False, completion_authority=False, source_obligations_discharged=0,
                 artifact=artifact, artifact_sha256=artifact_sha256, artifact_bytes=len(raw), offset=offset,
                 end_offset=end, encoding=encoding, content=content, slice_sha256=_sha(part),
                 exhausted=successor is None, next_cursor=successor)
+            if selection is not None:
+                page.update(schema=SELECTED_PAGE_SCHEMA, selection=dict(selection))
+            return page
 
         low, high = 0, min(len(raw) - offset, max_bytes)
         complete = render(high)
@@ -205,4 +244,4 @@ class WorkerCandidateContext:
         return page
 
 
-__all__ = ["WorkerCandidateContext", "PAGE_SCHEMA", "CURSOR_SCHEMA", "ARTIFACTS"]
+__all__ = ["WorkerCandidateContext", "PAGE_SCHEMA", "SELECTED_PAGE_SCHEMA", "CURSOR_SCHEMA", "ARTIFACTS"]

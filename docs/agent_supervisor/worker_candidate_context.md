@@ -7,7 +7,7 @@ then request advisory context for those exact captured bytes:
 ```sh
 /opt/ipfs-supervisor/venv/bin/python -I \
   /opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context_client.py \
-  --expected-workspace-generation <generation> --artifact summary
+  --expected-workspace-generation <generation> --select --artifact catalog
 ```
 
 This uses the existing owner-created source descriptor, descendant admission,
@@ -15,6 +15,30 @@ session lifetime, socket, request budget, and cleanup. It is available when
 `--source-view-profile` is enabled on the full indexed arm. Disabled profiles
 do not create the service. No provider call is needed to rebuild these artifacts.
 
+The selected catalog lists exact paths, capsule identifiers, function identifiers,
+obligation kinds and coverage without full source or projection bodies. Use its
+identifiers to retrieve exact native subsets:
+
+```sh
+# These arguments follow the same client command and required generation above.
+--select --artifact capsules --path eigen.py --symbol-id <symbol-id>
+--select --artifact obligations --path eigen.py --function-id <function-id> --kind <kind>
+```
+
+`--path` is required for selected capsules and obligations; additional filters
+are optional and exact. Catalog queries optionally take a path. Filters are
+conjunctive. Every selected result retains the filters, source and parent-artifact
+identities, native coverage, and counts of matched, filtered-out and out-of-path
+rows. Support-only files, unsupported interpretation, no pending rows and no
+matching rows are distinguished. A zero match does not prove absence of defects.
+This selection does not establish task relevance or sufficient proof coverage.
+
+Selected obligation rows use the existing datasets source-replay pager; capsule
+rows retain their native identities and payloads. No new grammar, ranking model,
+proof rule or database owner is introduced. A selected catalog and artifact may
+still need pagination, and a full capsule can include substantial metadata.
+
+Omit `--select` for the original version 1 full-artifact interface.
 `summary` reports coverage, source and producer identities, fresh capsule root,
 pending obligation counts, unsupported cases, and full artifact hashes.
 `capsules` retrieves native datasets capsules and analysis artifacts.
@@ -23,7 +47,7 @@ ProgramIR, first-order predicates/SMT-LIB and Lean definitions or conditional
 lemmas where supported. Other families retain the native unsupported diagnoses.
 
 These are byte-paged JSON artifacts: `content` may be a fragment of JSON.
-Continue with the same artifact, generation and page budget, passing
+Continue with the same artifact, selection, generation and page budget, passing
 `next_cursor` as `--cursor`. Concatenate decoded slices to reconstruct the
 artifact. Each page has a slice hash and full artifact hash; a complete artifact
 must match the latter. `--raw-response` retains the full validated envelope.
@@ -45,7 +69,11 @@ continuations. A fresh source capture is required after observed source drift.
 Observed edit/revert cycles cannot revive old cursors. These checks bracket an
 observation; they do not lock external writers against unobserved changes.
 
-Candidate artifacts are held in one session-local memory cache. They do not
+Candidate artifacts are held in one session-local memory cache, plus at most one
+selected artifact. Switching selections replaces that selected cache; a previous
+selection can be rebuilt deterministically while its cursor remains current.
+Cursors bind the protocol version, exact filters and artifact hash, so they cannot
+cross selections or be reused after consumption. Candidate artifacts do not
 publish accepted world state, write DuckLake, replace the baseline translation
 table, or inherit proof receipts. Ambient native metadata mirroring is disabled
 during generation. Successful projection or a fresh capsule is not a proof:
@@ -54,7 +82,8 @@ reports partial or unsupported source coverage explicitly. It also does not
 run autoencoder inference or training.
 
 Inputs are limited to 64 admitted files and 1 MiB total, with at most 256 native
-symbols and 16 MiB of JSON artifacts. Numerical grammar retains its smaller
+symbols and 16 MiB of base JSON artifacts plus at most 16 MiB of selected JSON.
+Numerical grammar retains its smaller
 64 KiB per-file and AST limits. Wire replies, including their envelopes, are at
 most 8 KiB. The existing 64-request/512-KiB session budget includes these reads;
 an artifact may exceed the remaining retrieval budget. Bounds refuse rather
@@ -68,3 +97,7 @@ wire bytes and exports `candidate_context_counts` without source, capsule or
 formula bodies. Historical version 1 sessions have unavailable candidate
 counts. Byte counts include repeated retrieval and do not measure model tokens,
 compression ratios for the whole codebase, or benchmark success.
+
+The [selective retrieval qualification](evidence/candidate-context-selection-20261012/README.md)
+records regression checks, Docker source/cursor checks and complete subset costs.
+Its measured response sizes do not yet establish a native-model token benefit.

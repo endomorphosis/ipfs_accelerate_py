@@ -1,0 +1,23 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/candidate-context-selection-20261012/selector-final-02/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test
+configfile: pytest.ini
+collected 53 items
+
+test/api/test_worker_candidate_selection.py ............................ [ 52%]
+.........................                                                [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/candidate-context-selection-20261012/selector-final-02/junit.xml -
+============================= slowest 10 durations =============================
+0.50s setup    api/test_worker_candidate_selection.py::test_catalog_discovers_exact_ids_paths_and_coverage_without_source_or_projections
+0.10s call     api/test_worker_candidate_selection.py::test_changed_argmax_argmin_requires_new_native_generation
+0.08s call     api/test_worker_candidate_selection.py::test_unsupported_partial_and_zero_obligations_keep_native_coverage
+0.03s call     api/test_worker_candidate_selection.py::test_catalog_is_independent_of_captured_mapping_insertion_order
+0.02s call     api/test_worker_candidate_selection.py::test_multiple_native_pages_are_collected_without_omitting_or_rewriting_rows
+0.02s call     api/test_worker_candidate_selection.py::test_catalog_discovers_exact_ids_paths_and_coverage_without_source_or_projections
+0.02s call     api/test_worker_candidate_selection.py::test_output_bound_refuses_whole_result_instead_of_silently_dropping_rows
+0.01s call     api/test_worker_candidate_selection.py::test_source_replay_refuses_report_changed_with_recomputed_report_and_parent_hashes
+0.01s call     api/test_worker_candidate_selection.py::test_empty_program_scope_returns_only_support_catalog
+0.01s call     api/test_worker_candidate_selection.py::test_exact_function_and_kind_use_native_pager_and_leave_other_rows_out
+============================== 53 passed in 1.85s ==============================

@@ -1,0 +1,11 @@
+{
+  "schema": "candidate-selection-test-freeze-observation@1",
+  "test_only_changes_after_combined_run_start": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/test_worker_candidate_selection.py": {
+      "before": "6c2c9fd941a97a6f4b27699d7fcf50d78854c31d7544b2f1b326c0dbe34f6122",
+      "after": "a699b45834df68e09aa8a16134bb3f3f34c477293f73c694d995fad99365faf4"
+    }
+  },
+  "production_sources_unchanged": true,
+  "reason": "Two additional selector tests were appended after the combined run started; freeze and rerun the whole selector test file independently."
+}

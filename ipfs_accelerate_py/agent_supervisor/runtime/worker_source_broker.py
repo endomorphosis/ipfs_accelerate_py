@@ -86,7 +86,8 @@ class WorkerSourceBroker(NumericalObligationBroker):
         except (OSError, ValueError):
             return self._response(request, reason="peer_refused")
         try:
-            candidate = request["schema"] == "supervisor-worker-candidate-context-request@1"
+            candidate = request["schema"] in {"supervisor-worker-candidate-context-request@1",
+                                               "supervisor-worker-candidate-context-request@2"}
             working = candidate or request["schema"] == "supervisor-worker-source-request@2"
             self._current_context(working=working,
                 generation=request["query"]["expected_workspace_generation"] if candidate else None)
@@ -119,7 +120,8 @@ class WorkerSourceBroker(NumericalObligationBroker):
 
     def _record_details(self, response=None):
         page = response["page"] if response is not None and response["ok"] else None
-        candidate = page is not None and page["schema"] == "supervisor-worker-candidate-context-page@1"
+        candidate = page is not None and page["schema"] in {
+            "supervisor-worker-candidate-context-page@1", "supervisor-worker-candidate-context-page@2"}
         count = page["end_offset"] - page["offset"] if page is not None else 0
         return dict(returned_source_bytes=0 if candidate else count,
             returned_candidate_context_bytes=count if candidate else 0,

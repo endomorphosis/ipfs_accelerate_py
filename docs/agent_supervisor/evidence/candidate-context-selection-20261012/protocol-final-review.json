@@ -1,0 +1,82 @@
+{
+  "blockers": [],
+  "default_model_projection_docker02": {
+    "exact_slice_selection_and_pins": true,
+    "nonproof_flags_preserved": true,
+    "printed_json_bytes": 5520,
+    "raw_response_bytes": 6319
+  },
+  "evidence_sha256": {
+    "docker-01/command.json": "c55dfe4879f4cb2aec2f70d9b2af4f0d82388342c90442a273cae3efe8dbfe07",
+    "docker-01/results/selection-observation.json": "c63e0808b6c8de13ec9b0a521e7c281b15ccf462374860ed0019b0a1d23f47d1",
+    "docker-02/command.json": "f5d694027abbeb887decacb934ddd7ccef50d35af1cfd3e23e204198ae37b749",
+    "docker-02/results/selection-observation.json": "5ff64ba8a214a78796b31a79ec7c8c6c73ba4578e40b477a4c6b0f009d199854"
+  },
+  "full_artifact_delivery_array_meaning": "delivered prefix bytes, full parent bytes",
+  "full_formal_parent_bytes": 476030,
+  "initial_discovery_and_subset_wire_json_bytes": 19858,
+  "limitations": [
+    "v1 capsules/formal retrieved only prefixes; selected subsets complete",
+    "subset and parent cover different information",
+    "authored routing/planning qualification, no full live supervisor or official benchmark result"
+  ],
+  "production_file_count": 7,
+  "provider_tokens": null,
+  "read_only": true,
+  "reviewed_contracts": [
+    "client/server filter parity including C0 and DEL",
+    "version/filter/artifact/budget cursor binding",
+    "complete response JSON budget",
+    "source and producer pre/post checks",
+    "unsupported family and function coverage retention"
+  ],
+  "reviewer": "/root/selective_protocol",
+  "runner_snapshot_pins_match": {
+    "docker-01": 3,
+    "docker-02": 3
+  },
+  "schema": "candidate-selection-protocol-final-review@1",
+  "selected_artifact_hash_size_and_completion_verified": true,
+  "selected_obligation_bytes": 4545,
+  "selected_response_audit_joins_verified": true,
+  "session_response_json_bytes": {
+    "docker-01": 136932,
+    "docker-02": 143251
+  },
+  "source_file_bytes": 642,
+  "source_pins_match": {
+    "docker-01": 101,
+    "docker-02": 101
+  },
+  "total_token_savings_measured": false,
+  "v1_full_artifact_delivery": {
+    "docker-01": {
+      "capsules": [
+        6107,
+        48309
+      ],
+      "formal": [
+        6138,
+        476030
+      ],
+      "summary": [
+        7903,
+        7903
+      ]
+    },
+    "docker-02": {
+      "capsules": [
+        6198,
+        48309
+      ],
+      "formal": [
+        6138,
+        476030
+      ],
+      "summary": [
+        7903,
+        7903
+      ]
+    }
+  }
+}
