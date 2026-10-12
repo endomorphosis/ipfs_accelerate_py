@@ -1,0 +1,15 @@
+{
+  "authored_integration_scope": "Planner and coding-router stubs receive bounded kind counts, discovery metadata and an owner receipt reference. A separate owner-side test process resolves an omitted row before worker_router.run.",
+  "coding_cli_or_model_invoked_retrieval": false,
+  "coding_worker_granted_owner_database_access": false,
+  "llm_retrieval_tool_qualified": false,
+  "native_provider_tokens": null,
+  "note": "A discoverable programmatic API is not an automatic agent tool. Byte accounting covers different content scopes and is not a provider-token measurement.",
+  "owner_private_lake_rpc_qualified": false,
+  "proof_authority": false,
+  "public_run_scope": "Actual owner-side deterministic retrieval and cold DuckLake replay over permitted public eigen.py/eval.py only.",
+  "schema": "numerical-obligation-delivery-scope@1",
+  "source_obligations_discharged": 0,
+  "token_savings_established": false,
+  "worker_invoked_retrieval": false
+}

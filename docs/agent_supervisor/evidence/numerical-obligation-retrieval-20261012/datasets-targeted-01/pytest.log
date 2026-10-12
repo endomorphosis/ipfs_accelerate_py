@@ -1,0 +1,12 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012
+configfile: pytest.ini
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 42 items
+
+tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py . [  2%]
+.........................................                                [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-numerical-obligation-retrieval-20261012/datasets-targeted-01/junit.xml -
+============================== 42 passed in 1.20s ==============================

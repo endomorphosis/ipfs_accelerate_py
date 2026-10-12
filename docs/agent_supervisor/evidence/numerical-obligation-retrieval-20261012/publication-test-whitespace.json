@@ -1,0 +1,9 @@
+{
+  "schema": "publication-test-whitespace@1",
+  "path": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_integration.py",
+  "qualified_sha256": "aff78b1fd78a63d97f0d5ceac15c1a777d00fc1505130bf4ba4bad05fd7cccfb",
+  "published_sha256": "a43ec00c2f30470f8d8ab001df84f45a568fc0654904d254eedba4f4a4124cd9",
+  "ast_unchanged": true,
+  "change": "Remove one trailing blank line; production and test assertions unchanged",
+  "test_rerun": false
+}

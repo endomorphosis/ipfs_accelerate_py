@@ -1,0 +1,205 @@
+{
+  "datasets_commit": "f47161b757190380e9898aff155067c1ad609217",
+  "file_bytes": 184268,
+  "file_count": 28,
+  "files": [
+    {
+      "authored_for_publication": true,
+      "bytes": 5107,
+      "copied_exactly": false,
+      "origin_path": null,
+      "path": "README.md",
+      "sha256": "9406683ce093d709efc4bd091271d4a975027e7d319402e620026e7524261c11"
+    },
+    {
+      "bytes": 2438,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/bounded-evidence-review.json",
+      "path": "bounded-evidence-review.json",
+      "sha256": "4e68ded0492c8503ef333d93a3ed48b6c862f1b4ea998c1c3bc6043d131f3af9"
+    },
+    {
+      "bytes": 767,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualification-02/cold-replay.json",
+      "path": "current-02/cold-replay.json",
+      "sha256": "43016e91a9d57f25247b981f6b14fea39400e7b86dda1ee3fa5dcfb2b6918777"
+    },
+    {
+      "bytes": 6546,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualification-02/command.json",
+      "path": "current-02/command.json",
+      "sha256": "282513d6756584f0646c795fd057042f89d327c5b811c30507461bd29dd24c76"
+    },
+    {
+      "bytes": 7650,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualification-02/qualification.json",
+      "path": "current-02/qualification.json",
+      "sha256": "0587d65e4fc793778a9dc25f810de1633335a0139980b14708085020856fe471"
+    },
+    {
+      "bytes": 5133,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/root-release-02.json",
+      "path": "current-02/root-release.json",
+      "sha256": "5bf369857e7a5ea130cb6084f70d14da6ca5fdf433f0699c3158331a0f78669a"
+    },
+    {
+      "bytes": 1827,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/supervisor-numerical-obligation-retrieval-20261012/datasets-targeted-01/command.json",
+      "path": "datasets-targeted-01/command.json",
+      "sha256": "e9a7a20e38754ec72a98c44f89576f51cc3317a0265d90030379252ca3cde2cb"
+    },
+    {
+      "bytes": 7501,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/supervisor-numerical-obligation-retrieval-20261012/datasets-targeted-01/junit.xml",
+      "path": "datasets-targeted-01/junit.xml",
+      "sha256": "00c440454fad4c10953e7fe2e32f927073afaefb6c687c8321835255c0a24900"
+    },
+    {
+      "bytes": 786,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/supervisor-numerical-obligation-retrieval-20261012/datasets-targeted-01/pytest.log",
+      "path": "datasets-targeted-01/pytest.log",
+      "sha256": "cf1c09198a9c8af65e7ca350a7d15d6140ad7a6230c260c444dfc68d9a137bf0"
+    },
+    {
+      "bytes": 1102,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/supervisor-numerical-obligation-retrieval-20261012/datasets-targeted-01/qualification.json",
+      "path": "datasets-targeted-01/qualification.json",
+      "sha256": "3c6bee5c05eb0a4d5b4193d7084b5d0d5831ee6aa02902760618b0cac887948c"
+    },
+    {
+      "bytes": 958,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/delivery-scope.json",
+      "path": "delivery-scope.json",
+      "sha256": "f9f5d81f5e3a3868f27f4aa13f3c53c860778320ca648f215de164ee106db10e"
+    },
+    {
+      "bytes": 767,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualification-01/cold-replay.json",
+      "path": "historical-01/cold-replay.json",
+      "sha256": "9159a50a92c1accd046e190baed29bf0baed96d883f607e8ed9661eb63b25a19"
+    },
+    {
+      "bytes": 6422,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualification-01/command.json",
+      "path": "historical-01/command.json",
+      "sha256": "a435fff4f7d1872b0deb438e3c901722168354335666a0c6cf999f4529553c81"
+    },
+    {
+      "bytes": 7650,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualification-01/qualification.json",
+      "path": "historical-01/qualification.json",
+      "sha256": "66dc3ca95bb859eb1b58d19aeebc0ad7273764112440f47added78c23cbd2494"
+    },
+    {
+      "bytes": 5157,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/root-release.json",
+      "path": "historical-01/root-release.json",
+      "sha256": "3ec3e0629e504ee86a3f3ae1aa5fd4045d0ac0053dc8b0522115131ebad85a34"
+    },
+    {
+      "bytes": 4400,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/independent-final-review.json",
+      "path": "independent-final-review.json",
+      "sha256": "ccede5156c41a313dca74a55a088ed734de842e4879124c4a46ecf55ee7c4f70"
+    },
+    {
+      "bytes": 15727,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/integration-03/command.json",
+      "path": "integration-03/command.json",
+      "sha256": "171421a86779f64bee6aea32c19f2b64287352cd8496ed62a92ec8e4e2028013"
+    },
+    {
+      "bytes": 39422,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/integration-03/junit.xml",
+      "path": "integration-03/junit.xml",
+      "sha256": "fd710cbb9d5314aebfad071ffc09983ebf6173599f9ccab277adcb846d4abe72"
+    },
+    {
+      "bytes": 3368,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/integration-03/pytest.log",
+      "path": "integration-03/pytest.log",
+      "sha256": "a734b7eeb48c2f5995fae1795967ac50575cbca77fb65f080bfb19c10ab7f8b0"
+    },
+    {
+      "bytes": 13424,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/integration-03/qualification.json",
+      "path": "integration-03/qualification.json",
+      "sha256": "e8e849798a7db4616fcf1ae2800b71154effc8646b37fb733cbf06b2c8f5c2fb"
+    },
+    {
+      "bytes": 3076,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/owner-tests-03/command.json",
+      "path": "owner-tests-03/command.json",
+      "sha256": "542d0ee9c39032b5d117945507fc06d2027c95b6f6adfe8da72b38263f57acfa"
+    },
+    {
+      "bytes": 5803,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/owner-tests-03/junit.xml",
+      "path": "owner-tests-03/junit.xml",
+      "sha256": "a6ac11e035275a43e025e21bbb6d953c58dab6f795f42651d5e80c2e4bfb2fec"
+    },
+    {
+      "bytes": 2651,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/owner-tests-03/pytest.log",
+      "path": "owner-tests-03/pytest.log",
+      "sha256": "cc3877e6979e34ac133da3cc38e1ce89fcc35cbef0906c7ea50bf411ced5dc1d"
+    },
+    {
+      "bytes": 2008,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/owner-tests-03/qualification.json",
+      "path": "owner-tests-03/qualification.json",
+      "sha256": "13696d7f794c2d71fedae5f129a9bc1d9988613d10156f4d1c0659961ea57bf5"
+    },
+    {
+      "bytes": 472,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/publication-test-whitespace.json",
+      "path": "publication-test-whitespace.json",
+      "sha256": "5b4af0334d829f67add1b001108c1bcf09bb947403053ce5c79f172ae8d89282"
+    },
+    {
+      "bytes": 13403,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualify_public_retrieval.py",
+      "path": "qualify_public_retrieval.py",
+      "sha256": "1fd2599bf08b009f58834110238deac518d9d95c7f071779ab61cb5a098e8da3"
+    },
+    {
+      "bytes": 13537,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/qualify_public_retrieval_v2.py",
+      "path": "qualify_public_retrieval_v2.py",
+      "sha256": "bf3f2753a0ad509c9e95b262170749bafb380ceb521b02907d60b7791bdb2583"
+    },
+    {
+      "bytes": 7166,
+      "copied_exactly": true,
+      "origin_path": "/home/barberb/lift_coding/artifacts/numerical-obligation-retrieval-20261012/publication-staging/manifest.json",
+      "path": "staging-manifest.json",
+      "sha256": "f11456bc8e5f9a485ad1f949964f1fe61d7d6f3a43f771d79c15ca9556186bf9"
+    }
+  ],
+  "schema": "numerical-obligation-publication-manifest@1"
+}

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shlex
 import sys
+import tarfile
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -135,7 +136,11 @@ def test_exact_current_inventory_passes_as_compatibility_only():
 @pytest.mark.parametrize("arm", ["full", "no-index"])
 def test_prepare_freezes_same_selection_and_opposite_consumption(tmp_path, monkeypatch, arm):
     dataset, _ = authored_task(tmp_path); archive = tmp_path / "archive"; archive.mkdir()
-    raw = b"AUTHORED-no-executable-archive"; (archive / "runtime.tar.gz").write_bytes(raw)
+    # The unselected learned-model verifier still checks the archive's absence
+    # of undeclared model members. Give it an actual empty archive to inspect.
+    with tarfile.open(archive / "runtime.tar.gz", "w:gz"):
+        pass
+    raw = (archive / "runtime.tar.gz").read_bytes()
     (archive / "manifest.json").write_text(json.dumps(_supervisor_manifest({**inventory(),
         "archive_sha256": hashlib.sha256(raw).hexdigest(), "codex_version": CLI_VERSION})))
     calls = []
