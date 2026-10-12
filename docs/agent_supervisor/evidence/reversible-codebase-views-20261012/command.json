@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/docs/agent_supervisor/evidence/reversible-codebase-views-20261012/observe_historical_preview.py",
+    "--source",
+    "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/docs/agent_supervisor/evidence/reversible-codebase-views-20261012/historical_code_view_snapshot.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+  "returncode": 0,
+  "scope": "historical helper on three authored offline controls; not production or provider token qualification",
+  "bytecode_writes": false
+}

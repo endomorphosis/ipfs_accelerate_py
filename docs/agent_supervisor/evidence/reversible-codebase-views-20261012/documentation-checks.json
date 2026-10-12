@@ -1,0 +1,14 @@
+{
+  "workflow": ".github/workflows/documentation-gates.yml",
+  "workflow_run_steps": 4,
+  "all_exit_codes_zero": true,
+  "changed_guide_link_files": [
+    "docs/agent_supervisor/reversible_codebase_views_plan.md",
+    "docs/agent_supervisor/terminal_token_metadata_plan.md",
+    "docs/agent_supervisor/evidence/reversible-codebase-views-20261012/README.md"
+  ],
+  "changed_guide_link_errors": [],
+  "production_tests_run": 0,
+  "provider_calls": 0,
+  "scope": "exact local documentation workflow plus changed-guides path/anchor checks"
+}

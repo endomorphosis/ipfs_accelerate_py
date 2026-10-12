@@ -1,0 +1,110 @@
+{
+  "accelerator_base_revision": "ffc6643826e546e5a0b3436b766b22f39f243b71",
+  "canonical_architecture_plan": {
+    "bytes": 25370,
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/terminal_bench_token_reduction.plan.md",
+    "sha256": "30827808dd731450caff650125ba05143f91b6b1628eef8c765ddcaa13b8e4d5",
+    "tracked": false,
+    "usage": "read-only design input; not merged or installed"
+  },
+  "findings": {
+    "compact_source_edit_mapper_present": false,
+    "exact_json_transport_restoration_present": true,
+    "provider_tokenizer_factory_qualified": false,
+    "qualified_coding_cli_capsule_source_expansion_present": false,
+    "ranked_benchmark_cli_present": true,
+    "ranked_successor_current_retrieval_refresh_present": true,
+    "whole_repository_source_inverse_present": false
+  },
+  "historical_helpers": [
+    {
+      "bytes": 11212,
+      "path": "/home/barberb/lift_coding/maintenance/terminal-token-reduction-20261007-01/checkout/ipfs_accelerate_py/agent_supervisor/runtime/code_view_minification.py",
+      "sha256": "0c3ed9348189ed0bf5f45a1c11c24fc3a6acff9c45d9400c853181fe58e3bebd"
+    },
+    {
+      "bytes": 11212,
+      "path": "/home/barberb/lift_coding/maintenance/terminal-context-budget-20261011-01/patch-qualification-01/ipfs_accelerate_py/agent_supervisor/runtime/code_view_minification.py",
+      "sha256": "0c3ed9348189ed0bf5f45a1c11c24fc3a6acff9c45d9400c853181fe58e3bebd"
+    },
+    {
+      "bytes": 11212,
+      "path": "/home/barberb/lift_coding/maintenance/terminal-source-inspector-20261011-01/baseline/ipfs_accelerate_py/agent_supervisor/runtime/code_view_minification.py",
+      "sha256": "0c3ed9348189ed0bf5f45a1c11c24fc3a6acff9c45d9400c853181fe58e3bebd"
+    }
+  ],
+  "initial_audit_revision": "1f6d998a92db4024f35b57bbdb183a6626a7fa31",
+  "model_assets_changed": false,
+  "provider_calls": 0,
+  "published_code_view_helper_present": false,
+  "published_sources": [
+    {
+      "bytes": 46125,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "sha256": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829"
+    },
+    {
+      "bytes": 23539,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d"
+    },
+    {
+      "bytes": 13476,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+      "sha256": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4"
+    },
+    {
+      "bytes": 7723,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "sha256": "6737a0c21c5e29f8f1afca9b02d5f93e2f202be5a8258a4fc851c59f29dbba59"
+    },
+    {
+      "bytes": 73779,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py",
+      "sha256": "653c9217c29149cd7f2e8e9a64c5be25fed2e956649ee3eeaea8a538de2b8c88"
+    },
+    {
+      "bytes": 14647,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_candidate_runner.py",
+      "sha256": "f61314562aebe18bbb358b70ad9fe07eee6b7e04bb38165ae7f78381bce96c77"
+    },
+    {
+      "bytes": 28209,
+      "path": "ipfs_accelerate_py/agent_supervisor/autonomous_repair/materialize.py",
+      "sha256": "cfa4203e179fc3b0c9d75bae278d6a793ba789a01c760e6cd2fd5b99f20d032b"
+    },
+    {
+      "bytes": 51750,
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py",
+      "sha256": "d0d6a5a30900ed044d16be9f5581c0c31f325949fedf1e314e437ef6893b5db5"
+    },
+    {
+      "bytes": 4320,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_capsule_selection_policy.py",
+      "sha256": "bdd96a83b1ff2aa51c9a865e5c3d511f849957088c47b9131ed46ecdd207b07f"
+    },
+    {
+      "bytes": 58931,
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py",
+      "sha256": "8e0107ec1ba9a6a9c0c437429719b1ebba01283cc884bb4a4d593b7891ef9e8b"
+    },
+    {
+      "bytes": 4591,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-pair-20261007/README.md",
+      "sha256": "d0539b8926f336910e02f9c13b4862591071b6104b47dfdfd911318e7aea2019"
+    },
+    {
+      "bytes": 20564,
+      "path": "docs/agent_supervisor/evidence/terminal-ranked-successor-20261012/README.md",
+      "sha256": "1eec2e428fbad341f4757afd9f690420ff57fadae76a2035c4dadfcc063bcab7"
+    },
+    {
+      "bytes": 1412,
+      "path": "docs/agent_supervisor/evidence/terminal-ranked-successor-20261012/archive-04/comparison-readiness-04.json",
+      "sha256": "a1eeb4bec448c30231d243683dba3cc95e6959b8963fa5db9c0570b5ac1440fd"
+    }
+  ],
+  "schema": "repository-source-view-audit@1",
+  "scope": "source-only audit plus authored historical observations; not current runtime qualification",
+  "training_calls": 0
+}

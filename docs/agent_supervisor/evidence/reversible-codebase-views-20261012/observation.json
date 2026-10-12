@@ -1,0 +1,49 @@
+{
+  "edited_preview": {
+    "edit_mapper_invoked": false,
+    "edited_original_reconstruction_demonstrated": false,
+    "edited_preview_parses": true,
+    "old_source_view_pair_current": false,
+    "old_view_sha_binding_current": false,
+    "semantic_equivalence_or_edit_correctness_claimed": false,
+    "separately_authored_manual_candidate_matches_old_source_sha": false,
+    "unchanged_original_source_sha_binding_current": true
+  },
+  "historical_helper_sha256": "0c3ed9348189ed0bf5f45a1c11c24fc3a6acff9c45d9400c853181fe58e3bebd",
+  "historical_public_functions": [
+    "build_code_view_preview"
+  ],
+  "inverse_or_edited_view_mapper_exposed": false,
+  "large_ordinary_comment": {
+    "ast_and_token_structure_checks_reported": true,
+    "bytes_saved_after_guidance": 2991,
+    "exact_roundtrip_demonstrated": false,
+    "guidance_bytes": 234,
+    "original_bytes": 3266,
+    "physical_line_count_unchanged": true,
+    "raw_preview_bytes": 41,
+    "removed_comment_bytes": 3218,
+    "removed_comment_count": 1,
+    "removed_trailing_whitespace_bytes": 7,
+    "selected": "minified",
+    "sidecar_contains_removed_comment_text": false,
+    "sidecar_has_only_offset_hash_length_records": true,
+    "unchanged_source_identity_current": true,
+    "unchanged_view_identity_current": true,
+    "whole_guided_preview_bytes": 275
+  },
+  "production_test_count_claimed": false,
+  "provider_calls": 0,
+  "provider_token_counts": null,
+  "schema": "offline-historical-code-view-observation@1",
+  "scope": "three-authored-offline-controls-only",
+  "tiny_fallback": {
+    "actual_rendered_bytes": 14,
+    "candidate_guided_preview_bytes": 240,
+    "original_bytes": 14,
+    "original_bytes_retained": true,
+    "selected": "original"
+  },
+  "token_measurement_status": "unmeasured-no-pinned-provider-tokenizer-supplied",
+  "tokenizer_calls": 0
+}

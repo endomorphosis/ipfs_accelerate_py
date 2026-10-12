@@ -7,6 +7,19 @@ results should identify which obligations remain, and semantic capsules should
 give the model the relevant current evidence without repeating its bookkeeping.
 Minification is a representation step within that workflow.
 
+For repository-wide source views, separate three requirements: exact original
+restoration, preservation of accepted edits, and measured complete-run tokens.
+The current JSON/metadata codecs restore their transports; they do not transform
+the executable repository to and from an editable minified state. A historical
+read-only Python preview exists in retained snapshots, but its sidecar stores
+removal hashes rather than removed bytes and has no inverse/edit mapper.
+The [repository-wide compact-view plan](reversible_codebase_views_plan.md)
+specifies exact source custody, bounded source access, original-source editing
+first and an optional mapped-edit profile later. A reversible view is useful
+for source fidelity; its guidance, expansion and repair costs still belong in
+the total-token comparison. Reuse the current ranked CLI/successor refresh and
+retained embeddings rather than restarting their work.
+
 The [qualified prior comparison](evidence/terminal-reply-contract-pair-20261007/README.md)
 used 246,992 baseline tokens and 327,117 compact-transport tokens. Compact used
 80,125 more tokens (32.44%), despite a smaller initial coding input. Coding
