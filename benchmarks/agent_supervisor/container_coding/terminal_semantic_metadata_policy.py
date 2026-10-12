@@ -34,6 +34,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_key_custody.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_proof_custody.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/doctor_header_cache_bridge.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_header_proof_inventory.py",
     "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
     "ipfs_accelerate_py/agent_supervisor/objectives/goal_completion.py",
     "ipfs_accelerate_py/agent_supervisor/assurance/formal_claim_adapter.py",

@@ -41,6 +41,11 @@ the already admitted handles and executes no kernel. After a host restart,
 explicitly reconnect the original owners, rebuild current preparation and
 reimport with fresh native replay before supplying the new handles.
 
+The [durable header inventory](header_proof_inventory.md) retains the admitted
+population in the original sealed owner. Its explicit loader requires independent
+current preparations and expected inventory/owner/task identities, preflights
+every entry before replay, and returns the complete freshly imported handle set.
+
 ## Check the exact proof as well as the task
 
 Before proof-owner filesystem observation or callbacks, Terminal validates the
