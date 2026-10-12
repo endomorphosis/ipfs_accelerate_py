@@ -105,10 +105,10 @@ the native loader's lineage-prefix work; qualify that cost before model access.
    retains local scope, assumptions and residuals, with task completion denied.
    Preserve the sealed SQLite custody, generic Doctor acceptance and
    observational DuckDB/DuckLake indexes in their respective roles.
-2. Wire a typed bound bridge admission through the Terminal host, including
-   current native custody, profiles, executable/implementation pins and expected
-   generic receipt identity. The present task/source/context probe alone does
-   not carry this producer's complete reuse checks. Then measure actual coverage.
+2. Supply the qualified [typed Terminal binding](terminal_header_proof_admissions.md)
+   with bound bridge admissions and independently expected generic receipt IDs.
+   It checks native custody, profiles, executable/implementation pins along with
+   task/source/context. Admit an actual current proof population and measure coverage.
 3. Census actual accepted receipts and repeated-status material. Keep required
    facts inline until bounded source/receipt expansion is qualified. Replace
    repeated material only when property, verdict, assumptions, dependency

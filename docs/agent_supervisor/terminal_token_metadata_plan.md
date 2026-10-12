@@ -280,12 +280,14 @@ at a time, and retain every attempt and its native usage.
    custody around consultations, fences the same owner across context exit and
    clears escaped counts on drift or cleanup errors. The container host forwards
    these trusted objects locally without changing worker input. Authored native
-   owner tests qualify this boundary. Its current task/source/context probe still
-   needs a typed binding to the new bridge's current native custody, profiles,
-   implementations and executables, plus an independently expected generic
-   receipt identity. Historical acceptance or a raw gate/key lookup cannot supply
-   those checks. Reconnect the same current owners after restart, reimport with
-   fresh native replay, then measure actual accepted coverage and repeats.
+   owner tests qualify this boundary. The [typed header admission path](terminal_header_proof_admissions.md)
+   now retains bound handles, current native custody/profiles/implementations/
+   executables and independently expected generic receipt IDs. It rechecks both
+   observations using private lifecycle control; changing exported report fields
+   cannot skip final proof checks. Raw Terminal gate/key inputs refuse scoped
+   receipts without this binding. Reconnect the same current owners after restart,
+   reimport with fresh native replay, admit the actual task proof inventory, then
+   measure accepted coverage and dependency-complete repeats.
    No current Terminal proof coverage or token benefit has been established.
 3. **Qualify a bounded owner lookup for progressive disclosure.** Required facts
    stay inline until the model has an actual qualified expansion interface.

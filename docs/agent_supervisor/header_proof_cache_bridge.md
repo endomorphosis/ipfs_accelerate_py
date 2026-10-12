@@ -87,6 +87,12 @@ admission; they do not assert current eligibility. Use its bound
 `revalidate_for_render()` and `revalidate_for_commit()` methods before reuse.
 A raw gate lookup or a serialized acceptance flag does not replace those checks.
 
+For host integration, `assert_bound` checks exact gate/analysis objects and
+independently expected key/receipt/path identities without storage I/O.
+`assert_cache_binding` performs the cache joins while the host separately joins
+the signed analysis. `assert_current` executes the retained guard without kernel
+execution. Recursive same-handle currentness or stage operations refuse.
+
 Each stage checks current signed source, retained wrapper, AST translator and
 SecurityIR compiler implementations, profiles, both executable pins, requested
 bounds, original sealed proof/custody lineage and the
@@ -128,12 +134,12 @@ these evidence classes separate.
 
 The programmatic formal-status census can retain and count the canonical scoped
 receipt with all authority flags false. Its current-binding probe is a host
-admission. The current Terminal owner checks task/source/context, but does not
-yet carry this bridge's current native-custody, implementation, profile and
-executable checks. Wire a typed bound admission and independently expected
-generic receipt identity through that host route before reporting actual
-accepted Terminal coverage. Supplying only raw keys and a gate is insufficient
-for this new proof producer.
+admission. The [typed Terminal host binding](terminal_header_proof_admissions.md)
+now carries the bound handle and independent key/receipt population through
+task/source/context checks and both observation passes. It preserves current
+native custody, implementation, profile and executable checks. Supplying only
+raw keys and a gate refuses scoped receipt coverage in that host route. Actual
+live accepted Terminal coverage remains unmeasured.
 
 Then measure the exact accepted population and repeated-status closure. Preserve
 property, verdict, assurance, assumptions, source/dependency digests, residuals

@@ -59,6 +59,10 @@ dictionary is updated in place so previously returned references also lose
 currentness. Parent context freshness and native proof freshness remain separate.
 
 The nested operation counters describe the latest observation pass.
+For the typed header lane, canonical error invalidation restores the initial
+nested observation and its counters; outer cumulative totals may already include
+a later completed pass. Refused nested counters therefore do not guarantee the
+latest attempted costs.
 `formal_status_owner_observation_passes` and
 `formal_status_native_observation_totals` retain the number of passes and total
 native consultation costs. These are operational counts, not provider-token
@@ -74,9 +78,11 @@ observational proof-scope index. The scoped header recipe can now retain a
 [complete prepared key and native restart custody](header_proof_key_custody.md)
 with explicitly admitted profiles. The separate [scoped header bridge](header_proof_cache_bridge.md)
 can admit its local proof to an existing generic Gate after fresh native replay.
-The current Terminal host probe does not yet retain that bridge's current native
-custody, implementation, executable and profile checks. Its actual accepted
-Terminal population remains unmeasured. The existing transaction cache-binding
+The [typed Terminal binding](terminal_header_proof_admissions.md) retains the
+bridge's current native custody, implementation, executable and profile checks
+when the host supplies exact bound handles and independently expected receipt
+IDs. The raw host lane refuses scoped receipts without these inputs. Actual live
+accepted Terminal population remains unmeasured. The existing transaction cache-binding
 probe is injectable but has no production producer here. The new host path is
 qualified with authored temporary native owners and kernel-acceptance fixtures;
 it establishes no real theorem, live Terminal proof coverage or token benefit.
@@ -125,9 +131,11 @@ inconclusive and disproved records cannot become accepted proof cards.
 
 The census also preserves canonical `ScopedProofReceipt` (`proof-receipt@2`)
 hits. Counting a proved local lemma grants no task completion or whole-program
-authority; its typed assumptions and residual obligations remain intact. A host
-using the new header bridge must supply its complete current binding rather than
-relying on historical admission or a raw gate/key lookup alone.
+authority; its typed assumptions and residual obligations remain intact. The
+explicit bound `@2` census requires exact handles and independent key/receipt
+pairs, uses bound render revalidation and rechecks native custody after the final
+denial-state consultation. Its counters describe direct adapter calls, rather
+than all internal work or token usage.
 
 All observations cover the explicitly requested key set at native validation
 points. Sequential checks are not an atomic owner snapshot, and eligibility at
@@ -146,10 +154,11 @@ AST observation and has an exact inverse to the original contract. Defaults
 still produce no complete key or generic accepted receipt.
 
 The [reviewed scoped header bridge](header_proof_cache_bridge.md) now qualifies
-native-proof-to-generic-evidence admission and bound render/commit checks. Next,
-supply a typed bound admission and expected generic receipt identity through the
-Terminal host route. Its current probe must retain native custody, implementation,
-profile and executable checks in addition to task/source/context checks. Native
+native-proof-to-generic-evidence admission and bound render/commit checks. The
+typed Terminal host route now carries bound admissions and independently expected
+receipt identities through native custody, implementation, profile and executable
+checks in addition to task/source/context checks. Next, admit an actual current
+task proof inventory and measure its accepted population. Native
 local proof scope, reviewed translation/protocol assumptions and residual
 SecurityIR obligations remain explicit. Sealed receipt-store entries and
 observational indexes cannot silently become positive cache hits. Keep schema/

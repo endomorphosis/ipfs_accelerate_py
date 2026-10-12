@@ -24,6 +24,7 @@ from .terminal_metadata_preflight import _doctor_residual_only, _private_prompt
 if TYPE_CHECKING:
     from ipfs_accelerate_py.agent_supervisor.proof.doctor_proof_cache import DoctorProofCacheGate, DoctorProofCacheKey
     from ipfs_accelerate_py.agent_supervisor.runtime.doctor_scoped_analysis import ScopedDoctorAnalysis
+    from ipfs_accelerate_py.agent_supervisor.runtime.doctor_header_cache_bridge import HeaderProofCacheAdmission
 
 
 SCHEMA = "terminal-live-metadata-census-context@1"
@@ -49,6 +50,8 @@ class TerminalFormalStatusOwner:
     keys: tuple[DoctorProofCacheKey, ...]
     owner_path_sha256: str
     expected_key_ids: tuple[str, ...]
+    header_proof_admissions: tuple[HeaderProofCacheAdmission, ...] | None = None
+    expected_receipt_ids: tuple[tuple[str, str], ...] | None = None
 
 
 def _sha(raw: bytes) -> str:
@@ -217,11 +220,18 @@ def _prepare_formal_owner_observation(*, owner, observed, state, require_source3
     """Join existing host inputs to the independently admitted signed scope."""
     from ipfs_accelerate_py.agent_supervisor.runtime import formal_status_census as formal
     from ipfs_accelerate_py.agent_supervisor.runtime.doctor_scoped_analysis import ScopedDoctorAnalysis
-    from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import content_identity
+    from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import canonical_json, content_identity
+
+    bound_header = owner.header_proof_admissions is not None or owner.expected_receipt_ids is not None
 
     def refused():
         report = formal.census_formal_status()
         report.update(status="refused", reason_code="invalid_terminal_native_admission")
+        if bound_header:
+            report.update(schema=formal.BOUND_SCHEMA, header_admission_current_checks=0,
+                expected_receipt_set_sha256=None,
+                binding_admission="terminal-signed-task-scoped-header-bridge@1",
+                accepted_receipt_count_scope="expected-header-receipts-with-current-bound-admissions@1")
         return report
 
     scoped = owner.scoped_analysis
@@ -229,7 +239,7 @@ def _prepare_formal_owner_observation(*, owner, observed, state, require_source3
         return refused(), None
     try:
         scope_id = scoped.report["scope_id"]
-        binding = formal.FormalStatusCensusBinding(
+        binding_kwargs = dict(
             task_sha256=_identity(observed["task"]["task_cid"]),
             revision_sha256=_identity({"revision": observed["task"]["revision"],
                                       "contract": observed["contract"]}),
@@ -237,6 +247,63 @@ def _prepare_formal_owner_observation(*, owner, observed, state, require_source3
             context_sha256=_formal_status_context_binding(observed),
             candidate_tree_id=scope_id, owner_path_sha256=owner.owner_path_sha256,
             expected_key_ids=owner.expected_key_ids)
+        if bound_header:
+            binding_kwargs["expected_receipt_ids"] = owner.expected_receipt_ids
+        binding = formal.FormalStatusCensusBinding(**binding_kwargs)
+        header_inputs = None
+        if bound_header:
+            from ipfs_accelerate_py.agent_supervisor.runtime.doctor_header_cache_bridge import HeaderProofCacheAdmission
+
+            # These populations are independently supplied by the host. No
+            # expected receipt or key identity is inferred from a handle.
+            formal._binding_payload(binding)
+            keys = formal._keys(owner.keys, binding)
+            if (type(owner.header_proof_admissions) is not tuple
+                    or len(owner.header_proof_admissions) > formal.MAX_KEYS
+                    or type(owner.expected_receipt_ids) is not tuple
+                    or any(type(pair) is not tuple or len(pair) != 2
+                           for pair in owner.expected_receipt_ids)
+                    or any(type(handle) is not HeaderProofCacheAdmission
+                           for handle in owner.header_proof_admissions)):
+                raise ValueError("exact typed header admissions and independent receipt population required")
+            header_inputs = (owner.header_proof_admissions, owner.expected_receipt_ids,
+                owner.keys, owner.expected_key_ids, owner.gate, scoped, owner.owner_path_sha256,
+                tuple(canonical_json(key.to_dict()) for key in keys))
+
+            def header_bindings():
+                if (owner.header_proof_admissions is not header_inputs[0]
+                        or owner.expected_receipt_ids is not header_inputs[1]
+                        or owner.keys is not header_inputs[2] or owner.expected_key_ids is not header_inputs[3]
+                        or owner.gate is not header_inputs[4] or owner.scoped_analysis is not header_inputs[5]
+                        or owner.owner_path_sha256 != header_inputs[6]):
+                    raise ValueError("original typed Terminal header admission changed")
+                current_keys = formal._keys(owner.keys, binding)
+                if tuple(canonical_json(key.to_dict()) for key in current_keys) != header_inputs[7]:
+                    raise ValueError("original complete Terminal header key population changed")
+                expected_pairs = dict(owner.expected_receipt_ids)
+                key_ids = tuple(key.key_id for key in current_keys)
+                if (len(expected_pairs) != len(owner.expected_receipt_ids)
+                        or set(expected_pairs) != set(owner.expected_key_ids)
+                        or set(key_ids) != set(expected_pairs)
+                        or len(owner.header_proof_admissions) != len(current_keys)):
+                    raise ValueError("independent header receipt population differs from complete native keys")
+                supplied = {key.key_id: key for key in current_keys}
+                admitted_ids = []
+                for handle in owner.header_proof_admissions:
+                    key = handle.key
+                    if key.key_id not in supplied:
+                        raise ValueError("header admission is foreign to independently expected native keys")
+                    handle.assert_bound(gate=owner.gate, scoped_analysis=scoped,
+                        expected_key_id=key.key_id, expected_receipt_id=expected_pairs[key.key_id],
+                        expected_owner_path_sha256=owner.owner_path_sha256)
+                    if canonical_json(key.to_dict()) != canonical_json(supplied[key.key_id].to_dict()):
+                        raise ValueError("header admission differs from the exact supplied native key")
+                    admitted_ids.append(key.key_id)
+                if len(set(admitted_ids)) != len(admitted_ids) or set(admitted_ids) != set(key_ids):
+                    raise ValueError("complete typed header admission population required")
+
+            # Complete structural joins precede owner observation and probes.
+            header_bindings()
     except Exception:
         return refused(), None
 
@@ -244,6 +311,8 @@ def _prepare_formal_owner_observation(*, owner, observed, state, require_source3
 
     def current_binding():
         nonlocal initial_native_owner
+        if bound_header:
+            header_bindings()
         current = _owner_snapshot(state=state, require_source384=require_source384)
         if (current["database_identity"] != observed["database_identity"]
                 or current["retained"] != observed["retained"]
@@ -283,19 +352,38 @@ def _prepare_formal_owner_observation(*, owner, observed, state, require_source3
             initial_native_owner = native_owner
         elif cache is not initial_native_owner[0] or native_owner[1:] != initial_native_owner[1:]:
             raise ValueError("admitted native owner changed between observations")
+        if bound_header:
+            header_bindings()
         return binding
 
     def observe():
-        result = formal.census_formal_status(binding=binding, gate=owner.gate,
-            keys=owner.keys, current_binding_probe=current_binding)
-        result["binding_admission"] = "terminal-signed-task-scoped-host-owner@1"
+        kwargs = dict(binding=binding, gate=owner.gate, keys=owner.keys,
+                      current_binding_probe=current_binding, require_bound_scoped_receipts=True)
+        if bound_header:
+            kwargs["header_proof_admissions"] = header_inputs[0]
+        result = formal.census_formal_status(**kwargs)
+        result["binding_admission"] = ("terminal-signed-task-scoped-header-bridge@1" if bound_header
+                                       else "terminal-signed-task-scoped-host-owner@1")
         return result
 
     return observe(), observe
 
 
-def _invalidate_formal_observation(report):
+def _invalidate_formal_observation(report, *, nested=None, canonical_payload=None):
     report["formal_status_context_binding_current"] = False
+    if nested is not None:
+        # The caller may have replaced the exported field. Invalidate the
+        # original escaped observation and restore its strong reference.
+        report["formal_status_census"] = nested
+        if canonical_payload is not None:
+            # Restore the privately retained bounded body before refusal so
+            # caller-added fields and authority flags cannot survive errors.
+            retained = json.loads(canonical_payload)
+            nested.clear()
+            nested.update(retained)
+        nested.update(status="refused", reason_code="terminal_context_custody_changed",
+                      observation_current=False, accepted_receipts=None)
+        return
     nested = report["formal_status_census"]
     if report.get("formal_status_host_owner_supplied") or nested["observation_current"]:
         nested.update(status="refused", reason_code="terminal_context_custody_changed",
@@ -454,26 +542,40 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
         "post_yield_admission_task_revalidated": False, "allocated_worktree_removed": False,
         "guarded_cleanup": True, "explicit_external_worktree_root": worktree_root is not None,
         "worker_writable_workspace_selected": worker_writable}
+    formal_bound_report = None
+    formal_bound_initial_json = None
+    formal_bound_observation_required = False
     if include_formal_status_census:
         from ipfs_accelerate_py.agent_supervisor.runtime.formal_status_census import census_formal_status
 
         formal_owner_observe = None
+        # Capture the lane before any admission callback can mutate host fields.
+        formal_bound_lane = formal_status_owner is not None and (
+            formal_status_owner.header_proof_admissions is not None
+            or formal_status_owner.expected_receipt_ids is not None)
         if formal_status_owner is None:
             formal_status = census_formal_status(binding=None, gate=None, keys=None)
         else:
             formal_status, formal_owner_observe = _prepare_formal_owner_observation(
                 owner=formal_status_owner, observed=observed, state=state,
                 require_source384=require_source384)
+        if formal_bound_lane:
+            formal_bound_report = formal_status
+            formal_bound_initial_json = json.dumps(formal_status, sort_keys=True,
+                separators=(",", ":"), allow_nan=False)
+            formal_bound_observation_required = formal_status["status"] == "measured"
         formal_status_binding = _formal_status_context_binding(observed)
         report.update(schema=FORMAL_STATUS_SCHEMA,
             formal_status_context_binding_sha256=formal_status_binding,
             formal_status_context_binding_current=True,
             formal_status_census=formal_status)
         if formal_status_owner is not None:
+            formal_operation_counts = FORMAL_STATUS_OPERATION_COUNTS + (
+                ("header_admission_current_checks",) if "header_admission_current_checks" in formal_status else ())
             report.update(formal_status_host_owner_supplied=True,
                           formal_status_owner_observation_passes=1,
                           formal_status_native_observation_totals={
-                              name: formal_status[name] for name in FORMAL_STATUS_OPERATION_COUNTS})
+                              name: formal_status[name] for name in formal_operation_counts})
     options = {"purpose": "coding", "semantic_repository": root,
         "semantic_transport_schema": "supervisor-semantic-router-input@1",
         "semantic_metadata_view": semantic_metadata_view, "census_only": True,
@@ -550,7 +652,8 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
         except BaseException:
             # Also covers the native worktree helper's exit/cleanup errors.
             if include_formal_status_census:
-                _invalidate_formal_observation(report)
+                _invalidate_formal_observation(report, nested=formal_bound_report,
+                                               canonical_payload=formal_bound_initial_json)
             raise
 
     with formal_status_guard(), managed_git_worktree(repo_root=root, worktree_path=workspace,
@@ -577,12 +680,27 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                 # The yielded dictionary may have escaped to the caller. Clear
                 # currentness before any check that can raise on custody drift.
                 report["formal_status_context_binding_current"] = False
-                if formal_owner_observe is not None and report["formal_status_census"]["status"] == "measured":
+                if formal_bound_report is not None and report.get("formal_status_census") is not formal_bound_report:
+                    _invalidate_formal_observation(report, nested=formal_bound_report,
+                                                   canonical_payload=formal_bound_initial_json)
+                    raise ValueError("original bound formal-status observation was replaced")
+                final_observation_required = (formal_bound_observation_required
+                    if formal_bound_report is not None else report["formal_status_census"]["status"] == "measured")
+                if formal_owner_observe is not None and final_observation_required:
                     final_formal = formal_owner_observe()
+                    if formal_bound_report is not None:
+                        # Remove caller-added fields while preserving the
+                        # original dictionary seen by escaped references.
+                        formal_bound_report.clear()
                     report["formal_status_census"].update(final_formal)
                     report["formal_status_owner_observation_passes"] += 1
-                    for name in FORMAL_STATUS_OPERATION_COUNTS:
+                    for name in formal_operation_counts:
                         report["formal_status_native_observation_totals"][name] += final_formal[name]
+                elif formal_bound_report is not None:
+                    # A malformed/refused initial admission has no producer to
+                    # rerun. Restore its canonical refusal, never caller counts.
+                    formal_bound_report.clear()
+                    formal_bound_report.update(json.loads(formal_bound_initial_json))
             final = _owner_snapshot(state=state, require_source384=require_source384)
             check_workspace()
             if (final["database_identity"] != observed["database_identity"]
