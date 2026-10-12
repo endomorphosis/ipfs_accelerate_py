@@ -1,0 +1,111 @@
+{
+  "checks": [
+    {
+      "finding": "Exact original task admission is refenced. Read facades use its original bound connection with schema installation disabled and an explicit existing lifecycle store. No new connection, storage owner, coordinator, repository or provider call is created.",
+      "name": "exact_task_handle_and_connection",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:115"
+    },
+    {
+      "finding": "Host admits repository/workspace/worktree/attempt/merge-target/board policy. Canonical .git directory, existing lifecycle directory and nonsymlink owner-controlled paths are retained. Control files are bounded owner-owned single-link regular files without group/world write. Guard does not chmod or repair.",
+      "name": "host_policy_and_authority_paths",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:132"
+    },
+    {
+      "finding": "Actual @2 Portal binding is reconstructed from current full native task row and claim-time control basis. Existing bridge verifies projection and derives its distinct Portal canonical task identity. Caller hashes or synthetic receipts cannot replace the native join.",
+      "name": "actual_native_projection",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:215"
+    },
+    {
+      "finding": "Exact closed ACTIVE native lifecycle payload, computed record ID, encoded database attempt plus local Portal attempt, task/index payload, state directory/lane/merge target and workspace/repository agree. Database task CID versus Portal canonical CID, and database claim lease/fence versus lifecycle lease/fence remain separate.",
+      "name": "actual_lifecycle_and_index",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:229"
+    },
+    {
+      "finding": "Lifecycle owner reproduces full actual daemon birth, pinned task peer start ticks and owner UID. Lease remains live and creation/update/expiry ordered. This does not replay a runtime bootstrap receipt or coding-child birth.",
+      "name": "live_daemon_birth_and_lease",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:236"
+    },
+    {
+      "finding": "Workspace .git marker names a direct registration under admitted canonical .git/worktrees; registered gitdir, commondir and HEAD match workspace/lifecycle branch. Registered directory and immutable Git controls stay pinned. Bare repositories and linked canonical checkouts are outside the first profile.",
+      "name": "linked_git_registration",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:246"
+    },
+    {
+      "finding": "Native task/coordinator fencing takes COOR before SERVER. Final SERVER-protected native task and detached allocation reads close the observation. Source-only require_source_binding does not acquire COOR under SERVER. Native bookkeeping effects remain; no atomic filesystem lease or cross-store transaction is claimed.",
+      "name": "native_claim_fence_and_lock_order",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:272"
+    },
+    {
+      "finding": "Fixed lifecycle ownership fields, record ID and lease stay pinned; fence/update/expiry may advance monotonically across coherent observations. Lifecycle/index physical witnesses are checked within each observation. Concurrent renewal may refuse and need retry. Immutable projection/Git controls retain physical and byte identity, including complete task projection status bytes.",
+      "name": "same_owned_lease_renewal",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:296"
+    },
+    {
+      "finding": "Retains native task binder RLock across empty-source precondition, task.bind and marker finally. SERVER is released before task.bind coordinator fencing. Competing task binder cannot publish a sameworkspace reader for accidental adoption. Finally retains any actually published source and marker after late failure; no rollback or rebind is inferred.",
+      "name": "serialized_bind_once_publication",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:337"
+    },
+    {
+      "finding": "Allocation-marked reader requires its exact private handle and retained task handle. Canonical/workspace roots match allocation. Omitted/substituted handles refuse; unmarked default readers preserve existing optional guard behavior.",
+      "name": "exact_optional_broker_marker",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py:157"
+    },
+    {
+      "finding": "Validated native success byte/wire counters are charged before later task/allocation refusal. Closing task/allocation fence follows CAS replay and precedes both final full source checks. Refusal does not imply zero backend cost or absence of earlier effects.",
+      "name": "late_refusal_cost_and_closing_source_order",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py:377"
+    },
+    {
+      "finding": "Observation verifies this native allocation join while bootstrap/context/coding-process and proof/execution/completion flags remain false. No credentials or DB paths are added to worker output. Automatic Terminal handoff, ordinary single-lane ProcessSerialized prerequisite and retained CAS supplier remain incomplete; existing IR assets and checkpoints are unchanged.",
+      "name": "authority_and_integration_limits",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:314"
+    }
+  ],
+  "coding_process_verified": false,
+  "compiled_context_verified": false,
+  "completion_authority": false,
+  "concrete_blockers_found": [],
+  "dependency_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py": "d0ea3bfd59690f3758d6458774e7c94eca2d963112ee2aeba38b047530e2713d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py": "001c08a02cdef3dcb54e5778fe35a437f3c86cdce1fb6945e62fef450e0a7c5f",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7"
+  },
+  "execution_authority": false,
+  "guide_sha256_at_review": "2ce1083a19ee8dbd15f3696279249d7c8cb54a3e2ffc1838dfd29c0309fb8b62",
+  "method": {
+    "current_allocation_full_source_read": true,
+    "current_broker_optional_guard_diff_and_read_path_reviewed": true,
+    "documentation_workflow_execution": false,
+    "final_task_binder_serialization_fix_read": true,
+    "formal_proof": false,
+    "independent_database_connection_or_owner_constructed": false,
+    "native_bridge_projection_binding_and_lifecycle_contracts_read": true,
+    "product_edits": false,
+    "provider_or_model_execution": false,
+    "test_execution": false
+  },
+  "normal_terminal_activation_verified": false,
+  "product_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py": "bb9a242e92ec3057c927dec0be350dbe73eec2be1e7fd0c66234bb1d77fd19a7",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py": "9689548701f833b3c7acd8b91a17cd21cfc114c4d0e3588efb191c2c1488893f"
+  },
+  "proof_authority": false,
+  "repository_head": "c7e16b122fd931b9a6d385c920eca9abe0f32a5e",
+  "review_date": "2026-10-12",
+  "reviewer": "allocation_docs_review",
+  "runtime_bootstrap_verified": false,
+  "schema": "supervisor-native-source-worktree-allocation-independent-review@1",
+  "scope_limits": [
+    "Owner-private allocation component and optional broker enforcement only. Authenticated remote runtime/bootstrap/context/actual coding-child handoff and automatic Terminal activation remain unqualified.",
+    "First profile requires actual canonical .git directory and distinct registered linked workspace. Bare repositories and linked canonical checkout are unsupported. Host policy and authority path provisioning remain prerequisites.",
+    "Complete immutable projection and Git controls stay physically pinned, including task projection mutable status bytes. This is stricter than the bridge immutable-section policy; changes need a fresh explicit lifecycle.",
+    "Same-owned lifecycle lease renewal permits monotonic fence/update/expiry. Sequential coherent record/index reads can refuse concurrent renewal and need retry. No native mutation lock, writer lease or atomic filesystem snapshot is established.",
+    "Existing process-serialized fencing can perform normal metadata/lease/event/expiry bookkeeping and metadata repair. Guard is neither strict pre-repair schema-integrity proof nor zero-write observer.",
+    "Late binding failure can retain consumed publication and private markers. No silent rollback, rebind or cleanup completion is inferred.",
+    "Direct privileged SDK reads retain generic body/source checks. Coordinator/allocation refencing is enforced only through the selected optional broker path.",
+    "Backend success counters exclude unknown handshake/error/partial transport and provider usage. No live model helper choice, official reward, token savings, formal proof, omission permission or completion authority is established.",
+    "Semantic working-source/candidate context refresh remain separate unverified candidate lifecycles. Native source edits/restart/rebinding and accepted proof publication need separate qualification.",
+    "Existing family/schema/version/decoder-task/8D/384D/768D assets, embeddings and checkpoints are reused unchanged. No new training or model upload occurs in this phase."
+  ],
+  "status": "read_only_review_complete_with_explicit_scope_limits"
+}

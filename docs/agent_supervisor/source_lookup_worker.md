@@ -30,6 +30,11 @@ coordinator. A reader bound with that handle requires the same handle as the
 broker's `task_admission`. This supplies task/claim custody without activating
 the ordinary Terminal remote allocation or coding-child handoff.
 
+The optional [native allocation guard](current_source_worktree_allocation.md)
+also checks the sealed Portal projection and managed-worktree lifecycle.
+Allocation-marked readers require the exact `worktree_admission` handle and its
+retained `task_admission`; automatic coding-context/process handoff remains open.
+
 ```python
 import subprocess
 

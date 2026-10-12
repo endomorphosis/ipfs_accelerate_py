@@ -42,6 +42,12 @@ activate the ordinary Terminal remote allocation, compiled-context or actual
 coding-child handoff. Native restart and working-overlay admission remain
 separate from the semantic candidate-refresh channel.
 
+The separate [native worktree allocation guard](current_source_worktree_allocation.md)
+joins that task handle to the sealed Portal execution projection, managed
+worktree lifecycle and Git registration. It advances the allocation prerequisite
+for stage 2. Runtime bootstrap, compiled context, remote coding-child admission
+and complete-session token measurements remain separate production handoffs.
+
 The proposed design maintains a compact view of an entire admitted repository
 while retaining exact original source in its existing content store. Deliver
 only the current task's relevant views, fetch exact source when needed, and

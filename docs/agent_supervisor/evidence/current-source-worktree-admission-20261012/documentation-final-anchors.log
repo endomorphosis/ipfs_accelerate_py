@@ -1,0 +1,10 @@
+Final relative-link/anchor validation after qualification prose
+{"check_anchors": true, "errors": [], "exit_status": 0, "input_unchanged": true, "path": "docs/agent_supervisor/current_source_worktree_allocation.md", "sha256": "08ed9450d3033acfde7c4300c6ddd9da9394d75c8ac0e21d49a8c40a75a9d585"}
+{"check_anchors": true, "errors": [], "exit_status": 0, "input_unchanged": true, "path": "docs/agent_supervisor/current_source_task_admission.md", "sha256": "8afc5e00b7e45a8c77192a02d5bd57839bfaca1532dd0d0a21bd0bdb62895b90"}
+{"check_anchors": true, "errors": [], "exit_status": 0, "input_unchanged": true, "path": "docs/agent_supervisor/source_lookup_worker.md", "sha256": "65a89b43d6c22430b85fb450b5678bca6f358d5e914ec2612158174b31e7e388"}
+{"check_anchors": true, "errors": [], "exit_status": 0, "input_unchanged": true, "path": "docs/agent_supervisor/reversible_codebase_views_plan.md", "sha256": "48f7c7f040690dc5573edcf0e4035fda271f817f3c82c296a022523dc5d1e20f"}
+{"check_anchors": true, "errors": [], "exit_status": 0, "input_unchanged": true, "path": "docs/agent_supervisor/evidence/current-source-worktree-admission-20261012/README.md", "sha256": "69c0afef4aff573f8887d3674c39ad2dbceb7f5f988a5039103f30af0e65a228"}
+Distinct test counts {"allocation": 31, "collected_entries": 118, "distinct_total": 118, "native_lifecycle": 5, "retained": 82}
+JUnit {"errors": 0, "failures": 0, "skipped": 0, "tests": 118}
+Source bindings 37/37 before/after/current equal
+Product review hashes {"ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py": true, "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py": true}
