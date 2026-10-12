@@ -26,7 +26,9 @@ no-index arm records the selection but does not consume the indexed context.
 The 8,192-byte planning summary retains `pending_obligation_kinds`, an exact
 count by kind over the full retained population, even when all individual rows
 are omitted. `obligation_retrieval` identifies the API, limits and a bounded
-list of source paths with an explicit omission count. The complete selected
+list of source paths with an explicit omission count. It also includes the
+isolated worker command and its usage in the mandatory coding evidence, so
+discovery guidance participates in complete-input accounting. The complete selected
 path population remains in the owner receipt. Detailed rows continue to live
 in the already retained per-source reports.
 
@@ -74,12 +76,46 @@ the same across different source bytes. Source edits, changed reports, different
 owners or changed query budgets require a new validated query. The byte count
 is a transport measurement, not a provider token estimate.
 
-Planning remains a single provider request: it receives the kind counts and
-retrieval description, not an automatic tool-use loop. Coding evidence carries
-the checked owner receipt reference; expansion currently runs on the owner
-side. An isolated coding process has no newly qualified RPC or tool for reading
-owner-private lakes. No claim is made that a live model invoked this API or
-that complete-run tokens decreased.
+Planning remains a single provider request. During isolated coding, the owner
+wrapper now provides a read-only numerical page service for that invocation.
+The existing `llm_router` session can run this pinned, standard-library-only
+command from the allocated workspace:
+
+```sh
+/opt/ipfs-supervisor/venv/bin/python -I \
+  /opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py \
+  --path eigen.py --limit 4 --max-bytes 8192
+```
+
+Add `--function-id`, `--kind`, or `--cursor '<next_cursor JSON>'` as needed.
+The owner supplies a protected descriptor through explicit launcher arguments;
+the router validates its task, receipt, workspace and boundary before exposing
+it to child tools. The worker cannot nominate a private catalog or receipt.
+Kernel peer credentials must identify a descendant of the exact launched
+worker process birth. Matching the worker UID alone is insufficient.
+
+The service checks the selected canonical and allocated source snapshots before
+and after native retrieval. Source edits therefore require refreshed evidence;
+old indexed rows cannot be read as current advice after an edit. The complete
+JSON response envelope fits the requested budget, at most 8,192 bytes, with
+at most eight complete rows. Four-byte framing and the CLI's trailing newline
+are transport delimiters outside that JSON budget. A session accepts at most
+64 connections and prepares at most 524,288 response bytes. Its lifetime is
+bounded by the coding timeout, independently of the existing 90-second startup
+handoff. Shutdown closes the socket and removes its descriptor by inode.
+
+Owner session audits retain hashes, byte counts, row counts and delivery
+outcomes. The benchmark collects these into
+`numerical_obligation_retrieval_observation` after worker cleanup, matched to
+the admitted task and router receipt. Missing or incomplete selected evidence
+yields unavailable counts. An in-flight shutdown cannot claim complete
+accounting. These observations carry no source-correctness, completion or
+proof authority, and bytes do not substitute for native provider tokens.
+
+The provider-free worker qualification uses an authored `generate_text`
+response to drive the actual router, launcher and worker CLI. It does not
+establish that a live model chose to invoke retrieval or that complete-run
+tokens decreased. Those require a separately controlled benchmark comparison.
 The retained producer pins also mean old receipts require their original
 producer snapshot; this change does not make them current under new code.
 

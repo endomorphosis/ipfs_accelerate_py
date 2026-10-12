@@ -74,3 +74,44 @@ def test_worker_legacy_route_does_not_add_a_handoff(tmp_path):
     result = _run(tmp_path, ["--provider", "grok_cli", "--model", "grok-4.7"])
     assert result.returncode == 0, result.stderr.decode()
     assert not any("formalization-handoff" in arg for arg in json.loads(result.stdout)["argv"])
+
+
+def _numerical_args():
+    return ["--semantic-repository", "/app", "--source-formalization-handoff", "/sealed.json",
+        "--source-formalization-handoff-sha256", "a" * 64,
+        "--numerical-obligation-descriptor", "/opt/ipfs-supervisor/worker-observations/numerical.json",
+        "--numerical-obligation-descriptor-sha256", "b" * 64]
+
+
+def test_worker_forwards_exact_numerical_descriptor_pair_alongside_owner_handoff(tmp_path):
+    result = _run(tmp_path, _numerical_args())
+    assert result.returncode == 0, result.stderr.decode()
+    argv = json.loads(result.stdout)["argv"]
+    for flag in ("--numerical-obligation-descriptor", "--numerical-obligation-descriptor-sha256",
+                 "--source-formalization-handoff", "--source-formalization-handoff-sha256"):
+        assert argv.count(flag) == 1
+        assert argv[argv.index(flag)+1] == _numerical_args()[_numerical_args().index(flag)+1]
+
+
+@pytest.mark.parametrize("change", ["missing_descriptor", "missing_digest", "empty_digest",
+    "missing_handoff", "missing_handoff_digest", "missing_repository", "planning", "preflight", "finite"])
+def test_worker_refuses_unbound_or_wrong_route_numerical_descriptor(tmp_path, change):
+    args = _numerical_args()
+    remove = {"missing_descriptor": "--numerical-obligation-descriptor",
+        "missing_digest": "--numerical-obligation-descriptor-sha256",
+        "missing_handoff": "--source-formalization-handoff",
+        "missing_handoff_digest": "--source-formalization-handoff-sha256",
+        "missing_repository": "--semantic-repository"}
+    if change in remove:
+        index = args.index(remove[change]); del args[index:index+2]
+    elif change == "empty_digest":
+        args[-1] = ""
+    elif change == "planning":
+        args += ["--purpose", "planning"]
+    elif change == "preflight":
+        args += ["--preflight"]
+    else:
+        args += ["--finite-repository-artifact", "/finite.json"]
+    result = _run(tmp_path, args)
+    assert result.returncode != 0 and not result.stdout
+    assert b"exact numerical obligation descriptor" in result.stderr

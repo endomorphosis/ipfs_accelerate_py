@@ -70,6 +70,12 @@ def _assert_discovery(receipt):
     assert summary["obligation_retrieval"] == {
         "schema": "supervisor-numerical-obligation-retrieval@1",
         "api": RETRIEVAL_API,
+        "isolated_worker_command": ("/opt/ipfs-supervisor/venv/bin/python -I "
+            "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/"
+            "numerical_obligation_client.py --path <source_path>"),
+        "isolated_worker_usage": ("Run from the allocated workspace while the coding session is active. "
+            "Optional: --function-id, --kind, --limit, --max-bytes, --cursor '<next_cursor JSON>'. "
+            "Responses include full pending rows; source edits invalidate retrieval."),
         "requires_validated_context_receipt": True,
         "max_page_bytes": 8192,
         "max_page_rows": 8,

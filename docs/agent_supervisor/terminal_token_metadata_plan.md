@@ -27,8 +27,11 @@ qualification.
 Its [source-bound qualification](evidence/numerical-obligation-retrieval-20261012/README.md)
 recovered all 45 pending public-source obligations across 12 bounded pages,
 replayed them in a fresh process with the existing DuckLakes, and passed 263
-local tests. The API currently runs on the owner side; an isolated-agent
-retrieval request/response path remains to be qualified.
+local tests. A subsequent owner-mediated worker service now lets the isolated
+coding CLI request bounded pages during its existing `llm_router` session.
+Discovery guidance is part of the complete coding input; per-session accounting
+is collected before container removal. Its provider-free qualification is
+separate from a live model's tool choices and complete-run token savings.
 
 For repository-wide source views, separate three requirements: exact original
 restoration, preservation of accepted edits, and measured complete-run tokens.

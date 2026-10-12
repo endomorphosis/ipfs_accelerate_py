@@ -24,6 +24,8 @@ for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,
 code=1
 try:
  process=subprocess.Popen(command)
+ broker=globals().get("numerical_obligation_broker")
+ if broker is not None:broker.note_spawned(process)
  guard=globals().get("proof_query_guard")
  if guard is not None:guard.note_spawned(process)
  code=process.wait()
@@ -36,10 +38,16 @@ except BaseException:
  raise
 finally:
  for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,signal.SIG_IGN)
- cleanup=subprocess.run(['/usr/bin/sudo','-n','-u','benchmarkworker','--','/opt/ipfs-supervisor/bin/worker-entry','--cleanup'],cwd='/',stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,start_new_session=True,timeout=15)
- if cleanup.returncode:code=1
- guard=globals().get("proof_query_guard")
- if guard is not None:guard.abort()
+ try:
+  cleanup=subprocess.run(['/usr/bin/sudo','-n','-u','benchmarkworker','--','/opt/ipfs-supervisor/bin/worker-entry','--cleanup'],cwd='/',stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,start_new_session=True,timeout=15)
+  if cleanup.returncode:code=1
+ finally:
+  try:
+   guard=globals().get("proof_query_guard")
+   if guard is not None:guard.abort()
+  finally:
+   broker=globals().get("numerical_obligation_broker")
+   if broker is not None:broker.close()
 raise SystemExit(code)
 """
 
@@ -75,6 +83,17 @@ if any(part==flag or part.startswith(flag+'=') for part in sys.argv[1:] for flag
  sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
  from ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_dispatch import require_finite_proof_query_isolated_worker_dispatch
  proof_query_guard=require_finite_proof_query_isolated_worker_dispatch(command=command,environment=dict(os.environ),worktree=cwd)
+numerical_obligation_broker=None
+try:
+ from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import prepare_numerical_obligation_broker
+ numerical_obligation_broker=prepare_numerical_obligation_broker(argv=handoff['argv'],boundary=root/'container-boundary.json',workspace=cwd,input_fd=0)
+ if numerical_obligation_broker is not None:command.extend(numerical_obligation_broker.extra_argv)
+except BaseException:
+ try:
+  if proof_query_guard is not None:proof_query_guard.abort()
+ finally:
+  if numerical_obligation_broker is not None:numerical_obligation_broker.close()
+ raise
 """
     + OWNER_MONITOR
 )
@@ -167,6 +186,8 @@ parser.add_argument('--public-instruction-sha256')
 parser.add_argument('--public-instruction-task-cid')
 parser.add_argument('--source-formalization-handoff',type=pathlib.Path)
 parser.add_argument('--source-formalization-handoff-sha256')
+parser.add_argument('--numerical-obligation-descriptor',type=pathlib.Path)
+parser.add_argument('--numerical-obligation-descriptor-sha256')
 parser.add_argument('--preflight',action='store_true');parser.add_argument('--preflight-sleep',type=int,default=0)
 args=parser.parse_args()
 if args.provider!=selected_provider:raise SystemExit('provider differs from deployed worker route')
@@ -177,6 +198,8 @@ finite_values=(args.finite_repository_artifact,args.finite_repository_sha256,arg
 proof_query_values=(args.finite_proof_query_context,args.finite_proof_query_sha256,args.finite_proof_query_context_cid)
 instruction_values=(args.public_instruction_artifact,args.public_instruction_sha256,args.public_instruction_task_cid)
 formalization_values=(args.source_formalization_handoff,args.source_formalization_handoff_sha256)
+numerical_obligation_values=(args.numerical_obligation_descriptor,args.numerical_obligation_descriptor_sha256)
+if any(value is not None for value in numerical_obligation_values) and (not all(numerical_obligation_values) or not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact numerical obligation descriptor requires owner formalization coding')
 if any(formalization_values) and (not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact owner formalization handoff requires semantic router coding')
 if args.semantic_metadata_view!='legacy' and (args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('metadata view requires original semantic router coding')
 if args.semantic_metadata_census_only and args.semantic_metadata_view not in ('common-bindings@1','common-bindings-instruction@1'):raise SystemExit('metadata census requires common bindings')
@@ -250,6 +273,7 @@ else:
  if args.doctor_residual_artifact is not None:sys.argv+=['--doctor-residual-artifact',str(args.doctor_residual_artifact),'--doctor-residual-sha256',args.doctor_residual_sha256,'--doctor-residual-task-cid',args.doctor_residual_task_cid]
  if args.public_instruction_artifact is not None:sys.argv+=['--public-instruction-artifact',str(args.public_instruction_artifact),'--public-instruction-sha256',args.public_instruction_sha256,'--public-instruction-task-cid',args.public_instruction_task_cid]
  if args.source_formalization_handoff is not None:sys.argv+=['--source-formalization-handoff',str(args.source_formalization_handoff),'--source-formalization-handoff-sha256',args.source_formalization_handoff_sha256]
+ if args.numerical_obligation_descriptor is not None:sys.argv+=['--numerical-obligation-descriptor',str(args.numerical_obligation_descriptor),'--numerical-obligation-descriptor-sha256',args.numerical_obligation_descriptor_sha256]
  raise SystemExit(run_with_child_custody(main))
 """
 

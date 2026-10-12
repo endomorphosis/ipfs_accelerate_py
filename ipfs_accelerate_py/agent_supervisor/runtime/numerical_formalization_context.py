@@ -133,6 +133,12 @@ def _summary(reports, tree, unit_links=None):
         pending_obligation_kinds=dict(sorted(Counter(row["kind"] for row in pending).items())),
         obligation_retrieval=dict(schema=RETRIEVAL_SCHEMA,
             api="ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context.retrieve_numerical_obligations",
+            isolated_worker_command=("/opt/ipfs-supervisor/venv/bin/python -I "
+                "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/"
+                "numerical_obligation_client.py --path <source_path>"),
+            isolated_worker_usage=("Run from the allocated workspace while the coding session is active. "
+                "Optional: --function-id, --kind, --limit, --max-bytes, --cursor '<next_cursor JSON>'. "
+                "Responses include full pending rows; source edits invalidate retrieval."),
             requires_validated_context_receipt=True, max_page_bytes=MAX_PAGE_BYTES,
             max_page_rows=MAX_PAGE_ROWS, source_paths=sorted(reports)[:8],
             omitted_source_paths=max(0, len(reports)-8)),

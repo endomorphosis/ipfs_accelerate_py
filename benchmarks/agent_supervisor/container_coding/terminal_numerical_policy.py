@@ -9,6 +9,7 @@ PROFILES = (PROFILE,)
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py",
     "benchmarks/agent_supervisor/container_coding/terminal_numerical_observation.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py",
     "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py",
     "benchmarks/agent_supervisor/container_coding/terminal_native_preflight.py",
     "benchmarks/agent_supervisor/container_coding/terminal_native_start_preflight.py",
@@ -20,6 +21,10 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
     "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
     "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/published_numerical.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py",

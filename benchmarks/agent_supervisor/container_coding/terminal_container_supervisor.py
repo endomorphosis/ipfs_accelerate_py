@@ -1282,6 +1282,16 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "retry_authority": False, "task_correctness_established": False,
                 "patch_application_established": False, "raw_source_exported": False,
             }
+        try:
+            from .terminal_numerical_retrieval_observation import collect as collect_numerical_retrieval
+            report["numerical_obligation_retrieval_observation"] = collect_numerical_retrieval(
+                parent=ROOT / "worker-observations", scope=output_observation_scope, report=report)
+        except Exception:
+            report["numerical_obligation_retrieval_observation"] = {
+                "schema": "terminal-numerical-retrieval-observation@1", "status": "unavailable",
+                "reason": "observer_unavailable", "observation_only": True,
+                "proof_authority": False, "execution_authority": False, "completion_authority": False,
+            }
         report["seconds"] = time.monotonic() - started
         _write(report_path, report)
     return report

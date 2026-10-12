@@ -9,6 +9,7 @@ input metadata after the same current source and workspace checks.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -24,6 +25,56 @@ if TYPE_CHECKING:
 
 MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
 GROK_PROGRESS_PREFIX = "IPFS_GROK_PROGRESS "
+NUMERICAL_DESCRIPTOR_ENV = "IPFS_SUPERVISOR_NUMERICAL_OBLIGATION_DESCRIPTOR"
+NUMERICAL_DESCRIPTOR_DIGEST_ENV = "IPFS_SUPERVISOR_NUMERICAL_OBLIGATION_DESCRIPTOR_SHA256"
+
+
+@contextmanager
+def _numerical_descriptor_environment(path, digest):
+    """Expose only the validated invocation's public endpoint during the call."""
+    if path is None:
+        yield
+        return
+    selected = {NUMERICAL_DESCRIPTOR_ENV: str(path), NUMERICAL_DESCRIPTOR_DIGEST_ENV: digest}
+    previous = {key: os.environ.get(key) for key in selected}
+    try:
+        os.environ.update(selected)
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _numerical_broker_observation(*, path, digest, workspace, prompt, boundary_sha256,
+                                  formalization_receipt):
+    from .numerical_obligation_client import load_descriptor
+    from .source_formalization_context import _parts
+
+    descriptor = load_descriptor(path, digest, workspace=workspace)
+    parsed = _parts(prompt)
+    if parsed is None or formalization_receipt is None:
+        raise ValueError("numerical descriptor requires current task formalization evidence")
+    payload = parsed[0]
+    contexts = [row for row in payload["contexts"] if row["kind"] == "numerical-formalization-context"]
+    if len(contexts) != 1:
+        raise ValueError("numerical descriptor requires one selected numerical context")
+    context = contexts[0]
+    expected = dict(task_id=payload["task_id"], task_cid=payload["task_cid"],
+        context_bundle_sha256=payload["context_bundle"]["sha256"],
+        context_receipt_sha256=context["receipt_reference"]["receipt_sha256"],
+        source_tree_id=context["summary"]["source_tree_id"],
+        boundary_manifest_sha256=boundary_sha256)
+    if (any(descriptor.get(key) != value for key, value in expected.items())
+            or any(formalization_receipt.get(key) != expected[key]
+                   for key in ("task_id", "task_cid", "context_bundle_sha256"))):
+        raise ValueError("numerical descriptor differs from validated task evidence")
+    return dict(schema="numerical-obligation-dispatch-observation@1",
+        descriptor_sha256=digest, session_id=descriptor["session_id"], **expected,
+        requests_observed=False, proof_authority=False, execution_authority=False,
+        completion_authority=False)
 
 
 def _grok_progress_emitter(invocation_id: str):
@@ -57,6 +108,7 @@ def implementation_timeout_limit(budget_profile=None):
 RUNNER_FAILURE_PHASES = frozenset({
     "runner_initialization", "argument_validation", "planning_contract",
     "container_boundary", "workspace_identity", "semantic_context", "source_formalization_context",
+    "numerical_obligation_descriptor",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "semantic_metadata_view",
     "semantic_metadata_census",
@@ -78,6 +130,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "semantic_metadata_view.py", "semantic_instruction_view.py",
     "semantic_metadata_census.py",
     "source_formalization_context.py",
+    "numerical_obligation_client.py",
 })
 
 
@@ -218,6 +271,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_repository: Path | None = None,
         source_formalization_handoff: Path | None = None,
         source_formalization_handoff_sha256: str | None = None,
+        numerical_obligation_descriptor: Path | None = None,
+        numerical_obligation_descriptor_sha256: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
         semantic_metadata_token_counter: SemanticMetadataTokenCounter | None = None,
@@ -234,6 +289,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     from ipfs_accelerate_py.router_deps import RouterDeps
 
     failure_phase = "argument_validation"
+    numerical_args = (numerical_obligation_descriptor, numerical_obligation_descriptor_sha256)
+    numerical_selected = any(value is not None for value in numerical_args)
+    if numerical_selected:
+        if (not all(numerical_args) or purpose != "coding" or semantic_repository is None
+                or container_boundary is None or not container_boundary_sha256
+                or source_formalization_handoff is None or not source_formalization_handoff_sha256):
+            raise ValueError("exact numerical descriptor requires isolated owner formalization coding")
+    elif any(key in os.environ for key in (NUMERICAL_DESCRIPTOR_ENV, NUMERICAL_DESCRIPTOR_DIGEST_ENV)):
+        raise ValueError("numerical descriptor environment requires explicit owner selection")
     if provider not in {"codex_cli", "grok_cli"}:
         raise ValueError("explicit supported shared-router coding provider required")
     if provider == "grok_cli" and model != "grok-4.7":
@@ -335,6 +399,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         prompt=prompt, repository=semantic_repository, workspace=root,
         boundary=container_boundary, boundary_sha256=container_boundary_sha256 or None,
         handoff=source_formalization_handoff, handoff_sha256=source_formalization_handoff_sha256)
+    numerical_receipt = None
+    if numerical_selected:
+        failure_phase = "numerical_obligation_descriptor"
+        numerical_receipt = _numerical_broker_observation(path=numerical_obligation_descriptor,
+            digest=numerical_obligation_descriptor_sha256, workspace=root, prompt=prompt,
+            boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
     failure_phase = "doctor_residual"
     residual_args = (doctor_residual_artifact, doctor_residual_sha256, doctor_residual_task_cid)
     if any(residual_args):
@@ -472,6 +542,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "completion_authority": False, "settlement_authority": False,
             "publication_authority": False, "required_fact_omission_authority": False,
         }
+        if numerical_receipt is not None:
+            receipt["numerical_obligation_retrieval"] = numerical_receipt
         return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     failure_phase = "provider_discovery"
     available = discover_available_providers()
@@ -547,6 +619,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         }}
     if formalization_receipt is not None:
         receipt["source_formalization_context"] = formalization_receipt
+    if numerical_receipt is not None:
+        receipt["numerical_obligation_retrieval"] = numerical_receipt
     if provider == "grok_cli":
         # Grok treats an empty allowlist as its default toolset. A nonempty
         # singleton followed by its explicit denial requests zero planning
@@ -589,17 +663,27 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 "plan_admitted": False,
             }
     try:
-        output = generate_text(
-            model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
-            allow_local_fallback=False, allow_cross_provider_fallback=False,
-            timeout=timeout, max_tokens=max_output_tokens, max_new_tokens=max_output_tokens,
-            reasoning_effort=reasoning_effort,
-            # Both purposes launch a workspace-capable agent and require a fresh
-            # native receipt. Cached response text cannot replay those effects.
-            side_effecting=True,
-            task_kind="coding", allocation_path="cli", allocation_session_id=invocation,
-            **provider_options,
-        )
+        if numerical_receipt is not None:
+            failure_phase = "numerical_obligation_descriptor"
+            current = _numerical_broker_observation(path=numerical_obligation_descriptor,
+                digest=numerical_obligation_descriptor_sha256, workspace=root, prompt=prompt,
+                boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
+            if current != numerical_receipt:
+                raise ValueError("numerical descriptor changed before provider dispatch")
+        failure_phase = "provider_invocation"
+        with _numerical_descriptor_environment(numerical_obligation_descriptor,
+                                               numerical_obligation_descriptor_sha256):
+            output = generate_text(
+                model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
+                allow_local_fallback=False, allow_cross_provider_fallback=False,
+                timeout=timeout, max_tokens=max_output_tokens, max_new_tokens=max_output_tokens,
+                reasoning_effort=reasoning_effort,
+                # Both purposes launch a workspace-capable agent and require a fresh
+                # native receipt. Cached response text cannot replay those effects.
+                side_effecting=True,
+                task_kind="coding", allocation_path="cli", allocation_session_id=invocation,
+                **provider_options,
+            )
         failure_phase = "provider_result_validation"
         observation = get_last_cli_observation(provider)
         if observation.get("exit_code") != 0:
@@ -710,6 +794,8 @@ def main():
     parser.add_argument("--semantic-repository", type=Path)
     parser.add_argument("--source-formalization-handoff", type=Path)
     parser.add_argument("--source-formalization-handoff-sha256")
+    parser.add_argument("--numerical-obligation-descriptor", type=Path)
+    parser.add_argument("--numerical-obligation-descriptor-sha256")
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
@@ -735,6 +821,8 @@ def main():
                         purpose=args.purpose, semantic_repository=args.semantic_repository,
                         source_formalization_handoff=args.source_formalization_handoff,
                         source_formalization_handoff_sha256=args.source_formalization_handoff_sha256,
+                        numerical_obligation_descriptor=args.numerical_obligation_descriptor,
+                        numerical_obligation_descriptor_sha256=args.numerical_obligation_descriptor_sha256,
                         semantic_transport_schema=args.semantic_transport_schema,
                         semantic_metadata_view=args.semantic_metadata_view,
                         census_only=args.semantic_metadata_census_only,
