@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="34.088" timestamp="2026-10-12T06:30:39.011456+00:00" hostname="spark-b271"><testcase classname="test.api.test_current_source_lookup" name="test_actual_scoped_owner_returns_exact_source_without_sql_authority" time="1.263"><error message="failed on setup with &quot;ipfs_accelerate_py.agent_supervisor.runtime.current_source_lookup.CurrentSourceLookupError: current owner generation or fence differs&quot;">test/api/test_current_source_lookup.py:90: in current
+    with _case(tmp_path) as case:
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+test/api/test_current_source_lookup.py:63: in _case
+    binding = server.bind_current_source_lookup(**config)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py:4576: in bind_current_source_lookup
+    return self._command_gateway.bind_current_source_lookup(**configuration)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py:5557: in bind_current_source_lookup
+    service.check_native(self._connection, self.identity)
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py:266: in check_native
+    _require(row is not None and tuple(row) == (
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py:59: in _require
+    raise CurrentSourceLookupError(reason)
+E   ipfs_accelerate_py.agent_supervisor.runtime.current_source_lookup.CurrentSourceLookupError: current owner generation or fence differs</error></testcase></testsuite></testsuites>

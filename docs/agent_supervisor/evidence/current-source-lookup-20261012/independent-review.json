@@ -1,0 +1,37 @@
+{
+  "schema": "supervisor-source-lookup-independent-review@1",
+  "reviews": [
+    {
+      "agent": "/root/terminal_binding_audit",
+      "reviewed_service_sha256": "680c3e2176c2e68356faf8580960cad007f85b6a32c322ada4b9c9fa8e755c6a",
+      "reviewed_cli_sha256": "706c526fb4ff868ff89517c8a0581ed839071cf05471c6f7f9c4d9bb6ffc584d",
+      "resolved_findings": [
+        "Rewalk all parent directories and leaf after source read.",
+        "Read selected source after final native callbacks.",
+        "Pin original CAS/store and private inventory identity.",
+        "Decode closed binding and host byte limits.",
+        "Recompute full source CID for a complete offset-zero reply.",
+        "Use Git owner-execute bit instead of any execute permission."
+      ]
+    },
+    {
+      "agent": "/root/native_owner_audit",
+      "reviewed_service_sha256": "195c2c3d5c7173702ab2252b7cbf522fd51bff072e677759f99f7aa15c2e2373",
+      "reviewed_typed_owner_sha256": "90bdfdf7ab2303453a600b953e7728789c48cb08d2d71c5d195d3694b0f0c32b",
+      "resolved_findings": [
+        "Cap source frames before body receipt.",
+        "Require canonical received JSON for actual wire accounting.",
+        "Read indexed values of actual DuckDBRow wrappers."
+      ],
+      "remaining_material_blocker_found": false
+    }
+  ],
+  "limitations": [
+    "Sequential source observations, without atomic writer lease.",
+    "Whole inventory and selected file are read per slice under the owner lock.",
+    "One task binding per gateway lifetime.",
+    "Host-issued child transport; coding-model container channel remains unqualified.",
+    "Partial slice CID is not a whole-source membership proof.",
+    "Context/public path scope is host admitted; proof and omission authorities stay false."
+  ]
+}

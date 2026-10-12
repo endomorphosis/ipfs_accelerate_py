@@ -1,0 +1,19 @@
+
+==================================== ERRORS ====================================
+___ ERROR collecting test/api/test_agent_supervisor_quack_owner_mutation.py ____
+ImportError while importing test module '/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/test/api/test_agent_supervisor_quack_owner_mutation.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_agent_supervisor_quack_owner_mutation.py:21: in <module>
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+E   ImportError: cannot import name 'MUTATION_REQUEST_NAME' from 'ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server' (/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py)
+=========================== short test summary info ============================
+ERROR test/api/test_agent_supervisor_quack_owner_mutation.py
+no tests collected, 1 error in 1.11s
+ERROR: found no collectors for /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/test/api/test_agent_supervisor_quack_owner_mutation.py::test_typed_client_grant_renews_an_existing_connected_client
+
+ERROR: found no collectors for /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/test/api/test_agent_supervisor_quack_owner_mutation.py::test_typed_client_grant_renewal_rejects_nonexact_or_inactive_grants
+

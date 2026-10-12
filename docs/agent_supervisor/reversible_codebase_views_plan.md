@@ -21,6 +21,13 @@ explicit. Deterministic replay restores unchanged source and refuses edited
 views. This does not qualify mapped edits, current-source model access or token
 savings; those remain separate stages.
 
+The [current-source lookup](current_source_lookup.md) now attaches a bounded
+original-source operation to the existing typed owner. It separately checks
+native task custody, historical CAS bytes and clean selected working-file
+equality, with grant-bound continuation and full response byte accounting.
+A host-issued subprocess CLI exercises that operation. Current coding containers
+still need a qualified session/descendant channel; required facts remain inline.
+
 The proposed design maintains a compact view of an entire admitted repository
 while retaining exact original source in its existing content store. Deliver
 only the current task's relevant views, fetch exact source when needed, and

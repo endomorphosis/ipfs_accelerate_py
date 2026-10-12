@@ -4567,6 +4567,14 @@ class QuackStateServer:
         bind(**binding)
         _mirror_quack_owner_legacy_queue_scope()
 
+    def bind_current_source_lookup(self, **configuration: Any) -> dict[str, Any]:
+        """Bind source.get to this ready owner's existing gateway and CAS."""
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY or self._command_gateway is None:
+                raise QuackStateServerNotRunningError("current source binding requires a ready state owner")
+            self.ready()
+            return self._command_gateway.bind_current_source_lookup(**configuration)
+
     def issue_typed_client_grant_record(
         self,
         *,
