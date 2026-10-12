@@ -1,0 +1,116 @@
+{
+  "excludes": [
+    "manifest.json"
+  ],
+  "files": {
+    "README.md": {
+      "bytes": 4844,
+      "sha256": "c5fee348680fc4f6e5d91353cc9762ac48a0259ccfc5271e305a04a817b666d3"
+    },
+    "closed-docker-review.json": {
+      "bytes": 3934,
+      "sha256": "084fc33a77a722bab9b081658cdbeaeb2a4d9ee5a894732851d4f1ed5f7bbabe"
+    },
+    "docker-01/command.json": {
+      "bytes": 22888,
+      "sha256": "661d4f6ddd59e822795816dac3dfc1b4a30aff21e47f60a1428c3073423494b1"
+    },
+    "docker-01/container-controls.json": {
+      "bytes": 2419,
+      "sha256": "41b6dbcbb980329a9bed7ab4c575db328fe3eb0911c2b1f65dbebdcc748226c4"
+    },
+    "docker-01/owner-command.json": {
+      "bytes": 291,
+      "sha256": "fff3f37d80ea09ae4d6b4d6428893bdd6a1601e3ae9c7514c5c2af88af7e309b"
+    },
+    "docker-01/qualification.json": {
+      "bytes": 8316,
+      "sha256": "1f727d95a623e79311950e69781a0a237c3619d3154c08f2001473eedf59df05"
+    },
+    "docker-01/results/collector-diagnostic.json": {
+      "bytes": 81,
+      "sha256": "435b978c84bb636cf74d8fd537e9cc496bb976a6b4e6a22f583b645fcfb5a17f"
+    },
+    "docker-01/results/probe-qualification.json": {
+      "bytes": 5382,
+      "sha256": "4bd74748a332cd8ac242bbe4e8b9ff6b0d45a53a4a94bd02ed6b5c33a3c5a306"
+    },
+    "docker-01/results/router-observation.json": {
+      "bytes": 3312,
+      "sha256": "786c7d6c1f0874df77ce2d0eb517197c81f2dd19df43a7c26c0c1eed617eaa1d"
+    },
+    "docker-01/results/session-observation.json": {
+      "bytes": 1947,
+      "sha256": "c3fdce807daa365847355251952e8aaca0d9772f88b8425ab638b30788072c33"
+    },
+    "docker-01/runner-snapshot/owner_probe.py": {
+      "bytes": 17503,
+      "sha256": "f7dcf542702cb637104c6e6d75da4ff222d04c6410eb9e7d11262cc248d2a835"
+    },
+    "docker-01/runner-snapshot/run_docker_qualification.py": {
+      "bytes": 11351,
+      "sha256": "0c965f0375f8bcdd2414b73a1273ee0f0b1316b283e241082fa6cfed5128e678"
+    },
+    "docker-01/runner-snapshot/worker_probe.py": {
+      "bytes": 17927,
+      "sha256": "287577ead3875f1781aa66386fec7f72688467afe7b712d933c7c62212c3ef26"
+    },
+    "doctor-installed-prover-01/command.json": {
+      "bytes": 2821,
+      "sha256": "fa4c0d42ae96eb42a98d79f1a0ac8861ac3b3c6126af91bef39cd7b12a14dc5a"
+    },
+    "doctor-installed-prover-01/environment-diagnosis.json": {
+      "bytes": 2175,
+      "sha256": "19169ff4d6571e39a6912922112294e9ebed5d91d5eb1b6dc83a81733b7b7c61"
+    },
+    "doctor-installed-prover-01/junit.xml": {
+      "bytes": 361,
+      "sha256": "5a80e2937c7579da3554f24eed8b0031b8dbd9a0a5d057e2c3576203ff294d82"
+    },
+    "doctor-installed-prover-01/pytest.log": {
+      "bytes": 1060,
+      "sha256": "b7d2abc6562d5bdbe5459f0ef1cbe53a63c7ca23915d6b4de875f3f9de263ac5"
+    },
+    "doctor-installed-prover-01/qualification.json": {
+      "bytes": 211,
+      "sha256": "73da7b6b4b156c42909e9774e87fe6bebb3e0db7cdc4a8781b53837838608eca"
+    },
+    "documentation-gates.json": {
+      "bytes": 984,
+      "sha256": "743b29acbc381f906b7273ce6c776d9fbc93a56298f4a318ba9ad581089f3be2"
+    },
+    "final-documentation-links.json": {
+      "bytes": 370,
+      "sha256": "448c16546aafd6c66008e26d677c1272b65c302a0ada4ba20c4877f9ac2075cb"
+    },
+    "final-tests-01/command.json": {
+      "bytes": 20160,
+      "sha256": "1b3dc64e2b7487655ed48274999b538d018fe363322f71b9c06f10cdb0b56a78"
+    },
+    "final-tests-01/junit.xml": {
+      "bytes": 222684,
+      "sha256": "2d10df1c105d62f5cf152356f8c4897a2c22b8cbd14be81d9e46e4798b5e212b"
+    },
+    "final-tests-01/pytest.log": {
+      "bytes": 10095,
+      "sha256": "1a546e784e8c3f5de3421389df98020467d7ec464bf5e5174877445bddfad319"
+    },
+    "final-tests-01/qualification.json": {
+      "bytes": 16262,
+      "sha256": "2436aa02e2ae2604e556732ea3fc48ca0e738cd12b75942bd66ea84830127cb7"
+    },
+    "regression-review.json": {
+      "bytes": 1779,
+      "sha256": "6daf39e72c7bab34716cd1d53e5824ebc27b09d2b39839119e856e3279fa2bd6"
+    },
+    "root-release-01.json": {
+      "bytes": 19667,
+      "sha256": "590a59c8eeceb834c71ff2afc9a682b7039a8779917baefa56e679de2ea96fb8"
+    },
+    "run_final_tests.py": {
+      "bytes": 4161,
+      "sha256": "c5098abf162f6496f8a7af1d249378f16d4d8450b3139eb2d55cecc9579c64c9"
+    }
+  },
+  "schema": "working-source-refresh-publication-manifest@1"
+}

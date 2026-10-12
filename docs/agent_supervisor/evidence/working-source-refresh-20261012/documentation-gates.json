@@ -1,0 +1,37 @@
+{
+  "checks": [
+    {
+      "command": [
+        "python",
+        "scripts/docs/check_agent_supervisor_docs.py"
+      ],
+      "exit_code": 0,
+      "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python",
+        "scripts/docs/check_current_docs_links.py"
+      ],
+      "exit_code": 0,
+      "stdout": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n",
+      "stderr": ""
+    }
+  ],
+  "changed_file_links": {
+    "docs/agent_supervisor/worker_source_views.md": [],
+    "docs/agent_supervisor/reversible_source_views.md": [],
+    "docs/agent_supervisor/reversible_codebase_views_plan.md": [],
+    "docs/agent_supervisor/terminal_token_metadata_plan.md": []
+  },
+  "packaging_versions": [
+    "0.0.45",
+    "0.0.45",
+    "0.0.45"
+  ],
+  "packaging_aligned": true,
+  "navigation_present": true,
+  "passed": true,
+  "hosted_ci_executed": false
+}

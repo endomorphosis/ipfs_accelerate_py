@@ -55,6 +55,9 @@ retain complete byte maps for exact unchanged-source restoration. Raw candidate
 byte reductions exclude guidance, sidecars and tool costs; edited views refuse.
 An opt-in [worker source reader](worker_source_views.md) now connects compact
 navigation and exact-source expansion to the isolated `llm_router` session.
+Its working-candidate mode refreshes source views after edits and requires the
+same candidate generation for continuation or expansion; it does not regenerate
+formal evidence or permit old proof reuse.
 Its profile is frozen through benchmark preparation and its guidance contributes
 to complete input accounting. Required prompt source remains present; this
 integration alone establishes no complete-run token saving.

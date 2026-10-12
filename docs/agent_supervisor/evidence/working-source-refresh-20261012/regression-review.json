@@ -1,0 +1,39 @@
+{
+  "artifact_sha256": {
+    "doctor-installed-prover-01/command.json": "fa4c0d42ae96eb42a98d79f1a0ac8861ac3b3c6126af91bef39cd7b12a14dc5a",
+    "doctor-installed-prover-01/environment-diagnosis.json": "19169ff4d6571e39a6912922112294e9ebed5d91d5eb1b6dc83a81733b7b7c61",
+    "doctor-installed-prover-01/junit.xml": "5a80e2937c7579da3554f24eed8b0031b8dbd9a0a5d057e2c3576203ff294d82",
+    "doctor-installed-prover-01/pytest.log": "b7d2abc6562d5bdbe5459f0ef1cbe53a63c7ca23915d6b4de875f3f9de263ac5",
+    "doctor-installed-prover-01/qualification.json": "73da7b6b4b156c42909e9774e87fe6bebb3e0db7cdc4a8781b53837838608eca",
+    "final-tests-01/command.json": "1b3dc64e2b7487655ed48274999b538d018fe363322f71b9c06f10cdb0b56a78",
+    "final-tests-01/junit.xml": "2d10df1c105d62f5cf152356f8c4897a2c22b8cbd14be81d9e46e4798b5e212b",
+    "final-tests-01/pytest.log": "1a546e784e8c3f5de3421389df98020467d7ec464bf5e5174877445bddfad319",
+    "final-tests-01/qualification.json": "2436aa02e2ae2604e556732ea3fc48ca0e738cd12b75942bd66ea84830127cb7"
+  },
+  "global_toolchain_changed": false,
+  "initial_failure_retained": true,
+  "initial_run": {
+    "failed": 1,
+    "passed": 1164,
+    "skipped": 0,
+    "source_unchanged": true,
+    "tests": 1165
+  },
+  "official_verifier_executed": false,
+  "prover_environment_correction": {
+    "DOCTOR_COMPOSITION_LEAN": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean"
+  },
+  "provider_calls": 0,
+  "schema": "working-source-refresh-regression-review@1",
+  "single_combined_green_run": false,
+  "source_rechecked_current": true,
+  "targeted_rerun": {
+    "exact_original_failed_case": true,
+    "failed": 0,
+    "passed": 1,
+    "skipped": 0,
+    "source_unchanged": true,
+    "tests": 1
+  },
+  "unique_cases_with_passing_results": 1165
+}

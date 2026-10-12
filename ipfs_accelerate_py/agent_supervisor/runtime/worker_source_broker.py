@@ -45,7 +45,7 @@ class WorkerSourceBroker(NumericalObligationBroker):
         self._start_session(identity=self._binding, boundary_sha=boundary_sha,
                             timeout_seconds=timeout_seconds)
 
-    def _current_context(self):
+    def _current_context(self, *, working=False, generation=None):
         from . import source_formalization_context as guard
         from .semantic_router_translation import encode_semantic_router_prompt
 
@@ -56,9 +56,12 @@ class WorkerSourceBroker(NumericalObligationBroker):
         if any(self.descriptor.get(key) != value for key, value in self._binding.items()):
             raise ValueError("source-view descriptor binding changed")
         encoded = encode_semantic_router_prompt(prompt=self.prompt, repository=self.repository)
+        admission = self.views.baseline_admission() if working else self.views.admission()
         if (protocol.canonical_json(encoded.table.to_dict()) != self._table_bytes
-                or protocol.canonical_json(self.views.admission()) != self._view_admission):
+                or protocol.canonical_json(admission) != self._view_admission):
             raise ValueError("source-view semantic admission changed")
+        if generation is not None:
+            self.views.working_admission(expected_workspace_generation=generation)
 
     def _answer(self, request, channel):
         if not self._live():
@@ -73,17 +76,22 @@ class WorkerSourceBroker(NumericalObligationBroker):
         except (OSError, ValueError):
             return self._response(request, reason="peer_refused")
         try:
-            self._current_context()
+            working = request["schema"] == "supervisor-worker-source-request@2"
+            self._current_context(working=working)
         except (OSError, ValueError, RuntimeError):
             return self._response(request, reason="stale_context")
         overhead = len(protocol.canonical_json(self._response(request, page={}))) - 2
         query = dict(request["query"], max_bytes=request["query"]["max_bytes"] - overhead)
         try:
-            page = self.views.page(**query)
+            if working:
+                query.pop("source_state")
+                page = self.views.working_page(**query)
+            else:
+                page = self.views.page(**query)
         except (OSError, ValueError, RuntimeError):
             return self._response(request, reason="retrieval_refused")
         try:
-            self._current_context()
+            self._current_context(working=working, generation=page.get("workspace_generation"))
             self._peer(channel)
         except (OSError, ValueError, RuntimeError):
             return self._response(request, reason="stale_context")

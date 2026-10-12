@@ -8,9 +8,10 @@ another database owner.
 
 The owner retains exact original bytes and codec maps. The worker can request a
 compact view or expand the exact original. Editing continues in the allocated
-original-source workspace. An edit makes the old source session stale; it does
-not silently refresh capsules or certify the changed program. Required source
-and constraints remain in the initial prompt in this first integration.
+original-source workspace. An edit makes baseline reads stale. The optional
+working reader captures edited bytes as a separate candidate snapshot; it does
+not refresh capsules or certify the changed program. Required source and
+constraints remain in the initial prompt.
 
 ## Select and freeze the treatment
 
@@ -54,6 +55,45 @@ is an explicit diagnostic option for the complete protocol envelope. Restoration
 maps and unrequested original bytes remain owner-side. Repeated owner-validation
 fields are omitted from normal model output.
 
+## Read working files after edits
+
+Add `--working` to an unpinned first-page request after editing an admitted file:
+
+```sh
+/opt/ipfs-supervisor/venv/bin/python -I \
+  /opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py \
+  --path mod.py --view compact --working
+```
+
+The owner captures the whole admitted working-source population, regenerates
+compact views, and rechecks the source before serving the candidate. An unchanged
+snapshot reuses its generation. A changed snapshot receives a new generation
+bound to the source hashes, immutable admission, codec, session and sequence.
+Edit/revert cycles observed by working-source checks cannot revive an earlier
+generation. Files outside
+the admitted manifest are neither scanned nor served; this is not a claim to
+capture every file or dependency in the worktree.
+
+Candidate output includes `source_state: "working-candidate"`,
+`workspace_generation`, `baseline_source_sha256`, and
+`baseline_evidence_applicable: false`, including in compact default CLI output.
+The page's `source_sha256` identifies the edited workspace bytes. Its semantic
+binding and baseline digest continue to identify the original admission.
+
+To expand or continue a candidate, keep `--working` and pass
+`--expected-workspace-generation` from that page, along with both source/view
+pins. For pagination, also pass `next_cursor` as `--cursor`. Pinned requests
+never refresh the snapshot. Any admitted-file change invalidates the old
+generation's continuations, including continuations for an unchanged file.
+Request a fresh unpinned first page to observe the new working state.
+
+This cache is session-local and holds one candidate snapshot. It does not update
+DuckLake metadata, formal obligations, capsules, task state or accepted source.
+Numerical and native source readers retain their own freshness checks. Candidate
+text availability grants no reuse of baseline proofs. Deleted, renamed, unsafe
+or oversized admitted files refuse; newly created unadmitted files remain outside
+scope. Source writes and mapped compact edits are not performed by this reader.
+
 ## Currentness and worker lifecycle
 
 The existing owner launcher seals the compiled prompt, independently replays
@@ -65,9 +105,12 @@ interface. The descriptor is public routing information, not a bearer grant.
 
 Before and after a response, the owner checks its semantic artifact, source
 manifest and boundary. The source service walks regular files without following
-symlinks and verifies the entire admitted population in both canonical and
-allocated workspaces. It retains codec identities and exact restoration checks.
-These are sequential observations, not an atomic filesystem lease.
+symlinks. Baseline reads verify the admitted hashes in canonical and allocated
+workspaces. Working reads verify the unchanged canonical baseline and the exact
+candidate generation in the allocated workspace. The owner checks that returned
+generation again before delivery without refreshing it. It retains codec
+identities and exact restoration checks. These are sequential observations, not
+an atomic filesystem lease; unobserved changes between checks are not detected.
 
 Responses are bounded to 8,192 JSON bytes including their protocol envelope;
 sessions allow at most 64 connections and 524,288 response bytes. The lifetime
@@ -87,6 +130,10 @@ The [qualification evidence](evidence/source-view-worker-20261012/README.md)
 records exact source reconstruction through actual owner/worker UIDs in Docker,
 stale/foreign-request refusals, cleanup, and smaller default CLI JSON output.
 It uses an authored provider fixture and establishes no live-model token score.
+The subsequent [working-source qualification](evidence/working-source-refresh-20261012/README.md)
+adds actual worker edits, exact expansion of edited bytes, three observed
+generations and refusal of stale continuations. Its provider hook is also
+authored; it does not measure live-model savings.
 
 The router records the source guidance in its complete rendered-input hashes
 and bytes. The context audit reconstructs that guidance. After worker cleanup,
@@ -100,8 +147,8 @@ They are not provider tokens or unique source coverage. Native planning and
 coding usage remains the measure for a subsequent token comparison, including
 tool results, expansions and repairs.
 
-General capsule expansion, automatic working-overlay refresh, translating
-compact edits into original patches, and measured live-model savings remain
-separate work. A useful first source-view comparison is `identity@1` versus
+General capsule expansion, rebuilding formal indexes after working edits,
+translating compact edits into original patches, and measured live-model savings
+remain separate work. A useful first source-view comparison is `identity@1` versus
 `python-whitespace@1` through this same channel, with fixed harness controls and
 repeated official task verification.

@@ -155,9 +155,11 @@ new model assets. A separate [current-owner source read](current_source_lookup.m
 now checks original bytes through native task custody and the working filesystem.
 Its host-issued CLI remains a separate typed-owner route. The
 [coding-worker adapter](worker_source_views.md) instead uses the task's already
-verified semantic source scope and the existing isolated child lifecycle.
-Capsule expansion, working-overlay refresh and later mapped compact edits
-remain subsequent integration stages; coding edits use exact original files.
+verified semantic source scope and the existing isolated child lifecycle. Its
+working-candidate reader now refreshes compact views after original-file edits,
+with generation-bound exact expansion and stale-continuation refusal. Formal
+index/capsule refresh and mapped compact edits remain subsequent integration
+stages; coding edits use exact original files.
 
 The [qualification evidence](evidence/reversible-source-views-20261012/README.md)
 retains 40 passing cases, including a separate-process unchanged inverse without

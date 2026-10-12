@@ -1,0 +1,109 @@
+{
+  "actual_uid1001_edit_and_restore_verified": true,
+  "authored_router_calls": 1,
+  "candidate_generations_distinct": true,
+  "complete": true,
+  "container_absent_rechecked": true,
+  "model_calls": 0,
+  "native_provider_tokens": null,
+  "negative_check_count": 18,
+  "official_terminal_bench_score": null,
+  "primary_response_hashes_matched": 12,
+  "private_artifacts_excluded": [
+    "private-state",
+    "private-fixture-ipc",
+    "private-worker-observations",
+    "owner.stdout",
+    "owner.stderr",
+    "root-setup.stdout",
+    "root-setup.stderr"
+  ],
+  "private_owner_audit_sha256": "6977463b07ba524a8744690a3cf931d913c2c3b99f8c10d0c4bbbff4c30b346a",
+  "provider_calls": 0,
+  "qualification_sha256": "1f727d95a623e79311950e69781a0a237c3619d3154c08f2001473eedf59df05",
+  "release_sha256": "590a59c8eeceb834c71ff2afc9a682b7039a8779917baefa56e679de2ea96fb8",
+  "request_counts_by_kind": {
+    "baseline": {
+      "requests": 25,
+      "returned_source_bytes": 16650,
+      "successful_pages": 13,
+      "wire_response_bytes": 45500
+    },
+    "working-candidate": {
+      "requests": 14,
+      "returned_source_bytes": 6507,
+      "successful_pages": 7,
+      "wire_response_bytes": 23477
+    }
+  },
+  "request_kind_classification": "Authored fixture call order, all 39 statuses/ordinals cross-checked against private owner audit; 12 retained primary response hashes independently matched. No raw queries or source bodies exported.",
+  "review_scope": "Read-only exact hashes, authored fixture assertions and retained private owner request accounting; not independent formal proof or live model qualification.",
+  "runner_files_rechecked": 3,
+  "runner_unchanged": true,
+  "safe_publication_allowlist": [
+    {
+      "bytes": 19667,
+      "path": "root-release-01.json",
+      "sha256": "590a59c8eeceb834c71ff2afc9a682b7039a8779917baefa56e679de2ea96fb8"
+    },
+    {
+      "bytes": 8316,
+      "path": "docker-01/qualification.json",
+      "sha256": "1f727d95a623e79311950e69781a0a237c3619d3154c08f2001473eedf59df05"
+    },
+    {
+      "bytes": 22888,
+      "path": "docker-01/command.json",
+      "sha256": "661d4f6ddd59e822795816dac3dfc1b4a30aff21e47f60a1428c3073423494b1"
+    },
+    {
+      "bytes": 291,
+      "path": "docker-01/owner-command.json",
+      "sha256": "fff3f37d80ea09ae4d6b4d6428893bdd6a1601e3ae9c7514c5c2af88af7e309b"
+    },
+    {
+      "bytes": 2419,
+      "path": "docker-01/container-controls.json",
+      "sha256": "41b6dbcbb980329a9bed7ab4c575db328fe3eb0911c2b1f65dbebdcc748226c4"
+    },
+    {
+      "bytes": 5382,
+      "path": "docker-01/results/probe-qualification.json",
+      "sha256": "4bd74748a332cd8ac242bbe4e8b9ff6b0d45a53a4a94bd02ed6b5c33a3c5a306"
+    },
+    {
+      "bytes": 1947,
+      "path": "docker-01/results/session-observation.json",
+      "sha256": "c3fdce807daa365847355251952e8aaca0d9772f88b8425ab638b30788072c33"
+    },
+    {
+      "bytes": 3312,
+      "path": "docker-01/results/router-observation.json",
+      "sha256": "786c7d6c1f0874df77ce2d0eb517197c81f2dd19df43a7c26c0c1eed617eaa1d"
+    },
+    {
+      "bytes": 81,
+      "path": "docker-01/results/collector-diagnostic.json",
+      "sha256": "435b978c84bb636cf74d8fd537e9cc496bb976a6b4e6a22f583b645fcfb5a17f"
+    },
+    {
+      "bytes": 11351,
+      "path": "docker-01/runner-snapshot/run_docker_qualification.py",
+      "sha256": "0c965f0375f8bcdd2414b73a1273ee0f0b1316b283e241082fa6cfed5128e678"
+    },
+    {
+      "bytes": 17503,
+      "path": "docker-01/runner-snapshot/owner_probe.py",
+      "sha256": "f7dcf542702cb637104c6e6d75da4ff222d04c6410eb9e7d11262cc248d2a835"
+    },
+    {
+      "bytes": 17927,
+      "path": "docker-01/runner-snapshot/worker_probe.py",
+      "sha256": "287577ead3875f1781aa66386fec7f72688467afe7b712d933c7c62212c3ef26"
+    }
+  ],
+  "schema": "working-source-refresh-closed-docker-review@1",
+  "source_files_rechecked": 84,
+  "source_unchanged": true,
+  "total_token_savings_measured": false
+}

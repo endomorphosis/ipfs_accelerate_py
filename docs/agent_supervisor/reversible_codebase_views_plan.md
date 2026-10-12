@@ -29,7 +29,9 @@ equality, with grant-bound continuation and full response byte accounting.
 A host-issued subprocess CLI exercises that operation. Its typed grant remains
 separate from the coding-worker reader, which admits the already verified
 semantic producer scope without copying host credentials. Required facts remain
-inline; automatic working-overlay refresh and capsule expansion remain open.
+inline. The semantic reader now supports a separate working-candidate snapshot
+after edits, with generation-bound expansion and stale-continuation refusal.
+Formal-index rebuilding and capsule expansion remain open.
 
 The proposed design maintains a compact view of an entire admitted repository
 while retaining exact original source in its existing content store. Deliver
@@ -187,8 +189,10 @@ No new training is needed for the first source-view experiment.
    Retain baseline, accepted patch and resulting bytes so reversal can restore
    the baseline while forward replay preserves the edit. Apply ordinary focused
    tests, native proof revalidation and official acceptance to `S'`.
-7. **Refresh against the appropriate source state.** Mid-coding working-overlay
-   views/indexes need a separately qualified candidate refresh boundary. Bind
+7. **Refresh against the appropriate source state.** The coding worker's
+   [source reader](worker_source_views.md#read-working-files-after-edits) now
+   provides a session-local candidate refresh boundary for source views.
+   Mid-coding formal indexes still need a separate rebuild boundary. Bind
    the working source revision, label it candidate, and refuse prior proof reuse
    after dependency drift. The existing ranked successor API requires accepted
    publication and a completed native task; it is not that mid-coding API.

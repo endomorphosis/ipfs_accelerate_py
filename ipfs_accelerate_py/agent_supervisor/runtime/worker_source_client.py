@@ -30,6 +30,7 @@ DESCRIPTOR_ENV = "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR"
 DIGEST_ENV = "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR_SHA256"
 DESCRIPTOR_SCHEMA = "supervisor-worker-source-descriptor@1"
 REQUEST_SCHEMA = "supervisor-worker-source-request@1"
+REQUEST_SCHEMA_V2 = "supervisor-worker-source-request@2"
 RESPONSE_SCHEMA = "supervisor-worker-source-response@1"
 PROFILES = ("identity@1", "python-whitespace@1", "python-comments@1")
 MAX_FRAME_BYTES = transport.MAX_FRAME_BYTES
@@ -79,11 +80,14 @@ def load_descriptor(path, digest, *, workspace=None):
 
 def validate_request(value):
     _need(type(value) is dict and set(value) == {"schema", "session_id", "request_id", "query"}
-        and value["schema"] == REQUEST_SCHEMA and _hex(value["session_id"], 32)
+        and value["schema"] in (REQUEST_SCHEMA, REQUEST_SCHEMA_V2) and _hex(value["session_id"], 32)
         and _hex(value["request_id"], 32), "invalid source request envelope")
     query = value["query"]
-    _need(type(query) is dict and set(query) == {"path", "view", "cursor", "max_bytes",
-        "expected_source_sha256", "expected_view_sha256"}, "invalid source query fields")
+    working = value["schema"] == REQUEST_SCHEMA_V2
+    fields = {"path", "view", "cursor", "max_bytes", "expected_source_sha256", "expected_view_sha256"}
+    if working:
+        fields |= {"source_state", "expected_workspace_generation"}
+    _need(type(query) is dict and set(query) == fields, "invalid source query fields")
     path = query["path"]
     _need(_text(path) and not Path(path).is_absolute() and str(Path(path)) == path
           and path != "." and not any(part in ("..", ".git") for part in Path(path).parts)
@@ -96,6 +100,12 @@ def validate_request(value):
     pins = query["expected_source_sha256"], query["expected_view_sha256"]
     _need(all(pin is None for pin in pins) or all(_hex(pin) for pin in pins),
           "both source and compact view pins required")
+    if working:
+        generation = query["expected_workspace_generation"]
+        _need(query["source_state"] == "working-candidate"
+              and (generation is None or _hex(generation)), "invalid working source selection")
+        _need((query["cursor"] is None and all(pin is None for pin in pins)) or _hex(generation),
+              "working source continuation and expansion require a workspace generation")
     _need(_integer(query["max_bytes"], MIN_PAGE_BYTES, MAX_FRAME_BYTES), "invalid source page budget")
     _need(len(canonical_json(value)) <= MAX_FRAME_BYTES, "source request exceeds bound")
     return value
@@ -123,6 +133,7 @@ def validate_response(value, *, request, descriptor=None):
               and value["reason_code"] in REASON_CODES, "invalid source refusal")
         return value
     page = value["page"]
+    working = request["schema"] == REQUEST_SCHEMA_V2
     fields = {"schema", "binding", "scope_sha256", "path", "view", "source_sha256", "view_sha256",
         "manifest_sha256", "source_bytes", "view_bytes", "requested_profile", "effective_profile",
         "fallback_reason", "representation_sha256", "slice_sha256", "encoding", "content", "offset",
@@ -130,8 +141,11 @@ def validate_response(value, *, request, descriptor=None):
         "workspace_source_current", "source_check_profile", "read_only", "proof_authority",
         "completion_authority", "execution_authority", "mutation_authority", "omission_authority",
         "semantic_equivalence_claimed", "source_obligations_discharged"}
+    if working:
+        fields |= {"source_state", "workspace_generation", "baseline_source_sha256", "baseline_evidence_applicable"}
     _need(type(page) is dict and set(page) == fields and value["reason_code"] is None
-        and page["schema"] == "supervisor-worker-source-view-page@1",
+        and page["schema"] == ("supervisor-worker-source-view-page@2" if working
+                               else "supervisor-worker-source-view-page@1"),
           "invalid source page")
     _need(page.get("path") == request["query"]["path"] and page.get("view") == request["query"]["view"],
           "source page selection differs")
@@ -140,8 +154,16 @@ def validate_response(value, *, request, descriptor=None):
         and type(page["source_obligations_discharged"]) is int and page["source_obligations_discharged"] == 0
         and page["read_only"] is True and page["canonical_source_current"] is True
         and page["workspace_source_current"] is True
-        and page["source_check_profile"] == "owner-admitted-exact-source@1",
+        and page["source_check_profile"] == ("owner-working-source-candidate@1" if working
+                                              else "owner-admitted-exact-source@1"),
           "source view grants no authority")
+    if working:
+        _need(page["source_state"] == "working-candidate" and _hex(page["workspace_generation"])
+              and _hex(page["baseline_source_sha256"]) and page["baseline_evidence_applicable"] is False,
+              "invalid working source page identity")
+        generation = request["query"]["expected_workspace_generation"]
+        _need(generation is None or generation == page["workspace_generation"],
+              "working source generation differs")
     _need(type(page["binding"]) is dict and set(page["binding"]) == set(BINDING_FIELDS),
           "invalid source page binding")
     if descriptor is not None:
@@ -187,11 +209,17 @@ def validate_response(value, *, request, descriptor=None):
 
 
 def request_page(descriptor_path, descriptor_sha256, *, path, view="compact", cursor=None,
-                 max_bytes=8192, expected_source_sha256=None, expected_view_sha256=None, workspace=None):
+                 max_bytes=8192, expected_source_sha256=None, expected_view_sha256=None, workspace=None,
+                 working=False, expected_workspace_generation=None):
+    _need(type(working) is bool and (working or expected_workspace_generation is None),
+          "workspace generation requires working source selection")
     descriptor = load_descriptor(descriptor_path, descriptor_sha256, workspace=workspace)
-    request = validate_request(dict(schema=REQUEST_SCHEMA, session_id=descriptor["session_id"],
-        request_id=uuid.uuid4().hex, query=dict(path=path, view=view, cursor=cursor, max_bytes=max_bytes,
-        expected_source_sha256=expected_source_sha256, expected_view_sha256=expected_view_sha256)))
+    query = dict(path=path, view=view, cursor=cursor, max_bytes=max_bytes,
+        expected_source_sha256=expected_source_sha256, expected_view_sha256=expected_view_sha256)
+    if working:
+        query.update(source_state="working-candidate", expected_workspace_generation=expected_workspace_generation)
+    request = validate_request(dict(schema=REQUEST_SCHEMA_V2 if working else REQUEST_SCHEMA,
+        session_id=descriptor["session_id"], request_id=uuid.uuid4().hex, query=query))
     remaining = (descriptor["expires_monotonic_ns"] - time.monotonic_ns()) / 1_000_000_000
     _need(remaining > 0, "source session expired")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
@@ -220,8 +248,11 @@ def render_page_for_model(response):
               "validated source refusal required")
         return dict(ok=False, reason_code=response["reason_code"])
     page = response["page"]
-    return dict(ok=True, **{key: page[key] for key in ("path", "view", "source_sha256", "view_sha256",
-        "offset", "end_offset", "exhausted", "next_cursor", "encoding", "content")})
+    fields = ("path", "view", "source_sha256", "view_sha256", "offset", "end_offset",
+              "exhausted", "next_cursor", "encoding", "content")
+    if page["schema"] == "supervisor-worker-source-view-page@2":
+        fields += ("source_state", "workspace_generation", "baseline_source_sha256", "baseline_evidence_applicable")
+    return dict(ok=True, **{key: page[key] for key in fields})
 
 
 def guidance(profile):
@@ -232,8 +263,12 @@ def guidance(profile):
         "--path <path> --view compact. Use --view original to read exact source before editing; "
         "pass --expected-source-sha256 and --expected-view-sha256 from the compact page to bind expansion. "
         "For another page pass its next_cursor JSON as --cursor. Edit original workspace files, never "
-        "the compact response. Changed indexed source makes this session stale; then read current workspace "
-        "files directly and treat prior capsules/proofs as stale. Profile: " + profile + ". "
+        "the compact response. After edits, use --working with no cursor or pins to request a fresh "
+        "working-candidate first page. For its continuation or exact-source expansion, keep --working "
+        "and pass --expected-workspace-generation plus both source/view pins from that candidate page. "
+        "A changed workspace generation refuses old continuations and pins; request a fresh first page. "
+        "Working snapshots do not refresh or prove the semantic index; treat prior capsules/proofs as stale. "
+        "Profile: " + profile + ". "
         "Views confer no proof or completion.\n")
 
 
@@ -247,6 +282,9 @@ def main(argv=None):
     parser.add_argument("--max-bytes", type=int, default=8192)
     parser.add_argument("--expected-source-sha256")
     parser.add_argument("--expected-view-sha256")
+    parser.add_argument("--working", action="store_true",
+        help="Read a current working candidate without refreshing semantic evidence")
+    parser.add_argument("--expected-workspace-generation")
     parser.add_argument("--raw-response", action="store_true",
         help="Emit the complete validated transport envelope for qualification/debugging")
     args = parser.parse_args(argv)
@@ -256,7 +294,8 @@ def main(argv=None):
         result = request_page(args.source_view_descriptor, args.source_view_descriptor_sha256,
             path=args.path, view=args.view, cursor=strict_json_loads(args.cursor) if args.cursor else None,
             max_bytes=args.max_bytes, expected_source_sha256=args.expected_source_sha256,
-            expected_view_sha256=args.expected_view_sha256)
+            expected_view_sha256=args.expected_view_sha256, working=args.working,
+            expected_workspace_generation=args.expected_workspace_generation)
         print(canonical_json(result if args.raw_response else render_page_for_model(result)).decode("utf-8"))
         return 0 if result["ok"] else 2
     except (OSError, ValueError, TypeError, RuntimeError):

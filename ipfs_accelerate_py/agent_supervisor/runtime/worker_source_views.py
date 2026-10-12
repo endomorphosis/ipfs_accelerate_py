@@ -2,9 +2,10 @@
 
 The caller must authenticate the task and admit the path/hash population before
 constructing this service. It adds no store, task authority or worker transport.
-Both canonical and allocated sources must still match that population on every
-read. Original bytes and codec maps stay in owner memory; only requested slices
-are returned. Checks are sequential and do not lock out filesystem writers.
+Baseline reads require canonical and allocated sources to match admission.
+Working reads capture a separate, unverified candidate generation of the same
+admitted paths. Original bytes and codec maps stay in owner memory; only requested
+slices are returned. Checks are sequential and do not lock out filesystem writers.
 """
 from __future__ import annotations
 
@@ -148,18 +149,24 @@ class WorkerSourceViews:
         self._scope_sha = _sha(self._scope_raw)
         self._continuations = {}
         self._lock = threading.Lock()
+        self._working = None
+        self._working_counter = 0
+        self._working_session = secrets.token_hex(16)
         self._originals = self._check_sources()
+        self._build_views()
+        self._check_sources()
+
+    def _build_views(self):
         self._views = {}
         for name, original in self._originals.items():
-            codec_profile = profile if name.endswith(".py") else "identity@1"
+            codec_profile = self._profile if name.endswith(".py") else "identity@1"
             projected = build_source_view(original, profile=codec_profile)
             _need(restore_source_view(original=original, view=projected.view, manifest=projected.manifest,
                 expected_manifest_sha256=projected.manifest_sha256) == original,
                 "source-view restoration differs")
             self._views[name] = (projected.view, canonical_json(projected.manifest), projected.manifest_sha256)
-        self._check_sources()
 
-    def _check_sources(self):
+    def _check_binding(self):
         _need(canonical_json(self._scope) == self._scope_raw and _sha(self._scope_raw) == self._scope_sha
             and _sha(canonical_json(self._hashes)) == self._scope["source_hashes_sha256"]
             and self._profile == self._scope["requested_profile"]
@@ -168,17 +175,87 @@ class WorkerSourceViews:
         _need(canonical_json(current_codec_binding()) == self._codec, "source-view codec changed")
         _need(_workspace(self._root, self._workspace) == (self._root, self._workspace),
             "allocated source repository changed")
-        captured = {}
-        for root in (self._root, self._workspace):
-            total = 0
-            for name, digest in self._hashes.items():
-                raw = _safe_read(root, self._roots[root], name)
-                total += len(raw)
-                _need(total <= MAX_SOURCE_BYTES, "admitted source scope exceeds byte bound")
-                _need(_sha(raw) == digest, "admitted source is stale")
-                if root == self._root:
-                    captured[name] = raw
+
+    def _capture(self, root, hashes=None):
+        captured, total = {}, 0
+        for name in self._hashes:
+            raw = _safe_read(root, self._roots[root], name)
+            total += len(raw)
+            _need(total <= MAX_SOURCE_BYTES, "admitted source scope exceeds byte bound")
+            if hashes is not None:
+                _need(_sha(raw) == hashes[name], "admitted source is stale")
+            captured[name] = raw
         return captured
+
+    def _check_baseline(self):
+        self._check_binding()
+        return self._capture(self._root, self._hashes)
+
+    def _check_sources(self):
+        captured = self._check_baseline()
+        self._capture(self._workspace, self._hashes)
+        return captured
+
+    def baseline_admission(self):
+        """Verify immutable canonical custody without adopting workspace edits."""
+        with self._lock:
+            self._check_baseline()
+            return {**json.loads(self._scope_raw), "scope_sha256": self._scope_sha, **_FLAGS}
+
+    def working_admission(self, *, expected_workspace_generation=None):
+        """Check a candidate snapshot without refreshing or granting proof reuse."""
+        with self._lock:
+            candidate = self._working
+            _need(candidate is not None, "working source generation unavailable")
+            _need(expected_workspace_generation is None
+                or expected_workspace_generation == candidate.generation,
+                "working source generation differs")
+            return candidate.admission()
+
+    def working_page(self, *, path, view="compact", cursor=None, max_bytes=8192,
+                     expected_source_sha256=None, expected_view_sha256=None,
+                     expected_workspace_generation=None):
+        """Read candidate bytes; only an unpinned first page can refresh the cache.
+
+        A generation binds every admitted working path, not just the requested
+        file. This is a session-local source observation, never index publication
+        or proof refresh. Unadmitted files are neither scanned nor served.
+        """
+        with self._lock:
+            _path(path)
+            _need(path in self._hashes, "source path outside admitted public scope")
+            pinned = cursor is not None or expected_source_sha256 is not None or expected_view_sha256 is not None
+            _need(not pinned or _digest(expected_workspace_generation),
+                "working continuation or expansion requires generation")
+            _need(expected_workspace_generation is None or _digest(expected_workspace_generation),
+                "invalid working source generation")
+            self._check_baseline()
+            candidate = self._working
+            if expected_workspace_generation is None:
+                try:
+                    captured = self._capture(self._workspace)
+                except (OSError, ValueError):
+                    self._discard_working()
+                    raise
+                hashes = {name: _sha(raw) for name, raw in captured.items()}
+                if candidate is None or hashes != candidate._hashes:
+                    self._discard_working()
+                    self._working_counter += 1
+                    candidate = _WorkingSourceViews(self, captured, self._working_counter)
+                    # Construction checks both sides again after projection.
+                    self._working = candidate
+            _need(candidate is not None and (expected_workspace_generation is None
+                or candidate.generation == expected_workspace_generation), "working source generation differs")
+            return candidate.page(path=path, view=view, cursor=cursor, max_bytes=max_bytes,
+                expected_source_sha256=expected_source_sha256, expected_view_sha256=expected_view_sha256)
+
+    def _discard_working(self):
+        if self._working is not None:
+            self._working._continuations.clear()
+        self._working = None
+
+    def _page_metadata(self, path):
+        return {}
 
     def admission(self):
         """Small owner descriptor binding; this is not a worker authentication API."""
@@ -267,7 +344,7 @@ class WorkerSourceViews:
                     offset=offset, end_offset=end, representation_bytes=len(data), exhausted=end == len(data),
                     next_cursor=None if end == len(data) else self._next(query, end, token),
                     canonical_source_current=True, workspace_source_current=True,
-                    source_check_profile="owner-admitted-exact-source@1", **_FLAGS)
+                    source_check_profile="owner-admitted-exact-source@1", **_FLAGS) | self._page_metadata(path)
             # Whole encoded JSON, including escaping/base64 and continuation, is
             # counted. No partial code point is dropped; base64 preserves it.
             lower, upper = 0, min(len(data) - offset, max_bytes)
@@ -314,6 +391,45 @@ class WorkerSourceViews:
                     selected = candidate
             _need(selected is not None, "source-view discovery cannot fit one complete entry")
             return self._finish(selected, cursor, max_bytes)
+
+
+class _WorkingSourceViews(WorkerSourceViews):
+    """One private candidate generation, using the baseline codec and pager."""
+
+    def __init__(self, parent, captured, counter):
+        self._parent = parent
+        self._root, self._workspace = parent._root, parent._workspace
+        self._roots, self._profile, self._codec = dict(parent._roots), parent._profile, parent._codec
+        self._hashes = {name: _sha(raw) for name, raw in captured.items()}
+        self.generation = _sha(canonical_json(dict(baseline_scope_sha256=parent._scope_sha,
+            session=parent._working_session, counter=counter, source_hashes=self._hashes)))
+        self._scope = {**parent._scope, "schema": "supervisor-worker-working-source-admission@1",
+            "source_hashes_sha256": _sha(canonical_json(self._hashes)),
+            "baseline_scope_sha256": parent._scope_sha, "workspace_generation": self.generation,
+            "source_state": "working-candidate", "baseline_evidence_applicable": False}
+        self._scope_raw = canonical_json(self._scope)
+        self._scope_sha = _sha(self._scope_raw)
+        self._continuations, self._lock = {}, threading.Lock()
+        self._originals = dict(captured)
+        self._build_views()
+        self._check_sources()
+
+    def _check_sources(self):
+        try:
+            self._parent._check_baseline()
+            self._check_binding()
+            _need(self.generation == self._scope["workspace_generation"], "working generation changed")
+            return self._capture(self._workspace, self._hashes)
+        except (OSError, ValueError):
+            self._continuations.clear()
+            if self._parent._working is self:
+                self._parent._discard_working()
+            raise
+
+    def _page_metadata(self, path):
+        return dict(schema="supervisor-worker-source-view-page@2", source_state="working-candidate",
+            workspace_generation=self.generation, baseline_source_sha256=self._parent._hashes[path],
+            baseline_evidence_applicable=False, source_check_profile="owner-working-source-candidate@1")
 
 
 __all__ = ["WorkerSourceViews", "PAGE_SCHEMA", "DISCOVERY_SCHEMA", "ADMISSION_SCHEMA", "canonical_json"]

@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="22.305" timestamp="2026-10-12T18:19:15.192741" hostname="spark-b271"><testcase classname="api.test_terminal_doctor_dispatch" name="test_real_automatic_dispatch_publishes_only_candidate_handoff" time="4.059" /></testsuite></testsuites>

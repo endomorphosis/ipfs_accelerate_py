@@ -1,0 +1,103 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/working-source-refresh-20261012/final-tests-01/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 1165 items
+
+test/api/test_current_source_lookup.py .............................     [  2%]
+test/api/test_current_source_lookup_cli.py ....                          [  2%]
+test/api/test_current_source_lookup_transport.py .......                 [  3%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_retrieval.py . [  3%]
+...........................                                              [  5%]
+benchmarks/agent_supervisor/container_coding/test_numerical_obligation_worker_wiring.py . [  5%]
+........                                                                 [  6%]
+benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py . [  6%]
+................                                                         [  8%]
+test/api/test_numerical_obligation_router.py ..................          [  9%]
+test/api/test_source_formalization_router.py .......                     [ 10%]
+test/api/test_container_worker_timeout_contract.py ..................... [ 12%]
+.....                                                                    [ 12%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py . [ 12%]
+........................................................................ [ 18%]
+                                                                         [ 18%]
+benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py . [ 18%]
+........................................................................ [ 24%]
+...............................                                          [ 27%]
+test/api/test_numerical_obligation_client.py ........................... [ 29%]
+...................................................                      [ 34%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py . [ 34%]
+................                                                         [ 35%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py . [ 35%]
+...........................                                              [ 38%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_observation.py . [ 38%]
+..........................................                               [ 41%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py . [ 41%]
+.................                                                        [ 43%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_integration.py . [ 43%]
+....                                                                     [ 43%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_retrieval_observation.py . [ 43%]
+........................................................                 [ 48%]
+test/api/test_worker_source_views.py ................................... [ 51%]
+.............................                                            [ 54%]
+test/api/test_worker_source_broker.py .......................            [ 56%]
+test/api/test_worker_source_client.py .................................. [ 59%]
+................                                                         [ 60%]
+test/api/test_reversible_source_view.py .....................            [ 62%]
+test/api/test_semantic_router_integration.py ................            [ 63%]
+test/api/test_terminal_doctor_dispatch.py F...........                   [ 64%]
+benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py . [ 64%]
+...............................                                          [ 67%]
+benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py . [ 67%]
+........................................................                 [ 72%]
+benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py . [ 72%]
+..............................................                           [ 76%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py . [ 76%]
+.....................................................                    [ 81%]
+benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py . [ 81%]
+........................................................................ [ 87%]
+...                                                                      [ 87%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py . [ 87%]
+......................................                                   [ 90%]
+test/api/test_worker_source_working_views.py ...................         [ 92%]
+test/api/test_worker_source_working_broker.py .........                  [ 93%]
+test/api/test_worker_source_working_client.py .......................... [ 95%]
+...............................                                          [ 98%]
+test/api/test_source_lookup_worker_channel.py .............              [ 99%]
+test/api/test_source_lookup_worker_router.py ........                    [100%]
+
+=================================== FAILURES ===================================
+________ test_real_automatic_dispatch_publishes_only_candidate_handoff _________
+test/api/test_terminal_doctor_dispatch.py:22: in test_real_automatic_dispatch_publishes_only_candidate_handoff
+    inputs = _provers(_prepare(scenario, tmp_path))
+test/api/test_doctor_task_workflow.py:79: in _provers
+    inputs['kernel_executable'] = Path(lean_pin or subprocess.check_output(['elan', 'which', 'lean'], text=True).strip())
+/usr/lib/python3.12/subprocess.py:466: in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+/usr/lib/python3.12/subprocess.py:571: in run
+    raise CalledProcessError(retcode, process.args,
+E   subprocess.CalledProcessError: Command '['elan', 'which', 'lean']' returned non-zero exit status 1.
+---------------------------- Captured stderr setup -----------------------------
+2026-10-12 18:17:41,327 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-279/test_real_automatic_dispatch_p0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-279/test_real_automatic_dispatch_p0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+----------------------------- Captured stderr call -----------------------------
+2026-10-12 18:17:41,863 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-279/test_real_automatic_dispatch_p0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+error: not a file: '/home/barberb/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean'
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-279/test_real_automatic_dispatch_p0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/working-source-refresh-20261012/final-tests-01/junit.xml -
+============================= slowest 10 durations =============================
+8.11s call     test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[token-limit]
+5.91s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_native_start_replays_selected_numerical_context_and_preserves_cleanup[True]
+5.87s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py::test_assertion_summary_reaches_planner_before_goals
+5.86s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py::test_summary_reaches_router_before_goals_and_retains_admitted_index
+5.84s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[lake]
+5.81s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[source]
+5.79s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[admitted]
+5.76s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_selected_numerical_preflight_replays_real_source_and_both_lakes_before_goals
+5.76s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_native_start_replays_selected_numerical_context_and_preserves_cleanup[False]
+5.72s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py::test_stale_numerical_evidence_cannot_qualify_start_observation[receipt]
+=========================== short test summary info ============================
+FAILED test/api/test_terminal_doctor_dispatch.py::test_real_automatic_dispatch_publishes_only_candidate_handoff
+================== 1 failed, 1164 passed in 596.06s (0:09:56) ==================

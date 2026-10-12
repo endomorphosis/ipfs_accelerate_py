@@ -1,0 +1,34 @@
+{
+  "command_sha256": "fa4c0d42ae96eb42a98d79f1a0ac8861ac3b3c6126af91bef39cd7b12a14dc5a",
+  "diagnostic_command": [
+    "/home/barberb/.elan/bin/elan",
+    "which",
+    "lean"
+  ],
+  "diagnostic_cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "diagnostic_returncode": 1,
+  "diagnostic_stderr": "error: not a file: '/home/barberb/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean'\n",
+  "diagnostic_stdout": "",
+  "global_settings_changed": false,
+  "installed_lean_version": "Lean (version 4.34.1, aarch64-unknown-linux-gnu, commit 5045d0056413266e57c625dcd7c365b10e377c52, Release)",
+  "junit_sha256": "5a80e2937c7579da3554f24eed8b0031b8dbd9a0a5d057e2c3576203ff294d82",
+  "model_provider_calls": 0,
+  "original_failure": "elan default stable resolves uninstalled Lean v4.35.0; fixture check_output fails before doctor dispatch",
+  "pytest_failed": 0,
+  "pytest_log_sha256": "b7d2abc6562d5bdbe5459f0ef1cbe53a63c7ca23915d6b4de875f3f9de263ac5",
+  "pytest_passed": 1,
+  "pytest_skipped": 0,
+  "qualification_override": {
+    "DOCTOR_COMPOSITION_LEAN": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean"
+  },
+  "qualification_sha256": "73da7b6b4b156c42909e9774e87fe6bebb3e0db7cdc4a8781b53837838608eca",
+  "schema": "supervisor-doctor-qualification-environment-diagnosis@1",
+  "source_after": {
+    "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "18868e63f8600ac6fb79e8368ab4dc0a6d15a5e072226b665da077140ae4f377",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/test_doctor_task_workflow.py": "de1027d24b52f51e6d0de16a64f3de6158e5519ff19b587efa0fc49a371520c6",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/test_terminal_doctor_dispatch.py": "673cb2abf71a63653e3403a78e0713658156fbb0b54dd873a9c59c1d86e64d53"
+  },
+  "source_unchanged": true,
+  "toolchains_installed": false
+}

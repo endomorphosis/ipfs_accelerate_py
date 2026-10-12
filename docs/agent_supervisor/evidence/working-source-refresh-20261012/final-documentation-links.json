@@ -1,0 +1,10 @@
+{
+  "files": {
+    "docs/agent_supervisor/worker_source_views.md": [],
+    "docs/agent_supervisor/reversible_source_views.md": [],
+    "docs/agent_supervisor/reversible_codebase_views_plan.md": [],
+    "docs/agent_supervisor/terminal_token_metadata_plan.md": [],
+    "docs/agent_supervisor/evidence/working-source-refresh-20261012/README.md": []
+  },
+  "passed": true
+}

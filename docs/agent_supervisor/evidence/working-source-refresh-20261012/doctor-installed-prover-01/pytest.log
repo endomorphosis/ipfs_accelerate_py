@@ -1,0 +1,16 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/working-source-refresh-20261012/doctor-installed-prover-01/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test
+configfile: pytest.ini
+collected 1 item
+
+test/api/test_terminal_doctor_dispatch.py .                              [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/working-source-refresh-20261012/doctor-installed-prover-01/junit.xml -
+============================= slowest 10 durations =============================
+3.51s call     api/test_terminal_doctor_dispatch.py::test_real_automatic_dispatch_publishes_only_candidate_handoff
+0.55s setup    api/test_terminal_doctor_dispatch.py::test_real_automatic_dispatch_publishes_only_candidate_handoff
+
+(1 durations < 0.005s hidden.  Use -vv to show these durations.)
+============================== 1 passed in 22.33s ==============================
