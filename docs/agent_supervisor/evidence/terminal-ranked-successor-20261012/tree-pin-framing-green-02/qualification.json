@@ -1,0 +1,12 @@
+{
+  "exit_code": 1,
+  "seconds": 44.585060596466064,
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/autoformal/tree_pin.py": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/tests/unit/logic/test_tree_pin_json_output.py": "74a099e78e4700d4bfcfef3f7633e4f0f2ec247013e3b56a17279ae7aa0eb3a8",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/test_census_cli_tree_pin.py": "410ce48b145792a3b748c1178d86612c7288b65eeb41ad17ee2aa95cc4210f7a",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "1dde092af6060e1d28d46a6deb5a033413fd7f26366f3de39f13c83d2d717f6d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "6eeb2e112978173844a24fe4e530a3c083d76dedd5d451d67d5d454ec519dbbb"
+  },
+  "source_unchanged": true
+}

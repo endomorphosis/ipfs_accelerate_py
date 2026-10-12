@@ -49,15 +49,25 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     assert value['schema'] == 'terminal-router-worker-capability@3'
     assert value['budget_profile_max_timeout_seconds'] == {FORMALIZATION_SOURCE384_PROFILE: 1800}
     assert value['worker_child_custody_schema'] == 'terminal-worker-child-custody@1'
-    assert len(value['source_sha256']) == 11
-    assert any(name.endswith('/native_cli_subreaper.py') for name in value['source_sha256'])
-    assert any(name.endswith('/terminal_output_observation.py') for name in value['source_sha256'])
-    assert any(name.endswith('/source_formalization_context.py') for name in value['source_sha256'])
+    assert set(value['source_sha256']) == {
+        'source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_output_observation.py',
+        'source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py',
+        'source/ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py',
+        'source/ipfs_accelerate_py/llm_router.py',
+        'source/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py',
+        'source/ipfs_accelerate_py/cli_runtime/cli_metadata.py',
+        'source/ipfs_accelerate_py/cli_runtime/grok_native_usage.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py',
+        'source/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py',
+    }
 
 
 @pytest.mark.parametrize('name', ['terminal_container_supervisor.py', 'terminal_output_observation.py',
     'llm_router.py', 'grok_stream_capture.py', 'cli_metadata.py', 'grok_native_usage.py',
-    'source_formalization_context.py'])
+    'source_formalization_context.py', 'validation_runtime.py'])
 @pytest.mark.parametrize('kind', ['missing', 'stale', 'copied-feature'])
 def test_output_observation_requires_matching_owner_driver_and_collector(packaged, name, kind):
     manifest = copy.deepcopy(packaged[1])

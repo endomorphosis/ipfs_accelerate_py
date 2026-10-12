@@ -1,0 +1,33 @@
+{
+  "exit_code": 0,
+  "seconds": 133.52507484308444,
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "8e0107ec1ba9a6a9c0c437429719b1ebba01283cc884bb4a4d593b7891ef9e8b",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "2e63dfc1fdae49f4a76b5d83f14ad3ba3854fc6561f963048e18ffd75127f283",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "d2706cc98daea6258a04adf25a974b5c5703570f16432189d8768484419ed4e3",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "bcdda987b2a3be770a3d42c0acff0d901e2f0c18ba4a7a780342932a192e0c2d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_capsule_selection_policy.py": "bdd96a83b1ff2aa51c9a865e5c3d511f849957088c47b9131ed46ecdd207b07f",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "6eeb2e112978173844a24fe4e530a3c083d76dedd5d451d67d5d454ec519dbbb",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "ec83cc31365b9f6181e991fccbbd4da61404792faf88ea21c364c135dab503f4",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "2199289bd0088887d21115e65f518c2d62df230808112cfbe8b44a00eb2d49b8",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "58dc1077e82e731b7fcddfa5eb73ae88fe5e292a456bc1cfc6528933ef5903e0",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py": "88c717e5498a995f3fedde81fa6d04521500604ec7fbe4d78bc36922a3025e35",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "180e2ac6ea8fa9079040e5d3a23a8bdafc0694ab61bbce9277068669160e05f5",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_capsule_selection_policy.py": "f32ea155becc06aac418e0be36d524621bb11f71949dabc441af530a07310a75",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py": "71102816e020d184bd1c1fc5bf9e5ca2c18790688ea95318691090d3aeefd91d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py": "8c362c3110c22a768d0594c0ccb2f52d1404f7fa36232bfc900f19cbb15aa8c3",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py": "8faefe24c2313c2054daf1c9c9a2ad77c5db15ea3f9d0690f0404e4ec34a8b12",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "653c9217c29149cd7f2e8e9a64c5be25fed2e956649ee3eeaea8a538de2b8c88",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "1dde092af6060e1d28d46a6deb5a033413fd7f26366f3de39f13c83d2d717f6d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py": "6737a0c21c5e29f8f1afca9b02d5f93e2f202be5a8258a4fc851c59f29dbba59",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py": "4672fd450a2f702eecb16a95ea97f8fce05236d9f472cd5a335044522b009680",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": "f177adbddff6409960c2f5ce47b61c1f62560cbe334d61812e2ea4b221afb3d8",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/semantic_state/test_published_task_context.py": "113c1a87486557c76f7b8ff212b3cfe8236d56cb963a42bc132ddfc8c8e7560e",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/semantic_state/test_ranked_published_task_context.py": "9acec1d9c56094bdcefc9d843cccd594f7c5356a968117d1aa541b2fe1c0e9d2"
+  },
+  "source_unchanged": false
+}

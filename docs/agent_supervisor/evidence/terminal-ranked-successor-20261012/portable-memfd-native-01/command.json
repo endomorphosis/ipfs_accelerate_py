@@ -1,0 +1,40 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "test/api/test_source_formalization_memfd.py",
+    "test/api/test_source_formalization_context.py",
+    "-x",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/portable-memfd-native-01/junit.xml",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/portable-memfd-native-01/cache"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_overrides": {
+    "CODEBASE384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "CODEBASE384_EMBEDDING_SNAPSHOT": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/portable-memfd-native-01/seal.duckdb",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMERICAL_SELECTION384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/supervisor-numerical-training-20261011/release/checkpoint.json",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/ranked-current-datasets-20261012:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_before": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+    "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py": "8181d562c0631c172b1706716ff14b556ee10ce38d655967e0b089314dc75d4d",
+    "test/api/test_source_formalization_memfd.py": "fe484e0de0b338893eeebfdd44b6725abb4de151fe1e9f83f04d70e2d3a5a2d7",
+    "test/api/test_source_formalization_context.py": "0a4861bc78f8cb00518a77fa630fb2b5bd524d1f2f805205f41b8472279f2fd4"
+  }
+}

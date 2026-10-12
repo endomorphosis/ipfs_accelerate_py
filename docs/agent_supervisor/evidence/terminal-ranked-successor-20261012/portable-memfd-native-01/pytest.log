@@ -1,0 +1,86 @@
+/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py:299: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the "fixture" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to "function" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/portable-memfd-native-01/cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+
+----------------------------- live log collection ------------------------------
+2026-10-12 02:43:07 [    INFO] Using standard filesystem operations (distributed storage disabled) (storage_wrapper.py:99)
+collected 55 items
+
+test/api/test_source_formalization_memfd.py::test_missing_python_bindings_still_dispatch_exact_sealed_stdin PASSED [  1%]
+test/api/test_source_formalization_memfd.py::test_missing_bindings_preserve_full_source_advice_capture_and_worker_gate PASSED [  3%]
+test/api/test_source_formalization_memfd.py::test_capture_failure_closes_its_anonymous_descriptor[stream_open] PASSED [  5%]
+test/api/test_source_formalization_memfd.py::test_capture_failure_closes_its_anonymous_descriptor[write] PASSED [  7%]
+test/api/test_source_formalization_memfd.py::test_capture_failure_closes_its_anonymous_descriptor[add_seals] PASSED [  9%]
+test/api/test_source_formalization_memfd.py::test_capture_failure_closes_its_anonymous_descriptor[missing_seals] PASSED [ 10%]
+test/api/test_source_formalization_memfd.py::test_capture_failure_closes_its_anonymous_descriptor[wrong_bytes] PASSED [ 12%]
+test/api/test_source_formalization_memfd.py::test_no_libc_memfd_api_has_no_regular_file_fallback PASSED [ 14%]
+test/api/test_source_formalization_context.py::test_real_allocated_git_relation_and_exact_multichunk_owner_evidence PASSED [ 16%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[required] PASSED [ 18%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[priority] PASSED [ 20%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[chunk_index] PASSED [ 21%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[chunk_count] PASSED [ 23%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[artifact_content_id] PASSED [ 25%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[coverage_ids] PASSED [ 27%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[byte_count] PASSED [ 29%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[referenced_content_id] PASSED [ 30%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[path] PASSED [ 32%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[order] PASSED [ 34%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[omitted] PASSED [ 36%]
+test/api/test_source_formalization_context.py::test_rehashed_chunk_metadata_or_missing_chunks_cannot_bypass_exact_native_binding[extra] PASSED [ 38%]
+test/api/test_source_formalization_context.py::test_native_prompt_and_objective_binding[foreign_objective] PASSED [ 40%]
+test/api/test_source_formalization_context.py::test_native_prompt_and_objective_binding[noncanonical] PASSED [ 41%]
+test/api/test_source_formalization_context.py::test_native_prompt_and_objective_binding[duplicate] PASSED [ 43%]
+test/api/test_source_formalization_context.py::test_native_prompt_and_objective_binding[escaped_duplicate] PASSED [ 45%]
+test/api/test_source_formalization_context.py::test_native_prompt_and_objective_binding[missing_repository] PASSED [ 47%]
+test/api/test_source_formalization_context.py::test_reconstructed_but_foreign_payload_is_not_current_owner_evidence[candidate] PASSED [ 49%]
+test/api/test_source_formalization_context.py::test_reconstructed_but_foreign_payload_is_not_current_owner_evidence[authority] PASSED [ 50%]
+test/api/test_source_formalization_context.py::test_reconstructed_but_foreign_payload_is_not_current_owner_evidence[task_cid] PASSED [ 52%]
+test/api/test_source_formalization_context.py::test_reconstructed_but_foreign_payload_is_not_current_owner_evidence[bundle_sha] PASSED [ 54%]
+test/api/test_source_formalization_context.py::test_reconstructed_but_foreign_payload_is_not_current_owner_evidence[bundle_path] PASSED [ 56%]
+test/api/test_source_formalization_context.py::test_allocated_workspace_source_and_git_relation[stale] PASSED [ 58%]
+test/api/test_source_formalization_context.py::test_allocated_workspace_source_and_git_relation[symlink] PASSED [ 60%]
+test/api/test_source_formalization_context.py::test_allocated_workspace_source_and_git_relation[parent_symlink] PASSED [ 61%]
+test/api/test_source_formalization_context.py::test_allocated_workspace_source_and_git_relation[foreign_git] PASSED [ 63%]
+test/api/test_source_formalization_context.py::test_allocated_workspace_source_and_git_relation[same_root] PASSED [ 65%]
+test/api/test_source_formalization_context.py::test_retry_trailer_is_preserved_and_validation_is_pre_dispatch_only PASSED [ 67%]
+test/api/test_source_formalization_context.py::test_absent_advice_has_no_repository_or_owner_activity[legacy coding prompt] PASSED [ 69%]
+test/api/test_source_formalization_context.py::test_absent_advice_has_no_repository_or_owner_activity[{"objective_id":"legacy","evidence":[]}] PASSED [ 70%]
+test/api/test_source_formalization_context.py::test_owner_seals_exact_stdin_and_worker_never_reads_private_owner_state PASSED [ 72%]
+test/api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[stripped_prompt] PASSED [ 74%]
+test/api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[retry_prompt] PASSED [ 76%]
+test/api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[missing_handoff] PASSED [ 78%]
+test/api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[wrong_digest] PASSED [ 80%]
+test/api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[writable_file] PASSED [ 81%]
+test/api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[symlink] PASSED [ 83%]
+test/api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[canonical_source] PASSED [ 85%]
+test/api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[workspace_source] PASSED [ 87%]
+test/api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[expired] PASSED [ 89%]
+test/api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[future] PASSED [ 90%]
+test/api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[foreign_workspace] PASSED [ 92%]
+test/api/test_source_formalization_context.py::test_no_handoff_without_boundary_and_caller_cannot_supply_owner_arguments PASSED [ 94%]
+test/api/test_source_formalization_context.py::test_legacy_owner_capture_preserves_stdin_without_private_state PASSED [ 96%]
+test/api/test_source_formalization_context.py::test_owner_capture_rejects_oversize_and_wait_timeout PASSED [ 98%]
+test/api/test_source_formalization_context.py::test_seal_must_remain_unexpired_through_source_validation PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/portable-memfd-native-01/junit.xml -
+============================= slowest 10 durations =============================
+0.04s setup    api/test_source_formalization_memfd.py::test_missing_bindings_preserve_full_source_advice_capture_and_worker_gate
+0.03s setup    api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[foreign_workspace]
+0.03s setup    api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[writable_file]
+0.03s setup    api/test_source_formalization_context.py::test_seal_must_remain_unexpired_through_source_validation
+0.03s setup    api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[expired]
+0.03s setup    api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[retry_prompt]
+0.03s setup    api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[wrong_digest]
+0.03s setup    api/test_source_formalization_context.py::test_owner_seals_exact_stdin_and_worker_never_reads_private_owner_state
+0.03s setup    api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[future]
+0.03s setup    api/test_source_formalization_context.py::test_worker_seal_refuses_rebinding_and_source_drift[missing_handoff]
+============================= 55 passed in 26.63s ==============================

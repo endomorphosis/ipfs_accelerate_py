@@ -1,0 +1,13 @@
+{
+  "returncode": 0,
+  "error": null,
+  "seconds": 1.300391313037835,
+  "source_unchanged": true,
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py": "8181d562c0631c172b1706716ff14b556ee10ce38d655967e0b089314dc75d4d",
+    "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/portable-python31212/python-runtime/python/cpython-3.12.12-linux-aarch64-gnu/bin/python3.12": "5566b9246f35fb92c24ad712137e6ea2d70eeaa09ba14c59f4bcb03b6d4c93a5",
+    "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/portable-memfd-docker-02/entry.py": "040825dfad4fd48d734b55e0abf75cb690ebe8d25e41a6f8b23e5cf04ef4bc47"
+  },
+  "container_removed": true
+}

@@ -1,0 +1,13 @@
+{
+  "exit_code": 0,
+  "seconds": 1.2185158729553223,
+  "stdout_bytes": 10048,
+  "stderr_bytes": 2520,
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/autoformal/tree_pin.py": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/source_program_runtime_384_v2.py": "c31b757b560c86e8c9231766a5cbb4f336d3562eb787151e9b63db4d44212e51",
+    "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5",
+    "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+  },
+  "source_unchanged": true
+}

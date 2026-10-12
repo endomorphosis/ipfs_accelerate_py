@@ -1,0 +1,26 @@
+{
+  "schema": "ranked-successor-offline-docker@1",
+  "returncode": 1,
+  "error": null,
+  "seconds": 8.276632713968866,
+  "counts": {
+    "tests": 1,
+    "errors": 0,
+    "failures": 1,
+    "skipped": 0
+  },
+  "source_hashes_unchanged": true,
+  "source_and_test_file_count": 12286,
+  "container_removed": true,
+  "image_id": "sha256:771900c18b663b33a5bf96e066346b2d5c842506523efb167aebe8d3a99b5c07",
+  "archive_sha256": "9f412279d0135ca2698fe2843c1dc2d75bee74cd203f6bbedc358fc4088c9959",
+  "full_runtime_deployment_qualified": false,
+  "official_terminal_bench_score": null,
+  "live_provider_calls": 0,
+  "model_downloads": 0,
+  "training_steps": 0,
+  "results": {
+    "module-origins.json": "fd62ec89b09a29b87a2d20432b27bae5404303d8bf0ecbe82a3ec6ac844fb935",
+    "junit.xml": "406da869b07df5951e587258eda7e5c89c77bc80fd4ad414fbff8609da09a3a5"
+  }
+}

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.998" timestamp="2026-10-12T03:25:56.380057+00:00" hostname="3b42845d5b8e"><testcase classname="" name="api.test_semantic_metadata_census_dispatch" file="api/test_semantic_metadata_census_dispatch.py" time="0.000"><error message="collection failure">ImportError while importing test module '/code/source/test/api/test_semantic_metadata_census_dispatch.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/runtime/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/code/source/test/api/test_semantic_metadata_census_dispatch.py:10: in &lt;module&gt;
+    from test.api.test_semantic_metadata_dispatch import dispatch_case, invoke, token_counter  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/code/source/test/api/test_semantic_metadata_dispatch.py:14: in &lt;module&gt;
+    from benchmarks.agent_supervisor.container_coding.test_terminal_context_audit import compiled  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'benchmarks.agent_supervisor.container_coding.test_terminal_context_audit'</error></testcase></testsuite></testsuites>

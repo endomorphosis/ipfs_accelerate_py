@@ -1,0 +1,8 @@
+{
+  "schema": "scoped-test-source-drift-review@1",
+  "original_tracked_source_unchanged": true,
+  "changed_paths": [],
+  "executed_test_files_unchanged": true,
+  "production_source_unchanged": true,
+  "explanation": "All tracked sources unchanged."
+}

@@ -36,6 +36,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_database.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py",
+    "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
 )

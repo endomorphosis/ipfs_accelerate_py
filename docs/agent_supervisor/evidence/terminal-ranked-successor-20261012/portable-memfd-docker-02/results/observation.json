@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "python": "3.12.12 (main, Dec 17 2025, 21:08:04) [Clang 21.1.4 ]",
+  "executable": "/runtime/bin/python3.12",
+  "native_memfd_binding_absent": true,
+  "all_required_seals_verified": true,
+  "anonymous_descriptor_verified": true,
+  "mutation_denials": [
+    "write",
+    "grow",
+    "shrink"
+  ],
+  "child_stdin_matches": true,
+  "live_provider_calls": 0,
+  "modules": {
+    "ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context": {
+      "path": "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py",
+      "sha256": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef"
+    },
+    "ipfs_accelerate_py.agent_supervisor.validation.validation_runtime": {
+      "path": "/code/source/ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+      "sha256": "8181d562c0631c172b1706716ff14b556ee10ce38d655967e0b089314dc75d4d"
+    }
+  }
+}

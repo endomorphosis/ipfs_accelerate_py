@@ -233,8 +233,15 @@ at a time, and retain every attempt and its native usage.
    `largest-eigenval` sources with an **authored administrative plan** and
    measured **57,423 to 56,452 bytes**, a 971-byte reduction (1.69%), with exact
    restoration and zero real planning or coding calls. It is a separate scope
-   from the live Source384 result above. A fresh live-planned instruction census
-   remains pending; neither byte result measures provider-token savings.
+   from the live Source384 result above. The corrected fresh live instruction
+   census now measured **65,222 to 64,254 bytes** (968 bytes, 1.484%), with exact
+   restoration and **25,315 planning tokens**, then stopped before coding. Its
+   three retained attempts include 50,500 known planning tokens and 1,839.67
+   seconds; first-attempt usage and dollar cost remain unknown. The selected
+   profile uses lexical capsules and leaves Intent autoencoding disabled.
+   Neither byte census establishes complete-run provider-token savings. The
+   [closed evidence](evidence/terminal-ranked-successor-20261012/README.md)
+   includes the portability and JSON-framing repairs required to finish it.
 2. **Use current formal status capsules to prevent redundant reasoning.** Resolve
    an accepted native receipt through the supported proof-cache gate, including
    render/commit revalidation. Present property, verdict, assumptions, dependency

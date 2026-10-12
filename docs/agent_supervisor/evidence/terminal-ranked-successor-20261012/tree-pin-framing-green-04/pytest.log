@@ -1,0 +1,61 @@
+/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py:299: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the "fixture" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to "function" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/tree-pin-framing-green-04/cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+
+----------------------------- live log collection ------------------------------
+2026-10-12 03:17:57 [    INFO] Using standard filesystem operations (distributed storage disabled) (storage_wrapper.py:99)
+collected 18 items
+
+test/api/test_census_cli_tree_pin.py::test_real_census_cli_stdout_remains_strict_json_after_logic_tree_imports[False] PASSED [  5%]
+test/api/test_census_cli_tree_pin.py::test_real_census_cli_stdout_remains_strict_json_after_logic_tree_imports[True] PASSED [ 11%]
+test/api/test_census_cli_tree_pin.py::test_real_signed_instruction_census_cli_preserves_json[0] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 03:18:31 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-186/test_real_signed_instruction_c0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 16%]
+test/api/test_census_cli_tree_pin.py::test_real_signed_instruction_census_cli_preserves_json[3] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 03:18:35 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-186/test_real_signed_instruction_c1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 22%]
+test/api/test_semantic_metadata_census_dispatch.py::test_injected_census_counts_complete_inputs_once_and_hashes_identities PASSED [ 27%]
+test/api/test_semantic_metadata_census_dispatch.py::test_census_source_drift_refuses_before_counting PASSED [ 33%]
+test/api/test_semantic_metadata_census_dispatch.py::test_census_binds_actual_model_input_and_never_allocates_provider PASSED [ 38%]
+test/api/test_semantic_metadata_census_dispatch.py::test_census_requires_explicit_original_semantic_coding_view[options0] PASSED [ 44%]
+test/api/test_semantic_metadata_census_dispatch.py::test_census_requires_explicit_original_semantic_coding_view[options1] PASSED [ 50%]
+test/api/test_semantic_metadata_census_dispatch.py::test_census_requires_explicit_original_semantic_coding_view[options2] PASSED [ 55%]
+test/api/test_semantic_metadata_census_dispatch.py::test_census_requires_explicit_original_semantic_coding_view[options3] PASSED [ 61%]
+test/api/test_semantic_metadata_census_dispatch.py::test_census_requires_explicit_original_semantic_coding_view[options4] PASSED [ 66%]
+test/api/test_semantic_metadata_census_dispatch.py::test_census_refuses_current_source_drift PASSED [ 72%]
+test/api/test_semantic_metadata_census_dispatch.py::test_census_refuses_workspace_from_a_foreign_git_owner PASSED [ 77%]
+test/api/test_semantic_metadata_census_dispatch.py::test_census_refuses_inherited_database_authority PASSED [ 83%]
+test/api/test_semantic_metadata_census_dispatch.py::test_census_retains_exact_wrapper_binding_checks PASSED [ 88%]
+test/api/test_semantic_metadata_census_dispatch.py::test_cli_census_emits_one_closed_observation PASSED [ 94%]
+test/api/test_semantic_metadata_census_dispatch.py::test_cli_drift_failure_exports_only_closed_diagnostic PASSED [100%]
+
+=============================== warnings summary ===============================
+api/test_census_cli_tree_pin.py::test_real_signed_instruction_census_cli_preserves_json[0]
+api/test_census_cli_tree_pin.py::test_real_signed_instruction_census_cli_preserves_json[3]
+  api/test_census_cli_tree_pin.py:84: PytestWarning: record_property is incompatible with junit_family 'xunit2' (use 'legacy' or 'xunit1')
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/tree-pin-framing-green-04/junit.xml -
+============================= slowest 10 durations =============================
+2.88s call     api/test_census_cli_tree_pin.py::test_real_signed_instruction_census_cli_preserves_json[3]
+2.71s call     api/test_census_cli_tree_pin.py::test_real_signed_instruction_census_cli_preserves_json[0]
+1.74s call     api/test_census_cli_tree_pin.py::test_real_census_cli_stdout_remains_strict_json_after_logic_tree_imports[False]
+1.26s setup    api/test_semantic_metadata_census_dispatch.py::test_injected_census_counts_complete_inputs_once_and_hashes_identities
+1.25s setup    api/test_census_cli_tree_pin.py::test_real_census_cli_stdout_remains_strict_json_after_logic_tree_imports[False]
+1.13s setup    api/test_census_cli_tree_pin.py::test_real_signed_instruction_census_cli_preserves_json[0]
+0.99s setup    api/test_census_cli_tree_pin.py::test_real_signed_instruction_census_cli_preserves_json[3]
+0.98s setup    api/test_census_cli_tree_pin.py::test_real_census_cli_stdout_remains_strict_json_after_logic_tree_imports[True]
+0.95s setup    api/test_semantic_metadata_census_dispatch.py::test_census_retains_exact_wrapper_binding_checks
+0.94s setup    api/test_semantic_metadata_census_dispatch.py::test_census_refuses_workspace_from_a_foreign_git_owner
+======================= 18 passed, 2 warnings in 56.94s ========================

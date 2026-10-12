@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     build_text_context_references, context_provider_input_payload,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import source_formalization_context as guard
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import _validation_memfd_create
 
 
 def _sha(raw):
@@ -220,7 +221,7 @@ def sealed(authored, tmp_path, monkeypatch):
         assert path.stat().st_mode & 0o777 == 0o750
     monkeypatch.setattr(guard, "_protected_directory", controlled_directory)
     prompt = guard._json(_wire(authored["payload"]))
-    original = os.memfd_create("authored-input")
+    original = _validation_memfd_create("authored-input", 0)
     os.write(original, prompt.encode())
     os.lseek(original, 0, os.SEEK_SET)
     try:
@@ -245,8 +246,8 @@ def test_owner_seals_exact_stdin_and_worker_never_reads_private_owner_state(seal
     case, prepared, request = sealed
     assert len(case["calls"]) == 1
     assert os.read(prepared["stdin_fd"], 2*1024*1024) == request["prompt"].encode()
-    seals = fcntl.fcntl(prepared["stdin_fd"], fcntl.F_GET_SEALS)
-    assert seals & fcntl.F_SEAL_WRITE and seals & fcntl.F_SEAL_GROW and seals & fcntl.F_SEAL_SHRINK
+    seals = fcntl.fcntl(prepared["stdin_fd"], getattr(fcntl, "F_GET_SEALS", 1034))
+    assert seals & 0x0008 and seals & 0x0004 and seals & 0x0002
     with pytest.raises(OSError):
         os.write(prepared["stdin_fd"], b"tamper")
     def private_owner(*args, **kwargs):
@@ -311,7 +312,7 @@ def test_no_handoff_without_boundary_and_caller_cannot_supply_owner_arguments(au
 
 def test_legacy_owner_capture_preserves_stdin_without_private_state(monkeypatch):
     raw = b"ordinary no-index coding request\n"
-    fd = os.memfd_create("authored-legacy")
+    fd = _validation_memfd_create("authored-legacy", 0)
     os.write(fd, raw)
     os.lseek(fd, 0, os.SEEK_SET)
     def unexpected(*args, **kwargs):
@@ -332,7 +333,7 @@ def test_legacy_owner_capture_preserves_stdin_without_private_state(monkeypatch)
 
 def test_owner_capture_rejects_oversize_and_wait_timeout(monkeypatch):
     import select
-    fd = os.memfd_create("authored-oversize")
+    fd = _validation_memfd_create("authored-oversize", 0)
     os.write(fd, b"x" * (2*1024*1024+1))
     os.lseek(fd, 0, os.SEEK_SET)
     try:

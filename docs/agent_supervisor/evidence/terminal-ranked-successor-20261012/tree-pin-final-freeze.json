@@ -1,0 +1,51 @@
+{
+  "schema": "tree-pin-json-portability-qualification@1",
+  "datasets_head": "c1b1f65f254f5f3ee8f307cdddf923c62450f78e",
+  "datasets_checkout": "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012",
+  "datasets_clean": true,
+  "source_hashes": {
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/autoformal/tree_pin.py": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/source_program_runtime_384_v2.py": "c31b757b560c86e8c9231766a5cbb4f336d3562eb787151e9b63db4d44212e51",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/tests/unit/logic/test_tree_pin_json_output.py": "74a099e78e4700d4bfcfef3f7633e4f0f2ec247013e3b56a17279ae7aa0eb3a8",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/tests/unit/logic/formalization/autoencoder/test_source_program_runtime_384_v2.py": "78dcbc1d7e2aa6abfd4b44f217e5f7bd20d5cf6b06a6278c8f298ac379d08cc0",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/test_census_cli_tree_pin.py": "2d47b1215808290ec88dfe85ea40ef02cd9c459c439a32b1f5c7754ba0bd3853"
+  },
+  "qualification": {
+    "datasets_final": {
+      "path": "tree-pin-compatibility-green-02",
+      "passed": 67,
+      "failed": 0,
+      "skipped": 0
+    },
+    "existing_tree_checks": {
+      "path": "tree-pin-datasets-green-01",
+      "passed": 8,
+      "overlap_with_final": 5
+    },
+    "accelerate_census_final": {
+      "path": "tree-pin-framing-green-04",
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    "exact_assets": {
+      "path": "tree-pin-source384-assets-02",
+      "accepted": true
+    },
+    "same_host_old_new_comparison": "live-instruction-census-03/precomputed-comparison/qualification.json",
+    "same_source_gte_inference": "live-instruction-census-03/new-sample-run/qualification.json"
+  },
+  "retained_diagnostics": {
+    "tree-pin-framing-red-01": "Original stdout contamination reproduces strict JSONDecodeError.",
+    "tree-pin-framing-green-01": "Strict JSON works; test expected3 diagnostic lines, actual4.",
+    "tree-pin-framing-green-02": "Signed CLI worked; test used nonexistent public_instruction_present field.",
+    "tree-pin-framing-green-03": "Signed zero-session CLI worked; test wrongly expected an import-time tree pin.",
+    "tree-pin-source384-assets-01": "New tree hash correctly refused before explicit compatibility was implemented.",
+    "tree-pin-compatibility-green-01": "66 passed; archived projected vector differed by5.551115123125783e-17 on old and new code. Final comparison allows abs1e-15,rel0 for only this historical vector."
+  },
+  "training_steps": 0,
+  "provider_calls": 0,
+  "download_calls": 0,
+  "checkpoint_modified": false,
+  "scope_limit": "Authored signed census capsule test does not run Source384. Independent actual Source384 load and old/new inference checks cover asset consumption; whole eigen.py remains source-contract unsupported, without new proof or coverage claim."
+}

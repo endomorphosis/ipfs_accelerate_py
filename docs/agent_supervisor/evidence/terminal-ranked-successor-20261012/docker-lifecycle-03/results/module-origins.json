@@ -1,0 +1,52 @@
+{
+  "modules": {
+    "ipfs_accelerate_py.agent_supervisor.runtime.published_task_context": {
+      "path": "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py",
+      "sha256": "653c9217c29149cd7f2e8e9a64c5be25fed2e956649ee3eeaea8a538de2b8c88"
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.semantic_capsule_selection": {
+      "path": "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "sha256": "6737a0c21c5e29f8f1afca9b02d5f93e2f202be5a8258a4fc851c59f29dbba59"
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime": {
+      "path": "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "sha256": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829"
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation": {
+      "path": "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "f177adbddff6409960c2f5ce47b61c1f62560cbe334d61812e2ea4b221afb3d8"
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.code_retrieval_context": {
+      "path": "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/code_retrieval_context.py",
+      "sha256": "795946d7b82f06c5156487d615099d08ff85750d4f84d085b0868b22814c0885"
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.published_retrieval": {
+      "path": "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/published_retrieval.py",
+      "sha256": "078b5d81513ecfa216d0493168b2b52aab8e4ccdc01bcafbfe066909c06e135a"
+    },
+    "ipfs_datasets_py": {
+      "path": "/code/datasets/ipfs_datasets_py/__init__.py",
+      "sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9"
+    },
+    "ipfs_kit_py": {
+      "path": "/code/kit/ipfs_kit_py/__init__.py",
+      "sha256": "e46803a790ed5a3efbd2dfd84cee4fce01cabecc36e7c6b6373707e09f226955"
+    }
+  },
+  "extensions": {
+    "ducklake": {
+      "path": "/home/supervisor/.duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension",
+      "sha256": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+    },
+    "httpfs": {
+      "path": "/home/supervisor/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension",
+      "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9"
+    },
+    "quack": {
+      "path": "/home/supervisor/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+      "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+    }
+  },
+  "duckdb": "1.5.5",
+  "platform": "linux_arm64"
+}

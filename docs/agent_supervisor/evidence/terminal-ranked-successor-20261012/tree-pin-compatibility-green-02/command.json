@@ -1,0 +1,40 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "tests/unit/logic/test_tree_pin_json_output.py",
+    "tests/unit/logic/formalization/autoencoder/test_source_program_runtime_384_v2.py",
+    "-x",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/tree-pin-compatibility-green-02/junit.xml",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/tree-pin-compatibility-green-02/cache"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012",
+  "environment_overrides": {
+    "CODEBASE384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "CODEBASE384_EMBEDDING_SNAPSHOT": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/tree-pin-compatibility-green-02/seal.duckdb",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMERICAL_SELECTION384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/supervisor-numerical-training-20261011/release/checkpoint.json",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/autoformal/tree_pin.py": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/source_program_runtime_384_v2.py": "c31b757b560c86e8c9231766a5cbb4f336d3562eb787151e9b63db4d44212e51",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/tests/unit/logic/formalization/autoencoder/test_source_program_runtime_384_v2.py": "78dcbc1d7e2aa6abfd4b44f217e5f7bd20d5cf6b06a6278c8f298ac379d08cc0",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/tests/unit/logic/test_tree_pin_json_output.py": "74a099e78e4700d4bfcfef3f7633e4f0f2ec247013e3b56a17279ae7aa0eb3a8"
+  }
+}

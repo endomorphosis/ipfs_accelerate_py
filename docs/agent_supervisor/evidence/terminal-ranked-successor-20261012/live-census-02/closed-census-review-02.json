@@ -1,0 +1,103 @@
+{
+  "all_review_checks_passed": true,
+  "candidate_input_bytes": null,
+  "closed_result_sha256": "8ab50768ea136593faede47827773b2e04a1b84b3bc4e26f97d742b897035dd8",
+  "driver_error_phase": "metadata_census",
+  "exact_restoration_replayed_by_reviewer": false,
+  "existing_section_observations": {
+    "candidate_complete_byte_proxy_tokens": null,
+    "complete_per_section_breakdown_available": false,
+    "counts_have_different_scopes_and_are_not_additive": true,
+    "native_complete_byte_proxy_tokens": null,
+    "native_output_schema_bytes": null,
+    "native_pending_prompt_bytes": null,
+    "selected_complete_byte_proxy_tokens": null,
+    "worker_semantic_bytes": 31939,
+    "workspace_advisory_bytes": null
+  },
+  "input_byte_reduction": null,
+  "input_byte_reduction_percent": null,
+  "intent_autoencoder_disabled": true,
+  "interpretation": "One actual planning session followed by zero-call coding-input census; complete benchmark tokens and token savings remain unmeasured.",
+  "model_calls_by_reviewer": 0,
+  "native_census_qualified": false,
+  "native_input_bytes": null,
+  "outer_failure": null,
+  "outer_seconds": 716.611702296068,
+  "phase_seconds": {
+    "context_seconds": 3.4648638779763132,
+    "initial_context_seconds": 14.581888551008888,
+    "metadata_census_seconds": 19.52939270506613,
+    "planning_seconds": 67.14920362806879,
+    "prepare_seconds": 0.5374872939428315
+  },
+  "planning_usage_audit": {
+    "all_callable_attempts_receipted": true,
+    "all_six_token_categories_complete": true,
+    "billing_total_verified": false,
+    "cache_included_in_input": true,
+    "cached_input_added_to_input": false,
+    "completion_authority": false,
+    "cumulative_records_summed": false,
+    "emitted_router_receipts": 1,
+    "known_reported_cost_subtotal_usd": null,
+    "known_token_subtotals": {
+      "cache_write_input_tokens": 0,
+      "cached_input_tokens": 0,
+      "input_tokens": 23832,
+      "output_tokens": 1353,
+      "reasoning_output_tokens": 207,
+      "total_tokens": 25185
+    },
+    "native_token_count_events_are_call_counts": false,
+    "native_totals_counted_once_per_invocation": true,
+    "observation_only": true,
+    "observed_complete_sessions": true,
+    "observed_router_dispatches": 1,
+    "planner_callable_attempts": 1,
+    "reasoning_output_added_to_output": false,
+    "reported_cost_usd": null,
+    "schema": "terminal-live-census-planning-usage@1",
+    "tokens": {
+      "cache_write_input_tokens": 0,
+      "cached_input_tokens": 0,
+      "input_tokens": 23832,
+      "output_tokens": 1353,
+      "reasoning_output_tokens": 207,
+      "total_tokens": 25185
+    },
+    "unique_router_invocations": 1,
+    "unreceipted_callable_attempts": 0
+  },
+  "private_owner_database_reads_by_reviewer": false,
+  "prompt_or_provider_body_reads_by_reviewer": false,
+  "provider_calls_by_reviewer": 0,
+  "review_checks": {
+    "container_stopped_and_absent_twice": true,
+    "exact_frozen_source_current": true,
+    "exported_public_instruction_exact": true,
+    "no_official_reward_or_completion_claim": true,
+    "outer_source_and_archive_unchanged": true,
+    "selected_experiment_controls": true
+  },
+  "schema": "terminal-live-instruction-census-review@1",
+  "selected_input_bytes": null,
+  "selected_mode": null,
+  "source384_initial_context_completed": true,
+  "source384_observation": {
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+    "inference_sha256": "246bfd256c9c367e5c22912a990a6ff0f3b0a45889d063d44921ab61ee5f9e0d",
+    "resource_profile": {
+      "memory_enforcement": "sampled_process_tree_RSS_may_overshoot",
+      "numerical_worker_memory_mb": 4096,
+      "parent_cpu_slots": 3,
+      "parent_memory_mb": 6144
+    },
+    "schema": "terminal-source384-repository-context@1",
+    "seconds": 10.024093574960716
+  },
+  "source384_selected": true,
+  "source_binding_count": 319,
+  "source_freeze_sha256": "0fdea03c357dd7342f4347d309052c371e1860ab5603062483ae032bbc80ecb7"
+}

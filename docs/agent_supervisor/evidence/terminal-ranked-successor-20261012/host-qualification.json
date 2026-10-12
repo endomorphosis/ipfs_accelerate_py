@@ -1,0 +1,33 @@
+{
+  "schema": "terminal-ranked-capsule-host-qualification@1",
+  "distinct_tests": 401,
+  "runs": {
+    "capsule-policy-02": {
+      "tests": 205,
+      "failed": 0,
+      "skipped": 0,
+      "overlap_with_prior_runs": 0
+    },
+    "initial-integration-final-01": {
+      "tests": 44,
+      "failed": 0,
+      "skipped": 0,
+      "overlap_with_prior_runs": 0
+    },
+    "controls-diagnostic-01": {
+      "tests": 75,
+      "failed": 0,
+      "skipped": 0,
+      "overlap_with_prior_runs": 0
+    },
+    "qualification-02": {
+      "tests": 77,
+      "failed": 0,
+      "skipped": 0,
+      "overlap_with_prior_runs": 0
+    }
+  },
+  "all_tests_passed": true,
+  "source_drift_note": "Initial integration tracked an unrelated ranked test assertion edit; executed tests and production were unchanged. All other runs retained unchanged tracked sources. See initial-integration-final-01/source-drift-review.json.",
+  "provider_calls": 0
+}

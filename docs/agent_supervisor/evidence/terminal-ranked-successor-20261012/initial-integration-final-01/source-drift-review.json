@@ -1,0 +1,10 @@
+{
+  "schema": "scoped-test-source-drift-review@1",
+  "original_tracked_source_unchanged": false,
+  "changed_paths": [
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/semantic_state/test_ranked_published_task_context.py"
+  ],
+  "executed_test_files_unchanged": true,
+  "production_source_unchanged": true,
+  "explanation": "The ranked successor test file changed its pinned-policy assertion while the independent initial-context suite ran. No production or executed test body changed."
+}

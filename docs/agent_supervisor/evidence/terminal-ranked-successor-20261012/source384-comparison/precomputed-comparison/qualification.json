@@ -1,0 +1,37 @@
+{
+  "archived_embedding_max_absolute_delta": 5.551115123125783e-17,
+  "archived_semantic_keys_exact": true,
+  "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "commands": [
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/live-instruction-census-03/precomputed_child.py",
+        "/home/barberb/lift_coding/.worktrees/ranked-current-datasets-20261012",
+        "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/live-instruction-census-03/precomputed-comparison/old.json"
+      ],
+      "label": "old",
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/live-instruction-census-03/precomputed_child.py",
+        "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012",
+        "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/live-instruction-census-03/precomputed-comparison/new.json"
+      ],
+      "label": "new",
+      "returncode": 0
+    }
+  ],
+  "embedding_model_loads": 0,
+  "native_semantics_exactly_equal_excluding_compatibility": true,
+  "projected_embedding_old_new_exact": true,
+  "provider_calls": 0,
+  "schema": "source384-precomputed-old-new-comparison@1",
+  "script_sha256": "d523e2cdce928aaf8f7936404e38169443137a1f34b8fcaf4f9b6aa56db39a0b",
+  "seconds": 1.5326471920125186,
+  "source_contract_status": "qualified"
+}

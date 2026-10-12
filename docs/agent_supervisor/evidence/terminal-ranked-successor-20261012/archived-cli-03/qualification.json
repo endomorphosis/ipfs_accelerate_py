@@ -1,0 +1,48 @@
+{
+  "actual_source384_census_handoff_tested": false,
+  "archive_sha256": "a70740cd83a848ca0193b315b7e2a0ed2f72f9e5770e3b15fcf00989d986b1f6",
+  "container_removed": true,
+  "counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 18
+  },
+  "error": null,
+  "full_runtime_deployment_qualified": false,
+  "image_id": "sha256:771900c18b663b33a5bf96e066346b2d5c842506523efb167aebe8d3a99b5c07",
+  "model_downloads": 0,
+  "official_terminal_bench_score": null,
+  "prior_failed_receipts_sha256": [
+    "950faef05220c6b0a690d112042f5a8b90e617496a61d3317dac05534a5e1cf2",
+    "1d9fa50da9302c01732daffe09e02e58dd712d5268959ebb12179df4c3598639"
+  ],
+  "provider_calls": 0,
+  "qualified": true,
+  "returncode": 0,
+  "schema": "terminal-census-archived-prepaid-gate@1",
+  "seconds": 22.88466848502867,
+  "source384": {
+    "actual_native_model_inference": true,
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "complete_stdout_one_json": true,
+    "exact_native_semantics_excluding_compatibility": false,
+    "official_verifier_executed": false,
+    "provider_calls": 0,
+    "qualified": true,
+    "row_checks": [
+      {
+        "embedding_max_absolute_delta": 1.1102230246251565e-16,
+        "non_embedding_fields_equal": true,
+        "status": "fail_open_source_contract_unsupported"
+      }
+    ],
+    "scope": "Actual archived dependencies and model assets sample inference; authored census fixtures below do not claim actual Source384 handoff.",
+    "source_executed": false
+  },
+  "source384_gate_reused_from_sha256": "1d9fa50da9302c01732daffe09e02e58dd712d5268959ebb12179df4c3598639",
+  "source384_inference_rerun": false,
+  "source_freeze_sha256": "2742bd6ed95e2a321adbca3add5b4bb9f114209cec842d3b91860bb4930b44cb",
+  "source_unchanged": true,
+  "training_steps": 0
+}

@@ -22,6 +22,7 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py",
+    "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
     "ipfs_accelerate_py/llm_router.py",
     "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
     "ipfs_accelerate_py/cli_runtime/cli_metadata.py",

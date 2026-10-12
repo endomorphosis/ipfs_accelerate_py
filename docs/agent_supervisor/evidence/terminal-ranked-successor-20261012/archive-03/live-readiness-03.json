@@ -1,0 +1,25 @@
+{
+  "actual_source384_census_handoff_tested": false,
+  "archive_manifest_sha256": "15ac9243b1e9c64d0e1e7f64579807da0ed98b7a992db8c83663adfb891ce4f6",
+  "archive_qualification_source_freeze_sha256": "2742bd6ed95e2a321adbca3add5b4bb9f114209cec842d3b91860bb4930b44cb",
+  "archive_sha256": "a70740cd83a848ca0193b315b7e2a0ed2f72f9e5770e3b15fcf00989d986b1f6",
+  "cli_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 18
+  },
+  "full_runtime_deployment_qualified": false,
+  "live_released": false,
+  "prepaid_gate_sha256": "ca341b00985918381f51ecfc7ec45e294e28be6cc2f54398587641044d9494a8",
+  "private_orchestration_sha256": "974652869f728d80a7b8c3a187538b59e06d013ef2cb80e8a8447d15fbfb0a7a",
+  "provider_calls": 0,
+  "ready_for_root_live_release": true,
+  "root_release_file_present": false,
+  "schema": "terminal-census-live-readiness@1",
+  "source384_cross_runtime_max_embedding_delta": 1.1102230246251565e-16,
+  "source384_gate_qualified": true,
+  "source384_same_host_old_new_exact": true,
+  "source384_source_contract_status": "fail_open_source_contract_unsupported",
+  "source_freeze_sha256": "c867d14fa52c2a3e5acbd4616e2b9e1cc7cce3dd58f8656528eb4cdf575cb466"
+}

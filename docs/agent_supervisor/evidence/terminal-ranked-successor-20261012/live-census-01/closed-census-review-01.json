@@ -1,0 +1,36 @@
+{
+  "all_review_checks_passed": false,
+  "candidate_input_bytes": null,
+  "closed_result_sha256": "e24ff579bda9474e4e0a8534b75b266cdc2b0c52ab11499dfaf2808da12795fc",
+  "driver_error_phase": null,
+  "exact_restoration_replayed_by_reviewer": false,
+  "input_byte_reduction": null,
+  "input_byte_reduction_percent": null,
+  "interpretation": "One actual planning session followed by zero-call coding-input census; complete benchmark tokens and token savings remain unmeasured.",
+  "model_calls_by_reviewer": 0,
+  "native_census_qualified": false,
+  "native_input_bytes": null,
+  "outer_failure": {
+    "error_type": "RuntimeError",
+    "phase": "deployment"
+  },
+  "outer_seconds": 439.9876957499655,
+  "phase_seconds": null,
+  "planning_usage_audit": null,
+  "private_owner_database_reads_by_reviewer": false,
+  "prompt_or_provider_body_reads_by_reviewer": false,
+  "provider_calls_by_reviewer": 0,
+  "review_checks": {
+    "container_stopped_and_absent_twice": true,
+    "exact_frozen_source_current": true,
+    "exported_public_instruction_exact": false,
+    "no_official_reward_or_completion_claim": true,
+    "outer_source_and_archive_unchanged": true,
+    "selected_experiment_controls": true
+  },
+  "schema": "terminal-live-instruction-census-review@1",
+  "selected_input_bytes": null,
+  "selected_mode": null,
+  "source_binding_count": 318,
+  "source_freeze_sha256": "06a0605ee5755ce56a3f5997bd886faf18f8349fdc27eb9fba6039797fe15a10"
+}

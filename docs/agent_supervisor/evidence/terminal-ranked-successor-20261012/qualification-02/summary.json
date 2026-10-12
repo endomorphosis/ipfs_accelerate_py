@@ -1,0 +1,42 @@
+{
+  "schema": "ranked-successor-qualification@1",
+  "exit_code": 0,
+  "source_unchanged": true,
+  "cases": 77,
+  "counts": {
+    "passed": 77
+  },
+  "by_file": {
+    "api.semantic_state.test_ranked_published_task_context": {
+      "passed": 16
+    },
+    "api.semantic_state.test_published_task_context": {
+      "passed": 5
+    },
+    "api.semantic_state.test_published_empty_task_context": {
+      "passed": 15
+    },
+    "api.semantic_state.test_published_task_data_context": {
+      "passed": 5
+    },
+    "api.semantic_state.test_published_retrieval": {
+      "passed": 3
+    },
+    "api.semantic_state.test_published_learned_retrieval": {
+      "passed": 11
+    },
+    "api.semantic_state.test_retrieval_capsule_selection": {
+      "passed": 22
+    }
+  },
+  "files": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "653c9217c29149cd7f2e8e9a64c5be25fed2e956649ee3eeaea8a538de2b8c88",
+    "test/api/semantic_state/test_published_task_context.py": "113c1a87486557c76f7b8ff212b3cfe8236d56cb963a42bc132ddfc8c8e7560e",
+    "test/api/semantic_state/test_ranked_published_task_context.py": "9acec1d9c56094bdcefc9d843cccd594f7c5356a968117d1aa541b2fe1c0e9d2"
+  },
+  "limitations": [
+    "Authored character-count vectors qualify successor ranking contracts; no learned-ranking quality or Terminal Bench token advantage is established.",
+    "Actual learned retrieval regression uses existing local cached MiniLM assets only; no downloads or live generation.",
+    "Admitted runtime exception catch retains unavailable error type and phase but does not serialize RankedRetrievalRefreshUnavailable.observation."
+  ]
+}

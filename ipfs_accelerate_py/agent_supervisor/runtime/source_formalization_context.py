@@ -361,12 +361,25 @@ def prepare_container_source_formalization_dispatch(*, argv, boundary, workspace
             os.fchmod(stream.fileno(), 0o440)
             os.fsync(stream.fileno())
         command.extend([HANDOFF_FLAGS[0], str(path), HANDOFF_FLAGS[1], _sha(body)])
-    fd = os.memfd_create("supervisor-owner-prompt", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+    # Standalone CPython can omit Linux bindings/constants even when the
+    # kernel and libc support them. Reuse the validation boundary's native
+    # API fallback; an ordinary temporary file is never a prompt substitute.
+    from ..validation.validation_runtime import _validation_memfd_create
+    required_seals = (getattr(fcntl, "F_SEAL_WRITE", 0x0008)
+        | getattr(fcntl, "F_SEAL_GROW", 0x0004)
+        | getattr(fcntl, "F_SEAL_SHRINK", 0x0002)
+        | getattr(fcntl, "F_SEAL_SEAL", 0x0001))
+    fd = _validation_memfd_create("supervisor-owner-prompt",
+        getattr(os, "MFD_CLOEXEC", 0x0001) | getattr(os, "MFD_ALLOW_SEALING", 0x0002))
     try:
-        with os.fdopen(os.dup(fd), "wb") as stream:
+        with os.fdopen(fd, "wb", closefd=False) as stream:
             stream.write(raw)
         os.lseek(fd, 0, os.SEEK_SET)
-        fcntl.fcntl(fd, fcntl.F_ADD_SEALS, fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL)
+        fcntl.fcntl(fd, getattr(fcntl, "F_ADD_SEALS", 1033), required_seals)
+        if fcntl.fcntl(fd, getattr(fcntl, "F_GET_SEALS", 1034)) & required_seals != required_seals:
+            raise ValueError("owner prompt did not acquire all required seals")
+        if os.fstat(fd).st_size != len(raw) or os.pread(fd, len(raw) + 1, 0) != raw:
+            raise ValueError("sealed owner prompt content differs from captured stdin")
     except BaseException:
         os.close(fd)
         raise

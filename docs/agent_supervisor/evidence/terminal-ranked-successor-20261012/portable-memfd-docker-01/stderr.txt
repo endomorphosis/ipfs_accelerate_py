@@ -1,0 +1,20 @@
+Traceback (most recent call last):
+  File "/entry.py", line 8, in <module>
+    from ipfs_accelerate_py.agent_supervisor.runtime import source_formalization_context as guard
+  File "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py", line 22, in <module>
+    from .security_autoencoder_advisor import _read
+  File "/code/source/ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py", line 15, in <module>
+    from ..semantic_state.program_world_database import ProgramWorldDatabase
+  File "/code/source/ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py", line 29, in <module>
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.harness import (
+  File "/code/source/ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py", line 78, in <module>
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.receipts import (
+  File "/code/source/ipfs_accelerate_py/agent_supervisor/semantic_state/receipts.py", line 42, in <module>
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.wire import (
+  File "/code/source/ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py", line 12, in <module>
+    from ipfs_accelerate_py.mcp_server.mcplusplus.artifacts import canonicalize_artifact
+  File "/code/source/ipfs_accelerate_py/mcp_server/mcplusplus/__init__.py", line 3, in <module>
+    from .task_queue import (
+  File "/code/source/ipfs_accelerate_py/mcp_server/mcplusplus/task_queue.py", line 14, in <module>
+    import anyio
+ModuleNotFoundError: No module named 'anyio'

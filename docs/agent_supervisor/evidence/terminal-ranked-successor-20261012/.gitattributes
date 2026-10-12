@@ -1,0 +1,3 @@
+*.xml -whitespace
+*.log -whitespace
+*.txt -whitespace

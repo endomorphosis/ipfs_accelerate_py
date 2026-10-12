@@ -1,0 +1,12 @@
+{
+  "actual_tar_members_verified": 27467,
+  "archive_bytes": 1341943855,
+  "archive_sha256": "e392b0a1396a000e801bea703bb3c68a6e3c994ea93fe5539b648ca53cd89e81",
+  "live_provider_readiness_probed": false,
+  "provider_calls": 0,
+  "qualified": true,
+  "runtime_deployment_verified": false,
+  "schema": "terminal-live-instruction-census-archive-readiness@1",
+  "seconds": 44.71246013790369,
+  "source_freeze_sha256": "0fdea03c357dd7342f4347d309052c371e1860ab5603062483ae032bbc80ecb7"
+}

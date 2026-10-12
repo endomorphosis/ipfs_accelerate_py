@@ -1,0 +1,20 @@
+{
+  "actual_source384_census_handoff_tested": false,
+  "archive_sha256": "a70740cd83a848ca0193b315b7e2a0ed2f72f9e5770e3b15fcf00989d986b1f6",
+  "container_removed": true,
+  "counts": {},
+  "error": null,
+  "full_runtime_deployment_qualified": false,
+  "image_id": "sha256:771900c18b663b33a5bf96e066346b2d5c842506523efb167aebe8d3a99b5c07",
+  "model_downloads": 0,
+  "official_terminal_bench_score": null,
+  "provider_calls": 0,
+  "qualified": false,
+  "returncode": 1,
+  "schema": "terminal-census-archived-prepaid-gate@1",
+  "seconds": 2.0150939129525796,
+  "source384": null,
+  "source_freeze_sha256": "2742bd6ed95e2a321adbca3add5b4bb9f114209cec842d3b91860bb4930b44cb",
+  "source_unchanged": true,
+  "training_steps": 0
+}

@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "seconds": 28.70540618803352,
+  "source_after": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+    "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py": "8181d562c0631c172b1706716ff14b556ee10ce38d655967e0b089314dc75d4d",
+    "test/api/test_source_formalization_memfd.py": "fe484e0de0b338893eeebfdd44b6725abb4de151fe1e9f83f04d70e2d3a5a2d7",
+    "test/api/test_source_formalization_context.py": "0a4861bc78f8cb00518a77fa630fb2b5bd524d1f2f805205f41b8472279f2fd4"
+  },
+  "source_unchanged": true
+}
