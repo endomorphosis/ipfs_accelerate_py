@@ -251,5 +251,7 @@ def test_standalone_help_and_guidance_document_candidate_evidence_boundary():
     assert "--expected-workspace-generation" in result.stdout
     guidance = client.guidance("python-comments@1")
     assert "Edit original workspace files" in guidance
-    assert "Working snapshots do not refresh or prove the semantic index" in guidance
+    assert "Working snapshots do not refresh or prove the accepted semantic index" in guidance
+    assert "worker_candidate_context_client.py" in guidance
+    assert "runs no solver or Lake build" in guidance
     assert "--working" in guidance and "--expected-workspace-generation" in guidance

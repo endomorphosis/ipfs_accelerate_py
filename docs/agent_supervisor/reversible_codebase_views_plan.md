@@ -210,6 +210,15 @@ successful source restoration alone does not qualify that execution profile.
 
 ## Qualification and experiment order
 
+The [working candidate context reader](worker_candidate_context.md) now rebuilds
+native capsules and pending numerical formulas for a pinned edited snapshot.
+It shares the isolated worker's read-only source session and accounts artifact
+bytes separately. This advances the mid-coding refresh portion of stages 2–3;
+accepted DuckLake/proof publication, mapped edits and complete-session token
+savings remain separate qualification work. Full formal artifacts can be much
+larger than source, so the benchmark must charge summaries, expansions and
+refreshes actually requested by the worker.
+
 | Stage | Concrete deliverable | Acceptance before advancing |
 | --- | --- | --- |
 | 0: reconcile current work | This source audit and plan, incorporating ranked CLI/successor refresh and the latest census | Historical helper and foreign untracked plan remain clearly identified |

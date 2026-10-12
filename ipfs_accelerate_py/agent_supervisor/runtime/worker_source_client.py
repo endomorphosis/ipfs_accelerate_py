@@ -79,6 +79,9 @@ def load_descriptor(path, digest, *, workspace=None):
 
 
 def validate_request(value):
+    if type(value) is dict and value.get("schema") == "supervisor-worker-candidate-context-request@1":
+        from .worker_candidate_context_client import validate_request as validate_candidate_request
+        return validate_candidate_request(value)
     _need(type(value) is dict and set(value) == {"schema", "session_id", "request_id", "query"}
         and value["schema"] in (REQUEST_SCHEMA, REQUEST_SCHEMA_V2) and _hex(value["session_id"], 32)
         and _hex(value["request_id"], 32), "invalid source request envelope")
@@ -119,6 +122,9 @@ def _validate_cursor(cursor):
 
 
 def validate_response(value, *, request, descriptor=None):
+    if type(request) is dict and request.get("schema") == "supervisor-worker-candidate-context-request@1":
+        from .worker_candidate_context_client import validate_response as validate_candidate_response
+        return validate_candidate_response(value, request=request, descriptor=descriptor)
     validate_request(request)
     _need(type(value) is dict and set(value) == {"schema", "session_id", "request_id", "ok", "page", "reason_code"}
         and value["schema"] == RESPONSE_SCHEMA and type(value["ok"]) is bool
@@ -267,7 +273,12 @@ def guidance(profile):
         "working-candidate first page. For its continuation or exact-source expansion, keep --working "
         "and pass --expected-workspace-generation plus both source/view pins from that candidate page. "
         "A changed workspace generation refuses old continuations and pins; request a fresh first page. "
-        "Working snapshots do not refresh or prove the semantic index; treat prior capsules/proofs as stale. "
+        "Working snapshots do not refresh or prove the accepted semantic index; treat prior capsules/proofs as stale. "
+        "To rebuild advisory capsules and pending formulas for that generation, run the sibling "
+        "worker_candidate_context_client.py with --expected-workspace-generation <generation> "
+        "--artifact summary (or capsules/formal for exact JSON artifact pages). Keep that generation "
+        "and pass next_cursor as --cursor for continuation. Candidate context is deterministic, "
+        "may have unsupported coverage, and runs no solver or Lake build. It grants no proof authority. "
         "Profile: " + profile + ". "
         "Views confer no proof or completion.\n")
 

@@ -94,6 +94,11 @@ text availability grants no reuse of baseline proofs. Deleted, renamed, unsafe
 or oversized admitted files refuse; newly created unadmitted files remain outside
 scope. Source writes and mapped compact edits are not performed by this reader.
 
+The separate [candidate context reader](worker_candidate_context.md) can rebuild
+advisory capsules and pending formulas for an explicitly pinned working
+generation. Its artifact bytes are accounted separately from source slices;
+accepted indexes and proof receipts retain their own publication lifecycle.
+
 ## Currentness and worker lifecycle
 
 The existing owner launcher seals the compiled prompt, independently replays

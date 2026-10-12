@@ -1,0 +1,13 @@
+{
+  "schema": "candidate-context-integration-review@1",
+  "reviewer_task": "/root/candidate_wire_review",
+  "reported_release_blockers": [],
+  "root_rechecked_source_hashes": 96,
+  "root_rechecked_runner_hashes": 3,
+  "large_artifact_and_empty_scope_admission_corrected": true,
+  "warm_producer_checks": true,
+  "late_build_delivery_refused": true,
+  "docker_full_summary_and_partial_artifact_scope_verified": true,
+  "provider_tokens_measured": false,
+  "accepted_index_published": false
+}

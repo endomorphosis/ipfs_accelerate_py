@@ -34,7 +34,8 @@ def _base(status="unavailable", reason="evidence_unavailable"):
 
 def _session(raw, row, scope):
     audit = _parse(raw)
-    _need(set(audit) == _AUDIT_FIELDS and audit["schema"] == "supervisor-worker-source-session@1"
+    _need(set(audit) == _AUDIT_FIELDS and audit["schema"] in {
+        "supervisor-worker-source-session@1", "supervisor-worker-source-session@2"}
         and all(audit[key] is False for key in ("proof_authority", "execution_authority", "completion_authority")))
     for key in ("source_obligations_discharged", "retrieval_provider_calls"):
         _need(type(audit[key]) is int and audit[key] == 0)
@@ -59,14 +60,37 @@ def _session(raw, row, scope):
     advice = protocol.guidance(descriptor["profile"]).encode()
     _need(observation["guidance_sha256"] == _sha(advice)
         and type(observation["guidance_bytes"]) is int and observation["guidance_bytes"] == len(advice))
-    counts, statuses, requests, responses = _records(audit, descriptor,
+    candidate_counts = None
+    accounting_audit = audit
+    if audit["schema"] == "supervisor-worker-source-session@2":
+        candidate_counts = dict(prepared_pages=0, delivered_pages=0, prepared_bytes=0, delivered_bytes=0)
+        _need(type(audit["requests"]) is list)
+        records = []
+        for item in audit["requests"]:
+            _need(type(item) is dict)
+            record = dict(item)
+            size = record.pop("returned_candidate_context_bytes", None)
+            candidate = record.pop("candidate_context_page", None)
+            _need(type(size) is int and 0 <= size <= protocol.MAX_FRAME_BYTES
+                and type(candidate) is bool and (candidate or size == 0)
+                and (not candidate or (record.get("status") == "ok" and size > 0
+                    and record.get("returned_source_bytes") == 0))
+                and type(record.get("response_bytes")) is int and size <= record["response_bytes"])
+            candidate_counts["prepared_pages"] += candidate
+            candidate_counts["prepared_bytes"] += size
+            if record.get("delivered") is True:
+                candidate_counts["delivered_pages"] += candidate
+                candidate_counts["delivered_bytes"] += size
+            records.append(record)
+        accounting_audit = dict(audit, requests=records)
+    counts, statuses, requests, responses = _records(accounting_audit, descriptor,
         detail_field="returned_source_bytes", max_detail=protocol.MAX_FRAME_BYTES, count_noun="source_bytes")
     _need(all(item["returned_source_bytes"] <= item["response_bytes"] for item in audit["requests"]))
     return dict(session_id_sha256=_sha(descriptor["session_id"].encode()),
         invocation_id_sha256=_sha(row["invocation_id"].encode()), audit_sha256=_sha(raw),
         descriptor_sha256=audit["descriptor_sha256"], profile=descriptor["profile"],
         semantic_sha256=descriptor["semantic_sha256"], source_manifest_sha256=descriptor["source_manifest_sha256"],
-        counts=counts, status_counts=dict(sorted(statuses.items())),
+        counts=counts, candidate_context_counts=candidate_counts, status_counts=dict(sorted(statuses.items())),
         unique_request_hash_count=len(requests), unique_response_hash_count=len(responses)), requests, responses
 
 
@@ -124,7 +148,10 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
         result = _base("observed", "matched_owner_session_accounting")
         result.update(sessions=sessions, counts=counts,
             response_byte_scope="canonical JSON response bodies; excludes frame prefixes and CLI newlines",
-            source_byte_scope="all returned slices including repeated reads and representations")
+            source_byte_scope="source slices including repeated reads; excludes candidate context artifacts")
+        result["candidate_context_counts"] = ({key: sum(item["candidate_context_counts"][key] for item in sessions)
+            for key in ("prepared_pages", "delivered_pages", "prepared_bytes", "delivered_bytes")}
+            if all(item["candidate_context_counts"] is not None for item in sessions) else None)
         _need(len(protocol.canonical_json(result)) <= MAX_AUDIT_BYTES)
         return result
     except (OSError, ValueError, TypeError, KeyError, RuntimeError, RecursionError):

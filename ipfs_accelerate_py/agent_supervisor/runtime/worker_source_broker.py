@@ -17,7 +17,7 @@ from .numerical_obligation_broker import (
 
 class WorkerSourceBroker(NumericalObligationBroker):
     protocol = protocol
-    audit_schema = "supervisor-worker-source-session@1"
+    audit_schema = "supervisor-worker-source-session@2"
     file_prefix = "source-view"
 
     def __init__(self, *, repository, workspace, boundary, prompt, profile, timeout_seconds):
@@ -42,6 +42,16 @@ class WorkerSourceBroker(NumericalObligationBroker):
             source_hashes={name: binding["sha256"] for name, binding in table["source_manifest"].items()},
             **self._binding)
         self._view_admission = protocol.canonical_json(self.views.admission())
+        # Read the exact artifact already sealed into the verified translation.
+        # Its versioned program selection excludes support/instruction files.
+        from .semantic_router_translation import _read, _sha, _parse
+        from .worker_candidate_context import WorkerCandidateContext
+        raw = _read(self.repository, table["semantic_artifact"])
+        if _sha(raw) != table["semantic_sha256"]:
+            raise ValueError("candidate program selection changed")
+        payload = _parse(raw.decode("utf-8"))
+        program_paths = payload.get("program_paths", sorted(table["source_manifest"]))
+        self.candidate_context = WorkerCandidateContext(self.views, tuple(program_paths))
         self._start_session(identity=self._binding, boundary_sha=boundary_sha,
                             timeout_seconds=timeout_seconds)
 
@@ -76,24 +86,31 @@ class WorkerSourceBroker(NumericalObligationBroker):
         except (OSError, ValueError):
             return self._response(request, reason="peer_refused")
         try:
-            working = request["schema"] == "supervisor-worker-source-request@2"
-            self._current_context(working=working)
+            candidate = request["schema"] == "supervisor-worker-candidate-context-request@1"
+            working = candidate or request["schema"] == "supervisor-worker-source-request@2"
+            self._current_context(working=working,
+                generation=request["query"]["expected_workspace_generation"] if candidate else None)
         except (OSError, ValueError, RuntimeError):
+            self.candidate_context.clear()
             return self._response(request, reason="stale_context")
         overhead = len(protocol.canonical_json(self._response(request, page={}))) - 2
         query = dict(request["query"], max_bytes=request["query"]["max_bytes"] - overhead)
         try:
-            if working:
+            if candidate:
+                page = self.candidate_context.page(**query)
+            elif working:
                 query.pop("source_state")
                 page = self.views.working_page(**query)
             else:
                 page = self.views.page(**query)
         except (OSError, ValueError, RuntimeError):
+            self.candidate_context.clear()
             return self._response(request, reason="retrieval_refused")
         try:
             self._current_context(working=working, generation=page.get("workspace_generation"))
             self._peer(channel)
         except (OSError, ValueError, RuntimeError):
+            self.candidate_context.clear()
             return self._response(request, reason="stale_context")
         response = self._response(request, page=page)
         if len(protocol.canonical_json(response)) > request["query"]["max_bytes"]:
@@ -101,8 +118,12 @@ class WorkerSourceBroker(NumericalObligationBroker):
         return response
 
     def _record_details(self, response=None):
-        return dict(returned_source_bytes=(response["page"]["end_offset"] - response["page"]["offset"])
-            if response is not None and response["ok"] else 0)
+        page = response["page"] if response is not None and response["ok"] else None
+        candidate = page is not None and page["schema"] == "supervisor-worker-candidate-context-page@1"
+        count = page["end_offset"] - page["offset"] if page is not None else 0
+        return dict(returned_source_bytes=0 if candidate else count,
+            returned_candidate_context_bytes=count if candidate else 0,
+            candidate_context_page=candidate)
 
 
 def prepare_worker_source_broker(*, argv, boundary, workspace, input_fd=0):

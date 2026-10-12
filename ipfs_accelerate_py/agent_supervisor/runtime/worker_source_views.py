@@ -212,6 +212,30 @@ class WorkerSourceViews:
                 "working source generation differs")
             return candidate.admission()
 
+    def working_sources(self, *, expected_workspace_generation):
+        """Return owner-captured bytes for an existing, exact candidate generation.
+
+        This owner-only accessor never refreshes a generation or reads outside
+        its admitted population. Checks bracket the immutable-byte copy; a
+        refusal invalidates the working generation and its continuations.
+        """
+        with self._lock:
+            try:
+                _need(_digest(expected_workspace_generation), "exact working source generation required")
+                candidate = self._working
+                _need(candidate is not None and candidate.generation == expected_workspace_generation,
+                    "working source generation differs")
+                candidate._check_sources()
+                sources = dict(candidate._originals)
+                _need(set(sources) == set(candidate._hashes)
+                    and all(type(raw) is bytes and _sha(raw) == candidate._hashes[name]
+                        for name, raw in sources.items()), "captured working source differs")
+                candidate._check_sources()
+                return sources
+            except (OSError, ValueError, RuntimeError):
+                self._discard_working()
+                raise
+
     def working_page(self, *, path, view="compact", cursor=None, max_bytes=8192,
                      expected_source_sha256=None, expected_view_sha256=None,
                      expected_workspace_generation=None):

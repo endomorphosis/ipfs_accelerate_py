@@ -1,0 +1,31 @@
+{
+  "qualified_datasets_commit": "f47161b757190380e9898aff155067c1ad609217",
+  "preserved_parent_datasets_commit": "e39fe996bd9e786a84f739fda9dde9a6c70546da",
+  "direct_candidate_dataset_producers_unchanged": true,
+  "source_sha256": {
+    "ipfs_datasets_py/logic/backends/smt/compiler.py": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+    "ipfs_datasets_py/logic/families/registry.py": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+    "ipfs_datasets_py/logic/software_contracts/content.py": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+    "ipfs_datasets_py/logic/software_contracts/python_frontend.py": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+    "ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102",
+    "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75",
+    "ipfs_datasets_py/logic/software_contracts/semantic_index/pytest_analysis.py": "45a0ab3fae08e91db2971540e5d933c8e82c47e7f65b3e5ec88912dbedc67ab4",
+    "ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py": "744c5d1699403239d3eb5e9588a38a38cbc0cc56799c2884d8821f1a4e1bdd76",
+    "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+    "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+    "ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py": "4e269d1e2f39ea27582e98f240996696d61b0fe0b1358e363ff2376baa7972e3",
+    "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51",
+    "ipfs_datasets_py/logic/software_contracts/semantic_state/bindings.py": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc",
+    "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d",
+    "ipfs_datasets_py/logic/software_contracts/semantic_state/merkle.py": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0",
+    "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586",
+    "ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "ipfs_datasets_py/logic/software_verification/program.py": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+    "ipfs_datasets_py/logic/software_verification/source_adapters.py": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003",
+    "ipfs_datasets_py/logic/software_verification/syntax_bridge.py": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+    "ipfs_datasets_py/logic/syntax_core/ast.py": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+    "ipfs_datasets_py/logic/syntax_core/signatures.py": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf"
+  },
+  "scope": "Only the direct datasets candidate producers were compared; this is not a whole-parent regression run."
+}

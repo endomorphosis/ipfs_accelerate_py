@@ -1,0 +1,127 @@
+{
+  "schema": "candidate-context-public-evidence-manifest@1",
+  "files": {
+    "README.md": {
+      "bytes": 4244,
+      "sha256": "afa166a961d0a0041c8cb8470c219429c5ec5973f9530155a52a4736cded71b6"
+    },
+    "capability-02/command.json": {
+      "bytes": 21183,
+      "sha256": "60728d5844509c4b73be0af38300acaa09aed337dae989e2427c943b75c122d9"
+    },
+    "capability-02/junit.xml": {
+      "bytes": 22805,
+      "sha256": "e9e0ca936d2044a4fd91240ce77d21aaac2324bb0de33e4de03551b17ad0f3fa"
+    },
+    "capability-02/qualification.json": {
+      "bytes": 19547,
+      "sha256": "dbda6795e8eb72bbd84cd679580f567325c78de23edf4d5f9945783378334fdb"
+    },
+    "closeout-review.json": {
+      "bytes": 814,
+      "sha256": "7a7caa728b95c5f4bd8ddbd220a432d27342b8653841736b6d77f095faed1ef1"
+    },
+    "docker-01/command.json": {
+      "bytes": 25457,
+      "sha256": "3534c4aaea505e27bb1dd98d86c0266df133cfd6e9922141769fc6e7b032df14"
+    },
+    "docker-01/container-controls.json": {
+      "bytes": 2428,
+      "sha256": "991877372ba4df4b7e96186de0408299c9a3509fe076ee1a3e4fd794080402f7"
+    },
+    "docker-01/owner-command.json": {
+      "bytes": 291,
+      "sha256": "a8133fe14776924be1f6b6d8b9095119d51c24d4265a8b02eb29e01cc5e721ce"
+    },
+    "docker-01/qualification.json": {
+      "bytes": 8479,
+      "sha256": "9a230b8191fa9958af87b2ffe90f51b9ac048aab1145c6923391d376a258c0f9"
+    },
+    "docker-01/results/candidate-artifact-observation.json": {
+      "bytes": 529,
+      "sha256": "1bd858af3749cd0a4f6c5176334a868532dac1514267809ec822d3fd56dcf762"
+    },
+    "docker-01/results/collector-diagnostic.json": {
+      "bytes": 81,
+      "sha256": "435b978c84bb636cf74d8fd537e9cc496bb976a6b4e6a22f583b645fcfb5a17f"
+    },
+    "docker-01/results/probe-qualification.json": {
+      "bytes": 5499,
+      "sha256": "e74185c9094c28e9bcb4539479310cbfd70152904060027ee13c0634eac759d3"
+    },
+    "docker-01/results/session-observation.json": {
+      "bytes": 2193,
+      "sha256": "4648816fcc080324a989cd7d533ef1cf600a9679a3a423d485308cc06e02dbf8"
+    },
+    "docker-01/root-setup.py": {
+      "bytes": 3196,
+      "sha256": "59348817d56ce41e78636d516c64cce8c523d24dcc1e5dbf737e88ec31413414"
+    },
+    "docker-01/root-setup.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docker-01/root-setup.stdout": {
+      "bytes": 1016,
+      "sha256": "d1737c535d420decb7456a84c0b52b8159b87e313971f6ce342bb5a3f3f8bb74"
+    },
+    "docker-01/runner-snapshot/owner_probe.py": {
+      "bytes": 19691,
+      "sha256": "5a6e37dfb6dd6eb89b9a437807bf1a4d175dfb06bc4154c8f75719bcc8422e27"
+    },
+    "docker-01/runner-snapshot/run_docker_qualification.py": {
+      "bytes": 11357,
+      "sha256": "de0078ce3102aaae56f62ffb478f5a96b6326caaee259e213cc9349cd6affff3"
+    },
+    "docker-01/runner-snapshot/worker_probe.py": {
+      "bytes": 20783,
+      "sha256": "5a367a367eb585b245e9264f0861c1dcc123893de51fe46318b3ff35a4b365be"
+    },
+    "documentation-gates.json": {
+      "bytes": 845,
+      "sha256": "ba365807fefb1d5990c7204be20c84fbaca5330aeac7cbd5917115894f44ff7b"
+    },
+    "final-01/command.json": {
+      "bytes": 21062,
+      "sha256": "36c552db51c5aaf7842375e0c481b9dd980d44d03718bcc967d5defd020f3d24"
+    },
+    "final-01/junit.xml": {
+      "bytes": 131805,
+      "sha256": "e83e9d6c884e9302004161c71f6c3212b36335d4d4c90631b9c8eb1720ced8b6"
+    },
+    "final-01/qualification.json": {
+      "bytes": 18277,
+      "sha256": "bd37e948e895300f663517c3cf069e1ea8c1de7f98ef8ada7f89b92b42d61e41"
+    },
+    "focused-01/command.json": {
+      "bytes": 20054,
+      "sha256": "9e4887138b3ca7bd5db6c8808d3a563f5b5da2181c07a92e9b1f4b43d3112f27"
+    },
+    "focused-01/junit.xml": {
+      "bytes": 86605,
+      "sha256": "8e9e02ad83a725316c5340480d961bd69e51ed41b62399c6cd904f1857739881"
+    },
+    "focused-01/qualification.json": {
+      "bytes": 18074,
+      "sha256": "907b0e9e74cf7c060f73568cdae02a3a68b8bf385be7a473bedea9818345afeb"
+    },
+    "integration-review.json": {
+      "bytes": 491,
+      "sha256": "7d2d8e089a784e3d17f55e32c8982071f548bcd1b595fe80707f176d5ecc27e1"
+    },
+    "parent-datasets-producer-equivalence.json": {
+      "bytes": 3525,
+      "sha256": "b83c097bdb4e90333f33496a7b55179e85daf188f7d2ba01b0278e6cfd1a636a"
+    },
+    "root-release-01.json": {
+      "bytes": 22002,
+      "sha256": "ce642cf5416a0284d18254d402b56840d8a11db38c05f5c32aed38226046a8f6"
+    },
+    "run_tests.py": {
+      "bytes": 2265,
+      "sha256": "37389b50494ea695754d027ffe4915f8472997548d475b1f52a2467492c7f030"
+    }
+  },
+  "private_source_bodies_exported": false,
+  "provider_token_savings_measured": false
+}

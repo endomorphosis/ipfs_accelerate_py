@@ -1,0 +1,20 @@
+{
+  "production_and_runner_sources_unchanged_since_docker": true,
+  "all_docker_source_bindings_still_match": true,
+  "test_only_changes_after_combined_run": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": {
+      "qualified": "f8a03c41a5aa25702cae78e7efafc090010e2a3444d72067a37220c2eb9cb214",
+      "current": "21648e5f1dfc3f591f5d1dff60b86632e1fe024ca829309aa9ea84145f33bfbc"
+    }
+  },
+  "reason": "Archive inventory fixture updated to require three new production modules; all104archivecases subsequently passed.",
+  "unique_regression_cases_with_passing_result": 731,
+  "combined_run": {
+    "passed": 730,
+    "failed": 1
+  },
+  "followup_run": {
+    "passed": 104,
+    "failed": 0
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "docker",
+    "exec",
+    "--user",
+    "1000:1000",
+    "--env",
+    "HOME=/home/supervisor",
+    "1d39a7f0641e946b7f8b168eded24e883cb0998f87a4e1ebfc674e3e01d5788e",
+    "/opt/ipfs-supervisor/venv/bin/python",
+    "-I",
+    "-B",
+    "/qualification/owner_probe.py"
+  ]
+}
