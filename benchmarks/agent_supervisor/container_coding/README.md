@@ -16,6 +16,18 @@ The container comparison explicitly pins `codex_cli` / `gpt-6.1-sol` in both
 the supervisor arm and native Codex baseline. That matched-model profile does
 not exercise the general supervisor's Grok route or its fallback.
 
+Full-supervisor Codex deployment installs the pinned CLI through a source-owned
+installer with a private npm configuration and cache. Distribution Node.js and
+npm are installed in a bounded dependency step; Node.js must be version 16 or
+newer. Unsupported versions fail before authentication or model execution.
+The installer supports Linux ARM64 and x86-64, with independently pinned hashes
+for both native executables. It has a shared 180-second deadline, bounded
+downloads and output, and process-group cleanup on timeout or cancellation.
+It checks package and executable versions before exposing the protected runtime.
+Setup receipts contain versions, hashes and phase results without npm output or
+inherited environment values. A failed setup remains a failed campaign attempt;
+recovery uses a fresh preparation and retains the original failure.
+
 For a lossless metadata comparison, hold `semantic_context_profile` and the
 selected capsule population constant and vary `semantic_metadata_view` between
 `legacy` and `common-bindings@1`. Opt-in trial receipts include
