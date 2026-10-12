@@ -85,3 +85,17 @@ The commands retain their original absolute temporary output paths. Files under
 retains the original checkout and dependency paths and is an execution receipt,
 not a portable environment installer. Historical qualification bundles remain
 unchanged.
+
+## Integration with parallel publication
+
+The selective candidate-context publication `06a437cdba28e148912d998bf2cb85a805a3d4d9`
+was merged after the passing host run. Its 68 changed paths do not intersect any
+of the 37 qualified direct source/test bindings. The shared reversible-view
+plan merged cleanly; candidate selectors and their historical qualification
+artifacts retain their separate scope. This comparison does not certify a new
+combined Docker or provider run.
+
+Final checks retain [integrated guide and evidence link checks](documentation-integrated-checks.json)
+and [parallel source-equivalence observation](integration-source-equivalence.json).
+The [publication manifest](publication-manifest.json) binds the final public
+files while excluding its own hash.
