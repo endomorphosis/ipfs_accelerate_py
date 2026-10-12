@@ -1,0 +1,38 @@
+{
+  "total": 25,
+  "authored_groups": [
+    [
+      "test/api/test_doctor_header_proof_inventory.py::test_persisted_inventory_uses_same_sealed_owner_without_kernel_or_generic_put",
+      "test/api/test_doctor_header_proof_inventory.py::test_inventory_decoder_rejects_closed_schema_and_population_poison[authority]",
+      "test/api/test_doctor_header_proof_inventory.py::test_inert_inventory_declarations_enforce_entry_count_and_aggregate_byte_bounds",
+      "test/api/test_doctor_header_proof_inventory.py::test_independent_inventory_and_host_pins_refuse_before_kernel_or_generic_write[scope]",
+      "test/api/test_doctor_header_proof_inventory.py::test_inventory_sql_preimage_corruption_refuses_before_any_kernel",
+      "test/api/test_doctor_header_proof_inventory.py::test_second_valid_entry_profile_poison_preflights_the_whole_inventory_before_first_kernel",
+      "test/api/test_doctor_header_proof_inventory.py::test_historical_inventory_implementation_drift_refuses_before_fresh_kernel_or_cache_put[emitter]",
+      "test/api/test_doctor_header_proof_inventory.py::test_explicit_empty_inventory_persists_and_restores_without_kernel_or_generic_put"
+    ],
+    [
+      "test/api/test_doctor_header_proof_inventory.py::test_cold_restart_rebuilds_host_inputs_and_replays_one_kernel_before_stable_local_cache_admission",
+      "test/api/test_doctor_header_proof_inventory.py::test_inventory_decoder_rejects_closed_schema_and_population_poison[version]",
+      "test/api/test_doctor_header_proof_inventory.py::test_independent_inventory_and_host_pins_refuse_before_kernel_or_generic_write[inventory-cid]",
+      "test/api/test_doctor_header_proof_inventory.py::test_independent_inventory_and_host_pins_refuse_before_kernel_or_generic_write[native-path]",
+      "test/api/test_doctor_header_proof_inventory.py::test_restore_requires_the_complete_independently_rebuilt_preparation_population[missing]",
+      "test/api/test_doctor_header_proof_inventory.py::test_later_valid_but_wrong_receipt_id_refuses_before_its_put_without_rolling_back_first_import",
+      "test/api/test_doctor_header_proof_inventory.py::test_historical_inventory_implementation_drift_refuses_before_fresh_kernel_or_cache_put[codec]",
+      "test/api/test_doctor_header_proof_inventory.py::test_invalid_receipt_pin_type_refuses_before_cache_path_stat_or_kernel"
+    ],
+    [
+      "test/api/test_doctor_header_proof_inventory.py::test_inventory_decoder_rejects_closed_schema_and_population_poison[unknown]",
+      "test/api/test_doctor_header_proof_inventory.py::test_inventory_decoder_rejects_closed_schema_and_population_poison[duplicate-entry]",
+      "test/api/test_doctor_header_proof_inventory.py::test_independent_inventory_and_host_pins_refuse_before_kernel_or_generic_write[task]",
+      "test/api/test_doctor_header_proof_inventory.py::test_independent_inventory_and_host_pins_refuse_before_kernel_or_generic_write[cache-path]",
+      "test/api/test_doctor_header_proof_inventory.py::test_restore_requires_the_complete_independently_rebuilt_preparation_population[extra]",
+      "test/api/test_doctor_header_proof_inventory.py::test_duplicate_admissions_cannot_append_a_new_inventory_row",
+      "test/api/test_doctor_header_proof_inventory.py::test_historical_inventory_implementation_drift_refuses_before_fresh_kernel_or_cache_put[inventory]",
+      "test/api/test_doctor_header_proof_inventory.py::test_wrong_bounded_expected_receipt_cid_replays_kernel_but_never_puts_or_quarantines"
+    ]
+  ],
+  "real": [
+    "test/api/test_doctor_header_proof_inventory.py::test_real_lean_z3_inventory_cold_restore_runs_one_actual_kernel_and_preserves_local_scope"
+  ]
+}

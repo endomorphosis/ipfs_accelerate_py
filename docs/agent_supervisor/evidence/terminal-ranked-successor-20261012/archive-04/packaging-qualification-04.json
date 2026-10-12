@@ -1,0 +1,54 @@
+{
+  "actual_full_recipe_intent_status": "unmeasured_until_run",
+  "actual_tar_members_verified": 27468,
+  "added_metadata_paths": [
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_header_proof_inventory.py"
+  ],
+  "all_previous_metadata_dependencies_retained": true,
+  "archive_bytes": 1341945871,
+  "archive_manifest_sha256": "08788f206e82e963176c0d139e2133f3c6a751fb2e846c898e5b731dfccf1ff2",
+  "archive_sha256": "1f2637d14981e2c3659c2bff7ad66d7509a17b942aead36067a75abf83142150",
+  "datasets_head": "c1b1f65f254f5f3ee8f307cdddf923c62450f78e",
+  "default_lexical_unchanged": true,
+  "full_recipes_share_census03_intent_control": false,
+  "full_runtime_deployment_qualified": false,
+  "live_launch_authorized": false,
+  "metadata_source_paths": 41,
+  "neural_inference_calls": 0,
+  "other_controls_exactly_match": true,
+  "prepared_full_comparison_profiles": [
+    "full-instruction-dedup",
+    "full-lexical-baseline",
+    "full-ranked-capsules"
+  ],
+  "prior03_archive_and_results_preserved": true,
+  "provider_calls": 0,
+  "qualified": true,
+  "receipts": {
+    "archive-readiness-04.json": {
+      "bytes": 476,
+      "sha256": "a26788f43eace27bed9ebdf4b60bbb03041310f4bf6ad8095e53afc8be88f667"
+    },
+    "dependency-qualification-04.json": {
+      "bytes": 1289,
+      "sha256": "a40c368d3ce268f2eae1be2d0797677b61c4726c1bd4aa39e12bf164dd418089"
+    },
+    "matched-comparison-recipes.json": {
+      "bytes": 11515,
+      "sha256": "44774765a27baac3ca2a91b6b009a1a3d06950c354a5d5716eea2c117799914a"
+    },
+    "prepared-commands.json": {
+      "bytes": 2308,
+      "sha256": "e4b4e210306defb3af3b6da352d69e6ec48d3cb89eaafd8e659c29ce40cb07e8"
+    },
+    "source-freeze-04.json": {
+      "bytes": 63317,
+      "sha256": "82756519a399956873b161a001aaa04b516dc821a62f6baf533b99ff25e8c474"
+    }
+  },
+  "schema": "terminal-current-runtime-packaging-qualification@1",
+  "separate_instruction_and_rank_treatments": true,
+  "source_bindings_unchanged_after_recipe_preparation": true,
+  "source_freeze_sha256": "82756519a399956873b161a001aaa04b516dc821a62f6baf533b99ff25e8c474",
+  "source_head": "2a74d4fbf0241d1171f863ed80681e93588c68bc"
+}

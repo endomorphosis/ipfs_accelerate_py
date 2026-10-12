@@ -1,0 +1,15 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/header-inventory-postmerge-policy-01/cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 46 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py . [  2%]
+.............................................                            [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/header-inventory-postmerge-policy-01/junit.xml -
+============================= slowest 10 durations =============================
+
+(10 durations < 0.005s hidden.  Use -vv to show these durations.)
+============================= 46 passed in 14.46s ==============================

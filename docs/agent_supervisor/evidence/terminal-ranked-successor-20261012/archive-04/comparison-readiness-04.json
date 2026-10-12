@@ -1,0 +1,37 @@
+{
+  "archive_sha256": "1f2637d14981e2c3659c2bff7ad66d7509a17b942aead36067a75abf83142150",
+  "files": {
+    "archive-readiness-04.json": {
+      "bytes": 476,
+      "sha256": "a26788f43eace27bed9ebdf4b60bbb03041310f4bf6ad8095e53afc8be88f667"
+    },
+    "broader-baseline-recipes.json": {
+      "bytes": 6079,
+      "sha256": "a8e0b4fb849d71d0606e6f3f99125cd8ca5829a73737620205c66710716eb685"
+    },
+    "dependency-qualification-04.json": {
+      "bytes": 1289,
+      "sha256": "a40c368d3ce268f2eae1be2d0797677b61c4726c1bd4aa39e12bf164dd418089"
+    },
+    "matched-comparison-recipes.json": {
+      "bytes": 11515,
+      "sha256": "44774765a27baac3ca2a91b6b009a1a3d06950c354a5d5716eea2c117799914a"
+    },
+    "packaging-qualification-04.json": {
+      "bytes": 2147,
+      "sha256": "a84bb4e38e6f08340c2907de6b8da72966a6190c2a8732d080cc74169a974245"
+    }
+  },
+  "full_config_previews_schema_accepted": true,
+  "live_release_present": false,
+  "neural_inference_calls": 0,
+  "prepared_full_profile_count": 3,
+  "prior03_live_measurement_scope_unchanged": true,
+  "provider_calls": 0,
+  "runtime_deployment_qualified": false,
+  "schema": "terminal-current-comparison-preparation@1",
+  "source_freeze_sha256": "82756519a399956873b161a001aaa04b516dc821a62f6baf533b99ff25e8c474",
+  "supplementary_commands_declared_only": true,
+  "supplementary_native_noindex_command_count": 2,
+  "tests_run_by_packaging_agent": 0
+}

@@ -139,6 +139,7 @@ private prompt bodies. No full per-section prompt breakdown is available.
 | [Corrected runtime archive](archive-03/archive-readiness-03.json) | **27,467 members verified** | Exact corrected datasets tree, immutable checkpoint assets and existing benchmark controls |
 | [Archived strict-JSON qualification](archived-cli-03/qualification.json) | **18 passed** | Exact standalone interpreter, actual Source384 JSON gate and authored census CLI; network disabled |
 | [Second live-planned instruction census](live-census-02/closed-census-review-02.json) | **Planning passed; census failed** | 25,185 planning tokens; JSON framing prevented input measurement; zero coding calls |
+| [Final inventory merge](header-inventory-postmerge-summary.json) | **73 passed** | 25 inventory cases including Lean/Z3 restart, 2 bridge regressions, 46 merged source-closure checks |
 | [Corrected live-planned instruction census](live-census-03/closed-census-review-03.json) | **Passed** | 65,222 to 64,254 complete input bytes; 25,315 planning tokens; zero coding/verifier calls |
 
 The four host runs passed **401 distinct tests**, without failures or skips;
@@ -249,6 +250,21 @@ checks tampering of the added dependency. The targeted 98-case worker rerun
 passed; it repeats cases from the broader run and is not added as 98 distinct
 new tests. The original failed run is retained.
 
+After the live census closed, publication merged upstream
+`1f6d998a92db4024f35b57bbdb183a6626a7fa31`, retaining its proof inventory and
+optional expected-receipt check. Metadata closure now includes 41 source paths:
+the new inventory plus both portability dependencies. The scoped 73-case
+postmerge run used datasets `c1b1f65f254f5f3ee8f307cdddf923c62450f78e` and
+passed with unchanged source bytes. The live archive remains a historical
+measurement of its exact frozen sources, not a claim that later code was run.
+
+The [current archive04 packaging](archive-04/packaging-qualification-04.json)
+verified all 27,468 ordinary members with the merged 41-path metadata closure.
+Its SHA-256 is
+`1f2637d14981e2c3659c2bff7ad66d7509a17b942aead36067a75abf83142150`.
+This qualifies source packaging and dependency closure; runtime deployment,
+model inference and full coding trials were not repeated on archive04.
+
 ## Next comparison
 
 The live instruction census gate is complete. Run matched complete benchmarks
@@ -258,3 +274,18 @@ all retained planning, coding, refresh and repair attempts, including failures,
 and compare complete native tokens, elapsed time and reported cost against the
 official verifier result. Missing usage remains unknown. Smaller inputs and
 successful offline lifecycle checks do not establish total token savings.
+
+
+[Three full-arm recipes](archive-04/matched-comparison-recipes.json) are prepared:
+lexical/legacy baseline, instruction deduplication, and retrieval-ranked capsules.
+Only one treatment changes against the full baseline in each comparison; the
+configuration previews were schema-accepted. All use admitted default Intent
+handling, whose actual status is unmeasured until execution, unlike census03's
+explicitly disabled Intent autoencoder.
+
+[Native Codex and no-index commands](archive-04/broader-baseline-recipes.json)
+are also declared, but have not run. The current no-index contract requires a
+legacy reply mode and excludes the full-only setup-cache profile. Those broader
+comparisons are observational and cannot isolate indexing alone. No new score
+or full-run token result is asserted by this
+[comparison preparation](archive-04/comparison-readiness-04.json).

@@ -1,0 +1,18 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/header-inventory-postmerge-bridge-01/cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test
+configfile: pytest.ini
+collected 2 items
+
+test/api/test_doctor_header_cache_bridge.py ..                           [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/header-inventory-postmerge-bridge-01/junit.xml -
+============================= slowest 10 durations =============================
+27.12s call     api/test_doctor_header_cache_bridge.py::test_repeat_native_replay_keeps_original_receipt_identity_without_quarantining
+17.30s call     api/test_doctor_header_cache_bridge.py::test_native_custody_replay_admits_only_local_receipt_and_native_cache_preserves_scope
+2.81s setup    api/test_doctor_header_cache_bridge.py::test_native_custody_replay_admits_only_local_receipt_and_native_cache_preserves_scope
+2.64s setup    api/test_doctor_header_cache_bridge.py::test_repeat_native_replay_keeps_original_receipt_identity_without_quarantining
+
+(2 durations < 0.005s hidden.  Use -vv to show these durations.)
+========================= 2 passed in 67.06s (0:01:07) =========================

@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/header-inventory-postmerge-inventory-authored-0-01/cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test
+configfile: pytest.ini
+collected 8 items
+
+test/api/test_doctor_header_proof_inventory.py ........                  [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/header-inventory-postmerge-inventory-authored-0-01/junit.xml -
+============================= slowest 10 durations =============================
+45.31s call     api/test_doctor_header_proof_inventory.py::test_second_valid_entry_profile_poison_preflights_the_whole_inventory_before_first_kernel
+27.13s setup    api/test_doctor_header_proof_inventory.py::test_persisted_inventory_uses_same_sealed_owner_without_kernel_or_generic_put
+27.04s setup    api/test_doctor_header_proof_inventory.py::test_inventory_sql_preimage_corruption_refuses_before_any_kernel
+26.88s setup    api/test_doctor_header_proof_inventory.py::test_explicit_empty_inventory_persists_and_restores_without_kernel_or_generic_put
+26.88s setup    api/test_doctor_header_proof_inventory.py::test_second_valid_entry_profile_poison_preflights_the_whole_inventory_before_first_kernel
+26.82s setup    api/test_doctor_header_proof_inventory.py::test_inert_inventory_declarations_enforce_entry_count_and_aggregate_byte_bounds
+26.79s setup    api/test_doctor_header_proof_inventory.py::test_inventory_decoder_rejects_closed_schema_and_population_poison[authority]
+26.72s setup    api/test_doctor_header_proof_inventory.py::test_independent_inventory_and_host_pins_refuse_before_kernel_or_generic_write[scope]
+26.65s setup    api/test_doctor_header_proof_inventory.py::test_historical_inventory_implementation_drift_refuses_before_fresh_kernel_or_cache_put[emitter]
+14.62s call     api/test_doctor_header_proof_inventory.py::test_persisted_inventory_uses_same_sealed_owner_without_kernel_or_generic_put
+======================== 8 passed in 293.06s (0:04:53) =========================
