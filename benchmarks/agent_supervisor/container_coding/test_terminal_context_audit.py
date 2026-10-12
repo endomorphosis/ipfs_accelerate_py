@@ -124,10 +124,11 @@ def test_actual_bounded_child_process_roundtrip(compiled):
     assert result["provider_calls"] == 0
 
 
-def test_output_policy_exact_audit_survives_removed_worker_and_store(compiled):
+@pytest.mark.parametrize("selected", ["artifact-preview@1", "artifact-preview@2"])
+def test_output_policy_exact_audit_survives_removed_worker_and_store(compiled, selected):
     from ipfs_accelerate_py.agent_supervisor.runtime.tool_output_policy import create_binding
     receipt = compiled["receipts"][0]
-    binding = create_binding(workspace=Path(receipt["workspace"]))
+    binding = create_binding(workspace=Path(receipt["workspace"]), requested_policy=selected)
     model, advisory = render_model_prompt(prompt=compiled["native"], purpose="coding",
         workspace=Path(receipt["workspace"]), tool_output_binding=binding)
     receipt.update(provider="codex_cli", tool_output_policy=binding,

@@ -13,7 +13,7 @@ import sys
 import uuid
 
 SCHEMA = "supervisor-tool-output-policy@1"
-POLICIES = ("legacy", "artifact-preview@1")
+POLICIES = ("legacy", "artifact-preview@1", "artifact-preview@2")
 
 
 def validate_policy(value: str, *, purpose: str, provider: str) -> str:
@@ -40,6 +40,22 @@ def _instruction(binding: dict) -> str:
     python = shlex.quote(binding["python_executable"])
     helper = shlex.quote(binding["helper_script"])
     store = shlex.quote(binding["store_path"])
+    if binding["requested_policy"] == "artifact-preview@2":
+        return (
+            "Optional bounded output helper:\n"
+            "Keep targeted reads and existing command batches. Use normal tools for small outputs; "
+            "do not add commands just to use this helper. For expected verbose, noninteractive output:\n"
+            f"{python} {helper} run --store {store} --response-format compact --timeout 120 --preview-bytes 2048 -- PROGRAM ARG...\n"
+            "Runs argv once without stdin/TTY; stdout and stderr stay separate. Limits: 8 MiB capture, "
+            "32 MiB store, 120 seconds; exceeding limits can terminate the command. Check complete, "
+            "exit_code, cleanup_complete and termination_reason. Small outputs use one exact encoding. "
+            "Omitted output has head/tail and omitted_bytes; only complete omitted streams include a replay SHA256. "
+            "Retrieve necessary ranges, especially missing failure details:\n"
+            f"{python} {helper} read --store {store} --response-format compact --sha256 HASH --offset 0 --length 4096\n"
+            "Pages contain exact UTF-8 text or base64, never both. Do not rerun commands to recover output; "
+            "previews do not establish success. Artifacts expire after this invocation and carry no proof "
+            "or completion authority.\n\n"
+        )
     return (
         "Bounded command-output previews:\n"
         "Use targeted reads. For expected verbose, noninteractive inspection or test commands, "
@@ -57,13 +73,16 @@ def _instruction(binding: dict) -> str:
     )
 
 
-def create_binding(*, workspace: Path) -> dict:
+def create_binding(*, workspace: Path, requested_policy: str = "artifact-preview@1") -> dict:
     """Choose one unused invocation path without creating any files yet."""
+    validate_policy(requested_policy, purpose="coding", provider="codex_cli")
+    if requested_policy == "legacy":
+        raise ValueError("legacy policy has no tool output binding")
     helper = Path(__file__).with_name("tool_output_artifact.py").resolve(strict=True)
     if not helper.is_file() or helper.stat().st_size > 256_000:
         raise ValueError("bounded output helper source required")
     binding = {
-        "schema": SCHEMA, "requested_policy": "artifact-preview@1",
+        "schema": SCHEMA, "requested_policy": requested_policy,
         "python_executable": str(Path(sys.executable).absolute()),
         "helper_script": str(helper),
         "helper_sha256": hashlib.sha256(helper.read_bytes()).hexdigest(),
@@ -86,7 +105,9 @@ def validate_binding(binding: dict, *, workspace: Path) -> str:
               "token_savings_measured", "execution_authority", "completion_authority",
               "instruction_sha256", "instruction_bytes"}
     if (type(binding) is not dict or set(binding) not in (fields, fields | {"usage"})
-            or binding.get("schema") != SCHEMA or binding.get("requested_policy") != "artifact-preview@1"
+            or binding.get("schema") != SCHEMA
+            or type(binding.get("requested_policy")) is not str
+            or binding["requested_policy"] not in POLICIES[1:]
             or any(binding.get(key) is not False for key in ("native_tool_interception", "helper_adoption_guaranteed",
                 "token_savings_measured", "execution_authority", "completion_authority"))):
         raise ValueError("invalid tool output policy binding")

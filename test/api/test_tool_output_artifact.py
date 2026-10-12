@@ -413,3 +413,154 @@ def test_direct_cli_real_capture_and_read(store):
     proc = subprocess.run([sys.executable, str(PATH), "read", "--store", str(store),
         "--sha256", digest, "--offset", "0", "--length", "4"], capture_output=True, check=True, timeout=10)
     assert json.loads(proc.stdout)["text"] == "CLI\n"
+
+
+def cli_capture(store, script, *, response_format="compact", preview_bytes=2048, timeout=2):
+    options = [] if response_format is None else ["--response-format", response_format]
+    process = subprocess.run([sys.executable, str(PATH), "run", "--store", str(store),
+        "--timeout", str(timeout), "--preview-bytes", str(preview_bytes), *options,
+        "--", sys.executable, "-c", script], capture_output=True, timeout=10)
+    assert not process.stderr
+    return process, json.loads(process.stdout)
+
+
+def represented_bytes(value):
+    assert ("text" in value) != ("data_base64" in value)
+    return value["text"].encode("utf-8") if "text" in value else base64.b64decode(value["data_base64"])
+
+
+@pytest.mark.parametrize("content", [b"", b"ordinary text\n", "snowman ☃ light 💡\n".encode(),
+    b"\xff\x80\x00", b'\x00\n\r\t"\\'])
+def test_compact_cli_fully_shown_bytes_are_exactly_one_representation(store, content):
+    process, result = cli_capture(store, f'import os; os.write(1,{content!r})')
+    assert process.returncode == 0
+    assert result["schema"] == "tool-output-artifact-capture@2"
+    assert "capture_id" not in result and "preview_budget_bytes" not in result
+    stream = result["streams"]["stdout"]
+    assert represented_bytes(stream) == content
+    assert stream["bytes"] == len(content) and stream["omitted_bytes"] == 0
+    assert set(stream) == {"bytes", "omitted_bytes", "text" if "text" in stream else "data_base64"}
+    assert result["streams"]["stderr"] == {"bytes": 0, "omitted_bytes": 0, "text": ""}
+    assert result["proof_authority"] is result["completion_authority"] is False
+    # Existing persisted receipts remain version one with their original keys.
+    receipt = json.loads(next(store.glob("capture-*.json")).read_bytes())
+    assert receipt["schema"] == "tool-output-artifact-capture@1"
+    assert {"capture_id", "preview_budget_bytes"} <= set(receipt)
+    assert set(receipt["streams"]["stdout"]) == {
+        "sha256", "bytes", "replayable", "omitted_bytes", "preview_bytes"}
+
+
+@pytest.mark.parametrize("content,preview_bytes,binary_segments", [
+    (b"A" * 100 + b"B" * 100, 20, False),
+    ("💡".encode() * 10, 12, True),
+    (b"\xff" * 40, 12, True),
+])
+def test_compact_cli_omitted_previews_preserve_exact_segments_and_replay_handle(
+        store, content, preview_bytes, binary_segments):
+    process, result = cli_capture(store, f'import os; os.write(1,{content!r})', preview_bytes=preview_bytes)
+    assert process.returncode == 0 and result["complete"]
+    stream = result["streams"]["stdout"]
+    limit = (preview_bytes + 1) // 2
+    head_length, tail_length = (limit + 1) // 2, limit // 2
+    if binary_segments:
+        assert "head_text" not in stream and "tail_text" not in stream
+        head, tail = base64.b64decode(stream["head_base64"]), base64.b64decode(stream["tail_base64"])
+    else:
+        assert "head_base64" not in stream and "tail_base64" not in stream
+        head, tail = stream["head_text"].encode(), stream["tail_text"].encode()
+    assert head == content[:head_length] and tail == content[-tail_length:]
+    assert stream["omitted_bytes"] == len(content) - head_length - tail_length
+    assert stream["sha256"] == hashlib.sha256(content).hexdigest()
+    assert "replayable" not in stream and "display_encoding" not in stream
+
+
+@pytest.mark.parametrize("offset,length,has_text", [(0, 4, True), (1, 2, False), (4, 4, True)])
+def test_compact_cli_read_codepoint_boundaries_are_exact(store, offset, length, has_text):
+    content = "💡💡".encode()
+    _, capture_result = cli_capture(store, f'import os; os.write(1,{content!r})', preview_bytes=4)
+    digest = capture_result["streams"]["stdout"]["sha256"]
+    process = subprocess.run([sys.executable, str(PATH), "read", "--store", str(store),
+        "--sha256", digest, "--offset", str(offset), "--length", str(length),
+        "--response-format", "compact"], capture_output=True, check=True, timeout=10)
+    result = json.loads(process.stdout)
+    assert result["schema"] == "tool-output-artifact-page@2"
+    assert represented_bytes(result) == content[offset:offset + length]
+    assert ("text" in result) is has_text
+    assert result["sha256"] == digest
+    assert result["offset"] == offset and result["length"] == length
+    assert result["total_bytes"] == len(content) and result["next_offset"] == offset + length
+    assert result["eof"] is (offset + length == len(content))
+    assert result["proof_authority"] is result["completion_authority"] is False
+
+
+def test_compact_cli_keeps_failure_exit_and_timeout_custody_fields(store):
+    process, result = cli_capture(store, 'import sys; print("failed"); sys.exit(7)')
+    assert process.returncode == 1 and result["exit_code"] == 7 and result["complete"]
+    assert result["cleanup_complete"] and result["termination_reason"] is None
+    process, result = cli_capture(store,
+        'import os,time; os.write(1,b"x"*100); time.sleep(60)', timeout=0.1, preview_bytes=8)
+    assert process.returncode == 1 and not result["complete"]
+    assert result["termination_reason"] == "timeout" and result["cleanup_complete"]
+    assert result["retained_bytes"] == 0 and result["observed_bytes"] == 100
+    assert "sha256" not in result["streams"]["stdout"]
+    assert "replayable" not in result["streams"]["stdout"]
+    assert result["streams"]["stdout"]["omitted_bytes"] == 96
+
+
+def test_compact_format_is_pure_and_legacy_dictionaries_and_receipts_unchanged(store):
+    original = capture(store, 'import os; os.write(1,b"a"*4096)')
+    digest = original["streams"]["stdout"]["sha256"]
+    page = helper.read(store=store, sha256=digest, offset=1024, length=2048)
+    before_store = {path.name: path.read_bytes() for path in store.iterdir()}
+    for result in (original, page):
+        serialized = helper._json(result)
+        assert helper.format_response(result) is result
+        assert helper.format_response(result, "legacy") is result
+        compact = helper.format_response(result, "compact")
+        assert compact["schema"].endswith("@2")
+        assert helper._json(result) == serialized
+    assert {path.name: path.read_bytes() for path in store.iterdir()} == before_store
+    assert page["schema"] == "tool-output-artifact-page@1"
+    assert "text" in page and "data_base64" in page
+    assert helper.summarize_store(store)["read_count"] == 1
+
+
+def test_cli_default_and_explicit_legacy_keep_identical_serialization_contract(store, monkeypatch, capsys):
+    result = capture(store, 'print("legacy")')
+    monkeypatch.setattr(helper, "run", lambda **options: result)
+    expected = helper._json(result).decode("ascii") + "\n"
+    assert helper.main(["run", "--store", str(store), "--", "unused"]) == 0
+    assert capsys.readouterr().out == expected
+    assert helper.main(["run", "--store", str(store), "--response-format", "legacy", "--", "unused"]) == 0
+    assert capsys.readouterr().out == expected
+
+
+def test_invalid_cli_response_format_rejected_before_command_runs(store, tmp_path):
+    marker = tmp_path / "must-not-run"
+    process = subprocess.run([sys.executable, str(PATH), "run", "--store", str(store),
+        "--response-format", "unknown", "--", sys.executable, "-c",
+        f'open({str(marker)!r},"w").write("bad")'], capture_output=True, timeout=10)
+    assert process.returncode == 2 and not marker.exists()
+    assert not list(store.glob("capture-*.json"))
+
+
+@pytest.mark.parametrize("response_format", [None, True, [], "unknown"])
+def test_pure_projection_rejects_invalid_format(response_format):
+    with pytest.raises(ValueError, match="supported response format"):
+        helper.format_response({}, response_format)
+
+
+def test_compact_projection_rejects_inconsistent_preview_census(store):
+    result = capture(store, 'print("exact")')
+    result["streams"]["stdout"]["omitted_bytes"] = 1
+    with pytest.raises(ValueError, match="byte census differs"):
+        helper.format_response(result, "compact")
+
+
+def test_compact_projection_rejects_oversized_page_before_decoding():
+    result = {"schema": "tool-output-artifact-page@1", "sha256": "a" * 64,
+        "offset": 0, "length": 8193, "total_bytes": 8193, "next_offset": 8193,
+        "eof": True, "proof_authority": False, "completion_authority": False,
+        "text": None, "data_base64": base64.b64encode(b"x" * 8193).decode()}
+    with pytest.raises(ValueError, match="bounded exact page|byte bound"):
+        helper.format_response(result, "compact")

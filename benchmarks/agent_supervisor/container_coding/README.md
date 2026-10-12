@@ -55,6 +55,20 @@ retrieval available when more context is needed. Native CLI tools retain their
 normal behavior. The selection is frozen into preparation and requires an
 archive containing the current helper, policy, and invocation/audit sources.
 
+`--tool-output-policy artifact-preview@2` selects an experimental compact helper
+response. Its coding advisory requests `--response-format compact`; capture and
+page responses use version-two schemas while internal capture receipts retain
+version one. Compact responses carry one exact replay encoding and omit
+retrieval hashes for streams already shown in full. The existing
+`artifact-preview@1` selection retains its original helper response format.
+For commands expected to return little output, the advisory favors ordinary
+native tools so wrapper instructions and metadata do not outweigh the output.
+
+The first version-one pilot did not show a token-saving benefit. Compact output
+is a follow-up experiment, and smaller helper responses alone do not establish
+lower provider usage. The default remains `legacy`; neither preview policy
+intercepts native tools or guarantees that the worker adopts the helper.
+
 A selected policy does not establish worker adoption or token savings. Check
 the coding invocation's policy receipt and observed helper use separately from
 the declared benchmark selection, and include any retrieval overhead in a

@@ -7,7 +7,8 @@ from pathlib import Path
 
 DEFAULT_TOOL_OUTPUT_POLICY = "legacy"
 ARTIFACT_PREVIEW_POLICY = "artifact-preview@1"
-TOOL_OUTPUT_POLICIES = (DEFAULT_TOOL_OUTPUT_POLICY, ARTIFACT_PREVIEW_POLICY)
+COMPACT_ARTIFACT_PREVIEW_POLICY = "artifact-preview@2"
+TOOL_OUTPUT_POLICIES = (DEFAULT_TOOL_OUTPUT_POLICY, ARTIFACT_PREVIEW_POLICY, COMPACT_ARTIFACT_PREVIEW_POLICY)
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_tool_output_policy.py",
     "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",

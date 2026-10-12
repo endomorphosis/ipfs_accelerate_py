@@ -143,7 +143,7 @@ parser.add_argument('--semantic-transport-schema',choices=['supervisor-semantic-
 parser.add_argument('--semantic-metadata-view',choices=['legacy','common-bindings@1'],default='legacy')
 parser.add_argument('--semantic-metadata-census-only',action='store_true')
 parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion@1'],default='legacy')
-parser.add_argument('--tool-output-policy',choices=['legacy','artifact-preview@1'],default='legacy')
+parser.add_argument('--tool-output-policy',choices=['legacy','artifact-preview@1','artifact-preview@2'],default='legacy')
 parser.add_argument('--doctor-candidate-artifact',type=pathlib.Path)
 parser.add_argument('--doctor-candidate-sha256')
 parser.add_argument('--doctor-task-cid')

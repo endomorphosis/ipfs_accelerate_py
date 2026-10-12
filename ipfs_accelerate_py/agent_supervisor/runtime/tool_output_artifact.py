@@ -667,6 +667,99 @@ def remove_store(path, *, expected_identity):
     return {"schema": "tool-output-artifact-cleanup@1", "removed": True}
 
 
+def _preview_parts(stream):
+    """Recover exact bounded preview segments from a trusted version-one result."""
+    encoding = stream["display_encoding"]
+    parts = []
+    for name in ("head", "tail"):
+        if encoding == "utf-8":
+            text = stream[name + "_text"]
+            if type(text) is not str or len(text) > MAX_PREVIEW_BYTES:
+                raise ValueError("bounded preview text required")
+            raw = text.encode("utf-8", errors="strict")
+        elif encoding == "utf-8-with-replacement":
+            encoded = stream[name + "_base64"]
+            if type(encoded) is not str or len(encoded) > 4 * ((MAX_PREVIEW_BYTES + 2) // 3):
+                raise ValueError("bounded exact preview base64 required")
+            raw = base64.b64decode(encoded, validate=True)
+        else:
+            raise ValueError("unsupported preview encoding")
+        parts.append(raw)
+    if sum(map(len, parts)) > MAX_PREVIEW_BYTES:
+        raise ValueError("preview projection exceeds byte bound")
+    return parts
+
+
+def format_response(result, response_format="legacy"):
+    """Project a trusted internal result without I/O or changing stored receipts.
+
+    Legacy returns the original dictionary unchanged. Compact uses exactly one
+    representation for each complete byte sequence. Partial UTF-8 code points
+    stay exact base64; compact responses never introduce replacement text.
+    """
+    if type(response_format) is not str or response_format not in {"legacy", "compact"}:
+        raise ValueError("explicit supported response format required")
+    if response_format == "legacy":
+        return result
+    if type(result) is not dict:
+        raise ValueError("structured internal tool output result required")
+    schema = result.get("schema")
+    if schema == "tool-output-artifact-capture@1":
+        projected = {"schema": "tool-output-artifact-capture@2", **{key: result[key] for key in
+            ("complete", "exit_code", "cleanup_complete", "termination_reason",
+             "observed_bytes", "retained_bytes", "proof_authority", "completion_authority")},
+             "streams": {}}
+        streams = result["streams"]
+        if type(streams) is not dict or not set(streams) <= {"stdout", "stderr"}:
+            raise ValueError("bounded stdout/stderr result required")
+        preview_total = 0
+        for name, stream in streams.items():
+            head, tail = _preview_parts(stream)
+            preview_total += len(head) + len(tail)
+            size = _integer(stream["bytes"], 0, MAX_CAPTURE_BYTES, "stream bytes")
+            omitted = _integer(stream["omitted_bytes"], 0, size, "omitted bytes")
+            if len(head) + len(tail) != size - omitted:
+                raise ValueError("preview projection byte census differs")
+            item = {"bytes": stream["bytes"], "omitted_bytes": stream["omitted_bytes"]}
+            if stream["omitted_bytes"] == 0:
+                raw = head + tail
+                try:
+                    item["text"] = raw.decode("utf-8", errors="strict")
+                except UnicodeDecodeError:
+                    item["data_base64"] = base64.b64encode(raw).decode("ascii")
+            else:
+                try:
+                    head_text = head.decode("utf-8", errors="strict")
+                    tail_text = tail.decode("utf-8", errors="strict")
+                except UnicodeDecodeError:
+                    item.update(head_base64=base64.b64encode(head).decode("ascii"),
+                                tail_base64=base64.b64encode(tail).decode("ascii"))
+                else:
+                    item.update(head_text=head_text, tail_text=tail_text)
+                if result["complete"]:
+                    item["sha256"] = stream["sha256"]
+            projected["streams"][name] = item
+        if preview_total > MAX_PREVIEW_BYTES:
+            raise ValueError("combined preview projection exceeds byte bound")
+        return projected
+    if schema == "tool-output-artifact-page@1":
+        projected = {"schema": "tool-output-artifact-page@2", **{key: result[key] for key in
+            ("sha256", "offset", "length", "total_bytes", "next_offset", "eof",
+             "proof_authority", "completion_authority")}}
+        encoded = result["data_base64"]
+        if type(encoded) is not str or len(encoded) > 4 * ((MAX_READ_BYTES + 2) // 3):
+            raise ValueError("bounded exact page base64 required")
+        raw = base64.b64decode(encoded, validate=True)
+        if len(raw) > MAX_READ_BYTES or len(raw) != result["length"]:
+            raise ValueError("page projection exceeds byte bound")
+        try:
+            projected["text"] = raw.decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            projected["data_base64"] = encoded
+        return projected
+    raise ValueError("unsupported internal tool output schema")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="operation", required=True)
@@ -674,14 +767,17 @@ def main(argv=None):
     capture.add_argument("--store", required=True)
     capture.add_argument("--timeout", type=float, default=60)
     capture.add_argument("--preview-bytes", type=int, default=2048)
+    capture.add_argument("--response-format", choices=("legacy", "compact"), default="legacy")
     capture.add_argument("argv", nargs=argparse.REMAINDER)
     page = sub.add_parser("read")
     page.add_argument("--store", required=True)
     page.add_argument("--sha256", required=True)
     page.add_argument("--offset", type=int, default=0)
     page.add_argument("--length", type=int, default=4096)
+    page.add_argument("--response-format", choices=("legacy", "compact"), default="legacy")
     options = vars(parser.parse_args(argv))
     operation = options.pop("operation")
+    response_format = options.pop("response_format")
     handlers = {}
     cancellation = [False]
     if operation == "run":
@@ -698,7 +794,7 @@ def main(argv=None):
             result = run(**options, cancel_check=lambda: cancellation[0])
         else:
             result = read(**options)
-        print(_json(result).decode("ascii"))
+        print(_json(format_response(result, response_format)).decode("ascii"))
         return 0 if operation == "read" or (result["complete"] and result["exit_code"] == 0) else 1
     except (ValueError, OSError) as error:
         # Do not include command argv, arbitrary paths, or output in diagnostics.

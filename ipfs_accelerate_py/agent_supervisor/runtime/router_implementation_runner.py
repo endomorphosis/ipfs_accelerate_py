@@ -491,7 +491,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     tool_output_binding = None
     if tool_output_policy != "legacy":
         from .tool_output_policy import create_binding
-        tool_output_binding = create_binding(workspace=root)
+        tool_output_binding = create_binding(workspace=root, requested_policy=tool_output_policy)
     model_prompt, advisory = render_model_prompt(prompt=router_prompt, purpose=purpose, workspace=root,
                                                 semantic_transport=encoded is not None,
                                                 tool_output_binding=tool_output_binding)
@@ -906,7 +906,8 @@ def main():
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1"])
-    parser.add_argument("--tool-output-policy", default="legacy", choices=["legacy", "artifact-preview@1"])
+    from .tool_output_policy import POLICIES as TOOL_OUTPUT_POLICIES
+    parser.add_argument("--tool-output-policy", default="legacy", choices=TOOL_OUTPUT_POLICIES)
     parser.add_argument("--semantic-metadata-census-only", action="store_true",
                         help="Check the complete metadata view and emit only census metadata before provider dispatch")
     parser.add_argument("--coding-reply-mode", default="legacy",
