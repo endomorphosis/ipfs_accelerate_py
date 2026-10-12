@@ -146,6 +146,27 @@ def prepare_code_retrieval_context(*, repository: Path, task_id: str, query_text
 
 def load_code_retrieval_context(*, repository: Path, artifact: str, expected_sha256: str,
                                 task_id: str) -> str:
+    """Load dispatch context against current repository bytes only."""
+    return _load_code_retrieval_context(repository=repository, artifact=artifact,
+        expected_sha256=expected_sha256, task_id=task_id)
+
+
+def replay_code_retrieval_context_for_audit(*, repository: Path, artifact: str,
+        expected_sha256: str, task_id: str, retained_sources: dict[str, bytes]) -> str:
+    """Replay a retained index/query against exact source bytes, never currentness.
+
+    Source hashes must equal the retained artifact's complete population; native
+    AST reconstruction and vector-query replay independently check that binding.
+    This audit API never returns a ``current`` dispatch context.
+    """
+    if type(retained_sources) is not dict:
+        raise ValueError("historical retrieval requires retained source bytes")
+    return _load_code_retrieval_context(repository=repository, artifact=artifact,
+        expected_sha256=expected_sha256, task_id=task_id, retained_sources=retained_sources)
+
+
+def _load_code_retrieval_context(*, repository: Path, artifact: str, expected_sha256: str,
+                                 task_id: str, retained_sources=None) -> str:
     root = Path(repository).resolve(strict=True)
     path = _path(root, artifact)
     if path.stat().st_size > MAX_ARTIFACT_BYTES:
@@ -164,6 +185,8 @@ def load_code_retrieval_context(*, repository: Path, artifact: str, expected_sha
 
     payload = json.loads(raw, object_pairs_hook=unique)
     if isinstance(payload, dict) and payload.get("schema") == "supervisor-empty-code-retrieval@1":
+        if retained_sources is not None:
+            raise ValueError("historical ranked retrieval requires a native vector population")
         from .empty_code_retrieval import read_empty_code_retrieval_artifact
         _, context = read_empty_code_retrieval_artifact(repository=root, artifact=artifact,
             expected_sha256=expected_sha256, task_id=task_id)
@@ -193,16 +216,28 @@ def load_code_retrieval_context(*, repository: Path, artifact: str, expected_sha
         snapshot = CodeVectorIndexSnapshot.from_dict(payload["snapshot"])
     result = CodeVectorSearchResult.from_dict(payload["result"])
     _replay(snapshot, result)
-    sources, hashes = _sources(root, snapshot.included_paths, allow_missing=True)
+    if retained_sources is None:
+        sources, hashes = _sources(root, snapshot.included_paths, allow_missing=True)
+    else:
+        if (not 1 <= len(retained_sources) <= 64
+                or set(retained_sources) != set(snapshot.included_paths)
+                or any(type(raw) is not bytes or len(raw) > 2_000_000
+                       for raw in retained_sources.values())):
+            raise ValueError("historical retrieval retained source population differs")
+        retained_sources = dict(retained_sources)
+        sources = {name: raw.decode("utf-8") for name, raw in retained_sources.items()}
+        hashes = {name: hashlib.sha256(raw).hexdigest() for name, raw in retained_sources.items()}
     original = payload["source_sha256"]
     if (not isinstance(original, dict) or set(original) != set(hashes)
             or any(not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
                    for value in original.values())):
         raise ValueError("retrieval source manifest differs")
     stale = sorted(name for name in hashes if hashes[name] != original[name])
+    if stale and retained_sources is not None:
+        raise ValueError("historical retrieval source digest differs")
     if not stale:
         _verified_sources(snapshot, sources)
-    if _sources(root, snapshot.included_paths, allow_missing=True)[1] != hashes:
+    if retained_sources is None and _sources(root, snapshot.included_paths, allow_missing=True)[1] != hashes:
         raise ValueError("retrieval source changed during dispatch observation")
     context = {"schema": SCHEMA, "task_id": task_id,
                "status": "stale" if stale else "current", "stale_paths": stale,
@@ -211,6 +246,8 @@ def load_code_retrieval_context(*, repository: Path, artifact: str, expected_sha
                "nomination_only": True, "semantic_authority": False,
                "execution_authority": False, "completion_authority": False,
                "source_sha256": hashes, "hits": []}
+    if retained_sources is not None:
+        context.update(status="historical", historical_replay=True, freshness_checked=False)
     if not stale:
         context["hits"] = [{"path": hit.row.path, "symbol": hit.row.qualified_symbol,
                             "line_start": hit.row.line_start, "line_end": hit.row.line_end,

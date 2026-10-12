@@ -196,7 +196,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
                             numerical_formalization_profile: str | None = None,
                             numerical_selection_config: Path | None = None,
                             numerical_selection_timeout_seconds: float = 180.,
-                            numerical_selection_budget_profile: str | None = None) -> dict:
+                            numerical_selection_budget_profile: str | None = None,
+                            retrieval_ranked_capsules: bool = False) -> dict:
     import duckdb
     from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index import (
         CodeVectorIndexSnapshot, CodeVectorSearchResult,
@@ -204,6 +205,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
 
     started = time.monotonic()
     root = Path(prepared["repository"]).resolve(strict=True)
+    if type(retrieval_ranked_capsules) is not bool:
+        raise ValueError("retrieval-ranked capsule selection requires a boolean opt-in")
     public_profile = prepared.get("task_profile")
     vector_paths = task_profile_index_paths(public_profile) if public_profile is not None else ["bottle.py"]
     if numerical_formalization_profile is not None:
@@ -266,6 +269,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
     indexed, partition = qualify_terminal_population(prepared=prepared, output=vectors,
         paths=vector_paths, model_snapshot=model_snapshot, model_revision=model_revision)
     empty_population = indexed.get("schema") == EMPTY_INDEX_SCHEMA
+    if retrieval_ranked_capsules and empty_population:
+        raise ValueError("retrieval-ranked capsules require a nonempty native retrieval index")
     if empty_population and (train_autoencoder or security_checkpoint is not None
             or source384_config is not None or numerical_selection_config is not None):
         raise ValueError("empty retrieval requires independent decoder abstention; selected decoder/training is unavailable")
@@ -347,6 +352,20 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
             del row
     timings["persisted_snapshot_reopen"] = time.monotonic() - stage
     stage = time.monotonic()
+    retrieval = None
+    capsule_kwargs = {}
+    if retrieval_ranked_capsules:
+        retrieval = prepare_code_retrieval_context(repository=root, task_id=alias,
+            query_text=prepared["query"], snapshot=snapshot,
+            result=CodeVectorSearchResult.from_dict(indexed["hits"]), output=output / "code-retrieval.json")
+        selection = {"artifact": retrieval["metadata"]["Code retrieval artifact"],
+                     "sha256": retrieval["sha256"]}
+        _write(state / "capsule-selection.json", selection)
+        capsule_kwargs = {"worker_retrieval": selection}
+        if partition is None:
+            capsule_kwargs["program_paths"] = vector_paths
+        timings["retrieval_persistence"] = time.monotonic() - stage
+        stage = time.monotonic()
     semantic = prepare_semantic_context(repository=root, paths=prepared["worker_inputs"],
         # Native semantic objectives are trimmed, printable descriptive text.
         # Normalize whitespace only here; the public query remains byte-exact
@@ -355,7 +374,7 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         output=output / "semantic", max_symbols=1024, worker_query=prepared["query"], worker_max_bytes=32768,
         **({"program_paths": partition["program_paths"], "defer_task_data": any(
             row["role"] == "task_data" for row in partition["support_hashes"].values())}
-            if partition is not None else {}))
+            if partition is not None else {}), **capsule_kwargs)
     metadata = {"Semantic context artifact": (output / "semantic/worker-context.json").relative_to(root).as_posix(),
                 "Semantic context sha256": semantic["worker_payload_sha256"], "Semantic context refresh": "true"}
     semantic_payload, view, get_block = _semantic_view(root, metadata, alias)
@@ -366,13 +385,14 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         from ipfs_accelerate_py.agent_supervisor.runtime.empty_code_retrieval import prepare_empty_code_retrieval_context
         retrieval = prepare_empty_code_retrieval_context(repository=root, task_id=alias,
             query_text=prepared["query"], output=output / "code-retrieval.json", **partition)
-    else:
+    elif retrieval is None:
         retrieval = prepare_code_retrieval_context(repository=root, task_id=alias,
             query_text=prepared["query"], snapshot=snapshot,
             result=CodeVectorSearchResult.from_dict(indexed["hits"]), output=output / "code-retrieval.json")
     del snapshot
     metadata.update(retrieval["metadata"])
-    timings["retrieval_persistence"] = time.monotonic() - stage
+    if not retrieval_ranked_capsules:
+        timings["retrieval_persistence"] = time.monotonic() - stage
     stage = time.monotonic()
     with IntentRepository(state / "intent.duckdb") as intent:
         capture = capture_intent_world_snapshot(intent, repository_id=view.root.repository_id,
@@ -496,6 +516,19 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
         raise ValueError("initial public task index scope differs")
     alias, metadata = descriptor["task_alias"], descriptor["metadata"]
     semantic, view, get_block = _semantic_view(root, metadata, alias)
+    capsule_selection = state / "capsule-selection.json"
+    capsule_policy = semantic.get("worker_projection", {})
+    if capsule_selection.exists():
+        if capsule_selection.is_symlink() or capsule_selection.stat().st_size > 32768:
+            raise ValueError("capsule retrieval selection is outside bounds")
+        selected = json.loads(capsule_selection.read_bytes())
+        expected = {"artifact": metadata["Code retrieval artifact"],
+                    "sha256": metadata["Code retrieval sha256"]}
+        if (selected != expected or capsule_policy.get("retrieval") != selected
+                or capsule_policy.get("selector") != "verified-retrieval-symbol-rank@1"):
+            raise ValueError("capsules differ from selected native retrieval")
+    elif "retrieval" in capsule_policy:
+        raise ValueError("retrieval-ranked capsules lack their selected native retrieval")
     retrieval = json.loads(load_code_retrieval_context(repository=root,
         artifact=metadata["Code retrieval artifact"], expected_sha256=metadata["Code retrieval sha256"], task_id=alias))
     indexed = _read(root, descriptor["index"])

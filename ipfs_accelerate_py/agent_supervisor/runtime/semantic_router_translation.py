@@ -394,7 +394,8 @@ def _verified_semantic(root, *, artifact, text, task_id, current):
             expected_sha256=_sha(raw), task_id=task_id)
     elif program is not None:
         try:
-            _validate_program_payload(payload, sources=retained_sources, repository=root)
+            _validate_program_payload(payload, sources=retained_sources, repository=root,
+                historical_retrieval=True)
         except (ValueError, KeyError, TypeError) as error:
             raise SemanticTranslationError("historical semantic program reconstruction differs") from error
     return payload, tuple(sorted(symbols))

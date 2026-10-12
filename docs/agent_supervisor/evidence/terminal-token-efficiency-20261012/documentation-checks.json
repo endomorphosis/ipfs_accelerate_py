@@ -1,0 +1,135 @@
+{
+  "commands": [
+    {
+      "command": [
+        "python",
+        "scripts/docs/check_agent_supervisor_docs.py"
+      ],
+      "exit_code": 0,
+      "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python",
+        "scripts/docs/check_current_docs_links.py"
+      ],
+      "exit_code": 0,
+      "stdout": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "new_relative_links": [
+    {
+      "document": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "target": "evidence/terminal-reply-contract-pair-20261007/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py"
+    },
+    {
+      "document": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py"
+    },
+    {
+      "document": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "target": "evidence/terminal-token-efficiency-20261012/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "target": "terminal_metadata_census.md"
+    },
+    {
+      "document": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "target": "terminal_metadata_census.md#actual-live-source384-census-2026-10-11"
+    },
+    {
+      "document": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "target": "evidence/terminal-live-census-20261011/formal-status-next-treatment-inventory-01.json"
+    },
+    {
+      "document": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "target": "terminal_formal_status_census.md"
+    },
+    {
+      "document": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "target": "header_proof_key_custody.md"
+    },
+    {
+      "document": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "target": "header_proof_cache_bridge.md"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "dispatch-metrics-final-01/junit.xml"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "dispatch-metrics-final-01/input-byte-observations.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "instruction-codec-02/qualification.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "instruction-audit-edges-01/qualification.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "dispatch-metrics-final-01/qualification.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "retrieval-historical-01/qualification.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "harbor-final-01/qualification.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "native-final-01/qualification.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "qualification.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "source-manifest.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "run_tests.py"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "archive-01/qualification.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "docker-instruction-02/qualification.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "docker-instruction-02/results/module-origins.json"
+    },
+    {
+      "document": "docs/agent_supervisor/evidence/terminal-token-efficiency-20261012/README.md",
+      "target": "docker-instruction-01/qualification.json"
+    }
+  ],
+  "packaging_version": "0.0.45"
+}

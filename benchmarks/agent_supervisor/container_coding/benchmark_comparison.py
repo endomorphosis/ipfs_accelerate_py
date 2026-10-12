@@ -96,11 +96,20 @@ def _semantic_metadata_observation(value):
         return unavailable
     if (value.get("token_proxy") != "utf8-bytes-ceil-div4@1"
             or type(value.get("selected_mode")) is not str
-            or value["selected_mode"] not in {"legacy", "common-bindings@1"}):
+            or value["selected_mode"] not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}):
+        return unavailable
+    requested = value.get("requested_mode")
+    if "requested_mode" in value and (type(requested) is not str
+            or requested not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}
+            or value["selected_mode"] not in {"legacy", requested}):
+        return unavailable
+    if value["selected_mode"] == "common-bindings-instruction@1" and requested != value["selected_mode"]:
         return unavailable
     result = {**unavailable, "status": "reported", "schema": schema,
         "selected_mode": value["selected_mode"], "token_proxy": value["token_proxy"],
         "selection_basis": "byte_proxy", "measurement_scope": "complete-rendered-prompt-text@1"}
+    if "requested_mode" in value:
+        result["requested_mode"] = requested
     for field in ("view_receipt_sha256", "native_complete_sha256", "candidate_complete_sha256", "selected_complete_sha256"):
         digest = value.get(field)
         if type(digest) is not str or re.fullmatch("[0-9a-f]{64}", digest) is None:
@@ -112,7 +121,7 @@ def _semantic_metadata_observation(value):
                 or type(proxy) is not int or proxy != (size + 3) // 4):
             return unavailable
         result[prefix + "_complete_bytes"], result[prefix + "_complete_proxy_tokens"] = size, proxy
-    chosen = "candidate" if result["selected_mode"] == "common-bindings@1" else "native"
+    chosen = "native" if result["selected_mode"] == "legacy" else "candidate"
     if any(result["selected_complete_" + field] != result[chosen + "_complete_" + field]
            for field in ("sha256", "bytes", "proxy_tokens")):
         return unavailable
@@ -648,7 +657,7 @@ def _trial(receipt, raw, *, source):
 
 
 def _aggregate(rows):
-    return {
+    totals = {
         "trials": len(rows),
         "observed_official_passes": sum(row["official_reward"] == 1 for row in rows),
         "unknown_reward_trials": sum(row["official_reward"] is None for row in rows),
@@ -663,6 +672,31 @@ def _aggregate(rows):
         "reported_cost_usd": _sum(row["reported_cost_usd"] for row in rows),
         "known_reported_cost_subtotal_usd": _subtotal(row["known_reported_cost_subtotal_usd"] for row in rows),
     }
+    unavailable = []
+    if totals["unknown_reward_trials"]:
+        unavailable.append("unknown_official_reward")
+    if not totals["observed_official_passes"]:
+        unavailable.append("no_official_passes")
+    token_reasons = unavailable + (["incomplete_native_token_usage"]
+                                  if totals["tokens"]["total_tokens"] is None else [])
+    cost_reasons = unavailable + (["incomplete_reported_provider_cost"]
+                                 if totals["reported_cost_usd"] is None else [])
+    totals["observed_efficiency"] = {
+        "schema": "terminal-observed-efficiency@1",
+        "numerator_scope": "all_retained_attempts_in_aggregate",
+        "denominator": "official_reward_equals_one",
+        "total_tokens_per_official_pass": (totals["tokens"]["total_tokens"]
+            / totals["observed_official_passes"] if not token_reasons else None),
+        "reported_cost_usd_per_official_pass": (totals["reported_cost_usd"]
+            / totals["observed_official_passes"] if not cost_reasons else None),
+        "token_ratio_unavailable_reasons": token_reasons,
+        "cost_ratio_unavailable_reasons": cost_reasons,
+        "token_count_basis": "sum_of_complete_reported_native_total_tokens",
+        "cache_included_in_input": _uniform_boolean(row["cache_included_in_input"] for row in rows),
+        "billing_total_verified": False,
+        "causal_claim": False,
+    }
+    return totals
 
 
 def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
@@ -771,6 +805,7 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
         "dollar_cost_basis": "reported provider cost only; Harbor estimates excluded",
         "notes": [
             "Every supplied retained trial is shown, including setup aborts and unsuccessful planning or coding.",
+            "Per-pass ratios divide all retained attempt costs by official verifier passes; unknown rewards, incomplete required totals, or zero passes make the affected ratio unavailable. They are descriptive observations, not causal savings or verified billing.",
             "No-index runs the native supervisor without an indexed context bundle; planning strategies may differ between workflows.",
             "Native task completion and the independent original verifier reward are separate outcomes.",
             "Known subtotals preserve observed failed-call costs when complete usage is unavailable.",
@@ -822,6 +857,22 @@ def markdown(comparison: dict) -> str:
             *(_token_cell(row, key) for key in TOKENS),
             row["outcome"],
         ]
+        lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    lines += [
+        "",
+        "Observed efficiency includes all retained attempts, including failures. Only official reward 1 counts as a pass. Unknown rewards, incomplete required totals, or zero passes leave the affected ratio unknown. These ratios do not establish causal token savings or verified billing.",
+        "",
+        "| Arm | All attempts | Official passes | Unknown rewards | Unknown token totals | Total tokens / official pass | Reported USD / official pass | Unavailable reasons |",
+        "|---|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for arm, totals in comparison["arm_totals"].items():
+        efficiency = totals["observed_efficiency"]
+        reasons = [*("tokens: " + reason for reason in efficiency["token_ratio_unavailable_reasons"]),
+                   *("cost: " + reason for reason in efficiency["cost_ratio_unavailable_reasons"])]
+        values = [LABELS[arm], totals["trials"], totals["observed_official_passes"],
+                  totals["unknown_reward_trials"], totals["unknown_token_trials"]["total_tokens"],
+                  efficiency["total_tokens_per_official_pass"],
+                  efficiency["reported_cost_usd_per_official_pass"], "; ".join(reasons)]
         lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
     lines += ["", "Declared controls are checked separately from reported model identity. A match is a configuration comparison, not runtime enforcement or campaign qualification.", "",
               "| Trial | Reported identity matches | Declared controls match | Differences |",

@@ -1,0 +1,12 @@
+{
+  "exit_code": 0,
+  "seconds": 31.792584951967,
+  "source_unchanged": true,
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "1dde092af6060e1d28d46a6deb5a033413fd7f26366f3de39f13c83d2d717f6d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py": "4672fd450a2f702eecb16a95ea97f8fce05236d9f472cd5a335044522b009680",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "ec83cc31365b9f6181e991fccbbd4da61404792faf88ea21c364c135dab503f4",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/test_semantic_instruction_audit_edges.py": "9d6b0b4b5e829af33cad7d5eda43de0b59138a6e30bfa637e11ead1eb4475fca"
+  }
+}

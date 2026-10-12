@@ -1,0 +1,35 @@
+{
+  "schema": "authored-signed-instruction-input-observations@1",
+  "junit_sha256": "2828de476dafd69dd9378fa1be0ddc2de5621810523197a661a6ae00a6213449",
+  "scope": "Complete rendered authored coding-input bytes including workspace and signed verbatim public instruction; legacy reply mode.",
+  "source": "pytest record_property from real signed native router dispatch fixtures",
+  "live_provider_calls": 0,
+  "terminal_bench_score": null,
+  "live_token_savings_measured": false,
+  "observations": [
+    {
+      "test": "test_signed_instruction_selected_once_with_unchanged_native_prompt_and_historical_replay",
+      "native_complete_bytes": 31807,
+      "candidate_complete_bytes": 27574,
+      "selected_complete_bytes": 27574,
+      "selected_mode": "common-bindings-instruction@1",
+      "fallback_reason": null,
+      "measurement_scope": "complete_rendered_authored_coding_input_bytes",
+      "live_token_savings_measured": false,
+      "byte_reduction": 4233,
+      "percent_byte_reduction": 13.308391234633886
+    },
+    {
+      "test": "test_small_signed_instruction_falls_back_to_exact_native_input",
+      "native_complete_bytes": 18713,
+      "candidate_complete_bytes": 18847,
+      "selected_complete_bytes": 18713,
+      "selected_mode": "legacy",
+      "fallback_reason": "complete_input_not_smaller_under_bytes_and_proxy",
+      "measurement_scope": "complete_rendered_authored_coding_input_bytes",
+      "live_token_savings_measured": false,
+      "byte_reduction": 0,
+      "percent_byte_reduction": 0.0
+    }
+  ]
+}

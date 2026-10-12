@@ -95,9 +95,10 @@ def _open(owner, **kwargs):
 
 
 @pytest.mark.parametrize("doctor", [False, True])
-def test_existing_native_owner_prompt_and_guarded_detached_context(owner, doctor):
+@pytest.mark.parametrize("mode", ["common-bindings@1", "common-bindings-instruction@1"])
+def test_existing_native_owner_prompt_and_guarded_detached_context(owner, doctor, mode):
     source_hashes = local._sources(owner["root"], ["source.py", "support.py"])
-    with _open(owner, include_doctor_context=doctor) as context:
+    with _open(owner, include_doctor_context=doctor, semantic_metadata_view=mode) as context:
         report, workspace = context["metadata"], context["workspace"]
         assert workspace.is_dir()
         assert _git(workspace, "rev-parse", "--abbrev-ref", "HEAD").strip() == b"HEAD"
@@ -115,7 +116,7 @@ def test_existing_native_owner_prompt_and_guarded_detached_context(owner, doctor
         assert stat.S_IMODE(context["prompt_artifact"].stat().st_mode) == 0o400
         assert stat.S_IMODE(context["prompt_artifact"].parent.stat().st_mode) == 0o700
         assert context["runner_kwargs"]["census_only"] is True
-        assert context["runner_kwargs"]["semantic_metadata_view"] == "common-bindings@1"
+        assert context["runner_kwargs"]["semantic_metadata_view"] == mode
         assert ("doctor_residual_artifact" in context["runner_kwargs"]) is doctor
         exported = json.dumps(report)
         for private in ("def identity", "authored_reference", str(owner["root"]), owner["task_cid"], owner["indexed"]["semantic_root_cid"]):

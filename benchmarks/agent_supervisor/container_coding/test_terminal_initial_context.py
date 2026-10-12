@@ -63,6 +63,28 @@ def _version(monkeypatch):
     monkeypatch.setattr(subprocess, "run", run)
 
 
+def test_programmatic_retrieval_ranked_capsules_use_same_native_index_and_replay(original):
+    root, instruction, state = original
+    prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+    result = initial.prepare_initial_context(state=state, prepared=prepared,
+        model_snapshot=None, model_revision="", required_raw_paths=[prep.INSTRUCTION, prep.SMOKE],
+        retrieval_ranked_capsules=True)
+    loaded = initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
+    projection = loaded["semantic"]["worker_projection"]
+    selection = json.loads((state / "capsule-selection.json").read_bytes())
+    assert projection["selector"] == "verified-retrieval-symbol-rank@1"
+    assert projection["retrieval"] == selection
+    assert selection["sha256"] == loaded["descriptor"]["retrieval"]["sha256"]
+    assert loaded["semantic"]["program_paths"] == ["bottle.py"]
+    assert loaded["semantic"]["raw_sources"][prep.INSTRUCTION] == prepared["query"]
+    assert loaded["semantic"]["raw_sources"][prep.SMOKE] == (root / prep.SMOKE).read_text()
+    assert result["provider_calls"] == 0
+    assert not (state / "planner-invoked.json").exists()
+    (state / "capsule-selection.json").unlink()
+    with pytest.raises(ValueError, match="lack their selected native retrieval"):
+        initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
+
+
 def test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world(original, monkeypatch):
     root, instruction, state = original
     prepared = prep.prepare(repository=root, instruction=instruction, state=state)

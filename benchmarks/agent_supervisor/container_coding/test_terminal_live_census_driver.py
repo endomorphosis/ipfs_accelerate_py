@@ -58,8 +58,9 @@ def test_driver_invalid_census_selection_refuses_before_reads(tmp_path, monkeypa
 
 
 @pytest.mark.parametrize("cleanup_code", [0, 1])
+@pytest.mark.parametrize("mode", ["common-bindings@1", "common-bindings-instruction@1"])
 def test_actual_driver_census_branch_retains_stages_and_skips_active_execution(
-        tmp_path, monkeypatch, cleanup_code):
+        tmp_path, monkeypatch, cleanup_code, mode):
     root = tmp_path / "container"
     state = root / "state/run"
     state.mkdir(parents=True)
@@ -87,6 +88,7 @@ def test_actual_driver_census_branch_retains_stages_and_skips_active_execution(
         assert kwargs["state"] == state
         assert kwargs["provider_selection"] == resolve_provider_profile(CODEX_PROFILE)
         assert 0 < kwargs["timeout_seconds"] <= 120
+        assert kwargs.get("semantic_metadata_view", "common-bindings@1") == mode
         calls.append("census")
         kwargs["report"].update(metadata_census_succeeded=True,
             metadata_census={"provider_calls": 0, "router_calls": 0}, coding_dispatch_possible=False)
@@ -137,7 +139,7 @@ def test_actual_driver_census_branch_retains_stages_and_skips_active_execution(
     monkeypatch.setattr(driver.subprocess, "run", cleanup)
     monkeypatch.setattr(driver.subprocess, "Popen", _forbidden)
     monkeypatch.setattr(builtins, "__import__", import_guard)
-    report = driver.run(**_census_options(root))
+    report = driver.run(**{**_census_options(root), "semantic_metadata_view": mode})
     assert calls == ["prepare", "initial_context", "planning", "context", "admission", "census"]
     assert imports == [] and len(cleanups) == 1
     assert report["metadata_census_succeeded"] is (cleanup_code == 0)
@@ -184,7 +186,8 @@ def authored_isolated_census(tmp_path, monkeypatch):
         "provider_token_usage": None, "doctor_residual_included": True, "public_instruction_included": True}
     control = SimpleNamespace(state=state, prepared=prepared, report=report, selected=selected,
         receipt=receipt, fail_after_yield=False, worker_returncode=0, calls=[], events=[],
-        helper_calls=[], worker_inputs=[], formal_status_owner=None, provenance={
+        helper_calls=[], worker_inputs=[], formal_status_owner=None,
+        mode="common-bindings@1", provenance={
             "worker_boundary_manifest_sha256": boundary_sha, "authored_control": True})
 
     @contextmanager
@@ -194,6 +197,8 @@ def authored_isolated_census(tmp_path, monkeypatch):
         if control.formal_status_owner is not None:
             expected.update(include_formal_status_census=True,
                             formal_status_owner=control.formal_status_owner)
+        if control.mode != "common-bindings@1":
+            expected["semantic_metadata_view"] = control.mode
         assert kwargs == expected
         control.helper_calls.append(kwargs)
         control.events.append("yield")
@@ -220,7 +225,7 @@ def authored_isolated_census(tmp_path, monkeypatch):
         control.worker_inputs.append(prompt_bytes)
         assert "--semantic-metadata-census-only" in argv
         for flag, value in (("--semantic-repository", str(root)),
-                ("--semantic-metadata-view", "common-bindings@1"),
+                ("--semantic-metadata-view", control.mode),
                 ("--coding-reply-mode", "ordinary-completion@1"), ("--purpose", "coding")):
             assert argv[argv.index(flag) + 1] == value
         for prefix in ("doctor_residual", "public_instruction"):
@@ -240,12 +245,18 @@ def authored_isolated_census(tmp_path, monkeypatch):
 
 
 def _run_authored_census(control, **kwargs):
+    if control.mode != "common-bindings@1":
+        kwargs["semantic_metadata_view"] = control.mode
     driver._run_live_metadata_census(state=control.state, report=control.report,
         provider_selection=control.selected, timeout_seconds=60, **kwargs)
 
 
-def test_census_success_is_published_only_after_native_exit_rechecks(authored_isolated_census):
+@pytest.mark.parametrize("mode", ["common-bindings@1", "common-bindings-instruction@1"])
+def test_census_success_is_published_only_after_native_exit_rechecks(authored_isolated_census, mode):
     control = authored_isolated_census
+    control.mode = mode
+    control.prepared["runner_kwargs"]["semantic_metadata_view"] = mode
+    control.receipt["census"] = {"requested_mode": mode}
     _run_authored_census(control)
     assert control.events == ["yield", "recheck"] and len(control.calls) == 1
     assert control.report["metadata_census_succeeded"] is True
@@ -254,6 +265,20 @@ def test_census_success_is_published_only_after_native_exit_rechecks(authored_is
     assert control.report["metadata_census_context"]["post_yield_admission_task_revalidated"] is True
     assert control.report["metadata_census_context"]["allocated_worktree_removed"] is True
     assert control.report["metadata_census_context"]["retained_owner_planning_receipt_join_verified"] is True
+
+
+@pytest.mark.parametrize("reported", [None, {}, {"requested_mode": "common-bindings@1"},
+                                       {"requested_mode": "unknown"}])
+def test_instruction_census_treatment_drift_prevents_publication(authored_isolated_census, reported):
+    control = authored_isolated_census
+    control.mode = "common-bindings-instruction@1"
+    control.prepared["runner_kwargs"]["semantic_metadata_view"] = control.mode
+    control.receipt["census"] = reported
+    with pytest.raises(ValueError, match="different metadata treatment"):
+        _run_authored_census(control)
+    assert len(control.calls) == 1
+    assert control.report["metadata_census_succeeded"] is False
+    assert "metadata_census" not in control.report
 
 
 @pytest.mark.parametrize("fail_after_yield", [False, True])
@@ -372,18 +397,19 @@ def _worker_parser_and_route(argv):
     pytest.fail("shipped worker route must terminate")
 
 
-def _worker_census_argv():
-    return ["--semantic-repository", "/app", "--semantic-metadata-view", "common-bindings@1",
+def _worker_census_argv(mode="common-bindings@1"):
+    return ["--semantic-repository", "/app", "--semantic-metadata-view", mode,
             "--semantic-metadata-census-only", "--coding-reply-mode", "ordinary-completion@1"]
 
 
-def test_shipped_worker_parser_forwards_both_metadata_flags_through_child_custody():
-    code, events = _worker_parser_and_route(_worker_census_argv())
+@pytest.mark.parametrize("mode", ["common-bindings@1", "common-bindings-instruction@1"])
+def test_shipped_worker_parser_forwards_both_metadata_flags_through_child_custody(mode):
+    code, events = _worker_parser_and_route(_worker_census_argv(mode))
     assert code == 0 and events[0] == ("custody",)
     assert len(events) == 2 and events[1][0] == "router"
     argv = events[1][1]
     assert "--semantic-metadata-census-only" in argv
-    assert argv[argv.index("--semantic-metadata-view") + 1] == "common-bindings@1"
+    assert argv[argv.index("--semantic-metadata-view") + 1] == mode
     assert argv[argv.index("--coding-reply-mode") + 1] == "ordinary-completion@1"
     assert argv[argv.index("--container-boundary-sha256") + 1] == "4" * 64
 

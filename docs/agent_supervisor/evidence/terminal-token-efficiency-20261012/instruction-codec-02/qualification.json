@@ -1,0 +1,9 @@
+{
+  "exit_code": 0,
+  "seconds": 47.43860927503556,
+  "source_unchanged": true,
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/test_semantic_instruction_view.py": "184fcd96c7fff72cba513cb58672f7e56b387eacabfa03db99f41bb7b04fd029"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "schema": "instruction-metadata-offline-docker-smoke@1",
+  "returncode": 0,
+  "error": null,
+  "seconds": 13.556003654026426,
+  "counts": {
+    "tests": 10,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0
+  },
+  "source_hashes_unchanged": true,
+  "source_and_test_file_count": 12287,
+  "container_removed": true,
+  "image_id": "sha256:771900c18b663b33a5bf96e066346b2d5c842506523efb167aebe8d3a99b5c07",
+  "archive_sha256": "25a83f461c081130c482b5b1703f6dceaeb0ca22ea4b99892e1147c928bb397d",
+  "full_runtime_deployment_qualified": false,
+  "official_terminal_bench_score": null,
+  "live_provider_calls": 0,
+  "model_downloads": 0,
+  "training_steps": 0,
+  "input_byte_observations": [
+    {
+      "test": "test_signed_instruction_selected_once_with_unchanged_native_prompt_and_historical_replay",
+      "native_complete_bytes": 31798,
+      "candidate_complete_bytes": 27565,
+      "selected_complete_bytes": 27565,
+      "selected_mode": "common-bindings-instruction@1",
+      "fallback_reason": null,
+      "measurement_scope": "complete_rendered_authored_coding_input_bytes",
+      "live_token_savings_measured": false
+    },
+    {
+      "test": "test_small_signed_instruction_falls_back_to_exact_native_input",
+      "native_complete_bytes": 18705,
+      "candidate_complete_bytes": 18837,
+      "selected_complete_bytes": 18705,
+      "selected_mode": "legacy",
+      "fallback_reason": "complete_input_not_smaller_under_bytes_and_proxy",
+      "measurement_scope": "complete_rendered_authored_coding_input_bytes",
+      "live_token_savings_measured": false
+    }
+  ],
+  "results": {
+    "module-origins.json": "0c1391bb0ded9dcdc0a655f9360c6cce7ef2ff894c678fb9a3c1afe177e6bac8",
+    "junit.xml": "fb73f8df66006cb3178b5d1c8cde81acac093a54d4d9833758f14d5016448834"
+  }
+}

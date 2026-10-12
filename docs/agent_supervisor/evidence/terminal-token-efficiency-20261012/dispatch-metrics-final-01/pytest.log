@@ -1,0 +1,150 @@
+/home/barberb/.local/lib/python3.12/site-packages/pytest_asyncio/plugin.py:299: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the "fixture" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to "function" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/supervisor-token-efficiency-20261012/dispatch-metrics-final-01/pytest-cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+
+----------------------------- live log collection ------------------------------
+2026-10-12 01:54:59 [    INFO] Using standard filesystem operations (distributed storage disabled) (storage_wrapper.py:99)
+collected 89 items
+
+test/api/test_semantic_instruction_dispatch.py::test_signed_instruction_selected_once_with_unchanged_native_prompt_and_historical_replay 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:55:22 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-99/test_signed_instruction_select0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  1%]
+test/api/test_semantic_instruction_dispatch.py::test_counter_can_select_or_refuse_instruction_view_and_replays_after_source_change[90-common-bindings-instruction@1] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:55:25 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-99/test_counter_can_select_or_ref0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  2%]
+test/api/test_semantic_instruction_dispatch.py::test_counter_can_select_or_refuse_instruction_view_and_replays_after_source_change[200-legacy] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:55:26 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-99/test_counter_can_select_or_ref1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  3%]
+test/api/test_semantic_instruction_dispatch.py::test_small_signed_instruction_falls_back_to_exact_native_input 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:55:28 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-99/test_small_signed_instruction_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  4%]
+test/api/test_semantic_instruction_dispatch.py::test_instruction_view_rejects_stale_or_absent_requirements_before_provider[canonical_instruction] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:55:29 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-99/test_instruction_view_rejects_0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  5%]
+test/api/test_semantic_instruction_dispatch.py::test_instruction_view_rejects_stale_or_absent_requirements_before_provider[worker_instruction] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:55:30 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-99/test_instruction_view_rejects_1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  6%]
+test/api/test_semantic_instruction_dispatch.py::test_instruction_view_rejects_stale_or_absent_requirements_before_provider[missing_raw_source] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:55:31 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-99/test_instruction_view_rejects_2/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  7%]
+test/api/test_semantic_instruction_dispatch.py::test_instruction_view_rejects_stale_or_absent_requirements_before_provider[missing_binding] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:55:33 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-99/test_instruction_view_rejects_3/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  8%]
+test/api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[False] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:55:34 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-99/test_instruction_census_has_ex0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 10%]
+test/api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[True] 
+-------------------------------- live log setup --------------------------------
+2026-10-12 01:55:35 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-99/test_instruction_census_has_ex1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 11%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_observed_efficiency_includes_failed_attempts_and_deduplicates_receipts PASSED [ 12%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_observed_efficiency_refuses_unknown_denominators_and_incomplete_numerators[unknown_reward-unknown_official_reward-unknown_official_reward] PASSED [ 13%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_observed_efficiency_refuses_unknown_denominators_and_incomplete_numerators[zero_passes-no_official_passes-no_official_passes] PASSED [ 14%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_observed_efficiency_refuses_unknown_denominators_and_incomplete_numerators[partial_reward-no_official_passes-no_official_passes] PASSED [ 15%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_observed_efficiency_refuses_unknown_denominators_and_incomplete_numerators[incomplete_session-incomplete_native_token_usage-incomplete_reported_provider_cost] PASSED [ 16%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_observed_efficiency_refuses_unknown_denominators_and_incomplete_numerators[missing_total-incomplete_native_token_usage-None] PASSED [ 17%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_observed_efficiency_refuses_unknown_denominators_and_incomplete_numerators[unreceipted_attempt-incomplete_native_token_usage-incomplete_reported_provider_cost] PASSED [ 19%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_observed_efficiency_refuses_unknown_denominators_and_incomplete_numerators[missing_cost-None-incomplete_reported_provider_cost] PASSED [ 20%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_setup_abort_does_not_turn_unknown_cost_into_zero_per_pass PASSED [ 21%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_observed_efficiency_preserves_mixed_provider_total_and_cache_semantics PASSED [ 22%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_native_baseline_efficiency_uses_all_failed_session_costs PASSED [ 23%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_session_completion_does_not_replace_usage_completeness[True] PASSED [ 24%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_session_completion_does_not_replace_usage_completeness[False] PASSED [ 25%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_session_completion_does_not_replace_usage_completeness[None] PASSED [ 26%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_counter_or_completeness_contract_gaps_do_not_create_totals[missing_flag] PASSED [ 28%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_counter_or_completeness_contract_gaps_do_not_create_totals[string_flag] PASSED [ 29%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_counter_or_completeness_contract_gaps_do_not_create_totals[integer_flag] PASSED [ 30%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_counter_or_completeness_contract_gaps_do_not_create_totals[wrong_schema] PASSED [ 31%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_counter_or_completeness_contract_gaps_do_not_create_totals[wrong_scope] PASSED [ 32%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_counter_or_completeness_contract_gaps_do_not_create_totals[wrong_provider] PASSED [ 33%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_counter_or_completeness_contract_gaps_do_not_create_totals[missing_write] PASSED [ 34%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_counter_or_completeness_contract_gaps_do_not_create_totals[missing_total] PASSED [ 35%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_counter_or_completeness_contract_gaps_do_not_create_totals[inconsistent_total] PASSED [ 37%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_counter_or_completeness_contract_gaps_do_not_create_totals[cache_semantics] PASSED [ 38%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_counter_or_completeness_contract_gaps_do_not_create_totals[usage_unavailable] PASSED [ 39%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_grok_incomplete_call_prevents_pair_total_and_unreceipted_attempt_remains_unknown PASSED [ 40%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_unidentified_legacy_receipt_does_not_inherit_codex_contract PASSED [ 41%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_stream_progress_survives_comparison_without_becoming_usage_or_completion PASSED [ 42%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_symbolic_coding_does_not_invent_provider_calls_or_learned_proof PASSED [ 43%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_retains_failed_planning_and_setup_without_cache_double_count PASSED [ 44%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_missing_invocation_preserves_known_cost_but_not_complete_total PASSED [ 46%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_interrupted_or_legacy_usage_is_only_an_observed_subtotal[False] PASSED [ 47%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_interrupted_or_legacy_usage_is_only_an_observed_subtotal[None] PASSED [ 48%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_legacy_baseline_without_session_completion_keeps_only_observed_usage PASSED [ 49%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_completed_native_session_can_retain_failed_postprocessing_cost PASSED [ 50%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_conflicting_same_invocation_is_rejected PASSED [ 51%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_duplicate_retained_trial_counted_once_and_empty_receipt_preserved PASSED [ 52%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_context_preparation_is_not_worker_consumption_or_repair_evidence PASSED [ 53%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_full_lifecycle_costs_and_actual_input_observations_are_separate PASSED [ 55%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_failed_cold_stage_is_retained_without_preparation_or_dispatch_claim PASSED [ 56%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_declared_output_bytes_survive_comparison_without_correctness_or_token_claims PASSED [ 57%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_absent_or_malformed_byte_observation_remains_unknown[missing] PASSED [ 58%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_absent_or_malformed_byte_observation_remains_unknown[extra_rows] PASSED [ 59%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_absent_or_malformed_byte_observation_remains_unknown[unsafe_path] PASSED [ 60%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_absent_or_malformed_byte_observation_remains_unknown[bad_digest] PASSED [ 61%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_absent_or_malformed_byte_observation_remains_unknown[status_list] PASSED [ 62%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_doctor_selection_is_distinct_from_matching_worker_materialization PASSED [ 64%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_refresh_unknown_totals_preserve_observed_failed_costs[refresh0] PASSED [ 65%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_refresh_unknown_totals_preserve_observed_failed_costs[refresh1] PASSED [ 66%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_refresh_unknown_totals_preserve_observed_failed_costs[refresh2] PASSED [ 67%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_reported_wire_measurements_do_not_imply_successful_input_audit PASSED [ 68%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_absent_metadata_preserves_existing_input_observation_shape PASSED [ 69%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_metadata_measurements_survive_comparison_without_charging_native_usage[supervisor-semantic-metadata-selection@1-provider_tokenizer] PASSED [ 70%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_metadata_measurements_survive_comparison_without_charging_native_usage[supervisor-semantic-metadata-selection@2-provider_tokenizer] PASSED [ 71%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_metadata_measurements_survive_comparison_without_charging_native_usage[supervisor-semantic-metadata-selection@2-estimate] PASSED [ 73%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[unknown_schema] PASSED [ 74%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[list_schema] PASSED [ 75%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[list_status] PASSED [ 76%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[unknown_qualification] PASSED [ 77%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[list_qualification] PASSED [ 78%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[unverified_scope] PASSED [ 79%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[identity_digest] PASSED [ 80%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[boolean_count] PASSED [ 82%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[negative_count] PASSED [ 83%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[overflow_count] PASSED [ 84%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[selected_count] PASSED [ 85%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[proxy_count] PASSED [ 86%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[caller_flag] PASSED [ 87%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_malformed_metadata_measurements_remain_unavailable[unsafe_identity] PASSED [ 88%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_counter_failure_retains_fallback_without_exception_text_or_invented_counts PASSED [ 89%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_instruction_metadata_mode_retains_requested_treatment_including_fallback[False-supervisor-semantic-metadata-selection@1] PASSED [ 91%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_instruction_metadata_mode_retains_requested_treatment_including_fallback[False-supervisor-semantic-metadata-selection@2] PASSED [ 92%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_instruction_metadata_mode_retains_requested_treatment_including_fallback[True-supervisor-semantic-metadata-selection@1] PASSED [ 93%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_instruction_metadata_mode_retains_requested_treatment_including_fallback[True-supervisor-semantic-metadata-selection@2] PASSED [ 94%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_instruction_metadata_mode_refuses_missing_foreign_or_conflicting_requested_mode[None] PASSED [ 95%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_instruction_metadata_mode_refuses_missing_foreign_or_conflicting_requested_mode[requested1] PASSED [ 96%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_instruction_metadata_mode_refuses_missing_foreign_or_conflicting_requested_mode[foreign-MUST NOT APPEAR] PASSED [ 97%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_instruction_metadata_mode_refuses_missing_foreign_or_conflicting_requested_mode[common-bindings@1] PASSED [ 98%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py::test_instruction_metadata_mode_refuses_missing_foreign_or_conflicting_requested_mode[legacy] PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-token-efficiency-20261012/dispatch-metrics-final-01/junit.xml -
+============================= slowest 10 durations =============================
+1.22s call     test/api/test_semantic_instruction_dispatch.py::test_signed_instruction_selected_once_with_unchanged_native_prompt_and_historical_replay
+0.97s setup    test/api/test_semantic_instruction_dispatch.py::test_signed_instruction_selected_once_with_unchanged_native_prompt_and_historical_replay
+0.86s setup    test/api/test_semantic_instruction_dispatch.py::test_counter_can_select_or_refuse_instruction_view_and_replays_after_source_change[200-legacy]
+0.84s setup    test/api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[False]
+0.80s setup    test/api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[True]
+0.70s call     test/api/test_semantic_instruction_dispatch.py::test_counter_can_select_or_refuse_instruction_view_and_replays_after_source_change[200-legacy]
+0.70s call     test/api/test_semantic_instruction_dispatch.py::test_counter_can_select_or_refuse_instruction_view_and_replays_after_source_change[90-common-bindings-instruction@1]
+0.69s call     test/api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[True]
+0.69s call     test/api/test_semantic_instruction_dispatch.py::test_instruction_census_has_exact_selected_input_without_provider_discovery[False]
+0.69s setup    test/api/test_semantic_instruction_dispatch.py::test_counter_can_select_or_refuse_instruction_view_and_replays_after_source_change[90-common-bindings-instruction@1]
+============================= 89 passed in 39.65s ==============================

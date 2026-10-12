@@ -89,6 +89,133 @@ def _grok_invocation(identity="grok-call", complete=None):
     }
 
 
+def test_observed_efficiency_includes_failed_attempts_and_deduplicates_receipts(tmp_path):
+    trials = []
+    for index, (reward, cost) in enumerate(((1, 0.5), (0, 0.25), (1, 0.75))):
+        invocation = _invocation(f"call-{index}")
+        invocation["native_rollout_usage"]["dollar_cost"] = cost
+        if reward == 0:
+            invocation.update(status="failed", error_type="ResponseDecodeError")
+        trials.append({"trial": f"trial-{index}", "reward": {"reward": reward},
+            "supervisor": {"task_completed": True, "provider_invocations": [invocation, invocation]}})
+    receipt = _receipt(tmp_path, "efficiency.json", SUPERVISOR, trials, "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt, receipt])
+    totals = result["arm_totals"]["full"]
+    efficiency = totals["observed_efficiency"]
+    assert totals["trials"] == 3 and totals["observed_official_passes"] == 2
+    assert totals["tokens"]["total_tokens"] == 66
+    assert totals["reported_cost_usd"] == 1.5
+    assert efficiency["total_tokens_per_official_pass"] == 33
+    assert efficiency["reported_cost_usd_per_official_pass"] == 0.75
+    assert efficiency["token_ratio_unavailable_reasons"] == []
+    assert efficiency["cost_ratio_unavailable_reasons"] == []
+    assert efficiency["numerator_scope"] == "all_retained_attempts_in_aggregate"
+    assert efficiency["cache_included_in_input"] is True
+    assert efficiency["causal_claim"] is False and efficiency["billing_total_verified"] is False
+    assert result["unsuccessful_attempt_costs"]["full"]["tokens"]["total_tokens"] == 22
+    assert "| Supervisor: full indexed context | 3 | 2 | 0 | 0 | 33.000 | 0.750 |" in markdown(result)
+    assert "do not establish causal token savings or verified billing" in markdown(result)
+
+
+@pytest.mark.parametrize("gap,token_reason,cost_reason", [
+    ("unknown_reward", "unknown_official_reward", "unknown_official_reward"),
+    ("zero_passes", "no_official_passes", "no_official_passes"),
+    ("partial_reward", "no_official_passes", "no_official_passes"),
+    ("incomplete_session", "incomplete_native_token_usage", "incomplete_reported_provider_cost"),
+    ("missing_total", "incomplete_native_token_usage", None),
+    ("unreceipted_attempt", "incomplete_native_token_usage", "incomplete_reported_provider_cost"),
+    ("missing_cost", None, "incomplete_reported_provider_cost"),
+])
+def test_observed_efficiency_refuses_unknown_denominators_and_incomplete_numerators(
+        tmp_path, gap, token_reason, cost_reason):
+    trials = []
+    for index in range(2):
+        invocation = _invocation(f"call-{index}")
+        invocation["native_rollout_usage"]["dollar_cost"] = 0.25
+        trials.append({"trial": f"trial-{index}", "reward": {"reward": 1},
+            "supervisor": {"task_completed": True, "provider_invocations": [invocation]}})
+    changed = trials[1]
+    native = changed["supervisor"]["provider_invocations"][0]["native_rollout_usage"]
+    if gap == "unknown_reward":
+        changed.pop("reward")
+    elif gap in {"zero_passes", "partial_reward"}:
+        for trial in trials:
+            trial["reward"]["reward"] = 0.5 if gap == "partial_reward" else 0
+    elif gap == "incomplete_session":
+        native["task_complete_observed"] = False
+    elif gap == "missing_total":
+        native["usage"].pop("total_tokens")
+    elif gap == "unreceipted_attempt":
+        changed["supervisor"]["unreceipted_provider_attempt"] = {"phase": "coding"}
+    elif gap == "missing_cost":
+        native.pop("dollar_cost")
+    receipt = _receipt(tmp_path, "efficiency-gap.json", SUPERVISOR, trials, "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    totals = result["arm_totals"]["full"]
+    efficiency = totals["observed_efficiency"]
+    assert efficiency["token_ratio_unavailable_reasons"] == ([token_reason] if token_reason else [])
+    assert efficiency["cost_ratio_unavailable_reasons"] == ([cost_reason] if cost_reason else [])
+    assert efficiency["total_tokens_per_official_pass"] == (None if token_reason else 22)
+    assert efficiency["reported_cost_usd_per_official_pass"] == (None if cost_reason else 0.25)
+    assert totals["known_token_subtotals"]["total_tokens"] == (22 if gap == "missing_total" else 44)
+    assert "Total tokens / official pass" in markdown(result)
+
+
+def test_setup_abort_does_not_turn_unknown_cost_into_zero_per_pass(tmp_path):
+    receipt = _receipt(tmp_path, "setup-abort-efficiency.json", SUPERVISOR, [
+        {"trial": "passed", "reward": {"reward": 1},
+         "supervisor": {"provider_invocations": [_invocation()]}},
+        {"trial": "setup-abort", "exception_type": "SetupError", "supervisor": None},
+    ], "no-index")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    totals = result["arm_totals"]["no-index"]
+    efficiency = totals["observed_efficiency"]
+    assert totals["observed_official_passes"] == 1 and totals["unknown_reward_trials"] == 1
+    assert totals["known_token_subtotals"]["total_tokens"] == 22
+    assert efficiency["total_tokens_per_official_pass"] is None
+    assert efficiency["token_ratio_unavailable_reasons"] == [
+        "unknown_official_reward", "incomplete_native_token_usage"]
+    assert efficiency["reported_cost_usd_per_official_pass"] is None
+
+
+def test_observed_efficiency_preserves_mixed_provider_total_and_cache_semantics(tmp_path):
+    codex, grok = _invocation(), _grok_invocation(complete=True)
+    codex["native_rollout_usage"]["dollar_cost"] = 0
+    grok["native_rollout_usage"]["dollar_cost"] = 0
+    receipt = _receipt(tmp_path, "mixed-provider-efficiency.json", SUPERVISOR, [{
+        "trial": "mixed-provider", "reward": {"reward": 1},
+        "supervisor": {"provider_invocations": [codex, grok]},
+    }], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    efficiency = result["arm_totals"]["full"]["observed_efficiency"]
+    assert row["tokens"] == dict(input_tokens=30, cached_input_tokens=45, output_tokens=4, total_tokens=64)
+    assert efficiency["total_tokens_per_official_pass"] == 64  # Native totals, without adding cache twice.
+    assert efficiency["reported_cost_usd_per_official_pass"] == 0  # Explicit zero is a known cost.
+    assert efficiency["cache_included_in_input"] is None
+    assert [call["cache_included_in_input"] for call in row["invocations"]] == [True, False]
+    assert [call["token_count_scope"] for call in row["invocations"]] == [
+        "native_session_cumulative", "native_final_envelope"]
+
+
+def test_native_baseline_efficiency_uses_all_failed_session_costs(tmp_path):
+    baseline = _baseline(tmp_path)
+    receipt = json.loads(baseline.read_text())
+    failed = copy.deepcopy(receipt["trials"][0])
+    failed.update(trial="failed-native", reward={"reward": 0})
+    receipt["trials"].append(failed)
+    receipt["trial_count"] = 2
+    for trial in receipt["trials"]:
+        trial["raw_usage"]["reported_cost_usd"] = 0.125
+    baseline.write_text(json.dumps(receipt))
+    result = collect(baseline=baseline, supervisors=[])
+    efficiency = result["arm_totals"]["native-codex"]["observed_efficiency"]
+    assert efficiency["total_tokens_per_official_pass"] == 220
+    assert efficiency["reported_cost_usd_per_official_pass"] == 0.25
+    assert efficiency["cache_included_in_input"] is True
+    assert "| Native Codex harness | 2 | 1 | 0 | 0 | 220.000 | 0.250 |" in markdown(result)
+
+
 @pytest.mark.parametrize("complete", [True, False, None])
 def test_grok_session_completion_does_not_replace_usage_completeness(tmp_path, complete):
     invocation = _grok_invocation(complete=complete)
@@ -110,6 +237,8 @@ def test_grok_session_completion_does_not_replace_usage_completeness(tmp_path, c
     assert row["cache_included_in_input"] is False
     assert result["cached_tokens_are_already_in_input"] is None  # Mixed Codex/Grok semantics.
     assert row["reported_cost_usd"] is None
+    efficiency = result["arm_totals"]["full"]["observed_efficiency"]
+    assert efficiency["total_tokens_per_official_pass"] == (42 if complete is True else None)
     if complete is not True:
         assert "42 (observed)" in markdown(result)
         assert "≥ 42" not in markdown(result)
@@ -695,3 +824,37 @@ def test_counter_failure_retains_fallback_without_exception_text_or_invented_cou
     assert observed["selected_mode"] == "legacy"
     assert observed["selected_complete_tokens"] is None
     assert "MUST NOT APPEAR" not in json.dumps(observed)
+
+
+@pytest.mark.parametrize("schema", ["supervisor-semantic-metadata-selection@1", "supervisor-semantic-metadata-selection@2"])
+@pytest.mark.parametrize("fallback", [False, True])
+def test_instruction_metadata_mode_retains_requested_treatment_including_fallback(schema, fallback):
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _input_observation
+    metadata = _metadata_selection(schema)
+    metadata.update(requested_mode="common-bindings-instruction@1",
+                    selected_mode="legacy" if fallback else "common-bindings-instruction@1")
+    if fallback:
+        metadata["fallback_reason"] = ("complete_input_not_smaller_under_bytes_and_proxy"
+            if schema.endswith("@1") else "complete_input_not_smaller_under_bytes_and_token_counter")
+        for field in ("sha256", "bytes", "proxy_tokens", "tokens"):
+            key = "native_complete_" + field
+            if key in metadata:
+                metadata["selected_complete_" + field] = metadata[key]
+    observed = _input_observation({"semantic_metadata_view": metadata})["semantic_metadata_view"]
+    assert observed["status"] == "reported"
+    assert observed["requested_mode"] == "common-bindings-instruction@1"
+    assert observed["selected_mode"] == metadata["selected_mode"]
+    assert observed["selected_complete_sha256"] == metadata["selected_complete_sha256"]
+    assert observed["complete_run_token_savings_claimed"] is False
+
+
+@pytest.mark.parametrize("requested", [None, [], "foreign-MUST NOT APPEAR", "common-bindings@1", "legacy"])
+def test_instruction_metadata_mode_refuses_missing_foreign_or_conflicting_requested_mode(requested):
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _input_observation
+    metadata = _metadata_selection()
+    metadata["selected_mode"] = "common-bindings-instruction@1"
+    if requested is not None:
+        metadata["requested_mode"] = requested
+    observed = _input_observation({"semantic_metadata_view": metadata})["semantic_metadata_view"]
+    assert observed["status"] == "unavailable"
+    assert "requested_mode" not in observed and "MUST NOT APPEAR" not in json.dumps(observed)
