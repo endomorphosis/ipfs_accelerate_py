@@ -1,0 +1,13 @@
+{
+  "schema": "terminal-root-source-release@1",
+  "source_frozen_for_archive": true,
+  "root_authorization": "Build archive05 and proceed with sequential full baseline and instruction-dedup after focused tests, exact source qualification and preparations pass. Official verifier enabled; retain all attempts; no automatic retry.",
+  "source_head": "c3d4f873acdb62fd5b124328b3e3f28accd8dbdb",
+  "datasets_head": "c1b1f65f254f5f3ee8f307cdddf923c62450f78e",
+  "focused_tests": {
+    "passed": 138,
+    "skipped": 0,
+    "artifact": "formalization-cache-focused-01"
+  },
+  "launch_count_so_far": 0
+}

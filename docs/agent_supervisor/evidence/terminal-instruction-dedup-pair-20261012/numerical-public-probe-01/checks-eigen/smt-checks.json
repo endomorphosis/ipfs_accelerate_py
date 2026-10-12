@@ -1,0 +1,26 @@
+[
+  {
+    "index": 0,
+    "result": "sat",
+    "script_sha256": "75033336e7cf649a3e628abfaeef5e37417c63ca4a8266a014b8f9457473de0e",
+    "seconds": 0.018584438948892057,
+    "source_obligations_discharged": 0,
+    "source_witnesses_provided": false
+  },
+  {
+    "index": 1,
+    "result": "sat",
+    "script_sha256": "712388a4be1677be02b6a264d21e02fe3418f38bb65fb68edc5bc1dbc90cd356",
+    "seconds": 0.0025609659496694803,
+    "source_obligations_discharged": 0,
+    "source_witnesses_provided": false
+  },
+  {
+    "index": 2,
+    "result": "sat",
+    "script_sha256": "8b09999b0a569bb1bdc25a2a5ed645ec8a8799971179448159817a733ce10b35",
+    "seconds": 0.0010320729343220592,
+    "source_obligations_discharged": 0,
+    "source_witnesses_provided": false
+  }
+]

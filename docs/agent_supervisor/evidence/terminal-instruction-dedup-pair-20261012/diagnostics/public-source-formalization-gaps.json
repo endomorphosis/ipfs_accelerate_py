@@ -1,0 +1,437 @@
+{
+  "archive_sha256": "96aa70a6e10667ee9ca6d54a8baaae2a18378cdab22414c3bb32cc9fd65ed607",
+  "audit_actions": {
+    "containers_started": 0,
+    "hidden_test_or_solution_files_opened": false,
+    "neural_inference_calls": 0,
+    "only_allowlisted_report_fields_inspected": true,
+    "production_mutations": false,
+    "proof_executions": 0,
+    "provider_calls": 0,
+    "provider_transcript_files_opened": false,
+    "raw_native_receipts_copied": false,
+    "source_executed": false,
+    "training_steps": 0,
+    "trial_changes": false
+  },
+  "claims": {
+    "code_correctness_proved": false,
+    "full_system_formalization_complete": false,
+    "intent_meaning_verified": false,
+    "token_savings_established": false
+  },
+  "datasets_head": "c1b1f65f254f5f3ee8f307cdddf923c62450f78e",
+  "findings": [
+    {
+      "basis": [
+        "scalar_grammar",
+        "effect_contract",
+        "source_decoder"
+      ],
+      "id": "selected_scalar_grammar",
+      "observation": "The selected checkpoint is consumed, but its independent source guard only accepts two int-annotated parameters and one binary arithmetic/comparison expression, directly or via one fresh temporary. All four public functions take one parameter; numerical calls, tuple returns, array slices and loops exceed that grammar. Model weights alone cannot remove this validator frontier.",
+      "type": "observed selection and static source limitation"
+    },
+    {
+      "basis": [
+        "numerical_structure",
+        "numerical_logic",
+        "numerical_consumer",
+        "initial_selection",
+        "benchmark_selection"
+      ],
+      "id": "unused_pure_structural_numerical_route",
+      "observation": "The existing python-numerical-structure@1 opt-in retains calls, tuple unpacking/returns, slices and assertions in ProgramIR; it emits first-order, SMT and Lean obligations, joins function units and hydrates world/metadata DuckLakes before planner summary delivery. It was not selected in the current pair. No learned model or extra model-asset layout is required for this structural path. Exact coverage of these two files has not been executed by this audit.",
+      "type": "existing integration not selected"
+    },
+    {
+      "basis": [
+        "numerical_structure",
+        "numerical_logic",
+        "numerical_consumer"
+      ],
+      "id": "numerical_proof_frontier",
+      "observation": "NumPy calls remain opaque; loop bodies remain explicit unsupported fences. Existing Lean outputs are definitions and conditional lemmas, with source obligations undischarged. Floating/complex semantics, eigensolver identity, tolerances, dimension premises, largest-magnitude selection and performance claims require further reviewed contracts/validators. TLA+, temporal and other unsupported families are explicitly listed rather than inferred from a CFG.",
+      "type": "semantic and proof gap"
+    },
+    {
+      "basis": [
+        "learned_numerical_grammar",
+        "learned_numerical_config",
+        "archive_layout",
+        "benchmark_selection"
+      ],
+      "id": "unused_learned_numerical_route",
+      "observation": "The separate numpy-unary-selection-384@1 release and explicit pinned-config machinery exist, but its grammar only accepts a direct unannotated argmax/argmin return with one parameter operand. It does not cover these multi-statement eigensystem functions. The current setup cache also rejects learned numerical selection.",
+      "type": "selection plus true decoder-grammar and cache-layout gaps"
+    },
+    {
+      "basis": [
+        "intent_runtime_selection",
+        "intent_consumer",
+        "archive_layout",
+        "benchmark_selection"
+      ],
+      "id": "intent_selection_gap",
+      "observation": "No Intent checkpoint was packaged, so the observed fail_open_no_checkpoint is the explicit absent-selection path. Intent384 config loading, offline exact checkpoint/GTE packaging, shared datasets inference/replay and preplanning delivery already exist. Current setup cache requires a Source384-only layout and rejects Intent384 alongside it.",
+      "type": "observed archive omission and integration blocker"
+    },
+    {
+      "basis": [
+        "intent_action_grammar",
+        "intent_action_inference"
+      ],
+      "id": "intent_input_grammar_gap",
+      "observation": "Even after selecting Intent384, the current shared action path screens before model load for a single-line scalar actor-must-compute/requires/ensures grammar over old(left)/old(right). The actual multiline numerical, correctness, runtime and entrypoint instruction is outside that grammar. Static inspection predicts fail_open_input_out_of_scope, not successful whole-instruction formalization; no inference was run in this audit.",
+      "type": "static prediction, not observed model result"
+    }
+  ],
+  "native_evidence": {
+    "candidate_origin": "learned_checkpoint_inference",
+    "candidate_statuses": {
+      "fail_open_source_contract_unsupported": 4
+    },
+    "decoded_candidates": 4,
+    "independent_review_sha256": "5c4e81283ddfaf711c58c999024620c1ecb67ffe9aef93f69fb008f2d21d8f76",
+    "intent_status": "fail_open_no_checkpoint",
+    "proof_authority": false,
+    "selected_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "source_aligned_candidates": 0,
+    "source_semantics_verified": false,
+    "supervisor_report_sha256": "309f810480000551144bbc2e6cdcc52d549969268cf72c0676d60c76be8be126"
+  },
+  "next_steps": [
+    {
+      "action": "After the current timed pair closes, run the existing pure structural numerical projection on only the two hash-matched public inputs. Retain per-function coverage, pending obligations, exact unit links and unsupported constructs. No providers or target-code execution are needed.",
+      "priority": 1,
+      "production_change_required": false
+    },
+    {
+      "action": "Qualify source-bound numerical projection persistence/replay and bounded planner delivery, then prepare a new explicitly selected python-numerical-structure@1 comparison. Keep the current trials unchanged and account for indexing/summary overhead separately from native provider tokens.",
+      "priority": 2,
+      "production_change_required": false
+    },
+    {
+      "action": "Before enabling learned numerical and Intent384 together with cache advice, qualify a distinct multi-model asset layout with exact asset inventories, independent memory/admission measurements and transport tests. Preserve the existing cache refusal until this is supported.",
+      "priority": 3,
+      "production_change_required": true
+    },
+    {
+      "action": "Extend numerical and Intent source grammars under separately versioned contracts for source-bound calls, array/complex conditions, multiple instruction clauses and explicit program-symbol grounding. Train/evaluate on held-out task-independent examples only after target coverage and source validators exist; keep decoded candidates advisory and unsupported obligations visible.",
+      "priority": 4,
+      "production_change_required": true
+    }
+  ],
+  "observed_selections": {
+    "intent_action_384_binding_present": false,
+    "learned_numerical_selection_binding_present": false,
+    "legacy_intent_checkpoint_binding_present": false,
+    "pure_structural_numerical_profile_selected": false,
+    "source384_enabled": true
+  },
+  "public_inputs": [
+    {
+      "functions": [
+        {
+          "function": "find_dominant_eigenvalue_and_eigenvector",
+          "line": 4,
+          "native_reason_scope": "retained bounded planner sample",
+          "native_reported_reason": "two_distinct_parameters_required",
+          "native_reported_status": "fail_open_source_contract_unsupported",
+          "parameter_annotations": [
+            "np.ndarray"
+          ],
+          "parameter_count": 1,
+          "static_grammar_observation": "one parameter fails the selected source guard requiring exactly two distinct int-annotated parameters",
+          "top_level_statements_excluding_docstring": [
+            "Assign",
+            "Assign",
+            "Return"
+          ]
+        }
+      ],
+      "matches_runtime_input_hash": true,
+      "path": ".benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "source384_path": "eigen.py"
+    },
+    {
+      "functions": [
+        {
+          "function": "ref_solution",
+          "line": 12,
+          "native_reason_scope": "retained bounded planner sample",
+          "native_reported_reason": "two_distinct_parameters_required",
+          "native_reported_status": "fail_open_source_contract_unsupported",
+          "parameter_annotations": [
+            null
+          ],
+          "parameter_count": 1,
+          "static_grammar_observation": "one parameter fails the selected source guard requiring exactly two distinct int-annotated parameters",
+          "top_level_statements_excluding_docstring": [
+            "Assign",
+            "Assign",
+            "Return"
+          ]
+        },
+        {
+          "function": "test_eigen_pair",
+          "line": 19,
+          "native_reason_scope": "not included in the two retained planner samples; aggregate unsupported status only",
+          "native_reported_reason": null,
+          "native_reported_status": null,
+          "parameter_annotations": [
+            null
+          ],
+          "parameter_count": 1,
+          "static_grammar_observation": "one parameter fails the selected source guard requiring exactly two distinct int-annotated parameters",
+          "top_level_statements_excluding_docstring": [
+            "Assign",
+            "Assign",
+            "Assert",
+            "Assert",
+            "Assert",
+            "Assign",
+            "Assign",
+            "Assert"
+          ]
+        },
+        {
+          "function": "test_speedup",
+          "line": 38,
+          "native_reason_scope": "not included in the two retained planner samples; aggregate unsupported status only",
+          "native_reported_reason": null,
+          "native_reported_status": null,
+          "parameter_annotations": [
+            null
+          ],
+          "parameter_count": 1,
+          "static_grammar_observation": "one parameter fails the selected source guard requiring exactly two distinct int-annotated parameters",
+          "top_level_statements_excluding_docstring": [
+            "Assign",
+            "For",
+            "Assign",
+            "Expr",
+            "Assign",
+            "For",
+            "Assign",
+            "Expr"
+          ]
+        }
+      ],
+      "matches_runtime_input_hash": true,
+      "path": ".benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "source384_path": "eval.py"
+    }
+  ],
+  "public_instruction": {
+    "body_copied": false,
+    "matches_runtime_input_hash": true,
+    "nonempty_lines": 7,
+    "path": ".benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+    "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+    "single_line_contract": false
+  },
+  "schema": "terminal-public-source-formalization-gap-audit@1",
+  "scope": "Read-only baseline receipt fields, public input AST shapes and frozen grammar/selection source inspection. No inference, proof, training or timed-trial changes.",
+  "source_head": "c3d4f873acdb62fd5b124328b3e3f28accd8dbdb",
+  "source_references": {
+    "archive_layout": {
+      "line_references": [
+        366,
+        385,
+        763,
+        765,
+        769,
+        800,
+        1384
+      ],
+      "matches_archive05_member": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "sha256": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+      "tree": "source"
+    },
+    "benchmark_selection": {
+      "line_references": [
+        284,
+        294,
+        301,
+        307,
+        554,
+        560
+      ],
+      "matches_archive05_member": true,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "d2706cc98daea6258a04adf25a974b5c5703570f16432189d8768484419ed4e3",
+      "tree": "source"
+    },
+    "effect_contract": {
+      "line_references": [
+        168,
+        175
+      ],
+      "matches_archive05_member": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384_v2.py",
+      "sha256": "fce62d147c82612cf5c59f1bbbbc56516b93e02e4440cc1ada3c5f27071c9a66",
+      "tree": "datasets"
+    },
+    "initial_selection": {
+      "line_references": [
+        172,
+        175,
+        293,
+        304
+      ],
+      "matches_archive05_member": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "58dc1077e82e731b7fcddfa5eb73ae88fe5e292a456bc1cfc6528933ef5903e0",
+      "tree": "source"
+    },
+    "intent_action_grammar": {
+      "line_references": [
+        46,
+        74,
+        98,
+        103
+      ],
+      "matches_archive05_member": true,
+      "path": "ipfs_datasets_py/logic/intent_ir/formalize/action_contracts.py",
+      "sha256": "694e490c8f62bf8abed4cea0f60f161888436ee5886b1e814784ff77da811cc7",
+      "tree": "datasets"
+    },
+    "intent_action_inference": {
+      "line_references": [
+        53,
+        77,
+        79,
+        83,
+        94
+      ],
+      "matches_archive05_member": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/intent_action_runtime_384.py",
+      "sha256": "71fafaf27a3e1644b5e8f1c882821e1a5890e9e26b1631ac1a8149f72690e218",
+      "tree": "datasets"
+    },
+    "intent_consumer": {
+      "line_references": [
+        15,
+        45,
+        116,
+        127,
+        133
+      ],
+      "matches_archive05_member": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/intent_384_advisor.py",
+      "sha256": "e316aec6d7a965a6df5877c04bca38d8c9e8e0050263aaf65334abe8f7ef6ccb",
+      "tree": "source"
+    },
+    "intent_runtime_selection": {
+      "line_references": [
+        226,
+        232,
+        236,
+        240,
+        244
+      ],
+      "matches_archive05_member": true,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "bcdda987b2a3be770a3d42c0acff0d901e2f0c18ba4a7a780342932a192e0c2d",
+      "tree": "source"
+    },
+    "learned_numerical_config": {
+      "line_references": [
+        9,
+        10,
+        11,
+        26,
+        62
+      ],
+      "matches_archive05_member": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_selection_config.py",
+      "sha256": "b9c7ef55bf42ef44e97943156ac34a552f03d97860485457021a1ef285761567",
+      "tree": "source"
+    },
+    "learned_numerical_grammar": {
+      "line_references": [
+        1,
+        24,
+        99,
+        107,
+        115,
+        119
+      ],
+      "matches_archive05_member": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/numerical_selection_384.py",
+      "sha256": "54a5a95769f7ee205226daf03b48f4698acb4c79dbe4c9f667e5a875f77e5855",
+      "tree": "datasets"
+    },
+    "numerical_consumer": {
+      "line_references": [
+        1,
+        20,
+        102,
+        221,
+        224,
+        232
+      ],
+      "matches_archive05_member": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py",
+      "sha256": "9ecc557712f34a81e0aa3b5e2d213da2cf44ee92b77ca5945469f9c33750dd83",
+      "tree": "source"
+    },
+    "numerical_logic": {
+      "line_references": [
+        56,
+        59,
+        74,
+        169,
+        277,
+        360,
+        687,
+        701
+      ],
+      "matches_archive05_member": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py",
+      "sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "tree": "datasets"
+    },
+    "numerical_structure": {
+      "line_references": [
+        1,
+        213,
+        392,
+        415,
+        461
+      ],
+      "matches_archive05_member": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_source.py",
+      "sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "tree": "datasets"
+    },
+    "scalar_grammar": {
+      "line_references": [
+        86,
+        94,
+        98,
+        102,
+        266
+      ],
+      "matches_archive05_member": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py",
+      "sha256": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+      "tree": "datasets"
+    },
+    "source_decoder": {
+      "line_references": [
+        34,
+        54,
+        59
+      ],
+      "matches_archive05_member": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_program_runtime_384.py",
+      "sha256": "7bd46875786f05f6cc19fda3cf3ebc1529617fb4a65c9e9000991a906124e277",
+      "tree": "datasets"
+    }
+  }
+}

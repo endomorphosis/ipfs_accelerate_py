@@ -1,0 +1,116 @@
+{
+  "cases": [
+    {
+      "case": "completed_pair",
+      "passed": true
+    },
+    {
+      "case": "failed_attempt_retained",
+      "passed": true
+    },
+    {
+      "case": "incomplete_session",
+      "passed": true
+    },
+    {
+      "case": "unreceipted_attempt",
+      "passed": true
+    },
+    {
+      "case": "unknown_reward",
+      "passed": true
+    },
+    {
+      "case": "zero_official_passes",
+      "passed": true
+    },
+    {
+      "case": "zero_trial_receipt",
+      "passed": true
+    },
+    {
+      "case": "zero_trial_plus_pass",
+      "passed": true
+    },
+    {
+      "behavior": "duplicate_or_conflict_refused",
+      "case": "duplicate_trial",
+      "passed": true
+    },
+    {
+      "behavior": "duplicate_or_conflict_refused",
+      "case": "conflicting_trial",
+      "passed": true
+    },
+    {
+      "case": "stale_config",
+      "passed": true
+    },
+    {
+      "case": "stale_prepared_controls",
+      "passed": true
+    },
+    {
+      "case": "stale_receipt_controls",
+      "passed": true
+    },
+    {
+      "case": "stale_receipt_identity",
+      "passed": true
+    },
+    {
+      "case": "stale_runtime_archive",
+      "passed": true
+    },
+    {
+      "case": "stale_native_result",
+      "passed": true
+    },
+    {
+      "case": "stale_exported_reward",
+      "passed": true
+    },
+    {
+      "case": "wrong_native_task_namespace",
+      "passed": true
+    },
+    {
+      "case": "wrong_native_task_path",
+      "passed": true
+    },
+    {
+      "case": "incoherent_total",
+      "passed": true
+    },
+    {
+      "case": "incoherent_cache",
+      "passed": true
+    },
+    {
+      "case": "incoherent_reasoning",
+      "passed": true
+    },
+    {
+      "case": "incoherent_boolean",
+      "passed": true
+    }
+  ],
+  "container_actions": 0,
+  "failed": 0,
+  "passed": 23,
+  "provider_calls": 0,
+  "real_benchmark_trials": 0,
+  "schema": "authored-offline-pair-reporter-fixtures@1",
+  "scope": "Synthetic receipt arithmetic and binding checks only; no provider, reward or performance claims.",
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "8e0107ec1ba9a6a9c0c437429719b1ebba01283cc884bb4a4d593b7891ef9e8b",
+    "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/full-coding-comparison/reporter_fixture_runner.py": "35f05aabc439c08c7f53b42e01f672a2829013918f80cd6fb8552feb26cdf873",
+    "artifacts/supervisor-ranked-successor-20261012/full-coding-comparison/compare_pair.py": "77516f9a4bad02b20ab45820ddc32b72ab7f049bd3267626e0bd4584e5117b0a"
+  },
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "8e0107ec1ba9a6a9c0c437429719b1ebba01283cc884bb4a4d593b7891ef9e8b",
+    "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/full-coding-comparison/reporter_fixture_runner.py": "35f05aabc439c08c7f53b42e01f672a2829013918f80cd6fb8552feb26cdf873",
+    "artifacts/supervisor-ranked-successor-20261012/full-coding-comparison/compare_pair.py": "77516f9a4bad02b20ab45820ddc32b72ab7f049bd3267626e0bd4584e5117b0a"
+  },
+  "source_unchanged": true
+}

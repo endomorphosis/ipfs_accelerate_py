@@ -1,0 +1,19 @@
+{
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1",
+    "PYTHONNOUSERSITE": "1"
+  },
+  "source384_asset_loader_returncode": 1,
+  "neural_inference_calls": 0,
+  "provider_calls": 0
+}

@@ -1,0 +1,15 @@
+{
+  "cleanup_verified": true,
+  "first_remaining_check": [],
+  "label": "baseline",
+  "observed_utc": "2026-10-12T05:00:09.489040+00:00",
+  "owned_containers_before_cleanup": [],
+  "owned_containers_remaining": [],
+  "process_closed_before_cleanup": true,
+  "removed": [],
+  "schema": "terminal-full-pair-owned-cleanup@1",
+  "trial_names": [
+    "largest-eigenval__zJ9gZLA"
+  ],
+  "unrelated_containers_modified": false
+}

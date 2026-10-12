@@ -1,0 +1,1019 @@
+{
+  "authored_negative_missing_premise_rejected": true,
+  "cold_process_returncode": 0,
+  "cold_replay": {
+    "ducklake_verified": true,
+    "exact_receipt_replayed": true,
+    "model_inference_calls": 0,
+    "provider_calls": 0,
+    "seconds": 0.7729711650172248,
+    "source_executed": false
+  },
+  "complete": true,
+  "downloads": 0,
+  "hydration": {
+    "catalog_count": 3,
+    "ducklake_catalogs": 3,
+    "ducklake_links": 3,
+    "ducklake_verified": true,
+    "ducklake_world_records": 1,
+    "world_record_cid": "bafkreicayxdapjxhwba3wcrqjzfovij52mkt6np7kgdasse4nxkfi6qsx4"
+  },
+  "learned_coverage_established": false,
+  "limitations": [
+    "ProgramIR acceptance and Lake compilation establish structural/syntax checks only.",
+    "Conditional Lean lemmas retain unproved premises for actual source values and calls.",
+    "SMT checks the generated abstract obligation queries without source premises; satisfiable counterexamples do not prove source correctness.",
+    "NumPy, floating/complex behavior, external calls, effects and performance remain unresolved.",
+    "Unsupported loop bodies and deferred assertion message semantics remain explicit fences.",
+    "No target program, checkpoint, embedding model, provider, hidden evaluator or solution was executed."
+  ],
+  "native_summary": {
+    "assertion_requirement_count": 4,
+    "assertion_requirements": [
+      {
+        "argument_expression_ids": [
+          "expr:140",
+          "expr:142"
+        ],
+        "command_id": "command:149",
+        "function_id": "function:81",
+        "keyword_names": [],
+        "origin": "source_assertion",
+        "path": "eval.py",
+        "predicate": {
+          "call_expression_id": "expr:144",
+          "callee_resolution": "declared_import",
+          "imported_callee": "numpy.allclose",
+          "operator": "not"
+        },
+        "predicate_expression_id": "expr:146",
+        "proof_authority": false,
+        "requirement_id": "assertion-requirement:ebc0ea7091ee3686c5476a4e62c1f418",
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eval.py"
+        ],
+        "span_ids": [
+          "span:150"
+        ],
+        "status": "pending",
+        "symbol_definition_ids": [
+          "assertion-definition:a7b9de6f7208b09bd1c71afecf0d6c7d"
+        ],
+        "unknown_effects": true
+      },
+      {
+        "argument_expression_ids": [
+          "expr:155"
+        ],
+        "command_id": "command:162",
+        "function_id": "function:81",
+        "keyword_names": [],
+        "origin": "source_assertion",
+        "path": "eval.py",
+        "predicate": {
+          "call_expression_id": "expr:157",
+          "callee_resolution": "declared_import",
+          "imported_callee": "numpy.isnan",
+          "operator": "not"
+        },
+        "predicate_expression_id": "expr:159",
+        "proof_authority": false,
+        "requirement_id": "assertion-requirement:a8ff2ab6514ec9b8b56b46edd6ec9589",
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eval.py"
+        ],
+        "span_ids": [
+          "span:163"
+        ],
+        "status": "pending",
+        "symbol_definition_ids": [
+          "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef"
+        ],
+        "unknown_effects": true
+      },
+      {
+        "argument_expression_ids": [
+          "expr:168"
+        ],
+        "command_id": "command:175",
+        "function_id": "function:81",
+        "keyword_names": [],
+        "origin": "source_assertion",
+        "path": "eval.py",
+        "predicate": {
+          "call_expression_id": "expr:170",
+          "callee_resolution": "declared_import",
+          "imported_callee": "numpy.isinf",
+          "operator": "not"
+        },
+        "predicate_expression_id": "expr:172",
+        "proof_authority": false,
+        "requirement_id": "assertion-requirement:e163570e60a090402103f0dda3bc4265",
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eval.py"
+        ],
+        "span_ids": [
+          "span:176"
+        ],
+        "status": "pending",
+        "symbol_definition_ids": [
+          "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef"
+        ],
+        "unknown_effects": true
+      },
+      {
+        "argument_expression_ids": [
+          "expr:227",
+          "expr:233"
+        ],
+        "command_id": "command:239",
+        "function_id": "function:81",
+        "keyword_names": [],
+        "origin": "source_assertion",
+        "path": "eval.py",
+        "predicate": {
+          "call_expression_id": "expr:235",
+          "callee_resolution": "declared_import",
+          "imported_callee": "numpy.allclose",
+          "operator": "call"
+        },
+        "predicate_expression_id": "expr:235",
+        "proof_authority": false,
+        "requirement_id": "assertion-requirement:f4ac37f98a2a842ea7f8b490c19aee0e",
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eval.py"
+        ],
+        "span_ids": [
+          "span:240"
+        ],
+        "status": "pending",
+        "symbol_definition_ids": [
+          "assertion-definition:2ab40b009209ed0c63bc0a0d1c7cc1da",
+          "assertion-definition:a7b9de6f7208b09bd1c71afecf0d6c7d",
+          "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef"
+        ],
+        "unknown_effects": true
+      }
+    ],
+    "autoencoder_coverage_changed": false,
+    "completion_authority": false,
+    "compound_contract_count": 2,
+    "compound_contracts": [
+      {
+        "contract_id": "numerical-contract:0036a2a80f854cf5c649405487b5ba86",
+        "function_id": "function:2",
+        "kind": "selected_eigenpair",
+        "path": "eigen.py",
+        "pending_obligation_kinds": [
+          "selected_eigenpair_runtime_interpretation",
+          "selected_eigenpair_dimensions",
+          "selected_eigenpair_value_column",
+          "selected_eigenpair_magnitude_selection",
+          "selected_eigenpair_nonzero",
+          "selected_eigenpair_finite",
+          "selected_eigenpair_approximate_residual"
+        ],
+        "proof_authority": false,
+        "roles": {
+          "eig_expression": "expr:29",
+          "input_expression": "expr:27",
+          "returned_value_expression": "expr:54",
+          "returned_vector_expression": "expr:70",
+          "selection_expression": "expr:46"
+        },
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eigen.py"
+        ],
+        "span_ids": [
+          "span:32",
+          "span:49",
+          "span:75"
+        ],
+        "status": "pending"
+      },
+      {
+        "contract_id": "numerical-contract:7796ed25a89bda54c2deb0061d8228f5",
+        "function_id": "function:6",
+        "kind": "selected_eigenpair",
+        "path": "eval.py",
+        "pending_obligation_kinds": [
+          "selected_eigenpair_runtime_interpretation",
+          "selected_eigenpair_dimensions",
+          "selected_eigenpair_value_column",
+          "selected_eigenpair_magnitude_selection",
+          "selected_eigenpair_nonzero",
+          "selected_eigenpair_finite",
+          "selected_eigenpair_approximate_residual"
+        ],
+        "proof_authority": false,
+        "roles": {
+          "eig_expression": "expr:32",
+          "input_expression": "expr:30",
+          "returned_value_expression": "expr:57",
+          "returned_vector_expression": "expr:73",
+          "selection_expression": "expr:49"
+        },
+        "source_obligations_discharged": 0,
+        "source_ref_ids": [
+          "source:eval.py"
+        ],
+        "span_ids": [
+          "span:35",
+          "span:52",
+          "span:78"
+        ],
+        "status": "pending"
+      }
+    ],
+    "execution_authority": false,
+    "families_with_artifacts": [
+      "first_order",
+      "higher_order",
+      "program"
+    ],
+    "files": 2,
+    "functions": 4,
+    "interpretation": "Structural syntax and pending obligations; NumPy calls remain opaque. Assertions are local requirements if reached with assertions enabled, not callee postconditions. Read source before editing.",
+    "linked_source_unit_count": 4,
+    "model_inference_calls": 0,
+    "omitted_assertion_requirement_summaries": 0,
+    "omitted_compound_contract_summaries": 0,
+    "omitted_function_summaries": 3,
+    "omitted_obligation_summaries": 45,
+    "omitted_source_unit_link_summaries": 0,
+    "partial_or_unsupported_functions": 2,
+    "pending_obligation_count": 45,
+    "pending_obligations": [],
+    "per_function": [
+      {
+        "function_id": "function:2",
+        "name_truncated": false,
+        "path": "eigen.py",
+        "pending_obligation_count": 16,
+        "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+        "status": "structurally_complete",
+        "structurally_complete": true,
+        "unsupported_construct_count": 0
+      }
+    ],
+    "profile": "python-numerical-structure@1",
+    "proof_authority": false,
+    "provider_calls": 0,
+    "schema": "terminal-numerical-formalization-planning-summary@1",
+    "source_obligations_discharged": 0,
+    "source_semantics_verified": false,
+    "source_tree_id": "baguqeeraanfjei4wydhtho3ymct5ff3frqntxrehd24k7ru4v3mctkugvksq",
+    "source_unit_count": 4,
+    "source_unit_link_origin": "deterministic_source_projection",
+    "source_unit_links": [
+      {
+        "assertion_requirement_count": 0,
+        "compound_contract_count": 1,
+        "function_id": "function:2",
+        "link_report_sha256": "993f464140e15c42eb8aae826b591012265fae32efa39ec1781081df8659f7ee",
+        "normalized_body_sha256": "8abb894029599f96c8e8054997c5d0279927d7829d0a9bd1c3bad90bb796c0ae",
+        "path": "eigen.py",
+        "pending_obligation_count": 16,
+        "scalar_guard_reason": "two_distinct_parameters_required",
+        "scalar_guard_status": "unsupported",
+        "status": "matched",
+        "structural_status": "structurally_complete",
+        "unit_id": "3c45193b7d05eb9ae25e76d1eb9901c6e09cfba1b94bddaa3895d3e2e6930974"
+      },
+      {
+        "assertion_requirement_count": 0,
+        "compound_contract_count": 1,
+        "function_id": "function:6",
+        "link_report_sha256": "63c41fe4907197ea935f7ace955f566cb4c30f22c591d9b9b7380e558d1b430d",
+        "normalized_body_sha256": "7e44e4ca561fd59c32216556523cb2cf71498a73f13db4f6de4ea4701fad337e",
+        "path": "eval.py",
+        "pending_obligation_count": 16,
+        "scalar_guard_reason": "two_distinct_parameters_required",
+        "scalar_guard_status": "unsupported",
+        "status": "matched",
+        "structural_status": "structurally_complete",
+        "unit_id": "b6d7596b67c4a1a2170f3d24b8ee56da17d7941be8591685df16cd1ccf50c68d"
+      },
+      {
+        "assertion_requirement_count": 4,
+        "compound_contract_count": 0,
+        "function_id": "function:81",
+        "link_report_sha256": "63c41fe4907197ea935f7ace955f566cb4c30f22c591d9b9b7380e558d1b430d",
+        "normalized_body_sha256": "6c153cfe290ae28ee1b73dd4b9110d8685cf685dfccad41edf539d7d02584cdb",
+        "path": "eval.py",
+        "pending_obligation_count": 13,
+        "scalar_guard_reason": "source_encoding_unsupported",
+        "scalar_guard_status": "unsupported",
+        "status": "matched",
+        "structural_status": "partial",
+        "unit_id": "2459b87b4a1d358a713ab70626435b018cec0b675f078c42389a863f455901ad"
+      },
+      {
+        "assertion_requirement_count": 0,
+        "compound_contract_count": 0,
+        "function_id": "function:243",
+        "link_report_sha256": "63c41fe4907197ea935f7ace955f566cb4c30f22c591d9b9b7380e558d1b430d",
+        "normalized_body_sha256": "8dba913427cb13311027843cc2d5d331324863a72c8e3075213c6b4795b0bb65",
+        "path": "eval.py",
+        "pending_obligation_count": 0,
+        "scalar_guard_reason": "two_distinct_parameters_required",
+        "scalar_guard_status": "unsupported",
+        "status": "matched",
+        "structural_status": "partial",
+        "unit_id": "21dd1d5f1cf37884aba0dc435628266deb24807e2a41b43bbbfcd2e16846ed33"
+      }
+    ],
+    "source_unit_links_establish_learned_coverage": false,
+    "structurally_complete_functions": 2,
+    "training_steps": 0,
+    "unmatched_source_unit_count": 0,
+    "whole_program_semantics_verified": false
+  },
+  "neural_inference_calls": 0,
+  "numerical_correctness_proved": false,
+  "per_file": [
+    {
+      "assertion_requirement_count": 0,
+      "compound_contract_count": 1,
+      "lean_conditional_lemmas": [
+        "normalized_index_bounds",
+        "last_index_bound",
+        "selected_column_contract"
+      ],
+      "lean_seconds": 3.430022566113621,
+      "lean_source_sha256": "3b15a14e1ec469d9f6c618766ec43edda88edfcc764c68dfbb964f3a302d4a32",
+      "lean_status": "passed",
+      "native_program_roundtrip_exact": true,
+      "obligation_kind_counts": {
+        "eigenpair_residual": 1,
+        "index_safety": 2,
+        "library_semantics_and_effects": 3,
+        "matrix_shape": 1,
+        "selected_eigenpair_approximate_residual": 1,
+        "selected_eigenpair_dimensions": 1,
+        "selected_eigenpair_finite": 1,
+        "selected_eigenpair_magnitude_selection": 1,
+        "selected_eigenpair_nonzero": 1,
+        "selected_eigenpair_runtime_interpretation": 1,
+        "selected_eigenpair_value_column": 1,
+        "selection": 1,
+        "slice_safety": 1
+      },
+      "path": "eigen.py",
+      "report_sha256": "31712fadae24625f13e1314b71f51f8c48c37484d95ea1f56a0fb2dea1195250",
+      "smt_check_count": 3,
+      "smt_results": {
+        "sat": 3
+      },
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "summary": {
+        "assertion_requirement_count": 0,
+        "assertion_requirements": [],
+        "completion_authority": false,
+        "compound_contract_count": 1,
+        "compound_contracts": [
+          {
+            "contract_id": "numerical-contract:0036a2a80f854cf5c649405487b5ba86",
+            "function_id": "function:2",
+            "kind": "selected_eigenpair",
+            "pending_obligation_kinds": [
+              "selected_eigenpair_runtime_interpretation",
+              "selected_eigenpair_dimensions",
+              "selected_eigenpair_value_column",
+              "selected_eigenpair_magnitude_selection",
+              "selected_eigenpair_nonzero",
+              "selected_eigenpair_finite",
+              "selected_eigenpair_approximate_residual"
+            ],
+            "proof_authority": false,
+            "roles": {
+              "eig_expression": "expr:29",
+              "input_expression": "expr:27",
+              "returned_value_expression": "expr:54",
+              "returned_vector_expression": "expr:70",
+              "selection_expression": "expr:46"
+            },
+            "source_obligations_discharged": 0,
+            "source_ref_ids": [
+              "source:eigen.py"
+            ],
+            "span_ids": [
+              "span:32",
+              "span:49",
+              "span:75"
+            ],
+            "status": "pending"
+          }
+        ],
+        "execution_authority": false,
+        "families_with_artifacts": [
+          "program",
+          "first_order",
+          "higher_order"
+        ],
+        "functions": 1,
+        "model_inference_executed": false,
+        "omitted_assertion_requirement_summaries": 0,
+        "omitted_compound_contract_summaries": 0,
+        "omitted_function_summaries": 0,
+        "partial_or_unsupported_functions": 0,
+        "pending_obligation_count": 16,
+        "per_function": [
+          {
+            "function_id": "function:2",
+            "name_truncated": false,
+            "pending_obligation_count": 16,
+            "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+            "status": "structurally_complete",
+            "structurally_complete": true,
+            "unsupported_construct_count": 0
+          }
+        ],
+        "profile": "python-numerical-structure@1",
+        "proof_authority": false,
+        "schema": "numerical-source-logic/v1",
+        "source_executed": false,
+        "source_semantics_verified": false,
+        "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+        "structural_status": "translated",
+        "structurally_complete_functions": 1,
+        "whole_program_semantics_verified": false
+      },
+      "unsupported_constructs": [],
+      "unsupported_families": [
+        {
+          "family": "transition_system",
+          "reason": "No reviewed numerical transition relation; TLA+ is not generated from a CFG alone.",
+          "status": "unsupported"
+        },
+        {
+          "family": "temporal",
+          "reason": "No source-grounded temporal specification or trace semantics.",
+          "status": "unsupported"
+        },
+        {
+          "family": "separation_logic",
+          "reason": "No reviewed heap, aliasing or ownership model.",
+          "status": "unsupported"
+        },
+        {
+          "family": "concurrency",
+          "reason": "No thread/interference semantics.",
+          "status": "unsupported"
+        },
+        {
+          "family": "hyperproperty",
+          "reason": "No explicit information-flow policy and trace relation.",
+          "status": "unsupported"
+        },
+        {
+          "family": "refinement",
+          "reason": "No reviewed numerical implementation/specification refinement relation.",
+          "status": "unsupported"
+        },
+        {
+          "family": "horn_chc",
+          "reason": "No complete numerical verification-condition semantics.",
+          "status": "unsupported"
+        },
+        {
+          "family": "frame_logic",
+          "reason": "No reviewed object/frame interpretation.",
+          "status": "unsupported"
+        },
+        {
+          "family": "dcec",
+          "reason": "No supplied cognitive, normative or event interpretation.",
+          "status": "unsupported"
+        },
+        {
+          "family": "tdfol",
+          "reason": "No supplied temporal/normative interpretation.",
+          "status": "unsupported"
+        }
+      ]
+    },
+    {
+      "assertion_requirement_count": 4,
+      "compound_contract_count": 1,
+      "lean_conditional_lemmas": [
+        "normalized_index_bounds",
+        "last_index_bound",
+        "selected_column_contract",
+        "opposite_call_predicates_incompatible"
+      ],
+      "lean_seconds": 0.38614594901446253,
+      "lean_source_sha256": "3208073c5b6528cd75f035eab5002f8c670c418f5ae7aa30c4ed8293162079e1",
+      "lean_status": "passed",
+      "native_program_roundtrip_exact": true,
+      "obligation_kind_counts": {
+        "eigenpair_residual": 1,
+        "index_safety": 2,
+        "library_semantics_and_effects": 12,
+        "matrix_shape": 1,
+        "selected_eigenpair_approximate_residual": 1,
+        "selected_eigenpair_dimensions": 1,
+        "selected_eigenpair_finite": 1,
+        "selected_eigenpair_magnitude_selection": 1,
+        "selected_eigenpair_nonzero": 1,
+        "selected_eigenpair_runtime_interpretation": 1,
+        "selected_eigenpair_value_column": 1,
+        "selection": 1,
+        "slice_safety": 1,
+        "source_assertion_predicate": 4
+      },
+      "path": "eval.py",
+      "report_sha256": "078bed144424dcebcdbb5c0f3671cb9f4ee7078acda2db73d116d65eddb75b31",
+      "smt_check_count": 3,
+      "smt_results": {
+        "sat": 3
+      },
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "summary": {
+        "assertion_requirement_count": 4,
+        "assertion_requirements": [
+          {
+            "command_id": "command:149",
+            "function_id": "function:81",
+            "origin": "source_assertion",
+            "predicate": {
+              "argument_expression_ids": [
+                "expr:140",
+                "expr:142"
+              ],
+              "call_expression_id": "expr:144",
+              "callee_resolution": "declared_import",
+              "imported_callee": "numpy.allclose",
+              "keyword_names": [],
+              "operator": "not"
+            },
+            "predicate_expression_id": "expr:146",
+            "proof_authority": false,
+            "requirement_id": "assertion-requirement:ebc0ea7091ee3686c5476a4e62c1f418",
+            "source_obligations_discharged": 0,
+            "source_ref_ids": [
+              "source:eval.py"
+            ],
+            "span_ids": [
+              "span:150"
+            ],
+            "status": "pending",
+            "symbol_definitions": [
+              {
+                "assignment_command_id": "command:134",
+                "component_path": [
+                  1
+                ],
+                "definition_id": "assertion-definition:a7b9de6f7208b09bd1c71afecf0d6c7d",
+                "symbol_id": "symbol:94",
+                "value_expression_id": "expr:132"
+              }
+            ],
+            "unknown_effects": true
+          },
+          {
+            "command_id": "command:162",
+            "function_id": "function:81",
+            "origin": "source_assertion",
+            "predicate": {
+              "argument_expression_ids": [
+                "expr:155"
+              ],
+              "call_expression_id": "expr:157",
+              "callee_resolution": "declared_import",
+              "imported_callee": "numpy.isnan",
+              "keyword_names": [],
+              "operator": "not"
+            },
+            "predicate_expression_id": "expr:159",
+            "proof_authority": false,
+            "requirement_id": "assertion-requirement:a8ff2ab6514ec9b8b56b46edd6ec9589",
+            "source_obligations_discharged": 0,
+            "source_ref_ids": [
+              "source:eval.py"
+            ],
+            "span_ids": [
+              "span:163"
+            ],
+            "status": "pending",
+            "symbol_definitions": [
+              {
+                "assignment_command_id": "command:134",
+                "component_path": [
+                  0
+                ],
+                "definition_id": "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef",
+                "symbol_id": "symbol:92",
+                "value_expression_id": "expr:132"
+              }
+            ],
+            "unknown_effects": true
+          },
+          {
+            "command_id": "command:175",
+            "function_id": "function:81",
+            "origin": "source_assertion",
+            "predicate": {
+              "argument_expression_ids": [
+                "expr:168"
+              ],
+              "call_expression_id": "expr:170",
+              "callee_resolution": "declared_import",
+              "imported_callee": "numpy.isinf",
+              "keyword_names": [],
+              "operator": "not"
+            },
+            "predicate_expression_id": "expr:172",
+            "proof_authority": false,
+            "requirement_id": "assertion-requirement:e163570e60a090402103f0dda3bc4265",
+            "source_obligations_discharged": 0,
+            "source_ref_ids": [
+              "source:eval.py"
+            ],
+            "span_ids": [
+              "span:176"
+            ],
+            "status": "pending",
+            "symbol_definitions": [
+              {
+                "assignment_command_id": "command:134",
+                "component_path": [
+                  0
+                ],
+                "definition_id": "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef",
+                "symbol_id": "symbol:92",
+                "value_expression_id": "expr:132"
+              }
+            ],
+            "unknown_effects": true
+          },
+          {
+            "command_id": "command:239",
+            "function_id": "function:81",
+            "origin": "source_assertion",
+            "predicate": {
+              "argument_expression_ids": [
+                "expr:227",
+                "expr:233"
+              ],
+              "call_expression_id": "expr:235",
+              "callee_resolution": "declared_import",
+              "imported_callee": "numpy.allclose",
+              "keyword_names": [],
+              "operator": "call"
+            },
+            "predicate_expression_id": "expr:235",
+            "proof_authority": false,
+            "requirement_id": "assertion-requirement:f4ac37f98a2a842ea7f8b490c19aee0e",
+            "source_obligations_discharged": 0,
+            "source_ref_ids": [
+              "source:eval.py"
+            ],
+            "span_ids": [
+              "span:240"
+            ],
+            "status": "pending",
+            "symbol_definitions": [
+              {
+                "assignment_command_id": "command:121",
+                "component_path": [],
+                "definition_id": "assertion-definition:2ab40b009209ed0c63bc0a0d1c7cc1da",
+                "symbol_id": "symbol:86",
+                "value_expression_id": "expr:119"
+              },
+              {
+                "assignment_command_id": "command:134",
+                "component_path": [
+                  1
+                ],
+                "definition_id": "assertion-definition:a7b9de6f7208b09bd1c71afecf0d6c7d",
+                "symbol_id": "symbol:94",
+                "value_expression_id": "expr:132"
+              },
+              {
+                "assignment_command_id": "command:134",
+                "component_path": [
+                  0
+                ],
+                "definition_id": "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef",
+                "symbol_id": "symbol:92",
+                "value_expression_id": "expr:132"
+              }
+            ],
+            "unknown_effects": true
+          }
+        ],
+        "completion_authority": false,
+        "compound_contract_count": 1,
+        "compound_contracts": [
+          {
+            "contract_id": "numerical-contract:7796ed25a89bda54c2deb0061d8228f5",
+            "function_id": "function:6",
+            "kind": "selected_eigenpair",
+            "pending_obligation_kinds": [
+              "selected_eigenpair_runtime_interpretation",
+              "selected_eigenpair_dimensions",
+              "selected_eigenpair_value_column",
+              "selected_eigenpair_magnitude_selection",
+              "selected_eigenpair_nonzero",
+              "selected_eigenpair_finite",
+              "selected_eigenpair_approximate_residual"
+            ],
+            "proof_authority": false,
+            "roles": {
+              "eig_expression": "expr:32",
+              "input_expression": "expr:30",
+              "returned_value_expression": "expr:57",
+              "returned_vector_expression": "expr:73",
+              "selection_expression": "expr:49"
+            },
+            "source_obligations_discharged": 0,
+            "source_ref_ids": [
+              "source:eval.py"
+            ],
+            "span_ids": [
+              "span:35",
+              "span:52",
+              "span:78"
+            ],
+            "status": "pending"
+          }
+        ],
+        "execution_authority": false,
+        "families_with_artifacts": [
+          "program",
+          "first_order",
+          "higher_order"
+        ],
+        "functions": 3,
+        "model_inference_executed": false,
+        "omitted_assertion_requirement_summaries": 0,
+        "omitted_compound_contract_summaries": 0,
+        "omitted_function_summaries": 0,
+        "partial_or_unsupported_functions": 2,
+        "pending_obligation_count": 29,
+        "per_function": [
+          {
+            "function_id": "function:6",
+            "name_truncated": false,
+            "pending_obligation_count": 16,
+            "qualified_name": "ref_solution",
+            "status": "structurally_complete",
+            "structurally_complete": true,
+            "unsupported_construct_count": 0
+          },
+          {
+            "function_id": "function:81",
+            "name_truncated": false,
+            "pending_obligation_count": 13,
+            "qualified_name": "test_eigen_pair",
+            "status": "partial",
+            "structurally_complete": false,
+            "unsupported_construct_count": 1
+          },
+          {
+            "function_id": "function:243",
+            "name_truncated": false,
+            "pending_obligation_count": 0,
+            "qualified_name": "test_speedup",
+            "status": "partial",
+            "structurally_complete": false,
+            "unsupported_construct_count": 4
+          }
+        ],
+        "profile": "python-numerical-structure@1",
+        "proof_authority": false,
+        "schema": "numerical-source-logic/v1",
+        "source_executed": false,
+        "source_semantics_verified": false,
+        "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+        "structural_status": "partial",
+        "structurally_complete_functions": 1,
+        "whole_program_semantics_verified": false
+      },
+      "unsupported_constructs": [
+        {
+          "code": "python.module.Assign",
+          "function": "",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:4"
+          ]
+        },
+        {
+          "code": "python.module.Assign",
+          "function": "",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:5"
+          ]
+        },
+        {
+          "code": "python.assert.message_expression_deferred",
+          "function": "test_eigen_pair",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:238"
+          ]
+        },
+        {
+          "code": "python.stmt.For",
+          "function": "test_speedup",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:271"
+          ]
+        },
+        {
+          "code": "python.expr.IfExp",
+          "function": "test_speedup",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:275"
+          ]
+        },
+        {
+          "code": "python.assignment.unsupported_target_or_value",
+          "function": "test_speedup",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:276"
+          ]
+        },
+        {
+          "code": "python.expr.JoinedStr",
+          "function": "test_speedup",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:283"
+          ]
+        },
+        {
+          "code": "python.stmt.For",
+          "function": "test_speedup",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:291"
+          ]
+        },
+        {
+          "code": "python.expr.IfExp",
+          "function": "test_speedup",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:295"
+          ]
+        },
+        {
+          "code": "python.assignment.unsupported_target_or_value",
+          "function": "test_speedup",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:296"
+          ]
+        },
+        {
+          "code": "python.expr.JoinedStr",
+          "function": "test_speedup",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:301"
+          ]
+        },
+        {
+          "code": "python.module.If",
+          "function": "",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:306"
+          ]
+        }
+      ],
+      "unsupported_families": [
+        {
+          "family": "transition_system",
+          "reason": "No reviewed numerical transition relation; TLA+ is not generated from a CFG alone.",
+          "status": "unsupported"
+        },
+        {
+          "family": "temporal",
+          "reason": "No source-grounded temporal specification or trace semantics.",
+          "status": "unsupported"
+        },
+        {
+          "family": "separation_logic",
+          "reason": "No reviewed heap, aliasing or ownership model.",
+          "status": "unsupported"
+        },
+        {
+          "family": "concurrency",
+          "reason": "No thread/interference semantics.",
+          "status": "unsupported"
+        },
+        {
+          "family": "hyperproperty",
+          "reason": "No explicit information-flow policy and trace relation.",
+          "status": "unsupported"
+        },
+        {
+          "family": "refinement",
+          "reason": "No reviewed numerical implementation/specification refinement relation.",
+          "status": "unsupported"
+        },
+        {
+          "family": "horn_chc",
+          "reason": "No complete numerical verification-condition semantics.",
+          "status": "unsupported"
+        },
+        {
+          "family": "frame_logic",
+          "reason": "No reviewed object/frame interpretation.",
+          "status": "unsupported"
+        },
+        {
+          "family": "dcec",
+          "reason": "No supplied cognitive, normative or event interpretation.",
+          "status": "unsupported"
+        },
+        {
+          "family": "tdfol",
+          "reason": "No supplied temporal/normative interpretation.",
+          "status": "unsupported"
+        }
+      ]
+    }
+  ],
+  "production_mutations": false,
+  "projection_and_hydration_seconds": 1.0260669930139557,
+  "provider_calls": 0,
+  "same_process_replay_seconds": 0.2886914541013539,
+  "schema": "terminal-public-numerical-projection-probe@1",
+  "scope": "Existing deterministic projections, real native lakes, generated-module compilation and abstract SMT checks only.",
+  "seconds": 8.062223940971307,
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/backends/smt/compiler.py": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/intent_action_runtime_384.py": "71fafaf27a3e1644b5e8f1c882821e1a5890e9e26b1631ac1a8149f72690e218",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/numerical_selection_384.py": "54a5a95769f7ee205226daf03b48f4698acb4c79dbe4c9f667e5a875f77e5855",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384_v2.py": "fce62d147c82612cf5c59f1bbbbc56516b93e02e4440cc1ada3c5f27071c9a66",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/source_program_runtime_384.py": "7bd46875786f05f6cc19fda3cf3ebc1529617fb4a65c9e9000991a906124e277",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/intent_ir/formalize/action_contracts.py": "694e490c8f62bf8abed4cea0f60f161888436ee5886b1e814784ff77da811cc7",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/software_verification/program.py": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/software_verification/syntax_bridge.py": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "d2706cc98daea6258a04adf25a974b5c5703570f16432189d8768484419ed4e3",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "bcdda987b2a3be770a3d42c0acff0d901e2f0c18ba4a7a780342932a192e0c2d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "58dc1077e82e731b7fcddfa5eb73ae88fe5e292a456bc1cfc6528933ef5903e0",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/intent_384_advisor.py": "e316aec6d7a965a6df5877c04bca38d8c9e8e0050263aaf65334abe8f7ef6ccb",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "9ecc557712f34a81e0aa3b5e2d213da2cf44ee92b77ca5945469f9c33750dd83",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_selection_config.py": "b9c7ef55bf42ef44e97943156ac34a552f03d97860485457021a1ef285761567",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_database.py": "17c8657257e93b03a36fce807d5a7d698d1cf038f65da15245535b3d0a6aacb7"
+  },
+  "source_executed": false,
+  "source_obligations_discharged": 0,
+  "source_semantics_verified": false,
+  "source_unchanged": true,
+  "task_performance_measured": false,
+  "tool_versions": {
+    "lake_executable_sha256": "4c391bb878ede19c51e809c167d0536efff1f7f72ac41cbae441d6248d509505",
+    "lean_toolchain": "leanprover/lean4:v4.29.1",
+    "z3": "4.15.4",
+    "z3_module_sha256": "53c4529a01f38e7c0d593b7548c79e0d7398aa09f7d7cbd1773470859ee2febd"
+  },
+  "training_steps": 0
+}

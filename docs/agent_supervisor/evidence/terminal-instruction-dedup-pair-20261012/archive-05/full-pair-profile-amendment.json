@@ -1,0 +1,38 @@
+{
+  "arms": {
+    "baseline": "legacy",
+    "instruction-dedup": "common-bindings-instruction@1"
+  },
+  "authorization": "Root authorized one full baseline/treatment pair and existing larger formalization profile after cache support, fresh archive, and preparation qualification.",
+  "automatic_retries": 0,
+  "capsule_selection": "lexical-query-symbol-name@1",
+  "coding_reply_mode": "ordinary-completion@1",
+  "cpu_limit": 5,
+  "intent_argument": "supported default unchanged; actual receipt must be recorded",
+  "launches": 0,
+  "llm_router_retained": true,
+  "memory_limit_gib": 20,
+  "no_census_only": true,
+  "official_verifier_enabled": true,
+  "prior_archive": "current-comparison-archive-04",
+  "prior_resource_profile": "source384-5cpu-20gib-planner180@1",
+  "provider_profile": "codex-gpt-6.1-sol-0.160.0@1",
+  "schema": "terminal-full-pair-profile-amendment@1",
+  "selected_resource_profile": "source384-5cpu-20gib-formalization@1",
+  "setup_cache_policy": "source384-native-aarch64-dontneed@2",
+  "shared_budgets": {
+    "cleanup_seconds": 120,
+    "driver_seconds": 6420,
+    "harbor_seconds": 6480,
+    "implementation_seconds": 1860,
+    "native_setup_seconds": 180,
+    "planning_seconds": 660,
+    "preparation_seconds": 3600,
+    "provider_coding_seconds": 1800,
+    "provider_planner_seconds": 600
+  },
+  "source384_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "source_release_file_present": false,
+  "status": "waiting_scoped_cache_production_freeze",
+  "target_archive": "current-comparison-archive-05"
+}

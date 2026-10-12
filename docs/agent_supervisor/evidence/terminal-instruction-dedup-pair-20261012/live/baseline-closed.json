@@ -1,0 +1,12 @@
+{
+  "exit_code": 0,
+  "finished_at": "2026-10-12T04:59:21.741535+00:00",
+  "label": "baseline",
+  "process_closed": true,
+  "receipt_present": true,
+  "receipt_sha256": "f3dad37ee15384360e1a2f475d67ef98ab554efdfe21b8ee5f81ecd64a0f3f2c",
+  "schema": "terminal-full-pair-arm-process-closed@1",
+  "seconds": 619.589790678001,
+  "source_unchanged": true,
+  "started_at": "2026-10-12T04:49:02.151731+00:00"
+}

@@ -1,0 +1,56 @@
+{
+  "argv": [
+    "artifacts/supervisor-ranked-successor-20261012/full-coding-comparison/probe_public_numerical.py",
+    "--output",
+    "artifacts/supervisor-ranked-successor-20261012/full-coding-comparison/numerical-public-probe-01",
+    "--run-after-explicit-container-closure"
+  ],
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/full-coding-comparison/numerical-public-probe-01/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-ranked-successor-20261012/full-coding-comparison/numerical-public-probe-01/seal.duckdb",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONNOUSERSITE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "interpreter": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+  "lake": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.29.1/bin/lake",
+  "public_input_hashes": {
+    "eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+    "eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+  },
+  "release": "explicit root release after timed container closure",
+  "runner_sha256": "a38f2739d1257b69300c6a06b42033cafbdd0a82b21f2a1d897b44752d5f1632",
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/backends/smt/compiler.py": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/intent_action_runtime_384.py": "71fafaf27a3e1644b5e8f1c882821e1a5890e9e26b1631ac1a8149f72690e218",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/numerical_selection_384.py": "54a5a95769f7ee205226daf03b48f4698acb4c79dbe4c9f667e5a875f77e5855",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384_v2.py": "fce62d147c82612cf5c59f1bbbbc56516b93e02e4440cc1ada3c5f27071c9a66",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/formalization/autoencoder/source_program_runtime_384.py": "7bd46875786f05f6cc19fda3cf3ebc1529617fb4a65c9e9000991a906124e277",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/intent_ir/formalize/action_contracts.py": "694e490c8f62bf8abed4cea0f60f161888436ee5886b1e814784ff77da811cc7",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/software_verification/program.py": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+    "/home/barberb/lift_coding/.worktrees/census-tree-pin-datasets-20261012/ipfs_datasets_py/logic/software_verification/syntax_bridge.py": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "d2706cc98daea6258a04adf25a974b5c5703570f16432189d8768484419ed4e3",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "bcdda987b2a3be770a3d42c0acff0d901e2f0c18ba4a7a780342932a192e0c2d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "58dc1077e82e731b7fcddfa5eb73ae88fe5e292a456bc1cfc6528933ef5903e0",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/intent_384_advisor.py": "e316aec6d7a965a6df5877c04bca38d8c9e8e0050263aaf65334abe8f7ef6ccb",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "9ecc557712f34a81e0aa3b5e2d213da2cf44ee92b77ca5945469f9c33750dd83",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_selection_config.py": "b9c7ef55bf42ef44e97943156ac34a552f03d97860485457021a1ef285761567",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_database.py": "17c8657257e93b03a36fce807d5a7d698d1cf038f65da15245535b3d0a6aacb7"
+  }
+}

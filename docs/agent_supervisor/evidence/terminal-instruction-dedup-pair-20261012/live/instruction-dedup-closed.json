@@ -1,0 +1,12 @@
+{
+  "exit_code": 0,
+  "finished_at": "2026-10-12T05:22:14.937449+00:00",
+  "label": "instruction-dedup",
+  "process_closed": true,
+  "receipt_present": true,
+  "receipt_sha256": "8efecfe0a367296ad390acf6364b2d5cfcddb3e29cd0346740a11fe42b42b20d",
+  "schema": "terminal-full-pair-arm-process-closed@1",
+  "seconds": 1310.2907155819703,
+  "source_unchanged": true,
+  "started_at": "2026-10-12T05:00:24.646721+00:00"
+}

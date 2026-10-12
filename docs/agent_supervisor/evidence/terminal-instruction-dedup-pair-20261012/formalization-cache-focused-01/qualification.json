@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "seconds": 41.61063623428345,
+  "source_after": {
+    "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": "69b9e9d6a24e1834b3c34e15984e4fefebbfbc87ce8d0f7b2c5d5c6d40209d8c",
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "3e1e345aa30a0c524c7b217eb18496eb70814b6d15a42e2a0b49a99b0401366b",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_formalization_cache_profile.py": "85b6ce8a75a9208fdc1623ba69f16c882c31d86b730ea5e9cf9c409988ed0543",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_cache_profile.py": "910512d19a7fa183331012ad79667155ab10b546d63a43848d0c811b6d28272a",
+    "benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py": "a1bf47a2b697b814c3c8b0bf611c772d58060c12e49bc2adc75ec2c53fd35107",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py": "3b9481cb9c97f1abdbbf067f341e5800954aa7994e91990673729c089b74456b",
+    "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py": "9ef67389a1e48727f43d266255661ca87a2ada119967e9d62591bb75ca5cdf7a",
+    "benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py": "579af26c0f2661b3fdb231e87b4c25361bce66ec4ed0d3975089540d75eb9d0a"
+  },
+  "source_unchanged": true
+}

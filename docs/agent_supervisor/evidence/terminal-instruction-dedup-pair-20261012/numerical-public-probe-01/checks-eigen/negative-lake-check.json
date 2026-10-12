@@ -1,0 +1,22 @@
+{
+  "backend_executed": true,
+  "command": [
+    "/home/barberb/.elan/toolchains/leanprover--lean4---v4.29.1/bin/lake",
+    "build",
+    "NumericalObligations"
+  ],
+  "executable_sha256": "4c391bb878ede19c51e809c167d0536efff1f7f72ac41cbae441d6248d509505",
+  "input_files_sha256": {
+    "NumericalObligations.lean": "1dfcc7bb53c4406a4890726ff345b4f077dff4a0d392233e0abf693f6f7c4ec6",
+    "lakefile.toml": "4aaf7be5a06208a9829beec31a519b40c3035d8ad3ac786e630842652931ec81",
+    "lean-toolchain": "7dc000621e0046d1aada809e2b7177e64454645cf4c741e9daaf79c99ec2e7a2"
+  },
+  "output_truncated": false,
+  "returncode": 1,
+  "status": "failed",
+  "stderr": "info: native_family_numericalobligations: no previous manifest, creating one from scratch\ninfo: toolchain not updated; already up-to-date\nerror: build failed\n",
+  "stdout": "\u2716 [2/3] Building NumericalObligations (219ms)\ntrace: .> LEAN_PATH=/tmp/logic-tool-ioo9xcxb/.lake/build/lib/lean /home/barberb/.elan/toolchains/leanprover--lean4---v4.29.1/bin/lean /tmp/logic-tool-ioo9xcxb/NumericalObligations.lean -o /tmp/logic-tool-ioo9xcxb/.lake/build/lib/lean/NumericalObligations.olean -i /tmp/logic-tool-ioo9xcxb/.lake/build/lib/lean/NumericalObligations.ilean -c /tmp/logic-tool-ioo9xcxb/.lake/build/ir/NumericalObligations.c --setup /tmp/logic-tool-ioo9xcxb/.lake/build/ir/NumericalObligations.setup.json --json\nerror: NumericalObligations.lean:47:2: omega could not prove the goal:\nNo usable constraints found. You may need to unfold definitions so `omega` can see linear arithmetic facts about `Nat` and `Int`, which may also involve multiplication, division, and modular remainder by constants.\nerror: Lean exited with code 1\nSome required targets logged failures:\n- NumericalObligations\n",
+  "timed_out": false,
+  "toolchain": "leanprover/lean4:v4.29.1",
+  "workspace_limit_exceeded": false
+}
