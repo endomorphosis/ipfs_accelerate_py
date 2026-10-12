@@ -9,6 +9,7 @@ No owner, provider or model is constructed by this adapter.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -249,6 +250,7 @@ class _AdmissionGuard:
         self.proof_reference = retained.proof_ref
         self.proof = None
         self.receipt_json = None
+        self._operation_active = False
         self.denial()
 
     def denial(self):
@@ -284,7 +286,16 @@ class _AdmissionGuard:
                      "current local scope or deterministic public receipt changed")
         custody._still_current(self.prepared, self.hammer, self.body, self.store, self.native_fence)
 
-    def check(self):
+    @contextmanager
+    def _operation(self):
+        _require(not self._operation_active, "recursive header proof admission operation refused")
+        self._operation_active = True
+        try:
+            yield
+        finally:
+            self._operation_active = False
+
+    def _check(self):
         self.cache_fence.check()
         self.native_fence.check()
         self._current_native()
@@ -294,6 +305,10 @@ class _AdmissionGuard:
         self._current_native()
         self.cache_fence.check()
         self.native_fence.check()
+
+    def check(self):
+        with self._operation():
+            self._check()
 
     def result(self, result, stage):
         _require(type(result) is DoctorCacheLookupResult and type(result.key) is DoctorProofCacheKey
@@ -318,13 +333,13 @@ class _AdmissionGuard:
 
     def revalidate(self, stage):
         try:
-            with public_replay_without_metadata():
-                self.check()
+            with self._operation(), public_replay_without_metadata():
+                self._check()
                 result = (self.gate.revalidate_for_render(self.prepared.key) if stage is DoctorCacheStage.RENDER
                           else self.gate.revalidate_for_commit(self.prepared.key))
                 self.cache_fence.check()
                 result = self.result(result, stage)
-                self.check()
+                self._check()
                 return result
         except HeaderProofCacheBridgeError:
             raise
@@ -375,6 +390,45 @@ class HeaderProofCacheAdmission:
     native_gate_bookkeeping_may_write_existing_owner = property(lambda self: True)
     atomic_owner_snapshot = property(lambda self: False)
     new_storage_owners_created = property(lambda self: 0)
+
+    def assert_bound(self, *, gate, scoped_analysis, expected_key_id,
+                     expected_receipt_id, expected_owner_path_sha256):
+        """Check exact host object and canonical identity joins without storage I/O.
+
+        Expected identities are independently admitted by the host. This method
+        does not certify currentness; use ``assert_current`` or a stage method.
+        """
+        guard = self._guard
+        _require(type(self) is HeaderProofCacheAdmission
+                 and gate is guard.gate and gate is guard.cache_fence.gate
+                 and scoped_analysis is guard.prepared.scoped_analysis
+                 and type(expected_key_id) is str and expected_key_id == guard.expected_key_id
+                 and canonical_json(guard.prepared.key.to_dict()) == guard.key_json
+                 and guard.prepared.key.key_id == expected_key_id
+                 and type(expected_owner_path_sha256) is str
+                 and _sha(str(guard.cache_fence.path)) == expected_owner_path_sha256
+                 and type(expected_receipt_id) is str and guard.receipt_json is not None,
+                 "header proof admission differs from exact independently admitted host inputs")
+        receipt = ProofReceipt.from_dict(json.loads(guard.receipt_json))
+        _require(type(receipt) is ScopedProofReceipt and receipt.receipt_id == expected_receipt_id,
+                 "header proof admission differs from independently expected generic receipt")
+
+    def assert_current(self):
+        """Recheck source, native custody and both owners without kernel execution."""
+        try:
+            with public_replay_without_metadata():
+                self._guard.check()
+        except HeaderProofCacheBridgeError:
+            raise
+        except Exception as exc:
+            raise HeaderProofCacheBridgeError("current scoped header admission refused") from exc
+
+    def assert_cache_binding(self, *, gate, expected_key_id, expected_receipt_id,
+                             expected_owner_path_sha256):
+        """Pure cache joins; the Terminal host separately joins the signed analysis."""
+        self.assert_bound(gate=gate, scoped_analysis=self._guard.prepared.scoped_analysis,
+            expected_key_id=expected_key_id, expected_receipt_id=expected_receipt_id,
+            expected_owner_path_sha256=expected_owner_path_sha256)
 
     def revalidate_for_render(self):
         return self._guard.revalidate(DoctorCacheStage.RENDER)

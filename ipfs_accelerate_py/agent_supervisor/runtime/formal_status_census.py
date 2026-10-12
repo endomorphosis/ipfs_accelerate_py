@@ -27,6 +27,7 @@ from ..proof.formal_verification_contracts import (
 from .supervisor_meta_index import public_replay_without_metadata
 
 SCHEMA = "supervisor-formal-status-census@1"
+BOUND_SCHEMA = "supervisor-formal-status-census@2"
 MAX_KEYS = 32
 MAX_REQUEST_BYTES = 256 * 1024
 MAX_KEY_BYTES = 64 * 1024
@@ -57,6 +58,7 @@ from unavailable ``None``. Raw identities are never exported by the census.
     candidate_tree_id: str
     owner_path_sha256: str | None = None
     expected_key_ids: tuple[str, ...] | None = None
+    expected_receipt_ids: tuple[tuple[str, str], ...] | None = None
 
 
 def _sha(value: str) -> str:
@@ -74,6 +76,9 @@ def _binding_payload(binding: FormalStatusCensusBinding) -> dict:
     if type(binding) is not FormalStatusCensusBinding:
         raise ValueError("native binding required")
     value = {name: getattr(binding, name) for name in binding.__dataclass_fields__}
+    # Preserve historical @1 binding bytes and digests when the new lane is absent.
+    if binding.expected_receipt_ids is None:
+        value.pop("expected_receipt_ids")
     for name in ("task_sha256", "revision_sha256", "source_sha256", "context_sha256"):
         if type(value[name]) is not str or not _DIGEST.fullmatch(value[name]):
             raise ValueError("digest binding required")
@@ -91,6 +96,18 @@ def _binding_payload(binding: FormalStatusCensusBinding) -> dict:
             or any(type(item) is not str or not _KEY_ID.fullmatch(item) for item in expected)
             or len(set(expected)) != len(expected)):
         raise ValueError("bounded independently expected key population required")
+    pairs = binding.expected_receipt_ids
+    if pairs is not None:
+        if (type(pairs) is not tuple or len(pairs) > MAX_KEYS
+                or any(type(pair) is not tuple or len(pair) != 2
+                       or type(pair[0]) is not str or not _KEY_ID.fullmatch(pair[0])
+                       or type(pair[1]) is not str or not pair[1] or pair[1] != pair[1].strip()
+                       or len(pair[1].encode("utf-8")) > 1024
+                       or any(ord(c) < 32 for c in pair[1]) for pair in pairs)
+                or len({pair[0] for pair in pairs}) != len(pairs)
+                or len({pair[1] for pair in pairs}) != len(pairs)
+                or expected is None or {pair[0] for pair in pairs} != set(expected)):
+            raise ValueError("bounded independently expected key and receipt population required")
     _bounded_json(value, MAX_REQUEST_BYTES)
     return value
 
@@ -140,6 +157,34 @@ def _keys(keys: tuple[DoctorProofCacheKey, ...], binding: FormalStatusCensusBind
     return tuple(reconstructed)
 
 
+def _header_admissions(admissions, keys, binding, gate):
+    from .doctor_header_cache_bridge import HeaderProofCacheAdmission
+
+    if (type(admissions) is not tuple or len(admissions) > MAX_KEYS
+            or binding is None or binding.expected_receipt_ids is None
+            or binding.owner_path_sha256 is None or keys is None or gate is None
+            or len(admissions) != len(keys)):
+        raise ValueError("complete typed header admission population required")
+    expected = dict(binding.expected_receipt_ids)
+    by_key = {}
+    for admission in admissions:
+        if type(admission) is not HeaderProofCacheAdmission:
+            raise ValueError("exact native header proof admission required")
+        key = admission.key
+        if key.key_id not in expected or key.key_id in by_key:
+            raise ValueError("header proof admission population differs")
+        admission.assert_cache_binding(gate=gate, expected_key_id=key.key_id,
+            expected_receipt_id=expected[key.key_id],
+            expected_owner_path_sha256=binding.owner_path_sha256)
+        by_key[key.key_id] = admission
+    if set(by_key) != {key.key_id for key in keys}:
+        raise ValueError("header proof admission population differs")
+    for key in keys:
+        if canonical_json(by_key[key.key_id].key.to_dict()) != canonical_json(key.to_dict()):
+            raise ValueError("header proof admission full key differs")
+    return by_key
+
+
 def _result(result, key: DoctorProofCacheKey, stage: DoctorCacheStage):
     if (type(result) is not DoctorCacheLookupResult or type(result.key) is not DoctorProofCacheKey
             or type(result.disposition) is not DoctorCacheDisposition
@@ -179,7 +224,9 @@ def _result(result, key: DoctorProofCacheKey, stage: DoctorCacheStage):
 def census_formal_status(*, binding: FormalStatusCensusBinding | None = None,
                          gate: DoctorProofCacheGate | None = None,
                          keys: tuple[DoctorProofCacheKey, ...] | None = None,
-                         current_binding_probe: Callable[[], FormalStatusCensusBinding] | None = None) -> dict:
+                         current_binding_probe: Callable[[], FormalStatusCensusBinding] | None = None,
+                         header_proof_admissions: tuple | None = None,
+                         require_bound_scoped_receipts: bool = False) -> dict:
     """Observe only the explicit admitted key set; never enumerate/open a store.
 
 Malformed requests are refused before probes or filesystem observation. Missing
@@ -204,6 +251,14 @@ replacement. A successful observation is point-in-time and confers no authority.
         "receipt_hash_authenticates_source_or_owner": False,
         "scope": "explicit-requested-native-doctor-key-set@1",
         **{name: False for name in _AUTHORITIES}}
+    bound_lane = (header_proof_admissions is not None
+                  or type(binding) is FormalStatusCensusBinding
+                  and binding.expected_receipt_ids is not None)
+    if bound_lane:
+        report.update(schema=BOUND_SCHEMA, expected_receipt_set_sha256=None,
+            header_admission_current_checks=0,
+            binding_admission="caller_admitted_header_bridge@1",
+            accepted_receipt_count_scope="expected-header-receipts-with-current-bound-admissions@1")
 
     def finish(status, reason):
         report.update(status=status, reason_code=reason)
@@ -211,6 +266,8 @@ replacement. A successful observation is point-in-time and confers no authority.
         return report
 
     try:
+        if type(require_bound_scoped_receipts) is not bool:
+            raise ValueError("explicit scoped receipt binding selection required")
         payload = None if binding is None else _binding_payload(binding)
         if gate is not None and (type(gate) is not DoctorProofCacheGate
                 or type(gate.authoritative_cache) is not FormalVerificationCache):
@@ -218,12 +275,17 @@ replacement. A successful observation is point-in-time and confers no authority.
         admitted_keys = None if keys is None else _keys(keys, binding)
         if current_binding_probe is not None and not callable(current_binding_probe):
             raise ValueError("host current binding probe required")
+        admissions = (_header_admissions(header_proof_admissions, admitted_keys, binding, gate)
+                      if bound_lane else None)
         if (binding is None or gate is None or keys is None or current_binding_probe is None
                 or binding.owner_path_sha256 is None or binding.expected_key_ids is None):
             return finish("unmeasured", "native_owner_binding_unavailable")
         report["binding_sha256"] = _sha(canonical_json(payload))
         report["requested_key_set_sha256"] = _sha(canonical_json(sorted(binding.expected_key_ids)))
         report["requested_key_count"] = len(admitted_keys)
+        if bound_lane:
+            report["expected_receipt_set_sha256"] = _sha(canonical_json(
+                sorted(binding.expected_receipt_ids)))
     except Exception:
         return finish("refused", "invalid_native_request")
 
@@ -259,6 +321,13 @@ replacement. A successful observation is point-in-time and confers no authority.
         if (type(observed) is not FormalStatusCensusBinding
                 or canonical_json(_binding_payload(observed)) != canonical_json(payload)):
             raise ValueError("host current context changed")
+        if bound_lane:
+            rebound = _header_admissions(header_proof_admissions, admitted_keys, binding, gate)
+            if any(rebound[key_id] is not admission for key_id, admission in admissions.items()):
+                raise ValueError("bound header admission changed")
+            for admission in admissions.values():
+                report["header_admission_current_checks"] += 1
+                admission.assert_current()
         if owner_identity() != original_owner:
             raise ValueError("native owner replaced")
 
@@ -274,12 +343,25 @@ replacement. A successful observation is point-in-time and confers no authority.
                 if owner_identity() != original_owner:
                     raise ValueError("native owner replaced")
                 first = _result(lookup, key, DoctorCacheStage.LOOKUP)
+                if (require_bound_scoped_receipts and not bound_lane
+                        and lookup.hit and type(first) is ScopedProofReceipt):
+                    raise ValueError("scoped receipt requires its current bound header admission")
+                if bound_lane and (not lookup.hit or type(first) is not ScopedProofReceipt
+                        or first.receipt_id != dict(binding.expected_receipt_ids)[key.key_id]):
+                    raise ValueError("lookup differs from independently expected header receipt")
                 current()
                 report["gate_render_revalidation_calls"] += 1
-                rendered = gate.revalidate_for_render(key)
+                rendered = (admissions[key.key_id].revalidate_for_render() if bound_lane
+                            else gate.revalidate_for_render(key))
                 if owner_identity() != original_owner:
                     raise ValueError("native owner replaced")
                 final = _result(rendered, key, DoctorCacheStage.RENDER)
+                if (require_bound_scoped_receipts and not bound_lane
+                        and rendered.hit and type(final) is ScopedProofReceipt):
+                    raise ValueError("scoped receipt requires its current bound header admission")
+                if bound_lane and (not rendered.hit or type(final) is not ScopedProofReceipt
+                        or final.receipt_id != dict(binding.expected_receipt_ids)[key.key_id]):
+                    raise ValueError("render differs from independently expected header receipt")
                 current()
                 lookup_counts[lookup.disposition.value] += 1
                 render_counts[rendered.disposition.value] += 1
@@ -299,10 +381,14 @@ replacement. A successful observation is point-in-time and confers no authority.
                         raise ValueError("native key revoked during census")
                     if owner_identity() != original_owner:
                         raise ValueError("native owner replaced")
+            if bound_lane:
+                # The bound guard reads combined native denial state and checks
+                # current source/custody after the final generic consultation.
+                current()
         report.update(observation_current=True, accepted_receipts=accepted)
         return finish("measured", "explicit_native_key_set_observed")
     except Exception:
         return finish("refused", "native_observation_refused")
 
 
-__all__ = ["FormalStatusCensusBinding", "census_formal_status"]
+__all__ = ["BOUND_SCHEMA", "FormalStatusCensusBinding", "census_formal_status"]
