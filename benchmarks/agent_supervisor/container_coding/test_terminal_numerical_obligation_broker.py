@@ -91,6 +91,22 @@ def test_real_pages_fit_entire_transport_and_continuations_preserve_exact_rows(s
     assert len({r["obligation_id"] for r in rows}) == len(rows)
 
 
+def test_exact_id_crosses_broker_with_full_row_and_conjunctive_filters(service, monkeypatch):
+    monkeypatch.setattr(service, "_peer", lambda channel: None)
+    report = json.loads((Path(service.receipt["output"]) / "report-0000.json").read_bytes())
+    selected = report["pending_obligations"][-1]
+    for extra, expected in (({}, [selected]), ({"kind": "not-a-kind"}, [])):
+        request = _query(service, obligation_id=selected["obligation_id"], **extra)
+        response = service._answer(request, None)
+        client.validate_response(response, request=request, descriptor=service.descriptor)
+        assert response["ok"], response
+        page = response["page"]
+        assert page["rows"] == expected
+        assert page["matched_count"] == len(expected)
+        assert page["next_cursor"] is None
+        assert len(client.canonical_json(response)) <= 8192
+
+
 @pytest.mark.parametrize("target", ["repository", "workspace", "bundle", "receipt"])
 def test_source_and_context_mutations_refused_before_native_retrieval(service, monkeypatch, target):
     monkeypatch.setattr(service, "_peer", lambda channel: None)

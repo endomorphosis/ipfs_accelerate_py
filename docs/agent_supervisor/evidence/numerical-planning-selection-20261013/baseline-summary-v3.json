@@ -1,0 +1,290 @@
+{
+  "assertion_requirement_count": 4,
+  "assertion_requirements": [
+    {
+      "argument_expression_ids": [
+        "expr:179",
+        "expr:181"
+      ],
+      "cfg_block_ids": [
+        "block:193"
+      ],
+      "cfg_command_ids": [
+        "command:190"
+      ],
+      "cfg_ids": [
+        "cfg:103"
+      ],
+      "command_id": "command:190",
+      "control_flow_semantics_verified": false,
+      "control_region_ids": [],
+      "evaluation_guard_verified": false,
+      "full_evaluation_contexts_in_native_report": true,
+      "function_id": "function:102",
+      "guarded_region_ids": [
+        "guarded-region:192"
+      ],
+      "keyword_names": [],
+      "loop_invariants_verified": false,
+      "loop_region_ids": [],
+      "origin": "source_assertion",
+      "path": "eval.py",
+      "predicate": {
+        "call_expression_id": "expr:183",
+        "callee_resolution": "declared_import",
+        "imported_callee": "numpy.allclose",
+        "operator": "not"
+      },
+      "predicate_expression_id": "expr:185",
+      "proof_authority": false,
+      "reachability_verified": false,
+      "requirement_id": "assertion-control-requirement:8cc9f2798519562016497d48785c70e1",
+      "source_obligations_discharged": 0,
+      "source_ref_ids": [
+        "source:eval.py"
+      ],
+      "span_ids": [
+        "span:191"
+      ],
+      "status": "pending",
+      "symbol_definition_ids": [],
+      "termination_verified": false,
+      "unknown_effects": true
+    },
+    {
+      "argument_expression_ids": [
+        "expr:201"
+      ],
+      "cfg_block_ids": [
+        "block:213"
+      ],
+      "cfg_command_ids": [
+        "command:210"
+      ],
+      "cfg_ids": [
+        "cfg:103"
+      ],
+      "command_id": "command:210",
+      "control_flow_semantics_verified": false,
+      "control_region_ids": [],
+      "evaluation_guard_verified": false,
+      "full_evaluation_contexts_in_native_report": true,
+      "function_id": "function:102",
+      "guarded_region_ids": [
+        "guarded-region:212"
+      ],
+      "keyword_names": [],
+      "loop_invariants_verified": false,
+      "loop_region_ids": [],
+      "origin": "source_assertion",
+      "path": "eval.py",
+      "predicate": {
+        "call_expression_id": "expr:203",
+        "callee_resolution": "declared_import",
+        "imported_callee": "numpy.isnan",
+        "operator": "not"
+      },
+      "predicate_expression_id": "expr:205",
+      "proof_authority": false,
+      "reachability_verified": false,
+      "requirement_id": "assertion-control-requirement:91905564bc785841b57dcccae8ae0a28",
+      "source_obligations_discharged": 0,
+      "source_ref_ids": [
+        "source:eval.py"
+      ],
+      "span_ids": [
+        "span:211"
+      ],
+      "status": "pending",
+      "symbol_definition_ids": [],
+      "termination_verified": false,
+      "unknown_effects": true
+    },
+    {
+      "argument_expression_ids": [
+        "expr:221"
+      ],
+      "cfg_block_ids": [
+        "block:233"
+      ],
+      "cfg_command_ids": [
+        "command:230"
+      ],
+      "cfg_ids": [
+        "cfg:103"
+      ],
+      "command_id": "command:230",
+      "control_flow_semantics_verified": false,
+      "control_region_ids": [],
+      "evaluation_guard_verified": false,
+      "full_evaluation_contexts_in_native_report": true,
+      "function_id": "function:102",
+      "guarded_region_ids": [
+        "guarded-region:232"
+      ],
+      "keyword_names": [],
+      "loop_invariants_verified": false,
+      "loop_region_ids": [],
+      "origin": "source_assertion",
+      "path": "eval.py",
+      "predicate": {
+        "call_expression_id": "expr:223",
+        "callee_resolution": "declared_import",
+        "imported_callee": "numpy.isinf",
+        "operator": "not"
+      },
+      "predicate_expression_id": "expr:225",
+      "proof_authority": false,
+      "reachability_verified": false,
+      "requirement_id": "assertion-control-requirement:81db58b0e8feb8b6d7cc7c7d10e4edc8",
+      "source_obligations_discharged": 0,
+      "source_ref_ids": [
+        "source:eval.py"
+      ],
+      "span_ids": [
+        "span:231"
+      ],
+      "status": "pending",
+      "symbol_definition_ids": [],
+      "termination_verified": false,
+      "unknown_effects": true
+    }
+  ],
+  "autoencoder_coverage_changed": false,
+  "completion_authority": false,
+  "compound_contract_count": 2,
+  "compound_contracts": [],
+  "control_flow_semantics_verified": false,
+  "control_reference_count": 2,
+  "control_references": [
+    {
+      "cfg_ids": [
+        "cfg:103",
+        "cfg:345",
+        "cfg:7"
+      ],
+      "control_flow_semantics_verified": false,
+      "control_region_ids": [
+        "control-region:396",
+        "control-region:611"
+      ],
+      "function_ids": [
+        "function:102",
+        "function:344",
+        "function:6"
+      ],
+      "loop_invariants_verified": false,
+      "loop_region_ids": [
+        "control-region:396",
+        "control-region:611"
+      ],
+      "omitted_cfg_ids": 0,
+      "omitted_control_region_ids": 0,
+      "omitted_function_ids": 0,
+      "omitted_loop_region_ids": 0,
+      "path": "eval.py",
+      "reachability_verified": false,
+      "termination_verified": false
+    },
+    {
+      "cfg_ids": [
+        "cfg:3"
+      ],
+      "control_flow_semantics_verified": false,
+      "control_region_ids": [],
+      "function_ids": [
+        "function:2"
+      ],
+      "loop_invariants_verified": false,
+      "loop_region_ids": [],
+      "omitted_cfg_ids": 0,
+      "omitted_control_region_ids": 0,
+      "omitted_function_ids": 0,
+      "omitted_loop_region_ids": 0,
+      "path": "eigen.py",
+      "reachability_verified": false,
+      "termination_verified": false
+    }
+  ],
+  "execution_authority": false,
+  "families_with_artifacts": [
+    "first_order",
+    "higher_order",
+    "program"
+  ],
+  "files": 2,
+  "functions": 4,
+  "interpretation": "Structural syntax and pending obligations; NumPy calls remain opaque. Assertions are local requirements if reached with assertions enabled, not callee postconditions. Read source before editing. Expression contexts retain deferred branches and lazy assertion messages. Loop proof applicability phases are distinct from source-anchor evaluation contexts; an anchor identifies source syntax and does not establish applicability. Loop and CFG references describe symbolic visits and iteration scopes, not an execution trace or an unrolling. Reachability, iterator behavior, loop invariants, and termination remain unverified. Retrieve full occurrence and loop contexts before interpreting obligations.",
+  "linked_source_unit_count": 4,
+  "loop_invariants_verified": false,
+  "model_inference_calls": 0,
+  "obligation_retrieval": {
+    "api": "ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context.retrieve_numerical_obligations",
+    "isolated_worker_command": "/opt/ipfs-supervisor/venv/bin/python -I /opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py --path <source_path>",
+    "isolated_worker_usage": "Run from the allocated workspace while the coding session is active. Optional: --function-id, --kind, --limit, --max-bytes, --cursor '<next_cursor JSON>'. Responses include full pending rows; source edits invalidate retrieval.",
+    "max_page_bytes": 8192,
+    "max_page_rows": 8,
+    "omitted_source_paths": 0,
+    "requires_validated_context_receipt": true,
+    "schema": "supervisor-numerical-obligation-retrieval@1",
+    "source_paths": [
+      "eigen.py",
+      "eval.py"
+    ]
+  },
+  "omitted_assertion_requirement_summaries": 1,
+  "omitted_compound_contract_summaries": 2,
+  "omitted_control_reference_summaries": 0,
+  "omitted_function_summaries": 4,
+  "omitted_obligation_summaries": 105,
+  "omitted_source_unit_link_summaries": 4,
+  "partial_or_unsupported_functions": 0,
+  "pending_obligation_count": 105,
+  "pending_obligation_kinds": {
+    "assertion_evaluation_semantics": 4,
+    "conditional_evaluation_semantics": 2,
+    "control_flow_semantics": 2,
+    "eigenpair_residual": 2,
+    "formatting_evaluation_semantics": 9,
+    "index_safety": 4,
+    "iterator_advance_semantics": 2,
+    "iterator_creation_semantics": 2,
+    "joined_string_evaluation_semantics": 7,
+    "library_semantics_and_effects": 37,
+    "loop_exit_reasoning": 2,
+    "loop_invariant_initialization": 2,
+    "loop_invariant_preservation": 2,
+    "loop_target_binding_semantics": 2,
+    "loop_termination": 2,
+    "matrix_shape": 2,
+    "selected_eigenpair_approximate_residual": 2,
+    "selected_eigenpair_dimensions": 2,
+    "selected_eigenpair_finite": 2,
+    "selected_eigenpair_magnitude_selection": 2,
+    "selected_eigenpair_nonzero": 2,
+    "selected_eigenpair_runtime_interpretation": 2,
+    "selected_eigenpair_value_column": 2,
+    "selection": 2,
+    "slice_safety": 2,
+    "source_assertion_predicate": 4
+  },
+  "pending_obligations": [],
+  "per_function": [],
+  "profile": "python-numerical-control-structure@3",
+  "proof_authority": false,
+  "provider_calls": 0,
+  "reachability_verified": false,
+  "schema": "terminal-numerical-formalization-planning-summary@1",
+  "source_obligations_discharged": 0,
+  "source_semantics_verified": false,
+  "source_tree_id": "baguqeerax4x6vqcnrdsj3g7trwhv7teid543pzpmucvzaxbzlapr3cawetza",
+  "source_unit_count": 4,
+  "source_unit_link_origin": "deterministic_source_projection",
+  "source_unit_links": [],
+  "source_unit_links_establish_learned_coverage": false,
+  "structurally_complete_functions": 4,
+  "termination_verified": false,
+  "training_steps": 0,
+  "unmatched_source_unit_count": 0,
+  "whole_program_semantics_verified": false
+}

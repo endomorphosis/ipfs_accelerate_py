@@ -1,5 +1,9 @@
 # Numerical loop coverage and supervisor retrieval
 
+The subsequent [planning-hint and selective-retrieval qualification](numerical_planning_selection.md)
+addresses the summary eviction problem measured below. This report retains its
+original loop-coverage snapshot and exhaustive-retrieval results.
+
 The explicitly selected `python-numerical-control-structure@3` profile represents
 `for`, `while`, statement `if`, nested loops, `break`, `continue`, `else`, returns
 and exceptional exits in the shared ProgramIR control-flow graph. On the

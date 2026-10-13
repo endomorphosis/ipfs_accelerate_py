@@ -1,0 +1,298 @@
+{
+  "assertion_requirement_count": 4,
+  "assertion_requirements": [
+    {
+      "argument_expression_ids": [
+        "expr:140",
+        "expr:142"
+      ],
+      "command_id": "command:149",
+      "function_id": "function:81",
+      "keyword_names": [],
+      "origin": "source_assertion",
+      "path": "eval.py",
+      "predicate": {
+        "call_expression_id": "expr:144",
+        "callee_resolution": "declared_import",
+        "imported_callee": "numpy.allclose",
+        "operator": "not"
+      },
+      "predicate_expression_id": "expr:146",
+      "proof_authority": false,
+      "requirement_id": "assertion-requirement:ebc0ea7091ee3686c5476a4e62c1f418",
+      "source_obligations_discharged": 0,
+      "source_ref_ids": [
+        "source:eval.py"
+      ],
+      "span_ids": [
+        "span:150"
+      ],
+      "status": "pending",
+      "symbol_definition_ids": [
+        "assertion-definition:a7b9de6f7208b09bd1c71afecf0d6c7d"
+      ],
+      "unknown_effects": true
+    },
+    {
+      "argument_expression_ids": [
+        "expr:155"
+      ],
+      "command_id": "command:162",
+      "function_id": "function:81",
+      "keyword_names": [],
+      "origin": "source_assertion",
+      "path": "eval.py",
+      "predicate": {
+        "call_expression_id": "expr:157",
+        "callee_resolution": "declared_import",
+        "imported_callee": "numpy.isnan",
+        "operator": "not"
+      },
+      "predicate_expression_id": "expr:159",
+      "proof_authority": false,
+      "requirement_id": "assertion-requirement:a8ff2ab6514ec9b8b56b46edd6ec9589",
+      "source_obligations_discharged": 0,
+      "source_ref_ids": [
+        "source:eval.py"
+      ],
+      "span_ids": [
+        "span:163"
+      ],
+      "status": "pending",
+      "symbol_definition_ids": [
+        "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef"
+      ],
+      "unknown_effects": true
+    },
+    {
+      "argument_expression_ids": [
+        "expr:168"
+      ],
+      "command_id": "command:175",
+      "function_id": "function:81",
+      "keyword_names": [],
+      "origin": "source_assertion",
+      "path": "eval.py",
+      "predicate": {
+        "call_expression_id": "expr:170",
+        "callee_resolution": "declared_import",
+        "imported_callee": "numpy.isinf",
+        "operator": "not"
+      },
+      "predicate_expression_id": "expr:172",
+      "proof_authority": false,
+      "requirement_id": "assertion-requirement:e163570e60a090402103f0dda3bc4265",
+      "source_obligations_discharged": 0,
+      "source_ref_ids": [
+        "source:eval.py"
+      ],
+      "span_ids": [
+        "span:176"
+      ],
+      "status": "pending",
+      "symbol_definition_ids": [
+        "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef"
+      ],
+      "unknown_effects": true
+    },
+    {
+      "argument_expression_ids": [
+        "expr:227",
+        "expr:233"
+      ],
+      "command_id": "command:239",
+      "function_id": "function:81",
+      "keyword_names": [],
+      "origin": "source_assertion",
+      "path": "eval.py",
+      "predicate": {
+        "call_expression_id": "expr:235",
+        "callee_resolution": "declared_import",
+        "imported_callee": "numpy.allclose",
+        "operator": "call"
+      },
+      "predicate_expression_id": "expr:235",
+      "proof_authority": false,
+      "requirement_id": "assertion-requirement:f4ac37f98a2a842ea7f8b490c19aee0e",
+      "source_obligations_discharged": 0,
+      "source_ref_ids": [
+        "source:eval.py"
+      ],
+      "span_ids": [
+        "span:240"
+      ],
+      "status": "pending",
+      "symbol_definition_ids": [
+        "assertion-definition:2ab40b009209ed0c63bc0a0d1c7cc1da",
+        "assertion-definition:a7b9de6f7208b09bd1c71afecf0d6c7d",
+        "assertion-definition:afb1aff0bd534e8dce45b5979b9fc7ef"
+      ],
+      "unknown_effects": true
+    }
+  ],
+  "autoencoder_coverage_changed": false,
+  "completion_authority": false,
+  "compound_contract_count": 2,
+  "compound_contracts": [
+    {
+      "contract_id": "numerical-contract:0036a2a80f854cf5c649405487b5ba86",
+      "function_id": "function:2",
+      "kind": "selected_eigenpair",
+      "path": "eigen.py",
+      "pending_obligation_kinds": [
+        "selected_eigenpair_runtime_interpretation",
+        "selected_eigenpair_dimensions",
+        "selected_eigenpair_value_column",
+        "selected_eigenpair_magnitude_selection",
+        "selected_eigenpair_nonzero",
+        "selected_eigenpair_finite",
+        "selected_eigenpair_approximate_residual"
+      ],
+      "proof_authority": false,
+      "roles": {
+        "eig_expression": "expr:29",
+        "input_expression": "expr:27",
+        "returned_value_expression": "expr:54",
+        "returned_vector_expression": "expr:70",
+        "selection_expression": "expr:46"
+      },
+      "source_obligations_discharged": 0,
+      "source_ref_ids": [
+        "source:eigen.py"
+      ],
+      "span_ids": [
+        "span:32",
+        "span:49",
+        "span:75"
+      ],
+      "status": "pending"
+    },
+    {
+      "contract_id": "numerical-contract:7796ed25a89bda54c2deb0061d8228f5",
+      "function_id": "function:6",
+      "kind": "selected_eigenpair",
+      "path": "eval.py",
+      "pending_obligation_kinds": [
+        "selected_eigenpair_runtime_interpretation",
+        "selected_eigenpair_dimensions",
+        "selected_eigenpair_value_column",
+        "selected_eigenpair_magnitude_selection",
+        "selected_eigenpair_nonzero",
+        "selected_eigenpair_finite",
+        "selected_eigenpair_approximate_residual"
+      ],
+      "proof_authority": false,
+      "roles": {
+        "eig_expression": "expr:32",
+        "input_expression": "expr:30",
+        "returned_value_expression": "expr:57",
+        "returned_vector_expression": "expr:73",
+        "selection_expression": "expr:49"
+      },
+      "source_obligations_discharged": 0,
+      "source_ref_ids": [
+        "source:eval.py"
+      ],
+      "span_ids": [
+        "span:35",
+        "span:52",
+        "span:78"
+      ],
+      "status": "pending"
+    }
+  ],
+  "execution_authority": false,
+  "families_with_artifacts": [
+    "first_order",
+    "higher_order",
+    "program"
+  ],
+  "files": 2,
+  "functions": 4,
+  "interpretation": "Structural syntax and pending obligations; NumPy calls remain opaque. Assertions are local requirements if reached with assertions enabled, not callee postconditions. Read source before editing.",
+  "linked_source_unit_count": 4,
+  "model_inference_calls": 0,
+  "obligation_retrieval": {
+    "api": "ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context.retrieve_numerical_obligations",
+    "isolated_worker_command": "/opt/ipfs-supervisor/venv/bin/python -I /opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py --path <source_path>",
+    "isolated_worker_usage": "Run from the allocated workspace while the coding session is active. Optional: --function-id, --kind, --limit, --max-bytes, --cursor '<next_cursor JSON>'. Responses include full pending rows; source edits invalidate retrieval.",
+    "max_page_bytes": 8192,
+    "max_page_rows": 8,
+    "omitted_source_paths": 0,
+    "requires_validated_context_receipt": true,
+    "schema": "supervisor-numerical-obligation-retrieval@1",
+    "source_paths": [
+      "eigen.py",
+      "eval.py"
+    ]
+  },
+  "omitted_assertion_requirement_summaries": 0,
+  "omitted_compound_contract_summaries": 0,
+  "omitted_function_summaries": 4,
+  "omitted_obligation_summaries": 45,
+  "omitted_source_unit_link_summaries": 2,
+  "partial_or_unsupported_functions": 2,
+  "pending_obligation_count": 45,
+  "pending_obligation_kinds": {
+    "eigenpair_residual": 2,
+    "index_safety": 4,
+    "library_semantics_and_effects": 15,
+    "matrix_shape": 2,
+    "selected_eigenpair_approximate_residual": 2,
+    "selected_eigenpair_dimensions": 2,
+    "selected_eigenpair_finite": 2,
+    "selected_eigenpair_magnitude_selection": 2,
+    "selected_eigenpair_nonzero": 2,
+    "selected_eigenpair_runtime_interpretation": 2,
+    "selected_eigenpair_value_column": 2,
+    "selection": 2,
+    "slice_safety": 2,
+    "source_assertion_predicate": 4
+  },
+  "pending_obligations": [],
+  "per_function": [],
+  "profile": "python-numerical-structure@1",
+  "proof_authority": false,
+  "provider_calls": 0,
+  "schema": "terminal-numerical-formalization-planning-summary@1",
+  "source_obligations_discharged": 0,
+  "source_semantics_verified": false,
+  "source_tree_id": "baguqeeraanfjei4wydhtho3ymct5ff3frqntxrehd24k7ru4v3mctkugvksq",
+  "source_unit_count": 4,
+  "source_unit_link_origin": "deterministic_source_projection",
+  "source_unit_links": [
+    {
+      "assertion_requirement_count": 0,
+      "compound_contract_count": 1,
+      "function_id": "function:2",
+      "link_report_sha256": "4eea2c406fafa423cc687f3333718e091759eebe809105ab3e5e6ba3a878020a",
+      "normalized_body_sha256": "8abb894029599f96c8e8054997c5d0279927d7829d0a9bd1c3bad90bb796c0ae",
+      "path": "eigen.py",
+      "pending_obligation_count": 16,
+      "scalar_guard_reason": "two_distinct_parameters_required",
+      "scalar_guard_status": "unsupported",
+      "status": "matched",
+      "structural_status": "structurally_complete",
+      "unit_id": "3c45193b7d05eb9ae25e76d1eb9901c6e09cfba1b94bddaa3895d3e2e6930974"
+    },
+    {
+      "assertion_requirement_count": 0,
+      "compound_contract_count": 1,
+      "function_id": "function:6",
+      "link_report_sha256": "e787324574590646b5ed5b7b01c641c5ec34bfe810d3a493d482e58ddb81ab60",
+      "normalized_body_sha256": "7e44e4ca561fd59c32216556523cb2cf71498a73f13db4f6de4ea4701fad337e",
+      "path": "eval.py",
+      "pending_obligation_count": 16,
+      "scalar_guard_reason": "two_distinct_parameters_required",
+      "scalar_guard_status": "unsupported",
+      "status": "matched",
+      "structural_status": "structurally_complete",
+      "unit_id": "b6d7596b67c4a1a2170f3d24b8ee56da17d7941be8591685df16cd1ccf50c68d"
+    }
+  ],
+  "source_unit_links_establish_learned_coverage": false,
+  "structurally_complete_functions": 2,
+  "training_steps": 0,
+  "unmatched_source_unit_count": 0,
+  "whole_program_semantics_verified": false
+}

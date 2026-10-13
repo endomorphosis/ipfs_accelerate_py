@@ -1,0 +1,296 @@
+[
+  {
+    "first": {
+      "binding": {
+        "path": "eigen.py",
+        "report_id": "786b65b7ce4b9a8d3d6ad38431a81a17223d0141685efd26a3aab326360a5a3f",
+        "report_sha256": "a919f301e7707b4fe54c8574372c61717c45ea9419a14054dac6f296c9e34f11",
+        "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+      },
+      "completion_authority": false,
+      "execution_authority": false,
+      "exhausted": false,
+      "filtered_out_count": 0,
+      "formalization_authority": false,
+      "matched_count": 16,
+      "model_inference_calls": 0,
+      "next_cursor": {
+        "offset": 1,
+        "request_sha256": "8ccc2656ed704730e26cf27fb6bbaa5813d832f4a18aeadee297c10bb0b5c4ed",
+        "schema": "numerical-obligation-cursor@1"
+      },
+      "offset": 0,
+      "proof_authority": false,
+      "provider_calls": 0,
+      "query": {
+        "function_id": null,
+        "kind": null,
+        "limit": 1,
+        "max_bytes": 8192
+      },
+      "remaining_count": 15,
+      "request_sha256": "8ccc2656ed704730e26cf27fb6bbaa5813d832f4a18aeadee297c10bb0b5c4ed",
+      "returned_count": 1,
+      "rows": [
+        {
+          "assumptions_asserted": false,
+          "completion_authority": false,
+          "execution_authority": false,
+          "expression_id": "expr:29",
+          "function_ids": [
+            "function:2"
+          ],
+          "kind": "library_semantics_and_effects",
+          "model_inference_executed": false,
+          "obligation_id": "numerical:293ef6fae216a5ebce55c001043d76af",
+          "proof_authority": false,
+          "reason": "Call result, exceptions, dispatch, mutation and aliasing remain opaque; imported names do not prove runtime identity.",
+          "roles": {
+            "callee_expression": "expr:25",
+            "imported_callee": "numpy.linalg.eig",
+            "qualified_callee": "np.linalg.eig"
+          },
+          "source_binding_is_semantic_proof": false,
+          "source_executed": false,
+          "source_ref_ids": [
+            "source:eigen.py"
+          ],
+          "source_semantics_verified": false,
+          "span_ids": [
+            "span:30"
+          ],
+          "status": "pending",
+          "whole_program_semantics_verified": false
+        }
+      ],
+      "schema": "numerical-obligation-page@1",
+      "solver_calls": 0,
+      "source_executed": false,
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "status": "more_available",
+      "total_count": 16,
+      "whole_program_semantics_verified": false
+    },
+    "path": "eigen.py",
+    "second": {
+      "binding": {
+        "path": "eigen.py",
+        "report_id": "786b65b7ce4b9a8d3d6ad38431a81a17223d0141685efd26a3aab326360a5a3f",
+        "report_sha256": "a919f301e7707b4fe54c8574372c61717c45ea9419a14054dac6f296c9e34f11",
+        "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+      },
+      "completion_authority": false,
+      "execution_authority": false,
+      "exhausted": false,
+      "filtered_out_count": 0,
+      "formalization_authority": false,
+      "matched_count": 16,
+      "model_inference_calls": 0,
+      "next_cursor": {
+        "offset": 2,
+        "request_sha256": "8ccc2656ed704730e26cf27fb6bbaa5813d832f4a18aeadee297c10bb0b5c4ed",
+        "schema": "numerical-obligation-cursor@1"
+      },
+      "offset": 1,
+      "proof_authority": false,
+      "provider_calls": 0,
+      "query": {
+        "function_id": null,
+        "kind": null,
+        "limit": 1,
+        "max_bytes": 8192
+      },
+      "remaining_count": 14,
+      "request_sha256": "8ccc2656ed704730e26cf27fb6bbaa5813d832f4a18aeadee297c10bb0b5c4ed",
+      "returned_count": 1,
+      "rows": [
+        {
+          "assumptions_asserted": false,
+          "completion_authority": false,
+          "execution_authority": false,
+          "expression_id": "expr:29",
+          "function_ids": [
+            "function:2"
+          ],
+          "kind": "matrix_shape",
+          "model_inference_executed": false,
+          "obligation_id": "numerical:a0d0f4836a386f59f45de38ddd0ed3dd",
+          "proof_authority": false,
+          "reason": "Bind actual ndarray rank and trailing dimensions; mathematical square-matrix template does not establish dtype or runtime shape.",
+          "roles": {
+            "imported_callee": "numpy.linalg.eig",
+            "input_expression": "expr:27",
+            "result_expression": "expr:29"
+          },
+          "source_binding_is_semantic_proof": false,
+          "source_executed": false,
+          "source_ref_ids": [
+            "source:eigen.py"
+          ],
+          "source_semantics_verified": false,
+          "span_ids": [
+            "span:30"
+          ],
+          "status": "pending",
+          "whole_program_semantics_verified": false
+        }
+      ],
+      "schema": "numerical-obligation-page@1",
+      "solver_calls": 0,
+      "source_executed": false,
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "status": "more_available",
+      "total_count": 16,
+      "whole_program_semantics_verified": false
+    }
+  },
+  {
+    "first": {
+      "binding": {
+        "path": "eval.py",
+        "report_id": "91f15fe1e7149b3ec190d81dc51154cef977147c4d248e8315ff5a58d26664d4",
+        "report_sha256": "31654d0037267c444436fc63e2379bd6c4502e5266a7c2a789a1e8f7f771cf89",
+        "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      },
+      "completion_authority": false,
+      "execution_authority": false,
+      "exhausted": false,
+      "filtered_out_count": 0,
+      "formalization_authority": false,
+      "matched_count": 29,
+      "model_inference_calls": 0,
+      "next_cursor": {
+        "offset": 1,
+        "request_sha256": "a61a04ce97b3bb604a7f2070d786043b01231663ea43a07e7c3450172ce6259c",
+        "schema": "numerical-obligation-cursor@1"
+      },
+      "offset": 0,
+      "proof_authority": false,
+      "provider_calls": 0,
+      "query": {
+        "function_id": null,
+        "kind": null,
+        "limit": 1,
+        "max_bytes": 8192
+      },
+      "remaining_count": 28,
+      "request_sha256": "a61a04ce97b3bb604a7f2070d786043b01231663ea43a07e7c3450172ce6259c",
+      "returned_count": 1,
+      "rows": [
+        {
+          "assumptions_asserted": false,
+          "completion_authority": false,
+          "execution_authority": false,
+          "expression_id": "expr:111",
+          "function_ids": [
+            "function:81"
+          ],
+          "kind": "library_semantics_and_effects",
+          "model_inference_executed": false,
+          "obligation_id": "numerical:d8aafab9e9fb82481ceaeebe9ffef250",
+          "proof_authority": false,
+          "reason": "Call result, exceptions, dispatch, mutation and aliasing remain opaque; imported names do not prove runtime identity.",
+          "roles": {
+            "callee_expression": "expr:103",
+            "imported_callee": "numpy.random.normal",
+            "qualified_callee": "np.random.normal"
+          },
+          "source_binding_is_semantic_proof": false,
+          "source_executed": false,
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "source_semantics_verified": false,
+          "span_ids": [
+            "span:112"
+          ],
+          "status": "pending",
+          "whole_program_semantics_verified": false
+        }
+      ],
+      "schema": "numerical-obligation-page@1",
+      "solver_calls": 0,
+      "source_executed": false,
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "status": "more_available",
+      "total_count": 29,
+      "whole_program_semantics_verified": false
+    },
+    "path": "eval.py",
+    "second": {
+      "binding": {
+        "path": "eval.py",
+        "report_id": "91f15fe1e7149b3ec190d81dc51154cef977147c4d248e8315ff5a58d26664d4",
+        "report_sha256": "31654d0037267c444436fc63e2379bd6c4502e5266a7c2a789a1e8f7f771cf89",
+        "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      },
+      "completion_authority": false,
+      "execution_authority": false,
+      "exhausted": false,
+      "filtered_out_count": 0,
+      "formalization_authority": false,
+      "matched_count": 29,
+      "model_inference_calls": 0,
+      "next_cursor": {
+        "offset": 2,
+        "request_sha256": "a61a04ce97b3bb604a7f2070d786043b01231663ea43a07e7c3450172ce6259c",
+        "schema": "numerical-obligation-cursor@1"
+      },
+      "offset": 1,
+      "proof_authority": false,
+      "provider_calls": 0,
+      "query": {
+        "function_id": null,
+        "kind": null,
+        "limit": 1,
+        "max_bytes": 8192
+      },
+      "remaining_count": 27,
+      "request_sha256": "a61a04ce97b3bb604a7f2070d786043b01231663ea43a07e7c3450172ce6259c",
+      "returned_count": 1,
+      "rows": [
+        {
+          "assumptions_asserted": false,
+          "completion_authority": false,
+          "execution_authority": false,
+          "expression_id": "expr:119",
+          "function_ids": [
+            "function:81"
+          ],
+          "kind": "library_semantics_and_effects",
+          "model_inference_executed": false,
+          "obligation_id": "numerical:471428e9913c45e3d5883691af55dc98",
+          "proof_authority": false,
+          "reason": "Call result, exceptions, dispatch, mutation and aliasing remain opaque; imported names do not prove runtime identity.",
+          "roles": {
+            "callee_expression": "expr:113",
+            "imported_callee": null,
+            "qualified_callee": null
+          },
+          "source_binding_is_semantic_proof": false,
+          "source_executed": false,
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "source_semantics_verified": false,
+          "span_ids": [
+            "span:120"
+          ],
+          "status": "pending",
+          "whole_program_semantics_verified": false
+        }
+      ],
+      "schema": "numerical-obligation-page@1",
+      "solver_calls": 0,
+      "source_executed": false,
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "status": "more_available",
+      "total_count": 29,
+      "whole_program_semantics_verified": false
+    }
+  }
+]

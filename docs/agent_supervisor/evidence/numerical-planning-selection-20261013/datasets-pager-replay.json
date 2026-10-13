@@ -1,0 +1,48 @@
+{
+  "baseline_sha256": "a6d6ac6e7a6ac7d4e4b5a426807785db2a75086efab228dd5ac0810946728ac8",
+  "explicit_none_pages_replayed": 12,
+  "final_test_result": {
+    "failed": 0,
+    "junit": "datasets-pager-tests-02.xml",
+    "passed": 77
+  },
+  "frozen_grammar_logic_program_pins_unchanged": true,
+  "historical_pages_replayed": 12,
+  "initial_test_result": {
+    "failed": 1,
+    "failure_reason": "Test incorrectly expected max_bytes decimal width to remain constant; corrected bounded fixed-point size calculation, no production change.",
+    "passed": 76
+  },
+  "pager_sha256": "8a044dae64a12cccee904929d60b8a7c0aec51d0266592394e237ca4bbe90e85",
+  "passed": true,
+  "prior_pager_sha256": "7822e0878a75e44924bfb55522f6d2ad16e742d7e67ee4c985e4b358a683d9e0",
+  "provider_calls": 0,
+  "rows": [
+    {
+      "canonical_pages_sha256": "c595eb68e6cb384586db241a319fdf62c495c1f871d560e2dd04a4188e54dff3",
+      "omitted_and_none_exact": true,
+      "pages": 4,
+      "profile": "python-numerical-structure@1",
+      "version": 1
+    },
+    {
+      "canonical_pages_sha256": "64301cba4a27874d45870a46553cba6f65fede41c8f6e5eb7af2e17f5e9d9078",
+      "omitted_and_none_exact": true,
+      "pages": 4,
+      "profile": "python-numerical-guarded-structure@2",
+      "version": 2
+    },
+    {
+      "canonical_pages_sha256": "9ff96e43dcf7298b0d1bd840bca893244679b8d9d5f5985c94ecae2d590947e6",
+      "omitted_and_none_exact": true,
+      "pages": 4,
+      "profile": "python-numerical-control-structure@3",
+      "version": 3
+    }
+  ],
+  "schema": "numerical-exact-selection-dataset-replay@1",
+  "script_sha256": "61eab1eace91ad11bc7e82a2fa824b880d8619420b0f719a662308b9ca8f50c7",
+  "solver_calls": 0,
+  "source_executed": false,
+  "structured_checkpoint_pins_unchanged": true
+}

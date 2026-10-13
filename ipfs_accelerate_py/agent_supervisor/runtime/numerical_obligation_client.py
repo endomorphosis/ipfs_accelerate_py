@@ -111,8 +111,11 @@ def _integer(value, minimum, maximum):
 
 
 def _text(value, maximum=4096):
-    return (type(value) is str and 0 < len(value.encode("utf-8")) <= maximum
-            and not any(char in value for char in ("\x00", "\n", "\r")))
+    try:
+        return (type(value) is str and 0 < len(value.encode("utf-8")) <= maximum
+                and not any(char in value for char in ("\x00", "\n", "\r")))
+    except UnicodeError:
+        return False
 
 
 def _hex(value, length=64):
@@ -254,13 +257,16 @@ def validate_request(value):
           and value["schema"] == REQUEST_SCHEMA and _hex(value["session_id"], 32)
           and _hex(value["request_id"], 32), "invalid request envelope")
     query = value["query"]
-    _need(type(query) is dict and set(query) == {"path", "function_id", "kind", "cursor", "limit", "max_bytes"},
+    fields = {"path", "function_id", "kind", "cursor", "limit", "max_bytes"}
+    _need(type(query) is dict and set(query) in (fields, fields | {"obligation_id"}),
           "invalid query schema")
     path = query["path"]
     _need(_text(path) and not Path(path).is_absolute() and str(Path(path)) == path
           and path != "." and ".." not in Path(path).parts, "canonical selected source path required")
     _need(all(query[key] is None or _text(query[key], 512) for key in ("function_id", "kind"))
           and (query["cursor"] is None or type(query["cursor"]) is dict), "invalid query filters")
+    _need("obligation_id" not in query or _text(query["obligation_id"], 512),
+          "invalid obligation selection")
     if query["cursor"] is not None:
         cursor = query["cursor"]
         _need(set(cursor) == {"context_receipt_sha256", "cursor"}
@@ -299,14 +305,27 @@ def validate_response(value, *, request, descriptor=None):
     _need(type(page.get("binding")) is dict and page["binding"].get("path") == request["query"]["path"],
           "page source differs from query")
     query = page.get("query")
-    _need(type(query) is dict and set(query) == {"function_id", "kind", "limit", "max_bytes"}
-          and all(query[key] == request["query"][key] for key in ("function_id", "kind"))
+    selected_id = "obligation_id" in request["query"]
+    filters = ("function_id", "kind", "obligation_id") if selected_id else ("function_id", "kind")
+    _need(type(query) is dict and set(query) == {*filters, "limit", "max_bytes"}
+          and all(query[key] == request["query"][key] for key in filters)
           and type(query["limit"]) is int and query["limit"] == request["query"]["limit"]
           and _integer(query["max_bytes"], 1, request["query"]["max_bytes"]),
           "page selection differs from query")
     _need(type(page.get("rows")) is list and len(page["rows"]) <= query["limit"]
           and type(page.get("returned_count")) is int and page["returned_count"] == len(page["rows"]),
           "page row accounting differs")
+    if selected_id:
+        _need(type(page.get("matched_count")) is int and page["matched_count"] in (0, 1)
+              and page["matched_count"] == len(page["rows"]) and page.get("next_cursor") is None
+              and type(page.get("offset")) is int and page["offset"] == 0
+              and type(page.get("remaining_count")) is int and page["remaining_count"] == 0
+              and page.get("exhausted") is True and page.get("status") == "exhausted"
+              and all(type(row) is dict and row.get("obligation_id") == query["obligation_id"]
+                      and (query["kind"] is None or row.get("kind") == query["kind"])
+                      and (query["function_id"] is None or
+                           (type(row.get("function_ids")) is list and query["function_id"] in row["function_ids"]))
+                      for row in page["rows"]), "page obligation selection differs")
     if descriptor is not None:
         _need(page.get("context_receipt_sha256") == descriptor["context_receipt_sha256"]
               and page.get("source_tree_id") == descriptor["source_tree_id"], "page owner context differs")
@@ -322,11 +341,14 @@ def _verify_peer(channel, descriptor):
 
 
 def request_page(descriptor_path, descriptor_sha256, *, path, function_id=None, kind=None,
-                 cursor=None, limit=8, max_bytes=8192, workspace=None):
+                 obligation_id=None, cursor=None, limit=8, max_bytes=8192, workspace=None):
     descriptor = load_descriptor(descriptor_path, descriptor_sha256, workspace=workspace)
+    query = dict(path=path, function_id=function_id, kind=kind,
+                 cursor=cursor, limit=limit, max_bytes=max_bytes)
+    if obligation_id is not None:
+        query["obligation_id"] = obligation_id
     request = validate_request(dict(schema=REQUEST_SCHEMA, session_id=descriptor["session_id"],
-        request_id=uuid.uuid4().hex, query=dict(path=path, function_id=function_id, kind=kind,
-                                             cursor=cursor, limit=limit, max_bytes=max_bytes)))
+        request_id=uuid.uuid4().hex, query=query))
     remaining = (descriptor["expires_monotonic_ns"] - time.monotonic_ns()) / 1_000_000_000
     _need(remaining > 0, "session expired")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
@@ -348,6 +370,7 @@ def main(argv=None):
     parser.add_argument("--path", required=True)
     parser.add_argument("--function-id")
     parser.add_argument("--kind")
+    parser.add_argument("--obligation-id", help="Retrieve one complete pending obligation by its exact ID")
     parser.add_argument("--cursor")
     parser.add_argument("--limit", type=int, default=8)
     parser.add_argument("--max-bytes", type=int, default=8192)
@@ -357,7 +380,7 @@ def main(argv=None):
               and args.numerical_obligation_descriptor_sha256 is not None, "descriptor required")
         result = request_page(args.numerical_obligation_descriptor,
             args.numerical_obligation_descriptor_sha256, path=args.path,
-            function_id=args.function_id, kind=args.kind,
+            function_id=args.function_id, kind=args.kind, obligation_id=args.obligation_id,
             cursor=strict_json_loads(args.cursor) if args.cursor is not None else None,
             limit=args.limit, max_bytes=args.max_bytes)
         print(canonical_json(result).decode("utf-8"))
