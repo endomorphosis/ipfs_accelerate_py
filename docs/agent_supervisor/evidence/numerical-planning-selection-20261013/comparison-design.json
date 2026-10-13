@@ -1,0 +1,163 @@
+{
+  "accounting": {
+    "byte_totals_are_not_token_totals": true,
+    "charge_cli_stdout_newline_separately_from_canonical_response": true,
+    "charge_request_and_response_envelopes": true,
+    "charge_summary_once_per_delivery": true,
+    "record_actual_utf8_bytes_not_estimated_tokens": true,
+    "record_duplicate_row_retransmission": true,
+    "record_planner_and_worker_prompt_bytes_separately": true,
+    "single_scenario_and_deduplicated_batch_totals": true,
+    "source_reading_costs": "If any source is inspected by an authored worker, charge exact exposed bytes equally or report the asymmetry. Selection itself must not read source bodies."
+  },
+  "authority": {
+    "model_calls": 0,
+    "native_provider_tokens": null,
+    "official_benchmark_score": null,
+    "proof_authority": false,
+    "provider_calls": 0,
+    "source_executed": false,
+    "source_obligations_discharged": 0
+  },
+  "budgets": {
+    "avoid_repeating_full_scan_in_selective_session": true,
+    "broker_max_requests": 64,
+    "broker_max_total_response_bytes": 524288,
+    "separate_sessions_for_full_scan_and_selective_scenarios": true,
+    "summary_max_bytes": 8192,
+    "worker_page_limit": 4,
+    "worker_response_max_bytes": 8192
+  },
+  "factors": [
+    {
+      "baseline": "historical v3 7614-byte summary",
+      "interpretation": "Visibility and byte-budget change; not measured model utility.",
+      "measure": [
+        "complete canonical bytes",
+        "retained/omitted counts",
+        "functions and proof phases represented",
+        "actual planner serialization equality",
+        "actual worker serialization equality"
+      ],
+      "name": "summary_layout",
+      "treatment": "bounded compact hint summary"
+    },
+    {
+      "baseline": "Existing exact path/function/kind query, stopping once the nominated row appears; charge incidental rows and continuation envelopes.",
+      "common_input": "Same new visible hint IDs and source-replayed report population for both selectors.",
+      "interpretation": "Isolates exact-ID selector effect under equal hint information. Unique-match cases may show no benefit and must remain in the report.",
+      "measure": [
+        "requests",
+        "request bytes",
+        "response bytes including wrappers",
+        "returned row instances",
+        "incidental rows",
+        "full-row identity equality",
+        "retained guard/proof-scope equality"
+      ],
+      "name": "retrieval_selector",
+      "treatment": "Exact path/obligation-ID query for the same complete native row."
+    },
+    {
+      "baseline": "Unfiltered full scan of all105 rows with production response budgets",
+      "interpretation": "Do not present selective-vs-exhaustive byte reduction as an advantage over existing filtered retrieval.",
+      "name": "exhaustive_inventory",
+      "treatment": "None; descriptive exhaustive reference only"
+    },
+    {
+      "baseline": "Historical summary plus old-filter discovery pages needed to obtain nominated rows",
+      "interpretation": "Report summary cost and any discovery cost explicitly. A row ID derived from the new summary cannot be treated as free information available in the historical arm.",
+      "name": "combined_discovery_and_fetch",
+      "treatment": "Compact summary plus exact-ID pages"
+    }
+  ],
+  "inputs": {
+    "historical_summary": {
+      "bytes": 7614,
+      "inline_pending_rows": 0,
+      "sha256": "4bcc3e4caa67d092c79c5ceeac5d75e639dafc61b49504b48a79ab3802c6f401",
+      "total_pending_rows": 105
+    },
+    "instruction": {
+      "bytes": 716,
+      "filename": "instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    "public_sources": [
+      {
+        "bytes": 642,
+        "filename": "eigen.py",
+        "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+      },
+      {
+        "bytes": 2246,
+        "filename": "eval.py",
+        "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      }
+    ],
+    "report_source_replay_required": true
+  },
+  "integration_audit": {
+    "planner": "terminal_initial_context appends the whole summary; prompt_goal_planner._frozen_summary_map preserves nested maps/lists or refuses depth>6, maps>64, sequence>256, unsafe strings, or total budget.",
+    "remaining_risk": "Real router request construction, task-bundle loading and compiled-worker dispatch must be exercised; direct _summary tests cannot prove delivery.",
+    "role_context_selection": "Wraps native semantic source/capsule selection; numerical hints are independently bound through task formalization evidence. No nested numerical field whitelist found here.",
+    "silent_dropping_found": false,
+    "source_pins": [
+      {
+        "bytes": 17151,
+        "filename": "role_context_selection.py",
+        "sha256": "2630b205192b687357e352a7deed1a766e4f8eadac861f53e6ffda356a44cca3"
+      },
+      {
+        "bytes": 115963,
+        "filename": "prompt_goal_planner.py",
+        "sha256": "2d311b1e0b482f4398f6f9271f5b67ad155bb6a216f6c147f2ff6604d8b01612"
+      },
+      {
+        "bytes": 23989,
+        "filename": "task_context_bundle.py",
+        "sha256": "133b253df6a08865e7f16f1ad923b2ca481a674c79adbf160542a4a9ec3f01d4"
+      },
+      {
+        "bytes": 20874,
+        "filename": "source_formalization_context.py",
+        "sha256": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef"
+      },
+      {
+        "bytes": 294621,
+        "filename": "context_compiler.py",
+        "sha256": "a8928c0e227dcbb0f7b31f877713c0fdeeb37699d110404cfc638ac4a1995b90"
+      }
+    ],
+    "worker": "task_context_bundle._worker_evidence retains complete validated summary <=8192B. ContextCompiler carries the JSON as required source-formalization text chunks. source_formalization_context._parts reconstructs exact bytes and checks canonical required6144-byte chunks plus current owner selection."
+  },
+  "required_regressions": [
+    "Actual authored planner callback sees byte-equivalent numerical summary before canonical goals/tasks exist.",
+    "After real plan admission, task bundle worker evidence retains identical hint rows, omission counts and unverified-scope envelope.",
+    "Actual authored coding router callback reconstructs formalization evidence via _parts and sees every selected ID and scope flag.",
+    "Fetch selected IDs through actual client/broker session; complete rows equal owner rows including all guarded/CFG/proof scope fields.",
+    "Unknown or cross-source IDs return no row; malformed/oversized selectors refuse; exact ID intersects function/kind filters rather than bypassing them.",
+    "Changing ID invalidates old cursor; no-ID legacy query serialization remains unchanged if compatibility promises require it.",
+    "Current-source edit invalidates ID fetch; restore recovers; source/report/summary digests are replayed.",
+    "Generated summary stays within planner depth and mapping bounds for short and long identifiers; omission totals remain exact.",
+    "Missing mandatory required-context chunks refuse rather than silently dropping hints.",
+    "No assertion of discharged obligations, invariant/termination truth, learned coverage, task success or token savings."
+  ],
+  "schema": "numerical-planning-retrieval-comparison-design@1",
+  "scope": "Authored provider-free selection over public instruction and planner-visible metadata. No hidden verifier, benchmark solution, source execution, provider/model inference, training, or proof discharge.",
+  "selection_policy": {
+    "function_filter": "Use the first lexically sorted function_id on the selected hint, plus its exact kind and path.",
+    "loop_scenarios": "First visible loop-proof hint per proof phase in eval.py; instruction references public evaluation and median runtime. These are inspection examples, not asserted performance invariants.",
+    "missing_hints": "Record each absent scenario as not selectable; never discover IDs by inspecting full reports.",
+    "reads_only": [
+      "public instruction",
+      "new planner-visible summary"
+    ],
+    "residual_scenarios": "First visible eigenpair_residual hint in each public source path; instruction explicitly requires the eigenpair residual.",
+    "selection_is_authored": true,
+    "target_fallback": "If no residual hint is exposed for eigen.py, inspect the first visible eigen.py hint because the instruction names that entrypoint; never fetch a hidden full-row ID for selection.",
+    "task_relevance_proven": false,
+    "tie_break": "visible hint order, then path/function/kind/ID lexical order where grouping is needed"
+  },
+  "status": "design_frozen_before_treatment_results"
+}

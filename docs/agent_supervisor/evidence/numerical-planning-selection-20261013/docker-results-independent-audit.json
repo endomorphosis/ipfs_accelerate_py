@@ -1,0 +1,730 @@
+{
+  "check_count": 141,
+  "checks": [
+    {
+      "name": "historical_summary_exact",
+      "passed": true
+    },
+    {
+      "name": "current_released_sources_exact",
+      "passed": true
+    },
+    {
+      "name": "current_released_four_runner_files_exact",
+      "passed": true
+    },
+    {
+      "name": "unchanged_grammar_logic_core:numerical_logic.py",
+      "passed": true
+    },
+    {
+      "name": "unchanged_grammar_logic_core:numerical_logic_v2.py",
+      "passed": true
+    },
+    {
+      "name": "unchanged_grammar_logic_core:numerical_logic_v3.py",
+      "passed": true
+    },
+    {
+      "name": "unchanged_grammar_logic_core:numerical_source.py",
+      "passed": true
+    },
+    {
+      "name": "unchanged_grammar_logic_core:numerical_source_v2.py",
+      "passed": true
+    },
+    {
+      "name": "unchanged_grammar_logic_core:numerical_source_v3.py",
+      "passed": true
+    },
+    {
+      "name": "unchanged_grammar_logic_core:program.py",
+      "passed": true
+    },
+    {
+      "name": "historical_failure_fixture_only",
+      "passed": true
+    },
+    {
+      "name": "historical_failure_cleaned_and_source_unchanged",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:released_run_complete",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:runner_snapshot_exact",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:source_report_population_unchanged",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:producer:consumer",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:producer:obligation_retrieval",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:complete_summary_identity",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:summary_authority_fence",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:balanced_hint_coverage_and_omissions",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:native_ducklake_hydration",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:broker_exact_accounting",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:unchanged_quota_and_no_exhaustion",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:negative_and_cleanup_coverage",
+      "passed": true
+    },
+    {
+      "name": "docker-selected-02:no_provider_or_proof_claim",
+      "passed": true
+    },
+    {
+      "name": "selection:manifest_exact_bindings",
+      "passed": true
+    },
+    {
+      "name": "selection:public_visible_policy_exact",
+      "passed": true
+    },
+    {
+      "name": "selection:full_row:numerical-control:1937fe4e75047bf494f1935f21854c53",
+      "passed": true
+    },
+    {
+      "name": "selection:whole_native_row_exact:numerical-control:1937fe4e75047bf494f1935f21854c53",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:2af6b13a92f15aefb3f837695250d05f9b957325214c3c81e7af952f822e3994",
+      "passed": true
+    },
+    {
+      "name": "selection:page_sum:numerical-control:1937fe4e75047bf494f1935f21854c53:filter_pages",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:79e65dfe800cee51b643c037137988cf068ad15d9b7649a879014eaa619f1013",
+      "passed": true
+    },
+    {
+      "name": "selection:page_sum:numerical-control:1937fe4e75047bf494f1935f21854c53:exact_id_pages",
+      "passed": true
+    },
+    {
+      "name": "selection:filter_native_prefix:numerical-control:1937fe4e75047bf494f1935f21854c53",
+      "passed": true
+    },
+    {
+      "name": "selection:full_row:numerical-control:a93b8021251ec1560ee6046525150d93",
+      "passed": true
+    },
+    {
+      "name": "selection:whole_native_row_exact:numerical-control:a93b8021251ec1560ee6046525150d93",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:12aa4116f84b06ac39bf2299142389a46c5c6bc188281d69bc154dede42ea3a7",
+      "passed": true
+    },
+    {
+      "name": "selection:page_sum:numerical-control:a93b8021251ec1560ee6046525150d93:filter_pages",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:b0284ea4c68789b1f94c67e073a92bb1f9652b53b967ae22b1a3a99e394b74ab",
+      "passed": true
+    },
+    {
+      "name": "selection:page_sum:numerical-control:a93b8021251ec1560ee6046525150d93:exact_id_pages",
+      "passed": true
+    },
+    {
+      "name": "selection:filter_native_prefix:numerical-control:a93b8021251ec1560ee6046525150d93",
+      "passed": true
+    },
+    {
+      "name": "selection:full_row:numerical-control:3be0282f7f16761c55f0ff438f8977b2",
+      "passed": true
+    },
+    {
+      "name": "selection:whole_native_row_exact:numerical-control:3be0282f7f16761c55f0ff438f8977b2",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:b228b963574c33bebbf3e4989d16077c2ff2e1aa6a6bca1c4d575684908a5b7c",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:54fe4272d2b36a56c595fb24936144bb855ceb713f8c576cf3900088f85581a2",
+      "passed": true
+    },
+    {
+      "name": "selection:page_sum:numerical-control:3be0282f7f16761c55f0ff438f8977b2:filter_pages",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:f91e8b478be57c14f84fa6a32481a2fe0e1010619def5b493591a8f3d764266a",
+      "passed": true
+    },
+    {
+      "name": "selection:page_sum:numerical-control:3be0282f7f16761c55f0ff438f8977b2:exact_id_pages",
+      "passed": true
+    },
+    {
+      "name": "selection:filter_native_prefix:numerical-control:3be0282f7f16761c55f0ff438f8977b2",
+      "passed": true
+    },
+    {
+      "name": "selection:full_row:numerical-control:dc3914f0668088feb526e424a1c9d925",
+      "passed": true
+    },
+    {
+      "name": "selection:whole_native_row_exact:numerical-control:dc3914f0668088feb526e424a1c9d925",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:087343e7da588347ed66449a83e1a35dacb00e79e915b38f4326c98d5a6ba8d9",
+      "passed": true
+    },
+    {
+      "name": "selection:page_sum:numerical-control:dc3914f0668088feb526e424a1c9d925:filter_pages",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:a9745ba802ed0c40afab2183e49215535487db9bf731c6a89db270c072a56191",
+      "passed": true
+    },
+    {
+      "name": "selection:page_sum:numerical-control:dc3914f0668088feb526e424a1c9d925:exact_id_pages",
+      "passed": true
+    },
+    {
+      "name": "selection:filter_native_prefix:numerical-control:dc3914f0668088feb526e424a1c9d925",
+      "passed": true
+    },
+    {
+      "name": "selection:full_row:numerical-control:00b642ed2420e4b8aca70543e8d87eaa",
+      "passed": true
+    },
+    {
+      "name": "selection:whole_native_row_exact:numerical-control:00b642ed2420e4b8aca70543e8d87eaa",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:e1f1fc17c7a1d0e60b149d297d0641f25f2de1c43e735cdacdb29b20019494ce",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:f7fc12b46b8ff534a699399636e008ccb8721f3183bad735c63c3143aa609960",
+      "passed": true
+    },
+    {
+      "name": "selection:page_sum:numerical-control:00b642ed2420e4b8aca70543e8d87eaa:filter_pages",
+      "passed": true
+    },
+    {
+      "name": "selection:owner_ledger:53da3297eaa7f446e2b3b504e668c1dd0a020bd2f85022e39bed893b14d6f557",
+      "passed": true
+    },
+    {
+      "name": "selection:page_sum:numerical-control:00b642ed2420e4b8aca70543e8d87eaa:exact_id_pages",
+      "passed": true
+    },
+    {
+      "name": "selection:filter_native_prefix:numerical-control:00b642ed2420e4b8aca70543e8d87eaa",
+      "passed": true
+    },
+    {
+      "name": "selection:measured_request_population",
+      "passed": true
+    },
+    {
+      "name": "selection:batch_sum:existing_filter",
+      "passed": true
+    },
+    {
+      "name": "selection:batch_sum:exact_id",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:released_run_complete",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:runner_snapshot_exact",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:source_report_population_unchanged",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:producer:consumer",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:producer:obligation_retrieval",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:complete_summary_identity",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:summary_authority_fence",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:balanced_hint_coverage_and_omissions",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:native_ducklake_hydration",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:broker_exact_accounting",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:unchanged_quota_and_no_exhaustion",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:negative_and_cleanup_coverage",
+      "passed": true
+    },
+    {
+      "name": "docker-full-01:no_provider_or_proof_claim",
+      "passed": true
+    },
+    {
+      "name": "full:rows:eigen.py",
+      "passed": true
+    },
+    {
+      "name": "full:request:1934bce752f9fbca5ad3bd2866392fe15c2e9afd6b28777b4fb068f675947558",
+      "passed": true
+    },
+    {
+      "name": "full:request:583c4f8b66ac107139fb410487a57f8cbb3b4b91e5159b88bf74a6a7d9a7f4c5",
+      "passed": true
+    },
+    {
+      "name": "full:request:3c8bc46fda2a2be5268d1595131ea50deabd722a22db3ead588e74064ee8d455",
+      "passed": true
+    },
+    {
+      "name": "full:request:33d29dc961add1a1098bf463037d8ad32ed08ded966641f287754b6caf33b0d5",
+      "passed": true
+    },
+    {
+      "name": "full:request:e4c541d7d0b89e922ea99163f53e0d011b6771f3b1055998968ff6b37033585c",
+      "passed": true
+    },
+    {
+      "name": "full:request:0399b6b748aa284b398fb5e87c6925c01f7ec0f36f70fdf52ceda2fb7ea39ba8",
+      "passed": true
+    },
+    {
+      "name": "full:request:62460f4a0ce421e319644ef25111c3d544a8e754051d40c858b76a38179f687a",
+      "passed": true
+    },
+    {
+      "name": "full:request:1a5d9887fabc221a0601ba38947615a32ec506210bc51d9d76e51d73e80bcf3c",
+      "passed": true
+    },
+    {
+      "name": "full:exhausted:eigen.py",
+      "passed": true
+    },
+    {
+      "name": "full:rows:eval.py",
+      "passed": true
+    },
+    {
+      "name": "full:request:ae989d231ac030c23993c91eaf492863b9ba0982318bfb85a857bc66dd3f8477",
+      "passed": true
+    },
+    {
+      "name": "full:request:b59a1258ab2568f9102052b083b9a138dd15c6f32e2ee514f69d9642fbac2da9",
+      "passed": true
+    },
+    {
+      "name": "full:request:aace996ffe1c964d3353874d3ecf34ff2cabbf9b1b8a1f197d5988903efcfbad",
+      "passed": true
+    },
+    {
+      "name": "full:request:2952fd02c25d219e5824df72b41b355a771cacd8f0b5c4eb0fb84906229c81b3",
+      "passed": true
+    },
+    {
+      "name": "full:request:49eb5361de56257f55e6bb67d7978dd8f339e8ec76a545f3fe49987622b0c072",
+      "passed": true
+    },
+    {
+      "name": "full:request:5747dc54a2794875242894992462f38972e8acbc219494cb92a9202d55f77d21",
+      "passed": true
+    },
+    {
+      "name": "full:request:5bd98e02e807d66d4e122de03870eb9845638c39ce96576f7914170d38ce42e5",
+      "passed": true
+    },
+    {
+      "name": "full:request:70a2826d88662d53f2a142a3ed16579c5812fd5e2e2542cc05a7b8573f68c6cc",
+      "passed": true
+    },
+    {
+      "name": "full:request:c9a9ee763f14740047990e3c254100a79b0a8c55fc371abc4485c900ab7c4108",
+      "passed": true
+    },
+    {
+      "name": "full:request:b2f67aca146359012c555e255487762e7ee7ca24b191c8f8b757aa1deb57bcad",
+      "passed": true
+    },
+    {
+      "name": "full:request:c6e3bcdb6fa41c60f47373d1a9fe07dbf141412447af7d27b251cdaf6921a767",
+      "passed": true
+    },
+    {
+      "name": "full:request:c21dc7242551cb53c6172bb734b88608f5456fce035637d03ee03a49b2ba7ad1",
+      "passed": true
+    },
+    {
+      "name": "full:request:fcae27920ded7d74b919318875088d9cb86e4424d7b9d08bd2493dc66401a97f",
+      "passed": true
+    },
+    {
+      "name": "full:request:0b76cf8b0d5531c398402538c3cbf71fd225c4ba04c65ea19e03637b91236308",
+      "passed": true
+    },
+    {
+      "name": "full:request:f84a9df23f413ee41f961927db8996a6521a603f362a887598546f4ae8298541",
+      "passed": true
+    },
+    {
+      "name": "full:request:676c9b8bda2b66158ded3530503a74fa7a5d5883df25e2ec29f821e87ecf2e2f",
+      "passed": true
+    },
+    {
+      "name": "full:request:e91dd012fe3a1b58933a541bc8223d3d94ed81f018032b043aba27a00c5eeff7",
+      "passed": true
+    },
+    {
+      "name": "full:request:a7a59df1a39a162d711e31452e2857caf3f20391bfeae5607034fa1c40884e69",
+      "passed": true
+    },
+    {
+      "name": "full:request:066c53d3354472b899318d373e021a32320beae6495a5607d98bfd5f83f14865",
+      "passed": true
+    },
+    {
+      "name": "full:request:a6597f5dc9157b50845671447fb8346f4d1d6525ae760b3ef2174cd08b5a7c3d",
+      "passed": true
+    },
+    {
+      "name": "full:request:249fc1d3752f13de1458d533c7f347b2d72c8dca144ac9fea176d5ee28a8bf06",
+      "passed": true
+    },
+    {
+      "name": "full:request:276101091e02ddbc7538e6d4241b90eb6b9350ed1f7aa6fbb281076d755f306c",
+      "passed": true
+    },
+    {
+      "name": "full:request:2f6df30c062cfdc341945b47b788925216eadbb2568ff8fc533413330ce07676",
+      "passed": true
+    },
+    {
+      "name": "full:request:785a375c8b11ad75b745a1fa2dfc988ec0ac5b3460bcb391ef304922e50002d6",
+      "passed": true
+    },
+    {
+      "name": "full:request:1459940b24852e3c1135e0df9beac2220b463247e9722966b3feee67b0df6555",
+      "passed": true
+    },
+    {
+      "name": "full:request:f0ae59d6a0b1a03b3da82d6f7b7835357abc1f84c59d93a926ff8669bee8ab3f",
+      "passed": true
+    },
+    {
+      "name": "full:request:9bed87b1036aa9f9e0aedbe12c0a896bb0f0527133bfcd087e91fd6c104b58af",
+      "passed": true
+    },
+    {
+      "name": "full:request:b9399523373ebf9e6355aa5f34baea060c7700bdcdcc0926c34ec5ded428a82f",
+      "passed": true
+    },
+    {
+      "name": "full:request:07315fdf6cbca95bee202e7e362edeaa29777ec5f8725edc9b3d7ce5fb5de2e7",
+      "passed": true
+    },
+    {
+      "name": "full:request:a673e2825382d4b4623eaf6240c9835b4cc18845f9c492f81e595df24442e457",
+      "passed": true
+    },
+    {
+      "name": "full:request:6273e34ab487f9d095a928a1efcf28464131e19de77db81055410604b3fa4281",
+      "passed": true
+    },
+    {
+      "name": "full:request:27cf5e6029ca360f6aa6d64be797ef3edd4ecd2771535d5aac1e38d49c8fea47",
+      "passed": true
+    },
+    {
+      "name": "full:request:bcc8922dfd6adad4081c37956e06d0e9cd58858b9691ac925bdac3c5d7a8d132",
+      "passed": true
+    },
+    {
+      "name": "full:request:8fa7e5aa3df3779783963193c6f5fa56114c5fa2a5916ef59ade0ef895d01384",
+      "passed": true
+    },
+    {
+      "name": "full:request:4bdd61544a7d6c0bb0e5f16a871cfff3c8a0b799b4a0837023262d78c4b5c4b8",
+      "passed": true
+    },
+    {
+      "name": "full:request:765d7a2f819a8ee6571fb29618dcec97425b210b2f63aa3da92adf65d95e5ddb",
+      "passed": true
+    },
+    {
+      "name": "full:request:66805542431c279b74366758707e69e5848562fdabee4b757971b7088bc53d8e",
+      "passed": true
+    },
+    {
+      "name": "full:request:ca665a5a97c79fa057b2faacf43c8f8ba7ff459e1d8a03730eb3c9ca30a225d4",
+      "passed": true
+    },
+    {
+      "name": "full:request:8bfc1a36eae27861bf96f81c7bcd324293d1134ae290b120d40972a030de49ea",
+      "passed": true
+    },
+    {
+      "name": "full:request:cdbbbaa63c48170ca55d124a7ebe84c6f2275bfbc6ad30e38ef3279fa65fe941",
+      "passed": true
+    },
+    {
+      "name": "full:request:4b91ef45a0b66d180227ccacafe096ab3640118bc723c712032cd96d66f8d799",
+      "passed": true
+    },
+    {
+      "name": "full:request:9ed09c31284ec7be607067036e1f3102c41ed4269d204877b183152690d63be9",
+      "passed": true
+    },
+    {
+      "name": "full:request:504fda5db4cd37f6a6eeae1073d6dfc0f8c14f703035c943ddde6780d23ffe7d",
+      "passed": true
+    },
+    {
+      "name": "full:request:9dc7b1047daa36f12874243ecc9b6cc61d9a12e33e40bd20277578275904cc74",
+      "passed": true
+    },
+    {
+      "name": "full:request:18ec211317229ab7e46d9e0a913308203673a4ac02137bd83113c6bc13703116",
+      "passed": true
+    },
+    {
+      "name": "full:request:0475670b75ad48b17249a18ccc179cf1ef0c21dcd9f4f8f0681fac036c49e750",
+      "passed": true
+    },
+    {
+      "name": "full:request:9fd19d3a21d057a3d42e9ed11bd1b719c6ef41be9ba4ad02bda3b887e6c6b0ee",
+      "passed": true
+    },
+    {
+      "name": "full:request:9e0e236da5684aa2290f193c2002d212ada034aa3044fd4eb00dc8cc5c4db7f2",
+      "passed": true
+    },
+    {
+      "name": "full:exhausted:eval.py",
+      "passed": true
+    },
+    {
+      "name": "full:totals",
+      "passed": true
+    }
+  ],
+  "completed_runs": [
+    {
+      "broker_requests": 21,
+      "broker_response_bytes": 79212,
+      "complete": true,
+      "exact_id": {
+        "canonical_request_response_bytes": 26954,
+        "cli_stdout_bytes": 25368,
+        "common_summary_bytes": 8064,
+        "framed_request_bytes": 1611,
+        "framed_response_bytes": 25383,
+        "request_bytes": 1591,
+        "requests": 5,
+        "response_bytes": 25363,
+        "returned_row_instances": 5,
+        "summary_plus_canonical_request_response_bytes": 35018
+      },
+      "existing_filter": {
+        "canonical_request_response_bytes": 42008,
+        "cli_stdout_bytes": 39582,
+        "common_summary_bytes": 8064,
+        "framed_request_bytes": 2461,
+        "framed_response_bytes": 39603,
+        "request_bytes": 2433,
+        "requests": 7,
+        "response_bytes": 39575,
+        "returned_row_instances": 8,
+        "summary_plus_canonical_request_response_bytes": 50072
+      },
+      "inline_hints": 8,
+      "legacy_summary_discovery_measured": false,
+      "missing_hint_scenarios": [
+        "residual:eigen.py",
+        "residual:eval.py"
+      ],
+      "mode": "selected",
+      "response_status_counts": {
+        "ok": 14,
+        "peer_refused": 2,
+        "retrieval_refused": 3,
+        "stale_context": 2
+      },
+      "run": "docker-selected-02",
+      "selected_obligations": 5,
+      "summary_bytes": 8064
+    },
+    {
+      "broker_requests": 64,
+      "broker_response_bytes": 385404,
+      "complete": true,
+      "full_scan_pages": 56,
+      "full_scan_rows": 105,
+      "inline_hints": 8,
+      "mode": "full",
+      "request_bytes": 26742,
+      "response_bytes": 377548,
+      "response_status_counts": {
+        "ok": 57,
+        "peer_refused": 2,
+        "retrieval_refused": 3,
+        "stale_context": 2
+      },
+      "run": "docker-full-01",
+      "summary_bytes": 8064,
+      "summary_plus_request_response_bytes": 412354
+    }
+  ],
+  "current_declared_source_bindings": 514,
+  "full_scan_pending": false,
+  "historical_fixture_failure": {
+    "broker_requests": 0,
+    "cause": "Fixture called .get on an allowed string in a mixed summary list.",
+    "correction": "Fixture now filters isinstance(value,dict) before schema lookup; production behavior unchanged.",
+    "model_calls": 0,
+    "phase": "post-preflight authored planner-summary inspection before owner-worker launch",
+    "production_failure": false,
+    "provider_calls": 0,
+    "run": "docker-selected-01"
+  },
+  "historical_summary": {
+    "bytes": 7614,
+    "inline_hints": 0
+  },
+  "inputs": [
+    {
+      "bytes": 1768,
+      "filename": "failed-qualification.json",
+      "sha256": "61a13a79d46a22cbcffb583a6e8459f16be92a56d96b33464927d9d6f8b86aa3"
+    },
+    {
+      "bytes": 551,
+      "filename": "failed-probe-qualification.json",
+      "sha256": "66a0c5292ee493e1cc2708b03315917921c69b6331fc01769f4e9ed8d5a3df0f"
+    },
+    {
+      "bytes": 22276,
+      "filename": "docker-selected-02-qualification.json",
+      "sha256": "a35c5371fbcf6f3b2e8e69f54daa84a09f03038ca5d81f6c09435ee1862511c1"
+    },
+    {
+      "bytes": 7385,
+      "filename": "docker-selected-02-private-broker-audit.json",
+      "sha256": "2f32072f53c493d5d5be3343c3f8cea7e70f94b8d4b3a08127e74f7d79ca2337"
+    },
+    {
+      "bytes": 35282,
+      "filename": "docker-selected-02-private-worker-result.json",
+      "sha256": "588326a8d417630ff07e40be05a3c8c68ffbcc29ce39a3bb6a3c04da625d2e35"
+    },
+    {
+      "bytes": 5984,
+      "filename": "docker-full-01-qualification.json",
+      "sha256": "7a675962f3cefbe5648969391936afa5b212660dc11303202107bb899eb5624b"
+    },
+    {
+      "bytes": 19341,
+      "filename": "docker-full-01-private-broker-audit.json",
+      "sha256": "bed25e7d163c8b2c02957ced67d5c5cbb42889064d8f1b65d34e9a600d89ab93"
+    },
+    {
+      "bytes": 379219,
+      "filename": "docker-full-01-private-worker-result.json",
+      "sha256": "58c358f2a2faf4ef5838a3de5ef18d087e3ea11537dd369cfc19fa8149510381"
+    }
+  ],
+  "limitations": [
+    "Canonical IPC bytes, framed IPC bytes and CLI stdout bytes are separate layers; do not add them together.",
+    "Exact-ID versus existing-filter arms receive identical compact hints. Historical-summary discovery and model selection quality are unmeasured.",
+    "Authored public instruction selection is not an autonomous provider decision or a proved task relevance ranking.",
+    "Production planner request compilation and exact worker delivery are observed; the authored graph is not proof of live planner consumption.",
+    "Exhaustive scan is a separate inventory reference, not the selective comparator baseline.",
+    "Rows remain pending; no execution witness, invariant, termination, benchmark reward or native token advantage follows."
+  ],
+  "model_calls": 0,
+  "native_provider_tokens": null,
+  "official_benchmark_score": null,
+  "private_exports_forbidden": [
+    "raw broker/session receipts",
+    "raw worker-selected rows",
+    "raw prompts or request identifiers",
+    "owner databases",
+    "private state and diagnostics"
+  ],
+  "proof_authority": false,
+  "provider_calls": 0,
+  "public_export_allowlist": [
+    "comparison-design.json",
+    "public_query_comparison.py",
+    "fixture-integration-audit.json",
+    "docker-results-independent-audit.json",
+    "docker-selected-02/results/retrieval-comparison.json"
+  ],
+  "release": {
+    "bytes": 117138,
+    "filename": "docker-release-02.json",
+    "sha256": "2a6ab811eed93da8539a26fe8b9bd976bc84a3b688920aa141f452a9aed3a58e"
+  },
+  "schema": "numerical-planning-selection-docker-independent-audit@1",
+  "source_executed": false,
+  "source_obligations_discharged": 0,
+  "status": "passed"
+}

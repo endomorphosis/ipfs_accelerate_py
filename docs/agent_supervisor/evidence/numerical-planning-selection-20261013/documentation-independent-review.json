@@ -1,0 +1,112 @@
+{
+  "blockers": [],
+  "checks": [
+    {
+      "name": "measured_table_numbers",
+      "passed": true
+    },
+    {
+      "name": "reported_percentages_round_exactly",
+      "passed": true
+    },
+    {
+      "name": "historical_summary_cost_explicit",
+      "passed": true
+    },
+    {
+      "name": "unavailable_residual_hints_explicit",
+      "passed": true
+    },
+    {
+      "name": "authored_planner_and_provider_scope_explicit",
+      "passed": true
+    },
+    {
+      "name": "no_live_tokens_proof_benchmark_claim",
+      "passed": true
+    },
+    {
+      "name": "unchanged_formalization_no_new_lean_claim",
+      "passed": true
+    },
+    {
+      "name": "separate_exhaustive_objective",
+      "passed": true
+    },
+    {
+      "name": "separate_accounting_layers",
+      "passed": true
+    },
+    {
+      "name": "historical_fixture_error_labeled",
+      "passed": true
+    },
+    {
+      "name": "only_expected_unsealed_evidence_link_pending",
+      "passed": true
+    },
+    {
+      "name": "independent_junit_distinct_pass_count_849",
+      "passed": true
+    },
+    {
+      "name": "focused_34_already_in_broad_772",
+      "passed": true
+    },
+    {
+      "name": "two_optional_checkpoint_skips_retained",
+      "passed": true
+    }
+  ],
+  "guide_sha256": "72e580f38f53d1c29366af2ba83edbd24b17a3919dcdb027919c0e1d0e3dd403",
+  "links": [
+    {
+      "exists": true,
+      "label": "context owner",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py"
+    },
+    {
+      "exists": true,
+      "label": "isolated worker client",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py"
+    },
+    {
+      "exists": false,
+      "label": "sealed evidence",
+      "target": "evidence/numerical-planning-selection-20261013/README.md"
+    },
+    {
+      "exists": true,
+      "label": "earlier native comparison",
+      "target": "context_projection_pair.md"
+    }
+  ],
+  "percent_reduction_json_only": 35.836031232146254,
+  "percent_reduction_with_common_summary": 30.064706822176067,
+  "schema": "numerical-planning-selection-document-review@1",
+  "scope": "Read-only claims/math/link review against independent retained Docker evidence. Publication manifest/doc gates remain root-owned.",
+  "source_audit_sha256": "60facfd334ddbba1c067ee348a7ae8565a9b7d37c60d08993a96de1ce658daad",
+  "status": "passed_with_expected_unsealed_evidence_link",
+  "test_paragraph_verified": true,
+  "tests": {
+    "accelerator_passes": 772,
+    "datasets_passes": 77,
+    "distinct_passes": 849,
+    "focused_consumer_passes_already_included": 34,
+    "junit_inputs": [
+      {
+        "filename": "datasets-tests/junit.xml",
+        "sha256": "fbb5dd261ea750b1be3dc65b489250ba5a597d0c70c3eecdbe06f209920737fe"
+      },
+      {
+        "filename": "accelerator-regression/junit.xml",
+        "sha256": "a3c01a505f18002e4c5f4f0f7cf9db0be5505f76f5cbba4ebd69ed5728e86d47"
+      }
+    ],
+    "optional_skips": 2,
+    "skip_reasons": [
+      "explicit numerical development checkpoint and cached GTE snapshot required",
+      "explicit numerical development checkpoint and cached GTE snapshot required"
+    ]
+  }
+}

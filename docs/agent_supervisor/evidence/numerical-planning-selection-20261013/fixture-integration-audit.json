@@ -1,0 +1,198 @@
+{
+  "check_count": 29,
+  "checks": [
+    {
+      "name": "four_runner_files_syntax",
+      "passed": true,
+      "scope": "Python compile only; does not launch fixture"
+    },
+    {
+      "name": "release_binds_all_four_runner_files",
+      "passed": true,
+      "scope": "Static exact runner map equality"
+    },
+    {
+      "name": "source_bindings_checked_before_and_after",
+      "passed": true,
+      "scope": "Declared released file set, not the entire filesystem"
+    },
+    {
+      "name": "root_sets_explicit_readonly_fixture_mode",
+      "passed": true,
+      "scope": "Authored setup file only; production environment scrub remains unchanged"
+    },
+    {
+      "name": "setup_receives_requested_mode",
+      "passed": true,
+      "scope": "No implicit mode default"
+    },
+    {
+      "name": "worker_reads_fixture_mode_after_scrub",
+      "passed": true,
+      "scope": "No dependency on inherited arbitrary environment"
+    },
+    {
+      "name": "owner_checks_effective_worker_mode",
+      "passed": true,
+      "scope": "Requested/effective comparison mode equality"
+    },
+    {
+      "name": "network_disabled_and_resource_controls_verified",
+      "passed": true,
+      "scope": "Docker create controls subsequently checked via inspect"
+    },
+    {
+      "name": "production_mounts_readonly",
+      "passed": true,
+      "scope": "Host production worktrees mounted read-only"
+    },
+    {
+      "name": "public_fixture_inputs_only",
+      "passed": true,
+      "scope": "No hidden tests, solutions, or benchmark oracle mounts"
+    },
+    {
+      "name": "production_owner_entry_unchanged",
+      "passed": true,
+      "scope": "Generated worker entry adds explicitly authored model hook only"
+    },
+    {
+      "name": "separate_uid_no_new_privileges_checks",
+      "passed": true,
+      "scope": "Worker additionally checks zero effective/permitted/ambient capabilities"
+    },
+    {
+      "name": "planner_request_uses_current_staged_summaries",
+      "passed": true,
+      "scope": "Post-preflight production request compiler exercise; not actual provider planning or proof of summary-driven goal selection"
+    },
+    {
+      "name": "planner_summary_exact_equality",
+      "passed": true,
+      "scope": "No live planner delivery claim"
+    },
+    {
+      "name": "owner_compiled_summary_exact_equality",
+      "passed": true,
+      "scope": "Complete summary including hint refs and scope metadata"
+    },
+    {
+      "name": "worker_native_parts_before_dispatch",
+      "passed": true,
+      "scope": "Native compiled prompt receipt"
+    },
+    {
+      "name": "model_prompt_parts_exact_payload_equality",
+      "passed": true,
+      "scope": "Actual authored llm_router callback receives unchanged formalization payload"
+    },
+    {
+      "name": "selector_reads_only_public_instruction_summary",
+      "passed": true,
+      "scope": "No full report or source-body inspection to nominate IDs"
+    },
+    {
+      "name": "existing_filters_stop_at_target",
+      "passed": true,
+      "scope": "No unnecessary baseline exhaustion"
+    },
+    {
+      "name": "exact_fetch_compares_complete_native_row",
+      "passed": true,
+      "scope": "All nested guards and proof scopes included in canonical whole-row comparison"
+    },
+    {
+      "name": "selected_rows_owner_replayed",
+      "passed": true,
+      "scope": "Owner independently loads production-generated report rows"
+    },
+    {
+      "name": "measured_requests_match_owner_audit",
+      "passed": true,
+      "scope": "Reconstructed request identity tied to delivered production broker response"
+    },
+    {
+      "name": "full_scan_rows_exact_and_unique",
+      "passed": true,
+      "scope": "Unfiltered exhaustive population accounting"
+    },
+    {
+      "name": "selective_filter_and_fullscan_separate",
+      "passed": true,
+      "scope": "Independent fresh-container modes avoid64-request exhaustion"
+    },
+    {
+      "name": "stale_cursor_peer_probes_retained",
+      "passed": true,
+      "scope": "Negative checks use real broker/client/UID boundary"
+    },
+    {
+      "name": "cleanup_and_original_source_checks",
+      "passed": true,
+      "scope": "Source restored and container removed required for overall completion"
+    },
+    {
+      "name": "authority_limitations_explicit",
+      "passed": true,
+      "scope": "Authored offline protocol measurements only"
+    },
+    {
+      "name": "canonical_byte_layer_separate",
+      "passed": true,
+      "scope": "Fullscan framing can be derived; do not mix canonical versus framed totals"
+    },
+    {
+      "name": "full_scan_exact_framing_and_cli_newline_fields",
+      "passed": true,
+      "scope": "Four bytes per request/response frame and one byte per canonical CLI response newline; canonical totals remain separately named."
+    }
+  ],
+  "files": [
+    {
+      "bytes": 18895,
+      "filename": "owner_probe.py",
+      "sha256": "90571de0a16b22283719d116577c4c1e8d561a2c2c71fb2286d53fc073559db1"
+    },
+    {
+      "bytes": 11453,
+      "filename": "worker_probe.py",
+      "sha256": "15ffd7e801f06772b367b54901093ca31da9915f007cb2bfc0198731608b303c"
+    },
+    {
+      "bytes": 11286,
+      "filename": "public_query_comparison.py",
+      "sha256": "62a04ecbca87c29e0ee14df1b2798a8bb174ccd106622019ae6e5d30535dff77"
+    },
+    {
+      "bytes": 11796,
+      "filename": "run_docker_qualification.py",
+      "sha256": "27c531a5e37fd9152bd781c912d91974948dc6ae306675aba3cb9dedfb4be3f1"
+    }
+  ],
+  "limitations": [
+    "This is a static fixture integration review; Docker execution and its release-bound outcome are separate evidence.",
+    "The planner request compiler receives current staged summaries after authored preflight admission. It does not demonstrate an actual router planner reading those summaries or generating goals from them.",
+    "Both selector arms receive the same compact hints. Historical-summary discovery cost and model choice quality remain unmeasured.",
+    "Unchanged-source claims bind only declared release files. Retained private receipts/prompts/session descriptors are not public artifacts.",
+    "Canonical request/response bytes, framed IPC bytes and CLI stdout bytes are separately reported. They describe distinct transfer layers and must not be added together as independent costs."
+  ],
+  "model_calls": 0,
+  "production_dependency": {
+    "bytes": 35474,
+    "filename": "container_worker_deployment.py",
+    "sha256": "5c37751fedc632968f479fa1d64b6550e986b25ac69c0f14b919da763a9abcb6"
+  },
+  "proof_authority": false,
+  "provider_calls": 0,
+  "remaining_blockers": [],
+  "resolved_findings": [
+    {
+      "issue": "requested_mode_lost_by_production_environment_scrub",
+      "resolution": "Root setup now writes an explicit root-owned0444 fixture mode file. Worker reads this file and owner compares effective mode. Production environment scrub remains unchanged."
+    }
+  ],
+  "runtime_qualification_executed": false,
+  "schema": "numerical-planning-selection-fixture-static-audit@1",
+  "source_executed": false,
+  "status": "passed"
+}

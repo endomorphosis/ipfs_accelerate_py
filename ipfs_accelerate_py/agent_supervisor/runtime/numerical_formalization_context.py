@@ -189,6 +189,173 @@ def _planning_assertion(path, row, *, profile=PROFILE):
         symbol_definition_ids=[definition["definition_id"] for definition in definitions])
 
 
+def _round_robin(groups):
+    """Interleave sorted structural groups without ranking their relevance."""
+    queues = [list(rows) for _, rows in sorted(groups.items())]
+    for index in range(max(map(len, queues), default=0)):
+        for rows in queues:
+            if index < len(rows):
+                yield rows[index]
+
+
+def _control_hint(row):
+    result = {key: row[key] for key in (
+        "path", "obligation_id", "kind", "expression_id", "function_ids", "cfg_ids")}
+    result["scope"] = "proof_applicability" if "proof_phase" in row else "source_evaluation"
+    for key in ("guarded_region_ids", "control_region_ids", "loop_region_ids"):
+        if row[key]:
+            result[key] = row[key]
+    if "proof_phase" in row:
+        result.update({key: row[key] for key in (
+            "proof_phase", "proof_scope_control_region_id", "proof_scope_cfg_id")})
+    return result
+
+
+def _pack_control_summary(result, rows, pending, contracts, assertions, linked, references):
+    """Pack source-bound hints with coverage first and exact whole-row omissions.
+
+    Full rows are unchanged in the owner report. This shallow hint contract is
+    deliberately not an independently interpretable logical formula.
+    """
+    result["interpretation"] = (
+        "Structural hints only; retrieve full pending rows before interpretation. "
+        "Loop proof applicability is distinct from source-anchor evaluation. "
+        "Guards, runtime effects, reachability, invariants and termination are unverified. "
+        "Assertions are local requirements if reached with assertions enabled. Read source before editing.")
+    result["planning_hint_contract"] = dict(schema="numerical-planning-hints@1",
+        full_context_required=True, reference_lists_truncated=False,
+        scope_meanings=dict(source_evaluation="Unverified source evaluation; full guards required.",
+            proof_applicability="Source anchor only; full proof_scope applicability remains unresolved."),
+        evaluation_guard_verified=False, runtime_truthiness_verified=False,
+        runtime_effects_verified=False, standalone_program_evaluation_complete=False,
+        proof_phase_established=False, proof_applicability_verified=False,
+        relevance_ranked=False)
+    retrieval = result["obligation_retrieval"]
+    retrieval["isolated_worker_usage"] = (
+        "Use --path and --obligation-id for an exact hint; optional --function-id/--kind are conjunctive. "
+        "Full rows remain unresolved; source edits invalidate retrieval. Use --cursor for scans.")
+    paths = list(retrieval["source_paths"])
+    retrieval["omitted_source_paths"] += len(paths)
+    retrieval["source_paths"] = []
+    sources = {
+        "pending_obligations": [_control_hint(row) for row in pending],
+        "per_function": [{key: row[key] for key in ("path", "function_id", "qualified_name",
+            "structurally_complete", "pending_obligation_count")} for row in rows],
+        "control_references": [{key: value for key, value in row.items() if key not in (
+            "reachability_verified", "loop_invariants_verified", "termination_verified",
+            "control_flow_semantics_verified")} for row in references],
+        "assertion_requirements": [{key: row[key] for key in (
+            "path", "requirement_id", "function_id", "predicate_expression_id", "guarded_region_ids")}
+            for row in assertions],
+        "compound_contracts": [{key: row[key] for key in (
+            "path", "contract_id", "function_id", "kind")} for row in contracts],
+    }
+    if linked is not None:
+        sources["source_unit_links"] = [{key: row[key] for key in (
+            "path", "unit_id", "function_id", "status", "scalar_guard_status")} for row in linked]
+    omitted = dict(pending_obligations="omitted_obligation_summaries",
+        per_function="omitted_function_summaries", control_references="omitted_control_reference_summaries",
+        assertion_requirements="omitted_assertion_requirement_summaries",
+        compound_contracts="omitted_compound_contract_summaries",
+        source_unit_links="omitted_source_unit_link_summaries")
+    totals = dict(pending_obligations="pending_obligation_count", per_function="functions",
+        control_references="control_reference_count", assertion_requirements="assertion_requirement_count",
+        compound_contracts="compound_contract_count")
+    for key, values in sources.items():
+        result[key] = []
+        # Native per-function/assertion/compound summaries can already omit
+        # rows. Preserve their authoritative totals before packing this view.
+        result[omitted[key]] = result[totals[key]] if key in totals else len(values)
+    if len(_bytes(result)) > 8192:
+        raise ValueError("numerical planning summary envelope exceeds bound")
+
+    def offer(key, row, bound=8192):
+        if len(result[key]) >= 32 or row in result[key]:
+            return False
+        result[key].append(row)
+        result[omitted[key]] -= 1
+        if len(_bytes(result)) <= bound:
+            return True
+        result[key].pop()
+        result[omitted[key]] += 1
+        return False
+
+    # Discovery paths have a small independent allowance; long names cannot
+    # consume the space reserved for actionable references carrying real paths.
+    path_bound = min(8192, len(_bytes(result)) + 256)
+    for path in paths:
+        retrieval["source_paths"].append(path)
+        retrieval["omitted_source_paths"] -= 1
+        if len(_bytes(result)) > path_bound:
+            retrieval["source_paths"].pop()
+            retrieval["omitted_source_paths"] += 1
+    hints = sources["pending_obligations"]
+    by_function = {}
+    for row in hints:
+        for function in row["function_ids"] or [""]:
+            by_function.setdefault((row["path"], function), []).append(row)
+    # One representative per function, interleaved across paths. Loop-bearing
+    # functions begin with an unresolved proof phase, not a library side effect.
+    first_by_path = {}
+    for (path, function), values in sorted(by_function.items()):
+        first = next((row for row in values if "proof_phase" in row), values[0])
+        first_by_path.setdefault(path, []).append(first)
+    for row in _round_robin(first_by_path):
+        offer("pending_obligations", row)
+
+    # Reserve at most 1 KiB for function/CFG inventory before spending the
+    # remaining room on phase coverage. Each category takes turns across paths.
+    metadata_bound = min(8192, len(_bytes(result)) + 1024)
+    metadata = []
+    for key in ("per_function", "control_references"):
+        groups = {}
+        for row in sources[key]:
+            groups.setdefault(row["path"], []).append(row)
+        if key == "per_function":
+            loop_functions = {(row["path"], function) for row in hints if "proof_phase" in row
+                              for function in row["function_ids"]}
+            for values in groups.values():
+                values.sort(key=lambda row: ((row["path"], row["function_id"]) not in loop_functions,
+                                             row["function_id"]))
+        metadata.append((key, list(_round_robin(groups))))
+    for index in range(max((len(values) for _, values in metadata), default=0)):
+        for key, values in metadata:
+            if index < len(values):
+                offer(key, values[index], metadata_bound)
+    phases = {name: index for index, name in enumerate(("activation_entry",
+        "normal_or_continue_backedge", "exit_cause_and_post_state", "whole_activation_progress"))}
+    loops = {}
+    for row in hints:
+        if "proof_phase" in row:
+            loops.setdefault((row["path"], tuple(row["function_ids"]),
+                row["proof_scope_control_region_id"]), []).append(row)
+    for values in loops.values():
+        values.sort(key=lambda row: (phases[row["proof_phase"]], row["obligation_id"]))
+    # Rotate which loop represents each phase. A limited budget can therefore
+    # retain initialization, preservation, exit and progress instead of several
+    # initialization rows crowding out every termination hint.
+    loop_keys = sorted(loops)
+    for offset in range(len(loop_keys)):
+        for phase_index, phase in enumerate(phases):
+            values = loops[loop_keys[(offset + phase_index) % len(loop_keys)]]
+            for row in values:
+                if row["proof_phase"] == phase:
+                    offer("pending_obligations", row)
+    # Fill remaining bytes fairly across categories and source/function groups.
+    queues = []
+    for key, values in sources.items():
+        groups = {}
+        for row in values:
+            group = (row["path"], tuple(row.get("function_ids", [row.get("function_id") or ""])))
+            groups.setdefault(group, []).append(row)
+        queues.append((key, list(_round_robin(groups))))
+    for index in range(max((len(values) for _, values in queues), default=0)):
+        for key, values in queues:
+            if index < len(values):
+                offer(key, values[index])
+    return result
+
+
 def _summary(reports, tree, unit_links=None, *, profile=PROFILE):
     if validate_profile(profile) is None:
         raise ValueError("numerical context requires explicit profile")
@@ -292,6 +459,9 @@ def _summary(reports, tree, unit_links=None, *, profile=PROFILE):
             unmatched_source_unit_count=sum(r["unmatched_unit_count"] for r in unit_links.values()),
             source_unit_links=linked[:4], omitted_source_unit_link_summaries=max(0, len(linked)-4),
             source_unit_links_establish_learned_coverage=False)
+    if profile == CONTROL_PROFILE:
+        return _pack_control_summary(result, rows, pending, contracts, assertions,
+            linked if unit_links is not None else None, references)
     # Long public names cannot turn a bounded planning constraint into an
     # unbounded prompt. Drop complete rows and account for every omission.
     while len(_bytes(result)) > 8192:
@@ -457,7 +627,7 @@ def _page_bytes(value):
 
 
 def retrieve_numerical_obligations(*, repository, expected_receipt, path, cursor=None,
-                                   function_id=None, kind=None, limit=8, max_bytes=8192):
+                                   function_id=None, kind=None, obligation_id=None, limit=8, max_bytes=8192):
     """Read a bounded page of unresolved work from the current, replayed owner.
 
     The receipt is supplied by the selected context owner, not inferred from a
@@ -509,7 +679,8 @@ def retrieve_numerical_obligations(*, repository, expected_receipt, path, cursor
     if max_bytes <= overhead:
         raise ValueError("numerical page cannot fit its owner binding")
     page = pager.page_numerical_obligations(report=report, source_text=source, path=path,
-        cursor=cursor, function_id=function_id, kind=kind, limit=limit, max_bytes=max_bytes-overhead)
+        cursor=cursor, function_id=function_id, kind=kind, limit=limit, max_bytes=max_bytes-overhead,
+        **({"obligation_id": obligation_id} if obligation_id is not None else {}))
     result = wrap(page)
     if len(_page_bytes(result)) > max_bytes:
         raise ValueError("numerical page exceeds selected byte limit")

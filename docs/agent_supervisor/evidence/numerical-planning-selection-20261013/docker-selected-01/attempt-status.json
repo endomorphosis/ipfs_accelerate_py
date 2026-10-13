@@ -1,0 +1,15 @@
+{
+  "broker_requests": 0,
+  "cause": "Authored owner helper called .get on an allowed string in a mixed planner-summary list.",
+  "error": "'str' object has no attribute 'get'",
+  "error_type": "AttributeError",
+  "final_release": "docker-release-02.json",
+  "included_in_successful_measurement_totals": false,
+  "model_calls": 0,
+  "phase": "post-preflight authored planner-summary inspection before owner-worker launch",
+  "provider_calls": 0,
+  "qualifies_success": false,
+  "schema": "retained-failed-fixture-attempt@1",
+  "status": "failed",
+  "superseded_by": "docker-selected-02"
+}

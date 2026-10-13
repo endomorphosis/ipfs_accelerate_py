@@ -1,0 +1,38 @@
+{
+  "additional_focused_count_not_added": 34,
+  "complete": true,
+  "distinct_passed": 849,
+  "focused_tests_are_subset": true,
+  "learned_checkpoint_qualification": false,
+  "provider_calls": 0,
+  "runs": [
+    {
+      "failed": 0,
+      "passed": 77,
+      "passed_nodes_sha256": "c9fc4fb51adda733d3f3632446f14f44816db49fcfaaa97f3c6c4e4de3cab584",
+      "run": "datasets-tests",
+      "skipped": []
+    },
+    {
+      "failed": 0,
+      "passed": 772,
+      "passed_nodes_sha256": "9dc0a4038ed3078745d1acf50ba6901124298f15861a20d6c5060bd460b6ea60",
+      "run": "accelerator-regression",
+      "skipped": [
+        {
+          "classname": "benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration",
+          "name": "test_real_numerical_consumer_preserves_mismatch_abstention_and_cached_report",
+          "reason": "explicit numerical development checkpoint and cached GTE snapshot required",
+          "time": "0.001"
+        },
+        {
+          "classname": "benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration",
+          "name": "test_cached_numerical_checkpoint_reaches_planning_worker_and_historical_audit",
+          "reason": "explicit numerical development checkpoint and cached GTE snapshot required",
+          "time": "0.007"
+        }
+      ]
+    }
+  ],
+  "schema": "numerical-planning-selection-regression-summary@1"
+}

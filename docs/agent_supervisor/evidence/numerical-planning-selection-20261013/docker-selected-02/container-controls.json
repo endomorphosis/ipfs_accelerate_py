@@ -1,0 +1,84 @@
+{
+  "controls": {
+    "Memory": 12884901888,
+    "NanoCpus": 5000000000,
+    "NetworkMode": "none",
+    "PidsLimit": 128,
+    "Privileged": false,
+    "ReadonlyRootfs": false
+  },
+  "mounts": [
+    {
+      "Destination": "/opt/ipfs-supervisor/datasets",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/extensions",
+      "RW": false,
+      "Source": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/qualification/worker_probe.py",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/artifacts/numerical-planning-selection-20261013/worker_probe.py",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/qualification/public_query_comparison.py",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/artifacts/numerical-planning-selection-20261013/public_query_comparison.py",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/permitted/eigen.py",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/permitted/eval.py",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/permitted/profile.json",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/largest-eigenval-profile.json",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/opt/ipfs-supervisor/source",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/opt/ipfs-supervisor/kit",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/qualification/owner_probe.py",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/artifacts/numerical-planning-selection-20261013/owner_probe.py",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/permitted/instruction.md",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/results",
+      "RW": true,
+      "Source": "/home/barberb/lift_coding/artifacts/numerical-planning-selection-20261013/docker-selected-02/results",
+      "Type": "bind"
+    }
+  ]
+}
