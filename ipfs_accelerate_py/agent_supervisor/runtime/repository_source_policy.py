@@ -17,7 +17,8 @@ import uuid
 SCHEMA = "supervisor-repository-source-policy@1"
 POLICIES = ("legacy", "repository-source-raw@1", "repository-source-compact@1")
 TOOLS = ("repository_status", "repository_list", "repository_symbols", "repository_read",
-         "repository_replace_symbol", "repository_refresh", "repository_cache_inventory")
+         "repository_replace_symbol", "repository_refresh", "repository_cache_inventory",
+         "repository_context_query", "repository_capsule_expand")
 _FALSE_FIELDS = ("native_tool_interception", "helper_adoption_guaranteed", "token_savings_measured",
                  "proof_authority", "completion_authority")
 
@@ -58,6 +59,9 @@ def _instruction(binding):
         "Repository source tools are configured for this invocation:\n"
         "Use repository_status and repository_list to discover the indexed checkout, "
         "repository_symbols for Python definitions, and repository_read for source reads. "
+        "For capsule metadata, use repository_context_query to select structural references by symbol/path terms. "
+        "Use repository_capsule_expand only when selected details from that generation and semantic root are needed. "
+        "Queries do not establish intent satisfaction. Read current original source before editing from a capsule. "
         f"The selected default representation is {representation}. "
         + selection +
         "Use repository_replace_symbol with the current source hash for supported edits; "

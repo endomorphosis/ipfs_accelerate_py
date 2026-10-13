@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import base64
+import json
 import os
 from pathlib import Path
 import stat
@@ -336,6 +337,51 @@ class RepositorySourceSession:
             identity = self._identity()
             identity["representation"] = result["representation"]
             return dict(result, **identity)
+
+    def _context_call(self, operation, *, generation, max_bytes, **arguments):
+        """Join bounded native context to the same generation used for edits."""
+        with self._lock:
+            self._generation(generation)
+            if not _integer(max_bytes, 1024, 65536):
+                _fail("invalid_context_limit")
+            self._current()
+            try:
+                # Reserve the generation field's serialized envelope before
+                # native selection; never trim a returned capsule or admission.
+                result = getattr(self._index, operation)(max_bytes=max_bytes - 64, **arguments)
+                if (type(result) is not dict
+                        or result.get("source_tree_sha256") != self._capture_receipt["source_tree_sha256"]
+                        or result.get("semantic_state_cid") != self._index_receipt["semantic_state_cid"]
+                        or result.get("authority") != "structural_only"
+                        or any(result.get(key) is not False for key in (
+                            "proof_authority", "execution_authority", "completion_authority",
+                            "semantic_equivalence_claimed"))):
+                    _fail("invalid_context_binding")
+                result = dict(result, generation=self.generation)
+                if len(json.dumps(result, ensure_ascii=False, separators=(",", ":"),
+                                  allow_nan=False).encode("utf-8")) > max_bytes:
+                    _fail("context_response_limit")
+            except Exception as error:
+                # Only the native owner can distinguish a bounded optional
+                # refusal from loss of its current source/head integrity.
+                if getattr(error, "preserves_index", False) is not True:
+                    self._refresh_required = True
+                raise
+            self._current()
+            return result
+
+    def context_query(self, *, generation: int, query: str, limit: int = 8,
+                      max_bytes: int = 32768) -> dict:
+        """Select structural capsule handles; matches do not discharge intent."""
+        return self._context_call("context_query", generation=generation,
+                                  max_bytes=max_bytes, query=query, limit=limit)
+
+    def capsule_expand(self, *, generation: int, semantic_root_cid: str,
+                       stable_symbol_ids: list[str], max_bytes: int = 32768) -> dict:
+        """Expand exact native capsules or refuse the complete requested set."""
+        return self._context_call("capsule_expand", generation=generation,
+            max_bytes=max_bytes, semantic_root_cid=semantic_root_cid,
+            stable_symbol_ids=stable_symbol_ids)
 
     def refresh(self, *, generation: int) -> dict:
         with self._lock:

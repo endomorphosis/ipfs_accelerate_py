@@ -28,11 +28,13 @@ from .terminal_repository_view_experiment import _read_bytes, _ast
 
 SCHEMA = "terminal-repository-tools-experiment@1"
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
-WIRE_COMPONENTS = ("setup", "status", "list", "symbols", "read", "edit", "refresh", "cache_inventory")
+WIRE_COMPONENTS = ("setup", "status", "list", "symbols", "read", "edit", "refresh", "cache_inventory",
+                   "context_query", "capsule_expand")
 _TOOL_COMPONENTS = {
     "repository_status": "status", "repository_list": "list", "repository_symbols": "symbols",
     "repository_read": "read", "repository_replace_symbol": "edit", "repository_refresh": "refresh",
     "repository_cache_inventory": "cache_inventory",
+    "repository_context_query": "context_query", "repository_capsule_expand": "capsule_expand",
 }
 
 
@@ -263,7 +265,8 @@ def _arm(*, sources, representation, counter):
             advertised = client.request("tools/list", phase="setup")
             checks["repository_tools_advertised"] = {row["name"] for row in advertised["tools"]} == {
                 "repository_status", "repository_list", "repository_symbols", "repository_read",
-                "repository_replace_symbol", "repository_refresh", "repository_cache_inventory"}
+                "repository_replace_symbol", "repository_refresh", "repository_cache_inventory",
+                "repository_context_query", "repository_capsule_expand"}
             status = client.tool("repository_status", phase="setup")
             generation = status["generation"]
             checks["initial_native_index_current"] = status["source_current"] and status["native_index"]["source_scope_verified"]

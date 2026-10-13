@@ -31,8 +31,9 @@ def authored_probe_receipt():
         "initialized", "complete_tool_inventory", "source_current", "native_scope_joined",
         "cache_coverage_explicit", "compact_read", "original_hash_bound", "canonical_edit",
         "stale_generation_refused", "refreshed_original_exact", "native_symbol_observed",
+        "context_query_current", "capsule_expansion_bound",
         "no_proof_authority", "private_state_removed", "actual_tool_usage_observed")}
-    usage = dict(status="observed", initializations=1, tool_calls=7, successful_reads=2,
+    usage = dict(status="observed", initializations=1, tool_calls=9, successful_reads=2,
         compact_reads=1, canonical_edits=1, refreshes=1, errors=1, uncertain_edits=0,
         returned_bytes=4096, store_cleanup_complete=True, artifacts_retained_after_invocation=False)
     return dict(schema=probe.SCHEMA, qualified=True, checks=checks, usage=usage,

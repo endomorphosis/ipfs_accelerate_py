@@ -146,7 +146,8 @@ edit, and verifies stale-generation and external-edit refusal followed by
 refresh. The final canonical sources must match across arms. The report counts
 actual JSON-RPC request/response bytes and optional local tokenizer proxies,
 including setup separately and in the total. It also breaks transmissions down
-by setup, status, list, symbols, read, edit, refresh and cache inventory, with
+by setup, status, list, symbols, read, edit, refresh, cache inventory, context
+query and capsule expansion, with
 request and response bytes/counts and local token proxies reported separately.
 Phase totals and operation totals are two partitions of the same traffic;
 they must reconcile and must not be added together. Failed exchanges retain
@@ -154,6 +155,39 @@ observed request/response prefixes; completeness flags distinguish them from a
 complete exchange. Failed token counting makes token totals unknown. Only content-free qualification
 data is retained; source-bearing messages stay in memory. No public benchmark
 source is executed, and no provider or container is started.
+
+The repository server also offers `repository_context_query` for bounded
+lexical symbol/path lookup and `repository_capsule_expand` for selected native
+semantic capsules. Both use the same generation and source tree as repository
+reads and guarded edits. Query results contain candidate handles; expansion
+returns the native capsule and admission records together with the original
+source bindings needed for a read or edit. A capsule is structural evidence:
+its presence does not prove behavior, replace required original source, or
+establish a trained codebase IR or complete intent/formal/codebase IR alignment.
+
+An authored experiment compares four ways to locate the same capability:
+reading all fixture files, using the existing native symbol lookup and reading
+the target file, using context candidate references and reading the target
+file, and additionally expanding the selected capsule before that read:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_repository_capsule_experiment \
+  --output /path/to/new-capsule-evidence
+```
+
+All four arms use original source, then perform the same guarded edit, reject old
+generation/root handles, restore every original byte and refresh. The real
+stdio server uses the datasets native DuckDB producer; the experiment
+revalidates returned capsule identities and checks the persisted native head
+after closing the server. It runs no source code, provider or container.
+`lookup` counters are a subset of full protocol totals. All subsequent
+qualification traffic, including refused stale operations, remains charged in
+the total. The existing symbol lookup supplies a targeted baseline, and the
+context-only arm isolates the extra cost of full expansion. Capsule metadata
+can outweigh source saved on this small fixture;
+the report does not infer provider-token savings or task success from either
+outcome. The public source experiment above keeps its existing matched
+original/compact workflow and performs zero context queries or expansions.
 
 Use `--repository-source-policy repository-source-raw@1` or
 `--repository-source-policy repository-source-compact@1` when preparing a

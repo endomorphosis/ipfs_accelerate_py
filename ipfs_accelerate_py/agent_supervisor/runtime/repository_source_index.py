@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import stat
 import threading
+import time
 
 from . import repository_source_view as view
 
@@ -31,8 +32,9 @@ OPAQUE_CACHE_SCHEMA = "repository-source-retained-opaque-cache@1"
 class RepositorySourceIndexError(ValueError):
     """A content-free failure; old query results are never a refresh fallback."""
 
-    def __init__(self, code):
+    def __init__(self, code, *, preserves_index=False):
         self.code = code
+        self.preserves_index = preserves_index
         super().__init__(code)
 
 
@@ -140,6 +142,7 @@ class NativeRepositoryIndex:
         self._lock = threading.RLock()
         self._closed = False
         self._current = None
+        self._capsules = None
         self._cx = None
         self._owner_fd = None
         self._scheduler = scheduler
@@ -187,14 +190,18 @@ class NativeRepositoryIndex:
             raise
 
     def _check_owner(self):
-        _require(not self._closed and self._pid == os.getpid(), "index_closed_or_foreign_owner")
-        info = self.state_dir.stat()
-        _require((info.st_dev, info.st_ino) == self._state_identity
-                 and self.state_dir.resolve() == self.state_dir, "index_state_replaced")
+        try:
+            _require(not self._closed and self._pid == os.getpid(), "index_closed_or_foreign_owner")
+            info = self.state_dir.stat()
+            _require((info.st_dev, info.st_ino) == self._state_identity
+                     and self.state_dir.resolve() == self.state_dir, "index_state_replaced")
+        except Exception:
+            self._current = self._capsules = None
+            raise
 
-    def _controls(self, memory_mb):
-        return dict(scheduler=self._scheduler, timeout_seconds=30.0,
-                    admission_timeout_seconds=10.0, memory_mb=memory_mb)
+    def _controls(self, memory_mb, *, timeout_seconds=30.0, admission_timeout_seconds=10.0):
+        return dict(scheduler=self._scheduler, timeout_seconds=timeout_seconds,
+                    admission_timeout_seconds=admission_timeout_seconds, memory_mb=memory_mb)
 
     def _join(self, observation, package_manifest, root):
         native = observation.manifest
@@ -250,6 +257,7 @@ class NativeRepositoryIndex:
         with self._lock:
             self._check_owner()
             self._current = None
+            self._capsules = None
             try:
                 view._validate_manifest(manifest)
                 manifest = copy.deepcopy(manifest)
@@ -334,15 +342,124 @@ class NativeRepositoryIndex:
                 _check_materialization(root, manifest)
                 return rows[:limit]
             except Exception as error:
-                self._current = None
+                self._current = self._capsules = None
                 if isinstance(error, RepositorySourceIndexError):
                     raise
                 raise RepositorySourceIndexError("native_index_query_failed") from error
+
+    def context_query(self, query: str, *, limit: int = 8, max_bytes: int = 32768) -> dict:
+        """Return bounded lexical candidate handles, with explicit omissions."""
+        return self._capsule_call("query", query=query, limit=limit, max_bytes=max_bytes)
+
+    def capsule_expand(self, *, semantic_root_cid: str, stable_symbol_ids: list[str],
+                       max_bytes: int = 32768) -> dict:
+        """Return the complete exact requested capsules, or a closed failure."""
+        return self._capsule_call("expand", semantic_root_cid=semantic_root_cid,
+                                  stable_symbol_ids=stable_symbol_ids, max_bytes=max_bytes)
+
+    def _capsule_call(self, operation, **arguments):
+        from ipfs_datasets_py.logic.software_contracts.codebase_resources import acquire_codebase_resources
+        from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import ResourceSchedulerError
+        from .repository_source_capsules import (
+            RepositoryCapsules, RepositoryCapsuleError, query_arguments, expansion_arguments,
+        )
+        from .supervisor_meta_index import public_replay_without_metadata
+        from ..semantic_state.datasets_adapter import SemanticStateUnavailable
+
+        with self._lock:
+            self._check_owner()
+            _require(self._current is not None, "index_not_current")
+            try:
+                if operation == "query":
+                    query_arguments(**arguments)
+                else:
+                    expansion_arguments(**arguments)
+            except RepositoryCapsuleError as error:
+                raise RepositorySourceIndexError(error.code, preserves_index=True) from error
+            root, manifest, head, reservation, _receipt = self._current
+            deadline = time.monotonic() + 30.0
+
+            def remaining():
+                duration = deadline - time.monotonic()
+                if duration <= 0:
+                    raise RepositoryCapsuleError("capsule_timeout")
+                return duration
+
+            def fence(*, join=False):
+                try:
+                    self._check_owner()
+                    remaining()
+                    _check_materialization(root, manifest)
+                    duration = remaining()
+                    observed = self._index.observe_current(root, expected_head=head,
+                        **self._controls(reservation, timeout_seconds=duration,
+                                         admission_timeout_seconds=min(10.0, duration)))
+                    remaining()
+                    native = self._join(observed, manifest, root) if join else observed.manifest
+                    _check_materialization(root, manifest)
+                    remaining()
+                    return native
+                except RepositoryCapsuleError as error:
+                    self._capsules = None
+                    raise RepositorySourceIndexError(error.code, preserves_index=True) from error
+                except ResourceSchedulerError as error:
+                    # Admission refusal is not evidence of changed source. No
+                    # data is returned; the next call still rechecks all fences.
+                    self._capsules = None
+                    raise RepositorySourceIndexError("capsule_resources_unavailable", preserves_index=True) from error
+                except Exception as error:
+                    self._current = self._capsules = None
+                    if isinstance(error, RepositorySourceIndexError):
+                        raise
+                    raise RepositorySourceIndexError("native_index_query_failed") from error
+
+            native = fence(join=True)
+            optional_error = None
+            try:
+                # Observe's own lease has ended. Acquire separate shared host
+                # admission for producer compilation, ranking and expansion.
+                # This is cooperative accounting, not a hard Python RSS cap.
+                with acquire_codebase_resources(scheduler=self._scheduler,
+                        timeout_seconds=min(10.0, remaining()), memory_mb=512) as lease, public_replay_without_metadata():
+                    def checkpoint():
+                        if lease.cancelled:
+                            raise RepositoryCapsuleError("capsule_cancelled")
+                        remaining()
+
+                    checkpoint()
+                    if self._capsules is None:
+                        self._capsules = RepositoryCapsules(native, manifest, checkpoint=checkpoint)
+                    _require(self._capsules.identity["semantic_state_cid"] == native.semantic_state.state_cid,
+                             "capsule_native_identity_differs")
+                    response = getattr(self._capsules, operation)(**arguments, checkpoint=checkpoint)
+            except RepositoryCapsuleError as error:
+                if error.code not in {"capsule_root_differs", "capsule_symbol_unavailable", "capsule_response_limit"}:
+                    self._capsules = None
+                if error.code in {"capsule_native_identity_differs", "capsule_source_identity_differs"}:
+                    self._current = None
+                    raise RepositorySourceIndexError(error.code) from error
+                optional_error = RepositorySourceIndexError(error.code, preserves_index=True)
+            except ResourceSchedulerError as error:
+                self._capsules = None
+                optional_error = RepositorySourceIndexError("capsule_resources_unavailable", preserves_index=True)
+            except SemanticStateUnavailable as error:
+                self._capsules = None
+                optional_error = RepositorySourceIndexError("capsule_provider_unavailable", preserves_index=True)
+            except Exception as error:
+                self._current = self._capsules = None
+                if isinstance(error, RepositorySourceIndexError):
+                    raise
+                raise RepositorySourceIndexError("capsule_native_failed") from error
+            fence()
+            if optional_error is not None:
+                raise optional_error
+            return response
 
     def close(self):
         """Release this owner only; historical source/CAS artifacts are retained."""
         with self._lock:
             self._current = None
+            self._capsules = None
             self._closed = True
             try:
                 if self._cx is not None:

@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
+import select
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 
 from . import repository_source_policy as policy
 
@@ -26,6 +29,57 @@ def _request(identity, method, params=None):
     if params is not None:
         value["params"] = params
     return value
+
+
+def _responses(binding, requests):
+    """Bounded interactive stdio so expansion uses the child's actual root."""
+    process = subprocess.Popen([sys.executable, binding["helper_script"],
+        "--config", binding["config_path"], "--config-sha256", binding["config_sha256"]],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        cwd="/tmp", bufsize=0)
+    deadline, pending, received = time.monotonic() + 60, b"", 0
+    responses = []
+    try:
+        def exchange(request):
+            nonlocal pending, received
+            raw = (json.dumps(request, separators=(",", ":")) + "\n").encode()
+            if process.stdin.write(raw) != len(raw):
+                raise ValueError("repository probe request write failed")
+            if "id" not in request:
+                return
+            while b"\n" not in pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([process.stdout], [], [], remaining)[0]:
+                    raise ValueError("repository probe response deadline")
+                chunk = os.read(process.stdout.fileno(), min(65536, 128 * 1024 + 1 - received))
+                received += len(chunk)
+                if not chunk or received > 128 * 1024:
+                    raise ValueError("repository probe output bound or EOF")
+                pending += chunk
+            line, pending = pending.split(b"\n", 1)
+            response = json.loads(line)
+            if response.get("id") != request["id"]:
+                raise ValueError("repository probe response identity differs")
+            responses.append(response)
+        for request in requests:
+            exchange(request)
+        context = json.loads(responses[-1]["result"]["content"][0]["text"])
+        if len(context["candidates"]) != 1:
+            raise ValueError("repository probe context population differs")
+        exchange(_request(11, "tools/call", dict(name="repository_capsule_expand", arguments=dict(
+            generation=2, semantic_root_cid=context["semantic_root_cid"],
+            stable_symbol_ids=[context["candidates"][0]["symbol_id"]]))))
+        process.stdin.close()
+        code = process.wait(timeout=max(0.001, deadline - time.monotonic()))
+        if code != 0 or pending or process.stdout.read(1):
+            raise ValueError("repository probe exit or response population differs")
+        return responses
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        process.stdin.close()
+        process.stdout.close()
 
 
 def run_probe() -> dict:
@@ -73,15 +127,10 @@ def run_probe() -> dict:
                 tool(7, "repository_read", generation=2, path="probe.py", representation="original"),
                 tool(8, "repository_symbols", generation=2, query="value"),
                 tool(9, "repository_cache_inventory", generation=2, expected_inventory_sha256=cache_digest),
+                tool(10, "repository_context_query", generation=2, query="value", limit=1),
             ]
-            encoded = "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in requests)
-            process = subprocess.run([sys.executable, binding["helper_script"],
-                "--config", binding["config_path"], "--config-sha256", binding["config_sha256"]],
-                input=encoded, capture_output=True, text=True, cwd="/tmp", timeout=60, check=False)
-            if process.returncode != 0 or len(process.stdout.encode()) > 128 * 1024:
-                raise ValueError("repository runtime probe process failed")
-            responses = [json.loads(line) for line in process.stdout.splitlines()]
-            if len(responses) != 9 or [row.get("id") for row in responses] != list(range(1, 10)):
+            responses = _responses(binding, requests)
+            if len(responses) != 11 or [row.get("id") for row in responses] != list(range(1, 12)):
                 raise ValueError("repository runtime probe response population differs")
             if any("error" in row for row in responses):
                 raise ValueError("repository runtime probe initialization or protocol failed")
@@ -97,6 +146,8 @@ def run_probe() -> dict:
             status, read, edit, stale, refreshed, symbols = (values[i] for i in range(3, 9))
             cache = status["native_index"].get("retained_opaque_cache", {})
             page = values[9]
+            context, expanded = values[10], values[11]
+            candidate = context["candidates"][0]
             observed_entries = {row["path"]: {key: value for key, value in row.items()
                                 if key not in {"path", "cache_root"}} for row in page["entries"]}
             expected_cache_hashes = {
@@ -108,6 +159,14 @@ def run_probe() -> dict:
                 complete_tool_inventory={row["name"] for row in responses[1]["result"]["tools"]} == set(policy.TOOLS),
                 source_current=status["source_current"] is True,
                 native_scope_joined=status["native_index"]["source_scope_verified"] is True,
+                context_query_current=(context["generation"] == 2 and context["selected_count"] == 1
+                    and candidate["path"] == "probe.py"
+                    and candidate["source_sha256"] == hashlib.sha256((workspace / "probe.py").read_bytes()).hexdigest()),
+                capsule_expansion_bound=(expanded["generation"] == 2
+                    and expanded["semantic_root_cid"] == context["semantic_root_cid"]
+                    and len(expanded["capsules"]) == 1
+                    and expanded["capsules"][0]["capsule_cid"] == candidate["capsule_cid"]
+                    and expanded["raw_source_fetch_required"]["probe.py"]["source_sha256"] == candidate["source_sha256"]),
                 cache_coverage_explicit=(cache.get("roots_count") == 2 and "entries" not in cache and "roots" not in cache
                     and cache.get("inventory_sha256") == cache_digest
                     and page["inventory_sha256"] == cache_digest and page["total"] == 6 and page["next_offset"] is None
@@ -126,7 +185,7 @@ def run_probe() -> dict:
                 refreshed_original_exact=refreshed["content"].encode() == (workspace / "probe.py").read_bytes()
                     and "return 2" in refreshed["content"] and "Authored source comment" in refreshed["content"],
                 native_symbol_observed=any(row["name"] == "probe.value" for row in symbols["symbols"]),
-                no_proof_authority=all(values[i]["proof_authority"] is False for i in (3, 4, 5, 7, 8, 9)),
+                no_proof_authority=all(values[i]["proof_authority"] is False for i in (3, 4, 5, 7, 8, 9, 10, 11)),
             )
         finally:
             usage = policy.finish_runtime_store(binding, expected_identity=identity)
@@ -143,6 +202,7 @@ def validate_probe(value):
     expected_checks = {"initialized", "complete_tool_inventory", "source_current", "native_scope_joined",
         "cache_coverage_explicit", "compact_read", "original_hash_bound", "canonical_edit",
         "stale_generation_refused", "refreshed_original_exact", "native_symbol_observed",
+        "context_query_current", "capsule_expansion_bound",
         "no_proof_authority", "private_state_removed", "actual_tool_usage_observed"}
     if (type(value) is not dict or set(value) != {"schema", "qualified", "checks", "usage",
             "provider_calls", "target_code_executed", "source_messages_retained", "live_model_adoption_qualified"}
@@ -153,7 +213,7 @@ def validate_probe(value):
             or any(value.get(key) is not False for key in ("target_code_executed", "source_messages_retained", "live_model_adoption_qualified"))):
         raise ValueError("repository runtime probe did not qualify")
     usage = value["usage"]
-    expected = dict(initializations=1, tool_calls=7, successful_reads=2, compact_reads=1,
+    expected = dict(initializations=1, tool_calls=9, successful_reads=2, compact_reads=1,
                     canonical_edits=1, refreshes=1, errors=1, uncertain_edits=0)
     usage_fields = {"status", *expected, "returned_bytes", "store_cleanup_complete",
                     "artifacts_retained_after_invocation"}

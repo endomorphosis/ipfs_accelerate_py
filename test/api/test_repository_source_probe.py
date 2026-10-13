@@ -58,7 +58,12 @@ def test_clean_environment_forwards_deployed_dependency_paths(tmp_path):
     roots = [str(source), str(datasets), str(dependencies)]
     environment = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
                    "HOME": str(tmp_path), "PYTHONPATH": os.pathsep.join(roots),
-                   "PYTHONDONTWRITEBYTECODE": "1", "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"}
+                   "PYTHONDONTWRITEBYTECODE": "1", "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1",
+                   # Isolate this authored test's accounting from other host
+                   # clients with different capacity policies. The real host
+                   # pressure sampler and default safety policy stay enabled.
+                   "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": str(tmp_path / "resources.json"),
+                   "IPFS_DATASETS_RESOURCE_CPU_SLOTS": "1"}
     # The isolated parent inserts deployed roots explicitly just like WORKER_ENTRY.
     # Its real child has to obtain those roots from the exported environment.
     script = "import sys; sys.path[:0]=" + repr(roots) + "; from " + probe.__name__ + " import main; raise SystemExit(main())"

@@ -25,6 +25,7 @@ TOOL_NAMES = (
     "repository_status", "repository_list", "repository_symbols",
     "repository_read", "repository_replace_symbol", "repository_refresh",
     "repository_cache_inventory",
+    "repository_context_query", "repository_capsule_expand",
 )
 
 
@@ -126,6 +127,8 @@ def _tool(name, description, properties, required, *, read_only=True):
 GENERATION = {"type": "integer", "minimum": 1}
 PATH = {"type": "string", "minLength": 1, "maxLength": 1024}
 LIMIT = {"type": "integer", "minimum": 1, "maximum": 100}
+CONTEXT_BYTES = {"type": "integer", "minimum": 1024, "maximum": 65536}
+CID = {"type": "string", "minLength": 1, "maxLength": 256}
 TOOLS = [
     _tool("repository_status", "Get the current generation, index health and cache counts/digest. No source content or full cache inventory.", {}, []),
     _tool("repository_cache_inventory", "Read a page of retained opaque cache metadata using the current status digest; caches are not natively indexed.",
@@ -135,6 +138,14 @@ TOOLS = [
           {"generation": GENERATION, "offset": {"type": "integer", "minimum": 0}, "limit": LIMIT}, ["generation"]),
     _tool("repository_symbols", "Find native datasets symbols in the current generation; no proof authority.",
           {"generation": GENERATION, "path": PATH, "query": {"type": "string", "maxLength": 256}, "limit": LIMIT}, ["generation"]),
+    _tool("repository_context_query", "Find structural capsule references by symbol/path terms in the current generation. Results are advisory; no match does not mean an intent is satisfied. Expand selected references for details.",
+          {"generation": GENERATION, "query": {"type": "string", "minLength": 1, "maxLength": 4096},
+           "limit": {"type": "integer", "minimum": 1, "maximum": 32}, "max_bytes": CONTEXT_BYTES},
+          ["generation", "query"]),
+    _tool("repository_capsule_expand", "Expand selected native capsules from a query's semantic root. Returns structural facts, confidence and limitations. Read current original source before editing; capsules do not prove behavior.",
+          {"generation": GENERATION, "semantic_root_cid": CID,
+           "stable_symbol_ids": {"type": "array", "items": CID, "minItems": 1, "maxItems": 32, "uniqueItems": True},
+           "max_bytes": CONTEXT_BYTES}, ["generation", "semantic_root_cid", "stable_symbol_ids"]),
     _tool("repository_read", "Read a source-current original or compact file with its canonical SHA256. Compact Python omits comments and formatting. When a local tokenizer is bound, compact requests return original source unless the complete compact reply uses fewer tokens.",
           {"generation": GENERATION, "path": PATH, "representation": {"type": "string", "enum": ["original", "compact"]}}, ["generation", "path"]),
     _tool("repository_replace_symbol", "Replace one Python definition using the read's source_sha256. symbol is its local name, such as Class.method, not a native CID or module-prefixed index name. Refreshes the canonical checkout and index; check refresh_required and run task tests.",
@@ -156,6 +167,12 @@ def _arguments(name, value):
         rule = schema["properties"][key]
         if rule["type"] == "integer":
             if type(item) is not int or not rule.get("minimum", 0) <= item <= rule.get("maximum", 2**31 - 1):
+                raise ValueError("invalid_arguments")
+        elif rule["type"] == "array":
+            if (type(item) is not list or not rule["minItems"] <= len(item) <= rule["maxItems"]
+                    or any(type(member) is not str or not rule["items"]["minLength"] <= len(member.encode()) <= rule["items"]["maxLength"]
+                           for member in item)
+                    or len(set(item)) != len(item)):
                 raise ValueError("invalid_arguments")
         elif type(item) is not str or not rule.get("minLength", 0) <= len(item.encode()) <= rule.get("maxLength", 4096):
             raise ValueError("invalid_arguments")

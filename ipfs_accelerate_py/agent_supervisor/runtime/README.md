@@ -29,6 +29,7 @@ Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resou
 | `operational_campaign` | `runtime/operational_campaign.py` |
 | `provider_batch_scheduler` | `runtime/provider_batch_scheduler.py` |
 | `repository_source_cli` | `runtime/repository_source_cli.py` |
+| `repository_source_capsules` | `runtime/repository_source_capsules.py` |
 | `repository_source_index` | `runtime/repository_source_index.py` |
 | `repository_source_mcp` | `runtime/repository_source_mcp.py` |
 | `repository_source_policy` | `runtime/repository_source_policy.py` |
@@ -221,6 +222,8 @@ receipt counters. Configuration alone is not adoption or evidence of savings.
 | --- | --- |
 | `repository_status` | Current generation, source freshness, native head, coverage, resource bounds and retained-cache counts/digest |
 | `repository_cache_inventory` | Explicit page of exact retained-cache metadata, bound to generation and inventory digest |
+| `repository_context_query` | Bounded lexical selection of native structural capsule references in the current generation |
+| `repository_capsule_expand` | Exact requested capsules and admissions bound to that generation and semantic root |
 | `repository_list` | Bounded file inventory with original and compact sizes |
 | `repository_symbols` | Source-current native datasets symbol metadata |
 | `repository_read` | Original or compact content, generation and canonical source SHA256 |
@@ -315,6 +318,43 @@ metadata is kept outside the counted model reply. These counts describe local
 wire text, not the provider's framing, remote tokenizer or billed usage; they
 cannot establish total-session savings.
 
+Repository context queries and capsule expansion now share this session's
+current source snapshot and native DuckDB owner. `repository_context_query`
+accepts `generation`, `query`, optional `limit` (1–32) and `max_bytes`
+(1,024–65,536; default 32,768). It returns small candidate references, source
+hashes, native capsule IDs and explicit population/match/omission counts.
+Selection uses exact lexical terms from symbol names and paths. A no-match
+result does not establish that a requirement is satisfied or irrelevant.
+
+Pass the returned `semantic_root_cid`, `generation` and selected
+`stable_symbol_ids` to `repository_capsule_expand`. Expansion returns the exact
+native capsules, freshness admissions and source-read bindings for all requested
+symbols, or refuses the entire request. Both operations bound the complete
+returned JSON payload including the generation field; JSON-RPC framing is
+separate. The capsule's native confidence and limitations remain intact.
+`raw_source_required` on a candidate describes native admission; edits always
+require an exact current source read and its canonical hash. No proof or intent
+satisfaction is inferred from a capsule.
+
+The native semantic bundle is compiled lazily from the already joined repository
+state and reused within that generation. There is no extra source scan, training
+job or database owner for compilation; normal source freshness checks still scan
+the bounded materialization. Refresh discards the bundle. Old generations,
+foreign semantic roots and source/head changes refuse delivery. Optional query
+limits and resource admission refusals preserve ordinary source access; native
+integrity failures require refresh.
+
+This first profile admits at most 512 symbols, 4,096 edges and artifacts each,
+4 MiB of source/state bytes each, and a 16 MiB native bundle. Compilation and
+selection use shared resource admission with a 512 MiB reservation and one
+30-second cooperative deadline spanning both native freshness checks and capsule
+work. Native construction checks cancellation before
+and after the build; these are not hard process CPU/RSS limits. Responses retain
+at most 32 candidates or capsules. Only one generation's bundle is cached.
+The query path supplies structural evidence. Learned Codebase IR, Intent IR,
+Security IR, UI/UX IR and checked proof evidence still require explicit joined
+interfaces; this change does not claim a complete multi-IR planner.
+
 Opt-in container deployment requires an archive matching the current runtime
 and datasets owner sources. Preparation, execution and deployment verify the
 compressed archive digest, inspect the actual member inventory without
@@ -329,7 +369,8 @@ Deployment runs `repository_source_probe` under the
 installed supervisor account on disposable authored source. The real stdio
 server must initialize, expose its tools, report exact retained cache coverage,
 serve a compact read, commit a guarded edit, refresh the index, reject the old
-generation and clean up its private state. The probe returns content-free
+generation, and query and expand a capsule bound to the edited source before
+cleaning up its private state. The probe returns content-free
 checks and usage counters; it executes no target code and makes no provider
 calls. It qualifies the installed tool runtime, not live model adoption.
 

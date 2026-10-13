@@ -52,6 +52,8 @@ def test_real_stdio_public_source_cycle_and_content_free_artifact(public_dataset
         assert protocol["components"]["edit"]["requests"] == 1
         assert protocol["components"]["refresh"]["requests"] == 1
         assert protocol["components"]["cache_inventory"]["messages"] == 0
+        assert protocol["components"]["context_query"]["messages"] == 0
+        assert protocol["components"]["capsule_expand"]["messages"] == 0
         for component in protocol["components"].values():
             assert component["messages"] == component["requests"] + component["responses"]
             assert component["local_tokenizer_proxy_tokens"] == (
