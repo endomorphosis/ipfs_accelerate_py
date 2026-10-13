@@ -1,0 +1,92 @@
+{
+  "benchmark_launches": 0,
+  "checks": [
+    "codex-legacy-01 exact native total",
+    "codex-legacy-01 cached input not double counted",
+    "codex-legacy-01 reward independent of usage",
+    "codex-legacy-01 exact distinct invocations",
+    "codex-legacy-01 no billing proof",
+    "codex-projected-01 exact native total",
+    "codex-projected-01 cached input not double counted",
+    "codex-projected-01 reward independent of usage",
+    "codex-projected-01 exact distinct invocations",
+    "codex-projected-01 no billing proof",
+    "infrastructure failure is retained",
+    "infrastructure reward remains unknown",
+    "missing native usage is not zero",
+    "same invocation snapshot counted once",
+    "conflicting invocation snapshot refused",
+    "unknown totals for negative",
+    "unknown totals for bool",
+    "unknown totals for missing",
+    "unknown totals for cache_exceeds_input",
+    "unknown totals for arithmetic",
+    "unknown totals for incomplete",
+    "unknown totals for unreceipted",
+    "unexpected source and prose scalar excluded",
+    "closed control projection excludes unknown content",
+    "valid exact controls remain matched",
+    "changed controls not matched",
+    "absent retrieval unknown",
+    "explicit zero retrieval remains zero",
+    "valid launch joins all frozen inputs",
+    "launch substitution refused pair_lock_sha256",
+    "launch substitution refused recipe_sha256",
+    "launch substitution refused script_sha256",
+    "launch substitution refused environment_manifest_sha256",
+    "launch substitution refused preparation_sha256",
+    "launch substitution refused arm",
+    "launch substitution refused cwd",
+    "launch substitution refused argv",
+    "runner reviewed and syntactically valid without executing",
+    "helper unchanged during review"
+  ],
+  "checks_passed": 39,
+  "collector_sha256": "ee1f9d55f256b9002494875e5e6de6fd57b85855ae5b8e88a88cfb54a8835137",
+  "complete": true,
+  "findings_resolved": [
+    "launch runner/recipe/environment were not frozen or joined to collection",
+    "unknown numerical summary scalar fields could escape projection",
+    "raw comparison control mapping could escape projection",
+    "cross-arm invocation duplication was not rejected",
+    "comparison token deltas were not conditioned on observed control integrity"
+  ],
+  "hidden_fixture_contents_read": false,
+  "historical_infrastructure_failures_retained": 1,
+  "historical_token_totals": [
+    313979,
+    313980
+  ],
+  "launch_inputs": {
+    "environment": {
+      "availability": "observed",
+      "bytes": 1433,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/environment.json",
+      "sha256": "fc6807ac1ccec68576a5ab367b5259edb35f2944b93a8e1b2d56f077b5c9e313"
+    },
+    "recipe": {
+      "availability": "observed",
+      "bytes": 10604,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/launch-recipe-candidates.json",
+      "sha256": "339abef483a4032d7e2f43428084d45f5127af8f6a0dc37a7705f563bf6cbd32"
+    },
+    "runner": {
+      "availability": "observed",
+      "bytes": 3574,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/run_trial.py",
+      "sha256": "d1582a7c38d74a8fccc4d020317ab1c20c93c346df00b225e64c7fc13a7865b6"
+    }
+  },
+  "limitations": [
+    "Launch environment manifest binds explicit overrides; inherited environment values are not exported or asserted fully frozen.",
+    "Receipts and local hashes establish reproducible observation bindings, not cryptographic authenticity or billing proof.",
+    "Live model access and outcomes remain unobserved by this audit."
+  ],
+  "observed_at_utc": "2026-10-13T18:43:38.182785+00:00",
+  "provider_calls": 0,
+  "release_blockers": [],
+  "runner_sha256": "d1582a7c38d74a8fccc4d020317ab1c20c93c346df00b225e64c7fc13a7865b6",
+  "schema": "independent-live-pair-collector-review@1",
+  "scope": "Read-only final collector/runner source review plus original historical receipt replay and authored in-memory mutations. Final lock hash is verified separately after freeze.",
+  "source_mutations": 0
+}

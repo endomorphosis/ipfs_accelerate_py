@@ -1,0 +1,42 @@
+{
+  "collect_argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.native_codex_baseline",
+    "collect",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/next-native-baseline/native-codex-01"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_sha256": "b6a7a52e51c2de6fb8e3bd18a217dc278ae33a363c1fd501aa2678f6850f4697",
+  "execute_argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.native_codex_baseline",
+    "execute",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/next-native-baseline/native-codex-01"
+  ],
+  "execution_authorized_by_recipe": false,
+  "preparation_helper_sha256": "62542e52851afd3f4b22eeae5a664699328bf7713352d7c0c21b2f626ffb3165",
+  "prepare_argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.native_codex_baseline",
+    "prepare",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/next-native-baseline/native-codex-01",
+    "--dataset",
+    "/home/barberb/lift_coding/.benchmarks/terminal-bench-2",
+    "--task",
+    "largest-eigenval",
+    "--resource-profile",
+    "source384-5cpu-20gib-formalization@1"
+  ],
+  "runtime_archive_used": false,
+  "schema": "native-baseline-separate-recipe@1",
+  "supervisor_pair_mutated": false
+}

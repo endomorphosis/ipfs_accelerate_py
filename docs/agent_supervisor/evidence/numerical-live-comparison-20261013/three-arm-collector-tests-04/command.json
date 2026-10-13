@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/test_collect_three_arms.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/three-arm-collector-tests-04/pytest.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013",
+  "source_pins": {
+    "collect_three_arms.py": "e9d738a40a6285c292f18510a02370eac952b0f130c2d7ac9fec98e7d7875b68",
+    "test_collect_three_arms.py": "c9c0700d883a7b9f88dfce579890fa20e294bbaad2771e3c7c62e6a2ed50b844"
+  }
+}

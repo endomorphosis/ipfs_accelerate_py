@@ -1,0 +1,88 @@
+{
+  "accelerator_head": "a8f57366ff4110a87f1f13d1e60992f83f689821",
+  "attempt_accounting": {
+    "benchmark_launches": 0,
+    "codex_metadata_commands": 0,
+    "container_cleanup_complete": true,
+    "credential_contents_or_digest_retained": false,
+    "credential_copy_cleanup_complete": true,
+    "disposable_container_setup_attempts": 2,
+    "host_credential_changes": 0,
+    "initial_setup_failure_retained": true,
+    "native_grok_models_commands": 1,
+    "production_service_changes": 0,
+    "provider_generation_calls": 0,
+    "raw_provider_output_retained": false
+  },
+  "codex_fallback_route": {
+    "cli_version": "0.160.0",
+    "credential_status_checked_this_audit": false,
+    "deployment_readiness": "Production deployment installs the pinned CLI and runs codex login status on its isolated credential copy without retained auth output. A status check does not establish generation readiness.",
+    "model": "gpt-6.1-sol",
+    "model_access_checked_this_audit": false,
+    "profile": "codex-gpt-6.1-sol-0.160.0@1",
+    "provider": "codex_cli",
+    "public_packages_and_native_members_verified": true,
+    "reasoning_effort": "high"
+  },
+  "grok_route": {
+    "cli_version": "1.0.46",
+    "fresh_metadata_reason": "authentication_refused",
+    "fresh_metadata_status": "unauthenticated",
+    "fresh_selected_model_observed": false,
+    "full_worker_boundary_qualified": false,
+    "model": "grok-4.7",
+    "next_action": "Do not dispatch live Grok generation with this unavailable copied credential; preserve failure and use explicitly selected matched Codex pair.",
+    "profile": "grok-4.7-cli-1.0.46@1",
+    "provider": "grok_cli",
+    "reasoning_effort": "high"
+  },
+  "limitations": [
+    "The metadata container is not the production full worker-boundary qualification.",
+    "The failed initial setup emitted no classified native catalog result; the corrected run reused the exact helper and added only disposable-container setup read capability before dropping to UID1001.",
+    "No new Codex credential or generation call was made; current live model access remains for production deployment to establish.",
+    "No changes were made to production source or services by this audit."
+  ],
+  "matched_pair_controls": [
+    "Select one immutable provider/model/CLI/reasoning profile for both arms; do not mix Grok and Codex inside an arm.",
+    "Use fresh containers, candidate workspaces, private auth-copy HOME, state/catalog roots and output directories for each arm.",
+    "Keep task input, runtime/source/checkpoint pins, limits, CPU/memory profile, source-view and metadata mode identical unless explicitly designated as treatment.",
+    "Do not copy earlier candidate edits, transcripts, verifier fixtures, solutions, router-response caches or session state into either arm.",
+    "Any npm offline seed or preinstalled image must be freshly declared and identical for both arms; cached public package availability does not change current deployment behavior automatically.",
+    "Use native usage contracts for all attempts; cached input is a subset of input tokens. Include failures and setup time. Treat server-side prefix caching and hardware/performance variance as observed factors, not controlled token advantages."
+  ],
+  "observed_at_utc": "2026-10-13T18:34:09.199164+00:00",
+  "receipt_pins": {
+    "grok-metadata-precheck-01.json": "c318d6d7212f4e7b394a15300668bf35e4f44fa7fbd7084650b9c224606d89da",
+    "grok-metadata-precheck.json": "1fe5ae0f7ee12ee401424069d51bde479e6c8ac8125610699955c1e14e5f4b66",
+    "public-provider-assets.json": "94261b093d6a85578b1f14c2dcaa082025b3e5eeb1492bcc0f27844a5be3fa8f"
+  },
+  "router_controls": {
+    "allocation_path": "cli",
+    "allocation_session": "fresh UUID per invocation",
+    "allow_cross_provider_fallback": false,
+    "allow_local_fallback": false,
+    "default_model_retry_disabled": true,
+    "entrypoint": "ipfs_accelerate_py.llm_router.generate_text",
+    "explicit_route_verified_after_allocation": true,
+    "generation_calls_performed_by_audit": 0,
+    "native_resume_session_requested": false,
+    "provider_instance": "fresh RouterDeps and get_llm_provider(use_cache=False)",
+    "remote_cache_injected": false,
+    "response_cache_eligible": false,
+    "side_effecting": true,
+    "worker_environment": "cleared and rebuilt from reviewed allowlist",
+    "worker_home": "private per deployment; copied single auth file only"
+  },
+  "schema": "supervisor-provider-route-audit@1",
+  "source_pins": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py": "e880781b9d3e342b1959493163662804e2e8c2d6e61a5f99fd75b18017bc8edb",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "5c37751fedc632968f479fa1d64b6550e986b25ac69c0f14b919da763a9abcb6",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "736ebd6fc74ce6035a60bd8ff488df127416e7341b1bc7596635142c332aba2f",
+    "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "79583cd472f8f9e9701db6560d717b557536e4ef4038c70fff12010749762be5",
+    "benchmarks/agent_supervisor/container_coding/terminal_grok_deployment.py": "cb093c8e99506b739134c9a49ac3facf05a6d6ac91d6617fdc3dd88e60b85706",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "e3e6736dfcad800a9a528d4b2ee19b50781eb04c54e6795879930667d55f34fc",
+    "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f",
+    "ipfs_accelerate_py/router_deps.py": "79e400fc5fdb03bad6a9e6f9102721c0080318c26c88f6d914ac9e3ff3a110ab"
+  }
+}

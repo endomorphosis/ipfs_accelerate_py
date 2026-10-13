@@ -1,0 +1,197 @@
+{
+  "all_registered_attempts_control_integrity": true,
+  "arms": {
+    "full": {
+      "native_usage_complete_observed": true,
+      "official_passes": 1,
+      "retained_attempts": 1,
+      "retained_native_trials": 1,
+      "tokens": {
+        "cached_input_tokens": 265600,
+        "input_tokens": 327785,
+        "output_tokens": 6188,
+        "total_tokens": 333973
+      },
+      "unknown_rewards": 0
+    },
+    "native-codex": {
+      "native_usage_complete_observed": true,
+      "official_passes": 1,
+      "retained_attempts": 1,
+      "retained_native_trials": 1,
+      "tokens": {
+        "cached_input_tokens": 86016,
+        "input_tokens": 107689,
+        "output_tokens": 6194,
+        "total_tokens": 113883
+      },
+      "unknown_rewards": 0
+    },
+    "no-index": {
+      "native_usage_complete_observed": true,
+      "official_passes": 1,
+      "retained_attempts": 1,
+      "retained_native_trials": 1,
+      "tokens": {
+        "cached_input_tokens": 283392,
+        "input_tokens": 346026,
+        "output_tokens": 12466,
+        "total_tokens": 358492
+      },
+      "unknown_rewards": 0
+    }
+  },
+  "check_count": 23,
+  "checks": [
+    {
+      "name": "exact_final_replay_except_clock",
+      "passed": true
+    },
+    {
+      "name": "all_registered_controls_integrity",
+      "passed": true
+    },
+    {
+      "name": "three_attempts_three_passes",
+      "passed": true
+    },
+    {
+      "name": "production_comparator_not_weakened",
+      "passed": true
+    },
+    {
+      "name": "full_shared_controls_match",
+      "passed": true
+    },
+    {
+      "name": "full_only_declared_experiment_mismatch",
+      "passed": true
+    },
+    {
+      "name": "no-index_shared_controls_match",
+      "passed": true
+    },
+    {
+      "name": "no-index_only_declared_experiment_mismatch",
+      "passed": true
+    },
+    {
+      "name": "native_one_complete_session",
+      "passed": true
+    },
+    {
+      "name": "native_exact_route",
+      "passed": true
+    },
+    {
+      "name": "native_direct_session_sum",
+      "passed": true
+    },
+    {
+      "name": "native_arithmetic_no_double_cache",
+      "passed": true
+    },
+    {
+      "name": "native_official_reward",
+      "passed": true
+    },
+    {
+      "name": "native_identity",
+      "passed": true
+    },
+    {
+      "name": "native_result_receipt_hash_join",
+      "passed": true
+    },
+    {
+      "name": "native_actual_result_reward",
+      "passed": true
+    },
+    {
+      "name": "native_job_usage_corroboration",
+      "passed": true
+    },
+    {
+      "name": "native_input_integrity",
+      "passed": true
+    },
+    {
+      "name": "distinct_counter_scopes_retained",
+      "passed": true
+    },
+    {
+      "name": "no_cost_causal_budget_equality",
+      "passed": true
+    },
+    {
+      "name": "native_session_identity_not_exported",
+      "passed": true
+    },
+    {
+      "name": "only_safe_output_hash_unavailability",
+      "passed": true
+    },
+    {
+      "name": "correct_absolute_deltas",
+      "passed": true
+    }
+  ],
+  "collector_sha256": "e9d738a40a6285c292f18510a02370eac952b0f130c2d7ac9fec98e7d7875b68",
+  "counter_scope": "native one final cumulative session; each supervisor one planning and one coding router invocation",
+  "database_contents_read": false,
+  "final_observation_sha256": "9930cd612df5f0d6bab9e3f30e20b0cdd7cb819766190e6c6e520861555b84a3",
+  "full_minus_no_index_tokens": {
+    "cached_input_tokens": -17792,
+    "input_tokens": -18241,
+    "output_tokens": -6278,
+    "total_tokens": -24519
+  },
+  "limitations": [
+    "Single task, fixed sequential order and one attempt per arm.",
+    "Same model/version/effort/task and outer cap; native and supervisor internal work allocations differ.",
+    "Native uses fewer observed tokens in this trial; full versus no-index token difference does not establish causal index savings.",
+    "Cached input is already included in input; billing and unreported auxiliary usage are not verified.",
+    "Output hashes remain unavailable; no hidden verifier or transcript opened."
+  ],
+  "model_calls": 0,
+  "native_receipt_sha256": "6637fa775c114e83722e6639e1f113736e49b88f799b037e3d728405662c7cdf",
+  "native_result_sha256": "c6c0361482af5ea5d960effd7bdb454050dc620320edb2c37e8c80e7f70e0d54",
+  "observed_at_utc": "2026-10-13T19:18:02.511722+00:00",
+  "only_intentional_declaration_difference": "experimental_controls_sha256.numerical_formalization_profile",
+  "passed": true,
+  "production_files_changed": false,
+  "production_generic_comparator_match": false,
+  "provider_calls": 0,
+  "raw_transcripts_read": false,
+  "read_only_code_review": {
+    "closed_lock_inventory": true,
+    "common_controls_exact": true,
+    "duplicate_session_refusal": true,
+    "existing_generic_comparator_unmodified": true,
+    "metadata_only": true,
+    "prelaunch_join": true,
+    "raw_session_identifiers_hashed": true,
+    "unknown_or_contradictory_usage_retained_as_unknown": true
+  },
+  "reviewer_sha256": "eee5335e88d4430b2e3b6d6e73cad203e445a37bf940b2b3987101b60f6d414e",
+  "schema": "numerical-three-arm-independent-review@1",
+  "supervisor_minus_native_tokens": {
+    "full": {
+      "cached_input_tokens": 179584,
+      "input_tokens": 220096,
+      "output_tokens": -6,
+      "total_tokens": 220090
+    },
+    "no-index": {
+      "cached_input_tokens": 197376,
+      "input_tokens": 238337,
+      "output_tokens": 6272,
+      "total_tokens": 244609
+    }
+  },
+  "uncached_input_tokens": {
+    "full": 62185,
+    "native-codex": 21673,
+    "no-index": 62634
+  }
+}

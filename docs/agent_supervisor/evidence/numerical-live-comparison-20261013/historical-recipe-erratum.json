@@ -1,0 +1,28 @@
+{
+  "affected_field": "history.previous_comparison",
+  "affected_frozen_document": "pair-design.json",
+  "affected_frozen_sha256": "a4e9d8a4bfb8049103b8b7f13f9521e73268ece00f6d17bde1323c8215a280bf",
+  "corrected_fact": "Both earlier native Codex metadata-comparison arms used the default legacy coding reply selection. The two configurations omit coding_reply_mode, the frozen old policy defines DEFAULT_CODING_REPLY_MODE as legacy, and the retained pair-summary records legacy for both.",
+  "current_config_or_preparation_modified": false,
+  "current_pair_coding_reply_mode": "legacy",
+  "current_pair_controls_affected": false,
+  "frozen_historical_document_modified": false,
+  "incorrect_fragment": "ordinary-completion@1 coding reply",
+  "provider_calls": 0,
+  "schema": "numerical-live-pair-historical-recipe-erratum@1",
+  "supporting_files": [
+    {
+      "path": "../source-context-substitution-20261013/live-trials/codex-legacy-01/config.json",
+      "sha256": "043fdf5c06f52bd2560c0a8714d52a2b4d4286727ae79577a618975fb0cbb74f"
+    },
+    {
+      "path": "../source-context-substitution-20261013/live-trials/codex-projected-01/config.json",
+      "sha256": "e1eccac9a37301959cc90fac9d1bfb73c3cf9a9e1366fe2caa0f1f59878413ab"
+    },
+    {
+      "path": "../source-context-substitution-20261013/native-observations/pair-summary.json",
+      "sha256": "28988dcd75c85e5baa58af538ecaf13d426c21489995f09792b4de55e95c6671"
+    }
+  ],
+  "trial_executions": 0
+}
