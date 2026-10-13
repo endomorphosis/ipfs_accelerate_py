@@ -108,6 +108,72 @@ def test_wrong_interpreter_and_output_alias_are_rejected(frozen):
 
 def test_failing_real_test_cannot_produce_a_passing_receipt(frozen):
     datasets, _, cfg = frozen
-    (datasets / "test_owner.py").write_text("def test_failure():\n    assert False\n")
-    with pytest.raises(ValueError, match="tests failed"):
+    (datasets / "test_owner.py").write_text("def test_failure():\n    assert False, 'named qualification cause'\n")
+    with pytest.raises(driver.QualificationFailure, match="test_failure") as caught:
         driver.execute(datasets, cfg["jobs"]["LAC-S2-005"])
+    diagnostics = caught.value.diagnostics
+    assert diagnostics["failed_cases"][0]["name"] == "test_failure"
+    assert "named qualification cause" in diagnostics["failed_cases"][0]["message"]
+    assert diagnostics["failed_cases"][0]["status"] == "failure"
+    assert diagnostics["returncode"] != 0
+    payload = driver.refusal_payload(caught.value)
+    assert payload["valid"] is False
+    assert "test_failure" in payload["error"]
+    assert json.loads(json.dumps(payload))["diagnostics"] == diagnostics
+
+
+def test_qualification_binds_imports_and_clears_ambient_pytest_flags(frozen, monkeypatch):
+    datasets, _, cfg = frozen
+    (datasets / "test_owner.py").write_text(
+        "import owner\ndef test_exact_pinned_import():\n"
+        "    assert owner.PROFILE == 'fictional-source-contract'\n")
+    monkeypatch.setenv("PYTHONPATH", str(datasets.parent / "unrelated-import-root"))
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--unrecognized-ambient-pytest-flag")
+    observed = driver.execute(datasets, cfg["jobs"]["LAC-S2-005"])
+    assert observed["returncode"] == 0
+    assert observed["environment_policy"]["PYTHONPATH"] == str(datasets.resolve())
+    assert observed["environment_policy"]["PYTEST_ADDOPTS"] == ""
+    assert observed["environment_policy"]["IPFS_AUTO_INSTALL"] == "false"
+    assert observed["environment_policy"]["IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS"] == "0"
+
+
+def test_resealed_receipt_cannot_hide_different_execution_environment(frozen):
+    _, sources, _ = frozen
+    driver.materialize("LAC-S2-005", sources)
+    result = driver.read_json(driver.output("LAC-S2-005"))
+    result["test_execution"]["environment_policy"]["PYTHONPATH"] = "/unrelated/source"
+    result["test_execution_sha256"] = driver.sha(driver.wire(result["test_execution"]))
+    with pytest.raises(ValueError, match="environment policy differs"):
+        driver.validate(result, "LAC-S2-005", sources)
+
+
+def test_actual_failure_case_population_and_logs_are_bounded(frozen):
+    datasets, _, cfg = frozen
+    (datasets / "test_owner.py").write_text(
+        "import pytest\n@pytest.mark.parametrize('index', range(7))\n"
+        "def test_bounded_named_cause(index):\n"
+        "    print('diagnostic-stream-' * 400)\n"
+        "    assert False, 'retained cause ' + 'é' * 800\n", encoding="utf-8")
+    with pytest.raises(driver.QualificationFailure) as caught:
+        driver.execute(datasets, cfg["jobs"]["LAC-S2-005"])
+    diagnostic = caught.value.diagnostics
+    assert diagnostic["failed_case_count"] == diagnostic["test_count"] == 7
+    assert len(diagnostic["failed_cases"]) == driver.MAX_FAILURE_CASES == 5
+    for case in diagnostic["failed_cases"]:
+        for key in ("class", "name", "message"):
+            assert len(case[key].encode("utf-8")) <= driver.MAX_FAILURE_FIELD_BYTES
+    for key in ("stdout_tail", "stderr_tail"):
+        assert len(diagnostic[key].encode("utf-8")) <= driver.MAX_FAILURE_TAIL_BYTES
+
+
+def test_skipped_test_is_refused_with_its_named_cause(frozen):
+    datasets, _, cfg = frozen
+    (datasets / "test_owner.py").write_text(
+        "import pytest\ndef test_missing_required_fixture():\n"
+        "    pytest.skip('required fixture unavailable')\n")
+    with pytest.raises(driver.QualificationFailure) as caught:
+        driver.execute(datasets, cfg["jobs"]["LAC-S2-005"])
+    case = caught.value.diagnostics["failed_cases"][0]
+    assert case["name"] == "test_missing_required_fixture"
+    assert case["status"] == "skipped"
+    assert "required fixture unavailable" in case["message"]

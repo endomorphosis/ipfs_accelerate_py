@@ -49,12 +49,12 @@
     "read_only_external_sources_manifest": "config/legal_autoformalization_foundations_sources.json"
   },
   "runtime_paths": {
-    "root": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-01",
-    "state": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-01/state",
-    "worktrees": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-01/worktrees",
-    "merge_queue": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-01/merge_queue",
-    "logs": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-01/logs",
-    "evidence": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-01/evidence"
+    "root": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02",
+    "state": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02/state",
+    "worktrees": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02/worktrees",
+    "merge_queue": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02/merge_queue",
+    "logs": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02/logs",
+    "evidence": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02/evidence"
   },
   "lanes": [
     {
@@ -75,10 +75,11 @@
   ],
   "initial_projection": {
     "task_count": 3,
-    "completed_task_ids": [],
+    "completed_task_ids": [
+      "LAC-S2-006"
+    ],
     "ready_task_ids": [
       "LAC-S2-005",
-      "LAC-S2-006",
       "LAC-S2-010"
     ],
     "goal_count": 4,
@@ -93,6 +94,17 @@
     "scripts/legal_autoformalization_foundations.py",
     "scripts/legal_autoformalization_capabilities.py",
     "scripts/validate_legal_autoformalization_foundations_board.py",
-    "scripts/run_legal_autoformalization_supervisor.py"
-  ]
+    "scripts/run_legal_autoformalization_supervisor.py",
+    "data/legal_autoformalization_foundations/LAC-S2-005/archive/qualifier-17641fe5d9/result.json"
+  ],
+  "execution_generation": {
+    "index": 2,
+    "prior_runtime_root": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-01",
+    "prior_wrapper_receipt": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-foundations-20261013-01/runtime/20261013T093938Z-712bad02dac9/receipt.json",
+      "sha256": "4b262660b14f686565d0fc59f1828f6fb90e1c28acae9bd88937201d7235ddb4"
+    },
+    "archived_prior_005_result": "data/legal_autoformalization_foundations/LAC-S2-005/archive/qualifier-17641fe5d9/result.json",
+    "reason": "Preserve first qualified 005 recipe and all failed 010 attempts; qualify explicit pinned import/test-option environment and retained failure diagnostics. Capability006 and sources manifest stay unchanged."
+  }
 }

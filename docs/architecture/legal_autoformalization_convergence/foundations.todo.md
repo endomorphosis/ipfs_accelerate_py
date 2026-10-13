@@ -4,7 +4,7 @@ Exactly three native deterministic qualification tasks. These are preparatory sp
 
 ## LAC-S2-005 Qualify exact-occurrence representability proposals
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
@@ -13,7 +13,7 @@ Exactly three native deterministic qualification tasks. These are preparatory sp
 - Track: foundations
 - Provider role: deterministic-only
 - Context budget tokens: 0
-- Objective: Run the reviewed source-contract and existing parser tests against the pinned datasets commit. Preserve complete source units, occurrence multiplicity and unsupported dispositions; no classifications become reviewed labels.
+- Objective: Qualifier recipe generation 02 binds imports and test options explicitly and retains bounded failure diagnostics. Run the reviewed source-contract and existing parser tests against the pinned datasets commit. Preserve complete source units, occurrence multiplicity and unsupported dispositions; no classifications become reviewed labels.
 - Outputs: data/legal_autoformalization_foundations/LAC-S2-005/result.json
 - Predicted files: data/legal_autoformalization_foundations/LAC-S2-005/result.json
 - Validation: python3 scripts/legal_autoformalization_foundations.py materialize --task LAC-S2-005
@@ -57,7 +57,7 @@ Exactly three native deterministic qualification tasks. These are preparatory sp
 - Track: foundations
 - Provider role: deterministic-only
 - Context budget tokens: 0
-- Objective: Run the reviewed v2 context, v1 compatibility and cross-API integration tests against the pinned datasets commit. Verify exact Unicode/UTF8 selectors and open dependency obligations; locators and candidate content grant no semantic closure.
+- Objective: Qualifier recipe generation 02 binds imports and test options explicitly and retains bounded failure diagnostics. Run the reviewed v2 context, v1 compatibility and cross-API integration tests against the pinned datasets commit. Verify exact Unicode/UTF8 selectors and open dependency obligations; locators and candidate content grant no semantic closure.
 - Outputs: data/legal_autoformalization_foundations/LAC-S2-010/result.json
 - Predicted files: data/legal_autoformalization_foundations/LAC-S2-010/result.json
 - Validation: python3 scripts/legal_autoformalization_foundations.py materialize --task LAC-S2-010

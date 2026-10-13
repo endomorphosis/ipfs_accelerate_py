@@ -22,6 +22,19 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = "legal-autoformalization-foundations-qualification/v1"
 TASKS = ("LAC-S2-005", "LAC-S2-010")
 MAX_BYTES = 1024 * 1024
+MAX_FAILURE_CASES = 5
+MAX_FAILURE_FIELD_BYTES = 512
+MAX_FAILURE_TAIL_BYTES = 1024
+
+
+class QualificationFailure(ValueError):
+    """A refused qualification with bounded diagnostics retained by its caller."""
+
+    def __init__(self, message, diagnostics):
+        self.diagnostics = diagnostics
+        first = next(iter(diagnostics["failed_cases"]), None)
+        detail = f": {first['name']}: {first['message']}" if first else ""
+        super().__init__(message + detail)
 
 
 def need(condition, message):
@@ -121,36 +134,88 @@ def command(job):
             *job["test_paths"]]
 
 
+def execution_environment_policy(datasets):
+    """Nonsecret, recorded overrides binding imports and pytest invocation."""
+    return {"PYTHONPATH": str(Path(datasets).resolve(strict=True)), "PYTEST_ADDOPTS": "",
+            "PYTHONDONTWRITEBYTECODE": "1", "IPFS_AUTO_INSTALL": "false",
+            "IPFS_DATASETS_AUTO_INSTALL": "false", "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+            "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0", "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1",
+            "CUDA_VISIBLE_DEVICES": ""}
+
+
+def _bounded_failure_text(value):
+    return str(value or "").encode("utf-8", errors="replace")[:MAX_FAILURE_FIELD_BYTES].decode(
+        "utf-8", errors="ignore")
+
+
+def _failure_tail(path):
+    with Path(path).open("rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        stream.seek(max(0, stream.tell() - MAX_FAILURE_TAIL_BYTES))
+        raw = stream.read(MAX_FAILURE_TAIL_BYTES)
+    return raw.decode("utf-8", errors="ignore")
+
+
+def refusal_payload(error):
+    payload = {"valid": False, "status": "refused", "error": str(error)}
+    if isinstance(error, QualificationFailure):
+        payload["diagnostics"] = error.diagnostics
+    return payload
+
+
 def execute(datasets, job):
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", IPFS_AUTO_INSTALL="false",
-               IPFS_DATASETS_AUTO_INSTALL="false", IPFS_DATASETS_PY_MINIMAL_IMPORTS="1",
-               IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS="0",
-               PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", OMP_NUM_THREADS="1",
-               OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1", CUDA_VISIBLE_DEVICES="")
+    environment_policy = execution_environment_policy(datasets)
+    env = dict(os.environ, **environment_policy)
     with tempfile.TemporaryDirectory(prefix="legal-foundation-tests-") as temporary:
         junit = Path(temporary) / "junit.xml"
+        cases, failed_cases = [], []
+
+        def fail(message, returncode):
+            raise QualificationFailure(message, {
+                "schema": "legal-autoformalization-qualification-failure/v1",
+                "returncode": returncode, "test_count": len(cases),
+                "failed_case_count": sum(c["status"] != "passed" for c in cases),
+                "failed_cases": failed_cases,
+                "stdout_tail": _failure_tail(Path(temporary) / "stdout"),
+                "stderr_tail": _failure_tail(Path(temporary) / "stderr"),
+                "environment_policy": environment_policy})
+
         with (Path(temporary) / "stdout").open("wb") as out, \
                 (Path(temporary) / "stderr").open("wb") as err:
-            run = subprocess.run([*command(job), "--junitxml", str(junit),
-                "-o", "cache_dir=" + str(Path(temporary) / "cache")],
-                cwd=datasets, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=err,
-                timeout=min(300, int(job.get("timeout_seconds", 180))), check=False)
-        need(junit.is_file() and junit.stat().st_size <= MAX_BYTES,
-             "Qualification did not produce bounded JUnit evidence")
-        tree = ET.parse(junit)
-        cases = []
+            try:
+                run = subprocess.run([*command(job), "--junitxml", str(junit),
+                    "-o", "cache_dir=" + str(Path(temporary) / "cache")],
+                    cwd=datasets, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=err,
+                    timeout=min(300, int(job.get("timeout_seconds", 180))), check=False)
+            except subprocess.TimeoutExpired:
+                out.flush()
+                err.flush()
+                fail("Qualification tests exceeded the declared timeout", None)
+        if not junit.is_file() or junit.stat().st_size > MAX_BYTES:
+            fail("Qualification did not produce bounded JUnit evidence", run.returncode)
+        try:
+            tree = ET.parse(junit)
+        except ET.ParseError:
+            fail("Qualification produced malformed JUnit evidence", run.returncode)
         for node in tree.iter("testcase"):
-            kinds = [child.tag for child in node if child.tag in ("failure", "error", "skipped")]
+            issues = [child for child in node if child.tag in ("failure", "error", "skipped")]
             cases.append({"class": node.get("classname", ""), "name": node.get("name", ""),
-                          "status": kinds[0] if kinds else "passed"})
+                          "status": issues[0].tag if issues else "passed"})
+            if issues and len(failed_cases) < MAX_FAILURE_CASES:
+                failed_cases.append({"class": _bounded_failure_text(node.get("classname", "")),
+                    "name": _bounded_failure_text(node.get("name", "")), "status": issues[0].tag,
+                    "message": _bounded_failure_text(issues[0].get("message") or issues[0].text)})
         result = {"command": command(job), "returncode": run.returncode, "cases": cases,
             "ephemeral_options": {"junitxml": "temporary", "cache_dir": "temporary"},
+            "environment_policy": environment_policy,
             "test_count": len(cases), "passed_count": sum(c["status"] == "passed" for c in cases),
             "stdout_sha256": identity(Path(temporary) / "stdout")["sha256"],
             "stderr_sha256": identity(Path(temporary) / "stderr")["sha256"]}
-        need(run.returncode == 0 and cases and all(c["status"] == "passed" for c in cases),
-             "Qualification tests failed, errored, or skipped")
-        need(len(cases) >= int(job.get("minimum_tests", 1)), "Qualification test population shrank")
+        if run.returncode != 0 or not cases or any(c["status"] != "passed" for c in cases):
+            fail("Qualification tests failed, errored, or skipped", run.returncode)
+        if len(cases) < int(job.get("minimum_tests", 1)):
+            fail("Qualification test population shrank", run.returncode)
         return result
 
 
@@ -169,6 +234,8 @@ def validate(result, task, sources_path):
          "Qualification command or outcome differs")
     need(observed.get("ephemeral_options") == {"junitxml": "temporary", "cache_dir": "temporary"},
          "Qualification temporary output policy differs")
+    need(observed.get("environment_policy") == execution_environment_policy(datasets),
+         "Qualification import/pytest environment policy differs")
     cases = observed["cases"]
     need(isinstance(cases, list) and len(cases) >= int(job.get("minimum_tests", 1))
          and all(c["status"] == "passed" for c in cases), "Incomplete passing test population")
@@ -245,5 +312,5 @@ if __name__ == "__main__":
     try:
         main()
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired, ET.ParseError) as error:
-        print(json.dumps({"valid": False, "status": "refused", "error": str(error)}), file=sys.stderr)
+        print(json.dumps(refusal_payload(error)), file=sys.stderr)
         raise SystemExit(1)
