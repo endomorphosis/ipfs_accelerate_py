@@ -38,7 +38,9 @@ def main():
         errors.append('bootstrap goal hierarchy differs from the four expected records')
     for task in tasks:
         output = f'data/legal_autoformalization_convergence/{task.task_id}/result.json'
-        validation = f'python3 scripts/legal_autoformalization_bootstrap.py materialize --task {task.task_id}'
+        helper = ('legal_autoformalization_training_inventory.py' if task.task_id == 'LAC-002'
+                  else 'legal_autoformalization_bootstrap.py')
+        validation = f'python3 scripts/{helper} materialize --task {task.task_id}'
         if task.depends_on:
             errors.append(f'{task.task_id}: inventory bootstrap must have no dependencies')
         if task.metadata.get('outputs') != output or task.metadata.get('predicted files') != output:
@@ -56,9 +58,12 @@ def main():
         errors.append('scheduler bootstrap allowlist differs from the actual board')
     if any(not (root / name).is_file() for name in config['protected_paths']):
         errors.append('missing protected bootstrap source')
+    completed = sorted(task.task_id for task in tasks if task.status == 'completed')
+    ready = sorted(task.task_id for task in tasks
+                   if task.status == 'todo' and all(dep in completed for dep in task.depends_on))
     print(json.dumps({'schema': 'legal-autoformalization-bootstrap-board-validation/v1',
         'valid': not errors, 'task_count': len(tasks), 'goal_count': len(goals),
-        'ready_task_ids': sorted(expected), 'errors': errors,
+        'ready_task_ids': ready, 'completed_task_ids': completed, 'errors': errors,
         'original_plan_sha256': sources['original_plan_sha256'],
         'scope': 'Inventory-only execution projection; original task acceptance remains separately evidenced.'}, indent=2))
     return 0 if not errors else 1

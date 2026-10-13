@@ -39,10 +39,10 @@ All three inventory tasks use the native deterministic-only declared-validation-
 - Track: inventory
 - Provider role: deterministic-only
 - Context budget tokens: 0
-- Objective: Read historical and recent run indexes and newer retained evidence. Preserve executed/replayed/rejected/selected/resume/exposure distinctions. Missing identities remain null plus gaps. Do not load checkpoints or execute models. Run python3 scripts/legal_autoformalization_bootstrap.py materialize --task LAC-002; preserve existing evidence and validate it without rewriting.
+- Objective: Read historical and recent run indexes and newer retained evidence. Preserve the complete original inventory losslessly in a bounded gzip/base64 envelope, with readable population and lineage counts. Missing identities remain null plus gaps. Do not load checkpoints or execute models. Run python3 scripts/legal_autoformalization_training_inventory.py materialize --task LAC-002; preserve existing evidence and validate the complete decoded inventory without rewriting.
 - Outputs: data/legal_autoformalization_convergence/LAC-002/result.json
 - Predicted files: data/legal_autoformalization_convergence/LAC-002/result.json
-- Validation: python3 scripts/legal_autoformalization_bootstrap.py materialize --task LAC-002
+- Validation: python3 scripts/legal_autoformalization_training_inventory.py materialize --task LAC-002
 - Acceptance: Validator returns valid true; immutable input bindings and numeric facts independently verify; all missing evidence and original acceptance limits stay explicit.
 - Existing source policy: Read-only source roots from config/legal_autoformalization_bootstrap_sources.json; protected scripts/config/full plan cannot be edited.
 - Allowed effects: Write only data/legal_autoformalization_convergence/LAC-002/result.json and supervisor-owned attempt records. No model/training/provider calls beyond the supervisor implementation role; no nested agents, external publication, source edits or lease manipulation.

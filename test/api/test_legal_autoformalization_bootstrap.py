@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import copy
+import base64
+import gzip
 import importlib.util
 import json
 from pathlib import Path
@@ -179,3 +181,103 @@ def test_bootstrap_prior_attempt_receipts_are_strict_immutable_inputs(tmp_path):
     prior.write_text('{"status": "changed"}', encoding="utf-8")
     with pytest.raises(ValueError, match="Prior supervisor attempt receipt pin differs"):
         first.common_result("LAC-002", config, sources)
+
+
+def _training_envelope_fixture(tmp_path):
+    first, _, full, sources, _, report = _captured_inventory(tmp_path)
+    helper_source = SOURCE.with_name("legal_autoformalization_training_inventory.py")
+    helper_copy = first.ROOT / "scripts" / helper_source.name
+    shutil.copyfile(helper_source, helper_copy)
+    helper = _module(helper_copy, "lac_training_envelope_fixture")
+    config = first.ROOT / "config/legal_autoformalization_bootstrap_sources.json"
+    return helper, full, sources, config, report
+
+
+def test_training_inventory_envelope_is_lossless_and_preserves_full_population(tmp_path):
+    helper, full, sources, config, _ = _training_envelope_fixture(tmp_path)
+    full["additional_retained_evidence"] = {"unicode": "§ 123 — duty", "nested": [1, None, False]}
+    envelope = helper.pack_result(full)
+
+    assert helper.unpack_result(envelope) == full
+    assert helper.validate_envelope(envelope, config, sources)["valid"] is True
+    assert envelope["summary"]["retained_run_count"] == len(full["observations"]["runs"])
+    assert envelope["summary"]["input_artifact_count"] == len(full["input_artifacts"])
+    assert envelope["summary"]["runs_by_lineage"] == {"recent_source_span": 1}
+    assert len(helper.core.canonical(envelope)) < helper.MAX_FILE_BYTES < 1_000_000
+
+
+def test_training_inventory_envelope_checker_rejects_omitted_run_membership(tmp_path):
+    helper, full, sources, config, _ = _training_envelope_fixture(tmp_path)
+    full["observations"]["runs"] = []
+    full["observations"]["deduplicated_run_count"] = 0
+    envelope = helper.pack_result(full)
+    # Even a self-consistent new checksum and summary cannot omit source runs.
+    with pytest.raises(ValueError, match="Audit run coverage differs"):
+        helper.validate_envelope(envelope, config, sources)
+
+
+def test_training_inventory_envelope_rejects_summary_payload_and_writer_tampering(tmp_path):
+    helper, full, _, _, _ = _training_envelope_fixture(tmp_path)
+    envelope = helper.pack_result(full)
+    tampered = copy.deepcopy(envelope)
+    tampered["summary"]["retained_run_count"] += 1
+    with pytest.raises(ValueError, match="summary differs"):
+        helper.unpack_result(tampered)
+    tampered = copy.deepcopy(envelope)
+    data = tampered["payload"]["data"]
+    tampered["payload"]["data"] = ("A" if data[0] != "A" else "B") + data[1:]
+    with pytest.raises(ValueError, match="Compressed training payload identity differs"):
+        helper.unpack_result(tampered)
+    tampered = copy.deepcopy(envelope)
+    tampered["writer"]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="writer code moved"):
+        helper.unpack_result(tampered)
+
+
+def test_training_inventory_envelope_rejects_expansion_bombs_and_oversize(tmp_path):
+    helper, full, _, _, _ = _training_envelope_fixture(tmp_path)
+    envelope = helper.pack_result(full)
+    bomb = copy.deepcopy(envelope)
+    compressed = gzip.compress(b" " * 100_000, mtime=0)
+    encoded = base64.b64encode(compressed).decode("ascii")
+    bomb["payload"].update(raw_bytes=1, raw_sha256=helper.sha256(b" "),
+                           compressed_bytes=len(compressed), compressed_sha256=helper.sha256(compressed),
+                           encoded_bytes=len(encoded), data=encoded)
+    with pytest.raises(ValueError, match="expansion bound"):
+        helper.unpack_result(bomb)
+    oversize = copy.deepcopy(envelope)
+    oversize["payload"]["raw_bytes"] = helper.MAX_RAW_BYTES + 1
+    with pytest.raises(ValueError, match="raw_bytes exceeds cap"):
+        helper.unpack_result(oversize)
+    oversize = copy.deepcopy(envelope)
+    oversize["padding"] = "x" * helper.MAX_FILE_BYTES
+    with pytest.raises(ValueError, match="envelope exceeds file cap"):
+        helper.unpack_result(oversize)
+    large_file = tmp_path / "oversize.json"
+    large_file.write_bytes(b" " * (helper.MAX_FILE_BYTES + 1))
+    with pytest.raises(ValueError, match="file exceeds cap"):
+        helper.load_envelope(large_file)
+
+
+def test_training_inventory_materialize_is_idempotent_and_preserves_bad_output(tmp_path, monkeypatch):
+    helper, _, sources, config, _ = _training_envelope_fixture(tmp_path)
+    output = helper.core.output_path("LAC-002", None)
+    created = helper.materialize(config, sources, output)
+    assert created["valid"] is True and created["materialized"] is True
+    before, before_stat = output.read_bytes(), output.stat()
+
+    def unexpected_collect(*args):
+        raise AssertionError("Existing envelope must not be recollected")
+
+    monkeypatch.setattr(helper.core, "collect_runs", unexpected_collect)
+    assert helper.materialize(config, sources, output)["materialized"] is False
+    assert output.read_bytes() == before
+    assert output.stat().st_mtime_ns == before_stat.st_mtime_ns
+    assert output.stat().st_ino == before_stat.st_ino
+    bad = json.loads(output.read_text())
+    bad["summary"]["retained_run_count"] = 999
+    output.write_text(json.dumps(bad), encoding="utf-8")
+    bad_bytes = output.read_bytes()
+    with pytest.raises(ValueError, match="summary differs"):
+        helper.materialize(config, sources, output)
+    assert output.read_bytes() == bad_bytes

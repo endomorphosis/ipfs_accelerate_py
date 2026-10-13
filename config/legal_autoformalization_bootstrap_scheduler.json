@@ -16,11 +16,12 @@
   },
   "initial_projection": {
     "task_count": 3,
-    "completed_task_ids": [],
-    "ready_task_ids": [
+    "completed_task_ids": [
       "LAC-001",
-      "LAC-002",
       "LAC-003"
+    ],
+    "ready_task_ids": [
+      "LAC-002"
     ],
     "goal_count": 4,
     "root_goal_id": "LAC-G000"
@@ -63,15 +64,16 @@
     "docs/architecture/legal_autoformalization_convergence/full_plan/tasks.json",
     "docs/architecture/legal_autoformalization_convergence/full_plan/tasks.todo.md",
     "docs/architecture/legal_autoformalization_convergence/full_plan/validate_plan.py",
-    "docs/architecture/legal_autoformalization_convergence/full_plan/validation.json"
+    "docs/architecture/legal_autoformalization_convergence/full_plan/validation.json",
+    "scripts/legal_autoformalization_training_inventory.py"
   ],
   "runtime_paths": {
-    "root": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02",
-    "state": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02/state",
-    "worktrees": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02/worktrees",
-    "merge_queue": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02/merge_queue",
-    "logs": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02/logs",
-    "evidence": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02/evidence"
+    "root": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-03",
+    "state": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-03/state",
+    "worktrees": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-03/worktrees",
+    "merge_queue": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-03/merge_queue",
+    "logs": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-03/logs",
+    "evidence": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-03/evidence"
   },
   "lanes": [
     {
@@ -113,11 +115,19 @@
     "sharding_reason": "LAC-002 and LAC-003 have the same hash-home shard; native atomic claims with non-strict fallback permit three independent inventory tasks."
   },
   "execution_generation": {
-    "index": 2,
+    "index": 3,
     "execution_mode": "deterministic-only",
-    "prior_runtime_root": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime",
+    "prior_runtime_root": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02",
+    "preserved_runtime_roots": [
+      "data/agent_supervisor/legal_autoformalization_bootstrap/runtime",
+      "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02"
+    ],
     "prior_attempts_preserved": true,
-    "reason": "Explicit native deterministic inventory roles; new command identities require separate state generation. No model route or Docker isolation guard is bypassed."
+    "prior_wrapper_receipt": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-launch-20261013-01/runtime/20261013T083745Z-a845d8d69e27/receipt.json",
+      "sha256": "a430f1902ca6549f70893c22823b70ac12e5631b576a5cf304a6cbbbe1467330"
+    },
+    "reason": "LAC-001 and LAC-003 are validated and merged. LAC-002 retains lossless full evidence in a bounded envelope to meet unchanged native proposal limits. New managed command identities use a separate state generation."
   },
   "model_assisted_route_prerequisites": {
     "status": "blocked",
