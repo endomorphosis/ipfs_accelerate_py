@@ -30,7 +30,7 @@ All three inventory tasks use the native deterministic-only declared-validation-
 
 ## LAC-002 Reconcile retained training lineage
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
