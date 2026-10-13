@@ -5,6 +5,7 @@ native source index and input budgets without executing the inspected program.
 """
 from dataclasses import replace
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,11 @@ from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_index import 
 from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_session import RepositorySourceSession
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_batch_scheduler import (
     ProviderBatchCapacity, ProviderBatchScheduler, ProviderBatchSchedulerConfig,
+    ResourceSchedulerBatchAdmission,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
+    HostResourceSnapshot, ProviderCapacity, ResourceLeaseBudget, ResourcePolicy,
+    ResourceScheduler,
 )
 from test.api.test_repository_source_index import scheduler  # noqa: F401
 
@@ -275,6 +281,100 @@ def test_existing_batch_capacity_backoff_is_preserved(case):
     assert dispatched[0].provenance["prompt_bytes"] == payload["prompt_bytes"]
     assert payload["prompt_tokens"] == token_counter(dispatched[0].payload)
     assert metrics.admission_deferrals >= 2
+
+
+def test_native_planning_recovers_from_host_pressure_and_provider_backoff(case):
+    sources_before = {path: (case.workspace / path).read_bytes()
+                      for path in experiment.authored_sources()}
+    status_before = case.session.status()
+    host_samples, provider_samples, decisions, dispatched, lease_counts = [], [], [], [], []
+
+    class ObservedResourceScheduler(ResourceScheduler):
+        def acquire(self, requirement, **kwargs):
+            decision, lease = super().acquire(requirement, **kwargs)
+            decisions.append(decision)
+            lease_counts.append(len(self.active_leases))
+            return decision, lease
+
+    resource = ObservedResourceScheduler(ResourcePolicy(max_lanes=1, max_model_concurrency=1))
+
+    def host():
+        cpu = 95 if len(host_samples) < 2 else 10
+        host_samples.append(cpu)
+        return HostResourceSnapshot(
+            observed_at_ms=1000 + len(host_samples), cpu_percent=cpu,
+            memory_percent=10, disk_percent=10, memory_available_bytes=8 * 1024**3,
+            disk_available_bytes=16 * 1024**3, worker_limit=1,
+            available_worker_capacity=1, capabilities=("cpu",),
+            resource_classes=("llm-proof-draft",),
+        )
+
+    def provider(provider_id):
+        retry_after = 1 if len(host_samples) in (3, 4) else 0
+        provider_samples.append(retry_after)
+        return [ProviderCapacity(
+            provider_id=provider_id, healthy=True, latency_ms=1,
+            retry_after_ms=retry_after, max_concurrency=1, active_requests=0,
+            quota_remaining=10, token_budget_remaining=100_000,
+            context_window_tokens=100_000,
+        )]
+
+    admission = ResourceSchedulerBatchAdmission(
+        resource, host_supplier=host, provider_supplier=provider,
+        memory_bytes=128 * 1024**2,
+        budget=ResourceLeaseBudget(max_parallel=1, max_processes=1,
+            max_model_concurrency=1, memory_bytes=256 * 1024**2,
+            model_token_limit=2048, provider_quota=1),
+    )
+
+    def dispatch(requests):
+        members = tuple(requests)
+        assert len(members) == 1
+        assert len(host_samples) >= 5
+        assert host_samples[-1] == 10 and provider_samples[-1] == 0
+        lease, = resource.active_leases
+        assert lease.requirement.token_budget == members[0].token_budget == 1024
+        assert lease.requirement.memory_bytes == 128 * 1024**2
+        assert lease.requirement.input_sealed
+        dispatched.extend(members)
+        return [experiment.scripted_proposal(members[0].payload)]
+
+    with ProviderBatchScheduler(dispatch, admission=admission,
+        config=ProviderBatchSchedulerConfig(batch_window_ms=0, admission_retry_ms=1,
+            max_parallel_batches=1, max_batch_size=1,
+            provider_limits={"authored-stub": 1})) as batch:
+        payload = generate(replace(case.config, provider_batch_scheduler=batch))
+        assert batch.flush(2)
+        metrics = batch.metrics()
+
+    assert host_samples[:2] == [95, 95]
+    assert provider_samples[2:4] == [1, 1]
+    assert all("host_cpu_high_watermark" in item.reasons for item in decisions[:2])
+    assert all("provider_backoff" in item.reasons for item in decisions[2:4])
+    assert all(item.retryable for item in decisions[:4])
+    assert metrics.admission_deferrals >= 4
+    assert metrics.provider_calls == 1
+    assert max(lease_counts) == 1 and resource.active_leases == ()
+    assert len(dispatched) == 1 and case.calls == []
+    assert payload["provider_batch"]["status"] == "succeeded"
+    prompt = dispatched[0].payload
+    body = json.loads(prompt)
+    assert body["tree_id"] == "sha256:" + status_before["source_tree_sha256"]
+    assert body["authority"]["repository_context"]["generation"] == status_before["generation"]
+    assert any(row["reference_id"].startswith("repository-symbol:") for row in body["evidence"])
+    assert json.loads(required_evidence(prompt)["planning-required:intent_ir"]["summary"]) == case.config.repository_context.intent_contract
+    assert payload["prompt_bytes"] == len(prompt.encode("utf-8"))
+    assert payload["prompt_tokens"] == token_counter(prompt)
+    artifact = case.config.artifact_dir / "rpc-001-proposal.json"
+    assert Path(payload["artifact"]) == artifact
+    proposal = json.loads(artifact.read_text())
+    assert proposal["repository_tree_id"] == body["tree_id"]
+    assert proposal["authority_claims"]["completion_authoritative"] is False
+    assert Path(payload["context_receipt"]).is_file()
+    assert {path: (case.workspace / path).read_bytes() for path in sources_before} == sources_before
+    assert case.session.status()["source_tree_sha256"] == status_before["source_tree_sha256"]
+    assert case.session.generation == status_before["generation"]
+    assert case.scheduler.snapshot()["active_lease_count"] == 0
 
 
 def test_queued_source_mutation_refuses_response_publication(case):

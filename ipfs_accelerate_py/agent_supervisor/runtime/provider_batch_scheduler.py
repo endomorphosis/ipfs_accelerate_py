@@ -75,6 +75,45 @@ _SINGLE_MEMBER_AUDIO_PROVIDERS: Final = frozenset(
     }
 )
 
+# Operational claims affect whether work may share a physical execution.  Other
+# provenance (task IDs, tracing labels, etc.) remains subscriber-local.
+_ADMISSION_CLAIM_FIELDS: Final = (
+    "stage", "resource_class", "required_capabilities", "memory_bytes",
+    "gpu_memory_bytes", "disk_bytes", "process_slots", "timeout_ms",
+    "input_sealed", "trace_identity", "expected_trace_identity",
+    "checkpoint_key", "tokenizer_identity", "expected_tokenizer_identity",
+    "exclusive_authorities", "network_allowlist", "requires_network",
+    "requires_gpu", "requires_prover", "mutates_tokenizer",
+    "mutates_checkpoint", "claimed_resource_kinds", "resource_profile",
+)
+
+
+def _admission_claims(provenance: Mapping[str, Any]) -> dict[str, Any]:
+    return {name: provenance[name] for name in _ADMISSION_CLAIM_FIELDS if name in provenance}
+
+
+def _exclusive_batch_claims(claims: Mapping[str, Any]) -> bool:
+    stage = claims.get("stage")
+    if (
+        claims.get("exclusive_authorities")
+        or claims.get("mutates_tokenizer")
+        or claims.get("mutates_checkpoint")
+    ):
+        return True
+    if isinstance(stage, str):
+        from .resource_scheduler import stage_admission_profile
+
+        return bool(stage_admission_profile(stage).exclusive_authorities)
+    return False
+
+
+def _claim_strings(value: Any, name: str) -> tuple[str, ...]:
+    if not isinstance(value, (tuple, list)):
+        raise ValueError(f"{name} must be a sequence of strings")
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"{name} must contain non-empty strings")
+    return tuple(dict.fromkeys(item.strip() for item in value))
+
 
 def _canonical(value: Any) -> Any:
     """Return a deterministic JSON-safe value without exposing object reprs."""
@@ -215,6 +254,7 @@ class ProviderBatchKey:
     sample_rate: int = 0
     channels: int = 0
     tenant_policy_digest: str = field(default_factory=lambda: _digest({}))
+    admission_claims_digest: str = field(default_factory=lambda: _digest({}))
 
     def __post_init__(self) -> None:
         for name in ("provider_id", "route", "model", "operation"):
@@ -237,6 +277,7 @@ class ProviderBatchKey:
             "policy_digest",
             "tenant_policy_digest",
             "generation_digest",
+            "admission_claims_digest",
         ):
             value = str(getattr(self, name)).lower()
             if len(value) != 64:
@@ -265,6 +306,7 @@ class ProviderBatchKey:
             "policy_digest": self.policy_digest,
             "tenant_policy_digest": self.tenant_policy_digest,
             "generation_digest": self.generation_digest,
+            "admission_claims_digest": self.admission_claims_digest,
         }
 
 
@@ -363,6 +405,7 @@ class ProviderBatchRequest:
             policy_digest=_digest(self.policy),
             tenant_policy_digest=_digest(self.tenant_policy),
             generation_digest=_digest(self.generation_settings),
+            admission_claims_digest=_digest(_admission_claims(self.provenance)),
         )
 
     @property
@@ -599,13 +642,15 @@ class ProviderBatchAdmissionGrant:
     after a launch failure).  This is deliberately opaque: callers can bind a
     :class:`resource_scheduler.ResourceAdmissionLease`, a provider semaphore,
     or another reclaimable capacity grant without coupling this module to its
-    implementation.
+    implementation.  A refused grant with ``retryable=False`` completes its
+    members as failures; live pressure refusals retain the default retry policy.
     """
 
     admitted: bool
     release: Callable[[], Any] | None = field(default=None, repr=False)
     reason: str = ""
     lease: Any = field(default=None, repr=False)
+    retryable: bool = True
     _released: bool = field(default=False, init=False, repr=False)
     _release_lock: threading.Lock = field(
         default_factory=threading.Lock,
@@ -623,11 +668,13 @@ class ProviderBatchAdmissionGrant:
                 admitted=bool(getattr(decision, "admitted", decision)),
                 reason=str(getattr(decision, "reason", "") or ""),
                 lease=lease,
+                retryable=bool(getattr(decision, "retryable", True)),
             )
         return cls(
             admitted=bool(getattr(value, "admitted", value)),
             reason=str(getattr(value, "reason", "") or ""),
             lease=getattr(value, "lease", None),
+            retryable=bool(getattr(value, "retryable", True)),
         )
 
     def release_once(self) -> None:
@@ -932,6 +979,8 @@ class ResourceSchedulerBatchAdmission:
     Token demand is summed across the unique execution groups while context and
     model-memory requirements are maxima/shared load costs.  The adapter is
     intentionally callable so it can be passed directly as ``admission=``.
+    Resource claims must match across members; they also participate in batch
+    and single-flight identity so a subscriber cannot weaken another's claims.
     """
 
     def __init__(
@@ -963,13 +1012,11 @@ class ResourceSchedulerBatchAdmission:
         self.gpu_memory_bytes = _positive_integer(
             gpu_memory_bytes, "gpu_memory_bytes", allow_zero=True
         )
-        self.required_capabilities = tuple(
-            str(item).strip() for item in required_capabilities if str(item).strip()
-        )
-        self.network_allowlist = tuple(
-            str(item).strip() for item in network_allowlist if str(item).strip()
-        )
-        self.requires_network = bool(requires_network)
+        self.required_capabilities = _claim_strings(required_capabilities, "required_capabilities")
+        self.network_allowlist = _claim_strings(network_allowlist, "network_allowlist")
+        if not isinstance(requires_network, bool):
+            raise ValueError("requires_network must be a boolean")
+        self.requires_network = requires_network
 
     @staticmethod
     def _sample(source: Any, provider_id: str = "") -> Any:
@@ -988,42 +1035,96 @@ class ResourceSchedulerBatchAdmission:
     ) -> ProviderBatchAdmissionGrant:
         from .resource_scheduler import LaneResourceRequirements
 
-        provenance: dict[str, Any] = {}
-        for request in requests:
-            if isinstance(request.provenance, Mapping):
-                provenance.update(dict(request.provenance))
-        requirement = LaneResourceRequirements(
-            lane_id=f"provider-batch:{uuid.uuid4().hex}",
-            stage=str(provenance.get("stage") or "inference"),
-            resource_class=self.resource_class,
-            required_capabilities=self.required_capabilities,
-            provider_id=key.provider_id,
-            requires_provider=True,
-            context_tokens=max((request.context_limit for request in requests), default=0),
-            token_budget=sum(request.token_budget for request in requests),
-            quota_units=1,
-            memory_bytes=self.memory_bytes,
-            gpu_memory_bytes=self.gpu_memory_bytes,
-            process_slots=1,
-            fairness_key=key.provider_id,
-            input_sealed=bool(provenance.get("input_sealed", True)),
-            trace_identity=str(provenance.get("trace_identity") or ""),
-            expected_trace_identity=str(provenance.get("expected_trace_identity") or ""),
-            checkpoint_key=str(provenance.get("checkpoint_key") or ""),
-            tokenizer_identity=str(provenance.get("tokenizer_identity") or ""),
-            expected_tokenizer_identity=str(
-                provenance.get("expected_tokenizer_identity") or ""
-            ),
-            exclusive_authorities=tuple(provenance.get("exclusive_authorities") or ()),
-            network_allowlist=self.network_allowlist
-            or tuple(provenance.get("network_allowlist") or ()),
-            requires_network=self.requires_network
-            or bool(provenance.get("requires_network", False)),
-            requires_gpu=bool(provenance.get("requires_gpu", False)),
-            mutates_tokenizer=bool(provenance.get("mutates_tokenizer", False)),
-            mutates_checkpoint=bool(provenance.get("mutates_checkpoint", False)),
-            claimed_resource_kinds=("provider", "token"),
-        )
+        if not requests:
+            return ProviderBatchAdmissionGrant(
+                admitted=False, reason="empty_provider_batch", retryable=False,
+            )
+        if any(request.batch_key != key for request in requests):
+            return ProviderBatchAdmissionGrant(
+                admitted=False, reason="incompatible_resource_claims", retryable=False,
+            )
+        claims = _admission_claims(requests[0].provenance)
+        if len(requests) > 1 and _exclusive_batch_claims(claims):
+            return ProviderBatchAdmissionGrant(
+                admitted=False, reason="exclusive_batch_members", retryable=False,
+            )
+        try:
+            for name in (
+                "input_sealed", "requires_network", "requires_gpu", "requires_prover",
+                "mutates_tokenizer", "mutates_checkpoint",
+            ):
+                if name in claims and not isinstance(claims[name], bool):
+                    raise ValueError(f"{name} must be a boolean")
+            for name in (
+                "stage", "resource_class", "trace_identity", "expected_trace_identity",
+                "checkpoint_key", "tokenizer_identity", "expected_tokenizer_identity",
+                "resource_profile",
+            ):
+                if name in claims and not isinstance(claims[name], str):
+                    raise ValueError(f"{name} must be a string")
+            for name in (
+                "memory_bytes", "gpu_memory_bytes", "disk_bytes", "process_slots", "timeout_ms",
+            ):
+                if name in claims:
+                    _positive_integer(claims[name], name, allow_zero=name != "process_slots")
+            for name in (
+                "required_capabilities", "exclusive_authorities", "network_allowlist",
+                "claimed_resource_kinds",
+            ):
+                if name in claims:
+                    claims[name] = _claim_strings(claims[name], name)
+            if "resource_class" in claims and claims["resource_class"] != self.resource_class:
+                return ProviderBatchAdmissionGrant(
+                    admitted=False, reason="resource_class_mismatch", retryable=False,
+                )
+            requested_network = claims.get("network_allowlist", self.network_allowlist)
+            if self.network_allowlist and not set(requested_network).issubset(self.network_allowlist):
+                return ProviderBatchAdmissionGrant(
+                    admitted=False, reason="network_allowlist_mismatch", retryable=False,
+                )
+            requirement = LaneResourceRequirements(
+                lane_id=f"provider-batch:{uuid.uuid4().hex}",
+                stage=claims.get("stage", "inference"),
+                resource_class=self.resource_class,
+                required_capabilities=tuple(dict.fromkeys((
+                    *self.required_capabilities, *claims.get("required_capabilities", ()),
+                ))),
+                provider_id=key.provider_id,
+                requires_provider=True,
+                context_tokens=max((request.context_limit for request in requests), default=0),
+                token_budget=sum(request.token_budget for request in requests),
+                quota_units=1,
+                memory_bytes=max(self.memory_bytes, claims.get("memory_bytes", 0)),
+                gpu_memory_bytes=max(self.gpu_memory_bytes, claims.get("gpu_memory_bytes", 0)),
+                disk_bytes=claims.get("disk_bytes", 0),
+                process_slots=claims.get("process_slots", 1),
+                fairness_key=key.provider_id,
+                timeout_ms=claims.get("timeout_ms", 0),
+                input_sealed=claims.get("input_sealed", True),
+                trace_identity=claims.get("trace_identity", ""),
+                expected_trace_identity=claims.get("expected_trace_identity", ""),
+                checkpoint_key=claims.get("checkpoint_key", ""),
+                tokenizer_identity=claims.get("tokenizer_identity", ""),
+                expected_tokenizer_identity=claims.get("expected_tokenizer_identity", ""),
+                exclusive_authorities=claims.get("exclusive_authorities", ()),
+                network_allowlist=requested_network,
+                requires_network=self.requires_network
+                or claims.get("requires_network", False),
+                requires_gpu=claims.get("requires_gpu", False),
+                requires_prover=claims.get("requires_prover", False),
+                mutates_tokenizer=claims.get("mutates_tokenizer", False),
+                mutates_checkpoint=claims.get("mutates_checkpoint", False),
+                claimed_resource_kinds=tuple(dict.fromkeys((
+                    "provider", "token", *claims.get("claimed_resource_kinds", ()),
+                ))),
+                resource_profile=claims.get("resource_profile", ""),
+            )
+        except (TypeError, ValueError):
+            # Invalid immutable input cannot heal while sitting in the queue.
+            # Keep diagnostic text content-free; never echo caller claim values.
+            return ProviderBatchAdmissionGrant(
+                admitted=False, reason="invalid_resource_claims", retryable=False,
+            )
         decision, lease = self.scheduler.acquire(
             requirement,
             budget=self.budget,
@@ -1035,12 +1136,14 @@ class ResourceSchedulerBatchAdmission:
             return ProviderBatchAdmissionGrant(
                 admitted=False,
                 reason=str(getattr(decision, "reason", "") or ""),
+                retryable=bool(getattr(decision, "retryable", True)),
             )
         return ProviderBatchAdmissionGrant(
             admitted=bool(getattr(decision, "admitted", False)),
             reason=str(getattr(decision, "reason", "") or ""),
             lease=lease,
             release=lambda: self.scheduler.release(lease, reason="provider_batch_completed"),
+            retryable=bool(getattr(decision, "retryable", True)),
         )
 
 
@@ -1134,7 +1237,9 @@ class ProviderBatchScheduler:
     def submit(
         self, request: ProviderBatchRequest | Mapping[str, Any]
     ) -> Future[ProviderBatchResult]:
-        normalized = ProviderBatchRequest.from_value(request)
+        # Detach the queued claims from mutable mappings reachable through the
+        # caller's otherwise frozen request object.
+        normalized = replace(ProviderBatchRequest.from_value(request))
         now = self._clock_ms()
         future: Future[ProviderBatchResult] = Future()
         deadline = now + normalized.timeout_ms if normalized.timeout_ms else 0
@@ -1416,6 +1521,32 @@ class ProviderBatchScheduler:
             else:
                 self._queues.pop(key, None)
 
+    def _refuse_groups(self, groups: Sequence[_ExecutionGroup], reason: str) -> None:
+        """Complete an immutable refusal without provider dispatch or fallback."""
+        now = self._clock_ms()
+        self._expire_subscribers(now)
+        for group in groups:
+            group.accepting_subscribers = False
+            group.completed = True
+            if self._singleflight.get(group.fingerprint) is group:
+                self._singleflight.pop(group.fingerprint, None)
+            for subscriber in tuple(group.subscribers):
+                if subscriber.request.request_id not in self._request_subscribers:
+                    continue
+                self._set_member_result(subscriber, ProviderBatchResult(
+                    request_id=subscriber.request.request_id,
+                    status=ProviderBatchStatus.FAILED,
+                    error=f"resource admission refused: {reason}",
+                    provider_id=subscriber.request.provider_id,
+                    execution_id=group.execution_id,
+                    token_budget=subscriber.request.token_budget,
+                    timeout_ms=subscriber.request.timeout_ms,
+                    queue_wait_ms=max(0, now - subscriber.submitted_at_ms),
+                    provenance=subscriber.request.provenance,
+                    singleflight_shared=len(group.subscribers) > 1,
+                ))
+        self._condition.notify_all()
+
     def _coordinator(self) -> None:
         while True:
             with self._condition:
@@ -1451,6 +1582,8 @@ class ProviderBatchScheduler:
                 self._counters["admission_deferrals"] += 1
                 continue
             max_size = self._effective_size(key.provider_id, capacity)
+            if _exclusive_batch_claims(_admission_claims(queue[0].representative.provenance)):
+                max_size = 1
             oldest = queue[0].queued_at_ms
             if len(queue) < max_size and now - oldest < self.config.batch_window_ms:
                 continue
@@ -1541,6 +1674,11 @@ class ProviderBatchScheduler:
                         member_count=len(requests),
                     )
                     self._release_admission(admission_grant)
+                    if not admission_grant.retryable:
+                        self._refuse_groups(groups, reason)
+                        if not queue:
+                            self._queues.pop(key, None)
+                        return True
                     for group in reversed(groups):
                         queue.appendleft(group)
                     self._counters["admission_deferrals"] += 1
@@ -1693,6 +1831,27 @@ class ProviderBatchScheduler:
         call_started = self._clock_ms()
         try:
             with self._condition:
+                # Admission and worker launch may wait.  Work cancelled or
+                # expired during that wait must not start consuming a provider.
+                self._expire_subscribers(call_started)
+                live_pairs = []
+                for group, request in zip(groups, requests):
+                    if any(item.request.request_id in self._request_subscribers for item in group.subscribers):
+                        live_pairs.append((group, request))
+                    else:
+                        group.accepting_subscribers = False
+                        group.completed = True
+                        self._running_fingerprints.discard(group.fingerprint)
+                        if self._singleflight.get(group.fingerprint) is group:
+                            self._singleflight.pop(group.fingerprint, None)
+                if not live_pairs:
+                    self._active_batches -= 1
+                    self._active_by_provider[key.provider_id] -= 1
+                    self._counters["completed_batches"] += 1
+                    self._condition.notify_all()
+                    return
+                groups = [group for group, _request in live_pairs]
+                requests = tuple(request for _group, request in live_pairs)
                 self._counters["provider_calls"] += 1
                 self._counters["physical_executions"] += len(groups)
                 self._provider_calls_by_id[key.provider_id] = (

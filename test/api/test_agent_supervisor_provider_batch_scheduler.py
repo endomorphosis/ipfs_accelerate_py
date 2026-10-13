@@ -18,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_batch_scheduler import
     ProviderBatchStatus,
     ResourceSchedulerBatchAdmission,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime import provider_batch_scheduler as runtime_pbs
 from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     StructuredPlanRouterConfig,
     generate_structured_plan_branches,
@@ -763,40 +764,19 @@ def test_structured_planning_route_uses_shared_singleflight_and_provenance(
 # ---------------------------------------------------------------------------
 
 
-def _load_declared_batch_module():
-    import importlib.util
-    import sys
-    from pathlib import Path
-
-    path = (
-        Path(__file__).resolve().parents[2]
-        / "ipfs_accelerate_py"
-        / "agent_supervisor"
-        / "provider_batch_scheduler.py"
-    )
-    name = "ipfs_accelerate_py.agent_supervisor._declared_pbs_for_batch_tests"
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
 def test_asi167_batch_requirement_and_symbols_installed() -> None:
-    mod = _load_declared_batch_module()
-    from ipfs_accelerate_py.agent_supervisor.runtime import provider_batch_scheduler as runtime_pbs
-
-    assert mod.ENDPOINT_USAGE_BATCH_ADMISSION_REQUIREMENT_ID.startswith("requirement:")
-    assert mod.PHYSICAL_BATCH_RESERVE_ONCE_REQUIREMENT_ID.startswith("requirement:")
+    # The domain-layout cutover removed the old flat source file.  Exercise the
+    # same module/classes used by dispatch, rather than creating a second copy
+    # of the scheduler under a synthetic import name.
+    assert runtime_pbs.ProviderBatchScheduler is ProviderBatchScheduler
+    assert runtime_pbs.ENDPOINT_USAGE_BATCH_ADMISSION_REQUIREMENT_ID.startswith("requirement:")
+    assert runtime_pbs.PHYSICAL_BATCH_RESERVE_ONCE_REQUIREMENT_ID.startswith("requirement:")
     assert hasattr(runtime_pbs, "reserve_physical_batch")
     assert hasattr(runtime_pbs, "UsageAwareProviderBatchScheduler")
 
 
 def test_asi167_physical_batch_member_cancel_does_not_charge_sibling() -> None:
-    mod = _load_declared_batch_module()
+    mod = runtime_pbs
     requests = [
         _request("left", "a", token_budget=100),
         _request("right", "b", token_budget=250),
@@ -849,7 +829,7 @@ def test_asi167_physical_batch_member_cancel_does_not_charge_sibling() -> None:
 
 
 def test_asi167_usage_aware_batch_scheduler_enforce_capacity_supplier() -> None:
-    mod = _load_declared_batch_module()
+    mod = runtime_pbs
     calls: list[tuple[str, ...]] = []
 
     def dispatch(requests: object) -> list[str]:
