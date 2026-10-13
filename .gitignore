@@ -400,3 +400,9 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_intake/
 !/data/legal_autoformalization_intake/LAC-S4-*/
 !/data/legal_autoformalization_intake/LAC-S4-*/result.json
+
+# Primary graph reconstruction operational state and qualification evidence
+/data/agent_supervisor/legal_autoformalization_primary/runtime/
+!/data/legal_autoformalization_primary/
+!/data/legal_autoformalization_primary/LAC-S5-*/
+!/data/legal_autoformalization_primary/LAC-S5-*/result.json
