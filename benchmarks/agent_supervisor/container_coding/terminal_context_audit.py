@@ -449,6 +449,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             "semantic_translation_schema": encoded.receipt["schema"] == receipt["semantic_translation"]["schema"],
         })
     source_views = receipt.get("source_view_retrieval")
+    source_guidance = None
     if source_views is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_client import BINDING_FIELDS, guidance, canonical_json
         if not translated:
@@ -457,7 +458,19 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
         expected = {**{key: table[key] for key in BINDING_FIELDS if key not in {
             "profile", "source_manifest_sha256"}}, "profile": source_views["profile"],
             "source_manifest_sha256": _sha(canonical_json(table["source_manifest"]))}
-        advice = guidance(source_views["profile"])
+        # Historical read-only observations retain their original wire shape.
+        # The edit guidance is selected only by the explicit current dispatch
+        # schema; a mode field cannot upgrade a historical observation.
+        edit_options = {}
+        if "source_edit_mode" in source_views or source_views.get("schema") == "worker-source-dispatch-observation@3":
+            from .terminal_source_edit_policy import MAPPED_SOURCE_EDIT_MODE, validate_source_edit_mode
+            mode = validate_source_edit_mode(source_views.get("source_edit_mode", "disabled"),
+                source_view_profile=source_views["profile"])
+            if source_views.get("schema") != "worker-source-dispatch-observation@3" or mode != MAPPED_SOURCE_EDIT_MODE:
+                raise ValueError("mapped source guidance requires its explicit dispatch schema and mode")
+            edit_options["source_edit_mode"] = mode
+        advice = guidance(source_views["profile"], **edit_options)
+        source_guidance = advice
         checks["source_view_semantic_binding"] = all(source_views.get(key) == value for key, value in expected.items())
         checks["source_view_guidance"] = (_sha(advice.encode()) == source_views.get("guidance_sha256")
             and len(advice.encode()) == source_views.get("guidance_bytes"))
@@ -578,10 +591,6 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             from ipfs_accelerate_py.agent_supervisor.runtime.representation_displacement import (
                 observe_representation_displacement,
             )
-            source_guidance = None
-            if source_views is not None:
-                from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_client import guidance
-                source_guidance = guidance(source_views["profile"])
             # This replays recorded representation identities, not a trusted
             # counter callback or provider delivery. Existing @2 verification
             # remains unavailable unless that caller supplies its real counter.

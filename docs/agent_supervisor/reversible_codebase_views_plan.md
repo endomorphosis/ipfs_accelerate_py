@@ -57,8 +57,12 @@ opt-in profile. Unsupported source remains exact and Gitlink frontiers stay
 explicit. Deterministic replay restores unchanged source and refuses edited
 views. A separate [mapped-edit adapter](reversible_source_views.md#apply-through-the-existing-isolated-worktree-owner)
 now translates a supported compact span into original bytes and applies it in a
-fresh fenced candidate. Model-tool integration and token savings remain separate
-stages. The opt-in
+fresh fenced candidate. The separate
+[worker mapped-edit mode](worker_source_views.md#edit-a-compact-span-through-the-coding-worker)
+now handles one supported span through the real router and source socket, using
+the worker's existing file permissions. Local integration and an offline Docker
+probe with actual separate owner/worker UIDs pass; full runtime deployment and
+live token savings remain separate stages. The opt-in
 [worker source reader](worker_source_views.md) now supplies task-scoped compact
 views and exact expansion using the same codec and isolated child lifecycle.
 
@@ -141,7 +145,7 @@ replacement of the original conversation content.
 | --- | --- | --- |
 | Restore an unchanged snapshot | Exact bytes from retained original blobs and deterministic view maps | Already qualified within the admitted inventory; retain explicit coverage frontiers |
 | Navigate a complete admitted repository | Complete stored inventory; path/pin discovery within the bounded coding-reader population | Page repository-wide path/symbol discovery into task-specific read scopes without sending every body or removing response bounds |
-| Preserve edits made while using compact views | Host-only preimage-bound mapping and one-file application in a clean fenced candidate; expanded-source editing and working refresh remain available | Qualify the actual worker write tool, repeated candidate edits and explicit population deltas for supported create/move/delete operations |
+| Preserve edits made while using compact views | Host mapping plus an opt-in single-span worker read/map/write/confirm route, including an actual cross-UID Docker probe; exact original files remain available | Qualify full runtime deployment, repeated candidate edits and explicit population deltas for supported create/move/delete operations |
 | Execute a physically minified checkout | No such profile | Separate language/runtime/import/reflection/tooling validation and original-task acceptance |
 | Reduce total provider tokens | No qualified compact-source session benefit | Show displaced content and repeated reads, then compare complete native usage at equal official success |
 
@@ -177,20 +181,20 @@ read followed by an ordinary read or exact expansion can add text; it can also
 help by avoiding other files. Native complete-run usage and matched task outcomes
 must decide which effect dominates.
 
-The worker-facing round trip still needs **compact edit to original-source
-patch** submission. The host-only mapper and isolated application now implement
-the first exact generation/preimage-bound step, without asking an autoencoder or
-LLM to recover deleted bytes. Ordinary restoration still refuses modified compact
-bytes. The mapper accepts edits wholly within a retained KEEP region, refuses
-ambiguous hidden boundaries, and rebuilds the resulting source view to reproduce
-the requested compact edit. The owner adapter applies the original patch through
-the existing fenced writer and captures a new source generation. Semantic source
-and candidate formal cursors refuse prior-generation reuse. Accepted proof/index
-publication remains separate. This first write adapter requires a clean candidate;
-it does not enable repeated edits to a dirty overlay or a model-facing write tool.
-Its isolated-worktree ownership checks are separate from the native task/Portal
-allocation guard above. Neither contract supplies an atomic filesystem writer
-lease; a failed post-application check can leave a candidate requiring cleanup.
+The worker-facing round trip now has an opt-in **compact edit to original-source
+patch** route. The owner maps a generation/preimage-bound span, the worker checks
+and writes privately, and the owner verifies the complete admitted postimage
+before refreshing the view. This reuses the host mapper without asking an
+autoencoder or LLM to recover deleted bytes. Ordinary restoration still refuses
+modified compact bytes. The mapper accepts edits wholly within a retained KEEP
+region, refuses ambiguous hidden boundaries, and rebuilds the resulting source
+view to reproduce the requested compact edit. Prior-generation source and
+candidate-formal cursors refuse reuse. Accepted proof/index publication remains
+separate. The worker route allows one successful preparation and one confirmation
+attempt; repeated mapped edits are not yet supported. It uses existing worker
+file rights and does not borrow the separate host adapter's isolated-worktree
+owner or lease. Neither route supplies an atomic filesystem writer lease;
+uncertain post-write results require inspection rather than automatic replay.
 Repository-wide identifier renaming and execution of minified files require
 additional language-specific rules; neither is implemented by the current codec.
 
@@ -589,8 +593,11 @@ are needed to establish the first four increments.
    own supported native operations; exact-source expansion alone cannot enable
    them. Conflicting concurrent edits refuse.
    Arbitrary replacement of a minified file is not an accepted mapped edit.
-   The actual model-facing write tool and repeated dirty-overlay edits remain
-   unimplemented; the read socket provides no mutation capability.
+   The opt-in `mapped-span@1` worker tool now prepares one mapping through that
+   socket, writes using existing worker permissions, and asks the owner to
+   confirm the admitted postimage. The owner performs no source writes.
+   Repeated mapped edits remain unsupported; one session has one successful
+   preparation and one confirmation attempt.
 6. **Materialize and validate the proposal.** Construct `S'`, preflight all old
    file bytes and permitted paths, and use the existing exact-byte candidate
    materializer in an allocated workspace. The existing general regular-file
@@ -628,8 +635,9 @@ The [working candidate context reader](worker_candidate_context.md) now rebuilds
 native capsules and pending numerical formulas for a pinned edited snapshot.
 It shares the isolated worker's read-only source session and accounts artifact
 bytes separately. This advances the mid-coding refresh portion of stages 2–3;
-accepted DuckLake/proof publication, model-facing mapped edits and complete-session
-token savings remain separate qualification work. Full formal artifacts can be much
+accepted DuckLake/proof publication and complete-session token savings remain
+separate qualification work. The single-span worker edit route now passes local
+and actual cross-UID Docker checks with an authored provider. Full formal artifacts can be much
 larger than source, so the benchmark must charge summaries, expansions and
 refreshes actually requested by the worker.
 
@@ -652,7 +660,7 @@ for preferring this treatment in a benchmark.
 | 1: source inventory/restoration | Bounded repository manifest, exact blobs, view mappings and explicit coverage frontier | Cold restore is byte-identical for supported and passthrough entries; missing/tampered/stale blobs refuse |
 | 2: read-only disclosure | Qualified source/capsule operations through the actual coding interface | Current-source/owner checks, bounds, continuations and complete response accounting; unchanged required coverage |
 | 3: original-source editing | Preview navigation plus expansion and normal patch lifecycle | Original tests and accepted edit bytes survive refresh; unrelated source/trivia remains exact |
-| 4: optional mapped edits | Host mapper plus one-file application through the existing clean fenced candidate; worker tool remains open | Untouched bytes preserved; hidden/crossing/stale/ambiguous edits refuse; reprojection and actual staged bytes checked; candidate generation refreshed |
+| 4: optional mapped edits | Host adapter plus a single-span worker route with prepare/write/confirm and actual cross-UID Docker qualification | Untouched bytes preserved; hidden/crossing/stale/ambiguous edits refuse; actual postimage checked and candidate generation refreshed; qualify repeated edits and full runtime deployment separately |
 | 5: provider-bound census | Count complete candidate and baseline inputs with the same qualified counter | Strict improvement after every wrapper; counter failure/larger candidates retain original representation |
 | 6: matched complete sessions | Separately versioned treatments on representative tasks | Complete native usage and original official rewards, including all failures/expansions/repairs |
 

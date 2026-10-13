@@ -22,7 +22,7 @@ class WorkerSourceBroker(NumericalObligationBroker):
     file_prefix = "source-view"
 
     def __init__(self, *, repository, workspace, boundary, prompt, timeout_seconds,
-                 profile="python-whitespace@1", view_policy=None):
+                 profile="python-whitespace@1", view_policy=None, source_edit_mode="disabled"):
         from . import source_formalization_context as guard
         from .semantic_router_translation import encode_semantic_router_prompt
         from .worker_source_views import WorkerSourceViews
@@ -32,6 +32,9 @@ class WorkerSourceBroker(NumericalObligationBroker):
                 or type(profile) is not str or profile != "python-whitespace@1"):
             raise ValueError("shared policy cannot be combined with legacy profile")
         selected_profile = profile if view_policy is None else view_policy.profile
+        if type(source_edit_mode) is not str or source_edit_mode not in {"disabled", "mapped-span@1"}:
+            raise ValueError("unsupported source edit mode")
+        self.source_edit_mode = source_edit_mode
         if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= MAX_SESSION_SECONDS:
             raise ValueError("bounded source-view session required")
         self.repository, self.workspace = guard._workspace(repository, workspace)
@@ -72,6 +75,17 @@ class WorkerSourceBroker(NumericalObligationBroker):
         payload = _parse(raw.decode("utf-8"))
         program_paths = payload.get("program_paths", sorted(table["source_manifest"]))
         self.candidate_context = WorkerCandidateContext(self.views, tuple(program_paths))
+        self.source_edits = None
+        if source_edit_mode != "disabled":
+            if type(payload.get("program_paths")) is not list or not payload["program_paths"]:
+                raise ValueError("source edits require an explicit verified program population")
+            from .worker_source_edit import WorkerSourceEditService
+            self.source_edits = WorkerSourceEditService(views=self.views, allowed_paths=tuple(program_paths))
+            self._session_binding.update(source_edit_mode=source_edit_mode,
+                source_scope_sha256=admission["scope_sha256"],
+                view_policy_binding_sha256=self._session_binding.get("view_policy_binding_sha256"))
+            self._descriptor_schema = protocol.DESCRIPTOR_SCHEMA_V3
+            self.audit_schema = "supervisor-worker-source-session@4"
         self._start_session(identity=self._session_binding, boundary_sha=boundary_sha,
                             timeout_seconds=timeout_seconds, descriptor_schema=self._descriptor_schema)
 
@@ -106,6 +120,8 @@ class WorkerSourceBroker(NumericalObligationBroker):
             self._peer(channel)
         except (OSError, ValueError):
             return self._response(request, reason="peer_refused")
+        if request["schema"] == "supervisor-worker-source-edit-request@1":
+            return self._answer_edit(request, channel)
         try:
             candidate = request["schema"] in {"supervisor-worker-candidate-context-request@1",
                                                "supervisor-worker-candidate-context-request@2"}
@@ -115,7 +131,7 @@ class WorkerSourceBroker(NumericalObligationBroker):
                 if request["query"]["view_policy_binding_sha256"] != self._session_binding.get(
                         "view_policy_binding_sha256"):
                     return self._response(request, reason="invalid_request")
-            elif not candidate and self._descriptor_schema == protocol.DESCRIPTOR_SCHEMA_V2:
+            elif not candidate and self._session_binding.get("view_policy_binding_sha256") is not None:
                 return self._response(request, reason="invalid_request")
             working = candidate or (not discovery and request["query"].get("source_state") == "working-candidate")
             self._current_context(working=working,
@@ -155,17 +171,47 @@ class WorkerSourceBroker(NumericalObligationBroker):
             return self._response(request, reason="retrieval_refused")
         return response
 
+    def _answer_edit(self, request, channel):
+        """Prepare/confirm a mapping; all filesystem writes stay in the worker."""
+        query = request["query"]
+        if (self.source_edits is None or self._descriptor_schema != protocol.DESCRIPTOR_SCHEMA_V3
+                or query["view_policy_binding_sha256"] != self._session_binding.get("view_policy_binding_sha256")):
+            return self._response(request, reason="invalid_request")
+        try:
+            self._current_context(working=True,
+                generation=query.get("expected_workspace_generation"))
+            page = self.source_edits.handle(query,
+                request_sha256=hashlib.sha256(protocol.canonical_json(request)).hexdigest())
+            if query["operation"] == "confirm":
+                self.candidate_context.clear()
+            self._current_context(working=True,
+                generation=page.get("workspace_generation", query.get("expected_workspace_generation")))
+            self._peer(channel)
+            response = self._response(request, page=page)
+            if len(protocol.canonical_json(response)) > query["max_bytes"]:
+                raise ValueError("source edit response exceeds bound")
+            return response
+        except (OSError, ValueError, RuntimeError):
+            self.candidate_context.clear()
+            return self._response(request, reason="retrieval_refused")
+
     def _record_details(self, response=None):
         page = response["page"] if response is not None and response["ok"] else None
+        edit = page is not None and page["schema"].startswith("supervisor-worker-source-edit-")
         candidate = page is not None and page["schema"] in {
             "supervisor-worker-candidate-context-page@1", "supervisor-worker-candidate-context-page@2"}
         discovery = page is not None and page["schema"] in {
             "supervisor-worker-source-view-discovery@1", "supervisor-worker-source-view-discovery@2"}
-        count = page["end_offset"] - page["offset"] if page is not None and not discovery else 0
-        return dict(returned_source_bytes=0 if candidate or discovery else count,
+        count = page["end_offset"] - page["offset"] if page is not None and not discovery and not edit else 0
+        result = dict(returned_source_bytes=0 if candidate or discovery or edit else count,
             returned_candidate_context_bytes=count if candidate else 0,
             candidate_context_page=candidate, discovery_page=discovery,
             returned_discovery_rows=page["returned_count"] if discovery else 0)
+        if self.source_edit_mode != "disabled":
+            result.update(source_edit_page=edit,
+                source_edit_operation=("prepare" if page["schema"].endswith("prepared@1") else "confirm") if edit else None,
+                owner_writes_performed=False)
+        return result
 
 
 
@@ -200,6 +246,9 @@ def prepare_worker_source_broker(*, argv, boundary, workspace, input_fd=0, view_
     from .source_view_policy import SOURCE_VIEW_POLICY_FLAG, SourceViewPolicy
 
     profile = _argument(argv, "--source-view-profile", "disabled")
+    edit_mode = _argument(argv, "--source-edit-mode", "disabled")
+    if edit_mode not in {"disabled", "mapped-span@1"} or edit_mode != "disabled" and profile == "disabled":
+        raise ValueError("source edits require an enabled source view profile")
     serialized_policy = _argument(argv, SOURCE_VIEW_POLICY_FLAG)
     if serialized_policy is not None:
         if view_policy is not None:
@@ -232,4 +281,5 @@ def prepare_worker_source_broker(*, argv, boundary, workspace, input_fd=0, view_
     prompt = os.pread(input_fd, size + 1, 0).decode("utf-8")
     return WorkerSourceBroker(repository=repository, workspace=workspace, boundary=boundary,
         prompt=prompt, timeout_seconds=int(_argument(argv, "--timeout", "90")),
+        **({"source_edit_mode": edit_mode} if edit_mode != "disabled" else {}),
         **(dict(profile=profile) if view_policy is None else dict(view_policy=view_policy)))

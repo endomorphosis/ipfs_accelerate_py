@@ -1,0 +1,29 @@
+{
+  "provider_free_docker_qualification_authorized": true,
+  "runner_bindings": {
+    "/home/barberb/lift_coding/artifacts/compact-worker-edits-20261013/docker/owner_probe.py": "7d35884dc776d9f761406aa3452d1422eae7c57e028bdffe8754152030ab5732",
+    "/home/barberb/lift_coding/artifacts/compact-worker-edits-20261013/docker/run_docker_qualification.py": "74b294246c461c229cb23f0902f6aa68577924e902d36b6cf8a10a0555ba1e65",
+    "/home/barberb/lift_coding/artifacts/compact-worker-edits-20261013/docker/worker_probe.py": "c6a3ef5b4fabdaf68ecc8f7b0fb400a409544cc7683fb8060ced9b564e7f75bb"
+  },
+  "schema": "compact-edit-offline-docker-release@1",
+  "scope": "Actual owner/worker UIDs, authored provider hook, no source execution until separate candidate smoke; no full START, official benchmark or model call.",
+  "source_bindings": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "ab28888f4f47f38bba829b36cf7bcd271aa212b73fb74d21b5461f47dde0be6f",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "5906904e4708c82998f2216209e6e121e7cb60c076e2f046c06f2046a52b67a4",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "019e3d40f7f2e6a647b674df7c99f96163b982671b2504d611f260540006f834",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "204d6a840ca79141e95da8a0c7fe0da471223c66a353a3c9250b1b1c1063b7f5",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/container_worker_boundary.py": "1483fe780f9242354b5f397886f0e9dab971ef7bf353a00ed790190bf386ec8c",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py": "c0df1ff3034024d2fff37dc51ef1947946964f2a7ebfce30c53e1e95741a1ea7",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "10d8fc696d1a5ab8cf42e67c405eb434798ec2ccef4532896e476e4e5b2e472a",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py": "e487cc4a2126397568324c016b43e1d9025db9ff95b256842781e7e566a5860e",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": "47d0526ca1e4000c94f76f881e5207645cfff60169796ed5e8b49fa32e8b3d6e",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "d08ee0cf8806959aa3795c75ddc5f1bb147dd3bfb03c45e9710b49278701ec9e",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "03c8bb57112852436936fbdf18a6fbadcea7b03c7bc06b2e35a03b2d3ba48079",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py": "66a6e1f850f70f5206b97190cce0b51a78030f3f205055d87347ab14cb629d53",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py": "4a8f2eff7d5031f3dfb86988a6ef69b17694c88e9a041dd943c0ff5aea3fd6f1",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py": "08cd587a17ba5b94fc46b096f9522e9d2ce833f38d3780ec350212682cd4857d"
+  }
+}

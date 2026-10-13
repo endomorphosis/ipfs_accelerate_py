@@ -43,6 +43,10 @@ from .terminal_planning_policy import (
     DEFAULT_PLANNING_MODE, PLANNING_MODES, validate_planning_mode,
     planning_selection, planning_observation, require_planning_archive,
 )
+from .terminal_source_edit_policy import (
+    DEFAULT_SOURCE_EDIT_MODE, SOURCE_EDIT_MODES, validate_source_edit_mode,
+    source_edit_selection, source_edit_observation, require_source_edit_archive,
+)
 from .terminal_source_view_policy import (
     DEFAULT_SOURCE_VIEW_PROFILE, SOURCE_VIEW_PROFILES, validate_source_view_profile,
     source_view_selection, source_view_observation, require_source_view_archive,
@@ -240,6 +244,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
                source_view_policy: dict | None = None,
+               source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
                numerical_formalization_profile: str | None = None,
                planning_mode: str = DEFAULT_PLANNING_MODE,
                model_revision: str = "") -> dict:
@@ -248,6 +253,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
     validate_source_view_profile(source_view_profile, arm=arm)
+    validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
@@ -273,7 +279,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **planning_selection(planning_mode),
                    **semantic_metadata_selection(semantic_metadata_view),
                    **capsule_selection_options(capsule_selection),
-                   **source_view_selection(source_view_profile, source_view_policy)},
+                   **source_view_selection(source_view_profile, source_view_policy),
+                   **source_edit_selection(source_edit_mode)},
     }]
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
@@ -323,12 +330,14 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
             source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
             source_view_policy: dict | None = None,
+               source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
             numerical_formalization_profile: str | None = None,
             planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract)
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
     validate_source_view_profile(source_view_profile, arm=arm)
+    validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
@@ -356,6 +365,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
     require_capsule_selection_archive(manifest, capsule_selection)
     require_source_view_archive(manifest, source_view_profile, resource_profile)
+    require_source_edit_archive(manifest, source_edit_mode)
     require_numerical_archive(manifest, numerical_formalization_profile)
     require_planning_archive(manifest, planning_mode)
     if selected_provider["provider"] == "grok_cli":
@@ -410,6 +420,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         semantic_metadata_view=semantic_metadata_view,
         capsule_selection=capsule_selection,
         source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode,
         source_view_policy=source_view_policy,
         numerical_formalization_profile=numerical_formalization_profile,
         planning_mode=planning_mode,
@@ -445,6 +456,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **semantic_metadata_observation(semantic_metadata_view),
               **capsule_selection_observation(capsule_selection),
               **source_view_observation(source_view_profile, source_view_policy),
+              **source_edit_observation(source_edit_mode),
               **numerical_observation(numerical_formalization_profile, arm),
               **planning_observation(planning_mode),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
@@ -506,6 +518,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     configured_source_view = validate_source_view_profile(
         config["agents"][0].get("kwargs", {}).get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
         arm=prepared["arm"])
+    source_edit = validate_source_edit_mode(prepared.get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+        arm=prepared["arm"], source_view_profile=source_view)
+    configured_source_edit = validate_source_edit_mode(
+        config["agents"][0].get("kwargs", {}).get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+        arm=prepared["arm"], source_view_profile=configured_source_view)
     source_policy, source_policy_unchanged, source_policy_present = _source_view_policy_state(
         prepared, config, source_view=source_view, configured_source_view=configured_source_view,
         current_config_sha256=_hash(output / "config.json"))
@@ -538,6 +555,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **semantic_metadata_observation(metadata_view),
               **capsule_selection_observation(capsule_selection),
               **source_view_observation(source_view, source_policy),
+              **source_edit_observation(source_edit),
+              **({"source_edit_config_unchanged": configured_source_edit == source_edit}
+                 if "source_edit_mode" in prepared or "source_edit_mode" in config["agents"][0].get("kwargs", {}) else {}),
               **({"source_view_policy_config_unchanged": source_policy_unchanged}
                  if source_policy_present else {}),
               **({"source_view_config_unchanged": configured_source_view == source_view}
@@ -566,7 +586,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and configured_numerical == numerical_profile and configured_planning == planning_mode
                   and configured_metadata_view == metadata_view
                   and configured_capsules == capsule_selection
-                  and configured_source_view == source_view and source_policy_unchanged,
+                  and configured_source_view == source_view and source_policy_unchanged
+                  and configured_source_edit == source_edit,
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
               "intent_action_384": prepared.get("intent_action_384"),
@@ -627,6 +648,13 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     configured_source_view = validate_source_view_profile(
         config["agents"][0].get("kwargs", {}).get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
         arm=prepared["arm"])
+    source_edit = validate_source_edit_mode(prepared.get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+        arm=prepared["arm"], source_view_profile=source_view)
+    configured_source_edit = validate_source_edit_mode(
+        config["agents"][0].get("kwargs", {}).get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+        arm=prepared["arm"], source_view_profile=configured_source_view)
+    if source_edit != configured_source_edit:
+        raise ValueError("prepared source edit mode changed")
     if source_view != configured_source_view:
         raise ValueError("prepared source view profile changed")
     _, source_policy_unchanged, _ = _source_view_policy_state(prepared, config,
@@ -648,6 +676,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         config["agents"][0].get("kwargs", {}).get("resource_profile"))
     require_numerical_archive(current_manifest, numerical_profile)
     require_planning_archive(current_manifest, planning_mode)
+    require_source_edit_archive(current_manifest, source_edit)
     from .terminal_numerical_selection_deployment import require_numerical_selection_archive
     require_numerical_selection_archive(current_manifest)
     require_retrieval_revision(current_manifest, prepared["arm"],
@@ -694,6 +723,8 @@ def main():
         help="Experimental source-bound capsule ranking; requires an explicit public task profile and is frozen by preparation")
     parser.add_argument("--source-view-profile", choices=SOURCE_VIEW_PROFILES, default=DEFAULT_SOURCE_VIEW_PROFILE,
         help="Opt-in read-only coding source views; full indexed arm only and frozen by preparation")
+    parser.add_argument("--source-edit-mode", choices=SOURCE_EDIT_MODES, default=DEFAULT_SOURCE_EDIT_MODE,
+        help="Opt-in mapped source edit proposals; requires full arm and source views; frozen by preparation")
     parser.add_argument("--source-view-policy", type=Path,
         help="Explicit shared source view recipe JSON file; frozen by preparation")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
@@ -722,6 +753,8 @@ def main():
         parser.error("capsule selection is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE:
         parser.error("source view profile is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.source_edit_mode != DEFAULT_SOURCE_EDIT_MODE:
+        parser.error("source edit mode is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.source_view_policy is not None:
         parser.error("source view policy is frozen by preparation; collect/execute cannot select it")
     if args.operation == "prepare":
@@ -739,6 +772,7 @@ def main():
                          semantic_metadata_view=args.semantic_metadata_view,
                          capsule_selection=args.capsule_selection,
                          source_view_profile=args.source_view_profile,
+                         source_edit_mode=args.source_edit_mode,
                          source_view_policy=_load_source_view_policy(args.source_view_policy),
                          numerical_formalization_profile=args.numerical_formalization_profile,
                          planning_mode=args.planning_mode)

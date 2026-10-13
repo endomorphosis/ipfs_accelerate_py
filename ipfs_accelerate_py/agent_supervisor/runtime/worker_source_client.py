@@ -30,6 +30,7 @@ DESCRIPTOR_ENV = "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR"
 DIGEST_ENV = "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR_SHA256"
 DESCRIPTOR_SCHEMA = "supervisor-worker-source-descriptor@1"
 DESCRIPTOR_SCHEMA_V2 = "supervisor-worker-source-descriptor@2"
+DESCRIPTOR_SCHEMA_V3 = "supervisor-worker-source-descriptor@3"
 REQUEST_SCHEMA = "supervisor-worker-source-request@1"
 REQUEST_SCHEMA_V2 = "supervisor-worker-source-request@2"
 REQUEST_SCHEMA_V3 = "supervisor-worker-source-request@3"
@@ -53,6 +54,7 @@ _DESCRIPTOR_FIELDS = (transport._DESCRIPTOR_FIELDS - {
     "scope_cid", "semantic_root_cid", "semantic_sha256", "native_prompt_sha256",
     "source_manifest_sha256", "profile"}
 _DESCRIPTOR_FIELDS_V2 = _DESCRIPTOR_FIELDS | {"view_policy_binding_sha256", "source_scope_sha256"}
+_DESCRIPTOR_FIELDS_V3 = _DESCRIPTOR_FIELDS_V2 | {"source_edit_mode"}
 BINDING_FIELDS = ("task_id", "scope_cid", "semantic_root_cid", "semantic_sha256",
                   "native_prompt_sha256", "source_manifest_sha256", "profile")
 _READ_QUERY_FIELDS = {"path", "view", "cursor", "max_bytes", "expected_source_sha256",
@@ -73,17 +75,24 @@ def semantic_binding(encoded, profile):
 
 def validate_descriptor(value):
     shared = type(value) is dict and value.get("schema") == DESCRIPTOR_SCHEMA_V2
+    editing = type(value) is dict and value.get("schema") == DESCRIPTOR_SCHEMA_V3
     digests = ("semantic_sha256", "native_prompt_sha256", "source_manifest_sha256",
                "boundary_manifest_sha256")
     if shared:
         digests += ("view_policy_binding_sha256", "source_scope_sha256")
+    if editing:
+        digests += ("source_scope_sha256",)
     transport._validate_descriptor(value,
-        schema=DESCRIPTOR_SCHEMA_V2 if shared else DESCRIPTOR_SCHEMA,
-        fields=_DESCRIPTOR_FIELDS_V2 if shared else _DESCRIPTOR_FIELDS,
+        schema=DESCRIPTOR_SCHEMA_V3 if editing else DESCRIPTOR_SCHEMA_V2 if shared else DESCRIPTOR_SCHEMA,
+        fields=_DESCRIPTOR_FIELDS_V3 if editing else _DESCRIPTOR_FIELDS_V2 if shared else _DESCRIPTOR_FIELDS,
         digest_fields=digests,
         identity_fields=("task_id", "scope_cid", "semantic_root_cid"))
     _need(type(value["profile"]) is str and value["profile"] in PROFILES,
           "unsupported source view profile")
+    if editing:
+        _need(value["source_edit_mode"] == "mapped-span@1"
+              and (value["view_policy_binding_sha256"] is None or _hex(value["view_policy_binding_sha256"])),
+              "invalid source edit selection")
     return value
 
 
@@ -92,6 +101,9 @@ def load_descriptor(path, digest, *, workspace=None):
 
 
 def validate_request(value):
+    if type(value) is dict and value.get("schema") == "supervisor-worker-source-edit-request@1":
+        from .worker_source_edit_client import validate_request as validate_edit_request
+        return validate_edit_request(value)
     if type(value) is dict and value.get("schema") in {
             "supervisor-worker-candidate-context-request@1", "supervisor-worker-candidate-context-request@2"}:
         from .worker_candidate_context_client import validate_request as validate_candidate_request
@@ -171,6 +183,9 @@ def _validate_cursor(cursor):
 
 
 def validate_response(value, *, request, descriptor=None):
+    if type(request) is dict and request.get("schema") == "supervisor-worker-source-edit-request@1":
+        from .worker_source_edit_client import validate_response as validate_edit_response
+        return validate_edit_response(value, request=request, descriptor=descriptor)
     if type(request) is dict and request.get("schema") in {
             "supervisor-worker-candidate-context-request@1", "supervisor-worker-candidate-context-request@2"}:
         from .worker_candidate_context_client import validate_response as validate_candidate_response
@@ -185,7 +200,7 @@ def validate_response(value, *, request, descriptor=None):
         validate_descriptor(descriptor)
         _need(descriptor["session_id"] == request["session_id"], "source response belongs to another session")
         policy = request["query"].get("view_policy_binding_sha256")
-        if descriptor["schema"] == DESCRIPTOR_SCHEMA_V2:
+        if descriptor.get("view_policy_binding_sha256") is not None:
             _need(request["schema"] == REQUEST_SCHEMA_V3
                   and policy == descriptor["view_policy_binding_sha256"],
                   "source request downgrades or differs from shared descriptor policy")
@@ -350,7 +365,7 @@ def request_page(descriptor_path, descriptor_sha256, *, path, view="compact", cu
     descriptor = load_descriptor(descriptor_path, descriptor_sha256, workspace=workspace)
     query = dict(path=path, view=view, cursor=cursor, max_bytes=max_bytes,
         expected_source_sha256=expected_source_sha256, expected_view_sha256=expected_view_sha256)
-    shared = descriptor["schema"] == DESCRIPTOR_SCHEMA_V2
+    shared = descriptor.get("view_policy_binding_sha256") is not None
     if shared:
         query.update(operation="read", view_policy_binding_sha256=descriptor["view_policy_binding_sha256"],
             source_state="working-candidate" if working else "baseline",
@@ -388,7 +403,7 @@ def _exchange(descriptor_path, descriptor, request):
     return validate_response(response, request=request, descriptor=descriptor)
 
 
-def render_page_for_model(response):
+def render_page_for_model(response, *, include_edit_pins=False):
     """Project an already validated response into bounded tool-visible JSON.
 
     ``request_page`` verifies the complete private transport envelope first.
@@ -413,11 +428,24 @@ def render_page_for_model(response):
         fields += ("source_state", "workspace_generation", "baseline_source_sha256", "baseline_evidence_applicable")
     if page["schema"] in {"supervisor-worker-source-view-page@3", "supervisor-worker-source-view-page@4"}:
         fields += ("view_policy_binding_sha256",)
+    if include_edit_pins and page["schema"] in {"supervisor-worker-source-view-page@2", "supervisor-worker-source-view-page@4"}:
+        fields += ("manifest_sha256",)
     return dict(ok=True, **{key: page[key] for key in fields})
 
 
-def guidance(profile):
+def guidance(profile, *, source_edit_mode="disabled"):
     _need(profile in PROFILES, "unsupported source view profile")
+    _need(source_edit_mode in {"disabled", "mapped-span@1"}, "unsupported source edit mode")
+    if source_edit_mode != "disabled":
+        if __package__:
+            from .worker_source_edit_client import guidance as edit_guidance
+        else:
+            spec = importlib.util.spec_from_file_location("_source_edit_client",
+                Path(__file__).resolve().with_name("worker_source_edit_client.py"))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            edit_guidance = module.guidance
+        return edit_guidance(profile)
     return ("\nRead-only indexed source views are available for the paths in the semantic manifest. "
         "From the allocated workspace run: /opt/ipfs-supervisor/venv/bin/python -I "
         "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py "
@@ -459,12 +487,18 @@ def main(argv=None):
     parser.add_argument("--working", action="store_true",
         help="Read a current working candidate without refreshing semantic evidence")
     parser.add_argument("--expected-workspace-generation")
+    parser.add_argument("--edit-ready", action="store_true",
+        help="Include compact-edit pins for an explicitly enabled working session")
     parser.add_argument("--raw-response", action="store_true",
         help="Emit the complete validated transport envelope for qualification/debugging")
     args = parser.parse_args(argv)
     try:
         _need(args.source_view_descriptor is not None and args.source_view_descriptor_sha256 is not None,
               "source descriptor required")
+        if args.edit_ready:
+            _need(args.working and not args.discover and load_descriptor(args.source_view_descriptor,
+                args.source_view_descriptor_sha256).get("source_edit_mode") == "mapped-span@1",
+                "edit-ready reads require an enabled working source session")
         cursor = strict_json_loads(args.cursor) if args.cursor else None
         if args.discover:
             _need(args.view is None and args.expected_source_sha256 is None
@@ -479,7 +513,8 @@ def main(argv=None):
                 max_bytes=args.max_bytes, expected_source_sha256=args.expected_source_sha256,
                 expected_view_sha256=args.expected_view_sha256, working=args.working,
                 expected_workspace_generation=args.expected_workspace_generation)
-        print(canonical_json(result if args.raw_response else render_page_for_model(result)).decode("utf-8"))
+        print(canonical_json(result if args.raw_response else render_page_for_model(result,
+            include_edit_pins=args.edit_ready)).decode("utf-8"))
         return 0 if result["ok"] else 2
     except (OSError, ValueError, TypeError, RuntimeError):
         print('{"reason_code":"transport_error"}', file=sys.stderr)

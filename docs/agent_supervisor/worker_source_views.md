@@ -1,4 +1,4 @@
-# Read-only source views in the coding worker
+# Source views and mapped edits in the coding worker
 
 The opt-in source reader connects the existing semantic producer and reversible
 source codec to the isolated coding session through `llm_router`. It admits the
@@ -43,7 +43,7 @@ The worker sees a short instruction to invoke the pinned client:
   --path mod.py --view compact
 ```
 
-Request `--view original` before editing, passing `--expected-source-sha256` and
+For ordinary source editing, request `--view original`, passing `--expected-source-sha256` and
 `--expected-view-sha256` from the compact result to bind that expansion. Supply
 the result's `next_cursor` JSON through `--cursor` for another page. A cursor is
 issued, single-use, and bound to its exact source, representation and page
@@ -195,9 +195,82 @@ profile must match the selected enabled profile. Benchmark preparation can now
 freeze the same recipe through `--source-view-policy`, with configuration and
 resolver/codec digests joined to the owner descriptor. Omitting that option
 preserves legacy defaults.
-No worker request selects a new policy, widens scope or makes compact editing a
-model tool. The [transport qualification](evidence/source-view-discovery-transport-20261013/README.md)
+No worker request selects a new policy or widens scope. Compact editing requires
+the separate owner-selected mode below. The [transport qualification](evidence/source-view-discovery-transport-20261013/README.md)
 records the local evidence and its authored identity-boundary limits.
+
+## Edit a compact span through the coding worker
+
+During benchmark preparation, select `--arm full`, an enabled source profile
+such as `--source-view-profile python-comments@1`, and
+`--source-edit-mode mapped-span@1`. Build a fresh runtime archive first.
+Preparation freezes the selection and producer hashes; later stages refuse a
+changed selection. The default remains `disabled`. The mode requires explicit
+verified `program_paths`; support-file admission alone does not permit edits.
+
+Read the current compact source with edit pins:
+
+```sh
+/opt/ipfs-supervisor/venv/bin/python -I \
+  /opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py \
+  --path mod.py --view compact --working --edit-ready
+```
+
+Construct a JSON object containing exactly `path`,
+`expected_workspace_generation`, `expected_source_sha256`,
+`expected_view_sha256`, `expected_manifest_sha256`, `view_start`, `view_end`,
+`expected_view_preimage`, and `replacement`. Copy the generation and hashes
+from the working page. Offsets are absolute UTF-8 byte offsets in the compact
+file, including the page offset. Supply literal preimage/replacement strings.
+Each string is at most 4,096 bytes; the complete wire request must fit 8,192
+bytes. Feed the JSON through stdin, or store it outside the checkout:
+
+```sh
+/opt/ipfs-supervisor/venv/bin/python -I \
+  /opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py \
+  --edit-file - < /tmp/compact-edit.json
+```
+
+The owner maps the span through the existing codec and returns original offsets
+and hashes privately to the worker client. The client verifies the original
+file, writes using its existing workspace permissions, and asks the owner to
+check the complete admitted postimage. Successful confirmation refreshes the
+working generation and clears advisory candidate context. Hidden comments and
+all bytes outside the mapped original interval survive. Original file bodies
+and restoration maps are absent from the model-facing edit result.
+
+There is one successful preparation and one confirmation attempt per source
+session. Supported edits lie inside one retained codec interval; ambiguous
+removed boundaries, profile changes, invalid transformed Python and stale pins
+refuse. The client neither creates nor deletes files. Use ordinary source editing
+for unsupported changes. A successful result is `applied_validation_pending`:
+ordinary task tests, formal checks and publication still have to run. This
+mechanism does not discharge a formal obligation.
+
+If a write may have occurred but confirmation fails, the result is
+`written_confirmation_unknown`. Reread the working file before deciding what
+to do; the client never automatically reapplies the edit. Owner-owned source
+inodes in the native sticky worktree are written in place, matching the existing
+worker writer. No atomic filesystem transaction or exclusion of other writers
+is claimed. Owner mapping and confirmation never write source files themselves.
+
+The route uses source descriptor version 3 and session audit version 4. Its
+optional shared-policy binding remains fixed. The collector records delivered
+prepare/confirmation pages separately from source bytes. Those counts establish
+neither final task acceptance nor provider-token savings. Local integration
+tests exercise the real router, socket, mapper, worker write and refreshed read
+with an authored provider. An offline Docker probe also passes with real owner
+UID 1000 and worker UID 1001, preserved owner inode/mode, actual peer/ancestry
+checks, a separate validation process, and cleanup. Its authored `answer() == 2`
+smoke is not a formal proof or the official task verifier. Full supervisor START
+and live benchmark comparison of this treatment remain unmeasured.
+
+The retained [qualification record](evidence/compact-worker-edits-20261013/qualification.json)
+separates these checks from the small byte comparison. For one authored fixture,
+guidance, compact read JSON, edit JSON and final result total 6,677 bytes with
+`identity@1`, 4,178 with `python-comments@1`, and 4,274 with the shared comment
+policy. This excludes command text, framing, later reads, common supervisor
+input and conversation history. No provider tokens were measured.
 
 ## Currentness and worker lifecycle
 
@@ -257,8 +330,9 @@ The [matched scripted read/edit pair](source_view_read_edit_pair.md) now compare
 default CLI text. It saves 133 bytes out of 79,362 (0.17%) on that trace; it has
 zero model calls and supplies no token or official reward score.
 
-General capsule expansion, rebuilding formal indexes after working edits,
-model-facing submission to the [host compact-edit mapper](reversible_source_views.md#map-an-explicit-compact-edit-to-original-bytes),
-and measured live-model savings remain separate work. Complete-session
+The optional mapped edit route above avoids original expansion for a supported
+edit, while retaining the original executable checkout. General capsule
+expansion, publication of rebuilt formal indexes, repeated mapped edits and
+measured live-model savings remain separate work. Complete-session
 comparisons need fixed harness controls, all-attempt native usage and repeated
 official task verification.
