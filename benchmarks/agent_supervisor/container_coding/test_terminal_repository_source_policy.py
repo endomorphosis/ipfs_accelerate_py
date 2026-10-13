@@ -385,3 +385,54 @@ def test_duplicate_server_configuration_cannot_qualify_distinct_attempts(mode):
     result = policy.repository_source_dispatch_observation(report, mode)
     assert result["effective_repository_tools_observed"] is False
     assert "repository_configuration_identities_missing_or_duplicate" in result["problems"]
+
+
+def token_dispatch():
+    from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_policy import create_binding
+    mode = policy.COMPACT_REPOSITORY_SOURCE_POLICY
+    report = dispatch_report(mode)
+    row = report["provider_invocations"][1]
+    usage = row["repository_source_policy"]["usage"]
+    binding = create_binding(workspace=Path(row["workspace"]), requested_policy=mode, tokenizer={
+        "artifact": "/authored/owner-tokenizer.json", "expected_sha256": "b" * 64,
+        "provider": "codex_cli", "model": "pinned"})
+    binding["usage"] = usage
+    usage["compact_reads"] = 0
+    usage["token_selection"] = dict(schema="repository-source-token-selection-summary@1", status="valid",
+        audit_closed=True, read_count=3, compact_selected=0, original_selected=3,
+        measured_comparisons=2, unmeasured_fallbacks=0, explicit_original=1,
+        selected_reply_tokens=100, provider_usage_measured=False)
+    row["repository_source_policy"] = binding
+    row["usage"]["codex_repository_source_config_sha256"] = binding["config_sha256"]
+    return report
+
+
+def test_measured_original_selection_counts_as_observed_policy_without_claiming_savings():
+    report = token_dispatch()
+    result = policy.repository_source_dispatch_observation(report, policy.COMPACT_REPOSITORY_SOURCE_POLICY)
+    observed = result["invocations"][0]
+    assert observed["compact_reads_observed"] is False
+    assert observed["local_token_selection_observed"] is True
+    assert result["effective_repository_tools_observed"] is True
+    assert result["token_savings_established"] is False
+
+
+@pytest.mark.parametrize("mutation", ["missing", "null", "open", "read_count", "compact_count",
+    "unmeasured", "extra", "bool_count", "explicit_only", "unbound"])
+def test_incomplete_or_contradictory_selection_cannot_qualify(mutation):
+    report = token_dispatch()
+    binding = report["provider_invocations"][1]["repository_source_policy"]
+    selection = binding["usage"]["token_selection"]
+    if mutation == "missing": binding["usage"].pop("token_selection")
+    elif mutation == "null": binding["usage"]["token_selection"] = None
+    elif mutation == "open": selection["audit_closed"] = False
+    elif mutation == "read_count": selection.update(read_count=4, original_selected=4, explicit_original=2)
+    elif mutation == "compact_count": selection.update(compact_selected=1, original_selected=2)
+    elif mutation == "unmeasured": selection.update(measured_comparisons=1, unmeasured_fallbacks=1)
+    elif mutation == "extra": selection["source"] = "forbidden extra content"
+    elif mutation == "bool_count": selection["read_count"] = True
+    elif mutation == "explicit_only": selection.update(measured_comparisons=0, explicit_original=3, selected_reply_tokens=0)
+    else:
+        report["provider_invocations"][1]["usage"]["codex_repository_source_config_sha256"] = "0" * 64
+    result = policy.repository_source_dispatch_observation(report, policy.COMPACT_REPOSITORY_SOURCE_POLICY)
+    assert result["effective_repository_tools_observed"] is False

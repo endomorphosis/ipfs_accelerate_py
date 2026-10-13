@@ -28,6 +28,30 @@ from .terminal_repository_view_experiment import _read_bytes, _ast
 
 SCHEMA = "terminal-repository-tools-experiment@1"
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+WIRE_COMPONENTS = ("setup", "status", "list", "symbols", "read", "edit", "refresh", "cache_inventory")
+_TOOL_COMPONENTS = {
+    "repository_status": "status", "repository_list": "list", "repository_symbols": "symbols",
+    "repository_read": "read", "repository_replace_symbol": "edit", "repository_refresh": "refresh",
+    "repository_cache_inventory": "cache_inventory",
+}
+
+
+def _empty_counts(counter):
+    return dict(messages=0, requests=0, responses=0, request_bytes=0, response_bytes=0,
+                local_tokenizer_proxy_tokens=0 if counter else None,
+                request_local_tokenizer_proxy_tokens=0 if counter else None,
+                response_local_tokenizer_proxy_tokens=0 if counter else None)
+
+
+def _component(method, params):
+    if method == "tools/call":
+        name = params.get("name") if type(params) is dict else None
+        if name not in _TOOL_COMPONENTS:
+            raise ValueError("unknown repository tool accounting component")
+        return _TOOL_COMPONENTS[name]
+    if method not in {"initialize", "notifications/initialized", "tools/list", "ping"}:
+        raise ValueError("unknown repository protocol accounting component")
+    return "setup"
 
 
 def _sha(raw):
@@ -45,9 +69,12 @@ class _Client:
         self.counter = counter
         self.sequence = 0
         self.deadline = time.monotonic() + 120
-        self.counts = {name: dict(messages=0, request_bytes=0, response_bytes=0,
-                                 local_tokenizer_proxy_tokens=0 if counter else None)
-                       for name in ("setup", "workflow")}
+        self.counts = {name: _empty_counts(counter) for name in ("setup", "workflow")}
+        self.components = {name: _empty_counts(counter) for name in WIRE_COMPONENTS}
+        self.accounting_errors = []
+        self.tokenizer_failed = False
+        self.closed = False
+        self.exit_code = None
         script = Path(repository_source_mcp.__file__).resolve()
         raw = config.read_bytes()
         self.process = subprocess.Popen([sys.executable, str(script), "--config", str(config),
@@ -55,14 +82,41 @@ class _Client:
             stderr=subprocess.DEVNULL, cwd=config.parent,
             env={**os.environ, "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"})
 
-    def _count(self, phase, raw, *, response):
-        row = self.counts[phase]
-        row["messages"] += 1
-        row["response_bytes" if response else "request_bytes"] += len(raw)
-        if self.counter:
-            row["local_tokenizer_proxy_tokens"] += self.counter(raw.decode("utf-8"))
+    def _incomplete(self, reason):
+        if reason not in self.accounting_errors:
+            self.accounting_errors.append(reason)
+
+    def _count(self, phase, component, raw, *, response):
+        # One exact wire message belongs to one lifecycle phase and one
+        # operation component. These are two partitions, never added together.
+        for row in (self.counts[phase], self.components[component]):
+            row["messages"] += 1
+            row["responses" if response else "requests"] += 1
+            row["response_bytes" if response else "request_bytes"] += len(raw)
+        # Bytes have already crossed the client boundary. Tokenizer failures
+        # must not erase them or leave apparently complete partial token sums.
+        if self.counter is not None and not self.tokenizer_failed:
+            try:
+                tokens = self.counter(raw.decode("utf-8"))
+                if type(tokens) is not int or tokens <= 0:
+                    raise ValueError("invalid local token count")
+            except Exception:
+                self.tokenizer_failed = True
+                self._incomplete("local_tokenizer_failed")
+                for row in (*self.counts.values(), *self.components.values()):
+                    for key in row:
+                        if key.endswith("tokens"):
+                            row[key] = None
+                raise ValueError("repository wire tokenizer failed") from None
+            for row in (self.counts[phase], self.components[component]):
+                row["local_tokenizer_proxy_tokens"] += tokens
+                row["response_local_tokenizer_proxy_tokens" if response
+                    else "request_local_tokenizer_proxy_tokens"] += tokens
 
     def request(self, method, params=None, *, phase="workflow", notification=False):
+        component = _component(method, params)
+        if phase not in self.counts:
+            raise ValueError("unknown repository accounting phase")
         self.sequence += 1
         message = dict(jsonrpc="2.0", method=method)
         if params is not None:
@@ -70,31 +124,57 @@ class _Client:
         if not notification:
             message["id"] = self.sequence
         raw = _wire(message)
-        self._count(phase, raw, response=False)
-        self.process.stdin.write(raw)
-        self.process.stdin.flush()
-        if notification:
-            return None
-        remaining = min(45, self.deadline - time.monotonic())
-        if remaining <= 0 or not select.select([self.process.stdout], [], [], remaining)[0]:
-            raise ValueError("repository tool subprocess response deadline")
-        raw = self.process.stdout.readline(MAX_RESPONSE_BYTES + 1)
-        if not raw.endswith(b"\n") or len(raw) > MAX_RESPONSE_BYTES:
-            raise ValueError("repository tool subprocess response framing")
-        self._count(phase, raw, response=True)
-        response = json.loads(raw)
-        if response.get("id") != self.sequence or "error" in response:
-            raise ValueError("repository tool subprocess protocol failure")
-        return response["result"]
+        try:
+            try:
+                written = self.process.stdin.write(raw)
+                self.process.stdin.flush()
+            except Exception:
+                # A failed buffered write/flush does not reveal how many bytes
+                # reached the peer. Do not invent a byte count for that prefix.
+                self._incomplete("request_write_unconfirmed")
+                raise
+            if type(written) is not int or not 0 <= written <= len(raw):
+                self._incomplete("request_write_unconfirmed")
+                raise ValueError("repository tool subprocess request write")
+            if written:
+                self._count(phase, component, raw[:written], response=False)
+            if written != len(raw):
+                self._incomplete("request_write_partial")
+                raise ValueError("repository tool subprocess partial request write")
+            if notification:
+                return None
+            remaining = min(45, self.deadline - time.monotonic())
+            if remaining <= 0 or not select.select([self.process.stdout], [], [], remaining)[0]:
+                self._incomplete("response_deadline")
+                raise ValueError("repository tool subprocess response deadline")
+            raw = self.process.stdout.readline(MAX_RESPONSE_BYTES + 1)
+            if raw:
+                self._count(phase, component, raw, response=True)
+            if not raw.endswith(b"\n") or len(raw) > MAX_RESPONSE_BYTES:
+                self._incomplete("response_framing")
+                raise ValueError("repository tool subprocess response framing")
+            response = json.loads(raw)
+            if response.get("id") != self.sequence or "error" in response:
+                raise ValueError("repository tool subprocess protocol failure")
+            return response["result"]
+        except Exception:
+            self._incomplete("exchange_incomplete")
+            raise
 
     def tool(self, name, arguments=None, *, phase="workflow", expect_error=False):
         result = self.request("tools/call", {"name": name, "arguments": arguments or {}}, phase=phase)
         if result.get("isError", False) is not expect_error:
+            self._incomplete("unexpected_tool_disposition")
             raise ValueError("repository tool unexpected success/error disposition")
         blocks = result.get("content")
         if type(blocks) is not list or len(blocks) != 1 or blocks[0].get("type") != "text":
+            self._incomplete("invalid_tool_response")
             raise ValueError("repository tool response is not one bounded JSON text block")
-        return json.loads(blocks[0]["text"])
+        try:
+            return json.loads(blocks[0]["text"])
+        except Exception:
+            self._incomplete("invalid_tool_response")
+            raise
 
     def close(self):
         if self.process.stdin and not self.process.stdin.closed:
@@ -110,15 +190,33 @@ class _Client:
                 code = self.process.wait(timeout=5)
         if self.process.stdout:
             self.process.stdout.close()
+        self.closed, self.exit_code = True, code
+        if code != 0:
+            self._incomplete("subprocess_exit_failed")
         return code
 
     def metrics(self):
-        result = {}
-        for phase, counts in self.counts.items():
-            result[phase] = {**counts, "rendered_json_bytes": counts["request_bytes"] + counts["response_bytes"]}
-        result["total"] = {key: (None if self.counter is None and key == "local_tokenizer_proxy_tokens"
+        def rendered(counts):
+            return {**counts, "rendered_json_bytes": counts["request_bytes"] + counts["response_bytes"]}
+        result = {phase: rendered(counts) for phase, counts in self.counts.items()}
+        result["total"] = {key: (None if any(result[phase][key] is None for phase in self.counts)
                                  else sum(result[phase][key] for phase in self.counts))
                            for key in result["setup"]}
+        result["components"] = {name: rendered(counts) for name, counts in self.components.items()}
+        result["component_totals_match"] = all(
+            result["total"][key] == (None if any(row[key] is None for row in result["components"].values())
+                else sum(row[key] for row in result["components"].values()))
+            for key in result["total"])
+        result["wire_accounting_complete"] = self.closed and self.exit_code == 0 and not self.accounting_errors
+        result["token_accounting_complete"] = bool(result["wire_accounting_complete"]
+            and self.counter is not None and not self.tokenizer_failed)
+        result["accounting_errors"] = list(self.accounting_errors)
+        result["accounting_scope"] = ("Each transmitted JSON-RPC line counted once; phase and component "
+            "totals are alternative partitions. Token counts are independent per-message local proxies, "
+            "excluding provider framing, hidden tool schemas, history replay and model output.")
+        result["traffic_scope"] = ("Confirmed client request writes and response prefixes read by this client; "
+            "an incomplete exchange can leave unobserved subprocess traffic. Failed writes have unknown "
+            "delivery. Message counts include observed partial frames, not only valid JSON-RPC lines.")
         return result
 
 
@@ -165,7 +263,7 @@ def _arm(*, sources, representation, counter):
             advertised = client.request("tools/list", phase="setup")
             checks["repository_tools_advertised"] = {row["name"] for row in advertised["tools"]} == {
                 "repository_status", "repository_list", "repository_symbols", "repository_read",
-                "repository_replace_symbol", "repository_refresh"}
+                "repository_replace_symbol", "repository_refresh", "repository_cache_inventory"}
             status = client.tool("repository_status", phase="setup")
             generation = status["generation"]
             checks["initial_native_index_current"] = status["source_current"] and status["native_index"]["source_scope_verified"]
@@ -217,6 +315,7 @@ def _arm(*, sources, representation, counter):
         except Exception as error:
             failure = {"error_type": type(error).__name__}
             checks["workflow_completed"] = False
+            client._incomplete("workflow_incomplete")
         finally:
             exit_code = client.close()
         audit = summarize_repository_audit(private / "operations.jsonl")
@@ -284,7 +383,7 @@ def run_experiment(*, dataset: Path, output: Path, tasks=DEFAULT_TASKS, tokenize
         tasks=results, original_dataset_unchanged=unchanged, local_tokenizer=tokenizer,
         provider_calls=0, containers_started=0, benchmark_source_executed=False,
         provider_usage_tokens=None, official_reward=None, content_bearing_messages_retained=False,
-        measurement_scope="actual JSON-RPC request/response bytes including newlines; setup and workflow separate; local token proxy over wire text",
+        measurement_scope="actual JSON-RPC request/response bytes including newlines; phase and operation partitions with transmission counts; per-message local token proxies",
         limitations=["No model solving, provider framing/usage, reasoning, retries, task success or official verifier is measured.",
             "Fixed public source selection and authored syntax edits; neither arm solves the task.",
             "Real stdio tool use is scripted; live model tool adoption and total-session token savings remain unproven.",

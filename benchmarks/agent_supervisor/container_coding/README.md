@@ -145,7 +145,13 @@ checks its native index, reads the reviewed files, performs an authored syntax
 edit, and verifies stale-generation and external-edit refusal followed by
 refresh. The final canonical sources must match across arms. The report counts
 actual JSON-RPC request/response bytes and optional local tokenizer proxies,
-including setup separately and in the total. Only content-free qualification
+including setup separately and in the total. It also breaks transmissions down
+by setup, status, list, symbols, read, edit, refresh and cache inventory, with
+request and response bytes/counts and local token proxies reported separately.
+Phase totals and operation totals are two partitions of the same traffic;
+they must reconcile and must not be added together. Failed exchanges retain
+observed request/response prefixes; completeness flags distinguish them from a
+complete exchange. Failed token counting makes token totals unknown. Only content-free qualification
 data is retained; source-bearing messages stay in memory. No public benchmark
 source is executed, and no provider or container is started.
 
@@ -181,8 +187,12 @@ that a live worker chooses the tools.
 Collected opt-in trials include `repository_source_dispatch`. Its
 `effective_repository_tools_observed` field requires every observed coding
 invocation to join the retained exact-input audit and native tool configuration
-to valid server usage, actual successful reads and complete cleanup. The compact
-arm additionally requires actual compact reads; uncertain edits do not qualify.
+to valid server usage, actual successful reads and complete cleanup; uncertain
+edits do not qualify. Without a tokenizer binding, the compact arm requires
+actual compact reads. With a binding, it instead requires a closed selection
+summary matching successful-read counters, at least one complete measured
+comparison and no unmeasured fallbacks. All-original measured choices can
+qualify observed policy use without establishing token savings.
 Planning remains outside the repository-tool policy. Missing initialization,
 zero-call workers, unavailable observations and failed provider attempts remain
 in the reported population. A configured policy alone cannot qualify tool use,
@@ -190,17 +200,47 @@ task completion or token savings.
 
 Actual `__pycache__` and `.pytest_cache` directories no longer prevent native
 index refresh. Their complete originals remain in the bounded package, with
-separate digest-bound `native_index.retained_opaque_cache` inventory in status.
+separate digest-bound `native_index.retained_opaque_cache` summary in status.
 Their contents, including any Python source placed there, receive no native
 indexing or proof coverage. Cache changes still invalidate old source views;
 refresh after running tests. Other native exclusions remain refused, even
 inside cache trees, and cache bytes count toward the same package limits.
 
-The complete retained cache inventory currently appears in every status reply.
-For cache-heavy tasks that metadata can add significant context. A future
-optimization should use a bounded count/digest summary and explicit paginated
-inventory retrieval while preserving full retention and freshness checks.
-Include this status/retrieval cost before claiming broad token savings.
+Status now exposes only retained-cache counts and an inventory digest. Exact
+path metadata is available through `repository_cache_inventory`, using the
+current generation, expected inventory digest and pages of at most 100 entries.
+Root markers let a client reconstruct the complete original inventory. Cache
+changes fence pages just as they fence reads; all package bytes and native
+coverage remain retained. Internal full receipts remain available without
+sending their entry population to the worker by default.
+
+An authored cache-budget experiment measures repeated summary status replies
+and explicit inventory pagination through a real local stdio server:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_repository_cache_budget_experiment \
+  --output /path/to/new-cache-budget-evidence --cache-files 0 --cache-files 128
+```
+
+It verifies exact inventory reconstruction, source/cache freshness and rejection
+of old generation and digest handles after refresh. Every transmitted page and
+repeated status is counted in the operation breakdown. Reconstructed inventory
+bytes are a separate in-memory diagnostic, not additional transmitted bytes.
+Optional `--tokenizer-cache` uses an existing local proxy counter; no provider,
+container or target code runs.
+
+For token-aware repository reads, the coding router's existing
+`--prompt-tokenizer-artifact` and `--prompt-tokenizer-sha256` options bind the
+same local descriptor into the server. Compact requests use compact source only
+when its complete reply frame has strictly fewer local tokens. Ties, failed
+read-time counts and replies above the counter bound return original source;
+explicit original requests remain original. No descriptor means the existing
+byte-based compact policy. This option loads no remote assets and does not
+establish equivalence with a provider tokenizer. The retained content-free
+selection summary distinguishes measured choices from fallbacks; detailed
+per-read selection records are removed with private invocation state. The
+scripted public and cache-budget experiments measure wire traffic independently
+and do not enable this optional selection merely by using a proxy counter.
 
 Local tests cover real pytest cache creation followed by stdio refresh, reads
 and editing. Live model adoption and official Terminal Bench results for this

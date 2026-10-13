@@ -83,6 +83,26 @@ def test_runner_preserves_legacy_route_without_new_guidance(route):
     assert "repository_read" not in state["seen"][0][0]
 
 
+def test_owner_tokenizer_is_hash_bound_into_actual_repository_child(route, tmp_path):
+    from test.api.test_local_prompt_tokenizer import make_binding
+    from test.api.test_repository_source_mcp import real_client
+    workspace, state = route
+    artifact, digest, _ = make_binding(tmp_path, provider="codex_cli", model="pinned")
+    def child(binding):
+        assert binding["config"]["schema"] == "repository-source-mcp-config@2"
+        assert binding["config"]["tokenizer"] == {"artifact": str(artifact), "expected_sha256": digest,
+                                                 "provider": "codex_cli", "model": "pinned"}
+        with real_client(Path(binding["config_path"]), binding["config_sha256"]) as client:
+            value, failed = client.call("repository_read", generation=1, path="module.py")
+            assert not failed and value["representation"] == "compact"
+    state["callback"] = child
+    _, receipt = _run(repository_source_policy=policy.POLICIES[2],
+        prompt_tokenizer_artifact=artifact, prompt_tokenizer_sha256=digest)
+    usage = receipt["repository_source_policy"]["usage"]
+    assert usage["successful_reads"] == usage["token_selection"]["read_count"] == 1
+    assert usage["token_selection"]["measured_comparisons"] == 1 and usage["store_cleanup_complete"]
+
+
 def test_native_configuration_must_be_observed(route, capsys):
     _workspace, state = route
     state["observe"] = False

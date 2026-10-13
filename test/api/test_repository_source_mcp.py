@@ -165,12 +165,17 @@ def test_actual_pytest_caches_remain_retained_and_refreshable(tmp_path):
         status, failed = client.call("repository_status")
         assert not failed and status["source_current"] is True
         retained = status["native_index"]["retained_opaque_cache"]
-        assert retained["roots"] == [".pytest_cache", "__pycache__"]
+        assert retained["roots_count"] == 2 and "roots" not in retained and "entries" not in retained
+        inventory, failed = client.call("repository_cache_inventory", generation=2,
+            expected_inventory_sha256=retained["inventory_sha256"])
+        assert not failed and inventory["next_offset"] is None
+        assert sorted(row["path"] for row in inventory["entries"] if row["cache_root"]) == [".pytest_cache", "__pycache__"]
+        entries = {row["path"]: row for row in inventory["entries"]}
         assert retained["native_indexed"] is retained["proof_authority"] is False
         assert retained["file_count"] == len(cached)
         assert status["native_index"]["coverage"]["inventory_entries"] == 2
         for name, original in cached.items():
-            assert retained["entries"][name]["original_sha256"] == hashlib.sha256(original).hexdigest()
+            assert entries[name]["original_sha256"] == hashlib.sha256(original).hexdigest()
             read, failed = client.call("repository_read", generation=2, path=name, representation="original")
             assert not failed
             actual = read["content"].encode() if read["encoding"] == "utf-8" else base64.b64decode(read["content"])

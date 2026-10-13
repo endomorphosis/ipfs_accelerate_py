@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,20 @@ def run_probe() -> dict:
         (workspace / "__pycache__/probe.pyc").write_bytes(b"\x00\xffauthored cache")
         (workspace / ".pytest_cache/v/cache").mkdir(parents=True)
         (workspace / ".pytest_cache/v/cache/nodeids").write_text("[]\n")
+        cache_entries = {}
+        for path in sorted(workspace.rglob("*")):
+            name = path.relative_to(workspace).as_posix()
+            if name == "probe.py":
+                continue
+            entry = dict(kind="directory" if path.is_dir() else "file", mode=stat.S_IMODE(path.stat().st_mode))
+            if path.is_file():
+                raw = path.read_bytes()
+                entry.update(original_sha256=hashlib.sha256(raw).hexdigest(), original_bytes=len(raw))
+            cache_entries[name] = entry
+        inventory = dict(schema="repository-source-retained-opaque-cache@1",
+            roots=[".pytest_cache", "__pycache__"], entries=cache_entries)
+        cache_digest = hashlib.sha256(json.dumps(inventory, sort_keys=True, separators=(",", ":"),
+                                                 ensure_ascii=False).encode()).hexdigest()
         binding = policy.create_binding(workspace=workspace, requested_policy=policy.POLICIES[2])
         identity = policy.create_runtime_store(binding)
         checks = {}
@@ -57,6 +72,7 @@ def run_probe() -> dict:
                 tool(6, "repository_read", generation=1, path="probe.py"),
                 tool(7, "repository_read", generation=2, path="probe.py", representation="original"),
                 tool(8, "repository_symbols", generation=2, query="value"),
+                tool(9, "repository_cache_inventory", generation=2, expected_inventory_sha256=cache_digest),
             ]
             encoded = "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in requests)
             process = subprocess.run([sys.executable, binding["helper_script"],
@@ -65,7 +81,7 @@ def run_probe() -> dict:
             if process.returncode != 0 or len(process.stdout.encode()) > 128 * 1024:
                 raise ValueError("repository runtime probe process failed")
             responses = [json.loads(line) for line in process.stdout.splitlines()]
-            if len(responses) != 8 or [row.get("id") for row in responses] != list(range(1, 9)):
+            if len(responses) != 9 or [row.get("id") for row in responses] != list(range(1, 10)):
                 raise ValueError("repository runtime probe response population differs")
             if any("error" in row for row in responses):
                 raise ValueError("repository runtime probe initialization or protocol failed")
@@ -80,6 +96,9 @@ def run_probe() -> dict:
                 values[row["id"]] = json.loads(content[0]["text"])
             status, read, edit, stale, refreshed, symbols = (values[i] for i in range(3, 9))
             cache = status["native_index"].get("retained_opaque_cache", {})
+            page = values[9]
+            observed_entries = {row["path"]: {key: value for key, value in row.items()
+                                if key not in {"path", "cache_root"}} for row in page["entries"]}
             expected_cache_hashes = {
                 "__pycache__/probe.pyc": hashlib.sha256(b"\x00\xffauthored cache").hexdigest(),
                 ".pytest_cache/v/cache/nodeids": hashlib.sha256(b"[]\n").hexdigest(),
@@ -89,12 +108,16 @@ def run_probe() -> dict:
                 complete_tool_inventory={row["name"] for row in responses[1]["result"]["tools"]} == set(policy.TOOLS),
                 source_current=status["source_current"] is True,
                 native_scope_joined=status["native_index"]["source_scope_verified"] is True,
-                cache_coverage_explicit=(cache.get("roots") == [".pytest_cache", "__pycache__"]
+                cache_coverage_explicit=(cache.get("roots_count") == 2 and "entries" not in cache and "roots" not in cache
+                    and cache.get("inventory_sha256") == cache_digest
+                    and page["inventory_sha256"] == cache_digest and page["total"] == 6 and page["next_offset"] is None
+                    and observed_entries == cache_entries
+                    and sorted(row["path"] for row in page["entries"] if row["cache_root"]) == inventory["roots"]
                     and cache.get("entry_count") == 6 and cache.get("file_count") == 2
                     and cache.get("directory_count") == 4 and cache.get("native_indexed") is False
                     and cache.get("proof_authority") is False
                     and status["native_index"]["coverage"]["inventory_entries"] == 1
-                    and all(cache.get("entries", {}).get(path, {}).get("original_sha256") == digest
+                    and all(observed_entries.get(path, {}).get("original_sha256") == digest
                             for path, digest in expected_cache_hashes.items())),
                 compact_read=read["representation"] == "compact" and "Authored source comment" not in read["content"],
                 original_hash_bound=read["source_sha256"] == hashlib.sha256(original).hexdigest(),
@@ -103,7 +126,7 @@ def run_probe() -> dict:
                 refreshed_original_exact=refreshed["content"].encode() == (workspace / "probe.py").read_bytes()
                     and "return 2" in refreshed["content"] and "Authored source comment" in refreshed["content"],
                 native_symbol_observed=any(row["name"] == "probe.value" for row in symbols["symbols"]),
-                no_proof_authority=all(values[i]["proof_authority"] is False for i in (3, 4, 5, 7, 8)),
+                no_proof_authority=all(values[i]["proof_authority"] is False for i in (3, 4, 5, 7, 8, 9)),
             )
         finally:
             usage = policy.finish_runtime_store(binding, expected_identity=identity)
@@ -130,7 +153,7 @@ def validate_probe(value):
             or any(value.get(key) is not False for key in ("target_code_executed", "source_messages_retained", "live_model_adoption_qualified"))):
         raise ValueError("repository runtime probe did not qualify")
     usage = value["usage"]
-    expected = dict(initializations=1, tool_calls=6, successful_reads=2, compact_reads=1,
+    expected = dict(initializations=1, tool_calls=7, successful_reads=2, compact_reads=1,
                     canonical_edits=1, refreshes=1, errors=1, uncertain_edits=0)
     usage_fields = {"status", *expected, "returned_bytes", "store_cleanup_complete",
                     "artifacts_retained_after_invocation"}

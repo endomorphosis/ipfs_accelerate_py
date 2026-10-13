@@ -35,6 +35,7 @@ Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resou
 | `repository_source_probe` | `runtime/repository_source_probe.py` |
 | `repository_source_revision` | `runtime/repository_source_revision.py` |
 | `repository_source_session` | `runtime/repository_source_session.py` |
+| `repository_source_token_budget` | `runtime/repository_source_token_budget.py` |
 | `repository_source_view` | `runtime/repository_source_view.py` |
 | `resource_scheduler` | `runtime/resource_scheduler.py` |
 | `router_public_instruction` | `runtime/router_public_instruction.py` |
@@ -218,7 +219,8 @@ receipt counters. Configuration alone is not adoption or evidence of savings.
 
 | Tool | Behavior |
 | --- | --- |
-| `repository_status` | Current generation, source freshness, native head, coverage and resource bounds |
+| `repository_status` | Current generation, source freshness, native head, coverage, resource bounds and retained-cache counts/digest |
+| `repository_cache_inventory` | Explicit page of exact retained-cache metadata, bound to generation and inventory digest |
 | `repository_list` | Bounded file inventory with original and compact sizes |
 | `repository_symbols` | Source-current native datasets symbol metadata |
 | `repository_read` | Original or compact content, generation and canonical source SHA256 |
@@ -242,8 +244,8 @@ to the native index; binary inventory still requires exact original bytes and CI
 Actual directories named `__pycache__` or `.pytest_cache` and their descendants
 are retained separately as opaque cache coverage. The package still preserves
 their bytes, modes, empty directories and safe links. Status exposes them under
-`native_index.retained_opaque_cache`, with exact inventory paths, original file
-hashes and sizes, counts, and an inventory SHA256. The native `coverage` field
+`native_index.retained_opaque_cache`, with counts and an inventory SHA256;
+paths and per-entry metadata are retrieved explicitly. The native `coverage` field
 remains unchanged and covers only the datasets snapshot. Classification uses
 the directory name alone: even a Python source file placed inside such a tree
 is retained without native indexing or proof authority.
@@ -280,12 +282,38 @@ native semantic/proof cache identities. Local stdio tests and public-fixture
 benchmarks verify this transport; they do not establish live worker adoption,
 official Terminal Bench reward or end-to-end provider-token savings.
 
-Status currently returns the full retained cache inventory. A cache-heavy
-checkout can therefore add substantial metadata to the worker's context even
-when source reads are smaller. A pending optimization is to return bounded
-counts and an inventory digest by default, with explicit paginated retrieval of
-the detailed inventory. That change must preserve full package retention and
-freshness checks; measure status and retrieval traffic in future comparisons.
+The model-facing status reply summarizes retained caches without listing roots
+or entries. Its metadata size no longer grows with the number of cache paths,
+apart from count digits. Internal `RepositorySourceSession.status()` preserves
+the full receipt; `status_summary()` supplies the MCP response. To inspect
+details, call `repository_cache_inventory` with the current `generation` and
+`expected_inventory_sha256`, plus optional `offset` and `limit` (1–100). Pages
+contain sorted original metadata and a `cache_root` marker; collecting all pages
+reconstructs the exact inventory and its digest. Stale generation/digest handles
+and source changes before or during retrieval are refused. Full retention,
+freshness and native coverage remain unchanged; explicit page traffic belongs
+in token comparisons.
+
+When the coding router also receives its existing `--prompt-tokenizer-artifact`
+and `--prompt-tokenizer-sha256` options, it passes that exact local descriptor to
+the repository server. For compact read requests, the server counts both
+complete JSON-RPC reply frames, including wrappers and the final newline, and
+chooses compact only for a strict token decrease. Ties return original source;
+explicit original reads remain original. During reads, failed counts or replies
+over the counter's 256,000-byte limit return original source without claiming
+measured savings. An invalid configured descriptor is rejected during loading.
+Without an explicit tokenizer binding, the existing byte-based compact policy
+is retained.
+
+The descriptor binds the provider/model declaration, local tokenizer JSON,
+asset hash and runtime version. Loading and counting verify local assets; there
+is no discovery, download or network fallback. Source freshness is checked
+again after counting. The retained content-free selection summary separates
+measured choices from original fallbacks; detailed per-read selection records
+stay in private invocation state and are removed during cleanup. Selection
+metadata is kept outside the counted model reply. These counts describe local
+wire text, not the provider's framing, remote tokenizer or billed usage; they
+cannot establish total-session savings.
 
 Opt-in container deployment requires an archive matching the current runtime
 and datasets owner sources. Preparation, execution and deployment verify the
@@ -307,9 +335,14 @@ calls. It qualifies the installed tool runtime, not live model adoption.
 
 The benchmark separately joins each observed coding invocation's retained input
 audit, native configuration receipt and server usage. Qualification requires
-actual successful repository reads, including compact reads for the compact
-policy, complete private-state cleanup and no uncertain edits. Missing startup,
-zero reads, malformed observations and failed provider attempts stay visible;
+actual successful repository reads, complete private-state cleanup and no
+uncertain edits. Without a tokenizer binding, the compact policy requires
+actual compact reads. With a binding, it requires a closed selection summary
+matching the successful-read counters, at least one complete measured
+comparison and no unmeasured fallbacks. Measured choices may all return original
+source and still establish policy use; they do not establish token savings.
+Missing startup, zero reads, malformed observations and failed provider
+attempts stay visible;
 configuration cannot substitute for those observations. Matched live trials
 with total provider usage and official task results remain required to establish
 practical savings.

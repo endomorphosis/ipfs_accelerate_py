@@ -24,6 +24,7 @@ PROTOCOL_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18")
 TOOL_NAMES = (
     "repository_status", "repository_list", "repository_symbols",
     "repository_read", "repository_replace_symbol", "repository_refresh",
+    "repository_cache_inventory",
 )
 
 
@@ -84,12 +85,16 @@ def load_config(path: Path, expected_sha256: str) -> dict:
             or hashlib.sha256(raw).hexdigest() != expected_sha256):
         raise ValueError("config_hash_mismatch")
     config = _loads(raw)
-    if (type(config) is not dict or set(config) != {
-            "schema", "workspace", "state_dir", "audit_store", "representation"}
-            or config["schema"] != "repository-source-mcp-config@1"
+    fields = {"schema", "workspace", "state_dir", "audit_store", "representation"}
+    if (type(config) is not dict or not (
+            set(config) == fields and config.get("schema") == "repository-source-mcp-config@1"
+            or set(config) == fields | {"tokenizer"} and config.get("schema") == "repository-source-mcp-config@2")
             or type(config["representation"]) is not str
             or config["representation"] not in {"original", "compact"}):
         raise ValueError("invalid_config")
+    if "tokenizer" in config:
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_token_budget import validate_tokenizer_binding
+        validate_tokenizer_binding(config["tokenizer"])
     paths = {}
     for key in ("workspace", "state_dir", "audit_store"):
         value = config[key]
@@ -122,12 +127,15 @@ GENERATION = {"type": "integer", "minimum": 1}
 PATH = {"type": "string", "minLength": 1, "maxLength": 1024}
 LIMIT = {"type": "integer", "minimum": 1, "maximum": 100}
 TOOLS = [
-    _tool("repository_status", "Get the current generation and index health. No source content.", {}, []),
+    _tool("repository_status", "Get the current generation, index health and cache counts/digest. No source content or full cache inventory.", {}, []),
+    _tool("repository_cache_inventory", "Read a page of retained opaque cache metadata using the current status digest; caches are not natively indexed.",
+          {"generation": GENERATION, "expected_inventory_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+           "offset": {"type": "integer", "minimum": 0}, "limit": LIMIT}, ["generation", "expected_inventory_sha256"]),
     _tool("repository_list", "List a bounded page of files in a source-current generation.",
           {"generation": GENERATION, "offset": {"type": "integer", "minimum": 0}, "limit": LIMIT}, ["generation"]),
     _tool("repository_symbols", "Find native datasets symbols in the current generation; no proof authority.",
           {"generation": GENERATION, "path": PATH, "query": {"type": "string", "maxLength": 256}, "limit": LIMIT}, ["generation"]),
-    _tool("repository_read", "Read a source-current original or compact file with its canonical SHA256. Compact Python omits comments and formatting.",
+    _tool("repository_read", "Read a source-current original or compact file with its canonical SHA256. Compact Python omits comments and formatting. When a local tokenizer is bound, compact requests return original source unless the complete compact reply uses fewer tokens.",
           {"generation": GENERATION, "path": PATH, "representation": {"type": "string", "enum": ["original", "compact"]}}, ["generation", "path"]),
     _tool("repository_replace_symbol", "Replace one Python definition using the read's source_sha256. symbol is its local name, such as Class.method, not a native CID or module-prefixed index name. Refreshes the canonical checkout and index; check refresh_required and run task tests.",
           {"generation": GENERATION, "path": PATH, "symbol": {"type": "string", "minLength": 1, "maxLength": 1024},
@@ -282,14 +290,27 @@ class RepositoryMCPServer:
         self.session = None
         self.ready = False
         self.initialization_attempted = False
+        self.tokenizer = None
+        self.selection_audit = None
         self.audit = _Audit(config["audit_store"])
+        if "tokenizer" in config:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_token_budget import SelectionAudit
+                self.selection_audit = SelectionAudit(Path(config["audit_store"]).with_name("token-selections.jsonl"))
+            except BaseException:
+                self.audit.close()
+                raise
 
     def close(self):
         try:
             if self.session is not None:
                 self.session.close()
         finally:
-            self.audit.close()
+            try:
+                if self.selection_audit is not None:
+                    self.selection_audit.close()
+            finally:
+                self.audit.close()
 
     def handle(self, request):
         """Serve the tools-only MCP subset. Never echo exception text or input."""
@@ -325,6 +346,9 @@ class RepositoryMCPServer:
                 return error(-32602, "invalid_initialization")
             self.initialization_attempted = True
             try:
+                if "tokenizer" in self.config:
+                    from ipfs_accelerate_py.agent_supervisor.runtime.local_prompt_tokenizer import load_owner_prompt_tokenizer
+                    self.tokenizer = load_owner_prompt_tokenizer(**self.config["tokenizer"])
                 factory = self.session_factory
                 if factory is None:
                     from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_session import RepositorySourceSession
@@ -350,17 +374,29 @@ class RepositoryMCPServer:
             if type(name) is not str or name not in TOOL_NAMES:
                 return error(-32602, "unknown_tool")
             success = True
+            selection = None
             try:
                 if set(params) - {"name", "arguments", "_meta"}:
                     raise ValueError("invalid_params")
                 arguments = _arguments(name, params.get("arguments", {}))
-                target = {"repository_list": "list_files", "repository_replace_symbol": "replace_symbol"}.get(name, name.removeprefix("repository_"))
-                payload = getattr(self.session, target)(**arguments)
+                target = {"repository_status": "status_summary", "repository_list": "list_files",
+                          "repository_replace_symbol": "replace_symbol"}.get(name, name.removeprefix("repository_"))
+                if name == "repository_read" and self.selection_audit is not None:
+                    payload, selection = self._selected_read(identity, arguments)
+                else:
+                    payload = getattr(self.session, target)(**arguments)
                 success = not payload.get("refresh_required", False) if name == "repository_replace_symbol" else True
                 payload = _delivery_payload(name, payload)
                 raw = _json(payload)
                 if len(raw) > MAX_RESPONSE_BYTES // 2:
                     raise ValueError("response_limit")
+                if selection is not None:
+                    frame = _json({"jsonrpc": "2.0", "id": identity, "result": {
+                        "content": [{"type": "text", "text": raw.decode()}], "isError": False}}) + b"\n"
+                    if (len(frame) > MAX_RESPONSE_BYTES or len(frame) != selection["selected_reply_bytes"]
+                            or hashlib.sha256(frame).hexdigest() != selection["selected_reply_sha256"]):
+                        raise ValueError("selected_reply_differs")
+                    self.selection_audit.record(selection)
             except Exception as exc:
                 success = False
                 reason = getattr(exc, "code", "tool_failed")
@@ -377,6 +413,28 @@ class RepositoryMCPServer:
         else:
             return error(-32601, "method_not_found")
         return {"jsonrpc": "2.0", "id": identity, "result": result}
+
+    def _selected_read(self, identity, arguments):
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_token_budget import select_repository_reply
+        requested = arguments.get("representation", self.config["representation"])
+        original = self.session.read(**{**arguments, "representation": "original"})
+        compact = self.session.read(**{**arguments, "representation": "compact"}) if requested == "compact" else None
+        if compact is not None and any(original[key] != compact[key] for key in ("generation", "path", "original_sha256")):
+            raise ValueError("source_changed_during_selection")
+        def reply(value):
+            payload = _json(_delivery_payload("repository_read", value)).decode()
+            return (_json({"jsonrpc": "2.0", "id": identity,
+                "result": {"content": [{"type": "text", "text": payload}], "isError": False}}) + b"\n").decode()
+        selection = select_repository_reply(original_reply=reply(original),
+            compact_reply=reply(compact) if compact is not None else None,
+            requested_representation=requested, tokenizer=self.tokenizer)
+        # Tokenization may take time. Re-read the chosen representation so a
+        # concurrent source edit cannot escape the normal freshness fences.
+        chosen = original if selection["selected_representation"] == "original" else compact
+        current = self.session.read(**{**arguments, "representation": selection["selected_representation"]})
+        if _delivery_payload("repository_read", current) != _delivery_payload("repository_read", chosen):
+            raise ValueError("source_changed_during_selection")
+        return current, selection
 
 
 def serve(server, incoming, outgoing):

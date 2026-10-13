@@ -554,7 +554,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     repository_source_binding = None
     if repository_source_policy != "legacy":
         from .repository_source_policy import create_binding as create_repository_binding
-        repository_source_binding = create_repository_binding(workspace=root, requested_policy=repository_source_policy)
+        repository_source_binding = create_repository_binding(workspace=root, requested_policy=repository_source_policy,
+            **({"tokenizer": {"artifact": tokenizer_source["descriptor_path"],
+                "expected_sha256": tokenizer_source["descriptor_sha256"], "provider": provider, "model": model}}
+               if tokenizer_source is not None else {}))
     source_view_binding = None
     if source_view_policy != "legacy":
         from .source_view_policy import create_binding as create_source_binding

@@ -36,6 +36,8 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_policy.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_mcp.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_probe.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_token_budget.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_prompt_tokenizer.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_session.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_index.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_view.py",
@@ -321,7 +323,9 @@ def _valid_digest(value):
 
 def _usage_observation(value):
     """Reject impossible aggregate populations; unknown counters stay unknown."""
-    shape = (type(value) is dict and set(value) in (_USAGE_FIELDS, _USAGE_FIELDS | {"store_cleanup_error"})
+    selection = value.get("token_selection") if type(value) is dict else None
+    base_fields = set(value) - {"token_selection"} if type(value) is dict else set()
+    shape = (type(value) is dict and base_fields in (_USAGE_FIELDS, _USAGE_FIELDS | {"store_cleanup_error"})
              and type(value.get("status")) is str
              and value["status"] in {"observed", "not_observed", "unavailable"}
              and type(value.get("store_cleanup_complete")) is bool
@@ -350,8 +354,19 @@ def _usage_observation(value):
         valid = False
     if shape and value["store_cleanup_complete"] is False and value["artifacts_retained_after_invocation"] is False:
         valid = False
+    selection_valid = False
+    if selection is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_token_budget import validate_selection_summary
+        try:
+            validate_selection_summary(selection)
+            selection_valid = bool(valid and selection["read_count"] == value["successful_reads"]
+                                   and selection["compact_selected"] == value["compact_reads"])
+        except (ValueError, TypeError, KeyError):
+            pass
     return {"server_audit_valid": bool(valid), "server_audit_status": value.get("status") if shape else "unavailable",
             "store_cleanup_complete": cleanup,
+            **({"token_selection_summary_valid": selection_valid,
+                "token_selection": selection if selection_valid else None} if selection is not None else {}),
             **{key: value[key] if valid else None for key in _COUNTERS}}
 
 
@@ -452,15 +467,22 @@ def repository_source_dispatch_observation(report, value):
         initialized = usage["server_audit_valid"] and usage["initializations"] == 1
         read = bool(initialized and usage["successful_reads"] and usage["returned_bytes"])
         compact = bool(read and usage["compact_reads"])
+        tokenizer_bound = bool(binding_valid and "tokenizer" in binding["config"])
+        selected = usage.get("token_selection")
+        token_selection_observed = bool(tokenizer_bound and read and usage.get("token_selection_summary_valid")
+            and selected["measured_comparisons"] > 0 and selected["unmeasured_fallbacks"] == 0)
         effective = bool(exact and configured and read and usage["store_cleanup_complete"]
             and usage["uncertain_edits"] == 0
-            and (value != COMPACT_REPOSITORY_SOURCE_POLICY or compact))
+            and (not tokenizer_bound or usage.get("token_selection_summary_valid"))
+            and (value != COMPACT_REPOSITORY_SOURCE_POLICY or
+                 (token_selection_observed if tokenizer_bound else compact)))
         observations.append({"invocation_id": identity if _valid_id(identity) else None,
             "provider_attempt_status": row.get("status") if row.get("status") in ("provider_returned", "failed") else None,
             "policy_binding_valid": binding_valid, "retained_exact_input_audit_verified": exact,
             "native_tools_configured": configured, **usage,
             "server_initialized": bool(initialized), "actual_reads_observed": read,
             "compact_reads_observed": compact,
+            **({"local_token_selection_observed": token_selection_observed} if tokenizer_bound else {}),
             "confirmed_canonical_edit_observed": bool(exact and configured and initialized and usage["canonical_edits"]),
             "effective_repository_tools_observed": effective})
     effective = bool(observations) and not problems and all(

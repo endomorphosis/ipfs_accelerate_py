@@ -17,7 +17,7 @@ import uuid
 SCHEMA = "supervisor-repository-source-policy@1"
 POLICIES = ("legacy", "repository-source-raw@1", "repository-source-compact@1")
 TOOLS = ("repository_status", "repository_list", "repository_symbols", "repository_read",
-         "repository_replace_symbol", "repository_refresh")
+         "repository_replace_symbol", "repository_refresh", "repository_cache_inventory")
 _FALSE_FIELDS = ("native_tool_interception", "helper_adoption_guaranteed", "token_savings_measured",
                  "proof_authority", "completion_authority")
 
@@ -52,11 +52,14 @@ def _path(value):
 
 def _instruction(binding):
     representation = binding["config"]["representation"]
+    selection = ("A bound local tokenizer selects compact reads only when their complete tool reply uses fewer tokens; otherwise reads return original source. "
+                 if "tokenizer" in binding["config"] else "")
     return (
         "Repository source tools are configured for this invocation:\n"
         "Use repository_status and repository_list to discover the indexed checkout, "
         "repository_symbols for Python definitions, and repository_read for source reads. "
         f"The selected default representation is {representation}. "
+        + selection +
         "Use repository_replace_symbol with the current source hash for supported edits; "
         "it changes the allocated canonical checkout and refreshes the repository view. "
         "Use repository_refresh after direct terminal edits; stale indexed reads or edits are refused. "
@@ -67,7 +70,7 @@ def _instruction(binding):
     )
 
 
-def create_binding(*, workspace: Path, requested_policy: str):
+def create_binding(*, workspace: Path, requested_policy: str, tokenizer: dict | None = None):
     validate_policy(requested_policy, purpose="coding", provider="codex_cli")
     if requested_policy == "legacy":
         raise ValueError("legacy policy has no repository source binding")
@@ -78,6 +81,9 @@ def create_binding(*, workspace: Path, requested_policy: str):
     config = {"schema": "repository-source-mcp-config@1", "workspace": str(workspace),
               "state_dir": str(directory / "state"), "audit_store": str(directory / "operations.jsonl"),
               "representation": "original" if requested_policy == POLICIES[1] else "compact"}
+    if tokenizer is not None:
+        from .repository_source_token_budget import validate_tokenizer_binding
+        config.update(schema="repository-source-mcp-config@2", tokenizer=validate_tokenizer_binding(tokenizer))
     binding = {"schema": SCHEMA, "requested_policy": requested_policy,
         "python_executable": str(Path(sys.executable).absolute()), "helper_script": str(helper),
         "helper_sha256": _sha(source), "workspace": str(workspace), "invocation_dir": str(directory),
@@ -129,6 +135,10 @@ def validate_binding(binding, *, workspace=None, materialized=False):
     config = {"schema": "repository-source-mcp-config@1", "workspace": binding["workspace"],
               "state_dir": binding["state_dir"], "audit_store": binding["audit_store"],
               "representation": "original" if binding["requested_policy"] == POLICIES[1] else "compact"}
+    if type(binding["config"]) is dict and "tokenizer" in binding["config"]:
+        from .repository_source_token_budget import validate_tokenizer_binding
+        config.update(schema="repository-source-mcp-config@2",
+                      tokenizer=validate_tokenizer_binding(binding["config"]["tokenizer"]))
     if type(binding["config"]) is not dict or binding["config"] != config:
         raise ValueError("repository server configuration differs")
     for key in ("helper_sha256", "config_sha256", "instruction_sha256"):
@@ -238,6 +248,10 @@ def finish_runtime_store(binding, *, expected_identity):
                 usage.update(summary)
         except Exception:
             pass
+        if "tokenizer" in binding["config"]:
+            from .repository_source_token_budget import summarize_selection_audit
+            usage["token_selection"] = summarize_selection_audit(directory / "token-selections.jsonl",
+                tokenizer_binding=binding["config"]["tokenizer"])
         current = directory.lstat()
         if (current.st_dev, current.st_ino) != expected_identity:
             raise ValueError("repository invocation directory changed")

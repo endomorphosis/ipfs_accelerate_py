@@ -18,6 +18,10 @@ from . import repository_source_view as views
 from .code_source_view import CodeSourceView, SourceViewError
 
 SCHEMA = "supervisor-repository-source-session@1"
+CACHE_INVENTORY_SCHEMA = "repository-source-retained-opaque-cache@1"
+CACHE_SUMMARY_SCHEMA = "repository-source-retained-cache-summary@1"
+_CACHE_COUNTS = ("entry_count", "file_count", "directory_count", "symlink_count", "original_bytes")
+_CACHE_AUTHORITY = ("native_indexed", "proof_authority", "execution_authority", "completion_authority")
 DEFAULT_LIMITS = dict(max_files=512, max_total_bytes=16 * 1024 * 1024,
                       max_file_bytes=256 * 1024, max_generations=8)
 
@@ -203,19 +207,93 @@ class RepositorySourceSession:
         self.generation += 1
         self._refresh_required = False
 
+    def _retained_cache(self):
+        cache = self._index_receipt.get("retained_opaque_cache")
+        if (type(cache) is not dict or cache.get("schema") != CACHE_INVENTORY_SCHEMA
+                or type(cache.get("entries")) is not dict or type(cache.get("roots")) is not list
+                or not views._is_hash(cache.get("inventory_sha256"))
+                or any(type(cache.get(key)) is not int or cache[key] < 0 for key in _CACHE_COUNTS)
+                or cache["entry_count"] != len(cache["entries"])
+                or cache["entry_count"] > self.limits["max_files"]
+                or cache["file_count"] + cache["directory_count"] + cache["symlink_count"] != cache["entry_count"]
+                or cache["original_bytes"] > self.limits["max_total_bytes"]
+                or len(cache["roots"]) > cache["directory_count"]
+                or cache.get("classification") != "directory_name_only"
+                or any(cache.get(key) is not False for key in _CACHE_AUTHORITY)):
+            _fail("cache_inventory_unavailable")
+        return cache
+
+    def _status(self, *, summary):
+        self._open()
+        if not self._refresh_required:
+            try:
+                self._current()
+            except RepositorySourceSessionError:
+                pass
+        if summary:
+            cache = self._retained_cache()
+            # Do not copy the full inventory just to discard it. The retained
+            # native receipt and package still own every original entry.
+            native = copy.deepcopy({key: value for key, value in self._index_receipt.items()
+                                    if key != "retained_opaque_cache"})
+            native["retained_opaque_cache"] = dict(
+                schema=CACHE_SUMMARY_SCHEMA, inventory_schema=cache["schema"],
+                inventory_sha256=cache["inventory_sha256"], roots_count=len(cache["roots"]),
+                **{key: cache[key] for key in (*_CACHE_COUNTS, "classification", *_CACHE_AUTHORITY)},
+                details_tool="repository_cache_inventory")
+        else:
+            native = copy.deepcopy(self._index_receipt)
+        return dict(self._identity(), operation="status", source_current=not self._refresh_required,
+                    refresh_required=self._refresh_required, limits=dict(self.limits),
+                    capture_counts={key: self._capture_receipt[key] for key in
+                                    ("entry_count", "file_count", "original_bytes", "compact_bytes", "compacted_files")},
+                    native_index=native)
+
     def status(self) -> dict:
+        """Return complete internal evidence; model delivery uses status_summary."""
         with self._lock:
-            self._open()
-            if not self._refresh_required:
-                try:
-                    self._current()
-                except RepositorySourceSessionError:
-                    pass
-            return dict(self._identity(), operation="status", source_current=not self._refresh_required,
-                        refresh_required=self._refresh_required, limits=dict(self.limits),
-                        capture_counts={key: self._capture_receipt[key] for key in
-                                        ("entry_count", "file_count", "original_bytes", "compact_bytes", "compacted_files")},
-                        native_index=copy.deepcopy(self._index_receipt))
+            return self._status(summary=False)
+
+    def status_summary(self) -> dict:
+        """Report health and cache counts without enumerating retained paths.
+
+        Stale sessions remain inspectable and explicitly require refresh. The
+        inventory digest identifies the last retained generation, never a claim
+        that an externally modified source tree is still current.
+        """
+        with self._lock:
+            return self._status(summary=True)
+
+    def cache_inventory(self, *, generation: int, expected_inventory_sha256: str,
+                        offset: int = 0, limit: int = 100) -> dict:
+        """Read exact retained cache metadata in generation/digest-bound pages.
+
+        ``cache_root`` marks roots on their directory rows, so collecting every
+        page can reconstruct the original inventory identity without sending
+        an unbounded roots list beside each page. No source bytes are returned.
+        """
+        with self._lock:
+            self._generation(generation)
+            if not views._is_hash(expected_inventory_sha256):
+                _fail("invalid_inventory_hash")
+            if not _integer(offset, 0, self.limits["max_files"]) or not _integer(limit, 1, 100):
+                _fail("invalid_pagination")
+            self._current()
+            cache = self._retained_cache()
+            if expected_inventory_sha256 != cache["inventory_sha256"]:
+                _fail("stale_inventory_hash")
+            paths = sorted(cache["entries"])
+            if offset > len(paths):
+                _fail("invalid_pagination")
+            roots = set(cache["roots"])
+            rows = [dict(path=path, **copy.deepcopy(cache["entries"][path]), cache_root=path in roots)
+                    for path in paths[offset:offset + limit]]
+            self._current()
+            end = offset + len(rows)
+            return dict(self._identity(), operation="cache_inventory", inventory_schema=cache["schema"],
+                        inventory_sha256=cache["inventory_sha256"], roots_count=len(roots),
+                        total=len(paths), offset=offset, entries=rows,
+                        next_offset=end if end < len(paths) else None)
 
     def list_files(self, *, generation: int, offset: int = 0, limit: int = 100) -> dict:
         with self._lock:
