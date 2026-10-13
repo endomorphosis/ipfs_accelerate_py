@@ -48,7 +48,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S7-044 Qualify complete exact comparison occurrence inventories
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
