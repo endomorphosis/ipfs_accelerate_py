@@ -35,8 +35,16 @@ if "--output-schema" in args:
     record.update(schema=json.loads(raw),schema_bytes=len(raw),schema_sha256=hashlib.sha256(raw).hexdigest(),
                   schema_mode=stat.S_IMODE(info.st_mode),schema_regular=stat.S_ISREG(info.st_mode))
 pathlib.Path("calls.json").write_text(json.dumps(record))
-pathlib.Path(args[args.index("--output-last-message")+1]).write_text('{"status":"READY"}')
+response=os.getenv("CODEX_FIXTURE_RESPONSE",'{"status":"READY"}')
+if os.getenv("CODEX_FIXTURE_RESPONSE_SIZE"):
+    response=json.dumps({"status":"x"*int(os.environ["CODEX_FIXTURE_RESPONSE_SIZE"])})
+pathlib.Path(args[args.index("--output-last-message")+1]).write_text(response)
+if os.getenv("CODEX_FIXTURE_INVALID_UTF8"):
+    pathlib.Path(args[args.index("--output-last-message")+1]).write_bytes(
+        b'{"status":"READY","formula":"a'+bytes([255])+b'b"}')
 print(json.dumps({"type":"thread.started","thread_id":"fixture-session"}))
+if os.getenv("CODEX_FIXTURE_JSONL_RESPONSE"):
+    print(json.dumps({"type":"item.completed","item":{"type":"agent_message","text":response}}))
 print(json.dumps({"type":"turn.completed","usage":{"input_tokens":13,"output_tokens":2,"total_tokens":15}}))
 if os.getenv("CODEX_FIXTURE_EXIT"):
     print("fixture failure",file=sys.stderr)
@@ -46,6 +54,10 @@ if os.getenv("CODEX_FIXTURE_EXIT"):
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
     monkeypatch.delenv("ipfs_accelerate_py_CODEX_SANDBOX", raising=False)
     monkeypatch.delenv("CODEX_FIXTURE_EXIT", raising=False)
+    monkeypatch.delenv("CODEX_FIXTURE_RESPONSE", raising=False)
+    monkeypatch.delenv("CODEX_FIXTURE_JSONL_RESPONSE", raising=False)
+    monkeypatch.delenv("CODEX_FIXTURE_RESPONSE_SIZE", raising=False)
+    monkeypatch.delenv("CODEX_FIXTURE_INVALID_UTF8", raising=False)
     monkeypatch.chdir(workspace)
     create = llm_router.tempfile.NamedTemporaryFile
     files = []
@@ -191,3 +203,68 @@ def test_native_nonzero_exit_cannot_return_structured_partial_message(adapter, m
         router._get_codex_cli_provider().generate("must fail", codex_output_schema=output_schema())
     assert len(files) == 2 and all(not p.exists() for p in files) and not list(temporary.iterdir())
     assert get_last_cli_observation("codex_cli")["exit_code"] == 2
+
+
+@pytest.mark.parametrize("source", ["last_message_file", "jsonl_message"])
+@pytest.mark.parametrize("ascii_escapes", [False, True])
+def test_structured_formula_strings_and_json_spelling_are_preserved(adapter, monkeypatch, source, ascii_escapes):
+    router, _workspace, temporary, files = adapter
+    value = {"status": "READY", "formula": "∀x. O(retain<File>(x)) ∧ t ≤ 20; lake build <Lib>",
+             "literal_entities": "&amp; &lt;Lib&gt; &#x2200;", "source": "<section>A < B && B > C</section>"}
+    schema = {"type": "object", "additionalProperties": False, "required": sorted(value),
+              "properties": {key: {"type": "string"} for key in value}}
+    original = json.dumps(value, ensure_ascii=ascii_escapes, indent=2)
+    monkeypatch.setenv("CODEX_FIXTURE_RESPONSE", original)
+    if source == "jsonl_message":
+        monkeypatch.setenv("CODEX_FIXTURE_JSONL_RESPONSE", "1")
+    result = router._get_codex_cli_provider().generate("preserve formal output", codex_output_schema=schema)
+    assert result == original
+    assert result.encode("utf-8") == original.encode("utf-8")
+    assert json.loads(result) == value
+    assert all(not p.exists() for p in files) and not list(temporary.iterdir())
+
+
+@pytest.mark.parametrize("response", [
+    '{"status":"PRIVATE INVALID VALUE"}',
+    '{"status":"READY","extra":"PRIVATE EXTRA"}',
+    '{"status":"READY","status":"READY"}',
+    '{"status":NaN}',
+    '<div>{"status":"READY"}</div>',
+    '```json\n{"status":"READY"}\n```',
+    '{"status":"READY"} trailing',
+    '',
+    'oversize_response',
+])
+def test_invalid_structured_result_fails_without_cleanup_or_payload_diagnostics(adapter, monkeypatch, response):
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation
+    router, _workspace, temporary, files = adapter
+    monkeypatch.setenv("CODEX_FIXTURE_RESPONSE", response)
+    if response == "oversize_response":
+        monkeypatch.setenv("CODEX_FIXTURE_RESPONSE_SIZE", "262144")
+    with pytest.raises(router.LLMRouterError, match="^Codex CLI structured response failed validation$"):
+        router._get_codex_cli_provider().generate("reject invalid JSON", codex_output_schema=output_schema())
+    assert all(not p.exists() for p in files) and not list(temporary.iterdir())
+    assert get_last_cli_observation("codex_cli")["exit_code"] == 0
+
+
+def test_unstructured_cleanup_stays_on_ordinary_provider_path(adapter, monkeypatch):
+    router, _workspace, _temporary, _files = adapter
+    monkeypatch.setenv("CODEX_FIXTURE_RESPONSE", "<p>READY &amp; unchanged</p>")
+    assert router._get_codex_cli_provider().generate("ordinary text") == "READY & unchanged"
+
+
+@pytest.mark.parametrize("jsonl_message", [False, True])
+def test_structured_last_message_rejects_invalid_utf8_instead_of_replacing_bytes(adapter, monkeypatch, jsonl_message):
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation
+    router, _workspace, temporary, files = adapter
+    schema = output_schema()
+    schema["properties"]["formula"] = {"type": "string"}
+    schema["required"].append("formula")
+    monkeypatch.setenv("CODEX_FIXTURE_RESPONSE", '{"status":"READY","formula":"valid"}')
+    if jsonl_message:
+        monkeypatch.setenv("CODEX_FIXTURE_JSONL_RESPONSE", "1")
+    monkeypatch.setenv("CODEX_FIXTURE_INVALID_UTF8", "1")
+    with pytest.raises(router.LLMRouterError, match="^Codex CLI structured response failed validation$"):
+        router._get_codex_cli_provider().generate("preserve UTF-8", codex_output_schema=schema)
+    assert all(not p.exists() for p in files) and not list(temporary.iterdir())
+    assert get_last_cli_observation("codex_cli")["exit_code"] == 0
