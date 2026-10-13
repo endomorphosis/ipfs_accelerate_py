@@ -4,7 +4,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S6-011 Qualify complete primary section lookup
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
