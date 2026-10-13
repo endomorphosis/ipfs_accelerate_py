@@ -168,15 +168,44 @@ class WorkerSourceBroker(NumericalObligationBroker):
             returned_discovery_rows=page["returned_count"] if discovery else 0)
 
 
+
+def worker_source_argv(argv):
+    """Remove owner-only policy configuration before starting an isolated worker."""
+    from .source_view_policy import SOURCE_VIEW_POLICY_FLAG, SourceViewPolicy
+
+    if type(argv) is not list or any(type(arg) is not str for arg in argv):
+        raise ValueError("literal source-view owner argv required")
+    raw = _argument(argv, SOURCE_VIEW_POLICY_FLAG)
+    if raw is not None:
+        SourceViewPolicy.from_json(raw)
+    result, index = [], 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == SOURCE_VIEW_POLICY_FLAG:
+            index += 2
+        elif arg.startswith(SOURCE_VIEW_POLICY_FLAG + "="):
+            index += 1
+        else:
+            result.append(arg)
+            index += 1
+    return result
+
+
 def prepare_worker_source_broker(*, argv, boundary, workspace, input_fd=0, view_policy=None):
     """Opt in using an owner-sealed semantic prompt, without numerical context."""
     if (type(argv) is not list or any(type(arg) is not str for arg in argv)
             or any(arg == flag or arg.startswith(flag + "=") for arg in argv
                    for flag in (protocol.DESCRIPTOR_FLAG, protocol.DIGEST_FLAG))):
         raise ValueError("owner creates source-view descriptors independently")
+    from .source_view_policy import SOURCE_VIEW_POLICY_FLAG, SourceViewPolicy
+
     profile = _argument(argv, "--source-view-profile", "disabled")
+    serialized_policy = _argument(argv, SOURCE_VIEW_POLICY_FLAG)
+    if serialized_policy is not None:
+        if view_policy is not None:
+            raise ValueError("owner policy has more than one selection")
+        view_policy = SourceViewPolicy.from_json(serialized_policy)
     if view_policy is not None:
-        from .source_view_policy import SourceViewPolicy
         if type(view_policy) is not SourceViewPolicy:
             raise ValueError("exact owner source-view policy required")
         view_policy.to_dict()

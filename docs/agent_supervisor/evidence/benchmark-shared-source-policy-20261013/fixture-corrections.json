@@ -1,0 +1,48 @@
+{
+  "attempt": "qualification-01",
+  "changed_source_paths": [
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_shared_source_policy.py",
+    "test/api/test_source_policy_worker_selection.py",
+    "test/api/test_source_view_policy_serialization.py"
+  ],
+  "corrected_tests_executed_here": false,
+  "early_interruption": {
+    "reason": "Inspect and correct 11 newly authored fixture failures before the remaining selected regression suites; no result is promoted to pass.",
+    "requested_by": "root",
+    "signal": "SIGINT"
+  },
+  "fixes": [
+    {
+      "after_sha256": "7137fbca4d4d1b655ac65fc4e0580e69c7ec92919fbd67fab14ec9045303136e",
+      "before_sha256": "37a35d6405633aa48b068a5d84ae2ed5b5649d493420d002c64cf6b90a93076e",
+      "patch": "--- test/api/test_source_view_policy_serialization.py (qualification-01)\n+++ test/api/test_source_view_policy_serialization.py (corrected fixture)\n@@ -172,7 +172,7 @@\n     value = recipe(); value[\"protected_lines\"][PATH] = [1]\n     _, text = benchmark.source_view_policy_argv(value, profile=PROFILE)\n     selected = policies.SourceViewPolicy.from_json(text)\n-    source = b\"# protected annotation   \\n# ordinary annotation   \\nVALUE = 1\\n\"\n+    source = b\"# protected annotation   \\nVALUE = 1\\n# ordinary annotation   \\n\"\n     view = selected.project(source, raw_path=b\"m.py\", regular_file=True)\n     assert b\"# protected annotation\" in view.view and b\"# ordinary annotation\" not in view.view\n     assert view.manifest[\"protected_lines\"] == [1]\n",
+      "path": "test/api/test_source_view_policy_serialization.py",
+      "reason": "The unchanged codec intentionally retains leading module comments. Move the ordinary comment after code while keeping the caller-protected comment at source line 1."
+    },
+    {
+      "after_sha256": "c33cb6cd6efbef598523d4222d54f830ccc12033f40644834a55426531511bfd",
+      "before_sha256": "e7578b68921ceccee536317d16c28e609c20eb341bb4a58beb9003231be3d26f",
+      "patch": "--- test/api/test_source_policy_worker_selection.py (qualification-01)\n+++ test/api/test_source_policy_worker_selection.py (corrected fixture)\n@@ -85,6 +85,10 @@\n     real_factory = broker.prepare_worker_source_broker\n     monkeypatch.setattr(broker, \"prepare_worker_source_broker\", lambda **kwargs:\n         real_factory(**dict(kwargs, input_fd=fd)))\n+    from ipfs_accelerate_py.agent_supervisor.runtime import numerical_obligation_broker as numerical\n+    real_numerical_factory = numerical.prepare_numerical_obligation_broker\n+    monkeypatch.setattr(numerical, \"prepare_numerical_obligation_broker\", lambda **kwargs:\n+        real_numerical_factory(**dict(kwargs, input_fd=fd)))\n     monkeypatch.setattr(sys, \"argv\", [\"installed-owner\", *argv])\n     with tempfile.TemporaryDirectory(prefix=\"policy-owner-\") as directory:\n         root = Path(directory); (root / \"worker-observations\").mkdir(mode=0o750)\n",
+      "path": "test/api/test_source_policy_worker_selection.py",
+      "reason": "The generated owner starts both numerical and source factories. Route the same real sealed memfd into both authored stdin seams rather than leaving the numerical factory on pytest stdin."
+    },
+    {
+      "after_sha256": "024d85bfe9dc0d59d56b9720b914f272d1025fc6d578c432ac7230d490b4175c",
+      "before_sha256": "e9dd5872039d43b8a2c02aee0546856a618c703b4254ca8ce967d0ac10b00953",
+      "patch": "--- benchmarks/agent_supervisor/container_coding/test_benchmark_shared_source_policy.py (qualification-01)\n+++ benchmarks/agent_supervisor/container_coding/test_benchmark_shared_source_policy.py (corrected fixture)\n@@ -172,11 +172,23 @@\n         prepared[\"config_sha256\"] = benchmark._hash(case.output / \"config.json\")\n     write(case.output / \"preparation.json\", prepared)\n     monkeypatch.setattr(benchmark.subprocess, \"run\", lambda *args, **kwargs: pytest.fail(\"drift reached execution\"))\n-    with pytest.raises(ValueError, match=\"prepared configuration changed|source view policy changed\"):\n+    changed_file = change in {\"drop_config\", \"edit_config\", \"malformed_config\", \"null_config\", \"config_sha\"}\n+    expected_refusal = (\"prepared task binding differs from the frozen configuration\" if changed_file\n+                        else \"prepared source view policy changed\")\n+    with pytest.raises(ValueError, match=\"^\" + expected_refusal + \"$\"):\n         benchmark.execute(case.output)\n-    result = benchmark.collect(case.output)\n-    assert result[\"source_view_policy_config_unchanged\"] is False\n-    assert result[\"complete_single_trial_receipt\"] is False\n+    if changed_file or change in {\"rehashed_config\", \"drop_both_rehashed\"}:\n+        # Outer task/provider custody refuses an edited config before policy\n+        # observation. Do not weaken that boundary to manufacture a receipt.\n+        expected_collection_refusal = (expected_refusal if changed_file else\n+            \"frozen provider profile differs from prepared configuration\")\n+        with pytest.raises(ValueError, match=\"^\" + expected_collection_refusal + \"$\"):\n+            benchmark.collect(case.output)\n+        assert not (case.output / \"receipt.json\").exists()\n+    else:\n+        result = benchmark.collect(case.output)\n+        assert result[\"source_view_policy_config_unchanged\"] is False\n+        assert result[\"complete_single_trial_receipt\"] is False\n     assert not (case.output / \"invocation.json\").exists()\n \n \n",
+      "path": "benchmarks/agent_supervisor/container_coding/test_benchmark_shared_source_policy.py",
+      "reason": "Existing task and provider custody guards can refuse before the policy-specific guard or collection result. Require their exact refusal messages and no output receipt for those paths; retain explicit unchangedFalse/incomplete checks for reachable collection paths."
+    }
+  ],
+  "original_collected_tests": 1030,
+  "original_commands_sha256": "13e229ff784884fd14bcc4276c8cfd952b02f9f319f5e4d5a43b6ac35fb1bef9",
+  "original_executed_junit_tests": 182,
+  "original_failures": 11,
+  "original_passed_junit_tests": 171,
+  "original_pytest_exit_code": 1,
+  "original_result_preserved": true,
+  "product_code_changes": false,
+  "recorded_at_utc": "2026-10-13T07:14:05.255886+00:00",
+  "schema": "benchmark-shared-policy-fixture-corrections@1",
+  "source_binding_rows_unchanged_during_attempt": 183
+}

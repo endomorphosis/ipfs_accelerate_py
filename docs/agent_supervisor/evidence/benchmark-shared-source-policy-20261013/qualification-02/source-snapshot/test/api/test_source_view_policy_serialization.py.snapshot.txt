@@ -1,0 +1,197 @@
+"""Closed source-policy configuration and argv transport; no model or worker run."""
+from copy import deepcopy
+from dataclasses import FrozenInstanceError
+import hashlib
+import json
+
+import pytest
+
+from benchmarks.agent_supervisor.container_coding import terminal_source_view_policy as benchmark
+from ipfs_accelerate_py.agent_supervisor.runtime import source_view_policy as policies
+
+
+PATH = b"m.py".hex()
+PROFILE = "python-comments@1"
+
+
+class Text(str):
+    pass
+
+
+class Mapping(dict):
+    pass
+
+
+def recipe():
+    return dict(schema=policies.SCHEMA, profile=PROFILE, protected_lines={PATH: [1, 3]})
+
+
+def test_canonical_round_trip_detaches_nested_values_and_keeps_policy_frozen():
+    original = recipe()
+    selected = policies.SourceViewPolicy.from_dict(original)
+    canonical = ('{"profile":"python-comments@1","protected_lines":{"6d2e7079":[1,3]},'
+                 '"schema":"supervisor-source-view-policy@1"}')
+    assert selected.to_json() == canonical
+    assert policies.SourceViewPolicy.from_json(" \n" + canonical + "\t").to_json() == canonical
+    original["protected_lines"][PATH].append(4)
+    exported = selected.to_dict()
+    exported["protected_lines"][PATH].append(5)
+    assert selected.to_json() == canonical
+    assert selected.resolve(raw_path=b"m.py", regular_file=True).protected_lines == (1, 3)
+    with pytest.raises(FrozenInstanceError):
+        selected.profile = "identity@1"
+
+
+@pytest.mark.parametrize("change", ["extra", "missing", "schema", "schema_subclass", "profile",
+    "profile_subclass", "null_mapping", "mapping_subclass", "empty_lines", "boolean_line",
+    "unsorted_lines", "duplicate_lines", "invalid_hex", "uppercase_hex"])
+def test_closed_recipe_rejects_unknown_versions_and_invalid_nested_configuration(change):
+    value = recipe()
+    if change == "extra": value["source_admitted"] = True
+    elif change == "missing": value.pop("protected_lines")
+    elif change == "schema": value["schema"] = "supervisor-source-view-policy@2"
+    elif change == "schema_subclass": value["schema"] = Text(policies.SCHEMA)
+    elif change == "profile": value["profile"] = True
+    elif change == "profile_subclass": value["profile"] = Text(PROFILE)
+    elif change == "null_mapping": value["protected_lines"] = None
+    elif change == "mapping_subclass": value["protected_lines"] = Mapping(value["protected_lines"])
+    elif change == "empty_lines": value["protected_lines"][PATH] = []
+    elif change == "boolean_line": value["protected_lines"][PATH] = [True]
+    elif change == "unsorted_lines": value["protected_lines"][PATH] = [3, 1]
+    elif change == "duplicate_lines": value["protected_lines"][PATH] = [1, 1]
+    elif change == "invalid_hex": value["protected_lines"] = {"not-hex": [1]}
+    else: value["protected_lines"] = {PATH.upper(): [1]}
+    with pytest.raises(ValueError):
+        policies.SourceViewPolicy.from_dict(value)
+
+
+@pytest.mark.parametrize("value", [None, True, [], "{}", Mapping(recipe())])
+def test_recipe_requires_an_exact_dictionary(value):
+    with pytest.raises(ValueError):
+        policies.SourceViewPolicy.from_dict(value)
+
+
+@pytest.mark.parametrize("value", [None, True, b"{}", {}, Text("{}")])
+def test_json_requires_exact_text(value):
+    with pytest.raises(ValueError):
+        policies.SourceViewPolicy.from_json(value)
+
+
+@pytest.mark.parametrize("value", ["", "{", "[]", "null", "{}{}", "\ufeff{}", "\ud800",
+    '{"schema":"supervisor-source-view-policy@1","profile":"python-comments@1","protected_lines":{"6d2e7079":[NaN]}}',
+    '{"schema":"supervisor-source-view-policy@1","profile":"python-comments@1","protected_lines":{"6d2e7079":[Infinity]}}',
+    '{"schema":"supervisor-source-view-policy@1","profile":"python-comments@1","protected_lines":{"6d2e7079":[-Infinity]}}'])
+def test_invalid_or_nonfinite_json_has_no_recipe(value):
+    with pytest.raises(ValueError):
+        policies.SourceViewPolicy.from_json(value)
+
+
+@pytest.mark.parametrize("value", [
+    '{"schema":"supervisor-source-view-policy@1","schema":"supervisor-source-view-policy@1","profile":"python-comments@1","protected_lines":{}}',
+    '{"schema":"supervisor-source-view-policy@1","profile":"python-comments@1","protected_lines":{},"protected_lines":{}}',
+    '{"schema":"supervisor-source-view-policy@1","profile":"python-comments@1","protected_lines":{"6d2e7079":[1],"6d2e7079":[1]}}',
+])
+def test_json_duplicate_keys_refuse_even_when_the_values_match(value):
+    with pytest.raises(ValueError):
+        policies.SourceViewPolicy.from_json(value)
+
+
+def test_deep_json_recursion_is_a_configuration_refusal():
+    with pytest.raises(ValueError):
+        policies.SourceViewPolicy.from_json("[" * 2000 + "]" * 2000)
+
+
+def test_json_byte_limit_accepts_exact_boundary_and_refuses_excess_before_parsing(monkeypatch):
+    canonical = policies.SourceViewPolicy.from_dict(recipe()).to_json()
+    boundary = canonical + " " * (policies.MAX_POLICY_JSON_BYTES - len(canonical.encode()))
+    assert policies.MAX_POLICY_JSON_BYTES == 65536
+    assert policies.SourceViewPolicy.from_json(boundary).to_dict() == recipe()
+    monkeypatch.setattr(policies.json, "loads", lambda *_args, **_kwargs: pytest.fail("oversized JSON parsed"))
+    with pytest.raises(ValueError, match="exceeds bounds"):
+        policies.SourceViewPolicy.from_json(boundary + " ")
+
+
+def test_structurally_valid_but_oversized_recipe_cannot_enter_argv():
+    values = {(b"a" * 4095 + bytes([65 + i])).hex(): [1] for i in range(9)}
+    selected = policies.SourceViewPolicy.from_mapping(profile=PROFILE, protected_lines=values)
+    # The existing owner policy bounds are broader than the configuration transport.
+    assert policies.SourceViewPolicy.from_dict(selected.to_dict()) == selected
+    with pytest.raises(ValueError, match="exceeds bounds"):
+        selected.to_json()
+    with pytest.raises(ValueError, match="exceeds bounds"):
+        benchmark.source_view_policy_argv(selected.to_dict(), profile=PROFILE)
+
+
+@pytest.mark.parametrize("factory", ["from_dict", "from_json"])
+def test_serialization_factories_refuse_policy_subclasses(factory):
+    class Derived(policies.SourceViewPolicy):
+        pass
+    value = recipe() if factory == "from_dict" else json.dumps(recipe())
+    with pytest.raises(ValueError):
+        getattr(Derived, factory)(value)
+
+
+@pytest.mark.parametrize("profile", benchmark.SOURCE_VIEW_PROFILES)
+def test_absent_policy_retains_exact_legacy_configuration_and_observation(profile):
+    assert benchmark.validate_source_view_policy(None, profile=profile) is None
+    assert benchmark.source_view_policy_argv(None, profile=profile) == []
+    if profile == "disabled":
+        assert benchmark.source_view_selection(profile) == benchmark.source_view_observation(profile) == {}
+    else:
+        assert benchmark.source_view_selection(profile) == {"source_view_profile": profile}
+        assert benchmark.source_view_observation(profile) == dict(source_view_profile=profile,
+            source_view_token_savings_claimed=False, source_view_authority=False)
+
+
+@pytest.mark.parametrize("profile", ["identity@1", "python-whitespace@1", "python-comments@1"])
+def test_selected_policy_detaches_configuration_and_binds_recipe_separately_from_implementation(profile):
+    value = recipe(); value["profile"] = profile
+    expected = deepcopy(value)
+    selected = benchmark.validate_source_view_policy(value, profile=profile, arm="full")
+    selection = benchmark.source_view_selection(profile, value)
+    observation = benchmark.source_view_observation(profile, value)
+    argv = benchmark.source_view_policy_argv(value, profile=profile)
+    resolved = policies.SourceViewPolicy.from_dict(expected)
+    assert benchmark.SOURCE_VIEW_POLICY_FLAG == policies.SOURCE_VIEW_POLICY_FLAG == "--source-view-policy-json"
+    assert argv == [benchmark.SOURCE_VIEW_POLICY_FLAG, resolved.to_json()]
+    assert policies.SourceViewPolicy.from_json(argv[1]).to_dict() == expected
+    assert selection == dict(source_view_profile=profile, source_view_policy=expected)
+    assert observation == dict(source_view_profile=profile, source_view_policy=expected,
+        source_view_token_savings_claimed=False, source_view_authority=False,
+        source_view_policy_sha256=hashlib.sha256(argv[1].encode()).hexdigest(),
+        source_view_policy_binding_sha256=hashlib.sha256(json.dumps(resolved.binding(),
+            sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest())
+    value["protected_lines"][PATH].append(4)
+    selected["protected_lines"][PATH].append(5)
+    selection["source_view_policy"]["protected_lines"][PATH].append(6)
+    observation["source_view_policy"]["protected_lines"].clear()
+    assert policies.SourceViewPolicy.from_json(argv[1]).to_dict() == expected
+
+
+def test_serialized_policy_preserves_protected_comment_projection():
+    value = recipe(); value["protected_lines"][PATH] = [1]
+    _, text = benchmark.source_view_policy_argv(value, profile=PROFILE)
+    selected = policies.SourceViewPolicy.from_json(text)
+    source = b"# protected annotation   \nVALUE = 1\n# ordinary annotation   \n"
+    view = selected.project(source, raw_path=b"m.py", regular_file=True)
+    assert b"# protected annotation" in view.view and b"# ordinary annotation" not in view.view
+    assert view.manifest["protected_lines"] == [1]
+
+
+@pytest.mark.parametrize("profile,arm", [("disabled", None), ("python-whitespace@1", None),
+    (PROFILE, "no-index"), (PROFILE, "unknown"), (PROFILE, False)])
+def test_policy_rejects_disabled_mismatched_or_nonfull_selection(profile, arm):
+    with pytest.raises(ValueError):
+        benchmark.validate_source_view_policy(recipe(), profile=profile, arm=arm)
+
+
+@pytest.mark.parametrize("value", [False, "{}", [], policies.SourceViewPolicy(), Mapping(recipe())])
+def test_benchmark_policy_field_requires_a_closed_dictionary(value):
+    with pytest.raises(ValueError):
+        benchmark.validate_source_view_policy(value, profile=PROFILE)
+
+
+@pytest.mark.parametrize("function", [benchmark.source_view_selection, benchmark.source_view_observation])
+def test_disabled_selection_cannot_drop_a_supplied_policy(function):
+    with pytest.raises(ValueError):
+        function("disabled", recipe())

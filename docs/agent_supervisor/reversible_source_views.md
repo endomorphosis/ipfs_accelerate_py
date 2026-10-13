@@ -116,9 +116,12 @@ through an owner-selected broker, descriptor version 2 and request version 3.
 The client automatically uses the descriptor's policy digest, including exact
 expansion and working generations; legacy requests still refuse shared pages.
 `--discover` lists only already admitted paths and their source/view pins.
-Standard benchmark configuration still uses legacy policy defaults. Repository
-scope admission, benchmark policy selection, full filesystem export, token
-savings and model-driven compact editing remain distinct concerns.
+The [benchmark policy selection](worker_source_views.md#freeze-a-shared-policy-in-a-benchmark-run)
+now freezes an explicit shared recipe, checks configuration and implementation
+identity before execution, and joins collection to the actual shared descriptor.
+Omitting the option preserves legacy defaults. Repository scope admission, full
+filesystem export, token savings and model-driven compact editing remain
+separate concerns.
 
 ## Map an explicit compact edit to original bytes
 

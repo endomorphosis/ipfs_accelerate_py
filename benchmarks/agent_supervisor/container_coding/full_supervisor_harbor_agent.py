@@ -46,7 +46,7 @@ from .terminal_capsule_selection_policy import (
 )
 from .terminal_source_view_policy import (
     DEFAULT_SOURCE_VIEW_PROFILE, validate_source_view_profile,
-    source_view_observation, require_source_view_archive,
+    source_view_observation, require_source_view_archive, validate_source_view_policy, source_view_policy_argv,
 )
 from .terminal_numerical_policy import (
     validate_numerical_profile, numerical_observation, require_numerical_archive,
@@ -317,6 +317,7 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                  source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
+                 source_view_policy: dict | None = None,
                  numerical_formalization_profile: str | None = None,
                  metadata_census_only: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
@@ -325,6 +326,11 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
         self.capsule_selection = validate_capsule_selection(capsule_selection, arm=arm)
         self.source_view_profile = validate_source_view_profile(source_view_profile, arm=arm)
+        self.source_view_policy = validate_source_view_policy(source_view_policy,
+            profile=self.source_view_profile, arm=arm)
+        self._source_view_policy_frozen_json = json.dumps(
+            source_view_observation(self.source_view_profile, self.source_view_policy),
+            sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
         self.semantic_transport_schema = validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
         self.coding_reply_mode = validate_coding_reply_mode(coding_reply_mode,
             arm=arm, provider=selected_provider["provider"])
@@ -376,6 +382,16 @@ class FullSupervisorAgent(BaseAgent):
         selected = resolve_provider_profile(getattr(self, "provider_profile", None))
         return "isolated-native-v1+" + selected["provider"].removesuffix("_cli") + "-" + selected["cli_version"]
 
+    def _checked_source_view_policy(self, profile):
+        selected = validate_source_view_policy(getattr(self, "source_view_policy", None),
+            profile=profile, arm=self.arm)
+        frozen = getattr(self, "_source_view_policy_frozen_json", None)
+        current = json.dumps(source_view_observation(profile, selected), sort_keys=True,
+            separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+        if frozen is not None and frozen != current:
+            raise ValueError("prepared source view policy changed")
+        return selected
+
     async def setup(self, environment):
         from .terminal_setup_cache_advice import (
             validate_setup_cache_selection, validate_setup_cache_prerequisites, apply_setup_cache_advice,
@@ -404,6 +420,7 @@ class FullSupervisorAgent(BaseAgent):
         require_capsule_selection_archive(manifest, capsule_selection)
         source_view = validate_source_view_profile(
             getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=self.arm)
+        self._checked_source_view_policy(source_view)
         require_source_view_archive(manifest, source_view, getattr(self, "resource_profile", None))
         require_retrieval_revision(manifest, self.arm, getattr(self, "model_revision", ""))
         validate_header_planning_selection(validate_source384_binding(manifest),
@@ -469,6 +486,7 @@ class FullSupervisorAgent(BaseAgent):
         require_capsule_selection_archive(manifest, capsule_selection)
         source_view = validate_source_view_profile(
             getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=self.arm)
+        source_policy = self._checked_source_view_policy(source_view)
         require_source_view_archive(manifest, source_view, getattr(self, "resource_profile", None))
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
@@ -508,6 +526,7 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--capsule-selection", capsule_selection]
         if source_view != DEFAULT_SOURCE_VIEW_PROFILE:
             argv += ["--source-view-profile", source_view]
+        argv += source_view_policy_argv(source_policy, profile=source_view)
         if getattr(self, "metadata_census_only", False):
             argv += ["--metadata-census-only"]
         task_profile = getattr(self, "task_profile", None)
@@ -545,7 +564,7 @@ class FullSupervisorAgent(BaseAgent):
                             **coding_reply_selection(reply_mode),
                             **semantic_metadata_observation(metadata_view),
                             **capsule_selection_observation(capsule_selection),
-                            **source_view_observation(source_view),
+                            **source_view_observation(source_view, source_policy),
                             **numerical_observation(numerical_profile, self.arm),
                             **_intent_selection(requirement_contract),
                             "runtime_archive_sha256": manifest["archive_sha256"],

@@ -34,7 +34,7 @@ def _base(status="unavailable", reason="evidence_unavailable"):
         total_token_savings_measured=False, raw_queries_exported=False, raw_sources_exported=False)
 
 
-def _session(raw, row, scope):
+def _session(raw, row, scope, *, expected_policy_binding=None):
     audit = _parse(raw)
     _need(set(audit) == _AUDIT_FIELDS and audit["schema"] in {
         "supervisor-worker-source-session@1", "supervisor-worker-source-session@2",
@@ -60,6 +60,8 @@ def _session(raw, row, scope):
         and descriptor["workspace"] == row["workspace"] and descriptor["owner_uid"] == os.geteuid())
     if shared:
         _need(all(observation[key] == descriptor[key] for key in SHARED_PIN_FIELDS))
+    if expected_policy_binding is not None:
+        _need(shared and descriptor["view_policy_binding_sha256"] == expected_policy_binding)
     semantic = row["semantic_translation"]
     _need(type(semantic) is dict and all(semantic.get(key) == descriptor[key] for key in (
         "task_id", "scope_cid", "semantic_root_cid", "semantic_sha256", "native_prompt_sha256")))
@@ -129,6 +131,18 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
         _need(type(rows) is list and len(rows) <= 128 and all(type(row) is dict for row in rows))
         profile = report.get("source_view_profile", "disabled")
         _need(type(profile) is str and profile in ("disabled", *protocol.PROFILES))
+        from .terminal_source_view_policy import validate_source_view_policy, source_view_observation
+        policy = validate_source_view_policy(report.get("source_view_policy"), profile=profile,
+            arm=report.get("arm"))
+        policy_fields = {"source_view_policy_sha256", "source_view_policy_binding_sha256"}
+        expected_policy_binding = None
+        if policy is not None:
+            _need(report.get("arm") == "full")
+            expected = source_view_observation(profile, policy)
+            _need(all(report.get(key) == expected[key] for key in policy_fields))
+            expected_policy_binding = expected["source_view_policy_binding_sha256"]
+        else:
+            _need(not policy_fields.intersection(report))
         selected = [row for row in rows if "source_view_retrieval" in row]
         if not selected:
             if profile != "disabled":
@@ -165,7 +179,8 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
                 raw = _read(fd, name, limit=MAX_AUDIT_BYTES, private=True)
                 after = os.stat(name, dir_fd=fd, follow_symlinks=False)
                 _need(_identity(before) == _identity(after) and before.st_gid == after.st_gid)
-                item, request_hashes, response_hashes = _session(raw, row, scope)
+                item, request_hashes, response_hashes = _session(raw, row, scope,
+                    expected_policy_binding=expected_policy_binding)
                 sessions.append(item); requests.update(request_hashes); responses.update(response_hashes)
             _protected_directory(parent, owner=owner, group=owner)
             _need(_identity(directory) == _identity(parent.lstat()))
@@ -183,6 +198,8 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
         result["discovery_counts"] = ({key: sum(item["discovery_counts"][key] for item in sessions)
             for key in DISCOVERY_COUNT_FIELDS}
             if all(item["discovery_counts"] is not None for item in sessions) else None)
+        if policy is not None:
+            result.update({key: report[key] for key in policy_fields})
         _need(len(protocol.canonical_json(result)) <= MAX_AUDIT_BYTES)
         return result
     except (OSError, ValueError, TypeError, KeyError, RuntimeError, RecursionError):
