@@ -1,0 +1,479 @@
+{
+  "schema": "context-selection-observation-qualification@1",
+  "validation_passed": true,
+  "actual_test_calls": 299,
+  "actual_passed_test_calls": 299,
+  "actual_pytest_phases": 897,
+  "junit_testcases": 299,
+  "guarded_source_count": 1099,
+  "guarded_sources_still_unchanged": true,
+  "source_guard_scope": "explicit source inventory, not a complete imported dependency closure",
+  "elapsed_validation_seconds": 2654.114140298101,
+  "proof_metrics": {
+    "schema": "ipfs_accelerate_py/testing/proof-reuse-metrics@1",
+    "interface": "ProofReuseMetrics@1",
+    "counts": {
+      "predicted": 0,
+      "verified": 0,
+      "skipped": 0,
+      "executed": 299,
+      "deferred": 0,
+      "degraded": 0
+    },
+    "reasons": {},
+    "verify_latency_ms": 0.0,
+    "execution_latency_ms": 889336.229,
+    "bytes_read": 0,
+    "bytes_written": 0
+  },
+  "samples": [
+    {
+      "capsules": 1,
+      "worker_bytes": 9821,
+      "observation_bytes": 3824,
+      "observation_computation_seconds": 0.000830155098810792
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10077,
+      "observation_bytes": 3955,
+      "observation_computation_seconds": 0.0017758640460669994
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19718,
+      "observation_bytes": 7266,
+      "observation_computation_seconds": 0.0029012219747528434
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 11891,
+      "observation_bytes": 4370,
+      "observation_computation_seconds": 0.0010322219459339976
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 11891,
+      "observation_bytes": 4370,
+      "observation_computation_seconds": 0.0008727480890229344
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19718,
+      "observation_bytes": 7266,
+      "observation_computation_seconds": 0.001561621087603271
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 20684,
+      "observation_bytes": 7266,
+      "observation_computation_seconds": 0.0014477799413725734
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19718,
+      "observation_bytes": 7266,
+      "observation_computation_seconds": 0.00313189800363034
+    },
+    {
+      "capsules": 0,
+      "worker_bytes": 5723,
+      "observation_bytes": 3099,
+      "observation_computation_seconds": 0.0005328070838004351
+    },
+    {
+      "capsules": 0,
+      "worker_bytes": 6733,
+      "observation_bytes": 3099,
+      "observation_computation_seconds": 0.0010390219977125525
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.0011065590661019087
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 13058,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.0019495779415592551
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.0009205250535160303
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 13035,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.0020146199967712164
+    },
+    {
+      "capsules": 0,
+      "worker_bytes": 5723,
+      "observation_bytes": 3099,
+      "observation_computation_seconds": 0.0009448450291529298
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 8569,
+      "observation_bytes": 4030,
+      "observation_computation_seconds": 0.0008793879533186555
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.002067468944005668
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19720,
+      "observation_bytes": 7268,
+      "observation_computation_seconds": 0.0029770650435239077
+    },
+    {
+      "capsules": 3,
+      "worker_bytes": 16584,
+      "observation_bytes": 6092,
+      "observation_computation_seconds": 0.002492578001692891
+    },
+    {
+      "capsules": 3,
+      "worker_bytes": 16584,
+      "observation_bytes": 6092,
+      "observation_computation_seconds": 0.001289280946366489
+    },
+    {
+      "capsules": 3,
+      "worker_bytes": 15946,
+      "observation_bytes": 6315,
+      "observation_computation_seconds": 0.0024209970142692327
+    },
+    {
+      "capsules": 6,
+      "worker_bytes": 28650,
+      "observation_bytes": 10177,
+      "observation_computation_seconds": 0.0020100760739296675
+    },
+    {
+      "capsules": 6,
+      "worker_bytes": 29433,
+      "observation_bytes": 10177,
+      "observation_computation_seconds": 0.002043499960564077
+    },
+    {
+      "capsules": 5,
+      "worker_bytes": 21939,
+      "observation_bytes": 8180,
+      "observation_computation_seconds": 0.0016836749855428934
+    },
+    {
+      "capsules": 3,
+      "worker_bytes": 15946,
+      "observation_bytes": 6315,
+      "observation_computation_seconds": 0.00246418290771544
+    },
+    {
+      "capsules": 0,
+      "worker_bytes": 5859,
+      "observation_bytes": 3113,
+      "observation_computation_seconds": 0.0009620951022952795
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 21879,
+      "observation_bytes": 4142,
+      "observation_computation_seconds": 0.00190316594671458
+    },
+    {
+      "capsules": 0,
+      "worker_bytes": 18314,
+      "observation_bytes": 3212,
+      "observation_computation_seconds": 0.000661931000649929
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.0017774170264601707
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.0020685080671682954
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10077,
+      "observation_bytes": 3955,
+      "observation_computation_seconds": 0.000821115099824965
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10077,
+      "observation_bytes": 3955,
+      "observation_computation_seconds": 0.0008571309735998511
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10077,
+      "observation_bytes": 3955,
+      "observation_computation_seconds": 0.0008695159340277314
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10077,
+      "observation_bytes": 3955,
+      "observation_computation_seconds": 0.0008822990348562598
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19720,
+      "observation_bytes": 7268,
+      "observation_computation_seconds": 0.002792694023810327
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19720,
+      "observation_bytes": 7268,
+      "observation_computation_seconds": 0.002691668923944235
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19720,
+      "observation_bytes": 7268,
+      "observation_computation_seconds": 0.002700005075894296
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19720,
+      "observation_bytes": 7268,
+      "observation_computation_seconds": 0.0014359389897435904
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19720,
+      "observation_bytes": 7268,
+      "observation_computation_seconds": 0.0013591221068054438
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19720,
+      "observation_bytes": 7268,
+      "observation_computation_seconds": 0.0029394630109891295
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19781,
+      "observation_bytes": 6542,
+      "observation_computation_seconds": 0.0013637299416586757
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 19720,
+      "observation_bytes": 7268,
+      "observation_computation_seconds": 0.002773701911792159
+    },
+    {
+      "capsules": 4,
+      "worker_bytes": 20684,
+      "observation_bytes": 7268,
+      "observation_computation_seconds": 0.0015980860916897655
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10077,
+      "observation_bytes": 3955,
+      "observation_computation_seconds": 0.0008353720186278224
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10077,
+      "observation_bytes": 3955,
+      "observation_computation_seconds": 0.0008761240169405937
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10077,
+      "observation_bytes": 3955,
+      "observation_computation_seconds": 0.0008361550280824304
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10077,
+      "observation_bytes": 3955,
+      "observation_computation_seconds": 0.0008714670548215508
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10077,
+      "observation_bytes": 3955,
+      "observation_computation_seconds": 0.0017314470605924726
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.002226750017143786
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.0018842020072042942
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.001190832001157105
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 13148,
+      "observation_bytes": 5062,
+      "observation_computation_seconds": 0.0009984300704672933
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.0011203679023310542
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.0018262489465996623
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.0018028570339083672
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12037,
+      "observation_bytes": 4963,
+      "observation_computation_seconds": 0.0017783440416678786
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10077,
+      "observation_bytes": 3955,
+      "observation_computation_seconds": 0.0016721190186217427
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10136,
+      "observation_bytes": 4140,
+      "observation_computation_seconds": 0.0015952889807522297
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 11096,
+      "observation_bytes": 4140,
+      "observation_computation_seconds": 0.0008717740420252085
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10222,
+      "observation_bytes": 4142,
+      "observation_computation_seconds": 0.0008440290112048388
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 11239,
+      "observation_bytes": 4142,
+      "observation_computation_seconds": 0.000875132973305881
+    }
+  ],
+  "sample_scope": "authored integration-test preparations, not live Terminal Bench",
+  "helper_computation_seconds_median": 0.001561621087603271,
+  "helper_computation_seconds_maximum": 0.00313189800363034,
+  "helper_timer_scope": "construction, encoding and reference hashes; excludes extra artifact/catalog/DuckLake writes",
+  "source_freeze_sha256": "6c52ff731630f7e8ab82ad54a68f3a9b8254abbd914afa0ba22e4fb58ade25cb",
+  "verification_sha256": "4f087b8df24d6a7804e92f3dc3768326aa8574f0fdc6e758bcde9fffaacf69ad",
+  "junit_sha256": "0b7a03d2ce1834bd28ca43471f4bfc3ab9b8636d45bac233d839cc12e624f390",
+  "driver_sha256": "2e756695cf25f4361161f0372977f7a9caf2469cc086d9d1a1f0474585a1d678",
+  "summarizer_sha256": "a38f5a16336b000fff5e7793de380ea2ce095621b4f0cd0a31acff8f9a5622e6",
+  "earlier_attempts": [
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r1/run.log",
+      "disposition": "Harness interpreter lacked pytest; failed before collection. Retained. System Python used for guarded runs."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r2/verification.json",
+      "sha256": "068e40c381e49f23ed80655ffb0c81a51bceca96fde23dfde98852943a09f6ee",
+      "validation_passed": false,
+      "actual_calls": 85,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r3/verification.json",
+      "sha256": "1ab1119a44cb3d0c7525e209f84d8803bb3012edacd8152cf8cb0d4d7ec58b1a",
+      "validation_passed": false,
+      "actual_calls": 1,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r4/verification.json",
+      "sha256": "60a60b6ba7ce0fd390cc8f863ddc0cbde834f07b036c18b2e1ee6d2e495dd07e",
+      "validation_passed": false,
+      "actual_calls": 4,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r5/verification.json",
+      "sha256": "d0975cc4594e3347c7ab6e41dd161739b61af2792019de6310b8336f185215ca",
+      "validation_passed": false,
+      "actual_calls": 4,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r6/verification.json",
+      "sha256": "5c17ab8ff01b9c5b31116571d81e16c95c5925fabcd7037e94fc83169719e66d",
+      "validation_passed": true,
+      "actual_calls": 1,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    }
+  ],
+  "provider_calls": 0,
+  "downloads": 0,
+  "lake_builds": 0,
+  "lean_admits": 0,
+  "token_savings_established": false,
+  "official_task_success_established": false,
+  "runtime_scope": "Native preparation observation only; modality-guided ranking and live provider trials remain separate work",
+  "implementation_commit": "e64ae12c6b5d1ed016525bcfbbdf922232eb2e67",
+  "upstream_base": "85b21ded00",
+  "run_label": "r7",
+  "actual_collected_tests": 299,
+  "all_setup_call_teardown_passed_once": true,
+  "no_reused_skipped_predicted_verified_deferred_or_degraded": true,
+  "retained_local_verification": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r7/verification.json",
+  "retained_local_log": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r7/run.log",
+  "prepared_worker_bytes_unchanged": true,
+  "sidecar_in_prepared_worker_payload": false,
+  "provider_delivery_observed": false,
+  "observed_modalities": {
+    "codebase": "structural producer",
+    "intent": "not observed in this preparation payload",
+    "security": "not observed in this preparation payload",
+    "ui_ux": "not observed in this preparation payload"
+  },
+  "test_scope": "Authored native preparation/storage and existing context policy regressions",
+  "new_proof_execution_or_completion_authority_granted": false,
+  "native_semantic_acceptance_gates_relaxed": false
+}
