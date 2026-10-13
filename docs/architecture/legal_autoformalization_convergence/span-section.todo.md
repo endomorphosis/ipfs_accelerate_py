@@ -26,7 +26,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S6-024 Qualify source-scoped graph proposals and inert review requests
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
