@@ -15,7 +15,10 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
+
+if TYPE_CHECKING:
+    from ..runtime.direct_provider_usage import DirectProviderUsageBinding
 
 from .prompt_workflow import (
     DirectoryScanReceipt,
@@ -159,8 +162,19 @@ class PromptGoalPlannerConfig:
     )
     allowed_resource_classes: tuple[str, ...] = DEFAULT_RESOURCE_CLASSES
     protected_paths: tuple[str, ...] = tuple(sorted(_PROTECTED_DEFAULTS))
+    # Runtime ownership stays outside prompts and durable receipt schemas.
+    usage_binding: DirectProviderUsageBinding | None = field(
+        default=None, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
+        if self.usage_binding is not None:
+            from ..runtime.direct_provider_usage import DirectProviderUsageBinding
+
+            if not isinstance(self.usage_binding, DirectProviderUsageBinding):
+                raise ValueError("usage_binding must be DirectProviderUsageBinding")
+            if self.allow_local_fallback:
+                raise ValueError("usage_binding requires local fallback to be disabled")
         for name in (
             "timeout_seconds",
             "max_provider_request_bytes",
@@ -2113,10 +2127,49 @@ def _default_router(
         reject_effective_provider_name=(
             None if config.allow_local_fallback else "local_hf"
         ),
+        allow_cross_provider_fallback=(False if config.usage_binding is not None else None),
+        required_effective_providers=(
+            (str(provider),) if config.usage_binding is not None else ()
+        ),
     )
 
     def _invoke() -> str:
         return call_llm_router(prompt, invocation)
+
+    if config.usage_binding is not None:
+        from ..runtime.provider_usage_migration import (
+            ConsumerId,
+            ProviderUsageMigrationError,
+            retain_last_call_result,
+        )
+
+        # The child has a hard process timeout including its cleanup grace.
+        # Reserve a byte-based input ceiling: the historical token guard is an
+        # estimate and cannot establish an exact provider token measurement.
+        migrated = config.usage_binding.dispatch(
+            consumer_id=ConsumerId.PROMPT_GOAL_PLANNER,
+            provider_id=str(provider or ""),
+            model=str(model),
+            invoke=_invoke,
+            timeout_ms=(invocation.timeout_seconds + invocation.timeout_grace_seconds) * 1_000,
+            estimated_input_tokens=max(1, len(prompt.encode("utf-8"))),
+            estimated_output_tokens=tokens,
+            stage="prompt_goal_planning",
+            task_id=str(getattr(request, "request_id", "") or "prompt_goal"),
+            goal_id=str(getattr(request, "goal_id", "") or "goal:prompt-goal-planner"),
+            objective_id="prompt_goal_planner",
+            tree_id=str(getattr(request, "repository_tree_id", "") or "tree:unknown"),
+            metadata={"model": str(model), "input_bound_basis": "prompt_utf8_bytes"},
+        )
+        retain_last_call_result(ConsumerId.PROMPT_GOAL_PLANNER, migrated)
+        if migrated.phase not in {"settled", "replayed"} or not migrated.text:
+            raise ProviderUsageMigrationError(
+                "bound prompt planning did not produce an admitted provider output",
+                reason_codes=migrated.reason_codes + (
+                    "generated_text_unavailable" if not migrated.text else "provider_call_not_settled",
+                ),
+            )
+        return migrated.text
 
     mode_raw = str(
         os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")
@@ -2191,6 +2244,8 @@ def _generate_prompt_goal_graph_single(
     """Generate one strict graph or a deterministic schema-equivalent fallback."""
 
     resolved = config or PromptGoalPlannerConfig()
+    if resolved.usage_binding is not None and router is not None:
+        raise ValueError("usage_binding cannot be combined with a custom router")
     provider_id = resolved.provider or (
         request.planning_policy.provider_preferences[0]
         if request.planning_policy.provider_preferences

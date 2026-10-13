@@ -213,10 +213,11 @@ contract cannot reuse that idempotency entry. Gateway replay uses its existing
 terminal cache; a new gateway seeing a prior reservation refuses reinvocation and
 requires reconciliation. Replaying a ledger decision is not dispatch authority.
 
-The offline rollout harness uses the new paired view. Other consumers still need
-explicit migration from legacy revision pins; placeholder scope/fence identities
-do not become valid deployment configuration. Automatic refresh/replanning of
-stale pinned work remains a caller responsibility.
+The offline rollout harness uses the new paired view. The direct consumers below
+also support explicit deployment bindings. Other consumers still need migration
+from legacy revision pins; placeholder scope/fence identities do not become valid
+deployment configuration. Automatic refresh/replanning of stale pinned work
+remains a caller responsibility.
 
 The durable real-clock qualification runs with
 `python -m benchmarks.agent_supervisor.provider_admission_revision --requests 16 --output /tmp/provider-revisions.json`.
@@ -233,6 +234,75 @@ reinvocation refusals, and zero duplicate callbacks or remaining usage holds.
 These timings describe the isolated durable-ledger workload on this host, not
 provider throughput. Fresh/stale pin tests also cover refusal of degraded
 execution and changed-contract replay.
+
+## Direct consumer deployment bindings
+
+`runtime/direct_provider_usage.py` provides `DirectProviderUsageBinding` for the
+default prompt-goal router and default Leanstral proof generation path. Configure
+one binding with a real coordinator, an established `EndpointUsageScope` for
+`text.generate`, exact router provider and model selectors, and an explicit writer
+fence. Reuse the binding so the gateway retains its replay state. The deployment
+owner must already have configured finite hard request, input-token, and
+output-token limits; a caller's own budget cannot substitute for endpoint limits.
+Constructing or using the binding does not create or overwrite those limits.
+
+```python
+binding = DirectProviderUsageBinding(
+    coordinator=coordinator,
+    scope=endpoint_scope,
+    provider_id=provider,
+    model=model,
+    fence=writer_fence,
+    reservation_ttl_ms=360_000,
+)
+planner_config = PromptGoalPlannerConfig(
+    provider=provider, model=model, usage_binding=binding,
+)
+proof_provider = LeanstralProofProvider(
+    LeanstralProofProviderConfig(llm_provider=provider, model=model),
+    usage_binding=binding,
+)
+```
+
+Supplying the binding enables enforced admission by default, including when the
+legacy environment mode is `off`. Each newly built request receives the paired
+observation and stable pin from one owner read, the configured scope and fence,
+and positive input/output estimates. An explicitly supplied context keeps its pin
+and must match the deployment contract. State changes can refuse the request;
+there is no automatic retry or silent pin refresh. Denials and unavailable replay
+output remain failures to the consumer instead of becoming empty successful text.
+
+Bound calls require exact provider/model selection and disable route fallback.
+Dynamic selectors such as `efficient` and ambiguous `grok` are refused; configure
+the resolved provider/model instead. HF compatibility fallback now also honors
+`disable_model_retry`, preserving the pinned model on compatibility failures.
+Input reservation uses the prompt's UTF-8 byte count as a conservative estimate;
+this is not a measured tokenizer count or provider bill. Reservation TTL must
+exceed the callback timeout plus settlement margin. Prompt routing includes its
+child-process timeout grace in that check. A binding cannot be combined with an
+injected custom generator/router that would bypass its default execution path.
+Quota ownership also cannot be nested through router usage controls.
+
+Task proposals, rescue planning, and shared Leanstral goal-development batches
+retain their existing integration paths. A batch scheduler that already uses
+`PhysicalBatchUsageAdmission` remains the physical quota owner; wrapping each
+logical subscriber in this direct-call gateway would count shared calls twice.
+This binding adds quota admission, not host-resource reservation or kernel
+containment. Existing resource admission remains independently necessary.
+
+Run the bounded direct-consumer qualification with
+`python -m benchmarks.agent_supervisor.direct_provider_consumers --requests 12 --output /tmp/direct-consumers.json`.
+It preflights one host worker and 256 MiB, exercises the prompt transport boundary
+and public proof-provider entry point with authored transports and a durable
+SystemClock ledger, then verifies quota refusal and cleanup. It neither runs a
+complete Terminal Bench task nor measures live token savings.
+
+The 2026-10-13 direct-consumer campaign passed 270 distinct relevant tests. One
+existing proof-trace test failed because `j2_fields.json` is absent; the same
+failure was reproduced on the unchanged base commit. The benchmark completed
+12 authored calls (six prompt, six proof) in 3,067 ms, settled exactly 12 requests,
+318 estimated input tokens and 384 declared output tokens, refused the next call
+after quota exhaustion, and left zero usage holds.
 
 The bounded usage benchmark runs with
 `python -m benchmarks.agent_supervisor.provider_batch_usage --requests 32 --output /tmp/provider-usage.json`.

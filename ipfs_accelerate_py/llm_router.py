@@ -13050,9 +13050,9 @@ def _generate_with_provider_fallbacks(
                 return backend.generate(prompt, model_name=None, **call_kwargs)
             except Exception:
                 pass
-        if _is_hf_inference_provider_name(
+        if (not disable_model_retry and _is_hf_inference_provider_name(
             effective_provider_name
-        ) and _is_hf_model_compatibility_error(initial_error):
+        ) and _is_hf_model_compatibility_error(initial_error)):
             attempted = {
                 str(model_name or "").strip(),
                 _coalesce_env(
