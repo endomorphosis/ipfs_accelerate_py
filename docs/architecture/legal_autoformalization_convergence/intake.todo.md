@@ -48,7 +48,7 @@ Three bounded native deterministic qualifications against committed production s
 
 ## LAC-S4-044 Qualify direct span-cache proposal intake
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
