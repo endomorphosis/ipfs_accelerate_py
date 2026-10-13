@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/unit/logic/software_verification/test_numerical_source_v3.py",
+    "tests/unit/logic/software_verification/test_numerical_source_v2.py",
+    "tests/unit/logic/software_verification/test_numerical_source.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/numerical-loop-coverage-20261013/frontend/tests-02/pytest.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+  "environment_overrides": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+  }
+}

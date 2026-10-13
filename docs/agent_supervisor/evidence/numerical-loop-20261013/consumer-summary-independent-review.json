@@ -1,0 +1,305 @@
+{
+  "checks": [
+    {
+      "name": "exact_public_sources",
+      "passed": true
+    },
+    {
+      "name": "persisted_summary_exact",
+      "passed": true
+    },
+    {
+      "name": "record_summary_hash_exact",
+      "passed": true
+    },
+    {
+      "name": "selected_profile",
+      "passed": true
+    },
+    {
+      "name": "production_summary_reconstruction",
+      "passed": true
+    },
+    {
+      "name": "whole_summary_byte_bound",
+      "passed": true
+    },
+    {
+      "name": "authority_and_verification_flags",
+      "passed": true
+    },
+    {
+      "name": "no_learning_or_provider_claim",
+      "passed": true
+    },
+    {
+      "name": "function_counts_exact",
+      "passed": true
+    },
+    {
+      "name": "exact_omissions_per_function",
+      "passed": true
+    },
+    {
+      "name": "exact_omissions_pending_obligations",
+      "passed": true
+    },
+    {
+      "name": "exact_omissions_compound_contracts",
+      "passed": true
+    },
+    {
+      "name": "exact_omissions_assertion_requirements",
+      "passed": true
+    },
+    {
+      "name": "exact_omissions_source_unit_links",
+      "passed": true
+    },
+    {
+      "name": "exact_omissions_control_references",
+      "passed": true
+    },
+    {
+      "name": "bounded_exact_control_inventory_eval.py_function_ids",
+      "passed": true
+    },
+    {
+      "name": "bounded_exact_control_inventory_eval.py_cfg_ids",
+      "passed": true
+    },
+    {
+      "name": "bounded_exact_control_inventory_eval.py_control_region_ids",
+      "passed": true
+    },
+    {
+      "name": "bounded_exact_control_inventory_eval.py_loop_region_ids",
+      "passed": true
+    },
+    {
+      "name": "control_inventory_unverified_eval.py",
+      "passed": true
+    },
+    {
+      "name": "bounded_exact_control_inventory_eigen.py_function_ids",
+      "passed": true
+    },
+    {
+      "name": "bounded_exact_control_inventory_eigen.py_cfg_ids",
+      "passed": true
+    },
+    {
+      "name": "bounded_exact_control_inventory_eigen.py_control_region_ids",
+      "passed": true
+    },
+    {
+      "name": "bounded_exact_control_inventory_eigen.py_loop_region_ids",
+      "passed": true
+    },
+    {
+      "name": "control_inventory_unverified_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "loops_visible_first",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_control_region_ids",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_loop_region_ids",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_guarded_region_ids",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_evaluation_guard_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_reachability_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_loop_invariants_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_termination_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_control_flow_semantics_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_cfg_references",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_control_region_ids",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_loop_region_ids",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_guarded_region_ids",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_evaluation_guard_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_reachability_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_loop_invariants_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_termination_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_control_flow_semantics_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_cfg_references",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_control_region_ids",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_loop_region_ids",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_guarded_region_ids",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_evaluation_guard_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_reachability_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_loop_invariants_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_termination_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_scope_control_flow_semantics_verified",
+      "passed": true
+    },
+    {
+      "name": "assertion_cfg_references",
+      "passed": true
+    },
+    {
+      "name": "full_proof_applicability_unresolved",
+      "passed": true
+    },
+    {
+      "name": "summary_interpretation_preserves_scope_distinction",
+      "passed": true
+    },
+    {
+      "name": "summary_retrieval_paths_exact",
+      "passed": true
+    },
+    {
+      "name": "consumer_source_unchanged",
+      "passed": true
+    }
+  ],
+  "complete_functions": 4,
+  "consumer_sha256": "33852987f9c3e3c69a40402f841dbe3725e1b4cd3d16fe64bbcb68ee63739edb",
+  "findings": [
+    "No correctness blocker found in selected v3 summary wiring.",
+    "The 7614-byte planning summary retains both source inventories and three assertions, but omits all 105 pending rows, four function summaries, four source-unit links and two compound contracts; every omission is counted.",
+    "Full pending rows, guards, CFG occurrences and loop-proof scopes remain available through the separately audited source-replayed retrieval. Compact planning metadata alone is insufficient to interpret or discharge the obligations.",
+    "Four complete function structures do not imply complete module translation: eval.py retains explicit module-level fences.",
+    "This deterministic grammar expansion changes no learned checkpoint coverage and establishes no runtime, loop-invariant, termination, proof, benchmark or token advantage."
+  ],
+  "full_proof_phases": [
+    "activation_entry",
+    "exit_cause_and_post_state",
+    "normal_or_continue_backedge",
+    "whole_activation_progress"
+  ],
+  "full_proof_scope_rows": 8,
+  "functions": 4,
+  "limits": [
+    "Retained owner observations are read in place; private rows and identifiers are not exported.",
+    "The summary was reconstructed with the production consumer and final public reports; independent checks additionally compare counts, inventories, scope flags and omission accounting."
+  ],
+  "omissions": [
+    {
+      "category": "per_function",
+      "omitted": 4,
+      "retained": 0,
+      "total": 4
+    },
+    {
+      "category": "pending_obligations",
+      "omitted": 105,
+      "retained": 0,
+      "total": 105
+    },
+    {
+      "category": "compound_contracts",
+      "omitted": 2,
+      "retained": 0,
+      "total": 2
+    },
+    {
+      "category": "assertion_requirements",
+      "omitted": 1,
+      "retained": 3,
+      "total": 4
+    },
+    {
+      "category": "source_unit_links",
+      "omitted": 4,
+      "retained": 0,
+      "total": 4
+    },
+    {
+      "category": "control_references",
+      "omitted": 0,
+      "retained": 2,
+      "total": 2
+    }
+  ],
+  "schema": "numerical-control-planning-summary-independent-review@1",
+  "source_reports": {
+    "eigen.py": {
+      "file_sha256": "0ad9bf55895377c1445719cb049e9334e85a549142aeda446916a71f702e95a5",
+      "structural_status": "translated"
+    },
+    "eval.py": {
+      "file_sha256": "5d50219e9f30be2654f534b78938381c37fb2195049b45125e59ad30658353a0",
+      "structural_status": "partial"
+    }
+  },
+  "status": "passed",
+  "summary_bytes": 7614,
+  "summary_sha256": "4bcc3e4caa67d092c79c5ceeac5d75e639dafc61b49504b48a79ab3802c6f401"
+}

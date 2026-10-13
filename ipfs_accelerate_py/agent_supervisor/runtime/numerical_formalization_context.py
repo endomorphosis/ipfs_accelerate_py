@@ -17,7 +17,8 @@ from .security_autoencoder_advisor import _bytes, _sha, _read, _write, _inventor
 
 PROFILE = "python-numerical-structure@1"
 GUARDED_PROFILE = "python-numerical-guarded-structure@2"
-PROFILES = (PROFILE, GUARDED_PROFILE)
+CONTROL_PROFILE = "python-numerical-control-structure@3"
+PROFILES = (PROFILE, GUARDED_PROFILE, CONTROL_PROFILE)
 SCHEMA = "supervisor-numerical-formalization@1"
 OPERATION = "numerical_structure_observation"
 RETRIEVAL_SCHEMA = "supervisor-numerical-obligation-retrieval@1"
@@ -39,7 +40,10 @@ def validate_profile(value):
 def _modules(profile=PROFILE):
     if validate_profile(profile) is None:
         raise ValueError("numerical context requires explicit profile")
-    if profile == GUARDED_PROFILE:
+    if profile == CONTROL_PROFILE:
+        from ipfs_datasets_py.logic.software_verification import numerical_source_v3, numerical_logic_v3
+        source, logic = numerical_source_v3, numerical_logic_v3
+    elif profile == GUARDED_PROFILE:
         from ipfs_datasets_py.logic.software_verification import numerical_source_v2, numerical_logic_v2
         source, logic = numerical_source_v2, numerical_logic_v2
     else:
@@ -104,9 +108,13 @@ def _producers(profile=PROFILE):
         ("unit_span_extraction", security_formalization_evaluation.__file__),
         ("unit_source_screening", source_screening.__file__),
         ("scalar_source_guard", source_program_binding_384.__file__)]
-    if profile == GUARDED_PROFILE:
+    if profile in (GUARDED_PROFILE, CONTROL_PROFILE):
         paths += [("base_grammar", numerical_source.__file__),
                   ("base_projections", numerical_logic.__file__)]
+    if profile == CONTROL_PROFILE:
+        from ipfs_datasets_py.logic.software_verification import numerical_source_v2, numerical_logic_v2
+        paths += [("guarded_grammar", numerical_source_v2.__file__),
+                  ("guarded_projections", numerical_logic_v2.__file__)]
     return {name: _sha(_read(Path(path).resolve(), 2_000_000)) for name, path in paths}
 
 
@@ -123,6 +131,42 @@ def _function_unit_links(sources, reports):
     return result
 
 
+def _control_references(row):
+    """Flatten v3 occurrence references without changing their full owner rows."""
+    result = {key: row[key] for key in (
+        "control_region_ids", "loop_region_ids", "reachability_verified", "loop_invariants_verified",
+        "termination_verified", "control_flow_semantics_verified")} | dict(
+        cfg_ids=sorted({item["cfg_id"] for item in row["cfg_occurrences"]}),
+        cfg_block_ids=sorted({item["block_id"] for item in row["cfg_occurrences"]}),
+        cfg_command_ids=sorted({item["command_id"] for item in row["cfg_occurrences"]}))
+    if "proof_scope" in row:
+        scope = row["proof_scope"]
+        result.update(evaluation_context_role=row["evaluation_context_role"],
+            logical_guard_scope=row["logical_guard_scope"], proof_phase=scope["proof_phase"],
+            proof_scope_control_region_id=scope["control_region_id"],
+            proof_scope_cfg_id=scope["cfg_id"], proof_phase_established=scope["phase_established"],
+            proof_applicability_verified=scope["applicability_verified"])
+    return result
+
+
+def _control_inventory(path, report):
+    """Keep bounded loop-first references even when pending rows are omitted."""
+    program = report["structural"]["program"] or {"functions": []}
+    functions = program["functions"]
+    regions = report["structural"]["control_regions"]
+    loops = sorted(row["region_id"] for row in regions if row["kind"] in {"for_statement", "while_statement"})
+    controls = sorted((row["region_id"] for row in regions),
+                      key=lambda key: (key not in loops, key))
+    result = dict(path=path, reachability_verified=False, loop_invariants_verified=False,
+                  termination_verified=False, control_flow_semantics_verified=False)
+    for key, values in (("function_ids", sorted(f["function_id"] for f in functions)),
+                        ("cfg_ids", sorted(f["cfg"]["graph_id"] for f in functions)),
+                        ("control_region_ids", controls), ("loop_region_ids", loops)):
+        result[key] = values[:4]
+        result["omitted_" + key] = max(0, len(values) - 4)
+    return result
+
+
 def _planning_assertion(path, row, *, profile=PROFILE):
     # The native planner has a six-level context nesting bound. Keep scalar
     # predicate metadata together, but flatten its operand lists and reference
@@ -130,10 +174,12 @@ def _planning_assertion(path, row, *, profile=PROFILE):
     predicate = row["predicate"]
     excluded = {"predicate", "symbol_definitions"}
     definitions = row["symbol_definitions"] if profile == PROFILE else row.get("symbol_definitions", [])
-    if profile == GUARDED_PROFILE:
+    if profile in (GUARDED_PROFILE, CONTROL_PROFILE):
         # Retain the region references and verification flags. Full contexts
         # stay in the source-replayed report and obligation retrieval rows.
         excluded.add("evaluation_contexts")
+    if profile == CONTROL_PROFILE:
+        excluded.update(("cfg_occurrences", "loop_contexts"))
     return dict(path=path, **{key: value for key, value in row.items()
                 if key not in excluded},
         predicate={key: value for key, value in predicate.items()
@@ -153,17 +199,33 @@ def _summary(reports, tree, unit_links=None, *, profile=PROFILE):
             rows.append(dict(path=path, **row))
         for row in report["pending_obligations"]:
             keys = ("obligation_id", "kind", "expression_id", "function_ids", "status")
-            if profile == GUARDED_PROFILE:
+            if profile in (GUARDED_PROFILE, CONTROL_PROFILE):
                 keys += ("guarded_region_ids", "evaluation_guard_interpretation",
                          "evaluation_guard_verified", "runtime_truthiness_verified",
                          "runtime_effects_verified", "standalone_program_evaluation_complete")
-            pending.append(dict(path=path, **{key: row[key] for key in keys}))
+            compact = dict(path=path, **{key: row[key] for key in keys})
+            if profile == CONTROL_PROFILE:
+                compact.update(_control_references(row))
+            pending.append(compact)
         contract_count += len(report.get("compound_contracts", []))
         for row in report["summary"].get("compound_contracts", []):
-            contracts.append(dict(path=path, **row))
+            compact = dict(path=path, **{key: value for key, value in row.items()
+                if profile != CONTROL_PROFILE or key not in {"evaluation_contexts", "cfg_occurrences", "loop_contexts"}})
+            if profile == CONTROL_PROFILE:
+                full = next(item for item in report["compound_contracts"]
+                            if item["contract_id"] == row["contract_id"])
+                compact.update(_control_references(full))
+            contracts.append(compact)
         assertion_count += len(report.get("assertion_requirements", []))
         for row in report["summary"].get("assertion_requirements", []):
-            assertions.append(_planning_assertion(path, row, profile=profile))
+            compact = _planning_assertion(path, row, profile=profile)
+            if profile == CONTROL_PROFILE:
+                full = next(item for item in report["assertion_requirements"]
+                            if item["requirement_id"] == row["requirement_id"])
+                compact.update(_control_references(full))
+            assertions.append(compact)
+    if profile == CONTROL_PROFILE:
+        pending.sort(key=lambda row: (0 if "proof_phase" in row else 1 if row["loop_region_ids"] else 2))
     summaries = [r["summary"] for r in reports.values()]
     count = sum(r["functions"] for r in summaries)
     result = dict(schema="terminal-numerical-formalization-planning-summary@1",
@@ -201,6 +263,21 @@ def _summary(reports, tree, unit_links=None, *, profile=PROFILE):
             "Guarded-region references retain this scope even when compact rows omit full contexts; "
             "retrieve full pending rows before interpreting their guards. Guards, truthiness and "
             "runtime effects are unverified; standalone ProgramIR is not complete evaluation semantics.")
+    if profile == CONTROL_PROFILE:
+        references = [_control_inventory(path, report) for path, report in sorted(reports.items())]
+        # Show actual loop-bearing sources before sources with only straight-line CFGs.
+        references.sort(key=lambda row: (not row["loop_region_ids"], row["path"]))
+        result.update(control_reference_count=len(references), control_references=references[:4],
+            omitted_control_reference_summaries=max(0, len(references) - 4),
+            reachability_verified=False, loop_invariants_verified=False,
+            termination_verified=False, control_flow_semantics_verified=False)
+        result["interpretation"] += (
+            " Expression contexts retain deferred branches and lazy assertion messages. Loop proof "
+            "applicability phases are distinct from source-anchor evaluation contexts; an anchor identifies "
+            "source syntax and does not establish applicability. Loop and CFG references describe "
+            "symbolic visits and iteration scopes, not an execution "
+            "trace or an unrolling. Reachability, iterator behavior, loop invariants, and termination "
+            "remain unverified. Retrieve full occurrence and loop contexts before interpreting obligations.")
     if unit_links is not None:
         linked = []
         for path, report in sorted(unit_links.items()):
@@ -219,7 +296,7 @@ def _summary(reports, tree, unit_links=None, *, profile=PROFILE):
     # unbounded prompt. Drop complete rows and account for every omission.
     while len(_bytes(result)) > 8192:
         key = next((name for name in ("pending_obligations", "per_function", "source_unit_links", "compound_contracts",
-                                     "assertion_requirements")
+                                     "assertion_requirements", "control_references")
                     if result.get(name)), None)
         if key is None:
             retrieval = result["obligation_retrieval"]
@@ -233,6 +310,7 @@ def _summary(reports, tree, unit_links=None, *, profile=PROFILE):
             "per_function": "omitted_function_summaries",
             "source_unit_links": "omitted_source_unit_link_summaries",
             "compound_contracts": "omitted_compound_contract_summaries",
+            "control_references": "omitted_control_reference_summaries",
             "assertion_requirements": "omitted_assertion_requirement_summaries"}[key]
         result[omitted] += 1
     return result

@@ -1,0 +1,44 @@
+{
+  "distinct_passed_tests": 1096,
+  "failed_tests": 0,
+  "focused_agent_runs_counted_again": false,
+  "rows": [
+    {
+      "exit": {
+        "returncode": 0,
+        "seconds": 11.131342592067085
+      },
+      "failed": [],
+      "passed": 426,
+      "path": "datasets-final-02/junit.xml",
+      "repository": "datasets",
+      "sha256": "88fe4c5aa06a33bc761ef63268d6ec47aff23d6db12954a48bca29bec8462723",
+      "skipped": [],
+      "tests": 426
+    },
+    {
+      "exit": {
+        "returncode": 0,
+        "seconds": 506.69391804107
+      },
+      "failed": [],
+      "passed": 670,
+      "path": "accelerator-final-01/junit.xml",
+      "repository": "accelerator",
+      "sha256": "4b7ae7468519b4774cfbb3ca607585b60f9a4801765fe3334f33a0414ac86591",
+      "skipped": [
+        {
+          "message": "explicit numerical development checkpoint and cached GTE snapshot required",
+          "node": "accelerator:benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration::test_real_numerical_consumer_preserves_mismatch_abstention_and_cached_report"
+        },
+        {
+          "message": "explicit numerical development checkpoint and cached GTE snapshot required",
+          "node": "accelerator:benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration::test_cached_numerical_checkpoint_reaches_planning_worker_and_historical_audit"
+        }
+      ],
+      "tests": 672
+    }
+  ],
+  "schema": "numerical-loop-regression-ledger@1",
+  "skipped_tests": 2
+}

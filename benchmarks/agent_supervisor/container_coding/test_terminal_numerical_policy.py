@@ -164,12 +164,46 @@ def test_guarded_profile_requires_exact_new_producers_but_v1_does_not(name, muta
     policy.require_numerical_archive(manifest, policy.PROFILE)
 
 
-def test_v1_and_v2_controls_are_distinct_even_with_identical_task_inputs(tmp_path):
+@pytest.mark.parametrize("pair", [(policy.PROFILE, policy.GUARDED_PROFILE),
+                                  (policy.PROFILE, policy.CONTROL_PROFILE),
+                                  (policy.GUARDED_PROFILE, policy.CONTROL_PROFILE)])
+def test_profile_controls_are_distinct_even_with_identical_task_inputs(tmp_path, pair):
     configurations = [benchmark.config_for(tmp_path, tmp_path / "out", tmp_path / "archive", "full",
-        numerical_formalization_profile=profile) for profile in policy.PROFILES]
+        numerical_formalization_profile=profile) for profile in pair]
     comparison = controls.compare_controls(*(observed(config) for config in configurations))
     assert comparison["matches"] is False
     assert comparison["differences"] == ["experimental_controls_sha256.numerical_formalization_profile"]
+
+
+def test_control_archive_adds_only_selected_modules_and_binds_reused_guarded_bases():
+    from ipfs_accelerate_py.agent_supervisor.runtime import numerical_formalization_context as numerical
+
+    guarded = policy._producer_paths(policy.GUARDED_PROFILE)
+    control = policy._producer_paths(policy.CONTROL_PROFILE)
+    assert set(control) - set(guarded) == {"datasets/" + p for p in policy.CONTROL_DATASET_PATHS}
+    assert {key: control[key] for key in guarded} == guarded
+    pins = numerical._producers(policy.CONTROL_PROFILE)
+    for key, basename in (("grammar", "numerical_source_v3.py"), ("projections", "numerical_logic_v3.py"),
+                          ("guarded_grammar", "numerical_source_v2.py"), ("guarded_projections", "numerical_logic_v2.py"),
+                          ("base_grammar", "numerical_source.py"), ("base_projections", "numerical_logic.py")):
+        paths = [p for p in control.values() if p.name == basename]
+        assert len(paths) == 1 and pins[key] == hashlib.sha256(paths[0].read_bytes()).hexdigest()
+    policy.require_numerical_archive(inventory(policy.CONTROL_PROFILE), policy.CONTROL_PROFILE)
+
+
+@pytest.mark.parametrize("name", policy.CONTROL_DATASET_PATHS)
+@pytest.mark.parametrize("mutation", ["missing", "changed"])
+def test_control_profile_requires_exact_new_producers_but_earlier_profiles_do_not(name, mutation):
+    manifest = inventory(policy.CONTROL_PROFILE)
+    row = next(row for row in manifest["files"] if row["path"] == "datasets/" + name)
+    if mutation == "missing":
+        manifest["files"].remove(row)
+    else:
+        row["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="newly qualified runtime archive"):
+        policy.require_numerical_archive(manifest, policy.CONTROL_PROFILE)
+    for profile in (policy.PROFILE, policy.GUARDED_PROFILE):
+        policy.require_numerical_archive(manifest, profile)
 
 
 @pytest.mark.parametrize("arm", ["full", "no-index"])
