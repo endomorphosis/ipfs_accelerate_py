@@ -1,0 +1,20 @@
+{
+  "schema": "numerical-live-pair-launch-result@1",
+  "arm": "no-index",
+  "exit_code": 0,
+  "seconds": 800.2468057519291,
+  "preparation_unchanged": true,
+  "stdout_sha256": "195635b14c20f43603507c5e4794a7e9e2e755c3daeb8d874a0e37d0c8abaf47",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "receipt_sha256": "195635b14c20f43603507c5e4794a7e9e2e755c3daeb8d874a0e37d0c8abaf47",
+  "complete_single_trial_receipt": true,
+  "trial_count": 1,
+  "results": [
+    {
+      "reward": {
+        "reward": 1.0
+      },
+      "exception_type": null
+    }
+  ]
+}

@@ -19,9 +19,11 @@ from ..task_sources.control_plane_contracts import canonical_json_bytes, content
 from .current_source_lookup import CurrentSourceLookup
 from .numerical_obligation_client import process_identity
 from .quack_state_server import QuackStateServer, ServerLifecycle
-from .repository_source_inventory import _cid
+from .repository_source_inventory import _BoundCAS, _cid, _input_guard
+from .repository_source_scope import RepositorySourceScope, nominate_source_scope
 
 SCHEMA = "supervisor-native-source-task-admission@1"
+NOMINATED_SCOPE_SCHEMA = "supervisor-native-nominated-source-scope@1"
 _SEAL = object()
 _CLAIM_FIELDS = frozenset(("attempt_id", "claim_id", "attempt_number", "lease_id",
                          "owner_session_id", "fencing_token", "fence_epoch"))
@@ -80,6 +82,8 @@ class NativeSourceTaskAdmission:
         self._lock, self._checking = threading.RLock(), False
         self._source = self._source_refs = self._source_bytes = None
         self._binding_in_progress = False
+        self._nominated_source_scope = self._original_nominated_source_scope = None
+        self._nominated_scope_checking = False
         self._snapshot = self._grant = None
         self._original_snapshot = self._original_grant = None
         with server._lock:
@@ -225,30 +229,180 @@ class NativeSourceTaskAdmission:
                   "native source task bind is already consumed or in progress")
             self._binding_in_progress = True
             try:
-                before = self.require_current()
-                with self._owner_lock:
-                    _need(self._gateway._current_source_lookup is None,
-                          "native source lookup is already bound")
-                    try:
-                        self._server.bind_current_source_lookup(repository=repository, cas=cas,
-                            expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
-                            task_cid=before["task_cid"], task_revision=before["task_revision"],
-                            expected_task_body_cid=before["expected_task_body_cid"], context_cid=context_cid,
-                            allowed_paths=allowed_paths, max_response_bytes=max_response_bytes,
-                            max_slice_bytes=max_slice_bytes)
-                    finally:
-                        # Preserve an actually published reader even if its last
-                        # native validation raises; there is no rollback/rebind.
-                        service = self._gateway._current_source_lookup
-                        if type(service) is CurrentSourceLookup:
-                            self._source, self._source_refs = service, (service, cas, service._root)
-                            self._source_bytes = self._gateway._current_source_lookup_binding
-                            service._native_source_task_admission = self
-                    self.require_source_binding(server=self._server, service=self._source)
-                self.require_current()
-                return json.loads(self._source_bytes)
+                return self._bind_current_source_lookup(repository=repository, cas=cas,
+                    expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
+                    context_cid=context_cid, allowed_paths=allowed_paths,
+                    max_response_bytes=max_response_bytes, max_slice_bytes=max_slice_bytes)
             finally:
                 self._binding_in_progress = False
+
+    def _bind_current_source_lookup(self, *, repository, cas, expected_inventory_cid,
+                                    request, limits, context_cid, allowed_paths,
+                                    max_response_bytes, max_slice_bytes, input_guard=None):
+        """Bind under the caller's task lock and whole-operation reentry guard."""
+        if input_guard is not None:
+            input_guard()
+        before = self.require_current()
+        if input_guard is not None:
+            input_guard()
+        with self._owner_lock:
+            _need(self._gateway._current_source_lookup is None,
+                  "native source lookup is already bound")
+            try:
+                self._server.bind_current_source_lookup(repository=repository, cas=cas,
+                    expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
+                    task_cid=before["task_cid"], task_revision=before["task_revision"],
+                    expected_task_body_cid=before["expected_task_body_cid"], context_cid=context_cid,
+                    allowed_paths=allowed_paths, max_response_bytes=max_response_bytes,
+                    max_slice_bytes=max_slice_bytes)
+            finally:
+                # Preserve an actually published reader even if its last
+                # native validation raises; there is no rollback/rebind.
+                service = self._gateway._current_source_lookup
+                if type(service) is CurrentSourceLookup:
+                    self._source, self._source_refs = service, (service, cas, service._root)
+                    self._source_bytes = self._gateway._current_source_lookup_binding
+                    service._native_source_task_admission = self
+            if input_guard is not None:
+                input_guard()
+            self.require_source_binding(server=self._server, service=self._source)
+        self.require_current()
+        if input_guard is not None:
+            input_guard()
+        return json.loads(self._source_bytes)
+
+    def bind_nominated_current_source_lookup(self, *, scope, expected_scope_cid,
+                                             repository, cas, expected_inventory_cid,
+                                             request, limits, context_cid,
+                                             max_response_bytes=16384, max_slice_bytes=4096):
+        """Cold-replay a pinned historical subset before the existing native bind.
+
+        The host independently supplies the nomination CID, retained inventory,
+        request, limits, repository and context. Required/program roles are an
+        explicit reviewed host policy; this does not validate a signed Terminal
+        profile, admit an allocation, or compile/adopt a worker context.
+        """
+        with self._lock:
+            _need(not self._binding_in_progress and self._source is None,
+                  "native source task bind is already consumed or in progress")
+            self._binding_in_progress = True
+            frozen = None
+            paths = None
+            try:
+                _need(type(scope) is RepositorySourceScope,
+                      "exact immutable repository source nomination required")
+                expected = _cid(expected_scope_cid)
+                guard = _input_guard(request, limits)
+                value = scope.observation()
+                frozen = canonical_json_bytes(value)
+                _need(value["scope_cid"] == expected,
+                      "source nomination differs from independently pinned scope")
+                _need(_cid(expected_inventory_cid) == value["source_inventory_cid"],
+                      "source nomination differs from independently pinned inventory")
+                paths = tuple(row["raw_path_hex"] for row in value["selected"])
+                required = tuple(value["required_paths"])
+                program = tuple(value["program_paths"])
+
+                retained_store = _BoundCAS(cas, guard)
+
+                def checked_inputs():
+                    retained_store.check()
+                    _need(canonical_json_bytes(scope.observation()) == frozen,
+                          "source nomination changed during native admission")
+
+                checked_inputs()
+                self.require_current()
+                checked_inputs()
+                restored = nominate_source_scope(cas=cas,
+                    expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
+                    selected_paths=paths, required_paths=required, program_paths=program)
+                checked_inputs()
+                _need(canonical_json_bytes(restored.observation()) == frozen,
+                      "source nomination differs from independent retained inventory replay")
+                return self._bind_current_source_lookup(repository=repository, cas=cas,
+                    expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
+                    context_cid=context_cid, allowed_paths=paths,
+                    max_response_bytes=max_response_bytes, max_slice_bytes=max_slice_bytes,
+                    input_guard=checked_inputs)
+            finally:
+                if (type(self._source) is CurrentSourceLookup
+                        and self._gateway._current_source_lookup is self._source
+                        and frozen is not None and paths is not None):
+                    # A published native reader remains consumed even when a
+                    # post-publication guard raises. Retain the attempted join;
+                    # its public observation must still pass all live checks.
+                    captured = (scope, frozen, expected_scope_cid, paths,
+                                self._source, self._source_bytes, cas)
+                    self._nominated_source_scope = self._original_nominated_source_scope = captured
+                self._binding_in_progress = False
+
+    def require_nominated_source_scope(self):
+        """Observe the same live claim/reader join; the snapshot is not a grant."""
+        with self._lock:
+            _need(not self._binding_in_progress,
+                  "source nomination binding is still in progress")
+            _need(not self._nominated_scope_checking, "nominated source scope observation reentry refused")
+            self._nominated_scope_checking = True
+            try:
+                retained = self._nominated_source_scope
+                _need(type(retained) is tuple and len(retained) == 7
+                      and retained is self._original_nominated_source_scope,
+                      "native source reader has no retained nomination join")
+                scope, frozen, expected, paths, source, binding_bytes, cas = retained
+
+                def checked_join():
+                    self._retained()
+                    _need(type(scope) is RepositorySourceScope and source is self._source
+                          and source._store.cas is cas and self._source_bytes == binding_bytes,
+                          "original nominated source reader changed")
+                    value = scope.observation()
+                    _need(canonical_json_bytes(value) == frozen and value["scope_cid"] == expected
+                          and paths == tuple(row["raw_path_hex"] for row in value["selected"])
+                          and paths == source._paths,
+                          "retained source nomination or selected path scope changed")
+                    with self._owner_lock:
+                        self.require_source_binding(server=self._server, service=source)
+                        binding = source.binding(self._gateway.identity)
+                    _need(canonical_json_bytes(binding) == binding_bytes
+                          and binding["source_inventory_cid"] == value["source_inventory_cid"]
+                          and binding["source_request"] == value["request"]
+                          and source._scope["source_limits"] == value["source_limits"]
+                          and binding["expected_tree"] == value["git_tree"],
+                          "native source binding differs from historical nomination")
+                    return value, binding
+
+                checked_join()
+                task = self.require_current()
+                value, binding = checked_join()
+                source._check_source()
+                # The native reader independently replays its original retained
+                # CAS. No read capability, worker identity, or allocation follows.
+                source._load()
+                source._check_source()
+                self.require_current()
+                value, binding = checked_join()
+                source._check_source()
+                value, binding = checked_join()
+                _need(all(binding[key] == task[key] for key in
+                          ("task_cid", "task_revision", "expected_task_body_cid")),
+                      "nominated source task snapshot changed")
+                return dict(schema=NOMINATED_SCOPE_SCHEMA,
+                    source_scope_cid=value["scope_cid"], frontier_cid=value["frontier_cid"],
+                    source_inventory_cid=value["source_inventory_cid"],
+                    native_snapshot_cid=value["native_snapshot_cid"], population_cid=value["population_cid"],
+                    historical_request_task_id=value["request"]["task_id"],
+                    selected_count=value["selected_count"], selected_bytes=value["selected_bytes"],
+                    frontier_count=value["frontier_count"], frontier_status_counts=dict(value["frontier_status_counts"]),
+                    allowed_paths_cid=binding["allowed_paths_cid"], source_binding_cid=binding["binding_cid"],
+                    task_cid=binding["task_cid"], task_revision=binding["task_revision"],
+                    expected_task_body_cid=binding["expected_task_body_cid"], context_cid=binding["context_cid"],
+                    nomination_historical_only=True, native_source_binding_verified=True,
+                    native_task_admission_verified=True, read_only=True,
+                    allocation_ownership_verified=False, compiled_context_verified=False,
+                    coding_process_verified=False, proof_authority=False, execution_authority=False,
+                    completion_authority=False, omission_authority=False)
+            finally:
+                self._nominated_scope_checking = False
 
     def require_source_binding(self, *, server, service):
         """Source join only; caller holding SERVER must not acquire COOR here."""

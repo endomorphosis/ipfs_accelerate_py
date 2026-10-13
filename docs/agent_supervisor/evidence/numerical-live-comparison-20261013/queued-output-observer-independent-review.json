@@ -1,0 +1,164 @@
+{
+  "check_count": 33,
+  "checks": [
+    {
+      "name": "only_one_new_function",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:_sha",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:_base",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:_text",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:_digest",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:_relative",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:capture_scope",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:_scope",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:_identity",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:_read",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:_file",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:_private_directory",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:collect",
+      "passed": true
+    },
+    {
+      "name": "unchanged_existing_function:main",
+      "passed": true
+    },
+    {
+      "name": "observation_only_authority_unchanged",
+      "passed": true
+    },
+    {
+      "name": "postmerge_qualification_pass",
+      "passed": true
+    },
+    {
+      "name": "qualified_source:terminal_output_observation.py",
+      "passed": true
+    },
+    {
+      "name": "qualified_source:test_terminal_output_observation.py",
+      "passed": true
+    },
+    {
+      "name": "qualified_source:test_terminal_output_queued_observation.py",
+      "passed": true
+    },
+    {
+      "name": "qualified_source:implementation_daemon.py",
+      "passed": true
+    },
+    {
+      "name": "qualified_source:database_portal_bridge.py",
+      "passed": true
+    },
+    {
+      "name": "junit_bound",
+      "passed": true
+    },
+    {
+      "name": "132_unique_passing_nodes",
+      "passed": true
+    },
+    {
+      "name": "31_queued_nodes",
+      "passed": true
+    },
+    {
+      "name": "exact_native_queued_shape_accepted",
+      "passed": true
+    },
+    {
+      "name": "authored_refusal:foreign_key",
+      "passed": true
+    },
+    {
+      "name": "authored_refusal:preceding",
+      "passed": true
+    },
+    {
+      "name": "authored_refusal:duplicated",
+      "passed": true
+    },
+    {
+      "name": "authored_refusal:cleanup_conflict",
+      "passed": true
+    },
+    {
+      "name": "authored_refusal:wrong_operation",
+      "passed": true
+    },
+    {
+      "name": "authored_refusal:explicit_failed_finalize",
+      "passed": true
+    },
+    {
+      "name": "direct_finalize_unchanged:database_complete",
+      "passed": true
+    },
+    {
+      "name": "direct_finalize_unchanged:database_task_claim_failure",
+      "passed": true
+    }
+  ],
+  "conclusions": [
+    "The new branch accepts only successful queued events after completed database_complete settlement, STOP, runtime close and worker cleanup.",
+    "Exact task ID, canonical CID/key, implementation commit and attempt join a unique later resolved reconciliation; contradictory optional baseline/root/cleanup evidence refuses.",
+    "The native bridge uses the same five-field queued/reconciled join; its separate Git accepted-transition proof remains authoritative and is not replaced by this observer.",
+    "All existing custody, no-follow/bounded file, allocation-root, admitted output-scope and router-workspace checks remain unchanged.",
+    "Current output digests remain observation-only; patch application, writer identity, completion and task correctness authority stay false.",
+    "A cleaned candidate allocation remains unavailable, while independently observable canonical bytes can be retained.",
+    "Historical live benchmark receipts remain unchanged and their output hashes unavailable; the fix requires a future fresh execution to qualify live recovery."
+  ],
+  "database_contents_read": false,
+  "junit_sha256": "16bd05c9c436f166fe2627ca43ced0e67dadf6ee1dceec2ddc2361e25dc32e75",
+  "model_calls": 0,
+  "new_test_sha256": "dad8b82f806615cd8f1caefb2b75f507d419e836b9a8c4ab85d8879940ce78e7",
+  "observed_at_utc": "2026-10-13T19:19:06.429756+00:00",
+  "observer_sha256": "f841c4de28e87a8871ee634449cd3c1c2094fb744a1f413f4c99f12660642648",
+  "passed": true,
+  "postmerge_qualification_sha256": "4e4bd30d6ae7c4ba8635a3d39345ed2c9bdc0dd9036ecc6b135d6ab73ddc1edb",
+  "production_files_changed": false,
+  "provider_calls": 0,
+  "pytest_rerun_by_reviewer": false,
+  "raw_model_transcripts_read": false,
+  "release_blockers": [],
+  "retained_new_queued_pytest_nodes": 31,
+  "retained_pytest_passes": 132,
+  "reviewed_base_commit": "f7cf87104e079d1159226c137449e29bf98bfd40",
+  "reviewer_sha256": "fbaf14146d63525cbbb25b60f2f743ab778a8bf1a234e0513a366749cd8ea6b9",
+  "schema": "queued-output-observer-independent-review@1"
+}

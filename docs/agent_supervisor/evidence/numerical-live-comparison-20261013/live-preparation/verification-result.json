@@ -1,0 +1,12 @@
+{
+  "all_archive_members_match_manifest": true,
+  "archive_sha256": "488ae75f90bd9c4c9cc88b520d4db68157984625ea8bbef3874f63da48b5f94a",
+  "credentials_inspected": false,
+  "current_source_capability_returncode": 0,
+  "elapsed_seconds": 10.401711540995166,
+  "file_count": 27513,
+  "model_calls": 0,
+  "provider_calls": 0,
+  "schema": "source-context-live-runtime-verification@1",
+  "uncompressed_bytes": 4072010850
+}

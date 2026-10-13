@@ -134,6 +134,79 @@ rebind the published reader. The caller retains its existing owner cleanup
 duty. There is no atomic transaction spanning claim custody, CAS/source replay
 and gateway publication.
 
+## Bind a pinned historical nomination
+
+```python
+binding = admission.bind_nominated_current_source_lookup(
+    scope=reviewed_historical_nomination,
+    expected_scope_cid=independently_pinned_nomination_cid,
+    repository=independently_admitted_allocated_root,
+    cas=existing_source_cas,
+    expected_inventory_cid=admitted_source_inventory_cid,
+    request=admitted_source_inventory_request,
+    limits=admitted_source_limits,
+    context_cid=independently_admitted_context_cid,
+)
+observation = admission.require_nominated_source_scope()
+```
+
+This additive handoff accepts an exact
+[historical source nomination](repository_source_scope.md), compares its
+independent scope and inventory pins, and cold-replays it from the independently
+supplied existing CAS, request and limits. The complete observation must match,
+including selected originals, roles, required support and the unselected frontier.
+A self-consistent directly constructed value or serialized observation is
+insufficient. The host must review required/program roles and the context pin;
+this API does not derive those choices from a signed Terminal profile.
+
+The binder derives the exact selected raw paths and invokes the existing native
+reader under the captured live task/claim/grant checks. The existing source
+binding schema and legacy method remain unchanged. A whole-operation guard
+refuses reentry through either public bind method during CAS or native callbacks.
+Independent request, limits, scope and physical CAS bindings are checked across
+replay and publication. No new store, owner, worktree or model is created.
+
+Only an actually published reader receives a retained nomination join. A failure
+after publication preserves the consumed reader and attempted join; it does not
+rollback or reopen admission. A failed prepublication selection can be corrected
+and retried while the native claim remains valid.
+
+`require_nominated_source_scope()` returns detached metadata joining
+`source_scope_cid`, `frontier_cid`, inventory/native snapshot/population identities,
+selected/frontier counts, `source_binding_cid`, context and the actual native task
+revision/full-body CID. `historical_request_task_id` remains separate from that
+native task. The observer checks original objects, exact selected path scope,
+current committed source, complete retained CAS replay and live native claim,
+then rechecks source after the closing coordinator callback. Observation reentry
+refuses. These checks are sequential and do not lock arbitrary filesystem writers.
+
+The flags `native_source_binding_verified` and `native_task_admission_verified`
+describe that checked join. Allocation ownership, compiled context, coding
+process, proof, execution, completion and omission flags remain false. The
+observation neither authenticates a worker nor becomes a serialized grant.
+The nomination's own historical/currentness flags are never promoted in place.
+The nomination ceiling is 64 files/1,000,000 original per-path bytes; the existing
+coding-child source broker independently caps its selected reader scope at 32.
+
+Full signed Terminal subset selection remains separate. Current preparation,
+vector qualification, semantic loaders, partitions, task-data deferral and rebind
+expect the complete signed profile/worker population. A later reviewed semantic
+scope must preserve those complete `input_paths` and explicitly include required
+supports. Embedding a postcommit inventory CID in its own indexed task profile
+would create a content cycle: keep the signed selection declarative and bind the
+profile hash, inventory and nomination identities in a later checked receipt.
+
+An unselected frontier entry remains unreadable through this bound reader.
+The current owner profile is bind-once for one admitted attempt; discovery cannot
+silently widen its path set. A future repository navigation workflow needs an
+explicit new scope/task-generation admission protocol and stale capability
+retirement before expanding that selection. Replacing `_paths` or rebinding the
+same published reader is not that protocol.
+
+The [native nomination qualification](evidence/native-nominated-source-scope-20261013/README.md)
+retains real owner/claim/source regressions and the authored deployment limits.
+No automatic Terminal activation or total-session token reduction is established.
+
 ## Optional broker guard and process boundary
 
 ```python

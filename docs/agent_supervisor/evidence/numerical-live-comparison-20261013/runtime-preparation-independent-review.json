@@ -1,0 +1,39 @@
+{
+  "allowed_config_diff_paths": [
+    "/agents/0/kwargs/arm",
+    "/job_name",
+    "/jobs_dir"
+  ],
+  "archive_members_checked_by_retained_root_verifier": 27513,
+  "archive_sha256": "488ae75f90bd9c4c9cc88b520d4db68157984625ea8bbef3874f63da48b5f94a",
+  "checks_passed": 364,
+  "common_input_hashes_match": true,
+  "complete": true,
+  "host_source_pins_verified": 316,
+  "immutable_receipt_pins": {
+    "live-preparation/runtime-01/manifest.json": "21fa1dc8db3bc333bd28baf115ca7608f86b03a9379e702ce0474b4743d7ec3a",
+    "live-preparation/verification-result.json": "d5222c12231a180bd228e8080f2aba3d6926148ce2cbfc8cf137b6d28c3a3264",
+    "live-trials/codex-full-01/config.json": "e50a5814bbdc9bf8ecd9d40ee64c52b78c0ab725139c7065854c886e39c9454c",
+    "live-trials/codex-full-01/preparation.json": "3a7d2e384440ff15b95485104a8ca6a14931237773315fad9d4e699aa4dd5f6a",
+    "live-trials/codex-no-index-01/config.json": "7cc82a88e5aef779cad251828a56cdebd79cce17f3c770b739439764d157e3a8",
+    "live-trials/codex-no-index-01/preparation.json": "a794ba7f681fa03b3c733a0c200b789c6d98c59c215cc5798b5b1172ac68dc5c",
+    "provider-readiness/route-audit.json": "79477e8e8291f06f7e1c6a451666cb86b4d199f7c827e10f69edc80d91239168"
+  },
+  "intent_checkpoint_selection": "not_selected",
+  "limitations": [
+    "No live generation or current Codex authentication verified by this review.",
+    "Archive members were streamed by the retained root verifier; this audit independently hashed the compressed archive and checked all prepared host producers plus route source members.",
+    "Prepared controls do not yet constitute final pair lock or executed receipts; bind the finalized lock before collection.",
+    "No hidden fixture or solution content was read; task identity hashes were compared from existing preparations."
+  ],
+  "manifest_sha256": "21fa1dc8db3bc333bd28baf115ca7608f86b03a9379e702ce0474b4743d7ec3a",
+  "numerical_v3_full_only_consumption": true,
+  "observed_at_utc": "2026-10-13T18:38:30.884520+00:00",
+  "provider_calls": 0,
+  "provider_profile": "codex-gpt-6.1-sol-0.160.0@1",
+  "release_blockers": [],
+  "route_sources_verified_current_and_archive": 8,
+  "schema": "independent-live-runtime-preparation-review@1",
+  "source384_full_only_consumption": true,
+  "source_mutations": 0
+}

@@ -1,0 +1,66 @@
+{
+  "cache_mutations": 0,
+  "credential_files_read": 0,
+  "installed_host_commands": [
+    {
+      "bytes": 8790,
+      "command": "codex",
+      "matches_pinned_benchmark_cli": false,
+      "package_name": "@openai/codex",
+      "package_version": "0.162.1",
+      "resolved_path": "/usr/local/lib/node_modules/@openai/codex/bin/codex.js",
+      "sha256": "61b0194f3bb6534439c8d26a3ed57d0805f84b884588b761795323eeb92fcf70"
+    },
+    {
+      "bytes": 160670952,
+      "command": "grok",
+      "matches_pinned_benchmark_cli": false,
+      "package_version": "1.0.52",
+      "resolved_path": "/home/barberb/.grok/downloads/grok-1.0.52-linux-aarch64",
+      "sha256": "fc32410b6883c15a39b9f33ec04a6bfb7d070b383e5dbad7efbc48c787e5050d",
+      "version_source": "resolved immutable download filename"
+    }
+  ],
+  "native_commands_executed": 0,
+  "network_requests": 0,
+  "observed_at_utc": "2026-10-13T18:32:56.277230+00:00",
+  "pinned_codex_profile": "codex-gpt-6.1-sol-0.160.0@1",
+  "pinned_public_packages": [
+    {
+      "bytes": 4902,
+      "native_members": {},
+      "package": "codex-0.160.0.tgz",
+      "package_name": "@openai/codex",
+      "package_version": "0.160.0",
+      "public_cache_content_path": "/home/barberb/.npm/_cacache/content-v2/sha512/90/4b/551b38d101800c3b0271377f5b19c9daecb4f7203420abae0d349fdd0d37eee0ecd96a870973235be7f80627f21517f563ee82bb1369b79e64da9fb9698e",
+      "sha256": "373517768e912eeb5054024ae9215e2c90a1420957b66fe134ef745a00948d4a",
+      "sha512_content_address_verified": true
+    },
+    {
+      "bytes": 155716078,
+      "native_members": {
+        "codex": {
+          "bytes": 248966648,
+          "matches_reviewed_pin": true,
+          "sha256": "50b06603bdcdac39b714f5c3e68583c002b8ad8779ebfdaaf4932ff016b379c0",
+          "tar_member": "package/vendor/aarch64-unknown-linux-musl/bin/codex"
+        },
+        "codex-code-mode-host": {
+          "bytes": 66921472,
+          "matches_reviewed_pin": true,
+          "sha256": "7e0004bd8b37936753981729365c448bdc67f0173d9bc6453e40e3ad28774b6c",
+          "tar_member": "package/vendor/aarch64-unknown-linux-musl/bin/codex-code-mode-host"
+        }
+      },
+      "package": "codex-0.160.0-linux-arm64.tgz",
+      "package_name": "@openai/codex",
+      "package_version": "0.160.0-linux-arm64",
+      "public_cache_content_path": "/home/barberb/.npm/_cacache/content-v2/sha512/56/75/5db12d3a6250ec2fc3b06898d0df176a749346e22f9e049055dcbcad75d927cd2685feeae28cbcd5837a6d930be88fc0bb1a7ee25a9544fb2f1611a3e20a",
+      "sha256": "9286a7e01d500ab224c9e5b4b223b7adf5dd901fba23efd6a438316426798b17",
+      "sha512_content_address_verified": true
+    }
+  ],
+  "provider_generation_calls": 0,
+  "schema": "benchmark-provider-public-assets@1",
+  "scope": "Public executable/package bytes only; cached packages are available but production deployment still installs pinned Codex through its reviewed path."
+}

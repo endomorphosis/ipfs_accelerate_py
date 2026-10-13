@@ -1,0 +1,96 @@
+{
+  "benchmark_token_or_reward_validity_invalidated": false,
+  "confirmed_static_contract_gap": {
+    "native_acceptance": {
+      "behavior": "Native accepted-source transition reconstruction explicitly recognizes merge-queued implementation_finished followed by an exactly matching resolved merge_reconciled event.",
+      "line": 10191,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py"
+    },
+    "observer": {
+      "line": 263,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py",
+      "requirement": "One implementation_finished event with matching task/canonical identity, alias, baseline, bounded attempt, return code, provider dispatched, attempt consumed, and lifecycle_finalize.finalized true."
+    },
+    "producer": {
+      "behavior": "Successful merge-queued implementation_finished events do not get lifecycle_finalize from the emitter; that field is installed only when merge_result.queued is false.",
+      "line": 33060,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+    },
+    "test_gap": {
+      "behavior": "Authored event always has lifecycle_finalize.finalized true. Real completion-CAS test reuses that authored event, so it does not exercise real queued/reconciled terminal event production.",
+      "lines": [
+        53,
+        282
+      ],
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py"
+    }
+  },
+  "credential_contents_read": false,
+  "exact_live_cause_limit": "The native owner event log was not exported before container removal. allocation_event groups both unique-event selection and several predicates; available retained metadata cannot establish which predicate failed. No retrospective output bytes can be recovered from this receipt.",
+  "followup_plan": [
+    "Use a new isolated worktree after this frozen live pair finishes; retain the unavailable observations on both old receipts.",
+    "Add content-free closed-enum diagnostics distinguishing no/ambiguous finished event, identity/baseline/attempt mismatch, and missing finalization; never export raw event or exception text.",
+    "Add a native producer-realistic queued implementation_finished plus resolved merge_reconciled regression, alongside direct completed and failed-finalized cases. Construct the real native event shape rather than adding lifecycle_finalize in the fixture.",
+    "For completed database_complete paths, recognize the native queued/reconciled lifecycle through an exact owner-event join (same task/alias/canonical identity, attempt, implementation commit, and unambiguous ordered reconciliation), retaining all admitted binding, private directory, output allowlist, cleanup and stable-file checks. Reuse existing native accepted-transition verification where feasible; do not simply trust a router path or remove all lifecycle gates.",
+    "Test wrong/duplicate/missing/out-of-order reconciliation, wrong task/commit/attempt/baseline, nonprivate owner directory, writable or linked logs, changed binding, missing candidate, and retained canonical output. Observer facts remain current bytes only, never writer/publication/proof authority.",
+    "Run a provider-free native queued-merge lifecycle in Docker and collect candidate/canonical output hashes before removal; then a fresh live run can qualify the repaired observer."
+  ],
+  "frozen_pair_inputs_changed": false,
+  "model_calls": 0,
+  "model_transcripts_read": false,
+  "observed": {
+    "evidence_stage": "allocation_event",
+    "native_completion_operation": "database_complete",
+    "native_start_succeeded": true,
+    "native_stop_succeeded": true,
+    "native_task_status": "completed",
+    "official_reward": 1.0,
+    "output_reason": "binding_or_file_evidence_unavailable",
+    "output_status": "unavailable",
+    "outputs": [],
+    "remaining_processes": 0,
+    "runtime_close_succeeded": true,
+    "worker_cleanup_returncode": 0
+  },
+  "observed_arm": "no-index",
+  "observed_at_utc": "2026-10-13T19:03:20.784785+00:00",
+  "observed_receipt": {
+    "bytes": 77332,
+    "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/live-trials/codex-no-index-01/receipt.json",
+    "sha256": "195635b14c20f43603507c5e4794a7e9e2e755c3daeb8d874a0e37d0c8abaf47"
+  },
+  "output_byte_identity_established": false,
+  "private_event_file_read": false,
+  "production_files_changed": false,
+  "provider_calls": 0,
+  "review": {
+    "bytes": 10760,
+    "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/no-index-result-review.json",
+    "sha256": "97fa59955805c716a34618d438a281cc74f2a7c86454b94e5baed7ebf826e400"
+  },
+  "schema": "native-output-allocation-event-contract-diagnosis@1",
+  "source_bindings": [
+    {
+      "bytes": 20495,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_output_observation.py",
+      "sha256": "6c2a62a62b6b0baabce78fc6eb61c776937026652a147ce412ac03661418330a"
+    },
+    {
+      "bytes": 29544,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py",
+      "sha256": "36d659b1fd6f5a90f1fb861bd8e8fbf812c9d9e7370c94e373da2f13029df72c"
+    },
+    {
+      "bytes": 3250459,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "e199003a7a54d4f012e0c5dc5057d0ec9f23889d45b2e07e552758d4c459fcd8"
+    },
+    {
+      "bytes": 491002,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "sha256": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7"
+    }
+  ],
+  "status": "confirmed_unsupported_producer_shape_exact_live_predicate_unknown",
+  "task_or_verifier_contents_read": false
+}

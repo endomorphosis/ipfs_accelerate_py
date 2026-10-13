@@ -1,0 +1,94 @@
+{
+  "delivery": "collaboration messages preserved by root",
+  "documentation_static_review": {
+    "blockers": [],
+    "imports_tests_or_edits": false,
+    "observations": [
+      "Three updated guide sections match the native owner join, complete signed inventory preservation, declarative selection/content-cycle boundary, false worker/allocation/proof flags, independent32/64bounds and unmeasured token savings."
+    ],
+    "reviewer": "/root/parallel_scope_reuse_review"
+  },
+  "files": [
+    {
+      "bytes": 25857,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+      "sha256": "eece603dcd9f72d28d9aa572934fd23785f87602ecb36d8c0c2e2d97e0712df5"
+    },
+    {
+      "bytes": 22616,
+      "path": "test/api/test_current_source_task_admission.py",
+      "sha256": "1ff08889ada83fe92f45db800406834dfc7bc053a7ebc477c0a0e8fcdbe5b6f6"
+    },
+    {
+      "bytes": 14894,
+      "path": "test/api/test_native_nominated_source_scope.py",
+      "sha256": "9e5e2d398e702f44fe928da06df3991786ead23b5479548479c503249bb8f5ed"
+    }
+  ],
+  "final_static_read_review": {
+    "blockers": [],
+    "module_sha256": "eece603dcd9f72d28d9aa572934fd23785f87602ecb36d8c0c2e2d97e0712df5",
+    "observations": [
+      "All prior fixture/API/cleanup blockers corrected before qualification.",
+      "Native observation names match; exact published reader captures join metadata even after publication exceptions.",
+      "Closing-clock source edit, observer reentry and post-factory input mutation cases target the intended live guards."
+    ],
+    "reviewer": "/root/parallel_scope_reuse_review",
+    "tests_imports_or_edits": false
+  },
+  "module_author": "/root/native_scope_contract_review",
+  "observed_at_utc": "2026-10-13T18:33:13.392648+00:00",
+  "parallel_review": {
+    "compiler_revision": "ce2cd1026f21e52384ddf29c50c4a459baef927e",
+    "current_base": "f7cf87104e079d1159226c137449e29bf98bfd40",
+    "current_side_commits": 92,
+    "foreign_worktrees_modified": false,
+    "matching_remote_branch_query": {
+      "argv": [
+        "git",
+        "ls-remote",
+        "origin",
+        "refs/heads/codex/repository-planning-consumer-20261013",
+        "refs/heads/codex/repository-context-compiler-20261013"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    "new_competing_versioned_signed_semantic_scope_found": false,
+    "parallel_side_commits": 21,
+    "planning_revision": "24bafa1179d4d754b58d7d77080d811424404cca"
+  },
+  "post_initial_run_fixture_correction": {
+    "corrected_test_sha256": "ecd7b48d1a42ade0d401d3f622b17c36352c4f81595da700245a9232789a2d1d",
+    "details": "fixture-correction.json",
+    "final_attempt": "qualification-02",
+    "initial_execution_result_retained": true,
+    "reason": "Use a valid differing max_entries instead of exceeding hard ceiling before calling the API.",
+    "runtime_changed": false
+  },
+  "prequalification_corrections": [
+    "Use native source_scope_cid/source_binding_cid observation names.",
+    "Use real task_alias and release(protect_task_claim(get_task_claim(...))) transition signatures.",
+    "Close a broker assigned after deferred fixture setup.",
+    "Avoid incidental extra factory replay outside the bind reentry guard.",
+    "Explicitly compare independent inventory CID before replay.",
+    "Recheck current source after the closing native coordinator fence.",
+    "Use existing test_source_lookup_worker_channel.py suite name."
+  ],
+  "read_only_test_reviewer": "/root/parallel_scope_reuse_review",
+  "receipt_author": "root",
+  "reviewer_execution_or_imports": false,
+  "schema": "native-nominated-source-scope-static-review@1",
+  "scope_limits": [
+    "Host reviewed nomination required/program roles are not a separately signed Terminal profile.",
+    "The complete signed task_profile.input_paths is unchanged; future subset integration spans vector qualification, loaders, partitions, deferred task data and rebind.",
+    "Do not embed a postcommit inventory CID inside its own indexed task profile: keep signed selection declarative and join profile hash/inventory identities in a later receipt.",
+    "The existing same-named older parallel source policy module/schema still needs reconciliation.",
+    "Native claim/grant/owner checks do not authenticate a coding child or establish managed allocation; separate guards remain required.",
+    "All currentness checks are sequential, not an atomic filesystem/task/CAS snapshot."
+  ],
+  "separate_reviewer_authored_receipt": false,
+  "test_author": "root",
+  "tests_executed_before_corrections": false
+}

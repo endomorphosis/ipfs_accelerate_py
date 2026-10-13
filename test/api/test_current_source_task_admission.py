@@ -92,8 +92,8 @@ class NativeCase:
 
 
 @contextmanager
-def _native_case(tmp_path, monkeypatch, *, defer_source_binding=False):
-    canonical = _repository(tmp_path, {b"module.py": SOURCE})
+def _native_case(tmp_path, monkeypatch, *, defer_source_binding=False, source_files=None):
+    canonical = _repository(tmp_path, {b"module.py": SOURCE} if source_files is None else source_files)
     retained = _retain(canonical, tmp_path,
         limits=sources.SourceInventoryLimits(frame_bytes=4096))
     workspace = tmp_path / "allocated"

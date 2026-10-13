@@ -1,0 +1,414 @@
+{
+  "admitted_indexed_context_present": false,
+  "arm": "no-index",
+  "cache_included_in_input": true,
+  "check_count": 67,
+  "checks": [
+    {
+      "name": "regular:pair-lock.json",
+      "passed": true
+    },
+    {
+      "name": "stable:pair-lock.json",
+      "passed": true
+    },
+    {
+      "name": "regular:pair-observation-no-index-01.json",
+      "passed": true
+    },
+    {
+      "name": "stable:pair-observation-no-index-01.json",
+      "passed": true
+    },
+    {
+      "name": "regular:preparation.json",
+      "passed": true
+    },
+    {
+      "name": "stable:preparation.json",
+      "passed": true
+    },
+    {
+      "name": "regular:config.json",
+      "passed": true
+    },
+    {
+      "name": "stable:config.json",
+      "passed": true
+    },
+    {
+      "name": "regular:receipt.json",
+      "passed": true
+    },
+    {
+      "name": "stable:receipt.json",
+      "passed": true
+    },
+    {
+      "name": "regular:launch-result.json",
+      "passed": true
+    },
+    {
+      "name": "stable:launch-result.json",
+      "passed": true
+    },
+    {
+      "name": "regular:launch-start.json",
+      "passed": true
+    },
+    {
+      "name": "stable:launch-start.json",
+      "passed": true
+    },
+    {
+      "name": "exact_lock_sha",
+      "passed": true
+    },
+    {
+      "name": "frozen_preparation",
+      "passed": true
+    },
+    {
+      "name": "frozen_configuration",
+      "passed": true
+    },
+    {
+      "name": "frozen_launch_runner",
+      "passed": true
+    },
+    {
+      "name": "frozen_launch_recipe",
+      "passed": true
+    },
+    {
+      "name": "frozen_launch_environment",
+      "passed": true
+    },
+    {
+      "name": "launch_receipt_hash",
+      "passed": true
+    },
+    {
+      "name": "launch_arm_exit",
+      "passed": true
+    },
+    {
+      "name": "receipt_single_trial",
+      "passed": true
+    },
+    {
+      "name": "receipt_integrity",
+      "passed": true
+    },
+    {
+      "name": "receipt_controls",
+      "passed": true
+    },
+    {
+      "name": "regular:result.json",
+      "passed": true
+    },
+    {
+      "name": "stable:result.json",
+      "passed": true
+    },
+    {
+      "name": "regular:supervisor-result.json",
+      "passed": true
+    },
+    {
+      "name": "stable:supervisor-result.json",
+      "passed": true
+    },
+    {
+      "name": "native_result_hash",
+      "passed": true
+    },
+    {
+      "name": "native_report_exact_receipt",
+      "passed": true
+    },
+    {
+      "name": "official_reward",
+      "passed": true
+    },
+    {
+      "name": "task_identity",
+      "passed": true
+    },
+    {
+      "name": "native_completed",
+      "passed": true
+    },
+    {
+      "name": "native_start_stop_closed",
+      "passed": true
+    },
+    {
+      "name": "worker_cleaned",
+      "passed": true
+    },
+    {
+      "name": "no_index_contexts_absent",
+      "passed": true
+    },
+    {
+      "name": "no_index_plan_context_absent",
+      "passed": true
+    },
+    {
+      "name": "no_index_selection",
+      "passed": true
+    },
+    {
+      "name": "owner_checked_no_index_absence",
+      "passed": true
+    },
+    {
+      "name": "absence_request_join",
+      "passed": true
+    },
+    {
+      "name": "no_false_formal_proof",
+      "passed": true
+    },
+    {
+      "name": "two_unique_sessions",
+      "passed": true
+    },
+    {
+      "name": "planning_route",
+      "passed": true
+    },
+    {
+      "name": "planning_native_scope",
+      "passed": true
+    },
+    {
+      "name": "planning_integer_counts",
+      "passed": true
+    },
+    {
+      "name": "planning_arithmetic",
+      "passed": true
+    },
+    {
+      "name": "planning_no_index_payload",
+      "passed": true
+    },
+    {
+      "name": "coding_route",
+      "passed": true
+    },
+    {
+      "name": "coding_native_scope",
+      "passed": true
+    },
+    {
+      "name": "coding_integer_counts",
+      "passed": true
+    },
+    {
+      "name": "coding_arithmetic",
+      "passed": true
+    },
+    {
+      "name": "coding_no_index_payload",
+      "passed": true
+    },
+    {
+      "name": "planner_invocation_join",
+      "passed": true
+    },
+    {
+      "name": "planner_request_hashes_join",
+      "passed": true
+    },
+    {
+      "name": "planner_receipt_hash_join",
+      "passed": true
+    },
+    {
+      "name": "exact_observed_totals",
+      "passed": true
+    },
+    {
+      "name": "no_unreceipted_attempt",
+      "passed": true
+    },
+    {
+      "name": "numerical_obligation_retrieval_observation_not_selected",
+      "passed": true
+    },
+    {
+      "name": "source_view_retrieval_observation_not_selected",
+      "passed": true
+    },
+    {
+      "name": "only_no_index_phases",
+      "passed": true
+    },
+    {
+      "name": "intent_fail_open_explicit",
+      "passed": true
+    },
+    {
+      "name": "output_unavailability_preserved",
+      "passed": true
+    },
+    {
+      "name": "collector_exact_tokens",
+      "passed": true
+    },
+    {
+      "name": "collector_control_integrity",
+      "passed": true
+    },
+    {
+      "name": "collector_output_failure_visible",
+      "passed": true
+    },
+    {
+      "name": "incomplete_pair_no_delta",
+      "passed": true
+    }
+  ],
+  "credential_contents_read": false,
+  "declared_output": {
+    "byte_identity_established": false,
+    "evidence_stage": "allocation_event",
+    "outputs": [],
+    "reason": "binding_or_file_evidence_unavailable",
+    "status": "unavailable"
+  },
+  "frozen_files_changed": false,
+  "independent_raw_planner_prompt_read": false,
+  "initial_indexed_context_present": false,
+  "intent_status": "fail_open_no_checkpoint",
+  "invocations": [
+    {
+      "invocation_id": "4c2b058967ca4d1698f5809e17aa4e27",
+      "model": "gpt-6.1-sol",
+      "model_prompt_bytes": 15391,
+      "model_prompt_sha256": "a99038d6c72a2cf3e572dee02958c5e0574256581640842ce1046d22b0be8a1a",
+      "phase": "planning",
+      "provider": "codex_cli",
+      "seconds": 83.16867312404793,
+      "tokens": {
+        "cached_input_tokens": 0,
+        "input_tokens": 19305,
+        "output_tokens": 1660,
+        "total_tokens": 20965
+      }
+    },
+    {
+      "invocation_id": "f310cc7948ed4312b1b0c474fd99a7c4",
+      "model": "gpt-6.1-sol",
+      "model_prompt_bytes": 10538,
+      "model_prompt_sha256": "4ff601f860b734e426da9917536e08464be17109374951ad286cb614f0e2524d",
+      "phase": "coding",
+      "provider": "codex_cli",
+      "seconds": 331.7690045540221,
+      "tokens": {
+        "cached_input_tokens": 283392,
+        "input_tokens": 326721,
+        "output_tokens": 10806,
+        "total_tokens": 337527
+      }
+    }
+  ],
+  "limitations": [
+    "Official reward is read from retained Harbor metadata, not recomputed by this reviewer.",
+    "Owner numerical absence observation is bound to planning invocation hashes; raw planner prompt was not reopened.",
+    "No declared output bytes were exported; output identity and writer attribution remain unknown.",
+    "No full-arm result exists in this snapshot, so no pair token delta or causal efficiency conclusion is available.",
+    "Native cumulative token counters are scoped receipts, not verified billing totals; cache is included in input."
+  ],
+  "model_calls": 0,
+  "native_start_stop_and_worker_cleanup_verified": true,
+  "native_task_completed": true,
+  "numerical_absence_verified_by_owner_observer": true,
+  "observed_at_utc": "2026-10-13T19:02:13.428884+00:00",
+  "official_reward": 1.0,
+  "passed": true,
+  "provider_calls": 0,
+  "raw_model_transcripts_read": false,
+  "retrieval_counts": null,
+  "retrieval_status": {
+    "numerical": "not_selected",
+    "source": "not_selected"
+  },
+  "reviewer_sha256": "14af6fb14115a01f80fcef783ccc4b0a8e4b2b3609c8d2fedb3c1a33fb299170",
+  "schema": "numerical-live-no-index-result-review@1",
+  "source384_context_present": false,
+  "source_bindings": [
+    {
+      "bytes": 83596,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/pair-lock.json",
+      "sha256": "10f0884d233c833d85fb216411eede7477320a0e098f53382876ad98bc13550d"
+    },
+    {
+      "bytes": 97176,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/pair-observation-no-index-01.json",
+      "sha256": "759932cb97cb5819b738cb216b512845710d88a93b44a1b911f6f9958bb946ec"
+    },
+    {
+      "bytes": 83007,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/live-trials/codex-no-index-01/preparation.json",
+      "sha256": "a794ba7f681fa03b3c733a0c200b789c6d98c59c215cc5798b5b1172ac68dc5c"
+    },
+    {
+      "bytes": 3315,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/live-trials/codex-no-index-01/config.json",
+      "sha256": "7cc82a88e5aef779cad251828a56cdebd79cce17f3c770b739439764d157e3a8"
+    },
+    {
+      "bytes": 77332,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/live-trials/codex-no-index-01/receipt.json",
+      "sha256": "195635b14c20f43603507c5e4794a7e9e2e755c3daeb8d874a0e37d0c8abaf47"
+    },
+    {
+      "bytes": 590,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/live-trials/codex-no-index-01/launch-result.json",
+      "sha256": "09ced7fc69224bbf77cc72af505e88859c67a512bf1e89d2aa0557533ea16705"
+    },
+    {
+      "bytes": 1040,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/live-trials/codex-no-index-01/launch-start.json",
+      "sha256": "f895f295a8c4a79c6814e014962c41935b0a519569d34f08d2b808e5ae13f0aa"
+    },
+    {
+      "bytes": 10634,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/live-trials/codex-no-index-01/jobs/supervisor-no-index-largest-eigenval/largest-eigenval__beFUuMt/result.json",
+      "sha256": "a45acdc4aa7c2a8fd711fd82782ba4836f9ba253830eeca25e402b2f27c28fbb"
+    },
+    {
+      "bytes": 56101,
+      "path": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/live-trials/codex-no-index-01/jobs/supervisor-no-index-largest-eigenval/largest-eigenval__beFUuMt/agent/supervisor-result.json",
+      "sha256": "36bbced8c4d2d264ea5833af6230ce4b7582250a310b06e719cad8779b09ca4d"
+    }
+  ],
+  "task_or_verifier_contents_read": false,
+  "timings": {
+    "durations_seconds": {
+      "agent_execution": 443.083852,
+      "agent_setup": 333.579155,
+      "environment_setup": 3.26498,
+      "verifier": 2.152355
+    },
+    "harbor_invocation_seconds": 798.4923871649662,
+    "launcher_seconds": 800.2468057519291,
+    "phases": {
+      "planning_seconds": 87.47887088893913,
+      "prepare_seconds": 0.732774049974978
+    },
+    "supervisor_seconds": 441.4366087500239
+  },
+  "tokens": {
+    "cached_input_tokens": 283392,
+    "input_tokens": 346026,
+    "output_tokens": 12466,
+    "total_tokens": 358492
+  },
+  "uncached_input_tokens": 62634
+}
