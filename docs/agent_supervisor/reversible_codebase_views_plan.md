@@ -249,9 +249,11 @@ only within the existing admitted scope. The new
 [historical scope nomination](repository_source_scope.md) joins complete inventory
 metadata to a reviewed bounded subset and retains every remaining frontier.
 It supplies detached semantic arguments, not current-source or native task
-admission. Next, version the signed task's semantic/read selection and qualify
-its actual owner/worker handoff. Discovering a path does not authorize a new source read or
-expand the current 64-file limit.
+admission. The [signed Terminal context selection](signed_terminal_source_scope.md)
+now versions one Python task's bounded semantic/vector subset beside its complete
+signed inventory. Its join to the native nomination reader and actual coding
+child remains separate. Discovering a path does not authorize a new source read
+or expand the current 64-file limit.
 
 Present discovery, symbol/span selection, compact reads, exact expansion and
 candidate capsules as one model-facing workflow. Retain the distinct native
@@ -546,10 +548,12 @@ Shared owner policy is implemented. The discovery/transport increment adds
 client paging within the admitted population and carries an owner-selected
 policy. Benchmark preparation now freezes that policy through the coding owner
 and checks the collected session against it. Historical inventory nominations
-now retain a complete frontier beside a bounded reviewed subset; current-source,
-signed task-profile and native worker admission remain open. The existing
-parallel repository-session/compiler/planning stack needs explicit schema and
-CLI reconciliation before integration. General
+now retain a complete frontier beside a bounded reviewed subset. The native
+nomination-to-current-source/task-owner join and signed Python task-profile
+selection are implemented as separate boundaries. Their production allocation
+and coding-child join, data/multitask scope, and explicit expansion lifecycle
+remain open. The existing parallel repository-session/compiler/planning stack
+needs explicit schema and CLI reconciliation before integration. General
 read observations and subsequent comparisons remain proposed. The earlier
 compact-edit bundle retains its 729-test and 11 authored numerical-fixture
 results; this phase records its own selected regression run separately, without
@@ -734,12 +738,13 @@ native source reader. Task claims, owner grants and current originals remain
 independent checks. Publication failures retain bind-once state; a detached
 observation does not become authority.
 
-This closes the host nomination-to-reader join. The separate signed Terminal
-semantic/read scope still needs coordinated preparation, index/partition, loader,
-task-data and rebind changes, plus actual worker/allocation integration. Preserve
-the complete signed task inventory. Keep a future signed selection declarative:
-putting its postcommit inventory CID into the indexed task profile creates a
-content cycle. Join those identities in a later checked receipt instead.
+This closes the host nomination-to-reader join. The opt-in signed Terminal
+context selection described below now coordinates preparation, index/partition,
+loaders and rebind for a single Python task. Data/multitask scopes and actual
+worker/allocation integration remain open. Preserve the complete signed task
+inventory. Keep the signed selection declarative: putting its postcommit
+inventory CID into the indexed task profile creates a content cycle. Join those
+identities in a later independently checked receipt instead.
 
 The existing parallel repository sessions/compiler/planning stack remains the
 implementation to reconcile. Its policy helper/schema collision is unchanged;
@@ -782,3 +787,53 @@ cannot be fetched through it. Qualify a new scope/task-generation admission and
 retire stale capabilities before widening a read set. Charge any new planning,
 admission and reconstruction work to the complete-session experiment; silently
 mutating the existing path scope would invalidate its original custody contract.
+
+## Signed Terminal context selection, 2026-10-13
+
+The opt-in [profile and consumer path](signed_terminal_source_scope.md) now signs
+one task's semantic/program selection inside the existing profile support file.
+It preserves complete signed inputs, original task effects and unselected source
+identities. Initial build, cold reload, direct admitted context, admitted cache
+reuse and warm native-owner capture consume the same selection. Bounded planning
+coverage reports selected/full/frontier identities without full source metadata
+or frontier rows in that projection. Complete signed task path declarations
+remain in planning input. Compiled worker input and historical audit
+retain the selected hashes and roles; they are separate from a launched worker's
+source capability or proof of program semantics.
+
+A host regression uses 70 ordinary Python originals: all 73 inputs remain signed
+including three generated supports, while five files enter semantic context and
+two enter the vector index. This demonstrates selection and exact cache reuse,
+not a measured reduction in a live model's complete-session tokens. Current
+replay checks omitted originals too. Selection stays bounded at 64 total files
+and 1,000,000 original per-path bytes including supports; complete acquisition,
+signature replay and source hashing are still host work. The
+[qualification evidence](evidence/signed-terminal-source-scope-20261013/README.md)
+records execution and compatibility limits.
+
+The next integration steps are:
+
+1. Reconcile the existing repository compiler/planning stack's policy schemas and
+   CLI, then let its reviewed metadata proposal feed this declarative profile.
+   Independently bind the actual historical inventory and nomination after the
+   profile-containing commit; a proposal alone has no native source authority.
+2. Join the authenticated allocation, original owner claim, compiled prompt and
+   actual coding child's birth in the production launcher. Preserve the native
+   broker's independent 32-path bound and bind-once scope; use new admission and
+   stale-capability retirement for expansion or edits.
+3. Qualify selection for data and multitask profiles and for each decoder task's
+   own population contract. The current scoped mode refuses local training,
+   SecurityIR, Source384 and optional numerical/header context combinations and
+   explicitly abstains from complete Doctor repair. Reuse existing family,
+   schema/version/task and 8D/384D/768D checkpoints and embedding inventories;
+   do not reinterpret a selected-source regression as reconstruction training.
+4. Observe actual initial disclosure, source lookups, expansions and refreshes;
+   rebuild and pin a fresh deployment archive containing the new scope module,
+   then run the fixed-trace census and repeated matched live comparisons above.
+   Charge planning, coding, admission, reconstruction, failed attempts and
+   auxiliary refreshes. Compare against the fresh native/no-index/indexed
+   baseline before attributing a difference to capsules or minification.
+
+No checkpoint, embedding population, model-manager registration, DuckDB/DuckLake
+inventory or foreign worktree is rewritten by this context-selection increment.
+It supplies a bounded context path for later controlled experiments.

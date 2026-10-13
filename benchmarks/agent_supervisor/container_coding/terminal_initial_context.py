@@ -21,6 +21,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.code_retrieval_context import (
 from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import (
     load_semantic_worker_context, prepare_semantic_context,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.terminal_semantic_scope import (
+    replay_terminal_semantic_scope, validate_terminal_semantic_payload,
+)
 from ipfs_accelerate_py.agent_supervisor.semantic_state.datasets_adapter import IpfsDatasetsSemanticStateProvider
 from ipfs_accelerate_py.agent_supervisor.semantic_state.intent_world_snapshot import (
     capture_intent_world_snapshot, load_intent_world_context, persist_intent_world_snapshot,
@@ -138,6 +141,18 @@ def _summaries(descriptor, semantic, retrieval, world, *, intent_freshness_check
             "retrieval_schema", "source_population_cid", "disposition", "support_hashes", "embedding_calls")})
     if "program_paths" in semantic:
         summaries[1]["program_paths"] = semantic["program_paths"]
+    if "terminal_semantic_scope" in descriptor:
+        scope = descriptor["terminal_semantic_scope"]
+        summaries[1]["terminal_semantic_scope"] = {
+            "schema": "terminal-signed-semantic-scope-planning-coverage@1",
+            "replay_schema": scope["schema"],
+            **{key: scope[key] for key in (
+                "manifest_cid", "profile_sha256", "declaration_cid", "selected_count", "full_count",
+                "frontier_count", "frontier_cid", "selected_source_bytes", "max_files", "max_source_bytes")},
+            "selected_scope_is_complete_repository": False,
+            "proof_authority": False, "execution_authority": False,
+            "completion_authority": False, "omission_authority": False,
+        }
     learner = descriptor.get("codebase_autoencoder")
     if learner is not None:
         nominations = learner.get("security_candidate_nominations")
@@ -208,6 +223,15 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
     if type(retrieval_ranked_capsules) is not bool:
         raise ValueError("retrieval-ranked capsule selection requires a boolean opt-in")
     public_profile = prepared.get("task_profile")
+    signed_scope = replay_terminal_semantic_scope(prepared)
+    if signed_scope is not None:
+        if (train_autoencoder or any(value is not None for value in (
+                weight_transfer, canonical_cve_training, security_checkpoint,
+                security_checkpoint_hub, formula_decoder, header_protocol,
+                source384_config, numerical_formalization_profile, numerical_selection_config))):
+            raise ValueError("signed selected source scope does not support decoder or training contexts")
+        if sorted(required_raw_paths) != signed_scope["required_raw_paths"]:
+            raise ValueError("selected semantic required sources differ from signed declaration")
     vector_paths = task_profile_index_paths(public_profile) if public_profile is not None else ["bottle.py"]
     if numerical_formalization_profile is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context import validate_profile
@@ -268,6 +292,9 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
     vectors = root / ".runtime/terminal-vectors"
     indexed, partition = qualify_terminal_population(prepared=prepared, output=vectors,
         paths=vector_paths, model_snapshot=model_snapshot, model_revision=model_revision)
+    if signed_scope is not None and (partition is None
+            or partition.get("terminal_semantic_scope") != signed_scope):
+        raise ValueError("selected source scope changed during vector qualification")
     empty_population = indexed.get("schema") == EMPTY_INDEX_SCHEMA
     if retrieval_ranked_capsules and empty_population:
         raise ValueError("retrieval-ranked capsules require a nonempty native retrieval index")
@@ -366,7 +393,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
             capsule_kwargs["program_paths"] = vector_paths
         timings["retrieval_persistence"] = time.monotonic() - stage
         stage = time.monotonic()
-    semantic = prepare_semantic_context(repository=root, paths=prepared["worker_inputs"],
+    semantic = prepare_semantic_context(repository=root,
+        paths=(signed_scope["selected_paths"] if signed_scope is not None else prepared["worker_inputs"]),
         # Native semantic objectives are trimmed, printable descriptive text.
         # Normalize whitespace only here; the public query remains byte-exact
         # in retrieval, required raw input, planner constraints and hashes.
@@ -378,6 +406,9 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
     metadata = {"Semantic context artifact": (output / "semantic/worker-context.json").relative_to(root).as_posix(),
                 "Semantic context sha256": semantic["worker_payload_sha256"], "Semantic context refresh": "true"}
     semantic_payload, view, get_block = _semantic_view(root, metadata, alias)
+    if signed_scope is not None and validate_terminal_semantic_payload(
+            prepared, semantic_payload, required_raw_paths=required_raw_paths) != signed_scope:
+        raise ValueError("selected source scope changed during semantic qualification")
     del semantic_payload
     timings["semantic_build_reconstruction_and_hydration"] = time.monotonic() - stage
     stage = time.monotonic()
@@ -400,6 +431,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         if capture["plan_projection"]["plans"] or any(capture["planning_context"][key] for key in (
                 "tasks", "goals", "objectives", "goal_edges", "active_plan_heads")):
             raise ValueError("initial planning requires a genuinely empty native intent owner")
+    if signed_scope is not None and replay_terminal_semantic_scope(prepared) != signed_scope:
+        raise ValueError("selected source scope changed during empty native world capture")
     _write(output / "initial-world.json", capture)
     timings["empty_native_world_capture"] = time.monotonic() - stage
     descriptor = {"schema": SCHEMA, "request_cid": PromptWorkflowRequest.from_dict(prepared["request"]).request_cid,
@@ -418,6 +451,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
     if public_profile is not None:
         descriptor["public_task_index_scope"] = {"task_source_paths": vector_paths,
             "instruction_only": False, "source_semantics_verified": False}
+    if signed_scope is not None:
+        descriptor["terminal_semantic_scope"] = signed_scope
     if learner is not None:
         descriptor["codebase_autoencoder"] = learner
         descriptor["codebase_autoencoder_catalog"] = learner_catalog
@@ -449,6 +484,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
             "retrieval_schema", "source_population_cid", "disposition", "embedding_calls")})
     if public_profile is not None:
         result["public_task_index_scope"] = descriptor["public_task_index_scope"]
+    if signed_scope is not None:
+        result["terminal_semantic_scope"] = signed_scope
     if learner is not None:
         result["codebase_autoencoder"] = learner
         result["codebase_autoencoder_catalog"] = learner_catalog
@@ -513,6 +550,17 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
             or descriptor["public_query_sha256"] != hashlib.sha256(prepared["query"].encode()).hexdigest()
             or descriptor.get("execution_authority") is not False or descriptor.get("completion_authority") is not False):
         raise ValueError("initial indexed context declaration binding differs")
+    signed_scope = replay_terminal_semantic_scope(prepared)
+    if signed_scope is not None:
+        if (descriptor.get("terminal_semantic_scope") != signed_scope
+                or result.get("terminal_semantic_scope") != signed_scope):
+            raise ValueError("initial signed semantic source scope differs")
+        if any(key in descriptor or key in result for key in (
+                "codebase_autoencoder", "codebase_autoencoder_catalog", "security_autoencoder_advice",
+                "source384_context", "numerical_formalization", "numerical_selection_384")):
+            raise ValueError("signed selected source scope contains unsupported decoder or training context")
+    elif "terminal_semantic_scope" in descriptor or "terminal_semantic_scope" in result:
+        raise ValueError("selected semantic source scope requires its signed profile")
     expected_scope = ({"task_source_paths": task_profile_index_paths(prepared["task_profile"]),
                        "instruction_only": False, "source_semantics_verified": False}
                       if prepared.get("task_profile") is not None else None)
@@ -520,6 +568,8 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
         raise ValueError("initial public task index scope differs")
     alias, metadata = descriptor["task_alias"], descriptor["metadata"]
     semantic, view, get_block = _semantic_view(root, metadata, alias)
+    if signed_scope is not None and validate_terminal_semantic_payload(prepared, semantic) != signed_scope:
+        raise ValueError("initial selected semantic sources differ from signed scope")
     capsule_selection = state / "capsule-selection.json"
     capsule_policy = semantic.get("worker_projection", {})
     declared_capsules = descriptor.get("capsule_selection")
@@ -710,7 +760,7 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
         raise ValueError("code autoencoder catalog requires bound learner")
     if descriptor["learned_embeddings"]:
         _read(root, descriptor["model_manifest"])
-    if (set(semantic["manifest"]) != set(prepared["worker_inputs"])
+    if (set(semantic["manifest"]) != set(signed_scope["selected_paths"] if signed_scope is not None else prepared["worker_inputs"])
             or descriptor["semantic"]["semantic_root_cid"] != semantic["semantic_root_cid"]
             or descriptor["repository_id"] != view.root.repository_id
             or retrieval["status"] != "current" or retrieval["query_text"] != prepared["query"]
@@ -739,6 +789,8 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
                 semantic_root_cid=semantic["semantic_root_cid"], get_semantic_block=get_block)
         if current != capture:
             raise ValueError("initial world differs from current native owner")
+    if signed_scope is not None and replay_terminal_semantic_scope(prepared) != signed_scope:
+        raise ValueError("selected source scope changed during initial native world replay")
     return {"descriptor": descriptor, "receipt": result, "semantic": semantic,
             "retrieval": retrieval, "indexed": indexed, "capture": capture,
             "summaries": _summaries(descriptor, semantic, retrieval, capture["planning_context"],
@@ -800,6 +852,8 @@ def bind_admitted_context(*, state: Path, prepared: dict, admission: dict, verif
         "initial_context_descriptor": loaded["receipt"]["descriptor"], "new_embedding_calls": 0,
         "preparation_mode": "initial-index-reuse-with-new-admitted-world",
         "execution_authority": False, "completion_authority": False, "canonical_task_mutated": False}
+    if "terminal_semantic_scope" in descriptor:
+        result["terminal_semantic_scope"] = descriptor["terminal_semantic_scope"]
     if "capsule_selection" in descriptor:
         result["capsule_selection"] = descriptor["capsule_selection"]
     if descriptor.get("codebase_autoencoder") is not None:

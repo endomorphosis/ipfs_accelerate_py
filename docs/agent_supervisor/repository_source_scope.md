@@ -135,9 +135,11 @@ The concrete integration order is:
    default configuration shapes and family/schema/task checkpoint inventories.
 3. Review native catalog/index ownership and reuse the admitted owner's
    interfaces; distinguish session metadata from each IR/dimension inventory.
-4. Add a versioned reviewed semantic/read scope alongside the signed complete
-   `task_profile.input_paths`. Retain all original input identities and mandatory
-   supports; never substitute a smaller profile for the complete inventory.
+4. Reuse the opt-in [signed Terminal context selection](signed_terminal_source_scope.md)
+   for single Python-code tasks. Its selected context/vector subset lives beside
+   complete signed `task_profile.input_paths` and includes mandatory supports.
+   Join historical nomination identities explicitly; data/multitask and native
+   read-scope admission remain separate work.
 5. Qualify native task/allocation fences, actual coding-child adoption and stale
    source refusals before matched full-session token/task experiments.
 
