@@ -55,6 +55,30 @@ is an explicit diagnostic option for the complete protocol envelope. Restoration
 maps and unrequested original bytes remain owner-side. Repeated owner-validation
 fields are omitted from normal model output.
 
+## Discover admitted sources
+
+Use the same client and session with `--discover` instead of `--path`:
+
+```sh
+/opt/ipfs-supervisor/venv/bin/python -I \
+  /opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py \
+  --discover --max-bytes 8192
+```
+
+Discovery returns sorted path rows with source/view/manifest hashes, byte sizes
+and effective profiles. It returns no source bodies or restoration maps. Pass
+`next_cursor` with the same page budget to continue, then select a returned path
+and use its source/view pins for a read or exact expansion. Discovery is a
+baseline operation: source edits make it stale. It rejects `--working`, source
+pins and `--view`; working reads still require an explicit admitted path.
+
+Discovery uses request version 3 for legacy and shared-policy sessions. It
+preserves the existing maximum of 64 admitted files and 1 MiB total source;
+it does not discover new checkout paths or broaden admission. The owner verifies
+cached originals and deterministic projections before exporting their pins.
+Discovery rows are accounted separately from source slices and candidate
+artifacts, while complete response bytes still count against the session budget.
+
 ## Read working files after edits
 
 Add `--working` to an unpinned first-page request after editing an admitted file:
@@ -112,10 +136,22 @@ edits. The host edit adapter obtains the exact checked candidate projection via
 The original constructor defaults retain `.py`-only selection and legacy wire
 identities. Explicit shared-policy admissions are version 2; baseline/working
 pages are versions 3/4 with `view_policy_binding_sha256`, and host discovery is
-version 2. The current client/broker supports the legacy versions only and
-refuses these new pages. This is owner API convergence, with transport selection
-and indexed discovery still requiring their own coordinated implementation.
-It does not widen admitted scope or make compact editing a model tool.
+version 2. The client/broker now transports these pages when an owner creates
+`WorkerSourceBroker(..., view_policy=policy)` without a conflicting legacy
+profile. Descriptor version 2 pins both the policy binding and baseline scope;
+request version 3 selects discovery or an explicitly pinned shared-policy read.
+The client chooses that version from the validated descriptor, preserving the
+policy through baseline, working and exact expansion. Legacy request versions
+1/2 remain exclusive to legacy sessions; downgrade and mixed-policy requests
+refuse. Candidate-context requests retain their existing generation binding.
+
+The sealed-prompt factory also accepts an owner-supplied `view_policy` whose
+profile must match the selected enabled profile. Standard benchmark preparation
+still selects only its existing profile and uses legacy policy defaults; a
+frozen benchmark-level shared-policy configuration remains a later increment.
+No worker request selects a new policy, widens scope or makes compact editing a
+model tool. The [transport qualification](evidence/source-view-discovery-transport-20261013/README.md)
+records the local evidence and its authored identity-boundary limits.
 
 ## Currentness and worker lifecycle
 

@@ -108,12 +108,17 @@ the policy binding digest. Protected lines preserve display text and physical
 coordinates; they do not prohibit edits within retained bytes. The existing
 mapper refuses newline-changing edits while caller-protected lines exist.
 
-This first policy API is host-only. Shared baseline/working pages use versions
-3/4 and discovery uses version 2; the current closed worker transport accepts
-the legacy policy only. Exposing policy selection to the actual coding client
-needs a coordinated descriptor/client/broker version. The
-[qualification evidence](evidence/shared-source-view-policy-20261013/README.md)
-keeps this boundary separate from token savings and model-driven editing.
+The first [policy qualification](evidence/shared-source-view-policy-20261013/README.md)
+covered owner APIs. The subsequent
+[transport increment](evidence/source-view-discovery-transport-20261013/README.md)
+now carries shared baseline/working pages (versions 3/4) and discovery (version 2)
+through an owner-selected broker, descriptor version 2 and request version 3.
+The client automatically uses the descriptor's policy digest, including exact
+expansion and working generations; legacy requests still refuse shared pages.
+`--discover` lists only already admitted paths and their source/view pins.
+Standard benchmark configuration still uses legacy policy defaults. Repository
+scope admission, benchmark policy selection, full filesystem export, token
+savings and model-driven compact editing remain distinct concerns.
 
 ## Map an explicit compact edit to original bytes
 

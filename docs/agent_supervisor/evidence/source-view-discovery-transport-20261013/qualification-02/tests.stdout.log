@@ -1,0 +1,66 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+cachedir: /tmp/source-view-discovery-transport-qualification-02-0l32b0pb/tests-state/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011
+configfile: pytest.ini
+collected 1316 items
+
+test/api/test_worker_source_discovery_transport.py ..................... [  1%]
+..........................................................               [  6%]
+test/api/test_shared_source_view_policy.py ............................. [  8%]
+.......................                                                  [  9%]
+test/api/test_reversible_source_view.py .....................            [ 11%]
+test/api/test_repository_code_view_inventory.py ...................      [ 12%]
+test/api/test_repository_source_inventory.py ........................... [ 15%]
+.                                                                        [ 15%]
+test/api/test_worker_source_views.py ................................... [ 17%]
+.............................                                            [ 19%]
+test/api/test_worker_source_working_views.py ...................         [ 21%]
+test/api/test_source_view_edits.py ..................................... [ 24%]
+...................                                                      [ 25%]
+test/api/test_source_view_edit_adversarial.py ...................        [ 27%]
+test/api/test_source_view_edit_candidate.py ............................ [ 29%]
+.............                                                            [ 30%]
+test/api/test_source_view_edit_formal_refresh.py .                       [ 30%]
+test/api/test_worker_candidate_context.py .............................. [ 32%]
+............................                                             [ 34%]
+test/api/test_worker_candidate_context_admission.py ...                  [ 34%]
+test/api/test_worker_candidate_context_client.py ....................... [ 36%]
+...............................................                          [ 40%]
+test/api/test_worker_candidate_context_broker.py ......                  [ 40%]
+test/api/test_worker_source_client.py .................................. [ 43%]
+................                                                         [ 44%]
+test/api/test_worker_source_working_client.py .......................... [ 46%]
+...............................                                          [ 48%]
+test/api/test_worker_source_broker.py .......................            [ 50%]
+test/api/test_worker_source_working_broker.py .........                  [ 51%]
+benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py . [ 51%]
+...........F
+
+=================================== FAILURES ===================================
+_ test_current_semantic_source_route_reaches_actual_child_environment_and_restores_it[False] _
+/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py:197: in test_current_semantic_source_route_reaches_actual_child_environment_and_restores_it
+    _, receipt = runner.run(**kwargs)
+                 ^^^^^^^^^^^^^^^^^^^^
+/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py:578: in run
+    source_receipt = _source_broker_observation(path=source_view_descriptor,
+/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py:211: in _source_broker_observation
+    if descriptor["schema"] == "supervisor-worker-source-descriptor@2":
+       ^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'schema'
+- generated xml file: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-02/junit.xml -
+============================= slowest 10 durations =============================
+8.72s call     test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[token-limit]
+6.88s setup    test/api/test_shared_source_view_policy.py::test_shared_inventory_refuses_duplicate_legacy_configuration[changes0]
+6.87s setup    test/api/test_shared_source_view_policy.py::test_existing_closed_wire_rejects_shared_host_pages_instead_of_legacy_relabeling[False]
+6.79s setup    test/api/test_shared_source_view_policy.py::test_policy_mutation_during_mapping_refuses_before_native_application
+6.68s setup    test/api/test_shared_source_view_policy.py::test_fresh_working_stub_edit_keeps_policy_and_refuses_old_generation
+6.67s setup    test/api/test_shared_source_view_policy.py::test_real_mapped_edit_uses_shared_recipe_preserves_protected_comment_and_refreshes[VALUE: int = 1-VALUE: int = 2-pkg/module.py]
+6.65s setup    test/api/test_shared_source_view_policy.py::test_real_mapped_edit_uses_shared_recipe_preserves_protected_comment_and_refreshes[blue-green-pkg/module.py]
+6.57s setup    test/api/test_shared_source_view_policy.py::test_policy_object_mutation_invalidates_all_existing_worker_custody[baseline-True]
+6.53s setup    test/api/test_shared_source_view_policy.py::test_policy_object_mutation_invalidates_all_existing_worker_custody[projection-True]
+6.52s setup    test/api/test_shared_source_view_policy.py::test_policy_cannot_add_foreign_or_nonpython_source_scope[support.txt]
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py::test_current_semantic_source_route_reaches_actual_child_environment_and_restores_it[False]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+================== 1 failed, 687 passed in 651.23s (0:10:51) ===================

@@ -75,7 +75,7 @@ def test_stale_source_artifact_lake_receipt_and_producer_rejected(context, monke
     root, receipt = context
     output = numerical.Path(receipt["output"])
     if mutation == "producer":
-        monkeypatch.setattr(numerical, "_producers", lambda: {"different": "producer"})
+        monkeypatch.setattr(numerical, "_producers", lambda *args: {"different": "producer"})
     elif mutation == "receipt":
         receipt = deepcopy(receipt)
         receipt["summary"]["source_semantics_verified"] = True

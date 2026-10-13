@@ -1,0 +1,100 @@
+{
+  "schema": "numerical-frontend-qualification@1",
+  "profile": "python-numerical-guarded-structure@2",
+  "repository_base": "afadfbcf8d33a67568c133bb761c43d42a9a133c",
+  "owned_files": {
+    "ipfs_datasets_py/logic/software_verification/numerical_source_v2.py": "1943dd506a31a4b2854de2c9decd2fc2ad6625ff8669f63aa6c6f129ca924e4b",
+    "tests/unit/logic/software_verification/test_numerical_source_v2.py": "995c0100e02306cdf939a888c70c8968f731d11588e400914653ed9621348b10"
+  },
+  "tests": {
+    "tests-01": {
+      "passed": 85,
+      "historical": true
+    },
+    "tests-02": {
+      "passed": 89,
+      "v2_passed": 47,
+      "unchanged_v1_passed": 42
+    }
+  },
+  "public_source_replay": [
+    {
+      "public_source_path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "bytes": 642,
+      "status": "translated",
+      "functions": [
+        {
+          "function_id": "function:2",
+          "name": "find_dominant_eigenvalue_and_eigenvector",
+          "source_ref_ids": [
+            "source:eigen.py"
+          ],
+          "span_ids": [
+            "span:3"
+          ],
+          "structurally_complete": true,
+          "unsupported_constructs": []
+        }
+      ],
+      "guarded_regions": 0
+    },
+    {
+      "public_source_path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "bytes": 2246,
+      "status": "partial",
+      "functions": [
+        {
+          "function_id": "function:6",
+          "name": "ref_solution",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:7"
+          ],
+          "structurally_complete": true,
+          "unsupported_constructs": []
+        },
+        {
+          "function_id": "function:81",
+          "name": "test_eigen_pair",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:82"
+          ],
+          "structurally_complete": true,
+          "unsupported_constructs": []
+        },
+        {
+          "function_id": "function:282",
+          "name": "test_speedup",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:283"
+          ],
+          "structurally_complete": false,
+          "unsupported_constructs": [
+            "python.stmt.For"
+          ]
+        }
+      ],
+      "guarded_regions": 6
+    }
+  ],
+  "structurally_complete_functions": 3,
+  "total_functions": 4,
+  "remaining_control_fence": "python.stmt.For",
+  "proofs_discharged": 0,
+  "source_executed": false,
+  "provider_calls": 0,
+  "solver_calls": 0,
+  "standalone_program_evaluation_complete": false,
+  "coverage_scope": "Full source-bound ProgramIR plus validated guarded regions, not standalone ProgramIR or learned scalar decoding.",
+  "unchanged_v1_files": true
+}

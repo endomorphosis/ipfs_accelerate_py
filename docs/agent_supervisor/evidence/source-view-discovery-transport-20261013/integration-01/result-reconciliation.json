@@ -1,0 +1,57 @@
+{
+  "accelerator_execution_head": "8aafb960fd634d218478376aa18bc83f8b121dce",
+  "collected_tests": 1603,
+  "collection_execution_count_agrees": true,
+  "completion_authority": false,
+  "datasets_execution_revision": "afadfbcf8d33a67568c133bb761c43d42a9a133c",
+  "datasets_parent_pin_executed": true,
+  "inputs": [
+    {
+      "bytes": 106346,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/integration-01/commands.json",
+      "sha256": "26622171cd6ac057f4324cd8aea56f4f25e17b19cbb3fd96c95867fb3cf4d27a"
+    },
+    {
+      "bytes": 277480,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/integration-01/tests.stdout.log",
+      "sha256": "2abc934ed9a282bf732bb54ec8c22815049d9354f615de9682c18192d37ff99b"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/integration-01/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 317352,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/integration-01/junit.xml",
+      "sha256": "5d8615769959423db7cb713a95b735263164e3c439286fc00947e82b925ba21f"
+    }
+  ],
+  "junit": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1603
+  },
+  "junit_distinct_testcase_count": 1603,
+  "kit_execution_head": "8ac00bb1974b1378e12091d546d8425af34049e0",
+  "model_calls": 0,
+  "official_task_result": null,
+  "original_runner_receipt_preserved": true,
+  "original_runner_status": "fail",
+  "product_imports": false,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "pytest_exit_code": 0,
+  "reason": "collection_parser_missed_standard_verbose_prefix",
+  "reconciler_sha256": "c7b55ebd24aebaf910dbb02c0c157f2f6eeb12a8459773b6d44e19917b9577f8",
+  "recorded_at_utc": "2026-10-13T05:41:38.190930+00:00",
+  "schema": "source-view-discovery-transport-result-reconciliation@1",
+  "source_before_after_equal": true,
+  "source_binding_scope": "listed_dependency_rows_not_complete_import_closure_or_full_toolchain_attestation",
+  "source_bindings_verified": 166,
+  "status": "pass",
+  "tests_rerun": false,
+  "total_token_savings_measured": false,
+  "training_steps": 0
+}

@@ -65,6 +65,176 @@ def _collect(evidence):
     return collector.collect(parent=evidence[0], scope=evidence[1], report=evidence[2])
 
 
+def _typed_audit(audit, row, *, shared=False):
+    """Author the new optional record fields without inventing source reads."""
+    audit["schema"] = "supervisor-worker-source-session@3" if shared else "supervisor-worker-source-session@2"
+    for item in audit["requests"]:
+        item.update(returned_candidate_context_bytes=0, candidate_context_page=False,
+                    discovery_page=False, returned_discovery_rows=0)
+    if shared:
+        descriptor = audit["session"]
+        descriptor.update(schema=protocol.DESCRIPTOR_SCHEMA_V2,
+                          view_policy_binding_sha256="5" * 64, source_scope_sha256="6" * 64)
+        digest = _sha(protocol.canonical_json(descriptor))
+        audit["descriptor_sha256"] = digest
+        row["source_view_retrieval"].update(schema="worker-source-dispatch-observation@2",
+            descriptor_sha256=digest, **{key: descriptor[key] for key in collector.SHARED_PIN_FIELDS})
+
+
+def _mixed_pages(evidence, *, shared=False):
+    audit, row = evidence[3:5]
+    _typed_audit(audit, row, shared=shared)
+    source = audit["requests"][0]
+    candidate = dict(source, ordinal=2, request_sha256="3" * 64, response_sha256="4" * 64,
+        response_bytes=3072, returned_source_bytes=0, returned_candidate_context_bytes=60,
+        candidate_context_page=True, delivered=False)
+    discovery = dict(source, ordinal=3, request_sha256="5" * 64, response_sha256="6" * 64,
+        response_bytes=4096, returned_source_bytes=0, discovery_page=True, returned_discovery_rows=2)
+    undelivered_discovery = dict(discovery, ordinal=4, request_sha256="7" * 64,
+        response_sha256="8" * 64, returned_discovery_rows=3, delivered=False)
+    refusal = dict(audit["requests"][1], ordinal=5, request_sha256="9" * 64, response_sha256="a" * 64)
+    audit.update(requests=[source, candidate, discovery, undelivered_discovery, refusal],
+                 accepted_requests=5, response_bytes=13545)
+    evidence[5]()
+
+
+@pytest.mark.parametrize("shared", [False, True], ids=["legacy-descriptor", "shared-policy"])
+def test_mixed_source_candidate_and_discovery_pages_keep_all_wire_bytes(evidence, shared):
+    _mixed_pages(evidence, shared=shared)
+    result = _collect(evidence)
+    assert result["status"] == "observed"
+    assert result["counts"] == dict(sessions=1, accepted_requests=5, delivered_responses=2,
+        prepared_pages=4, delivered_pages=2, prepared_source_bytes=40, delivered_source_bytes=40,
+        response_bytes=13545, delivered_response_bytes=6144, request_hash_count=5,
+        response_hash_count=5, unique_request_hash_count=5, unique_response_hash_count=5)
+    assert result["candidate_context_counts"] == dict(prepared_pages=1, delivered_pages=0,
+        prepared_bytes=60, delivered_bytes=0)
+    assert result["discovery_counts"] == dict(prepared_pages=2, delivered_pages=1,
+        prepared_rows=5, delivered_rows=2)
+    assert result["sessions"][0]["discovery_counts"] == result["discovery_counts"]
+    assert result["provider_tokens"] is None and result["total_token_savings_measured"] is False
+    assert not any(result[key] for key in ("proof_authority", "execution_authority", "completion_authority"))
+    encoded = protocol.canonical_json(result)
+    assert b"/allocated/" not in encoded and b"/owner/" not in encoded and b'"requests"' not in encoded
+
+
+@pytest.mark.parametrize("schema", [1, 2, 3])
+def test_empty_historical_audits_do_not_invent_discovery_measurements(evidence, schema):
+    if schema != 1:
+        _typed_audit(evidence[3], evidence[4], shared=schema == 3)
+    evidence[3].update(requests=[], accepted_requests=0, response_bytes=0)
+    evidence[5]()
+    result = _collect(evidence)
+    assert result["status"] == "observed" and result["counts"]["response_bytes"] == 0
+    assert result["discovery_counts"] == (dict.fromkeys(collector.DISCOVERY_COUNT_FIELDS, 0)
+                                          if schema == 3 else None)
+
+
+@pytest.mark.parametrize("missing", ["all", "one-record"])
+def test_legacy_candidate_audit_discovery_is_unknown_when_records_are_untyped(evidence, missing):
+    _typed_audit(evidence[3], evidence[4])
+    records = evidence[3]["requests"] if missing == "all" else evidence[3]["requests"][-1:]
+    for item in records:
+        item.pop("discovery_page"); item.pop("returned_discovery_rows")
+    evidence[5]()
+    result = _collect(evidence)
+    assert result["status"] == "observed" and result["discovery_counts"] is None
+    assert result["counts"]["response_bytes"] == 2281
+    assert result["candidate_context_counts"] == dict(prepared_pages=0, delivered_pages=0,
+                                                      prepared_bytes=0, delivered_bytes=0)
+
+
+def test_multi_session_discovery_is_unknown_if_one_complete_session_is_historical(evidence):
+    _mixed_pages(evidence, shared=True)
+    historical, row = _fixture("e" * 32)
+    evidence[2]["provider_invocations"].append(row)
+    evidence[5](historical)
+    result = _collect(evidence)
+    assert result["status"] == "observed" and result["discovery_counts"] is None
+    assert result["sessions"][0]["discovery_counts"]["prepared_rows"] == 5
+    assert result["sessions"][1]["discovery_counts"] is None
+    assert result["counts"]["response_bytes"] == 15826
+
+
+def test_typed_sessions_sum_discovery_deliveries_without_deduplicating_rows(evidence):
+    _mixed_pages(evidence, shared=True)
+    extra, row = _fixture("e" * 32)
+    _typed_audit(extra, row, shared=True)
+    extra["requests"][0].update(returned_source_bytes=0, discovery_page=True, returned_discovery_rows=64)
+    evidence[2]["provider_invocations"].append(row)
+    evidence[5](extra)
+    result = _collect(evidence)
+    assert result["status"] == "observed"
+    assert result["discovery_counts"] == dict(prepared_pages=3, delivered_pages=2,
+                                              prepared_rows=69, delivered_rows=66)
+    assert result["counts"]["response_bytes"] == 15826
+    assert result["counts"]["delivered_source_bytes"] == 40
+
+
+@pytest.mark.parametrize("change", ["boolean_rows", "negative_rows", "excess_rows", "numeric_flag",
+    "false_flag_with_rows", "empty_discovery", "source_overlap", "candidate_overlap", "refusal",
+    "missing_flag", "missing_rows", "missing_pair", "unknown_field", "false_total", "boolean_delivery"])
+def test_falsified_shared_discovery_records_are_unavailable(evidence, change):
+    _mixed_pages(evidence, shared=True)
+    record = evidence[3]["requests"][2]
+    if change == "boolean_rows": record["returned_discovery_rows"] = True
+    elif change == "negative_rows": record["returned_discovery_rows"] = -1
+    elif change == "excess_rows": record["returned_discovery_rows"] = 65
+    elif change == "numeric_flag": record["discovery_page"] = 1
+    elif change == "false_flag_with_rows": record["discovery_page"] = False
+    elif change == "empty_discovery": record["returned_discovery_rows"] = 0
+    elif change == "source_overlap": record["returned_source_bytes"] = 1
+    elif change == "candidate_overlap": record.update(candidate_context_page=True, returned_candidate_context_bytes=1)
+    elif change == "refusal": record["status"] = "retrieval_refused"
+    elif change == "missing_flag": record.pop("discovery_page")
+    elif change == "missing_rows": record.pop("returned_discovery_rows")
+    elif change == "missing_pair":
+        record.pop("discovery_page"); record.pop("returned_discovery_rows")
+    elif change == "unknown_field": record["discovery_source_text"] = "private source"
+    elif change == "false_total": evidence[3]["response_bytes"] -= 1
+    else: record["delivered"] = 1
+    evidence[5]()
+    result = _collect(evidence)
+    assert result["status"] == "unavailable" and result["counts"] is None and result["discovery_counts"] is None
+
+
+@pytest.mark.parametrize("change", ["audit_version", "observation_version", "policy_pin", "scope_pin",
+    "missing_policy_pin", "missing_scope_pin", "malformed_descriptor_pin", "extra_pin", "guidance"])
+def test_shared_descriptor_dispatch_and_audit_modes_must_join_exactly(evidence, change):
+    _mixed_pages(evidence, shared=True)
+    audit, row = evidence[3:5]
+    observation = row["source_view_retrieval"]
+    if change == "audit_version": audit["schema"] = "supervisor-worker-source-session@2"
+    elif change == "observation_version": observation["schema"] = "worker-source-dispatch-observation@1"
+    elif change == "policy_pin": observation["view_policy_binding_sha256"] = "7" * 64
+    elif change == "scope_pin": observation["source_scope_sha256"] = "8" * 64
+    elif change == "missing_policy_pin": observation.pop("view_policy_binding_sha256")
+    elif change == "missing_scope_pin": observation.pop("source_scope_sha256")
+    elif change == "malformed_descriptor_pin":
+        audit["session"]["source_scope_sha256"] = "invalid"
+        digest = _sha(protocol.canonical_json(audit["session"]))
+        audit["descriptor_sha256"] = observation["descriptor_sha256"] = digest
+        observation["source_scope_sha256"] = "invalid"
+    elif change == "extra_pin": observation["unclassified_pin"] = "9" * 64
+    else: observation["guidance_sha256"] = "0" * 64
+    evidence[5]()
+    assert _collect(evidence)["status"] == "unavailable"
+
+
+@pytest.mark.parametrize("change", ["shared_audit", "shared_observation", "new_record_on_old_audit",
+                                     "half_pair", "false_discovery_rows"])
+def test_legacy_modes_cannot_claim_shared_or_untyped_discovery_authority(evidence, change):
+    if change not in {"shared_audit", "shared_observation", "new_record_on_old_audit"}:
+        _typed_audit(evidence[3], evidence[4])
+    if change == "shared_audit": evidence[3]["schema"] = "supervisor-worker-source-session@3"
+    elif change == "shared_observation": evidence[4]["source_view_retrieval"]["schema"] = "worker-source-dispatch-observation@2"
+    elif change == "new_record_on_old_audit": evidence[3]["requests"][0].update(discovery_page=False, returned_discovery_rows=0)
+    elif change == "half_pair": evidence[3]["requests"][0].pop("returned_discovery_rows")
+    else: evidence[3]["requests"][0]["returned_discovery_rows"] = 1
+    evidence[5]()
+    assert _collect(evidence)["status"] == "unavailable"
+
+
 def test_source_counts_are_exact_and_contain_no_raw_source_or_token_estimate(evidence):
     result = _collect(evidence)
     assert result["status"] == "observed"

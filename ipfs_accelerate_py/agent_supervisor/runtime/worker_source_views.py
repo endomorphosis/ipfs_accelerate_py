@@ -457,14 +457,22 @@ class WorkerSourceViews:
         with self._lock:
             query = self._query("discover", max_bytes)
             offset = self._offset(cursor, query)
-            self._check_sources()
+            sources = self._check_sources()
+            _need(type(self._originals) is dict and self._originals == sources
+                  and all(type(raw) is bytes for raw in self._originals.values())
+                  and set(self._views) == set(self._hashes), "discovery source population changed")
+            retained = dict(self._views)
             names = tuple(self._hashes)
             _need(offset < len(names), "discovery offset outside admitted population")
             token = secrets.token_hex(16)
             rows = []
             selected = None
             for name in names[offset:]:
-                compact, raw, manifest_sha = self._views[name]
+                compact, raw, manifest_sha = retained[name]
+                projected = self._project(name, sources[name])
+                _need((compact, raw, manifest_sha) == (projected.view,
+                    canonical_json(projected.manifest), projected.manifest_sha256),
+                    "discovery source projection changed")
                 manifest = json.loads(raw)
                 rows.append(dict(path=name, source_sha256=self._hashes[name],
                     view_sha256=manifest["view_sha256"], manifest_sha256=manifest_sha,
@@ -483,6 +491,8 @@ class WorkerSourceViews:
                 if len(canonical_json(candidate)) <= max_bytes:
                     selected = candidate
             _need(selected is not None, "source-view discovery cannot fit one complete entry")
+            _need(self._originals == sources and self._views == retained,
+                  "discovery source cache changed during projection")
             return self._finish(selected, cursor, max_bytes)
 
 

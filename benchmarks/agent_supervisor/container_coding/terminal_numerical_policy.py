@@ -5,7 +5,8 @@ import hashlib
 from pathlib import Path
 
 PROFILE = "python-numerical-structure@1"
-PROFILES = (PROFILE,)
+GUARDED_PROFILE = "python-numerical-guarded-structure@2"
+PROFILES = (PROFILE, GUARDED_PROFILE)
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py",
     "benchmarks/agent_supervisor/container_coding/terminal_numerical_observation.py",
@@ -49,6 +50,10 @@ DATASET_PATHS = (
     "ipfs_datasets_py/logic/syntax_core/signatures.py",
     "ipfs_datasets_py/logic/backends/smt/compiler.py",
 )
+GUARDED_DATASET_PATHS = (
+    "ipfs_datasets_py/logic/software_verification/numerical_source_v2.py",
+    "ipfs_datasets_py/logic/software_verification/numerical_logic_v2.py",
+)
 
 
 def validate_numerical_profile(value):
@@ -72,9 +77,11 @@ def numerical_observation(value, arm):
     }
 
 
-def _producer_paths():
-    # Import only for the selected new profile; legacy archives need no new
-    # datasets module. The checked files must be those of the executing library.
+def _producer_paths(profile=PROFILE):
+    # Resolve only explicitly selected producers. V1 does not require the new
+    # guarded modules; v2 also binds the v1 implementations it reuses.
+    if validate_numerical_profile(profile) is None:
+        raise ValueError("explicit supported numerical formalization profile required")
     from ipfs_datasets_py.logic.software_verification import numerical_logic, numerical_source
     if numerical_logic.PROFILE != PROFILE or numerical_source.PROFILE != PROFILE:
         raise ValueError("numerical datasets profile differs from consumer selection")
@@ -82,8 +89,16 @@ def _producer_paths():
     datasets = Path(numerical_source.__file__).resolve().parents[3]
     if Path(numerical_logic.__file__).resolve().parents[3] != datasets:
         raise ValueError("numerical datasets producer roots differ")
+    selected = DATASET_PATHS
+    if profile == GUARDED_PROFILE:
+        from ipfs_datasets_py.logic.software_verification import numerical_logic_v2, numerical_source_v2
+        if (numerical_logic_v2.PROFILE != profile or numerical_source_v2.PROFILE != profile
+                or any(Path(module.__file__).resolve().parents[3] != datasets
+                       for module in (numerical_source_v2, numerical_logic_v2))):
+            raise ValueError("numerical datasets guarded producers differ from consumer selection")
+        selected += GUARDED_DATASET_PATHS
     return {**{"source/" + name: source / name for name in SOURCE_PATHS},
-            **{"datasets/" + name: datasets / name for name in DATASET_PATHS}}
+            **{"datasets/" + name: datasets / name for name in selected}}
 
 
 def require_numerical_archive(manifest, value):
@@ -94,7 +109,7 @@ def require_numerical_archive(manifest, value):
     if type(rows) is not list or len(rows) > 250_000:
         raise ValueError("numerical profile requires current runtime source inventory")
     try:
-        producers = _producer_paths()
+        producers = _producer_paths(value)
     except ImportError as exc:
         raise ValueError("numerical profile requires current datasets producers") from exc
     for name, path in producers.items():

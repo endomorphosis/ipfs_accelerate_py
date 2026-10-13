@@ -1,0 +1,51 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/numerical-guarded-coverage-20261013/accelerator-targeted-02/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 5 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py . [ 20%]
+...F                                                                     [100%]
+
+=================================== FAILURES ===================================
+___ test_guarded_advice_reaches_planner_before_goals_with_deferred_semantics ___
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py:167: in test_guarded_advice_reaches_planner_before_goals_with_deferred_semantics
+    admitted = prep.context(state=state)
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:994: in context
+    hydrated = bind_admitted_context(state=state, prepared=prepared, admission=admission,
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:786: in bind_admitted_context
+    current = load_initial_context(state=state, prepared=prepared, require_empty_owner=False)
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:479: in load_initial_context
+    return _load_initial_context(state=state, prepared=prepared, require_empty_owner=require_empty_owner, result=result)
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:634: in _load_initial_context
+    validate_numerical_context(repository=root, expected_receipt=numerical)
+ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py:337: in validate_numerical_context
+    raise ValueError("numerical artifacts or producers changed")
+E   ValueError: numerical artifacts or producers changed
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-379/test_guarded_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-379/test_guarded_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-379/test_guarded_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-379/test_guarded_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-379/test_guarded_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-379/test_guarded_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-379/test_guarded_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-379/test_guarded_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-379/test_guarded_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-379/test_guarded_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-379/test_guarded_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/numerical-guarded-coverage-20261013/accelerator-targeted-02/junit.xml -
+============================= slowest 10 durations =============================
+5.91s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_guarded_advice_reaches_planner_before_goals_with_deferred_semantics
+0.87s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_changed_profile_cannot_relabel_guarded_receipt[python-numerical-structure@1]
+0.63s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_changed_profile_cannot_relabel_guarded_receipt[None]
+0.63s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_changed_profile_cannot_relabel_guarded_receipt[python-numerical-structure@2]
+0.61s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_changed_profile_cannot_relabel_guarded_receipt[True]
+0.01s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_changed_profile_cannot_relabel_guarded_receipt[python-numerical-structure@1]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_guarded_advice_reaches_planner_before_goals_with_deferred_semantics
+
+(3 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_guarded_advice_reaches_planner_before_goals_with_deferred_semantics
+========================= 1 failed, 4 passed in 24.24s =========================

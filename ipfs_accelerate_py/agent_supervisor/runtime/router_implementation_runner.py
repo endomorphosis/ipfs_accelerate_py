@@ -203,11 +203,15 @@ def _source_broker_observation(*, path, digest, workspace, encoded, boundary_sha
     if any(descriptor.get(key) != value for key, value in expected.items()):
         raise ValueError("source descriptor differs from validated semantic evidence")
     advice = guidance(profile).encode()
-    return dict(schema="worker-source-dispatch-observation@1", descriptor_sha256=digest,
+    observation = dict(schema="worker-source-dispatch-observation@1", descriptor_sha256=digest,
         session_id=descriptor["session_id"], **expected,
         guidance_sha256=hashlib.sha256(advice).hexdigest(), guidance_bytes=len(advice),
         requests_observed=False, proof_authority=False, execution_authority=False,
         completion_authority=False)
+    if descriptor["schema"] == "supervisor-worker-source-descriptor@2":
+        observation.update(schema="worker-source-dispatch-observation@2",
+            **{key: descriptor[key] for key in ("view_policy_binding_sha256", "source_scope_sha256")})
+    return observation
 
 
 def _grok_progress_emitter(invocation_id: str):

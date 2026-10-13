@@ -1,0 +1,32 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+cachedir: /tmp/source-view-discovery-transport-qualification-01-2ioky34l/tests-state/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011
+configfile: pytest.ini
+collected 1316 items
+
+test/api/test_worker_source_discovery_transport.py ..................... [  1%]
+...........................F
+
+=================================== FAILURES ===================================
+____ test_discovery_continuations_are_one_use_and_query_bound[read_cursor] _____
+/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/test/api/test_worker_source_discovery_transport.py:353: in test_discovery_continuations_are_one_use_and_query_bound
+    cursor = answer(service, "read", view="original", max_bytes=2048)["page"]["next_cursor"]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: 'NoneType' object is not subscriptable
+- generated xml file: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-01/junit.xml -
+============================= slowest 10 durations =============================
+3.06s call     test/api/test_worker_source_discovery_transport.py::test_real_discovery_pages_admit_every_path_and_bind_exact_pinned_reads[True]
+2.61s call     test/api/test_worker_source_discovery_transport.py::test_real_discovery_pages_admit_every_path_and_bind_exact_pinned_reads[False]
+1.17s call     test/api/test_worker_source_discovery_transport.py::test_shared_read_response_joins_policy_scope_and_working_generation[scope]
+1.15s setup    test/api/test_worker_source_discovery_transport.py::test_shared_discovery_response_tampering_is_not_a_valid_catalog[duplicate]
+1.12s setup    test/api/test_worker_source_discovery_transport.py::test_shared_read_response_joins_policy_scope_and_working_generation[policy]
+1.10s setup    test/api/test_worker_source_discovery_transport.py::test_discriminated_requests_refuse_ambiguous_operations_before_transport[max_small]
+1.10s setup    test/api/test_worker_source_discovery_transport.py::test_discriminated_requests_refuse_ambiguous_operations_before_transport[extra_path]
+1.09s setup    test/api/test_worker_source_discovery_transport.py::test_discovery_continuations_are_one_use_and_query_bound[offset]
+1.08s call     test/api/test_worker_source_discovery_transport.py::test_shared_read_response_joins_policy_scope_and_working_generation[generation]
+1.07s setup    test/api/test_worker_source_discovery_transport.py::test_shared_discovery_response_tampering_is_not_a_valid_catalog[schema]
+=========================== short test summary info ============================
+FAILED test/api/test_worker_source_discovery_transport.py::test_discovery_continuations_are_one_use_and_query_bound[read_cursor]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+=================== 1 failed, 48 passed in 304.70s (0:05:04) ===================

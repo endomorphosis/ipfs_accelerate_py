@@ -111,7 +111,7 @@ class NumericalObligationBroker:
             source_tree_id=self.receipt["record"]["source_tree_id"])
         self._start_session(identity=identity, boundary_sha=boundary_sha, timeout_seconds=timeout_seconds)
 
-    def _start_session(self, *, identity, boundary_sha, timeout_seconds):
+    def _start_session(self, *, identity, boundary_sha, timeout_seconds, descriptor_schema=None):
         """Shared bounded socket lifecycle; callers independently admit source semantics."""
         from . import source_formalization_context as guard
 
@@ -143,7 +143,8 @@ class NumericalObligationBroker:
             info = self.socket_path.lstat()
             self._socket_identity = info.st_dev, info.st_ino
             os.chmod(self.socket_path, 0o660)
-            self.descriptor = dict(schema=self.protocol.DESCRIPTOR_SCHEMA, session_id=session,
+            self.descriptor = dict(schema=(self.protocol.DESCRIPTOR_SCHEMA if descriptor_schema is None
+                                           else descriptor_schema), session_id=session,
                 owner_uid=self.owner_uid, worker_uid=self.worker_uid, owner_pid=owner["pid"],
                 owner_start_time_ticks=owner["start_time_ticks"], workspace=str(self.workspace),
                 **identity,

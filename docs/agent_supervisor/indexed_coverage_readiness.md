@@ -1,5 +1,10 @@
 # Indexed supervisor coverage and readiness
 
+The subsequent [guarded numerical grammar qualification](numerical_guarded_coverage.md)
+raises deterministic structural coverage to three of four public functions and
+75 pending obligations. The readiness results below describe the preceding v1
+profile; neither qualification establishes new token savings or source proofs.
+
 The October 13 follow-up fixes declared-output hash collection and loads the
 released Intent384 checkpoint through a narrowly reviewed compatibility adapter.
 The numerical source audit still finds **zero verified learned candidates out

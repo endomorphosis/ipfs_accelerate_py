@@ -1,0 +1,23 @@
+{
+  "current_test_sha256": "8da11782e0452d6d05de039b8f35c0060dab21cef580ab94585538cfb995a214",
+  "datasets_execution_for_new_attempt": "afadfbcf8d33a67568c133bb761c43d42a9a133c",
+  "failed_attempt": "qualification-02",
+  "failed_attempt_result": {
+    "errors": 0,
+    "failures": 1,
+    "skipped": 0,
+    "tests": 688
+  },
+  "fix": "Legacy mocked descriptor loader now supplies schema=client.DESCRIPTOR_SCHEMA, as the production validated loader does. Product validation stays strict.",
+  "incoming_accelerator_base": "8aafb960fd634d218478376aa18bc83f8b121dce",
+  "new_attempt": "integration-01",
+  "new_attempt_outcome_claimed_here": false,
+  "patch": "--- qualification-02/benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py\n+++ integration-01/benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py\n@@ -155,7 +155,7 @@\n     encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=repository)\n     profile = \"python-whitespace@1\"\n     descriptor_path = tmp_path / \"authored-source-descriptor.json\"\n-    descriptor = dict(session_id=\"1\" * 32, workspace=str(workspace),\n+    descriptor = dict(schema=client.DESCRIPTOR_SCHEMA, session_id=\"1\" * 32, workspace=str(workspace),\n         boundary_manifest_sha256=\"b\" * 64, **client.semantic_binding(encoded, profile))\n     checks = []\n \n",
+  "prior_test_sha256": "b3ca3996fa6c44d525fe65c020ddb97a778c2c3a9dd3d81c8945e2394b63dc99",
+  "prior_test_snapshot": "qualification-02/test_source_view_worker_wiring.py.snapshot.txt",
+  "prior_test_snapshot_matches_recorded_source": true,
+  "product_files_changed_by_fixture_fix": false,
+  "recorded_at_utc": "2026-10-13T05:25:22.658095+00:00",
+  "schema": "source-discovery-qualification-fixture-fix@1",
+  "test_path": "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py"
+}

@@ -19,10 +19,10 @@ from benchmarks.agent_supervisor.container_coding.test_terminal_deployment impor
 from benchmarks.agent_supervisor.container_coding.test_terminal_semantic_metadata_policy import authored_task
 
 
-def inventory():
+def inventory(profile=policy.PROFILE):
     return {"files": [{"path": name, "bytes": path.stat().st_size,
                        "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-                      for name, path in policy._producer_paths().items()]}
+                      for name, path in policy._producer_paths(profile).items()]}
 
 
 def test_function_unit_extractor_producers_are_bound_by_archive_and_consumer():
@@ -68,10 +68,11 @@ def test_default_preserves_historical_configuration_and_controls(tmp_path, arm):
     policy.require_numerical_archive(None, None)
 
 
-def test_new_controls_compare_selected_profile_across_arms(tmp_path):
+@pytest.mark.parametrize("profile", policy.PROFILES)
+def test_new_controls_compare_selected_profile_across_arms(tmp_path, profile):
     args = (tmp_path, tmp_path / "out", tmp_path / "archive")
-    full = benchmark.config_for(*args, "full", numerical_formalization_profile=policy.PROFILE)
-    no_index = benchmark.config_for(*args, "no-index", numerical_formalization_profile=policy.PROFILE)
+    full = benchmark.config_for(*args, "full", numerical_formalization_profile=profile)
+    no_index = benchmark.config_for(*args, "no-index", numerical_formalization_profile=profile)
     legacy = benchmark.config_for(*args, "no-index")
     for config in (full, no_index):
         assert seal(config)["schema"] == controls.NUMERICAL_SCHEMA
@@ -80,8 +81,8 @@ def test_new_controls_compare_selected_profile_across_arms(tmp_path):
     mismatch = controls.compare_controls(observed(full), observed(legacy))
     assert mismatch["matches"] is False
     assert mismatch["differences"] == ["experimental_controls_sha256.numerical_formalization_profile"]
-    assert policy.numerical_observation(policy.PROFILE, "no-index")["numerical_formalization_disabled_reason"] == "no_index_ablation"
-    assert not policy.numerical_observation(policy.PROFILE, "full")["numerical_formalization_proof_authority"]
+    assert policy.numerical_observation(profile, "no-index")["numerical_formalization_disabled_reason"] == "no_index_ablation"
+    assert not policy.numerical_observation(profile, "full")["numerical_formalization_proof_authority"]
 
 
 @pytest.mark.parametrize("mutation", ["missing", "unknown", "bool", "digest", "legacy_schema"])
@@ -133,15 +134,54 @@ def test_exact_current_inventory_passes_as_compatibility_only():
     policy.require_numerical_archive(inventory(), policy.PROFILE)
 
 
+def test_guarded_archive_adds_only_selected_modules_and_binds_reused_bases():
+    from ipfs_accelerate_py.agent_supervisor.runtime import numerical_formalization_context as numerical
+
+    legacy = policy._producer_paths()
+    guarded = policy._producer_paths(policy.GUARDED_PROFILE)
+    assert set(guarded) - set(legacy) == {"datasets/" + p for p in policy.GUARDED_DATASET_PATHS}
+    assert {key: guarded[key] for key in legacy} == legacy
+    assert policy.PROFILES == numerical.PROFILES
+    pins = numerical._producers(policy.GUARDED_PROFILE)
+    for key, basename in (("grammar", "numerical_source_v2.py"), ("projections", "numerical_logic_v2.py"),
+                          ("base_grammar", "numerical_source.py"), ("base_projections", "numerical_logic.py")):
+        paths = [p for p in guarded.values() if p.name == basename]
+        assert len(paths) == 1 and pins[key] == hashlib.sha256(paths[0].read_bytes()).hexdigest()
+    policy.require_numerical_archive(inventory(policy.GUARDED_PROFILE), policy.GUARDED_PROFILE)
+
+
+@pytest.mark.parametrize("name", policy.GUARDED_DATASET_PATHS)
+@pytest.mark.parametrize("mutation", ["missing", "changed"])
+def test_guarded_profile_requires_exact_new_producers_but_v1_does_not(name, mutation):
+    manifest = inventory(policy.GUARDED_PROFILE)
+    row = next(row for row in manifest["files"] if row["path"] == "datasets/" + name)
+    if mutation == "missing":
+        manifest["files"].remove(row)
+    else:
+        row["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="newly qualified runtime archive"):
+        policy.require_numerical_archive(manifest, policy.GUARDED_PROFILE)
+    policy.require_numerical_archive(manifest, policy.PROFILE)
+
+
+def test_v1_and_v2_controls_are_distinct_even_with_identical_task_inputs(tmp_path):
+    configurations = [benchmark.config_for(tmp_path, tmp_path / "out", tmp_path / "archive", "full",
+        numerical_formalization_profile=profile) for profile in policy.PROFILES]
+    comparison = controls.compare_controls(*(observed(config) for config in configurations))
+    assert comparison["matches"] is False
+    assert comparison["differences"] == ["experimental_controls_sha256.numerical_formalization_profile"]
+
+
 @pytest.mark.parametrize("arm", ["full", "no-index"])
-def test_prepare_freezes_same_selection_and_opposite_consumption(tmp_path, monkeypatch, arm):
+@pytest.mark.parametrize("profile", policy.PROFILES)
+def test_prepare_freezes_same_selection_and_opposite_consumption(tmp_path, monkeypatch, arm, profile):
     dataset, _ = authored_task(tmp_path); archive = tmp_path / "archive"; archive.mkdir()
     # The unselected learned-model verifier still checks the archive's absence
     # of undeclared model members. Give it an actual empty archive to inspect.
     with tarfile.open(archive / "runtime.tar.gz", "w:gz"):
         pass
     raw = (archive / "runtime.tar.gz").read_bytes()
-    (archive / "manifest.json").write_text(json.dumps(_supervisor_manifest({**inventory(),
+    (archive / "manifest.json").write_text(json.dumps(_supervisor_manifest({**inventory(profile),
         "archive_sha256": hashlib.sha256(raw).hexdigest(), "codex_version": CLI_VERSION})))
     calls = []
     def dry(argv, **kwargs):
@@ -149,8 +189,8 @@ def test_prepare_freezes_same_selection_and_opposite_consumption(tmp_path, monke
         return SimpleNamespace(returncode=0, stdout="Authored dry-run", stderr="")
     monkeypatch.setattr(benchmark.subprocess, "run", dry)
     result = benchmark.prepare(dataset=dataset, output=tmp_path / "out", archive=archive, arm=arm,
-                               numerical_formalization_profile=policy.PROFILE)
-    assert result["numerical_formalization_profile"] == policy.PROFILE
+                               numerical_formalization_profile=profile)
+    assert result["numerical_formalization_profile"] == profile
     assert result["numerical_formalization_enabled"] is (arm == "full")
     assert result["comparison_controls"]["schema"] == controls.NUMERICAL_SCHEMA
     assert result["provider_calls"] == 0 and all("--dry-run" in c for c in calls)
@@ -171,11 +211,11 @@ def test_adapter_rejects_old_bundle_before_setup_upload_or_run(tmp_path, arm):
 
 
 @pytest.mark.parametrize("arm", ["full", "no-index"])
-@pytest.mark.parametrize("selected", [None, policy.PROFILE])
+@pytest.mark.parametrize("selected", [None, *policy.PROFILES])
 def test_harbor_passes_frozen_profile_and_records_no_index_disable(tmp_path, monkeypatch, arm, selected):
     from harbor.models.agent.context import AgentContext
     from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as adapter
-    (tmp_path / "manifest.json").write_text(json.dumps(_supervisor_manifest({**inventory(),
+    (tmp_path / "manifest.json").write_text(json.dumps(_supervisor_manifest({**inventory(selected or policy.PROFILE),
         "archive_sha256": "a" * 64, "codex_version": CLI_VERSION, "learned_requirements": []})))
     monkeypatch.setattr(adapter, "capture_public_inputs", AsyncMock(return_value={"status": "captured"}))
     monkeypatch.setattr(adapter, "export_public_outputs", AsyncMock(return_value={"status": "captured"}))
@@ -202,15 +242,16 @@ def test_harbor_passes_frozen_profile_and_records_no_index_disable(tmp_path, mon
         assert context.metadata["numerical_formalization_enabled"] is (arm == "full")
 
 
-def test_collect_and_execute_refuse_numerical_selection_drift(tmp_path, monkeypatch):
+@pytest.mark.parametrize("profile", policy.PROFILES)
+def test_collect_and_execute_refuse_numerical_selection_drift(tmp_path, monkeypatch, profile):
     dataset, task = authored_task(tmp_path); output = tmp_path / "out"; output.mkdir()
     config = benchmark.config_for(dataset, output, tmp_path / "archive", "full",
-                                   numerical_formalization_profile=policy.PROFILE)
+                                   numerical_formalization_profile=profile)
     (output / "config.json").write_text(json.dumps(config))
     prepared = {"arm": "full", "dataset": str(dataset), "prepared": True,
         "config_sha256": benchmark._hash(output / "config.json"), "task_input_sha256": benchmark._task_hashes(task),
         "model": benchmark.MODEL, "reasoning_effort": "high", "cli_version": CLI_VERSION,
-        "numerical_formalization_profile": policy.PROFILE}
+        "numerical_formalization_profile": profile}
     (output / "preparation.json").write_text(json.dumps(prepared))
     assert benchmark.collect(output)["numerical_formalization_config_unchanged"] is True
     del prepared["numerical_formalization_profile"]
@@ -224,15 +265,16 @@ def test_collect_and_execute_refuse_numerical_selection_drift(tmp_path, monkeypa
     assert calls == [] and not (output / "invocation.json").exists()
 
 
-def test_cli_selection_is_frozen_by_prepare(tmp_path, monkeypatch):
+@pytest.mark.parametrize("profile", policy.PROFILES)
+def test_cli_selection_is_frozen_by_prepare(tmp_path, monkeypatch, profile):
     calls = []; monkeypatch.setattr(benchmark, "prepare", lambda **kw: calls.append(kw) or {})
     monkeypatch.setattr(sys, "argv", ["benchmark", "prepare", "--dataset", str(tmp_path),
         "--archive", str(tmp_path), "--output", str(tmp_path / "out"),
-        "--numerical-formalization-profile", policy.PROFILE])
+        "--numerical-formalization-profile", profile])
     benchmark.main()
-    assert calls[0]["numerical_formalization_profile"] == policy.PROFILE
+    assert calls[0]["numerical_formalization_profile"] == profile
     for operation in ("collect", "execute"):
         monkeypatch.setattr(sys, "argv", ["benchmark", operation, "--output", str(tmp_path),
-            "--numerical-formalization-profile", policy.PROFILE])
+            "--numerical-formalization-profile", profile])
         with pytest.raises(SystemExit) as error: benchmark.main()
         assert error.value.code == 2

@@ -125,7 +125,7 @@ def test_mutation_during_datasets_projection_cannot_escape_currentness_fence(con
             with (numerical.Path(receipt["output"]) / "report-0000.json").open("a") as stream:
                 stream.write("\n")
         else:
-            monkeypatch.setattr(numerical, "_producers", lambda: {"changed": "producer"})
+            monkeypatch.setattr(numerical, "_producers", lambda *args: {"changed": "producer"})
         return result
     monkeypatch.setattr(pager, "page_numerical_obligations", mutated)
     with pytest.raises(ValueError):

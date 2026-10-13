@@ -1,0 +1,10 @@
+{
+  "schema": "numerical-frontend-initial-smoke@1",
+  "historical": true,
+  "fixture": "authored dynamic-format-spec assertion",
+  "observed_exception": "ProvenanceValidationError: SourceSpan end line/column precedes its start",
+  "cause": "Python 3.12 AST emitted a zero-width empty format-spec Constant; v1 inclusive line-column convention produced end_column < start_column.",
+  "resolution": "v2 preserves exact zero-width byte span and omits optional line-column pair for empty span, without changing shared or v1 code.",
+  "verification": "tests-02 includes dynamic spec conversions and raw newline fixtures",
+  "provider_calls": 0
+}
