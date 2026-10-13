@@ -382,3 +382,9 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_convergence/
 !/data/legal_autoformalization_convergence/LAC-*/
 !/data/legal_autoformalization_convergence/LAC-*/result.json
+
+# Legal source-contract foundations operational state and accepted evidence
+/data/agent_supervisor/legal_autoformalization_foundations/runtime/
+!/data/legal_autoformalization_foundations/
+!/data/legal_autoformalization_foundations/LAC-S2-*/
+!/data/legal_autoformalization_foundations/LAC-S2-*/result.json
