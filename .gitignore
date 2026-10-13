@@ -394,3 +394,9 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_graphs/
 !/data/legal_autoformalization_graphs/LAC-S3-*/
 !/data/legal_autoformalization_graphs/LAC-S3-*/result.json
+
+# Legal cache-intake operational state and accepted qualification evidence
+/data/agent_supervisor/legal_autoformalization_intake/runtime/
+!/data/legal_autoformalization_intake/
+!/data/legal_autoformalization_intake/LAC-S4-*/
+!/data/legal_autoformalization_intake/LAC-S4-*/result.json
