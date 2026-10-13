@@ -1,0 +1,193 @@
+{
+  "arms": {
+    "legacy": {
+      "config_sha256": "043fdf5c06f52bd2560c0a8714d52a2b4d4286727ae79577a618975fb0cbb74f",
+      "durations_seconds": {
+        "agent_execution": 291.13913,
+        "agent_setup": 256.701212,
+        "environment_setup": 3.370697,
+        "verifier": 3.107715
+      },
+      "exception_type": null,
+      "indexed_reader_requests": 0,
+      "intent_status": "fail_open_no_checkpoint",
+      "invocations": [
+        {
+          "observed_token_count_records": 1,
+          "purpose": "planning",
+          "rollout_sha256": "aebf065d05e9eae40a418192106cf5587be8c7b00d39318664da5c8d169e6e0c",
+          "usage": {
+            "cached_input_tokens": 0,
+            "input_tokens": 23826,
+            "output_tokens": 1530,
+            "total_tokens": 25356
+          }
+        },
+        {
+          "observed_token_count_records": 7,
+          "purpose": "coding",
+          "rollout_sha256": "3717085516eccf06b54effa679becc56bbe19aa48cad561b8032f5a164e758ce",
+          "usage": {
+            "cached_input_tokens": 250112,
+            "input_tokens": 283969,
+            "output_tokens": 4654,
+            "total_tokens": 288623
+          }
+        }
+      ],
+      "preparation_sha256": "38f843c73cbdc4f3140ef8b1c60a3090eba40d1633e2abb205a5b1018e64b42a",
+      "receipt_sha256": "38052a2851048283a80a92ea73cf8ef5c85ff1170e1227b6e2d2b72646dfddb4",
+      "reward": {
+        "reward": 0.0
+      },
+      "selected_metadata": null,
+      "source384": {
+        "candidate_count": 4,
+        "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+        "coverage": {
+          "candidate_statuses": {
+            "fail_open_source_contract_unsupported": 4
+          },
+          "file_dispositions": {
+            "inventoried": 2
+          },
+          "files": 2,
+          "functions": 4,
+          "selected_units": 4,
+          "unit_dispositions": {
+            "decoded_unverified_candidate": 4
+          }
+        },
+        "mode": "pinned_parent",
+        "proof_authority": false,
+        "source_aligned_candidate_count": 0,
+        "source_semantics_verified": false,
+        "training_steps": 0
+      },
+      "supervisor_internal_completion": true,
+      "totals": {
+        "cached_input_tokens": 250112,
+        "input_tokens": 307795,
+        "output_tokens": 6184,
+        "total_tokens": 313979,
+        "uncached_input_tokens": 57683
+      }
+    },
+    "projected": {
+      "config_sha256": "e1eccac9a37301959cc90fac9d1bfb73c3cf9a9e1366fe2caa0f1f59878413ab",
+      "durations_seconds": {
+        "agent_execution": 345.8928,
+        "agent_setup": 734.253863,
+        "environment_setup": 2.976306,
+        "verifier": 2.957069
+      },
+      "exception_type": null,
+      "indexed_reader_requests": 0,
+      "intent_status": "fail_open_no_checkpoint",
+      "invocations": [
+        {
+          "observed_token_count_records": 1,
+          "purpose": "planning",
+          "rollout_sha256": "9bf302a056796f7a36fcd23f89345fb3c17e92f5c42f27cb02976f396fb70f43",
+          "usage": {
+            "cached_input_tokens": 0,
+            "input_tokens": 23837,
+            "output_tokens": 1669,
+            "total_tokens": 25506
+          }
+        },
+        {
+          "observed_token_count_records": 7,
+          "purpose": "coding",
+          "rollout_sha256": "99dff451009c667e027033db07bcc8135262ce11749fdf15f878d4fcd192b305",
+          "usage": {
+            "cached_input_tokens": 250112,
+            "input_tokens": 283760,
+            "output_tokens": 4714,
+            "total_tokens": 288474
+          }
+        }
+      ],
+      "preparation_sha256": "871fe4ee7eb7fc971f82ed75f5b14f55d5fa4c490908590f2b6fe1dd449451f8",
+      "receipt_sha256": "7a10264ed46b36ef71558a7708e3fd87da35d2f778b8083024b96bad7feae83b",
+      "reward": {
+        "reward": 1.0
+      },
+      "selected_metadata": {
+        "native_complete_bytes": 68006,
+        "native_complete_sha256": "e5a4c2bb8dcb5cfa217714911ec4c6be565058a233ba38dca74568ce1f7b647c",
+        "selected_complete_bytes": 67124,
+        "selected_complete_sha256": "95574d66e3b19aff7b6e7c6a11704727bcacda409580d676584240f48d9254f9",
+        "selected_mode": "common-bindings@1"
+      },
+      "source384": {
+        "candidate_count": 4,
+        "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+        "coverage": {
+          "candidate_statuses": {
+            "fail_open_source_contract_unsupported": 4
+          },
+          "file_dispositions": {
+            "inventoried": 2
+          },
+          "files": 2,
+          "functions": 4,
+          "selected_units": 4,
+          "unit_dispositions": {
+            "decoded_unverified_candidate": 4
+          }
+        },
+        "mode": "pinned_parent",
+        "proof_authority": false,
+        "source_aligned_candidate_count": 0,
+        "source_semantics_verified": false,
+        "training_steps": 0
+      },
+      "supervisor_internal_completion": true,
+      "totals": {
+        "cached_input_tokens": 250112,
+        "input_tokens": 307597,
+        "output_tokens": 6383,
+        "total_tokens": 313980,
+        "uncached_input_tokens": 57485
+      }
+    }
+  },
+  "billing_verified": false,
+  "causal_advantage_established": false,
+  "config_changed_paths": [
+    "/agents/0/kwargs/semantic_metadata_view",
+    "/jobs_dir"
+  ],
+  "equal_preparation_controls": [
+    "host_source_sha256",
+    "task_input_sha256",
+    "source384",
+    "intent_action_384",
+    "agent_timeout_seconds",
+    "archive_sha256",
+    "manifest_sha256",
+    "provider_profile",
+    "source_view_profile",
+    "resource_profile",
+    "model",
+    "reasoning_effort",
+    "cli_version"
+  ],
+  "hidden_test_or_solution_bodies_read": false,
+  "host_preparation_sources_still_unchanged": true,
+  "observed_at_utc": "2026-10-13T04:09:38.021719+00:00",
+  "projected_minus_legacy": {
+    "cached_input_tokens": 0,
+    "input_tokens": -198,
+    "output_tokens": 199,
+    "total_tokens": 1,
+    "uncached_input_tokens": -198
+  },
+  "regression_source_closure_still_unchanged": true,
+  "runtime_archive_and_manifest_still_unchanged": true,
+  "schema": "context-projection-final-independent-recomputation@1",
+  "script_sha256": "3ffcffd23ed6bd19c6b39f216e5994674ce7b340e38526b6a92afd1d64679fbb",
+  "total_token_reduction": false,
+  "usage_scope": "Sum final native cumulative usage once per unique planning/coding invocation. Cached input is a subset and reasoning output is not added again."
+}

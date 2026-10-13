@@ -1,0 +1,19 @@
+{
+  "schema": "source-context-native-launch-result@1",
+  "name": "grok-legacy-02",
+  "exit_code": 0,
+  "seconds": 251.17919627402443,
+  "preparation_unchanged": true,
+  "stdout_sha256": "4e77f29e7b90b847e3ae0f0ef9a907055aaf2ad6de53d2c7520e0e2c6a440bb9",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "receipt_sha256": "4e77f29e7b90b847e3ae0f0ef9a907055aaf2ad6de53d2c7520e0e2c6a440bb9",
+  "complete_single_trial_receipt": true,
+  "trial_count": 1,
+  "results": [
+    {
+      "trial": "largest-eigenval__UpTp2Po",
+      "reward": null,
+      "exception_type": "GrokCredentialReadinessError"
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+{
+  "conclusion": "Task implementation completed and correctness checks passed, but one official speed assertion failed; no setup, authentication, routing, usage-accounting or input-integrity blocker was observed.",
+  "harbor_exception_type": null,
+  "intent_ir": {
+    "advice_sha256": "7f8fc179ba244ae0d69e10b07d028a54631b551d57808a2a76b1a2341f198fea",
+    "artifact_sha256": "7721eed2557eea3b8a101a1d70b58564200eb6f1ec4966a2b2578b5528b93031",
+    "before_goal_decomposition": true,
+    "completion_authority": false,
+    "execution_authority": false,
+    "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+    "seconds": 0.257782672,
+    "status": "fail_open_no_checkpoint"
+  },
+  "native_usage_complete": true,
+  "observation_path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/native-observations/observation-02.json",
+  "observation_sha256": "65f108ff5a0ff5173f4f39fbee2da92c01ba72e1a4beefed809f5802f0937223",
+  "observed_at_utc": "2026-10-13T03:47:26.891449+00:00",
+  "official_reward": 0.0,
+  "performance_generalization_established": false,
+  "projected_trial_input_must_remain_predeclared": true,
+  "provider_calls_by_reader": 0,
+  "provider_invocations": 2,
+  "schema": "source-context-native-baseline-outcome-diagnosis@1",
+  "source384": {
+    "context": {
+      "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+      "formalization_authority": false,
+      "inference_sha256": "ad0628331c41d0215c07857a9dd4c57d2221221776f83b7e9ffc2f6c874399d1",
+      "neural_inference_replayed": false,
+      "proof_authority": false,
+      "schema": "terminal-source384-repository-context@1",
+      "seconds": 9.52715567999985,
+      "training_steps": 0
+    },
+    "coverage": {
+      "candidate_statuses": {
+        "fail_open_source_contract_unsupported": 4
+      },
+      "file_dispositions": {
+        "inventoried": 2
+      },
+      "files": 2,
+      "functions": 4,
+      "selected_units": 4,
+      "unit_dispositions": {
+        "decoded_unverified_candidate": 4
+      }
+    },
+    "summary": {
+      "excluded_source_files": 0,
+      "formalization_authority": false,
+      "harness_support_files": 3,
+      "inference_python_files": 2,
+      "mode": "pinned_parent",
+      "model_promotion_performed": false,
+      "nomination_only": true,
+      "omitted_candidates": 2,
+      "program_source_files": 2,
+      "proof_authority": false,
+      "provider_calls": 0,
+      "schema": "terminal-source384-planning-summary@1",
+      "source_files": 5,
+      "training_steps": 0
+    }
+  },
+  "source_reader": {
+    "candidate_context_counts": {
+      "delivered_bytes": 0,
+      "delivered_pages": 0,
+      "prepared_bytes": 0,
+      "prepared_pages": 0
+    },
+    "counts": {
+      "accepted_requests": 0,
+      "delivered_pages": 0,
+      "delivered_response_bytes": 0,
+      "delivered_responses": 0,
+      "delivered_source_bytes": 0,
+      "prepared_pages": 0,
+      "prepared_source_bytes": 0,
+      "request_hash_count": 0,
+      "response_bytes": 0,
+      "response_hash_count": 0,
+      "sessions": 1,
+      "unique_request_hash_count": 0,
+      "unique_response_hash_count": 0
+    },
+    "reason": "matched_owner_session_accounting",
+    "schema": "terminal-source-view-observation@1",
+    "source_obligations_discharged": 0,
+    "status": "observed",
+    "total_token_savings_measured": false
+  },
+  "supervisor_error_type": null,
+  "supervisor_task_completed": true,
+  "tokens": {
+    "cached_input_tokens": 250112,
+    "input_tokens": 307795,
+    "output_tokens": 6184,
+    "total_tokens": 313979
+  },
+  "verified_coding_input": true,
+  "verifier": {
+    "correctness_and_dominance_groups_passed": true,
+    "ctrf_sha256": "867a9210a6323333afd689a80cbb10ffd5ff6e2741353cd40ca4c6b580daf254",
+    "emitted_test_stdout_sha256": "94ddbc5a51a4db7c8fd9ae18a4b0640943e0dc2c425737426637e8573bed6d42",
+    "failed_case": "test_speedup[6]",
+    "failure_category": "runtime_performance_assertion",
+    "parameterized_failed": 1,
+    "parameterized_passed": 26,
+    "reported_seconds_per_call": 1.8e-05,
+    "reported_test_seconds": 0.23,
+    "reported_threshold_seconds_per_call": 1.1e-05,
+    "source_or_fixture_contents_read": false
+  }
+}

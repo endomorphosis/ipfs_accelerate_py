@@ -1,0 +1,29 @@
+{
+  "binary_upgrade_alone_supported_as_fix": false,
+  "conclusion": "Current copied auth.json does not provide usable authentication in the isolated native CLI route, independently of binary1.0.46 versus1.0.52.",
+  "credential_contents_or_digests_retained": false,
+  "failure_receipt": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/grok-legacy-02/jobs/supervisor-full-largest-eigenval/largest-eigenval__UpTp2Po/agent/provider-readiness/readiness.json",
+  "failure_receipt_sha256": "1571b30d197db079f6032abf7051cc7bd285caf95747cc484b5273e15b5bcdd1",
+  "fresh_probe_receipt": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-isolated-copy-comparison.json",
+  "fresh_probe_sha256": "91385d022f67ca0c8366a575f40fa1d7cd1a75cdf8f7e6e638e40c76d6f1b16b",
+  "host_auth_write_performed": false,
+  "observed_signature": {
+    "models_observed": 0,
+    "native_exit_code": 0,
+    "reason": "authentication_refused",
+    "status": "unauthenticated",
+    "stderr_bytes": 0,
+    "stdout_bytes": 144
+  },
+  "old_catalog_shape_bug_reproduced": false,
+  "provider_generation_calls": 0,
+  "remaining_uncertainty": "This does not prove whether normal host login is expired, uses another credential source, or needs renewal; host login was not invoked or modified.",
+  "safe_next_steps": [
+    "Keep readiness refusal and retain failed trial; no expensive Grok benchmark retry until a fresh isolated metadata probe succeeds.",
+    "Refresh the transferable Grok login/auth material through the normal user-owned login flow, or implement and qualify an explicitly selected alternative credential route.",
+    "Use separately declared Codex backup trials rather than mixing provider usage into a Grok arm."
+  ],
+  "same_signature_pinned_and_installed_binary": true,
+  "schema": "source-context-grok-readiness-diagnosis@1",
+  "worker_credential_copy_and_HOME_wiring_bug_found": false
+}

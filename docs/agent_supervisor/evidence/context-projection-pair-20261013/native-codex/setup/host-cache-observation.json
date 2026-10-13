@@ -1,0 +1,127 @@
+{
+  "active_runtime_changed": false,
+  "credential_headers_or_metadata_exported": false,
+  "network_requests": 0,
+  "observed_at_utc": "2026-10-13T04:00:14.603031+00:00",
+  "package_entries": [
+    {
+      "content_bytes": 4902,
+      "content_present": true,
+      "content_sha512_matches": true,
+      "declared_bytes": 4902,
+      "integrity_algorithm": "sha512",
+      "package": "codex-0.158.0.tgz"
+    },
+    {
+      "content_bytes": 4902,
+      "content_present": true,
+      "content_sha512_matches": true,
+      "declared_bytes": 4902,
+      "integrity_algorithm": "sha512",
+      "package": "codex-0.160.0.tgz",
+      "public_cache_content_path": "/home/barberb/.npm/_cacache/content-v2/sha512/90/4b/551b38d101800c3b0271377f5b19c9daecb4f7203420abae0d349fdd0d37eee0ecd96a870973235be7f80627f21517f563ee82bb1369b79e64da9fb9698e"
+    },
+    {
+      "content_bytes": 155716078,
+      "content_present": true,
+      "content_sha512_matches": true,
+      "declared_bytes": 155716078,
+      "integrity_algorithm": "sha512",
+      "package": "codex-0.160.0-linux-arm64.tgz",
+      "public_cache_content_path": "/home/barberb/.npm/_cacache/content-v2/sha512/56/75/5db12d3a6250ec2fc3b06898d0df176a749346e22f9e049055dcbcad75d927cd2685feeae28cbcd5837a6d930be88fc0bb1a7ee25a9544fb2f1611a3e20a"
+    },
+    {
+      "content_bytes": 77373247,
+      "content_present": true,
+      "content_sha512_matches": true,
+      "declared_bytes": 77373247,
+      "integrity_algorithm": "sha512",
+      "package": "codex-0.125.0-linux-arm64.tgz"
+    },
+    {
+      "content_bytes": 49922138,
+      "content_present": true,
+      "content_sha512_matches": true,
+      "declared_bytes": 49922138,
+      "integrity_algorithm": "sha512",
+      "package": "codex-0.114.0-linux-arm64.tgz"
+    },
+    {
+      "content_bytes": 53790108,
+      "content_present": true,
+      "content_sha512_matches": true,
+      "declared_bytes": 53790108,
+      "integrity_algorithm": "sha512",
+      "package": "codex-0.114.0-linux-x64.tgz"
+    },
+    {
+      "content_bytes": 154764938,
+      "content_present": true,
+      "content_sha512_matches": true,
+      "declared_bytes": 154764938,
+      "integrity_algorithm": "sha512",
+      "package": "codex-0.158.0-linux-arm64.tgz"
+    },
+    {
+      "content_bytes": 4648,
+      "content_present": true,
+      "content_sha512_matches": true,
+      "declared_bytes": 4648,
+      "integrity_algorithm": "sha512",
+      "package": "codex-0.125.0.tgz"
+    },
+    {
+      "content_bytes": 4647,
+      "content_present": true,
+      "content_sha512_matches": true,
+      "declared_bytes": 4647,
+      "integrity_algorithm": "sha512",
+      "package": "codex-0.114.0.tgz"
+    }
+  ],
+  "pin_source": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+  "pin_source_sha256": "69b9e9d6a24e1834b3c34e15984e4fefebbfbc87ce8d0f7b2c5d5c6d40209d8c",
+  "pinned_packages": [
+    {
+      "content_bytes": 4902,
+      "content_present": true,
+      "content_sha512_matches": true,
+      "declared_bytes": 4902,
+      "integrity_algorithm": "sha512",
+      "package": "codex-0.160.0.tgz",
+      "package_name": "@openai/codex",
+      "package_version": "0.160.0",
+      "public_cache_content_path": "/home/barberb/.npm/_cacache/content-v2/sha512/90/4b/551b38d101800c3b0271377f5b19c9daecb4f7203420abae0d349fdd0d37eee0ecd96a870973235be7f80627f21517f563ee82bb1369b79e64da9fb9698e",
+      "tarball_sha256": "373517768e912eeb5054024ae9215e2c90a1420957b66fe134ef745a00948d4a"
+    },
+    {
+      "content_bytes": 155716078,
+      "content_present": true,
+      "content_sha512_matches": true,
+      "declared_bytes": 155716078,
+      "integrity_algorithm": "sha512",
+      "native_members": {
+        "codex": {
+          "bytes": 248966648,
+          "matches_reviewed_policy_pin": true,
+          "reviewed_policy_pin": "50b06603bdcdac39b714f5c3e68583c002b8ad8779ebfdaaf4932ff016b379c0",
+          "sha256": "50b06603bdcdac39b714f5c3e68583c002b8ad8779ebfdaaf4932ff016b379c0",
+          "tar_member": "package/vendor/aarch64-unknown-linux-musl/bin/codex"
+        },
+        "codex-code-mode-host": {
+          "bytes": 66921472,
+          "matches_reviewed_policy_pin": true,
+          "reviewed_policy_pin": "7e0004bd8b37936753981729365c448bdc67f0173d9bc6453e40e3ad28774b6c",
+          "sha256": "7e0004bd8b37936753981729365c448bdc67f0173d9bc6453e40e3ad28774b6c",
+          "tar_member": "package/vendor/aarch64-unknown-linux-musl/bin/codex-code-mode-host"
+        }
+      },
+      "package": "codex-0.160.0-linux-arm64.tgz",
+      "package_name": "@openai/codex",
+      "package_version": "0.160.0-linux-arm64",
+      "public_cache_content_path": "/home/barberb/.npm/_cacache/content-v2/sha512/56/75/5db12d3a6250ec2fc3b06898d0df176a749346e22f9e049055dcbcad75d927cd2685feeae28cbcd5837a6d930be88fc0bb1a7ee25a9544fb2f1611a3e20a",
+      "tarball_sha256": "9286a7e01d500ab224c9e5b4b223b7adf5dd901fba23efd6a438316426798b17"
+    }
+  ],
+  "remediation": "For a fresh archive/image and fresh matched pair only, package these exact public tarballs with pinned integrity and native member hashes; bootstrap offline or preinstall during image build. Do not alter active setup or silently apply cache to one arm."
+}

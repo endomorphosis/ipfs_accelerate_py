@@ -7,6 +7,16 @@ results should identify which obligations remain, and semantic capsules should
 give the model the relevant current evidence without repeating its bookkeeping.
 Minification is a representation step within that workflow.
 
+The [October 13 complete-context comparison](context_projection_pair.md) now
+measures the existing lossless metadata projection with identical source reads.
+It saves 885 of 79,362 one-pass exposed UTF-8 bytes (1.12%); both public program
+bodies were already deferred. This authored-hook Docker result has no provider
+token count or official reward. A separate completed GPT-6.1-sol native pair
+used 313,979 versus 313,980 tokens, with rewards 0 and 1. Thus the smaller input
+did not reduce total usage in this pair. Its retained evidence includes the
+Grok credential-readiness failure before generation. Both native trials lacked
+an IntentIR checkpoint and had zero verified Source384 source candidates.
+
 The [October 12 full coding pair](evidence/terminal-instruction-dedup-pair-20261012/README.md)
 passed both official tasks. Instruction deduplication used 309,813 versus
 311,776 total native tokens (0.63% fewer), principally cached input; uncached

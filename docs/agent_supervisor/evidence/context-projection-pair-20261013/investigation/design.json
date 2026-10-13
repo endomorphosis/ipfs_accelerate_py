@@ -1,0 +1,194 @@
+{
+  "current_native_census": {
+    "complete_raw_program_source_inline": false,
+    "eligible_inline_program_paths": [],
+    "inference": "The larger opportunity in this specific prompt is capsule, context-pack, retrieval and repeated policy representation, not removing already deferred program raw_sources.",
+    "inline_raw_source_paths": [
+      ".supervisor-instruction.md",
+      ".supervisor-public-smoke.py",
+      ".supervisor-task-profile.json"
+    ],
+    "inline_source_ast_metadata_present": true,
+    "optional_catalog_cli_stdout_utf8_bytes": 12151,
+    "previous_cli_operation_stdout_utf8_bytes": [
+      {
+        "operation_id": "bootstrap:eigen.py",
+        "stdout_utf8_bytes": 1228
+      },
+      {
+        "operation_id": "discovery:catalog",
+        "stdout_utf8_bytes": 7401
+      },
+      {
+        "operation_id": "discovery:catalog",
+        "stdout_utf8_bytes": 4750
+      },
+      {
+        "operation_id": "baseline_read:eigen.py",
+        "stdout_utf8_bytes": 1228
+      },
+      {
+        "operation_id": "baseline_read:eval.py",
+        "stdout_utf8_bytes": 2913
+      },
+      {
+        "operation_id": "pre_edit_expansion:eigen.py",
+        "stdout_utf8_bytes": 1229
+      },
+      {
+        "operation_id": "stale_generation:eval.py",
+        "stdout_utf8_bytes": 47
+      },
+      {
+        "operation_id": "edited_refresh:eigen.py",
+        "stdout_utf8_bytes": 1222
+      },
+      {
+        "operation_id": "edited_read:eval.py",
+        "stdout_utf8_bytes": 2913
+      },
+      {
+        "operation_id": "post_edit_expansion:eigen.py",
+        "stdout_utf8_bytes": 1223
+      },
+      {
+        "operation_id": "restore_stale_generation:eigen.py",
+        "stdout_utf8_bytes": 47
+      },
+      {
+        "operation_id": "restored_refresh:eigen.py",
+        "stdout_utf8_bytes": 1228
+      }
+    ],
+    "program_paths": [
+      "eigen.py",
+      "eval.py"
+    ],
+    "raw_source_utf8_bytes": {
+      ".supervisor-instruction.md": 716,
+      ".supervisor-public-smoke.py": 1399,
+      ".supervisor-task-profile.json": 248
+    },
+    "required_raw_paths": [
+      ".supervisor-instruction.md",
+      ".supervisor-public-smoke.py"
+    ],
+    "selected_capsules": 4,
+    "translated_semantic_field_canonical_json_bytes": {
+      "admissions": 2269,
+      "capsules": 11995,
+      "completion_authority": 5,
+      "doctor_manifest_cid": 63,
+      "doctor_snapshot_id": 98,
+      "manifest": 878,
+      "objective": 32,
+      "pack": 7231,
+      "preparation_bounds": 48,
+      "program_paths": 22,
+      "raw_sources": 2574,
+      "reconstruction": 532,
+      "refresh_lineage": 4,
+      "required_raw_paths": 60,
+      "schema": 38,
+      "scope_cid": 61,
+      "semantic_root_cid": 63,
+      "task_id": 14,
+      "worker_projection": 2255
+    },
+    "transport_field_canonical_json_bytes": {
+      "completion_authority": 5,
+      "execution_authority": 5,
+      "instructions": 629,
+      "native_context": 19919,
+      "native_suffix": 2,
+      "schema": 36,
+      "translated_semantic": 28560,
+      "translation_cid": 61,
+      "translation_table": 1315
+    }
+  },
+  "files_written": [
+    "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/design.json"
+  ],
+  "finding": "Current native largest-eigenval worker prompt already defers both public program files. Source-context removal limited to raw_sources intersect program_paths is a no-op on this actual task.",
+  "metric_adapter": {
+    "common_controls": [
+      "owner native prompt SHA256",
+      "runtime/script hashes",
+      "public source hashes",
+      "source-view identity profile",
+      "logical operation sequence",
+      "page budget",
+      "exact authored edit"
+    ],
+    "limitation": "One-pass exposure is not full conversation input. Native providers may resend history and charge output; final token savings needs matched live sessions with native usage and task reward.",
+    "new_comparison_schema_required": true,
+    "new_validation": [
+      "Independently rebuild candidate provider prompt from trusted native semantic payload and implementation under test",
+      "Bind selection receipt to both before/after complete prompt digests",
+      "Restore reference-bearing representation using only admitted retained source bytes; compare exact native provider prompt",
+      "Validate selected paths exactly equal eligible intersection and verify support/task text untouched",
+      "Handle explicit no-op without extra exposed metadata",
+      "Owner replay all source pages and generation-bound edit before/after/restoration independently"
+    ],
+    "one_pass_scripted_exposure_bytes": "prepared_prompt_utf8_bytes + sum(actual_cli_stdout_utf8_bytes + actual_cli_stderr_utf8_bytes)",
+    "reason": "Existing source_view_trace_comparison@1 requires baseline identity vs compact profile and equality after only source-view guidance removal; it cannot validate changed inline source representation.",
+    "separate_not_double_counted": [
+      "argv JSON bytes",
+      "raw socket JSON bytes",
+      "socket frame bytes",
+      "owner control state",
+      "private replay evidence"
+    ]
+  },
+  "model_calls": 0,
+  "native_default_pair": {
+    "baseline_source_context_profile": "legacy",
+    "blocking_reason_for_nonzero_default_savings": "terminal_indexed_preparation.context hardcodes required_raw_paths=[INSTRUCTION,SMOKE]; public program sources are already deferred by worker_projection.",
+    "expected_eligible_sources": [],
+    "expected_prepared_prompt_delta_bytes": 0,
+    "expected_treatment_selection": "fallback_no_eligible_inline_programs",
+    "purpose": "No eligible program source regression control",
+    "require_no_extra_treatment_guidance_on_noop": true,
+    "task_profile_override_available": false,
+    "treatment_source_context_profile": "retrievable-programs@1"
+  },
+  "previous_trace": {
+    "path": "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/docker_pair/run-02/results/exact/worker-result.json",
+    "prepared_prompt_sha256": "317b761b010eb7072e0adbf74be5f77b2162a7d21f6f7f9c71cd785f123c4c8f",
+    "prepared_prompt_utf8_bytes": 53933,
+    "sha256": "ea48aaca98b46401b3a6d6309942191a55d02cb68cf361e4003f8f038020161f"
+  },
+  "producer_head_at_read": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3",
+  "provider_calls": 0,
+  "recommended_next_scope": "Qualify raw-source substitution as a general safe component with no-op native control, then target capsule/context-pack projection for actual largest-eigenval reduction.",
+  "required_controls": [
+    "Keep source-view profile identity@1 in both arms so the only change is source-context presentation.",
+    "Use one frozen native owner prompt and shared native preflight. Start fresh sequential worker/broker sessions and restore identical Git workspace between arms.",
+    "Snapshot current producer, datasets, kit, generated launcher and authored-hook implementation hashes; prior release bindings are invalid after upstream changes.",
+    "Preserve task instructions, support source, manifests, exact source identities, capsules, scope and authority. Treat references as retrievable presentation only; do not assert logical equivalence or semantic coverage.",
+    "Qualify native broker capability before removing inline program bytes. Unavailable broker, unsupported transport or invalid source binding must preserve/reject according to declared policy, never silently omit source.",
+    "Both arms use native worker_source_client default rendered CLI, capture stdout and stderr verbatim including newlines and pagination; no raw response bypass.",
+    "Read exact admitted original source with pinned source/view/generation before original-source editing. Retain stale-generation refusal, refreshed post-edit bytes and restoration evidence.",
+    "No full catalog traversal is needed when both paths are already known from the admitted manifest; omit it symmetrically and record changed workload.",
+    "Container remains network none with no model credentials, owner UID1000/worker UID1001, bounded resources, unchanged generated owner entry and declared authored router hook only.",
+    "No provider/model/token, official reward, theorem discharge, checkpoint inference or actual supervisor task solve claims."
+  ],
+  "schema": "source-context-substitution-pair-design@1",
+  "separate_authored_required_source_pair": {
+    "alternative_if_native_nomination_too_broad": "Use focused producer/router unit integration with declared native producer fixture; publish it as component qualification rather than fabricate a Terminal-Bench pair.",
+    "estimate_caveat": "Complete prompt rendering, required guidance, receipt/table format and all reader output must be measured after implementation. The exact native baseline has no such inline program map.",
+    "estimate_is_not_runtime_measurement": true,
+    "fixture": "Public largest-eigenval eigen.py/eval.py reused as input bytes; explicitly authored semantic producer context requiring those program paths inline.",
+    "hypothetical_gross_replacement_delta_bytes": 2718,
+    "hypothetical_inline_program_map_canonical_json_bytes": 3047,
+    "hypothetical_minimal_reference_map_canonical_json_bytes": 329,
+    "public_source_sha256": {
+      "eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    "purpose": "Demonstrate presentation replacement and exact-reader/edit fallback on a declared owner-required program-source context, without representing that as current Terminal-Bench default.",
+    "required_native_wiring": "Call prepare_semantic_context with exact program_paths and required_raw_paths containing those program paths, then produce a valid native task/context nomination through existing ownership APIs. Do not text-edit signed preflight prompts or silently monkeypatch native production policy."
+  },
+  "status": "design_only_not_executed"
+}

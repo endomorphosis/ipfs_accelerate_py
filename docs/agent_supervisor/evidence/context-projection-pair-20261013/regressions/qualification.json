@@ -1,0 +1,43 @@
+{
+  "schema": "context-projection-regression@1",
+  "exit_code": 0,
+  "seconds": 174.8657479250105,
+  "source_before": {
+    "benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py": "92da425b0eb2b90307f2d754bf54aaa45e869d86f4f402e2b1e5057ce421b474",
+    "benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py": "f080bed25d9f8a5901f6bc22277cac8d2d3e48c5561050dd265f3c21388657dc",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py": "c325940970169404ca2f4e67b2b241ff33ecbeac9d4855d9b5d3112346e86998",
+    "test/api/test_semantic_metadata_view.py": "7259d0ec4831566f426df6e085d5976ec765304b9a065d371131fea242913c6d",
+    "test/api/test_semantic_metadata_dispatch.py": "c80d811c63251566fb3aea522aa1c60630dc6a3997cbc836fc09dde8b17698f2",
+    "test/api/test_representation_displacement.py": "c2e31f35a25711203d2ec0276ce9b3384c9eb3ad3fbccd421bd1ff9dccc6ccd0",
+    "benchmarks/agent_supervisor/container_coding/context_projection_trace_comparison.py": "631389f2020e6ac84a67b8d4489277bba37b1df6942126c3877daf819ed869a9",
+    "benchmarks/agent_supervisor/container_coding/source_view_trace_comparison.py": "5bed4f8e3a95250d6f98fe3ca4192133cc0e0486396690f0726652d43d4b6829",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "72ba6d0b05986334660ba12e5e899dc436e37d0c9c3908868d47d223a1696856",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py": "eb1423b0be436c19eb57ce96dd79667478daebba3923423a88d8fde7ed760f6b",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_artifacts.py": "43fb1fa8944993008ffd6292467ec6207c4669965ae1d0c3265c73e3c6ae5d84",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_selection.py": "ac1da0918f2c1363b8e3541bf586d92f099e7db1b7c6b353df8ff274efff9999"
+  },
+  "source_after": {
+    "benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py": "92da425b0eb2b90307f2d754bf54aaa45e869d86f4f402e2b1e5057ce421b474",
+    "benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py": "f080bed25d9f8a5901f6bc22277cac8d2d3e48c5561050dd265f3c21388657dc",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py": "c325940970169404ca2f4e67b2b241ff33ecbeac9d4855d9b5d3112346e86998",
+    "test/api/test_semantic_metadata_view.py": "7259d0ec4831566f426df6e085d5976ec765304b9a065d371131fea242913c6d",
+    "test/api/test_semantic_metadata_dispatch.py": "c80d811c63251566fb3aea522aa1c60630dc6a3997cbc836fc09dde8b17698f2",
+    "test/api/test_representation_displacement.py": "c2e31f35a25711203d2ec0276ce9b3384c9eb3ad3fbccd421bd1ff9dccc6ccd0",
+    "benchmarks/agent_supervisor/container_coding/context_projection_trace_comparison.py": "631389f2020e6ac84a67b8d4489277bba37b1df6942126c3877daf819ed869a9",
+    "benchmarks/agent_supervisor/container_coding/source_view_trace_comparison.py": "5bed4f8e3a95250d6f98fe3ca4192133cc0e0486396690f0726652d43d4b6829",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "72ba6d0b05986334660ba12e5e899dc436e37d0c9c3908868d47d223a1696856",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py": "eb1423b0be436c19eb57ce96dd79667478daebba3923423a88d8fde7ed760f6b",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_artifacts.py": "43fb1fa8944993008ffd6292467ec6207c4669965ae1d0c3265c73e3c6ae5d84",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_selection.py": "ac1da0918f2c1363b8e3541bf586d92f099e7db1b7c6b353df8ff274efff9999"
+  },
+  "source_unchanged": true,
+  "tests": 289,
+  "distinct_tests": 289,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0
+}

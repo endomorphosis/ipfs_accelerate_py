@@ -1,0 +1,136 @@
+{
+  "accounting": "Final native cumulative usage counted once for each unique planning/coding invocation. Cached input is already included; reasoning output is not added again.",
+  "assembly_followups": [],
+  "billing_advantage_claim_present": false,
+  "blocking_findings": [],
+  "causal_advantage_claim_present": false,
+  "conclusions": [
+    "Native treatment used one more total token; no total-token reduction was observed.",
+    "The official rewards differ 0 versus 1; one independently planned pair does not establish a causal success advantage.",
+    "Dollar billing is not independently verified.",
+    "882-byte selected-input reduction is within the native treatment; 885-byte offline reduction is a separate authored shared-workload comparison.",
+    "Both native trials consumed the pinned Source384 checkpoint but all four decoded candidates remained unsupported and unverified; IntentIR lacked a checkpoint.",
+    "No native model requested the source broker; no indexed-reader token advantage or source proof coverage is established.",
+    "Final declared-output hashes are unavailable; cross-arm output byte equality is not established.",
+    "The record covers one task and a separate failed Grok setup; it is not a full-suite result or a new native-Codex-harness baseline comparison."
+  ],
+  "config_differences": [
+    "/agents/0/kwargs/semantic_metadata_view",
+    "/jobs_dir"
+  ],
+  "control_audit": {
+    "bytes": 5199,
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/native-observations/exact-control-audit.json",
+    "sha256": "cfedf1ff491edf53a950b8bb578ea9cc4a21fbc03f8cbf2137293ed0b897df72"
+  },
+  "copied_artifacts_verified": 86,
+  "copy_list": {
+    "bytes": 22938,
+    "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/docs/agent_supervisor/evidence/context-projection-pair-20261013/copy-list.json",
+    "sha256": "efd2f4c59197b6e15d5ff0126910ba0d2b1baa2b5b77b290c39a6e298f23648a"
+  },
+  "doc_link_check_errors": {},
+  "documents": [
+    {
+      "bytes": 10352,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/docs/agent_supervisor/context_projection_pair.md",
+      "sha256": "d28436cb8c8af1c07275612d4fdcb79c625e10d3d7a2b8e23212789372f0535d"
+    },
+    {
+      "bytes": 51106,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "9e7384661a871a6f58b2f94abc32b5727c210d54165ea16f98db3df3bb45163e"
+    },
+    {
+      "bytes": 6209,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/docs/agent_supervisor/source_view_read_edit_pair.md",
+      "sha256": "ffa902a592a71504c4605e521a759f6a7d91b135ebe4388370c3b590d0d26257"
+    },
+    {
+      "bytes": 30078,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "sha256": "541329ca882a57013f2fc4ba33254a65d2e13a9d99ac86e33d4e8eb814c5adb9"
+    },
+    {
+      "bytes": 9535,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/docs/agent_supervisor/evidence/context-projection-pair-20261013/README.md",
+      "sha256": "90e9ea3bb34c35adf7cde880c2109fdb02b65845d512c3d7102e558ba0351d35"
+    }
+  ],
+  "hidden_test_or_solution_bodies_read": false,
+  "new_provider_calls": 0,
+  "numeric_recomputation": {
+    "bytes": 6496,
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/context-projection-final-recomputation.json",
+    "sha256": "4a88b66f88090fe6551314b1d5a925d78a9cef8968b195efec9ef0453f740ad3"
+  },
+  "numeric_recomputation_script": {
+    "bytes": 5573,
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/recompute_final_pair_review.py",
+    "sha256": "3ffcffd23ed6bd19c6b39f216e5994674ce7b340e38526b6a92afd1d64679fbb"
+  },
+  "observed_at_utc": "2026-10-13T04:13:49.987366+00:00",
+  "pair_summary": {
+    "bytes": 32135,
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/native-observations/pair-summary.json",
+    "sha256": "28988dcd75c85e5baa58af538ecaf13d426c21489995f09792b4de55e95c6671"
+  },
+  "projected_minus_legacy": {
+    "cached_input_tokens": 0,
+    "input_tokens": -198,
+    "output_tokens": 199,
+    "total_tokens": 1,
+    "uncached_input_tokens": -198
+  },
+  "proof_success_claim_present": false,
+  "public_evidence_all_utf8_and_no_symlinks": true,
+  "public_inventory_count_at_review": 92,
+  "public_inventory_sha256": "b4c50ad8685aa0e9fb3b657eca80a30c0ef145aa1786daadc1fc64d8735d4d45",
+  "repository_files_changed_by_review": false,
+  "review_scope": "Independent final documentation, original retained numeric receipt recomputation, matched control and public evidence review. Comparator implementation was authored by this reviewer; independent implementation review is retained separately.",
+  "reviewer": "source_context_wiring",
+  "runtime_and_source_integrity": {
+    "independent_recomputation_confirmed_pinned_archive_and_host_sources": true,
+    "regression_source_closure_still_unchanged": true
+  },
+  "schema": "context-projection-final-independent-review@1",
+  "script": {
+    "bytes": 7798,
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/review_final_pair_docs.py",
+    "sha256": "87ffa7ee50d3d6cd427076a0687a4f9e721b8b008e64015453803a10b4a21ff0"
+  },
+  "secret_and_raw_prompt_pattern_findings": [],
+  "status": "reviewed_no_blocking_findings",
+  "verified_native_metrics": {
+    "legacy": {
+      "intent_ir_status": "fail_open_no_checkpoint",
+      "official_reward": 0.0,
+      "provider_invocations": 2,
+      "source384_candidate_count": 4,
+      "source384_verified_candidates": 0,
+      "source_broker_requests": 0,
+      "tokens": {
+        "cached_input_tokens": 250112,
+        "input_tokens": 307795,
+        "output_tokens": 6184,
+        "total_tokens": 313979,
+        "uncached_input_tokens": 57683
+      }
+    },
+    "projected": {
+      "intent_ir_status": "fail_open_no_checkpoint",
+      "official_reward": 1.0,
+      "provider_invocations": 2,
+      "source384_candidate_count": 4,
+      "source384_verified_candidates": 0,
+      "source_broker_requests": 0,
+      "tokens": {
+        "cached_input_tokens": 250112,
+        "input_tokens": 307597,
+        "output_tokens": 6383,
+        "total_tokens": 313980,
+        "uncached_input_tokens": 57485
+      }
+    }
+  }
+}

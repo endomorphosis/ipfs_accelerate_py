@@ -1,0 +1,28 @@
+{
+  "schema": "context-projection-documentation-checks@1",
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "command": [
+    "/usr/bin/python3",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "gate_exit_code": 0,
+  "additional_files": [
+    "docs/agent_supervisor/context_projection_pair.md",
+    "docs/agent_supervisor/source_view_read_edit_pair.md",
+    "docs/agent_supervisor/reversible_codebase_views_plan.md",
+    "docs/agent_supervisor/terminal_token_metadata_plan.md",
+    "docs/agent_supervisor/evidence/context-projection-pair-20261013/README.md"
+  ],
+  "explicit_link_errors": [],
+  "git_diff_check_exit_code": 0,
+  "git_diff_check_output": "",
+  "source_sha256": {
+    "docs/agent_supervisor/context_projection_pair.md": "d28436cb8c8af1c07275612d4fdcb79c625e10d3d7a2b8e23212789372f0535d",
+    "docs/agent_supervisor/source_view_read_edit_pair.md": "ffa902a592a71504c4605e521a759f6a7d91b135ebe4388370c3b590d0d26257",
+    "docs/agent_supervisor/reversible_codebase_views_plan.md": "9e7384661a871a6f58b2f94abc32b5727c210d54165ea16f98db3df3bb45163e",
+    "docs/agent_supervisor/terminal_token_metadata_plan.md": "541329ca882a57013f2fc4ba33254a65d2e13a9d99ac86e33d4e8eb814c5adb9",
+    "docs/agent_supervisor/evidence/context-projection-pair-20261013/README.md": "90e9ea3bb34c35adf7cde880c2109fdb02b65845d512c3d7102e558ba0351d35"
+  },
+  "helper_sha256": "eac4008200f6fb2a3763f2bebe90dd663b5407d1624a9f384fa3fb6256552ba3",
+  "passed": true
+}

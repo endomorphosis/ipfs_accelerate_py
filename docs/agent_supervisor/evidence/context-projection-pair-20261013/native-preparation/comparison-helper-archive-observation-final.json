@@ -1,0 +1,26 @@
+{
+  "files": [
+    {
+      "bytes": 10138,
+      "current_source_matches": false,
+      "current_source_sha256": "631389f2020e6ac84a67b8d4489277bba37b1df6942126c3877daf819ed869a9",
+      "invoked_by_live_supervisor": false,
+      "mode": 420,
+      "path": "source/benchmarks/agent_supervisor/container_coding/context_projection_trace_comparison.py",
+      "sha256": "f37c0c7b50b38d3cbdd1113c9b45a4393a9102bc3fe2a08ff742a95b3e35d9f6"
+    },
+    {
+      "bytes": 27188,
+      "current_source_matches": true,
+      "current_source_sha256": "5bed4f8e3a95250d6f98fe3ca4192133cc0e0486396690f0726652d43d4b6829",
+      "invoked_by_live_supervisor": false,
+      "mode": 420,
+      "path": "source/benchmarks/agent_supervisor/container_coding/source_view_trace_comparison.py",
+      "sha256": "5bed4f8e3a95250d6f98fe3ca4192133cc0e0486396690f0726652d43d4b6829"
+    }
+  ],
+  "final_review_sha256": "8b8b6633d1376c4b306bd30cae574336ff2af75081edc87fa77078df3e3031f3",
+  "qualified_live_production_source_closure_matches": true,
+  "schema": "uninvoked-comparison-helper-archive-observation@1",
+  "scope": "Archive helper bytes were observed at bundle time; final host comparator changed afterward, remains uninvoked by live supervisor."
+}

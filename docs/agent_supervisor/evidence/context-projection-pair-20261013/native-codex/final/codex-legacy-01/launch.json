@@ -1,0 +1,22 @@
+{
+  "schema": "source-context-native-launch@1",
+  "command": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+    "execute",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-legacy-01"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/metadata-live-20261013",
+  "command_manifest_sha256": "443c656db82aa01c02d909f7abf70aee8f3310faf141bf68fc18dc24c8c982e4",
+  "command_manifest": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/codex-attempt-01/live-trial-commands.json",
+  "preparation_sha256": "38f843c73cbdc4f3140ef8b1c60a3090eba40d1633e2abb205a5b1018e64b42a",
+  "script_sha256": "4ac4d0e1703316125e49ca5777fb718835fae9e69013d344ba9eb7552f9a1fc8",
+  "started_at_utc": "2026-10-13T03:35:46.729214+00:00",
+  "provider_profile": "codex-gpt-6.1-sol-0.160.0@1",
+  "source_view_profile": "identity@1",
+  "semantic_metadata_view": "legacy",
+  "inherited_environment_values_retained": false
+}

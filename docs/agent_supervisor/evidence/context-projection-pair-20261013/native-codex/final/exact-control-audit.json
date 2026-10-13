@@ -1,0 +1,121 @@
+{
+  "common_profile": {
+    "agent_timeout_seconds": 6480.0,
+    "archive_sha256": "6426e1a06dbea6182c245bd8f96ec367103e25d674fdf578432a7a5832ed0918",
+    "arm": "full",
+    "cli_version": "0.160.0",
+    "manifest_sha256": "bc5c655108f15f7a81245f5ec7914c32b90fc12cb877a9014781af305cded4c6",
+    "model": "gpt-6.1-sol",
+    "planning_strategy": "direct",
+    "provider_profile": "codex-gpt-6.1-sol-0.160.0@1",
+    "reasoning_effort": "high",
+    "resource_profile": "source384-5cpu-20gib-formalization@1",
+    "source384_enabled": true,
+    "source_view_profile": "identity@1"
+  },
+  "configurations": {
+    "codex-legacy-01": {
+      "bytes": 3283,
+      "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-legacy-01/config.json",
+      "sha256": "043fdf5c06f52bd2560c0a8714d52a2b4d4286727ae79577a618975fb0cbb74f"
+    },
+    "codex-projected-01": {
+      "bytes": 3341,
+      "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-projected-01/config.json",
+      "sha256": "e1eccac9a37301959cc90fac9d1bfb73c3cf9a9e1366fe2caa0f1f59878413ab"
+    }
+  },
+  "exact_config_differences": [
+    {
+      "baseline": "<absent>",
+      "path": "/agents/0/kwargs/semantic_metadata_view",
+      "treatment": "common-bindings@1"
+    },
+    {
+      "baseline": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-legacy-01/jobs",
+      "path": "/jobs_dir",
+      "treatment": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-projected-01/jobs"
+    }
+  ],
+  "existing_compare_controls_result": {
+    "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+    "differences": [],
+    "matches": true,
+    "status": "matched"
+  },
+  "identical_runtime_or_candidate_output_claimed": false,
+  "interpretation": "Existing compare_controls matched the shared declared controls. Metadata mode is the intentional treatment; jobs_dir isolates outputs. Full configuration digests differ as expected. Exact JSON comparison establishes no other configuration differences. Runtime input auditing establishes the selected coding prompts; configuration equality alone does not establish identical live conditions or generated plans.",
+  "native_plans_and_provider_sessions_generated_independently": true,
+  "observed_integrity_checks": {
+    "codex-legacy-01": {
+      "all_observed_coding_inputs_verified": true,
+      "config_matches_preparation": true,
+      "host_source_closure_unchanged": true,
+      "intent_selection_config_unchanged": true,
+      "original_task_inputs_unchanged": true,
+      "prepared_controls_valid": true,
+      "source_view_config_unchanged": true
+    },
+    "codex-projected-01": {
+      "all_observed_coding_inputs_verified": true,
+      "config_matches_preparation": true,
+      "host_source_closure_unchanged": true,
+      "intent_selection_config_unchanged": true,
+      "original_task_inputs_unchanged": true,
+      "prepared_controls_valid": true,
+      "semantic_metadata_config_unchanged": true,
+      "source_view_config_unchanged": true
+    }
+  },
+  "observer": {
+    "bytes": 56806,
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/native-observations/observation-03.json",
+    "sha256": "e15adf8b368ff0ca6ed9c8f41240a15d1cad893f7e21ac1f0e56aa2172583ae5"
+  },
+  "only_intentional_metadata_and_output_location_differences": true,
+  "preparation_common_fields_equal": {
+    "agent_timeout_seconds": true,
+    "archive": true,
+    "archive_sha256": true,
+    "arm": true,
+    "cli_version": true,
+    "dataset": true,
+    "host_source_sha256": true,
+    "intent_action_384": true,
+    "intent_requirement_contract_cid": true,
+    "intent_requirement_contract_sha256": true,
+    "manifest_sha256": true,
+    "model": true,
+    "planning_and_cold_index_charged_to_agent_time": true,
+    "planning_strategy": true,
+    "provider_profile": true,
+    "reasoning_effort": true,
+    "resource_profile": true,
+    "source384": true,
+    "source384_enabled": true,
+    "source_view_authority": true,
+    "source_view_profile": true,
+    "task": true,
+    "task_input_sha256": true
+  },
+  "preparations": {
+    "codex-legacy-01": {
+      "bytes": 74102,
+      "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-legacy-01/preparation.json",
+      "sha256": "38f843c73cbdc4f3140ef8b1c60a3090eba40d1633e2abb205a5b1018e64b42a"
+    },
+    "codex-projected-01": {
+      "bytes": 74246,
+      "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-projected-01/preparation.json",
+      "sha256": "871fe4ee7eb7fc971f82ed75f5b14f55d5fa4c490908590f2b6fe1dd449451f8"
+    }
+  },
+  "provider_calls_by_auditor": 0,
+  "schema": "source-context-native-exact-control-audit@1",
+  "shared_source384_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "source_pins": {
+    "accelerate": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3",
+    "datasets": "f47161b757190380e9898aff155067c1ad609217",
+    "kit": "8ac00bb1974b1378e12091d546d8425af34049e0"
+  }
+}

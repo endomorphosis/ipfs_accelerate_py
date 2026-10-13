@@ -20,6 +20,17 @@ falls from 79,362 to 79,229 bytes (0.17%). This measures neither model tokens no
 IR/proof reuse. It leaves general read accounting, context substitution and
 matched live-model qualification open.
 
+The [complete-context follow-up](context_projection_pair.md) found that both
+public program bodies were already deferred in this fixture. Reusing the
+existing lossless metadata projection with the exact source reader reduces
+scripted exposure from 79,362 to 78,477 bytes (1.12%). Its strict replay and
+289 passing regression tests qualify the byte comparison. Its subsequent
+GPT-6.1-sol native pair used 313,979 versus 313,980 total tokens, with official
+rewards 0 and 1 respectively. There is no total-token reduction or causal
+advantage established by this single pair. IntentIR lacked a checkpoint and all
+four Source384 candidates remained unverified. No additional source-omission
+profile was introduced.
+
 The October 12 follow-up audit includes publications through
 `48f442b4ca468b8cf2e858bca72a676812344302`. Unchanged repository restoration
 already works. The next token-efficiency priority is to identify which source

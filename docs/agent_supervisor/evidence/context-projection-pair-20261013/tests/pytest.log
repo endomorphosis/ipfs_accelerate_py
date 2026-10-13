@@ -1,0 +1,23 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/source-context-substitution-20261013/comparator-tests-02/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 52 items
+
+benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py . [  1%]
+...................................................                      [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source-context-substitution-20261013/comparator-tests-02/junit.xml -
+============================= slowest 10 durations =============================
+0.27s call     benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py::test_independent_native_catalog_identities_are_normalized_without_discarding_facts
+0.01s call     benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py::test_catalog_normalization_never_hides_changed_facts_or_unbound_identity[capsule_fact]
+0.01s call     benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py::test_catalog_normalization_never_hides_changed_facts_or_unbound_identity[count]
+0.01s call     benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py::test_catalog_normalization_never_hides_changed_facts_or_unbound_identity[fact]
+0.01s call     benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py::test_catalog_normalization_never_hides_changed_facts_or_unbound_identity[capsule_duplicate]
+0.01s call     benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py::test_catalog_normalization_never_hides_changed_facts_or_unbound_identity[new_field]
+0.01s call     benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py::test_catalog_normalization_never_hides_changed_facts_or_unbound_identity[capsule_identity]
+0.01s call     benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py::test_catalog_normalization_never_hides_changed_facts_or_unbound_identity[producer_hash]
+0.01s call     benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py::test_catalog_normalization_never_hides_changed_facts_or_unbound_identity[inventory]
+0.01s call     benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py::test_catalog_normalization_never_hides_changed_facts_or_unbound_identity[scope]
+============================= 52 passed in 15.34s ==============================

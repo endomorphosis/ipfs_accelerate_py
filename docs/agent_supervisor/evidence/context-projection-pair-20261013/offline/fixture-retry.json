@@ -1,0 +1,18 @@
+{
+  "change": "Read requested_mode from representation_displacement; retain selected_mode check in semantic_metadata_view.",
+  "container_removed": true,
+  "diagnosis": "The production selection@1 receipt has selected_mode; requested_mode belongs to representation_displacement. Both authored router arms completed before this assertion.",
+  "failed_run": "run-01",
+  "failure_type": "KeyError",
+  "missing_field": "requested_mode",
+  "model_calls": 0,
+  "origin": "authored owner probe assertion, not the production route",
+  "provider_calls": 0,
+  "replacement_complete": true,
+  "replacement_fresh_run": "run-02",
+  "replacement_release": "release-02.json",
+  "runner_unchanged": true,
+  "schema": "metadata-projection-fixture-retry@1",
+  "source_changes_required": false,
+  "source_unchanged": true
+}
