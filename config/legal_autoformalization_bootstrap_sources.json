@@ -1,0 +1,24 @@
+{
+  "schema": "legal-autoformalization-bootstrap-sources/v1",
+  "campaign_id": "legal-autoformalization-convergence-bootstrap-20261013",
+  "workspace_root": "/home/barberb/lift_coding",
+  "datasets_root": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+  "accelerator_root": "/home/barberb/lift_coding/.worktrees/legal-autoformalization-supervisor-20261013",
+  "stale_datasets_root": "/home/barberb/lift_coding/external/ipfs_datasets",
+  "canonical_accelerator_root": "/home/barberb/lift_coding/external/ipfs_accelerate",
+  "original_plan_sha256": "56917e387649c03a0d483b1d3a4592dc146edf37de892782431f991a47269fcb",
+  "original_plan_path": "/home/barberb/lift_coding/implementation_plan/legal_autoformalization_convergence_20261013/tasks.json",
+  "runtime_base_commit": "5ad92f61bb643d4138749d3df16663a2af1c79c1",
+  "read_only_source_roots": [
+    "/home/barberb/lift_coding"
+  ],
+  "bootstrap_profile": {
+    "cpu_slots_per_inventory": 1,
+    "memory_mib_per_inventory": 1024,
+    "max_parallel_inventory": 3,
+    "training_allowed": false,
+    "model_inference_allowed": false,
+    "corpus_rescan_allowed": false
+  },
+  "original_task_acceptance": "Inventory-only bootstrap specialization; original plan task acceptance is separate and may remain partial."
+}

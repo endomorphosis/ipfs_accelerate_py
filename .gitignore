@@ -374,3 +374,11 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/**/*.json
 !data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/**/*.json
 /data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/
+
+# Bounded legal autoformalization bootstrap runtime
+/data/agent_supervisor/legal_autoformalization_bootstrap/runtime/
+
+# Persist only accepted legal inventory evidence in Git
+!/data/legal_autoformalization_convergence/
+!/data/legal_autoformalization_convergence/LAC-*/
+!/data/legal_autoformalization_convergence/LAC-*/result.json

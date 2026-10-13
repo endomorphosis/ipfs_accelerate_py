@@ -1,0 +1,104 @@
+{
+  "schema": "legal-autoformalization-observed-baseline/v1",
+  "observed_utc": "2026-10-13T06:59:34.187643+00:00",
+  "repositories": [
+    {
+      "name": "workspace",
+      "path": "/home/barberb/lift_coding",
+      "head": "fe18069df4203da9bddfb77b1ed41748f4d5fb4d",
+      "tree": "ead9da8af81b80002659c9d4827b68372764a916",
+      "role": "Observation only; LAC-001 must revalidate and seal execution authority."
+    },
+    {
+      "name": "datasets_observed_current",
+      "path": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+      "head": "9eb06b73658d8203628a697db6199f14ecf479e4",
+      "tree": "51647f39a999085fb7dc98449db937209320f3a7",
+      "role": "Observation only; LAC-001 must revalidate and seal execution authority."
+    },
+    {
+      "name": "datasets_stale_checkout",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "head": "d5238def256d1c352793ee7d977e6b17b6d8cbee",
+      "tree": "0f578d7fba9c917fd519e2652270e60fae1918fc",
+      "role": "Observation only; LAC-001 must revalidate and seal execution authority."
+    },
+    {
+      "name": "accelerate_observed_checkout",
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate",
+      "head": "03eb84149cac3de7e16a99148466e4ad9327cb79",
+      "tree": "6a78a3d0b6d3c0984cca4cff97e4687281af80a3",
+      "role": "Observation only; LAC-001 must revalidate and seal execution authority."
+    }
+  ],
+  "evidence": [
+    {
+      "path": "artifacts/legal-autoencoder-training-history-20261013/retained-run-index.json",
+      "bytes": 1111052,
+      "sha256": "8a55c13ee1839164a67504e534ae6095619632f19091dee110b1f01c5498f0c5"
+    },
+    {
+      "path": "artifacts/legal-autoencoder-training-history-20261013/historical-and-feature-runs.json",
+      "bytes": 428296,
+      "sha256": "82a48143ab7bf722ce6f52d7bc79f1470b81cf53bf590fd30558e7afe9177a0f"
+    },
+    {
+      "path": "artifacts/legal-autoencoder-training-history-20261013/recent-training-receipts.json",
+      "bytes": 32052,
+      "sha256": "df368820698acbdb851117e10c9c4002b6f846620c397467e11e3069eb2ef76a"
+    },
+    {
+      "path": "artifacts/legal-temporal-adapter-20261013-01/hf-upload-v01/releases/20261013-temporal-adapter-v1/README.md",
+      "bytes": 4442,
+      "sha256": "ac3b824a25c1200114337920a81d8ed8c56a86cbb849ea273750deec9f6315c4"
+    },
+    {
+      "path": "artifacts/legal-temporal-adapter-20261013-01/temporal-feature-next-experiment-proposal-v01.json",
+      "bytes": 22020,
+      "sha256": "0bca90009a6968a492e7131f563e2a04b365d82b577d0160e373a5eeba57044e"
+    },
+    {
+      "path": "artifacts/legal-matched-curriculum-20261012-01/hf-upload-v01/releases/20261012-matched-curriculum-v1/README.md",
+      "bytes": 5891,
+      "sha256": "dcbaf0a4d5d2efd1912c578f1eae3ee470f764d5a484dadeaed6153b3e776597"
+    }
+  ],
+  "checkpoint_anchors": [
+    {
+      "name": "split_feature",
+      "sha256": "95bd50a7cc6e25381ad126e3d955f0816c31470ec469fb22ceca297e35115035",
+      "hub_revision": "70525bcf70e801e78f4882b4834494d67ec0d2b6",
+      "status": "experimental_unpromoted"
+    },
+    {
+      "name": "temporal_ce",
+      "sha256": "7358314558c0af9edb945e4815580f59af90748f2c10efb54bc326685a8eb36e",
+      "hub_revision": "0a89f3bfaa9db3ff028801b06fe6ee68ad73be19",
+      "status": "failed_retention_unpromoted"
+    },
+    {
+      "name": "temporal_margin",
+      "sha256": "adaafb917e41978f3beafe84bc57ee2772dbc576de83b03505f801f6156d5fb5",
+      "hub_revision": "0a89f3bfaa9db3ff028801b06fe6ee68ad73be19",
+      "status": "failed_retention_unpromoted"
+    }
+  ],
+  "datasets": [
+    {
+      "repository": "justicedao/uscode-autoformal-span-cache",
+      "observed_revision": "765176c6db79ba65c1697c21dead43666350b730",
+      "role": "diagnostic observations and source custody, not automatic gold"
+    },
+    {
+      "repository": "justicedao/uscode-autoformal-entity-cache",
+      "observed_revision": "97978d033f42014fcf84f8541b55e53630164823",
+      "role": "graph index and preparation, not admitted semantics"
+    },
+    {
+      "repository": "justicedao/ipfs_uscode",
+      "observed_revision": "5016b86a273ce5e4ffd066c5ae9f5fe494dd417e",
+      "role": "historically pinned physical source; revalidate identity and alias closure"
+    }
+  ],
+  "baseline_claim": "Observed evidence, not a new numerical replay, source freeze, semantic review or campaign launch."
+}
