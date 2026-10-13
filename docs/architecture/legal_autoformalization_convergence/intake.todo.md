@@ -26,7 +26,7 @@ Three bounded native deterministic qualifications against committed production s
 
 ## LAC-S4-024 Qualify authenticated graph review evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
