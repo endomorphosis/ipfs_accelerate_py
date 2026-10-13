@@ -26,7 +26,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S7-024 Qualify independently pinned official comparison documents
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
