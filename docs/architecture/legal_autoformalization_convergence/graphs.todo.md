@@ -4,7 +4,7 @@ Three native deterministic source-contract qualifications. Original full-plan ac
 
 ## LAC-S3-040 Qualify occurrence-bound typed graph proposals
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
