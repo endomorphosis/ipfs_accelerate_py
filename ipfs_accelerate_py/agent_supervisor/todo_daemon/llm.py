@@ -125,6 +125,9 @@ class LlmRouterInvocation:
     task_kind: str = ""
     min_intelligence: float = 0.0
     reasoning_effort: str = ""
+    # Opt in only for the exact native prompt-goal request on a pinned Codex
+    # route. Ordinary callers retain their existing text transport.
+    codex_planning_schema: bool = False
 
 
 @dataclass(frozen=True)
@@ -603,6 +606,8 @@ def apply_efficient_llm_route(
 def _allow_cross_provider_fallback(config: LlmRouterInvocation) -> bool:
     """Resolve remote failover while preserving ordinary route compatibility."""
 
+    if config.codex_planning_schema:
+        return False
     if config.allow_cross_provider_fallback is None:
         return True
     return bool(config.allow_cross_provider_fallback)
@@ -651,6 +656,7 @@ def _llm_router_child_code(config: LlmRouterInvocation) -> str:
     allocation_session_env = _env_name(config, "ALLOCATION_SESSION_ID")
     allocation_path_env = _env_name(config, "ALLOCATION_PATH")
     reasoning_effort_env = _env_name(config, "REASONING_EFFORT")
+    planning_schema_env = _env_name(config, "CODEX_PLANNING_SCHEMA")
     request_id_env = _env_name(config, "REQUEST_ID")
     attempt_env = _env_name(config, "ATTEMPT")
     idempotency_env = _env_name(config, "IDEMPOTENCY_KEY")
@@ -709,6 +715,19 @@ if alloc_path and "allocation_path" in parameters:
 effort = os.environ.get({reasoning_effort_env!r}) or ""
 if effort and ("reasoning_effort" in parameters or "kwargs" in parameters):
     kwargs["reasoning_effort"] = effort
+planning_validator = None
+if os.environ.get({planning_schema_env!r}) == "1":
+    if (provider or "").strip().lower() not in {{"codex", "codex-cli", "codex_cli"}}:
+        raise ValueError("Codex planning schema requires an explicit Codex provider")
+    from ipfs_accelerate_py.agent_supervisor.runtime.codex_planning_schema import (
+        planning_schema, validate_planning_response,
+    )
+    selection = planning_schema(prompt)
+    if selection is None:
+        raise ValueError("Codex planning schema requires a canonical prompt-goal request")
+    kwargs["codex_output_schema"], _projection_receipt, planning_validator = selection
+    kwargs["allow_local_fallback"] = False
+    kwargs["allow_cross_provider_fallback"] = False
 text = llm_router.generate_text(prompt, **kwargs)
 reject_provider = os.environ.get({reject_provider_env!r}) or ""
 required_providers = {{
@@ -735,6 +754,10 @@ if (reject_provider or required_providers):
         )
         raise SystemExit(2)
 text_out = "" if text is None else str(text)
+if planning_validator is not None:
+    if effective_provider != "codex_cli":
+        raise ValueError("Codex planning schema requires the exact Codex response route")
+    text_out = validate_planning_response(text_out, planning_validator)
 usage_mode = (os.environ.get({usage_mode_env!r}) or "off").strip().lower() or "off"
 result_path = os.environ.get({result_file_env!r}) or ""
 envelope_path = os.environ.get({envelope_file_env!r}) or ""
@@ -797,6 +820,13 @@ def call_llm_router_with_receipt(
         raise RuntimeError(
             f"Unsupported {config.backend_label} {backend!r}; expected 'llm_router'."
         )
+    if type(config.codex_planning_schema) is not bool:
+        raise ValueError("codex_planning_schema must be an explicit Boolean")
+    if config.codex_planning_schema:
+        if str(config.provider or "").strip().lower() not in {"codex", "codex-cli", "codex_cli"}:
+            raise ValueError("Codex planning schema requires an explicit Codex provider")
+        config = replace(config, allow_local_fallback=False,
+                         allow_cross_provider_fallback=False)
     config = apply_efficient_llm_route(config)
     if len(prompt) > config.max_prompt_chars + len(config.prompt_overage_allowance):
         raise RuntimeError(
@@ -923,6 +953,9 @@ def call_llm_router_with_receipt(
                 _env_name(config, "ALLOCATION_PATH"): str(config.allocation_path or ""),
                 _env_name(config, "REASONING_EFFORT"): str(
                     config.reasoning_effort or ""
+                ),
+                _env_name(config, "CODEX_PLANNING_SCHEMA"): (
+                    "1" if config.codex_planning_schema else "0"
                 ),
             }
         )

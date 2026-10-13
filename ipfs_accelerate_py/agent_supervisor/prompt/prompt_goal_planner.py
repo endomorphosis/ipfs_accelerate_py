@@ -2113,6 +2113,9 @@ def _default_router(
         reject_effective_provider_name=(
             None if config.allow_local_fallback else "local_hf"
         ),
+        codex_planning_schema=(
+            str(provider or "").strip().lower() in {"codex", "codex-cli", "codex_cli"}
+        ),
     )
 
     def _invoke() -> str:

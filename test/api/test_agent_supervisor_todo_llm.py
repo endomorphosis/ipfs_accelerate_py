@@ -51,6 +51,7 @@ def test_new_child_options_preserve_legacy_positional_constructors() -> None:
     )
     assert invocation.timeout_seconds == 17
     assert invocation.allow_cross_provider_fallback is None
+    assert invocation.codex_planning_schema is False
 
     envelope = LlmChildRequestEnvelope(
         LLM_CHILD_ENVELOPE_SCHEMA,
@@ -425,6 +426,49 @@ def test_unsupported_usage_mode_fails_closed(tmp_path: Path) -> None:
     config = _config(tmp_path, usage_mode="unlimited")
     with pytest.raises(RuntimeError, match="unsupported LLM usage_mode"):
         call_llm_router("x", config)
+
+
+@pytest.mark.parametrize("selection", [None, 0, 1, "true"])
+def test_codex_planning_selection_requires_an_explicit_boolean(
+    monkeypatch, tmp_path: Path, selection: Any
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: pytest.fail("child launched"))
+    with pytest.raises(ValueError, match="explicit Boolean"):
+        call_llm_router("prompt", _config(tmp_path, codex_planning_schema=selection))
+
+
+@pytest.mark.parametrize("provider", [None, "auto", "grok_cli", "local_hf"])
+def test_codex_planning_selection_requires_a_pinned_codex_route(
+    monkeypatch, tmp_path: Path, provider: str | None
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: pytest.fail("child launched"))
+    with pytest.raises(ValueError, match="explicit Codex provider"):
+        call_llm_router("prompt", _config(tmp_path, provider=provider, codex_planning_schema=True))
+
+
+def test_codex_planning_selection_disables_fallback_in_child_metadata(
+    monkeypatch, tmp_path: Path
+) -> None:
+    captured = {}
+
+    def fake_popen(command, **kwargs):
+        captured.update(kwargs["env"])
+
+        class Proc:
+            returncode = 0
+            pid = 993
+
+            def communicate(self, timeout=None):
+                return ("fixture", "")
+
+        return Proc()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    call_llm_router("prompt", _config(tmp_path, provider="codex-cli", codex_planning_schema=True,
+                                     allow_local_fallback=True, allow_cross_provider_fallback=True))
+    assert captured["TODO_DAEMON_LLM_CODEX_PLANNING_SCHEMA"] == "1"
+    assert captured["TODO_DAEMON_LLM_ALLOW_LOCAL_FALLBACK"] == "0"
+    assert captured["TODO_DAEMON_LLM_ALLOW_CROSS_PROVIDER_FALLBACK"] == "0"
 
 
 def test_timeout_path_still_terminates_child(monkeypatch, tmp_path: Path) -> None:

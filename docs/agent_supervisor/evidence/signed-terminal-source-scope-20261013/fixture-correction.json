@@ -1,0 +1,14 @@
+{
+  "after_sha256": "a6ab7203e283a6065087f1adf3fa967106166b40652704cbf693ece67aa9e543",
+  "before_sha256": "96c6c5a5fbcea553967dc01ceab5b8cd527a33b2757d51d8e8c9a91b14528e66",
+  "failed_attempt": "qualification-01",
+  "failed_attempt_overwritten": false,
+  "new": "finally: daemon.close_event_runtime()",
+  "next_attempt": "qualification-02",
+  "old": "finally: daemon.close()",
+  "path": "benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py",
+  "production_sources_changed": false,
+  "reason": "PortalImplementationDaemon exposes close_event_runtime; cleanup failed after all warm context and historical audit assertions completed.",
+  "recorded_at_utc": "2026-10-13T22:42:38.396602+00:00",
+  "schema": "signed-terminal-scope-fixture-correction@1"
+}

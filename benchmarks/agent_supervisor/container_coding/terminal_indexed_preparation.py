@@ -33,7 +33,8 @@ from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
 from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
 from .terminal_task_profile import (
-    MULTITASK_SCHEMA, PROFILE, normalized_instruction, task_profile_bytes, task_profile_index_paths,
+    MULTITASK_SCHEMA, SCOPED_SCHEMA, PROFILE, normalized_instruction, task_profile_bytes, task_profile_index_paths,
+    task_profile_semantic_required_paths,
     task_profile_smoke, task_profile_spec, task_profile_specs, task_profile_worker_inputs,
     validate_task_profile, validate_task_profile_contract, validate_task_data,
 )
@@ -544,7 +545,9 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
             raise ValueError("retrieval-ranked capsules require an explicit public task profile with a signed program/support partition")
     return prepare_initial_context(state=state, prepared=prepared,
         model_snapshot=model_snapshot, model_revision=model_revision,
-        required_raw_paths=[INSTRUCTION, SMOKE], train_autoencoder=train_autoencoder,
+        required_raw_paths=(task_profile_semantic_required_paths(prepared["task_profile"])
+            if (prepared.get("task_profile") or {}).get("schema") == SCOPED_SCHEMA else [INSTRUCTION, SMOKE]),
+        train_autoencoder=train_autoencoder,
         **({"retrieval_ranked_capsules": True} if capsule_selection != DEFAULT_CAPSULE_SELECTION else {}),
         weight_transfer=weight_transfer, canonical_cve_training=canonical_cve_training,
         security_checkpoint=security_checkpoint, security_checkpoint_hub=security_checkpoint_hub,
@@ -975,6 +978,12 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
     if admission["manifest"] != prepared["manifest"]:
         raise ValueError("context admission differs from independently prepared manifest")
     repository = Path(prepared["repository"])
+    from ipfs_accelerate_py.agent_supervisor.runtime.terminal_semantic_scope import (
+        replay_terminal_semantic_scope, validate_terminal_semantic_payload,
+    )
+    selected_scope = replay_terminal_semantic_scope(prepared)
+    semantic_paths = (selected_scope["selected_paths"] if selected_scope is not None else prepared["worker_inputs"])
+    semantic_required = (selected_scope["required_raw_paths"] if selected_scope is not None else [INSTRUCTION, SMOKE])
     if bool(model_snapshot) != bool(model_revision):
         raise ValueError("learned index needs both the pinned local snapshot and revision")
     output = repository / ".runtime/terminal-context"
@@ -1015,7 +1024,7 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
         with IntentRepository(state / "intent.duckdb", install_schema=False) as intent:
             prepared_context = prepare_supervised_task_context(
                 repository=repository, intent=intent, task_cid=task_cids[0],
-                paths=prepared["worker_inputs"], required_raw_paths=[INSTRUCTION, SMOKE],
+                paths=semantic_paths, required_raw_paths=semantic_required,
                 output=output, code_vector_snapshot=snapshot,
                 code_vector_result=(None if empty_population else CodeVectorSearchResult.from_dict(indexed["hits"])),
                 code_empty_population=partition if empty_population else None,
@@ -1027,6 +1036,18 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
             )
         stage_seconds["supervised_semantic_world_context"] = time.monotonic() - stage_started
         diagnostic_artifact = output / "semantic/doctor.json"
+    if selected_scope is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import load_semantic_worker_context
+        semantic_metadata = {key.lower(): value for key, value in prepared_context["metadata"].items()}
+        semantic_payload = json.loads(load_semantic_worker_context(repository=repository,
+            artifact=semantic_metadata["semantic context artifact"],
+            expected_sha256=semantic_metadata["semantic context sha256"],
+            task_id=verified["graph"].tasks[0].task_key))
+        replayed_scope = validate_terminal_semantic_payload(prepared, semantic_payload)
+        if (replayed_scope != selected_scope or (reused
+                and prepared_context.get("terminal_semantic_scope") != selected_scope)):
+            raise ValueError("admitted context differs from its signed selected semantic scope")
+        prepared_context["terminal_semantic_scope"] = replayed_scope
     stage_started = time.monotonic()
     bundle = write_task_context_bundle(repository=repository, prepared=[prepared_context],
         output=repository / ".runtime/terminal-context-bundle.json")
@@ -1036,11 +1057,27 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
     from ipfs_accelerate_py.agent_supervisor.runtime.doctor_repair_composition import (
         assess_doctor_repair_eligibility,
     )
-    doctor = assess_doctor_repair_eligibility(
-        repository=repository, admission=admission,
-        diagnostic_artifact=diagnostic_artifact, paths=prepared["worker_inputs"],
-        program_paths=prepared_context["semantic"].get("program_paths"),
-    )
+    if selected_scope is None:
+        doctor = assess_doctor_repair_eligibility(
+            repository=repository, admission=admission,
+            diagnostic_artifact=diagnostic_artifact, paths=prepared["worker_inputs"],
+            program_paths=prepared_context["semantic"].get("program_paths"),
+        )
+    else:
+        # Complete Doctor repair contracts must not be satisfied by a subset.
+        # Selected diagnostics remain planning nominations in semantic context.
+        doctor = {"schema": "terminal-scoped-doctor-repair-abstention@1", "status": "abstained",
+            "automatic_repair_eligible": False, "diagnostics_replayed": False,
+            "complete_doctor_repair_evaluated": False,
+            "reason_codes": ["signed_subset_requires_separate_doctor_repair_scope"],
+            "manifest_cid": verified["receipt"]["manifest_cid"],
+            "source_tree_id": verified["current_source_tree_id"],
+            "terminal_semantic_scope_cid": local.content_identity(selected_scope),
+            "source_edits": 0, "provider_calls": 0, "proof_authority": False,
+            "execution_authority": False, "completion_authority": False}
+        doctor["report_cid"] = local.content_identity(doctor)
+        if replay_terminal_semantic_scope(prepared) != selected_scope:
+            raise ValueError("signed semantic scope changed during context publication")
     stage_finished = time.monotonic()
     stage_seconds["doctor_eligibility"] = stage_finished - stage_started
     stage_started = stage_finished
@@ -1074,6 +1111,8 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
         "official_verifier_in_context": False, "benchmark_success": None,
         "nomination_only": True, "semantic_equivalence_claimed": False,
     }
+    if selected_scope is not None:
+        result["terminal_semantic_scope"] = selected_scope
     if indexed.get("schema") == EMPTY_INDEX_SCHEMA:
         result.update({key: prepared_context["retrieval"][key] for key in (
             "retrieval_schema", "source_population_cid", "disposition", "embedding_calls")})

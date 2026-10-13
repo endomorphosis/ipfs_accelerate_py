@@ -731,7 +731,12 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
         raise ValueError("invalid public query")
     sources = prepared["manifest"]["payload"]["sources"]
     source_hashes = retrieval["source_sha256"]
+    from .terminal_task_profile import PROFILE
+    if (PROFILE in sources) != (type(prepared.get("task_profile")) is dict):
+        raise ValueError("historical signed public profile cannot be omitted or invented")
     expected_paths = {"bottle.py"}
+    semantic_scope_paths = set(prepared["worker_inputs"])
+    scoped_receipt = None
     if prepared.get("task_profile") is not None:
         from .terminal_task_profile import (PROFILE, validate_task_profile,
             task_profile_bytes, task_profile_index_paths)
@@ -739,6 +744,27 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
         if sources.get(PROFILE, {}).get("sha256") != _sha(task_profile_bytes(profile)):
             raise ValueError("retrieval scope profile differs from signed source")
         expected_paths = set(task_profile_index_paths(profile))
+        from .terminal_task_profile import SCOPED_SCHEMA
+        if profile["schema"] == SCOPED_SCHEMA:
+            from ipfs_accelerate_py.agent_supervisor.runtime.terminal_semantic_scope import terminal_semantic_scope_observation
+            captured_scope = expected.get("terminal_semantic_scope")
+            if type(captured_scope) is not dict:
+                raise ValueError("historical selected context lacks its signed scope observation")
+            scoped_receipt = terminal_semantic_scope_observation(profile, prepared["manifest"],
+                selected_sources=captured_scope.get("selected_sources"))
+            if captured_scope != scoped_receipt:
+                raise ValueError("historical semantic selection differs from its signed declaration")
+            semantic_scope_paths = set(scoped_receipt["selected_paths"])
+            if (semantic.get("required_raw_paths") != scoped_receipt["required_raw_paths"]
+                    or semantic.get("program_paths") != scoped_receipt["program_paths"]
+                    or any(semantic["manifest"].get(name) != {
+                        "sha256": row["sha256"], "source_cid": row["source_cid"]}
+                        for name, row in scoped_receipt["selected_sources"].items())
+                    or any(len(text.encode("utf-8")) != scoped_receipt["selected_sources"][name]["source_bytes"]
+                        for name, text in semantic["raw_sources"].items())):
+                raise ValueError("historical semantic payload differs from selected source roles or bytes")
+    if scoped_receipt is None and expected.get("terminal_semantic_scope") is not None:
+        raise ValueError("historical selected receipt requires its signed profile")
     if not isinstance(source_hashes, dict) or set(source_hashes) != expected_paths:
         raise ValueError("unexpected retrieval source scope")
     empty = retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1"
@@ -768,7 +794,7 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
         "public_query": retrieval["query_text"] == query,
         "source_hashes": all(_digest(digest) == sources[path]["sha256"] for path, digest in source_hashes.items()),
         "semantic_source_hashes": all(semantic["manifest"][path]["sha256"] == digest for path, digest in source_hashes.items()),
-        "semantic_input_scope": set(semantic["manifest"]) == set(prepared["worker_inputs"]),
+        "semantic_input_scope": set(semantic["manifest"]) == semantic_scope_paths,
         "semantic_captured_hashes": all(binding["sha256"] == sources[path]["sha256"]
             for path, binding in semantic["manifest"].items()),
         "semantic_program_scope": (semantic.get("program_paths") == sorted(expected_paths)
@@ -799,6 +825,11 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
         result["local_contract_cid"] = _identity(tasks[0].get("body", {}).get("local_planning_contract_cid"))
     if formalization is not None:
         result["source_formalization_context"] = formalization
+    if scoped_receipt is not None:
+        result["terminal_semantic_scope"] = scoped_receipt
+        result["scope_observation_profile_bound"] = True
+        result["all_selected_lengths_independently_replayed"] = False
+        result["scope_observation_is_historical_only"] = True
     return result, rendered, dispatch
 
 

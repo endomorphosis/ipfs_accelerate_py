@@ -1,0 +1,54 @@
+{
+  "schema": "native-legal-plan-structured-output-qualification/v1",
+  "base_commit": "7147fb5b2afcde9f6a2bb8abb35794d03755d862",
+  "problem": "HTML cleanup removed <Lib> from an otherwise valid schema-bound planning response and could unescape formal string values.",
+  "behavior": "Schema-bound Codex results retain exact JSON strings/escape spelling and reject malformed, duplicate, nonfinite, oversize, schema-invalid or malformed UTF-8 output. Explicit Codex default-planner routes request the canonical native schema in their isolated child, validate the original response, and disable model/provider fallback. Ordinary text cleanup is unchanged.",
+  "source_files": [
+    {
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "bf4e1c669260309d76aee11c7c99ab5310a66911654c34bef6f12d18c377e45e"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "78ea93c0d204b9029b6397457b5f49f33ec1ccb60e42571e668fcb05ba3b407b"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py",
+      "sha256": "4d26183081e8ed0397da4c19f23e4905a29d2b58afc1e9b4445120071f661fb3"
+    }
+  ],
+  "tests": {
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -c pytest.ini --run-model-tests test/api/test_codex_cli_output_schema.py test/api/test_codex_planning_schema.py test/api/test_agent_supervisor_prompt_goal_planner.py test/api/test_agent_supervisor_todo_llm.py test/api/test_agent_supervisor_prompt_goal_codex_transport.py -q",
+    "passed": 110,
+    "skipped": 0,
+    "failed": 0,
+    "scope": "Offline contract tests, including actual isolated Python children and local native CLI fixtures. No model training or proof qualification.",
+    "junit_sha256": "fd497cf062fb15c13ed9eceba4ca9768a45ab44db2c361ccc03802c60e5f6f88"
+  },
+  "recorded_response_replay": {
+    "mode": "Offline retained real response replay through production adapters and local fixture executable",
+    "source_bytes": 77239,
+    "old_returned_bytes": 77234,
+    "preserved_sha256": "8ab6228fb03381db783ec0cca19fe029cca31f56e577f389937b032bfceef45f",
+    "paths": [
+      "file",
+      "jsonl",
+      "default_planner_real_isolated_child"
+    ],
+    "new_model_calls": 0,
+    "native_graph_goals": 11,
+    "native_graph_tasks": 25,
+    "exact_router_and_store_readback": true,
+    "original_supervisor_ledger_unchanged": true
+  },
+  "boundaries": {
+    "execution_admitted": false,
+    "statutory_semantic_qualification": false,
+    "Lean_admission": false,
+    "Constitution_formalized": false,
+    "model_weights_changed": false,
+    "encoder_context_window_changed": false,
+    "implicit_auto_provider_routes_changed": false,
+    "source_parser_compiler_decompiler_unchanged": true
+  }
+}

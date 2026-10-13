@@ -6344,6 +6344,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
 
             schema_requested = "codex_output_schema" in kwargs
             schema_bytes = None
+            schema_validator = None
             schema_observation = {}
             if schema_requested:
                 schema = kwargs.pop("codex_output_schema")
@@ -6365,6 +6366,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                 except Exception:
                     raise ValueError("codex_output_schema is invalid") from None
                 schema_bytes = encoded.encode("utf-8")
+                schema_validator = validator_class(snapshot)
                 schema_observation = {
                     "codex_output_schema_sha256": hashlib.sha256(schema_bytes).hexdigest(),
                     "codex_output_schema_bytes": len(schema_bytes),
@@ -6379,6 +6381,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
 
             last_msg_path = None
             schema_path = None
+            structured_file_invalid_utf8 = False
             try:
                 with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as last_msg:
                     last_msg_path = last_msg.name
@@ -6422,8 +6425,12 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                     )
                     raise
                 try:
-                    with open(last_msg_path, "r", encoding="utf-8", errors="replace") as handle:
+                    with open(last_msg_path, "r", encoding="utf-8",
+                              errors="strict" if schema_requested else "replace") as handle:
                         text_out = handle.read().strip()
+                except UnicodeError:
+                    structured_file_invalid_utf8 = schema_requested
+                    text_out = ""
                 except Exception:
                     text_out = ""
             finally:
@@ -6453,11 +6460,36 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                 pass
 
             if proc.returncode == 0 or (text_out and not schema_requested):
+                selected = text_out
                 if json_mode and proc.stdout:
                     extracted = _extract_last_agent_message_from_codex_jsonl(proc.stdout)
                     if extracted:
-                        return _clean_codex_output(extracted)
-                return _clean_codex_output(text_out)
+                        selected = extracted
+                if schema_requested:
+                    # Structured strings carry source/formula semantics. HTML
+                    # cleanup and entity unescaping can change valid JSON while
+                    # leaving its shape intact (for example, <Lib> disappears).
+                    # Validate the original response, then return it without
+                    # rewriting any string values or JSON escape spellings.
+                    from .cli_runtime.grok_structured_output import (
+                        MAX_RESPONSE_BYTES, _bounded_json, _loads,
+                    )
+
+                    selected = selected.strip()
+                    try:
+                        if structured_file_invalid_utf8:
+                            raise ValueError("structured response is not valid UTF-8")
+                        if len(selected.encode("utf-8")) > MAX_RESPONSE_BYTES:
+                            raise ValueError("structured response exceeds its byte bound")
+                        payload = _loads(selected)
+                        _bounded_json(payload, MAX_RESPONSE_BYTES)
+                        schema_validator.validate(payload)
+                    except Exception:
+                        raise LLMRouterError(
+                            "Codex CLI structured response failed validation"
+                        ) from None
+                    return selected
+                return _clean_codex_output(selected)
 
             if (
                 trace_enabled

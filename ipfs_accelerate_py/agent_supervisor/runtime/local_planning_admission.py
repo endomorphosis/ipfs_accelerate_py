@@ -700,7 +700,7 @@ def _manifest(envelope: Mapping, *, initial=False, source_transition=None) -> tu
 
 
 def _verify_multitask_profile_sources(manifest: Mapping) -> dict | None:
-    """Replay the reviewed multi-task declaration at the actual owner boundary.
+    """Replay reviewed multi-task and scoped profiles at the owner boundary.
 
     Preparation metadata is not an authority input. Every native admission and
     materialization must bind the immutable profile to its exact requirements,
@@ -716,7 +716,7 @@ def _verify_multitask_profile_sources(manifest: Mapping) -> dict | None:
         return None
     root = Path(manifest["repository"])
     # Retain the generic source bound while identifying the opt-in schema.
-    # The stricter canonical support and task checks belong only to @3.
+    # The stricter canonical support and task checks belong to @3 and @4.
     path = root / PROFILE
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
@@ -733,6 +733,20 @@ def _verify_multitask_profile_sources(manifest: Mapping) -> dict | None:
         raise LocalPlanningError("reserved public task profile must be a declaration object")
     if declaration.get("schema") != MULTITASK_SCHEMA:
         from . import terminal_task_profile as profile_owner
+        scoped_schema = getattr(profile_owner, "SCOPED_SCHEMA", None)
+        if type(scoped_schema) is str and declaration.get("schema") == scoped_schema:
+            # The optional read/semantic scope lives inside the already signed
+            # profile. Reproduce the complete public contract here; unsigned
+            # preparation state cannot narrow this owner boundary. This is a
+            # singleton, so the reviewed multi-task sentinel remains None.
+            from .terminal_source_partition import terminal_profile_partition
+            try:
+                partition = terminal_profile_partition(repository=root, manifest=manifest)
+            except (ValueError, TypeError, KeyError, UnicodeError, OSError) as exc:
+                raise LocalPlanningError("signed semantic scope profile does not replay") from exc
+            if partition is None:
+                raise LocalPlanningError("signed semantic scope requires its complete public partition")
+            return None
         known_singleton_schemas = {SCHEMA}
         data_schema = getattr(profile_owner, "DATA_SCHEMA", None)
         if type(data_schema) is str:
