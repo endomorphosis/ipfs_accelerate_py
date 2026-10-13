@@ -21,6 +21,7 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_retrieval_selection.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/context_selection_observation.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/code_retrieval_context.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py",

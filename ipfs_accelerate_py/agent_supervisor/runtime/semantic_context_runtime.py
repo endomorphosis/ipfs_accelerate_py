@@ -11,6 +11,7 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import tempfile
+import time
 from typing import Sequence
 import uuid
 
@@ -384,10 +385,49 @@ def prepare_semantic_context(
         raise ValueError("worker context exceeds configured budget")
     if any((repository / name).read_bytes() != raw for name, raw in sources.items()):
         raise ValueError("source changed during context preparation")
+    # Observe the final selection after exact-byte repacking. This sidecar is
+    # host metadata, not additional worker input or source-omission authority.
+    from .context_selection_observation import (
+        ContextSelectionObservationLimit,
+        build_context_selection_observation,
+        encode_context_selection_observation,
+    )
+    observation_started = time.perf_counter()
+    selection_bytes = None
+    try:
+        selection_observation = build_context_selection_observation(
+            # Observe the producer's exact JSON wire snapshot. Its in-memory
+            # contracts can contain string enums and immutable sequences.
+            payload=json.loads(compact), payload_bytes=compact, role="coding",
+        )
+        selection_bytes = encode_context_selection_observation(selection_observation)
+    except ContextSelectionObservationLimit:
+        # Telemetry resource limits must not become new native acceptance
+        # criteria. Never publish a truncated or partially bound observation.
+        selection_ref = {
+            "schema": "supervisor-context-selection-observation-unavailable@1",
+            "status": "unavailable",
+            "reason": "observation_resource_bound",
+            "role": "coding",
+        }
+    else:
+        selection_ref = {
+            "schema": "supervisor-context-selection-observation-ref@1",
+            "artifact": "context-selection.json",
+            "cid": cid_for_bytes(selection_bytes),
+            "sha256": hashlib.sha256(selection_bytes).hexdigest(),
+            "bytes": len(selection_bytes),
+            "role": "coding",
+        }
+    observation_seconds = time.perf_counter() - observation_started
     output.mkdir(parents=True, exist_ok=False)
     (output / "worker-context.json").write_bytes(compact)
+    if selection_bytes is not None:
+        (output / selection_ref["artifact"]).write_bytes(selection_bytes)
     blocks = output / "blocks"
     blocks.mkdir()
+    if selection_bytes is not None:
+        (blocks / selection_ref["cid"]).write_bytes(selection_bytes)
     for cid, raw in bundle.blocks.items():
         (blocks / cid).write_bytes(raw)
     for name, raw in sources.items():
@@ -414,6 +454,7 @@ def prepare_semantic_context(
             "pack_cid": packed.pack_cid,
             "doctor_manifest_cid": bridge_cid,
             "reconstruction_cid": cid_for_payload(reconstruction),
+            "context_selection_observation": selection_ref,
             "refresh_lineage": refresh_lineage,
             "proposal_only": True,
             "completion_authority": False,
@@ -422,10 +463,13 @@ def prepare_semantic_context(
     if world.records_for_decision(task_id=task_id)["n"] != 1:
         raise RuntimeError("world context record did not hydrate")
     meta = SupervisorMetaIndex(output / "metadata.duckdb", output / "metadata-lake")
-    for kind, locator, ref in [
+    catalogs = [
         ("capsule", blocks, view.root.capsule_index_cid),
         ("world_model", output / "world.duckdb", record["record_cid"]),
-    ]:
+    ]
+    if selection_bytes is not None:
+        catalogs.append(("metadata", output / selection_ref["artifact"], selection_ref["cid"]))
+    for kind, locator, ref in catalogs:
         catalog = meta.register_catalog(
             kind=kind,
             locator_ref=str(locator),
@@ -455,6 +499,8 @@ def prepare_semantic_context(
         "doctor_findings": len(findings),
         "pack_cid": packed.pack_cid,
         "worker_payload_sha256": hashlib.sha256(compact).hexdigest(),
+        "context_selection_observation": selection_ref,
+        "context_selection_observation_seconds": observation_seconds,
         "compact_bytes": len(compact),
         "pretty_json_bytes": len(_encoded(payload, pretty=True)),
         "minification": "lossless JSON whitespace removal only",

@@ -40,6 +40,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/context_selection_observation.py",
     "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
     "ipfs_accelerate_py/llm_router.py",
     "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",

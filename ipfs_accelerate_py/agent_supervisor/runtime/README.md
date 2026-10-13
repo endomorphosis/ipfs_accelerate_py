@@ -19,6 +19,7 @@ Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resou
 | --- | --- |
 | `artifact_store` | `runtime/artifact_store.py` |
 | `configured_board_scheduler` | `runtime/configured_board_scheduler.py` |
+| `context_selection_observation` | `runtime/context_selection_observation.py` |
 | `event_log` | `runtime/event_log.py` |
 | `intent_requirement_context` | `runtime/intent_requirement_context.py` |
 | `intent_requirement_observation` | `runtime/intent_requirement_observation.py` |
@@ -48,6 +49,22 @@ admission without owner keys and includes them after semantic encoding.
 checks event order and source/revision/attempt freshness, and reports public
 checks and output presence separately. These projections do not prove source
 meaning, expand task scope, change canonical state or grant completion authority.
+
+`semantic_context_runtime.prepare_semantic_context` records the final capsule
+selection after byte-budget repacking in `context-selection.json`. The sidecar
+binds the unchanged worker payload, source handles, native capsule/admission
+identities, declared dependencies and obligation references. Its reference is
+stored in the existing world observation and metadata catalog, with the existing
+DuckLake projection. It is host metadata and adds no text to the worker prompt.
+The observation distinguishes structural Codebase IR evidence from modality
+advisors that did not run at this preparation stage. It does not establish
+complete dependencies, current source at a later dispatch, provider delivery,
+proof, or token savings. `verify_context_selection_observation` replays the
+observation against a caller-supplied trusted producer payload; callers still
+use the native semantic loader for task and source freshness checks.
+If the observation exceeds its own resource bounds, preparation records a fixed
+unavailable status and publishes no partial sidecar. The native context and its
+acceptance requirements remain unchanged.
 
 ## Extending
 
