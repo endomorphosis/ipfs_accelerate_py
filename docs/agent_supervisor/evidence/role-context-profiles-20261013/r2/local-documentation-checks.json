@@ -1,0 +1,38 @@
+{
+  "schema": "role-context-local-documentation-checks@1",
+  "implementation_commit": "7b1f70f2d5c8f8a6ddfebb7bca4d2c7733f70d8a",
+  "all_passed": true,
+  "checks": [
+    {
+      "script": "scripts/docs/check_agent_supervisor_docs.py",
+      "sha256": "09580aa9a8707ce8da278d5b7fef4055e1945e53266c0fc4437e516eda1fed87",
+      "exit_code": 0,
+      "seconds": 0.03310616803355515,
+      "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n",
+      "stderr": ""
+    },
+    {
+      "script": "scripts/docs/check_current_docs_links.py",
+      "sha256": "596a0038b18d592f2e605643890afc85e457558f7b887932a474557d7586819e",
+      "exit_code": 0,
+      "seconds": 0.10417429206427187,
+      "stdout": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n",
+      "stderr": ""
+    },
+    {
+      "workflow_step": "Packaging version pin alignment",
+      "workflow_sha256": "0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763",
+      "extracted_script_sha256": "73850c91ffc82e31bafca4759e45f8cff3e2746c076f85c96e8368ea715ac6ad",
+      "exit_code": 0,
+      "seconds": 0.03186043293680996,
+      "stdout": "OK: packaging pins aligned at 0.0.45\n",
+      "stderr": ""
+    },
+    {
+      "workflow_step": "Closeout navigation markers",
+      "exit_code": 0,
+      "result": "All three required marker/file checks passed"
+    }
+  ],
+  "scope": "Local execution of repository documentation gates; not a GitHub Actions result or pytest test count"
+}

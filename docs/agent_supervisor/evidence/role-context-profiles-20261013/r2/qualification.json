@@ -1,0 +1,183 @@
+{
+  "schema": "role-context-profiles-qualification@1",
+  "implementation_commit": "7b1f70f2d5c8f8a6ddfebb7bca4d2c7733f70d8a",
+  "upstream_base": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3",
+  "run_label": "r2",
+  "validation_passed": true,
+  "test_scope": "Host role profiles, native preparation/selection and context compiler/delta regressions",
+  "actual_test_calls": 136,
+  "actual_pytest_phases": 408,
+  "all_setup_call_teardown_passed_once": true,
+  "no_reused_skipped_predicted_verified_deferred_or_degraded": true,
+  "proof_metrics": {
+    "schema": "ipfs_accelerate_py/testing/proof-reuse-metrics@1",
+    "interface": "ProofReuseMetrics@1",
+    "counts": {
+      "predicted": 0,
+      "verified": 0,
+      "skipped": 0,
+      "executed": 136,
+      "deferred": 0,
+      "degraded": 0
+    },
+    "reasons": {},
+    "verify_latency_ms": 0.0,
+    "execution_latency_ms": 212659.396,
+    "bytes_read": 0,
+    "bytes_written": 0
+  },
+  "guarded_source_count": 1101,
+  "source_guard_scope": "explicit source inventory, not a complete imported dependency closure",
+  "guarded_sources_unchanged": true,
+  "elapsed_seconds": 789.5445343420142,
+  "source_freeze_sha256": "e3704cb3130d8c6438aa79095c93cf00b409d7c64be403ec738aff588c8c285e",
+  "verification_sha256": "1dea764d2ec4ccf9bd06df2859f76f23ceb5ad6501ef0e423326decb8dece407",
+  "junit_sha256": "e93f9990e21ce12087f352a02278896429868d3e46de7cef22fa4aab4162873b",
+  "driver_sha256": "cdd8d867c52691c649681ef26a0bd97b3646665b3fed229344a1c6b2cc9e4271",
+  "supervisor_sha256": "1ae491eb61da12729f7c751139194aa778cf0bbe395db78632798bbd2424098e",
+  "local_documentation_checks_sha256": "5e7449188394af7ea351b1fb48839e9658864f34ac45ea1935c4afec61d61f3a",
+  "local_documentation_checks_scope": "Local workflow commands; not GitHub Actions status or pytest counts",
+  "retained_local_verification": "/home/barberb/lift_coding/artifacts/role-context-profiles-20261013/r2/verification.json",
+  "retained_local_log": "/home/barberb/lift_coding/artifacts/role-context-profiles-20261013/r2/run.log",
+  "native_preparation_samples": [
+    {
+      "capsules": 0,
+      "worker_bytes": 6315,
+      "observation_bytes": 2908,
+      "observation_computation_seconds": 0.0005603079916909337
+    },
+    {
+      "capsules": 3,
+      "worker_bytes": 16584,
+      "observation_bytes": 6092,
+      "observation_computation_seconds": 0.0012482519960030913
+    },
+    {
+      "capsules": 3,
+      "worker_bytes": 16584,
+      "observation_bytes": 6092,
+      "observation_computation_seconds": 0.001324412995018065
+    },
+    {
+      "capsules": 3,
+      "worker_bytes": 15946,
+      "observation_bytes": 6315,
+      "observation_computation_seconds": 0.00125476298853755
+    },
+    {
+      "capsules": 5,
+      "worker_bytes": 21939,
+      "observation_bytes": 8180,
+      "observation_computation_seconds": 0.0018120319582521915
+    },
+    {
+      "capsules": 3,
+      "worker_bytes": 15946,
+      "observation_bytes": 6315,
+      "observation_computation_seconds": 0.0013061079662293196
+    },
+    {
+      "capsules": 0,
+      "worker_bytes": 5859,
+      "observation_bytes": 3113,
+      "observation_computation_seconds": 0.000530916964635253
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10259,
+      "observation_bytes": 3967,
+      "observation_computation_seconds": 0.0008643269538879395
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10003,
+      "observation_bytes": 3837,
+      "observation_computation_seconds": 0.0008865660056471825
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12991,
+      "observation_bytes": 4767,
+      "observation_computation_seconds": 0.0010401199106127024
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12991,
+      "observation_bytes": 4769,
+      "observation_computation_seconds": 0.001006726990453899
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 21879,
+      "observation_bytes": 4142,
+      "observation_computation_seconds": 0.0009677050402387977
+    },
+    {
+      "capsules": 0,
+      "worker_bytes": 18314,
+      "observation_bytes": 3212,
+      "observation_computation_seconds": 0.0006977820303291082
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10136,
+      "observation_bytes": 4140,
+      "observation_computation_seconds": 0.0010272409999743104
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 11096,
+      "observation_bytes": 4140,
+      "observation_computation_seconds": 0.0008666790090501308
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10222,
+      "observation_bytes": 4142,
+      "observation_computation_seconds": 0.0008448719745501876
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 11239,
+      "observation_bytes": 4142,
+      "observation_computation_seconds": 0.0009239129722118378
+    }
+  ],
+  "sample_scope": "authored integration-test preparations, not live Terminal Bench",
+  "observation_helper_seconds_median": 0.0009677050402387977,
+  "observation_helper_seconds_maximum": 0.0018120319582521915,
+  "helper_timer_scope": "construction, encoding and reference hashes; excludes storage/catalog/DuckLake writes",
+  "features": [
+    "host-only immutable role profiles over existing lexical/verified-retrieval controls",
+    "separate native preparation outputs and expected-profile/source-current loader",
+    "owner-declared role metadata outside unchanged native worker wire",
+    "provider byte ceiling enforced on retry delta and reconstructed full input"
+  ],
+  "peer_reuse": {
+    "commit": "ce2cd1026f21e52384ddf29c50c4a459baef927e",
+    "slice": "ContextCompiler provider-byte ceiling fix and eight focused regression cases",
+    "historical_qualification_reused": false,
+    "repository_session_and_planning_consumer_imported": false
+  },
+  "provider_delivery_observed": false,
+  "role_specific_ranker_trained": false,
+  "benchmark_role_routing_changed": false,
+  "review_provider_route_added": false,
+  "modality_coverage_expanded": false,
+  "new_database_owner": false,
+  "native_semantic_acceptance_gates_relaxed": false,
+  "retained_interrupted_attempts_not_qualified": [
+    {
+      "path": "/home/barberb/lift_coding/artifacts/role-context-profiles-20261013/r1/interrupted-attempt.json",
+      "sha256": "2e4cf58a4c81f0d76b5c385138411e6eb70726d42c025c04adc7afd4adae2604",
+      "qualification_granted": false
+    }
+  ],
+  "new_proof_execution_or_completion_authority_granted": false,
+  "provider_calls": 0,
+  "downloads": 0,
+  "lake_builds": 0,
+  "lean_admits": 0,
+  "token_savings_established": false,
+  "official_task_success_established": false
+}
