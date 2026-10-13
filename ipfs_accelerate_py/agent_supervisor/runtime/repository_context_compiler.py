@@ -155,7 +155,7 @@ supervisor-side until an explicitly charged discovery or expansion is sent.
     def compile(self, *, generation, query, unresolved_question, required_evidence,
                 required_reference_ids, required_coverage_ids, objective_id,
                 objective_revision, policy_id, policy_revision, goal, authority,
-                scope, acceptance, limit=8, max_bytes=32768):
+                scope, acceptance, limit=8, max_bytes=32768, optional_evidence=()):
         """Preserve reviewed mandatory bodies and add bounded native handles."""
         with self._lock, public_replay_without_metadata():
             _require(type(unresolved_question) is str and unresolved_question.strip()
@@ -171,6 +171,13 @@ supervisor-side until an explicitly charged discovery or expansion is sent.
                      "incomplete_required_coverage")
             _require(not any(v.reference_id.startswith(PREFIX) for v in required.values()),
                      "reserved_context_reference")
+            optional = _references(optional_evidence)
+            _require(not set(optional).intersection(required)
+                     and all(not v.required for v in optional.values()), "invalid_optional_context")
+            _require(not any(v.reference_id.startswith(PREFIX) for v in optional.values()),
+                     "reserved_context_reference")
+            _require(sum(len(v.canonical_bytes()) for v in (*required.values(), *optional.values()))
+                     <= MAX_CONTEXT_BYTES, "context_reference_bytes")
             _require(len(self._parents) < MAX_PARENTS, "repository_context_parent_limit")
             arguments = dict(generation=generation, query=query, limit=limit, max_bytes=max_bytes)
             selected, binding = self._observe(arguments)
@@ -196,11 +203,21 @@ supervisor-side until an explicitly charged discovery or expansion is sent.
                 caller="repository-context-adapter", stage="planning", goal=goal,
                 authority=dict(task=authority, repository_context=provenance,
                                proof_authority=False, execution_authority=False, completion_authority=False),
-                scope=scope, acceptance=acceptance, evidence=(*required.values(), *handles.values()))
+                scope=scope, acceptance=acceptance,
+                evidence=(*required.values(), *optional.values(), *handles.values()))
             state = _Parent(result.capsule, arguments, selected, binding, required, handles, question)
             self._current(state)
             self._save(result.capsule, state)
             return result
+
+    def validate_current(self, parent, *, generation):
+        """Check an issued context at a consumer boundary without expanding it.
+
+        This is a cooperative freshness fence, not a lock across provider work.
+        Consumers must repeat it after an asynchronous or queued call returns.
+        """
+        with self._lock, public_replay_without_metadata():
+            self._parent(parent, generation)
 
     def expand_for_question(self, parent, request, *, generation, max_bytes=65536, cancelled=None):
         """Resolve exact native CIDs into a question-bound compiler delta."""

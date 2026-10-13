@@ -211,6 +211,29 @@ hashes. This exercises the native owner and context compiler without a model,
 provider, container, solver, training job or target-code execution; it does not
 establish provider savings, official task success or learned multi-IR alignment.
 
+The actual task-proposal consumer has a separate authored qualification:
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m \
+  benchmarks.agent_supervisor.container_coding.terminal_repository_planning_experiment \
+  --output /tmp/repository-planning-consumer \
+  --tokenizer-cache /path/to/verified-local-o200k-ranks
+```
+
+Run it serially under an isolated resource-scheduler ledger with live pressure
+checks. It uses the real task-board parser, reviewed native Intent ledger,
+repository session/index, context compiler, provider routing seam and proposal
+validator. The transport callback is an authored stub; no provider, container,
+target program, solver or training job runs. Arms send native references, one
+expanded capsule, or all three expanded capsules. A two-call comparison counts
+the entire prompt again on the second stateless invocation. It therefore makes
+no assumption that a provider retains the invariant core or accepts delta-only
+input. The same complete required evidence must reach every arm, and content-free
+reports record independent rendered-byte/token checks and proposal equality.
+The local tokenizer proxy omits provider envelopes; fixed proposal equality is
+not model task success. See the planning package README for configuration,
+source-fence limits and explicit unavailable domain statuses.
+
 Use `--repository-source-policy repository-source-raw@1` or
 `--repository-source-policy repository-source-compact@1` when preparing a
 `full_supervisor_benchmark` trial, or on an otherwise configured coding router.

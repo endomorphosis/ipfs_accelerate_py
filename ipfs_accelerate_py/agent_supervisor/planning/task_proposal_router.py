@@ -24,10 +24,13 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from ..context.context_compiler import (
     ContextCompileResult,
     ContextCompiler,
+    CalibratedTokenEstimator,
+    EvidenceExpansionRequest,
     build_text_context_references,
     render_context_capsule,
 )
 from ..context.context_contracts import ContextBudget
+from .repository_planning_context import RepositoryPlanningContext
 from .plan_evaluator import (
     ANALYSIS_PROPOSAL_JSON_SCHEMA,
     PLAN_BRANCH_JSON_SCHEMA,
@@ -212,6 +215,9 @@ class TaskProposalRouterConfig:
         compare=False,
     )
     decision_runtime: Any = field(default=None, repr=False, compare=False)
+    repository_context: RepositoryPlanningContext | None = field(
+        default=None, repr=False, compare=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -969,6 +975,25 @@ def compile_task_proposal_context(
     context_id: str,
     max_new_tokens: int,
 ) -> ContextCompileResult:
+    """Compile planning context; the running consumer retains its source fence."""
+    result, adapter = _prepare_task_proposal_context(
+        config, task=task, plan_text=plan_text, repository_tree_id=repository_tree_id,
+        context_id=context_id, max_new_tokens=max_new_tokens,
+    )
+    if adapter is not None:
+        adapter.close()
+    return result
+
+
+def _prepare_task_proposal_context(
+    config: TaskProposalRouterConfig,
+    *,
+    task: object,
+    plan_text: str,
+    repository_tree_id: str,
+    context_id: str,
+    max_new_tokens: int,
+) -> tuple[ContextCompileResult, Any]:
     """Compile one immutable planning core plus ranked roadmap chunks."""
 
     if not isinstance(plan_text, str):
@@ -998,7 +1023,16 @@ def compile_task_proposal_context(
             ).encode("utf-8")
         ).hexdigest()
     )
-    repository_id = _router_repository_id(config.repo_root)
+    binding = config.repository_context
+    if binding is not None:
+        if not isinstance(binding, RepositoryPlanningContext):
+            raise TaskProposalRouterError("invalid repository planning context")
+        binding.validate_paths(config)
+        if plan_text != binding.read_text(config.plan_path):
+            raise TaskProposalRouterError("planning roadmap differs from the source snapshot")
+        repository_id, repository_tree_id = binding.identity()
+    else:
+        repository_id = _router_repository_id(config.repo_root)
     roadmap_references = build_text_context_references(
         plan_text,
         reference_prefix="roadmap",
@@ -1024,11 +1058,11 @@ def compile_task_proposal_context(
         max_input_tokens=max(1, int(configured_input)),
         reserved_output_tokens=max(0, int(max_new_tokens)),
         reserved_tool_tokens=max(0, int(config.context_reserved_tool_tokens)),
-        max_items=256,
-        max_item_bytes=16_384,
+        max_items=128 if binding is not None else 256,
+        max_item_bytes=65_536 if binding is not None else 16_384,
         max_serialized_bytes=262_144,
         max_depth=12,
-        max_text_bytes=8_192,
+        max_text_bytes=61_440 if binding is not None else 8_192,
     )
     compiler = ContextCompiler(
         budget,
@@ -1036,15 +1070,11 @@ def compile_task_proposal_context(
         provider_context_window=config.provider_context_window,
         provider_max_input_tokens=config.provider_max_input_tokens,
     )
-    result = compiler.compile(
-        repository_id=repository_id,
-        tree_id=repository_tree_id,
+    arguments = dict(
         objective_id=task_id,
         objective_revision=context_id,
         policy_id="policy:task-proposal-router",
         policy_revision=policy_revision,
-        caller="agent-supervisor:task-proposal-router",
-        stage="planning",
         goal={
             "task_id": task_id,
             "title": _task_value(task, "title"),
@@ -1074,6 +1104,22 @@ def compile_task_proposal_context(
             ),
             "response_schema": TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA,
         },
+    )
+    if binding is not None:
+        required = binding.required_evidence()
+        adapter = binding.session.context_adapter(compiler)
+        result = adapter.compile(
+            **arguments, generation=binding.generation, query=binding.query,
+            unresolved_question=binding.unresolved_question, limit=binding.query_limit,
+            required_evidence=required,
+            required_reference_ids=tuple(ref.reference_id for ref in required),
+            required_coverage_ids=tuple(sorted({c for ref in required for c in ref.coverage_ids})),
+            optional_evidence=roadmap_references,
+        )
+        return result, adapter
+    result = compiler.compile(
+        **arguments, repository_id=repository_id, tree_id=repository_tree_id,
+        caller="agent-supervisor:task-proposal-router", stage="planning",
         evidence=roadmap_references,
     )
     try:
@@ -1093,7 +1139,7 @@ def compile_task_proposal_context(
         )
     except Exception:
         pass
-    return result
+    return result, None
 
 
 def _proposal_json_depth(value: Any, depth: int = 0) -> int:
@@ -1490,17 +1536,27 @@ def run_task_proposal_router(
 ) -> dict[str, object]:
     """Prepare or generate an LLM implementation proposal for one task."""
 
-    from ..todo_daemon.implementation_daemon import parse_task_file
+    from ..todo_daemon.implementation_daemon import parse_task_file, parse_task_text
     from ..todo_daemon.llm import LlmRouterInvocation
 
-    tasks = parse_task_file(config.task_board_path, config.task_header_prefix)
+    binding = config.repository_context
+    if binding is not None:
+        if not isinstance(binding, RepositoryPlanningContext):
+            raise TaskProposalRouterError("invalid repository planning context")
+        binding.validate_paths(config)
+        tasks = parse_task_text(binding.read_text(config.task_board_path),
+                                path=config.task_board_path,
+                                task_header_prefix=config.task_header_prefix)
+        plan_text = binding.read_text(config.plan_path)
+    else:
+        tasks = parse_task_file(config.task_board_path, config.task_header_prefix)
+        plan_text = config.plan_path.read_text(encoding="utf-8")
     selected = select_proposal_task(
         tasks,
         task_id,
         open_statuses=config.open_statuses,
         no_open_task_message=config.no_open_task_message,
     )
-    plan_text = config.plan_path.read_text(encoding="utf-8")
     context_id = str(
         getattr(selected, "canonical_task_cid", "")
         or getattr(selected, "canonical_task_key", "")
@@ -1516,7 +1572,7 @@ def run_task_proposal_router(
             )
         ),
     )
-    compiled_context = compile_task_proposal_context(
+    compiled_context, repository_adapter = _prepare_task_proposal_context(
         config,
         task=selected,
         plan_text=plan_text,
@@ -1524,153 +1580,218 @@ def run_task_proposal_router(
         context_id=context_id,
         max_new_tokens=max_new_tokens,
     )
-    prompt = render_context_capsule(compiled_context.capsule)
-    payload: dict[str, object] = {
-        "task_id": _task_value(selected, "task_id"),
-        "title": _task_value(selected, "title"),
-        "provider": provider or None,
-        "model": model,
-        "prompt_chars": len(prompt),
-        "generate": bool(generate),
-        "llm_router_importable": True,
-        "context_capsule_id": compiled_context.capsule.capsule_id,
-        "context_input_tokens": compiled_context.capsule.input_tokens,
-        "context_input_limit": compiled_context.receipt.effective_input_limit,
-        "context_truncated": compiled_context.capsule.truncated,
-        "context_estimator": compiled_context.receipt.estimator_name,
-        "context_estimator_error_bps": (compiled_context.receipt.estimator_error_bps),
-        "context_decisions": [decision.to_dict() for decision in compiled_context.decisions],
-    }
-    runtime_payload = {
-        "task_id": _task_value(selected, "task_id"),
-        "context_id": context_id,
-        "repository_tree_id": repository_tree_id,
-        "context_capsule_id": compiled_context.capsule.capsule_id,
-        "generate": bool(generate),
-    }
-    _route_decision_runtime(
-        config.decision_runtime,
-        "task_proposal",
-        runtime_payload,
-    )
-    if not generate:
-        return payload
-
-    invocation = LlmRouterInvocation(
-        repo_root=config.repo_root,
-        model_name=model,
-        provider=provider or None,
-        allow_local_fallback=bool(allow_local_fallback),
-        timeout_seconds=int(timeout_seconds),
-        max_new_tokens=int(max_new_tokens),
-        reject_effective_provider_name=None if allow_local_fallback else "local_hf",
-    )
-    raw_proposal, batch_result = _route_decision_runtime(
-        config.decision_runtime,
-        "task_proposal",
-        {**runtime_payload, "operation": "task_implementation_proposal.v1"},
-        lambda: _call_text_provider(
-            prompt,
-            invocation,
-            scheduler=config.provider_batch_scheduler,
-            route="task-proposal-router",
-            operation="task_implementation_proposal.v1",
-            context_limit=compiled_context.receipt.effective_input_limit,
-            response_contract=TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
-            provenance={
-                "task_id": _task_value(selected, "task_id"),
-                "repository_tree_id": repository_tree_id,
-                "context_id": context_id,
-                "context_capsule_id": compiled_context.capsule.capsule_id,
-            },
-        ),
-    )
-    if batch_result is not None:
-        payload["provider_batch"] = batch_result.to_dict()
-    task_name = (_task_value(selected, "task_id") or "task").lower()
-    context_receipt_path = config.artifact_dir / f"{task_name}-context-receipt.json"
-    _route_decision_runtime(
-        config.decision_runtime,
-        "file_mutation",
-        {
-            **runtime_payload,
-            "path": _artifact_relative_path(context_receipt_path, config.repo_root),
-            "artifact_kind": "context_receipt",
-        },
-        lambda: (
-            config.artifact_dir.mkdir(parents=True, exist_ok=True),
-            context_receipt_path.write_text(
-                compiled_context.receipt.to_json() + "\n",
-                encoding="utf-8",
-            ),
-        )[-1],
-        mutation=True,
-    )
-    payload["context_receipt"] = _artifact_relative_path(context_receipt_path, config.repo_root)
     try:
-        proposal = parse_task_implementation_proposal(
-            raw_proposal,
-            expected_task_id=_task_value(selected, "task_id"),
-            expected_repository_tree_id=repository_tree_id,
-            expected_context_id=context_id,
-            allowed_paths=_task_values(selected, "outputs"),
-            allowed_validation_commands=_task_values(selected, "validation"),
+        provider_capsule = compiled_context.capsule
+        expansion = None
+        if binding is not None:
+            repository_tree_id = provider_capsule.tree_id
+            if binding.expansion_reference_ids:
+                expansion = repository_adapter.expand_for_question(
+                    provider_capsule,
+                    EvidenceExpansionRequest(binding.unresolved_question.strip(), binding.expansion_reference_ids),
+                    generation=binding.generation,
+                )
+                provider_capsule = expansion.reconstructed_capsule
+
+        def source_fence():
+            if repository_adapter is not None:
+                binding.validate_paths(config)
+                repository_adapter.validate_current(provider_capsule, generation=binding.generation)
+
+        def checked_write(callback):
+            # The runtime can delay before authorizing a write. Check inside its
+            # callback as well as at the provider response boundary.
+            source_fence()
+            return callback()
+
+        def write_artifact(path, text):
+            if binding is not None:
+                from .repository_planning_artifacts import write_repository_planning_artifact
+                if path.parent != config.artifact_dir:
+                    raise TaskProposalRouterError("invalid repository planning artifact name")
+                return write_repository_planning_artifact(
+                    directory=config.artifact_dir, name=path.name, text=text,
+                    excluded_roots=(binding.session.workspace, binding.session.state_dir),
+                )
+            config.artifact_dir.mkdir(parents=True, exist_ok=True)
+            return path.write_text(text, encoding="utf-8")
+
+        task_name = (_task_value(selected, "task_id") or "task").lower()
+        if binding is not None and re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,127}", task_name) is None:
+            raise TaskProposalRouterError("invalid repository planning artifact name")
+
+        prompt = render_context_capsule(provider_capsule)
+        if binding is not None and len(prompt) > 60_000:
+            raise TaskProposalRouterError("complete repository context exceeds the provider prompt limit",
+                                          reason_code="repository_prompt_limit")
+        prompt_tokens = (CalibratedTokenEstimator(config.context_tokenizer).estimate(prompt)
+                         if config.context_tokenizer is not None else None)
+        payload: dict[str, object] = {
+            "task_id": _task_value(selected, "task_id"),
+            "title": _task_value(selected, "title"),
+            "provider": provider or None,
+            "model": model,
+            "prompt_chars": len(prompt),
+            "prompt_bytes": len(prompt.encode("utf-8")),
+            "prompt_tokens": prompt_tokens,
+            "generate": bool(generate),
+            "llm_router_importable": True,
+            "context_capsule_id": provider_capsule.capsule_id,
+            "context_input_tokens": provider_capsule.input_tokens,
+            "context_input_limit": compiled_context.receipt.effective_input_limit,
+            "context_truncated": provider_capsule.truncated,
+            "context_estimator": compiled_context.receipt.estimator_name,
+            "context_estimator_error_bps": (compiled_context.receipt.estimator_error_bps),
+            "context_decisions": [decision.to_dict() for decision in compiled_context.decisions],
+        }
+        if expansion is not None:
+            payload["context_expansion_receipt_id"] = expansion.receipt.content_id
+            payload["context_expansion_decisions"] = [item.to_dict() for item in expansion.receipt.decisions]
+        context_receipt_text = compiled_context.receipt.to_json()
+        if binding is not None:
+            context_receipt_text = json.dumps({
+                "schema": "repository-planning-consumer-receipt@1",
+                "compilation": compiled_context.receipt.to_dict(),
+                "expansion": expansion.receipt.to_dict() if expansion is not None else None,
+                "provider_capsule_id": provider_capsule.capsule_id,
+                "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+                "prompt_bytes": len(prompt.encode("utf-8")), "prompt_tokens": prompt_tokens,
+                "delivery": "full_context_per_stateless_call",
+                "proof_authority": False, "completion_authority": False,
+            }, sort_keys=True, separators=(",", ":"))
+        runtime_payload = {
+            "task_id": _task_value(selected, "task_id"),
+            "context_id": context_id,
+            "repository_tree_id": repository_tree_id,
+            "context_capsule_id": provider_capsule.capsule_id,
+            "generate": bool(generate),
+        }
+        _route_decision_runtime(
+            config.decision_runtime,
+            "task_proposal",
+            runtime_payload,
         )
-    except TaskProposalRouterError as exc:
-        rejection_path = config.artifact_dir / f"{task_name}-proposal-rejection.json"
+        if not generate:
+            source_fence()
+            return payload
+
+        invocation = LlmRouterInvocation(
+            repo_root=config.repo_root,
+            model_name=model,
+            provider=provider or None,
+            allow_local_fallback=bool(allow_local_fallback),
+            timeout_seconds=int(timeout_seconds),
+            max_new_tokens=int(max_new_tokens),
+            reject_effective_provider_name=None if allow_local_fallback else "local_hf",
+        )
+        def dispatch_provider():
+            # Admission/backoff inside the existing provider route can delay after
+            # this check. The response fence refuses results from a changed tree.
+            source_fence()
+            result = _call_text_provider(
+                prompt,
+                invocation,
+                scheduler=config.provider_batch_scheduler,
+                route="task-proposal-router",
+                operation="task_implementation_proposal.v1",
+                context_limit=compiled_context.receipt.effective_input_limit,
+                response_contract=TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
+                provenance={
+                    "task_id": _task_value(selected, "task_id"),
+                    "repository_tree_id": repository_tree_id,
+                    "context_id": context_id,
+                    "context_capsule_id": provider_capsule.capsule_id,
+                },
+            )
+            source_fence()
+            return result
+
+        raw_proposal, batch_result = _route_decision_runtime(
+            config.decision_runtime,
+            "task_proposal",
+            {**runtime_payload, "operation": "task_implementation_proposal.v1"},
+            dispatch_provider,
+        )
+        if batch_result is not None:
+            payload["provider_batch"] = batch_result.to_dict()
+        context_receipt_path = config.artifact_dir / f"{task_name}-context-receipt.json"
         _route_decision_runtime(
             config.decision_runtime,
             "file_mutation",
             {
                 **runtime_payload,
-                "path": _artifact_relative_path(rejection_path, config.repo_root),
-                "artifact_kind": "proposal_rejection",
+                "path": _artifact_relative_path(context_receipt_path, config.repo_root),
+                "artifact_kind": "context_receipt",
             },
-            lambda: rejection_path.write_text(
-                json.dumps(
-                    {
-                        "schema": ("ipfs_accelerate_py/agent-supervisor/task-proposal-rejection@1"),
-                        "accepted": False,
-                        "task_id": _task_value(selected, "task_id"),
-                        "repository_tree_id": repository_tree_id,
-                        "context_id": context_id,
-                        "reason_codes": [exc.reason_code],
-                        "proof_authoritative": False,
-                        "completion_authoritative": False,
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n",
-                encoding="utf-8",
-            ),
+            lambda: checked_write(lambda: write_artifact(context_receipt_path, context_receipt_text + "\n")),
             mutation=True,
         )
-        raise TaskProposalRouterError(
-            f"{exc}; compact rejection: "
-            f"{_artifact_relative_path(rejection_path, config.repo_root)}",
-            reason_code=exc.reason_code,
-        ) from exc
-    output_path = config.artifact_dir / f"{task_name}-proposal.json"
-    _route_decision_runtime(
-        config.decision_runtime,
-        "file_mutation",
-        {
-            **runtime_payload,
-            "path": _artifact_relative_path(output_path, config.repo_root),
-            "artifact_kind": "task_proposal",
-        },
-        lambda: output_path.write_text(
-            json.dumps(proposal, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        ),
-        mutation=True,
-    )
-    payload["artifact"] = _artifact_relative_path(output_path, config.repo_root)
-    payload["proposal_schema"] = TASK_IMPLEMENTATION_PROPOSAL_SCHEMA
-    payload["repository_tree_id"] = repository_tree_id
-    payload["context_id"] = context_id
-    return payload
+        payload["context_receipt"] = _artifact_relative_path(context_receipt_path, config.repo_root)
+        try:
+            proposal = parse_task_implementation_proposal(
+                raw_proposal,
+                expected_task_id=_task_value(selected, "task_id"),
+                expected_repository_tree_id=repository_tree_id,
+                expected_context_id=context_id,
+                allowed_paths=_task_values(selected, "outputs"),
+                allowed_validation_commands=_task_values(selected, "validation"),
+            )
+        except TaskProposalRouterError as exc:
+            rejection_path = config.artifact_dir / f"{task_name}-proposal-rejection.json"
+            _route_decision_runtime(
+                config.decision_runtime,
+                "file_mutation",
+                {
+                    **runtime_payload,
+                    "path": _artifact_relative_path(rejection_path, config.repo_root),
+                    "artifact_kind": "proposal_rejection",
+                },
+                lambda: checked_write(lambda: write_artifact(rejection_path,
+                    json.dumps(
+                        {
+                            "schema": ("ipfs_accelerate_py/agent-supervisor/task-proposal-rejection@1"),
+                            "accepted": False,
+                            "task_id": _task_value(selected, "task_id"),
+                            "repository_tree_id": repository_tree_id,
+                            "context_id": context_id,
+                            "reason_codes": [exc.reason_code],
+                            "proof_authoritative": False,
+                            "completion_authoritative": False,
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n",
+                )),
+                mutation=True,
+            )
+            raise TaskProposalRouterError(
+                f"{exc}; compact rejection: "
+                f"{_artifact_relative_path(rejection_path, config.repo_root)}",
+                reason_code=exc.reason_code,
+            ) from exc
+        output_path = config.artifact_dir / f"{task_name}-proposal.json"
+        _route_decision_runtime(
+            config.decision_runtime,
+            "file_mutation",
+            {
+                **runtime_payload,
+                "path": _artifact_relative_path(output_path, config.repo_root),
+                "artifact_kind": "task_proposal",
+            },
+            lambda: checked_write(lambda: write_artifact(output_path,
+                json.dumps(proposal, indent=2, sort_keys=True) + "\n",
+            )),
+            mutation=True,
+        )
+        payload["artifact"] = _artifact_relative_path(output_path, config.repo_root)
+        payload["proposal_schema"] = TASK_IMPLEMENTATION_PROPOSAL_SCHEMA
+        payload["repository_tree_id"] = repository_tree_id
+        payload["context_id"] = context_id
+        return payload
+    finally:
+        if repository_adapter is not None:
+            repository_adapter.close()
 
 
 def build_task_proposal_router_parser(
