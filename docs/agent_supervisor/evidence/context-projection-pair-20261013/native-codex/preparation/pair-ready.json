@@ -1,0 +1,35 @@
+{
+  "changed_config_paths": [
+    "/agents/0/kwargs/semantic_metadata_view",
+    "/jobs_dir"
+  ],
+  "changed_treatment": "semantic_metadata_view legacy versus common-bindings@1",
+  "commands_manifest": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/codex-attempt-01/live-trial-commands.json",
+  "commands_sha256": "443c656db82aa01c02d909f7abf70aee8f3310faf141bf68fc18dc24c8c982e4",
+  "explicit_fallback": true,
+  "fallback_reason": "Grok baseline credential readiness authentication_refused; separate Codex matched pair",
+  "hostadapter": "/home/barberb/lift_coding/.worktrees/metadata-live-20261013",
+  "hostadapter_clean": true,
+  "hostadapter_commit": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3",
+  "legacy_preparation_sha256": "38f843c73cbdc4f3140ef8b1c60a3090eba40d1633e2abb205a5b1018e64b42a",
+  "model_calls": 0,
+  "native_execution_started": false,
+  "profiles_mixed_within_pair": false,
+  "projected_preparation_sha256": "871fe4ee7eb7fc971f82ed75f5b14f55d5fa4c490908590f2b6fe1dd449451f8",
+  "provider_calls": 0,
+  "provider_profile": "codex-gpt-6.1-sol-0.160.0@1",
+  "ready": true,
+  "runtime_archive_sha256": "6426e1a06dbea6182c245bd8f96ec367103e25d674fdf578432a7a5832ed0918",
+  "runtime_manifest_sha256": "bc5c655108f15f7a81245f5ec7914c32b90fc12cb877a9014781af305cded4c6",
+  "schema": "isolated-source-context-native-pair-ready@1",
+  "unchanged_fixed_controls": [
+    "runtime archive and manifest",
+    "complete immutable host adapter source closure",
+    "task file hashes",
+    "source384 checkpoint and embeddings",
+    "resource profile",
+    "provider, model, reasoning and CLI version",
+    "identity@1 source reader",
+    "job and agent common controls"
+  ]
+}

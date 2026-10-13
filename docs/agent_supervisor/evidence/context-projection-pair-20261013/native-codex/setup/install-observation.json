@@ -1,0 +1,74 @@
+{
+  "active_processes_changed": false,
+  "auth_contents_read": false,
+  "cache_observation": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/codex-host-cache-observation.json",
+  "cache_observation_sha256": "1b3a17a70305c1e34334cacd4864b3edd09d9a62f04ca05d8967670508d0b9c1",
+  "configuration_changed": false,
+  "container": "largest-eigenval__eecrydb__env-main-1",
+  "diagnostics_limitations": [
+    "An initial fixed-home npm-log search returned no files; account database located the actual supervisor home without reading environment values.",
+    "Kernel denied one process-fd read; no privileges were elevated and the next probe omitted fd inspection.",
+    "No network requests, installs, process signals or registry reconfiguration were initiated by this diagnostic."
+  ],
+  "environment_values_read": false,
+  "interpretation": "The last completed HTTP fetch is the small Codex package; the ARM64 native package has a cache-miss/fetch-start with no completion recorded. This suggests a stalled native package fetch, but no transport error establishes the underlying cause. Other platform optional-dependency reify failures are normal platform filtering.",
+  "later_observation": {
+    "codex_version": "0.160.0",
+    "completed_native_arm64_fetch": {
+      "log_exit_code": 0,
+      "milliseconds": 466976,
+      "network_error_codes": [],
+      "status": 200
+    },
+    "confirmed_delay_cause": "The public ARM64 native-package fetch completed successfully after 466.976 seconds; no transport error code was logged.",
+    "deployment_receipt_sha256": "f85ee0e08ad9eec082714f528d5473df5d2547e67278fadd1677cb49ba8d93f2",
+    "final_trial_outcome_not_inferred": true,
+    "installation_completed": true,
+    "installer_timeout_observed": false,
+    "native_deployment_receipt_present": true,
+    "observed_at_utc": "2026-10-13T04:01:33.457283+00:00",
+    "subsequent_native_worker_and_codex_processes_observed": true,
+    "version_artifact_sha256": "f6464b8cc67af75deb2589fe1dbcde152fc15ffb76a91de1cf0686b4623afb1e"
+  },
+  "observed": {
+    "known_network_error_codes": [],
+    "latest_debug_log_bytes": 6791,
+    "latest_debug_log_line_count": 74,
+    "latest_log_idle_seconds_at_final_observation": 422.4,
+    "native_package_completion_observed": false,
+    "native_package_started": "@openai/codex-linux-arm64",
+    "node_version": "v22.23.3",
+    "npm_process_state": "S (sleeping)",
+    "npm_version": "10.9.9",
+    "successful_http_observations": [
+      {
+        "milliseconds": 1024,
+        "stage": "registry_metadata",
+        "status": 200
+      },
+      {
+        "milliseconds": 65,
+        "stage": "small_codex_package",
+        "status": 200
+      }
+    ]
+  },
+  "observed_at_utc": "2026-10-13T03:58:19.766926+00:00",
+  "production_files_changed": false,
+  "raw_logs_exported": false,
+  "schema": "context-projection-codex-install-stage-observation@1",
+  "scope": "Read-only sanitized active setup diagnostic; not a final installation failure or native task result.",
+  "setup_cache_policy_note": "Existing source384-native-aarch64-dontneed@2 pins installed native payloads for memory cache advice; it does not skip Codex.install or npm network fetch.",
+  "source_sha256": {
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/harbor/agents/installed/codex.py": "ee0ca8ec43617f3909d2195afe8f9e7cbd7313a8b3b558b01fde388f65b7c39c",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d"
+  },
+  "timeout_contract": {
+    "active_timeout_changed": false,
+    "codex_install_coroutine_seconds": 600,
+    "harbor_npm_exec_timeout_sec": null,
+    "location": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py:1141",
+    "outer_agent_setup_seconds": 1800
+  },
+  "trial": "codex-projected-01"
+}

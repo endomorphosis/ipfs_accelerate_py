@@ -1,0 +1,48 @@
+{
+  "complete": true,
+  "credentials_contents_read": false,
+  "elapsed_seconds": 43.409929220099,
+  "explicit_fallback": true,
+  "finished_at_utc": "2026-10-13T03:35:23.730068+00:00",
+  "model_calls": 0,
+  "native_execution_started": false,
+  "official_reward": null,
+  "profiles_mixed_within_pair": false,
+  "provider_calls": 0,
+  "runtime_unchanged": true,
+  "schema": "isolated-source-context-live-trial-preparation@1",
+  "trials": {
+    "codex-legacy-01": {
+      "archive_sha256": "6426e1a06dbea6182c245bd8f96ec367103e25d674fdf578432a7a5832ed0918",
+      "config_sha256": "043fdf5c06f52bd2560c0a8714d52a2b4d4286727ae79577a618975fb0cbb74f",
+      "elapsed_seconds": 21.2668800780084,
+      "manifest_sha256": "bc5c655108f15f7a81245f5ec7914c32b90fc12cb877a9014781af305cded4c6",
+      "output": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-legacy-01",
+      "prepared": true,
+      "provider_calls": 0,
+      "provider_profile": "codex-gpt-6.1-sol-0.160.0@1",
+      "receipt": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-legacy-01/preparation.json",
+      "receipt_sha256": "38f843c73cbdc4f3140ef8b1c60a3090eba40d1633e2abb205a5b1018e64b42a",
+      "returncode": 0,
+      "semantic_metadata_view": "legacy",
+      "source_view_profile": "identity@1"
+    },
+    "codex-projected-01": {
+      "archive_sha256": "6426e1a06dbea6182c245bd8f96ec367103e25d674fdf578432a7a5832ed0918",
+      "config_sha256": "e1eccac9a37301959cc90fac9d1bfb73c3cf9a9e1366fe2caa0f1f59878413ab",
+      "elapsed_seconds": 21.363688154960983,
+      "manifest_sha256": "bc5c655108f15f7a81245f5ec7914c32b90fc12cb877a9014781af305cded4c6",
+      "output": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-projected-01",
+      "prepared": true,
+      "provider_calls": 0,
+      "provider_profile": "codex-gpt-6.1-sol-0.160.0@1",
+      "receipt": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-projected-01/preparation.json",
+      "receipt_sha256": "871fe4ee7eb7fc971f82ed75f5b14f55d5fa4c490908590f2b6fe1dd449451f8",
+      "returncode": 0,
+      "semantic_metadata_view": "common-bindings@1",
+      "source_view_profile": "identity@1"
+    }
+  },
+  "worktree_clean_after": true,
+  "worktree_head": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3"
+}

@@ -1,0 +1,8 @@
+{
+  "returncode": 0,
+  "seconds": 15.686033135978505,
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/context_projection_trace_comparison.py": "631389f2020e6ac84a67b8d4489277bba37b1df6942126c3877daf819ed869a9",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py": "92da425b0eb2b90307f2d754bf54aaa45e869d86f4f402e2b1e5057ce421b474"
+  }
+}

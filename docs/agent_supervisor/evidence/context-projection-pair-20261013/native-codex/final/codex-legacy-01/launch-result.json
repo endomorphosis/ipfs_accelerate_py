@@ -1,0 +1,21 @@
+{
+  "schema": "source-context-native-launch-result@1",
+  "name": "codex-legacy-01",
+  "exit_code": 0,
+  "seconds": 571.703843310941,
+  "preparation_unchanged": true,
+  "stdout_sha256": "38052a2851048283a80a92ea73cf8ef5c85ff1170e1227b6e2d2b72646dfddb4",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "receipt_sha256": "38052a2851048283a80a92ea73cf8ef5c85ff1170e1227b6e2d2b72646dfddb4",
+  "complete_single_trial_receipt": true,
+  "trial_count": 1,
+  "results": [
+    {
+      "trial": "largest-eigenval__C4Kyfvm",
+      "reward": {
+        "reward": 0.0
+      },
+      "exception_type": null
+    }
+  ]
+}

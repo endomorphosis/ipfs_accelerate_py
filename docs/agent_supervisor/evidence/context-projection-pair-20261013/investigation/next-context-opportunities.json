@@ -1,0 +1,765 @@
+{
+  "coverage_limits": {
+    "autoencoder_inference_executed_by_this_census": false,
+    "full_terminal_bench_suite_completed": false,
+    "hidden_benchmark_inputs_read": false,
+    "model_calls": 0,
+    "native_provider_tokens_measured": false,
+    "proof_authority": false,
+    "provider_calls": 0,
+    "raw_source_or_prompt_values_retained_in_this_report": false,
+    "required_fact_coverage_proved": false,
+    "semantic_fact_omission_authority": false,
+    "source_edits": 0,
+    "source_program_raw_bodies_already_deferred": true,
+    "unchanged_native_context_bytes": 19919,
+    "unchanged_pack_bytes": 7231
+  },
+  "input_capture": {
+    "complete_prepared_prompt_bytes": 53933,
+    "complete_prepared_prompt_sha256": "6d3b38f36a054a591a8c18916f088832cfe37741539a28a375b6b7e02844ab80",
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/docker_pair/run-02/results/exact/worker-result.json",
+    "sha256": "261761d7cccb10bf640f3326122f3cb63d6944e807e79a950c8ddbf63ad3c036",
+    "transport_canonical_json_bytes": 50704,
+    "transport_canonical_json_sha256": "428ca0f891c072a0ca6b438be2fa5dd91ce4440ae65894b895ef0646d7bc523d"
+  },
+  "inspected_implementation_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": "f177adbddff6409960c2f5ce47b61c1f62560cbe334d61812e2ea4b221afb3d8",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_client.py": "330ab86a0faad1fbdb87653be98403a6fdf39437c7828507e3bc24d7d5204a1e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context_client.py": "4542ebbd5914a5b7675173b784bd7b91a5dba4d25d6170547a2e2f8fb9655ee0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_selection.py": "ac1da0918f2c1363b8e3541bf586d92f099e7db1b7c6b353df8ff274efff9999"
+  },
+  "interpretation": "All size figures are canonical UTF-8 bytes from one authored offline fixture. Redundancy and hypothetical field factoring are planning measurements before wrappers, aliases and guidance; they are not selected production candidates, token savings or an additive savings forecast. Large duplicate inventories can overlap; do not sum them. Native pair outcomes must guide the next single-variable experiment.",
+  "large_exact_repeated_strings_including_canonical_nested_json": [
+    {
+      "occurrences": 2,
+      "paths": [
+        "/native_context/authority/generic_prompt_policy/10",
+        "/native_context/authority/implementation_prompt_policy_appendix"
+      ],
+      "redundant_literal_utf8_bytes_before_reference_or_instructions": 1764,
+      "value_utf8_bytes": 1764,
+      "value_utf8_sha256": "b4dd27f94da8ce6a08fbd1ae4b6a5f714a8dd96dce5b4ba07dccb7d96627921d"
+    },
+    {
+      "occurrences": 3,
+      "paths": [
+        "/native_context/evidence/0/summary/$parsed_json/query_text",
+        "/translated_semantic/raw_sources/.supervisor-instruction.md",
+        "/translated_semantic/worker_projection/query"
+      ],
+      "redundant_literal_utf8_bytes_before_reference_or_instructions": 1432,
+      "value_utf8_bytes": 716,
+      "value_utf8_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    }
+  ],
+  "large_exact_repeated_values": [
+    {
+      "canonical_value_sha256": "7be224fe989b0692f88782ca955b56c52685b19303f6f0646325d94a1973584b",
+      "occurrences": 2,
+      "paths": [
+        "/native_context/authority/generic_prompt_policy/10",
+        "/native_context/authority/implementation_prompt_policy_appendix"
+      ],
+      "redundant_value_bytes_before_any_reference_or_instructions": 1783,
+      "value_canonical_json_bytes": 1783
+    },
+    {
+      "canonical_value_sha256": "63afb65eb7b9b2981dc1fd249b15d48a8125cea81808933a47be20062c0286dc",
+      "occurrences": 3,
+      "paths": [
+        "/translated_semantic/pack/references/0/metadata",
+        "/translated_semantic/pack/references/1/metadata",
+        "/translated_semantic/pack/references/2/metadata"
+      ],
+      "redundant_value_bytes_before_any_reference_or_instructions": 420,
+      "value_canonical_json_bytes": 210
+    },
+    {
+      "canonical_value_sha256": "c89595373fde036abccdc8713e21ff8cf7144d24f2f901b4aac975746c71b4e3",
+      "occurrences": 2,
+      "paths": [
+        "/translated_semantic/pack/pack/token_totals",
+        "/translated_semantic/pack/token_estimate/totals"
+      ],
+      "redundant_value_bytes_before_any_reference_or_instructions": 192,
+      "value_canonical_json_bytes": 192
+    },
+    {
+      "canonical_value_sha256": "828b859d0f8ba6ad287909d33045a8556d08e14f0e3d1224a9abda6000bfb98c",
+      "occurrences": 3,
+      "paths": [
+        "/native_context/evidence/0/repository_id",
+        "/native_context/evidence/1/repository_id",
+        "/native_context/repository_id"
+      ],
+      "redundant_value_bytes_before_any_reference_or_instructions": 168,
+      "value_canonical_json_bytes": 84
+    },
+    {
+      "canonical_value_sha256": "2ac9c988ecee2c386ea8d6970689ce171caf6f347d43ee086583c2c4f309443c",
+      "occurrences": 2,
+      "paths": [
+        "/native_context/authority/durable_checkpoint/directory",
+        "/native_context/scope/checkpoint_directory"
+      ],
+      "redundant_value_bytes_before_any_reference_or_instructions": 98,
+      "value_canonical_json_bytes": 98
+    }
+  ],
+  "native_evidence_summary_encoding": [
+    {
+      "canonical_nested_bytes_equal_original_string": true,
+      "nested_canonical_json_bytes": 4832,
+      "nested_canonical_json_sha256": "03a79ff0e314eb9b28786031a184e2e3bdaa75342eb1eeb06f835b9b3c33021a",
+      "nested_fields": [
+        {
+          "canonical_json_bytes": 3376,
+          "canonical_json_sha256": "d4e2814fd114108ef0ad138092f835efd3493652dadfd57c3aa5269942cadf31",
+          "path": "/native_context/evidence/0/summary/$parsed_json/hits",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 727,
+          "canonical_json_sha256": "f11d4fa912f57612bb5c78402d42be390f65b13694bf3938fe524a19be24db55",
+          "path": "/native_context/evidence/0/summary/$parsed_json/query_text",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 156,
+          "canonical_json_sha256": "c372fac5ae67655e91742cf1dd19e236a2927dc2fd632b0f4eb2df7b8ef463d7",
+          "path": "/native_context/evidence/0/summary/$parsed_json/source_sha256",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 98,
+          "canonical_json_sha256": "1b1aaac92c04fb8800d674826a44f46a9f653980d690e10ae60db5aa09e670da",
+          "path": "/native_context/evidence/0/summary/$parsed_json/index_id",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 92,
+          "canonical_json_sha256": "c4ae83ba0f2228e73c929a36f6ed2c42bc59b8a94eb935ac8a35db3f50fbd477",
+          "path": "/native_context/evidence/0/summary/$parsed_json/result_id",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 91,
+          "canonical_json_sha256": "a78ffbb0608132aaa84b6c53bcc7e817e195f0e26d3f6afb6c2ff839b6a975eb",
+          "path": "/native_context/evidence/0/summary/$parsed_json/query_id",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 37,
+          "canonical_json_sha256": "d8c0532eb8ab8edcc0ce0c7e44a9115e7fd49971d7e10f72dcc5b6c58cb48031",
+          "path": "/native_context/evidence/0/summary/$parsed_json/schema",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 14,
+          "canonical_json_sha256": "56db3ba7a19af889e628aaadb60a8daa47b9e0746df60484a0d328b06116c405",
+          "path": "/native_context/evidence/0/summary/$parsed_json/task_id",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 9,
+          "canonical_json_sha256": "694df57a7909d9f9edbd3acb4ccfce5fbee156fab749383121f17fef16bbab57",
+          "path": "/native_context/evidence/0/summary/$parsed_json/status",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 5,
+          "canonical_json_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+          "path": "/native_context/evidence/0/summary/$parsed_json/completion_authority",
+          "type": "bool"
+        },
+        {
+          "canonical_json_bytes": 5,
+          "canonical_json_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+          "path": "/native_context/evidence/0/summary/$parsed_json/execution_authority",
+          "type": "bool"
+        },
+        {
+          "canonical_json_bytes": 5,
+          "canonical_json_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+          "path": "/native_context/evidence/0/summary/$parsed_json/semantic_authority",
+          "type": "bool"
+        },
+        {
+          "canonical_json_bytes": 4,
+          "canonical_json_sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+          "path": "/native_context/evidence/0/summary/$parsed_json/nomination_only",
+          "type": "bool"
+        },
+        {
+          "canonical_json_bytes": 2,
+          "canonical_json_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "path": "/native_context/evidence/0/summary/$parsed_json/stale_paths",
+          "type": "list"
+        }
+      ],
+      "path": "/native_context/evidence/0/summary",
+      "raw_sha256": "03a79ff0e314eb9b28786031a184e2e3bdaa75342eb1eeb06f835b9b3c33021a",
+      "raw_utf8_bytes": 4832,
+      "string_canonical_json_bytes": 5097,
+      "string_escaping_overhead_bytes": 265
+    },
+    {
+      "canonical_nested_bytes_equal_original_string": true,
+      "nested_canonical_json_bytes": 5339,
+      "nested_canonical_json_sha256": "df34294227e4519c97f1c6bd1641b0734813e988bcadbfff082fc017ab25f357",
+      "nested_fields": [
+        {
+          "canonical_json_bytes": 1796,
+          "canonical_json_sha256": "2d9e5ef44b4f5ba4b4b67925fcc18f85a2b49fafe522c77a869023d2e47105c5",
+          "path": "/native_context/evidence/1/summary/$parsed_json/tasks",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 794,
+          "canonical_json_sha256": "33596ec1bd0cfe4f8d8b6000c3e936a30228cfe5786ffa0a7c49e89b1a200a3f",
+          "path": "/native_context/evidence/1/summary/$parsed_json/goals",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 673,
+          "canonical_json_sha256": "f623092b7fc255f5f880d3a99ebe3a3ac3112bade7315589783dafeccf617932",
+          "path": "/native_context/evidence/1/summary/$parsed_json/component_status",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 458,
+          "canonical_json_sha256": "bde95b96393621daa1e4c1093e22682e728534edf449188a4daee0eb3c4ad97d",
+          "path": "/native_context/evidence/1/summary/$parsed_json/worker_projection",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 290,
+          "canonical_json_sha256": "baef99bc1823dad36172e31094dd7478b313763ecf0b5b56dc82fe3bb5720b84",
+          "path": "/native_context/evidence/1/summary/$parsed_json/active_plan_heads",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 289,
+          "canonical_json_sha256": "ee5c97da21ea681e7ab252b4740b06604d231e73dfcc6f5b489e6942e2d425e5",
+          "path": "/native_context/evidence/1/summary/$parsed_json/objectives",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 206,
+          "canonical_json_sha256": "d538d2646e46443d022112b16c004929777b3dc012f21d97d4b4f21a4896f173",
+          "path": "/native_context/evidence/1/summary/$parsed_json/semantic_coherence",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 148,
+          "canonical_json_sha256": "daa0063b1665a1c7cf861057098814033b8bed86296b3efed0fc0a486e055cec",
+          "path": "/native_context/evidence/1/summary/$parsed_json/unavailable_components",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 73,
+          "canonical_json_sha256": "032532e57d8cc359d69ecd6f28aac011a344f28e375eb522298b42addc256513",
+          "path": "/native_context/evidence/1/summary/$parsed_json/world_snapshot_cid",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 63,
+          "canonical_json_sha256": "51a9cc57be7642c729cde570c695cd9ed55977cd208da64bb9556d3ccc15b003",
+          "path": "/native_context/evidence/1/summary/$parsed_json/plan_projection_cid",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 63,
+          "canonical_json_sha256": "92be31733d66a7b2cb499810735c1746f491d849bbd2179a70afd82edae13531",
+          "path": "/native_context/evidence/1/summary/$parsed_json/semantic_root_cid",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 61,
+          "canonical_json_sha256": "f5dacb811ded37810a4a11f1a35be6c444a250e08f0d6301b66fe7f6c0a55403",
+          "path": "/native_context/evidence/1/summary/$parsed_json/repository_id",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 44,
+          "canonical_json_sha256": "036f978a4290991510d107513552f1a0083511b2461c1b8ac03235b2375081ec",
+          "path": "/native_context/evidence/1/summary/$parsed_json/schema",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 5,
+          "canonical_json_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+          "path": "/native_context/evidence/1/summary/$parsed_json/completion_authority",
+          "type": "bool"
+        },
+        {
+          "canonical_json_bytes": 5,
+          "canonical_json_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+          "path": "/native_context/evidence/1/summary/$parsed_json/execution_authority",
+          "type": "bool"
+        },
+        {
+          "canonical_json_bytes": 5,
+          "canonical_json_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+          "path": "/native_context/evidence/1/summary/$parsed_json/schedulable",
+          "type": "bool"
+        },
+        {
+          "canonical_json_bytes": 4,
+          "canonical_json_sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+          "path": "/native_context/evidence/1/summary/$parsed_json/intent_freshness_checked",
+          "type": "bool"
+        },
+        {
+          "canonical_json_bytes": 2,
+          "canonical_json_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "path": "/native_context/evidence/1/summary/$parsed_json/goal_edges",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 1,
+          "canonical_json_sha256": "ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d",
+          "path": "/native_context/evidence/1/summary/$parsed_json/event_watermark",
+          "type": "int"
+        }
+      ],
+      "path": "/native_context/evidence/1/summary",
+      "raw_sha256": "df34294227e4519c97f1c6bd1641b0734813e988bcadbfff082fc017ab25f357",
+      "raw_utf8_bytes": 5339,
+      "string_canonical_json_bytes": 5817,
+      "string_escaping_overhead_bytes": 478
+    }
+  ],
+  "observed_at_utc": "2026-10-13T03:47:38.779964+00:00",
+  "owner_lookup_coverage": {
+    "canonical_native_pack_lookup_established": false,
+    "exact_native_intent_world_and_retrieval_summary_lookup_established": false,
+    "exact_source_retrieval_available": true,
+    "next_requirement": "Before offloading these contexts, provide an exact owner-admitted historical artifact lookup with task/scope/source-generation and digest binding, explicit fallback and charged fetch output.",
+    "path_filtered_catalog_capsules_obligations_available": true,
+    "reason": "Inspected source/candidate readers serve admitted source or generation-bound working-candidate artifacts. Their artifact identities differ from the immutable native producer context; they cannot by themselves authorize replacement of native intent-world, retrieval or pack evidence.",
+    "working_candidate_summary_capsules_formal_available": true
+  },
+  "pack_reference_factoring_probe": {
+    "candidate_rendered_or_selected": false,
+    "common_field_paths": [
+      "/translated_semantic/pack/references/*/byte_count",
+      "/translated_semantic/pack/references/*/contract_version",
+      "/translated_semantic/pack/references/*/path",
+      "/translated_semantic/pack/references/*/repository_id",
+      "/translated_semantic/pack/references/*/schema",
+      "/translated_semantic/pack/references/*/tree_id"
+    ],
+    "common_values_canonical_sha256": "a3592dca80e68b97fb1d2883c82051a63e991d9c986427c691640a012c9a8bd6",
+    "difference_before_new_key_wrapper_and_guidance_bytes": 1014,
+    "gross_field_bytes_removed": 1160,
+    "hypothetical_common_value_object_bytes": 146,
+    "hypothetical_stripped_reference_list_bytes": 3357,
+    "original_reference_list_bytes": 4517,
+    "path": "/translated_semantic/pack/references",
+    "rows": 8,
+    "runtime_codec_supports_this_group": false
+  },
+  "prioritized_candidates": [
+    {
+      "candidate": "Exact repeated admission-policy value reference",
+      "existing_building_block": "Reuse strict lossless metadata projection, reconstruction receipt and complete-prompt selector; current codec does not alter native_context.",
+      "field_paths": [
+        "/native_context/authority/generic_prompt_policy/10",
+        "/native_context/authority/implementation_prompt_policy_appendix"
+      ],
+      "guard": "Reference equality is representation evidence only; retain all policy authority and reject a changed referenced value.",
+      "implemented": false,
+      "measured_redundant_canonical_value_bytes": 1783,
+      "priority": 1,
+      "required_change": "Explicit versioned presentation rule for the two exact policy locations; retain one complete inline policy, restore both original fields exactly, preserve unknown fields and require an actual complete-prompt reduction."
+    },
+    {
+      "candidate": "Common fields across ContextReference rows",
+      "existing_building_block": "Generalize the existing common-bindings grouping mechanism to an explicitly versioned pack-reference group; current supported groups are capsules, admissions and admission_refs.",
+      "field_paths": [
+        "/translated_semantic/pack/references/*/byte_count",
+        "/translated_semantic/pack/references/*/contract_version",
+        "/translated_semantic/pack/references/*/path",
+        "/translated_semantic/pack/references/*/repository_id",
+        "/translated_semantic/pack/references/*/schema",
+        "/translated_semantic/pack/references/*/tree_id"
+      ],
+      "guard": "Do not infer that a repeated summary or byte_count=0 means evidence is semantically dispensable.",
+      "implemented": false,
+      "measured_difference_before_new_key_wrapper_and_guidance_bytes": 1014,
+      "priority": 2,
+      "required_change": "Typed closed-field group that retains every source, summary, uncertainty label and count; exact native roundtrip and complete rendered-input comparison."
+    },
+    {
+      "candidate": "Canonical nested JSON summary presentation",
+      "existing_building_block": "Existing canonical bounded JSON validators and exact transport restoration; no current projection decodes these native_context summary strings.",
+      "field_paths": [
+        "/native_context/evidence/0/summary",
+        "/native_context/evidence/1/summary"
+      ],
+      "guard": "Reject duplicate keys, nonfinite values and noncanonical source formatting unless their exact original formatting is separately retained; no content truncation.",
+      "implemented": false,
+      "measured_string_escaping_overhead_bytes": 743,
+      "priority": 3,
+      "required_change": "Only admit canonical JSON summaries in the two declared evidence roles, present a typed nested object, re-encode canonical JSON into the original string on restoration, and preserve the exact native context digest."
+    },
+    {
+      "candidate": "Exact repeated public instruction text",
+      "existing_building_block": "semantic_instruction_view already references an admitted verbatim public-instruction block for one raw_sources entry; it does not currently deduplicate retrieval or worker query fields.",
+      "field_paths": [
+        "/native_context/evidence/0/summary/$parsed_json/query_text",
+        "/translated_semantic/raw_sources/.supervisor-instruction.md",
+        "/translated_semantic/worker_projection/query"
+      ],
+      "guard": "Adding a new instruction block solely to deduplicate one existing copy can eliminate the expected benefit. Query-role identity must not be replaced by an unbound global string table.",
+      "implemented": false,
+      "measured_redundant_literal_utf8_bytes": 1432,
+      "priority": 4,
+      "required_change": "Assess native pair instruction wiring first; any extension must preserve the task instruction fully inline and restore each differently scoped original field exactly."
+    },
+    {
+      "actual_authored_catalog_stdout_bytes": 12151,
+      "candidate": "Avoid full catalog traversal when paths are already known",
+      "existing_building_block": "worker_candidate_context_client supports path-filtered catalogs and path/symbol-filtered capsules; exact source reads already accept known admitted paths.",
+      "field_paths": [
+        "/calls/*[kind=catalog]"
+      ],
+      "guard": "The authored optional catalog is not proof that a live worker can skip the same calls without changing its result.",
+      "implemented": false,
+      "priority": 5,
+      "required_change": "Treat as a separate changed-workload experiment and measure actual live decisions and complete usage; preserve ability to retrieve missing information."
+    }
+  ],
+  "producer_head": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3",
+  "schema": "context-opportunity-census@1",
+  "sections": {
+    "/native_context": {
+      "canonical_json_bytes": 19919,
+      "canonical_json_sha256": "d6d4a0961bc11e50def185547228ab0c7a58a668df6d9ba455c013036bed652b",
+      "fields": [
+        {
+          "canonical_json_bytes": 12505,
+          "canonical_json_sha256": "0b498f70bbbce8f4cbe38d7de4b4492c1004f05fd44f6fa7aac99d9b1bdd340a",
+          "path": "/native_context/evidence",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 6009,
+          "canonical_json_sha256": "724bb25d430d24c0774dc01863549f904bcea6f4ceca12dea38d7b0beb42887b",
+          "path": "/native_context/authority",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 388,
+          "canonical_json_sha256": "ef552cbfe46b9aaa448acfb3475621e397557fdce9c8e90513a4dae98f68bb5d",
+          "path": "/native_context/scope",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 232,
+          "canonical_json_sha256": "1f0160df7bdd3691705d7c84c79c7e5cad149eb33f95e5b2d646fb0cf1283f00",
+          "path": "/native_context/goal",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 228,
+          "canonical_json_sha256": "a91afac6f51e0d86928fe38439e15dc75c1c66b2f39e3ca33e22e48d4ab8d2cb",
+          "path": "/native_context/acceptance",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 84,
+          "canonical_json_sha256": "828b859d0f8ba6ad287909d33045a8556d08e14f0e3d1224a9abda6000bfb98c",
+          "path": "/native_context/repository_id",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 73,
+          "canonical_json_sha256": "c49ac3ca18295d15b28614ce0ca6b46708bf02515bd3e6c6e7efc460e6763343",
+          "path": "/native_context/policy_revision",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 63,
+          "canonical_json_sha256": "923e3b23a6b97b064d2b652dc387e87a39410c0f7ec2b8658dd724fb82b5d2a6",
+          "path": "/native_context/objective_revision",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 42,
+          "canonical_json_sha256": "ab6779e25460153626ca404b05a23b1a09a9b3dd883bba0873a04411a47ddf29",
+          "path": "/native_context/tree_id",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 40,
+          "canonical_json_sha256": "a7e39987b2c669b583767b67fd7770368b9f75dd3950a8ba4991dbf8a1a9c5b4",
+          "path": "/native_context/caller",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 30,
+          "canonical_json_sha256": "d4d4a553f1c0ae3d5b3553d6670faf80d7ba072e3eeeaa54096a28c45e373794",
+          "path": "/native_context/policy_id",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 16,
+          "canonical_json_sha256": "2ad47ffa2c44e63f601770d25d4ca879bf9edef3a1ead64bcf60f905f33496f0",
+          "path": "/native_context/stage",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 14,
+          "canonical_json_sha256": "56db3ba7a19af889e628aaadb60a8daa47b9e0746df60484a0d328b06116c405",
+          "path": "/native_context/objective_id",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 1,
+          "canonical_json_sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+          "path": "/native_context/contract_version",
+          "type": "int"
+        }
+      ]
+    },
+    "/native_context/authority": {
+      "canonical_json_bytes": 6009,
+      "fields": [
+        {
+          "canonical_json_bytes": 2871,
+          "canonical_json_sha256": "ca30dd2fec9fa692816fca9cb3f52717edff5cfe058ecab99eabf8b6898fd022",
+          "path": "/native_context/authority/generic_prompt_policy",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 1783,
+          "canonical_json_sha256": "7be224fe989b0692f88782ca955b56c52685b19303f6f0646325d94a1973584b",
+          "path": "/native_context/authority/implementation_prompt_policy_appendix",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 286,
+          "canonical_json_sha256": "b92d63993b9293a03d4920a336b07edd27d18b14faff1d80fdcbc556aa409a19",
+          "path": "/native_context/authority/edit_policy",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 273,
+          "canonical_json_sha256": "c7a2284b44a5e6607e2474a6e70da9bd7a0373561b477defabdbe24222e2c8b1",
+          "path": "/native_context/authority/durable_checkpoint",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 221,
+          "canonical_json_sha256": "45b9dfdf5e09baa93521fc73b7a32e7c58acb2b2f8c3b409cde22b870fc17338",
+          "path": "/native_context/authority/implementation_context_budget",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 174,
+          "canonical_json_sha256": "a4db7629ba47a95d51fc4215905cd0856461ac5f81d2dd3c24f78c53d1ff92e5",
+          "path": "/native_context/authority/implementation_timeout_policy",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 109,
+          "canonical_json_sha256": "2fc5bf7f5d5ce1fb04bff7e21b1c8d93c3552edf4fb2eedbfa03db1197101772",
+          "path": "/native_context/authority/primary_plan_documents",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 34,
+          "canonical_json_sha256": "660f2cfad4054929bfbea0f064d8a39f67d7def62dc3bcfc97dd2185ec019e04",
+          "path": "/native_context/authority/todo_file",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 5,
+          "canonical_json_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+          "path": "/native_context/authority/completion_authoritative",
+          "type": "bool"
+        },
+        {
+          "canonical_json_bytes": 1,
+          "canonical_json_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+          "path": "/native_context/authority/source_line",
+          "type": "int"
+        }
+      ]
+    },
+    "/translated_semantic/pack": {
+      "canonical_json_bytes": 7231,
+      "canonical_json_sha256": "f9100ecffcfa7d7474d1ce66de52535b990151029013e62df56e097060a4258f",
+      "fields": [
+        {
+          "canonical_json_bytes": 4517,
+          "canonical_json_sha256": "3db2a0a96b1e35f179afd176ad9c1d7af277ffb254039bfbde67c4c21d3f3e8d",
+          "path": "/translated_semantic/pack/references",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 1444,
+          "canonical_json_sha256": "86742ac16c12e52a52c146936cd124e9146b57548fa6bf4c1ba1175e7d0be797",
+          "path": "/translated_semantic/pack/pack",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 716,
+          "canonical_json_sha256": "4be38671b0a3ba6df74d8fef7e32369283346f3ae2673910b758db9625db5624",
+          "path": "/translated_semantic/pack/decisions",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 272,
+          "canonical_json_sha256": "5dd88176c362427668d47368586f3bd6831485363a5d699a0e2a50494ba00da6",
+          "path": "/translated_semantic/pack/token_estimate",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 61,
+          "canonical_json_sha256": "d0b0b4079a582cdfb2a6d978d39fb46111850378e373b154aa37f9c593eb3736",
+          "path": "/translated_semantic/pack/pack_cid",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 39,
+          "canonical_json_sha256": "f003c484e1ad38fb81c6650de3b330d36ccb99e9a46e526c09dd96706f2672c3",
+          "path": "/translated_semantic/pack/schema",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 15,
+          "canonical_json_sha256": "5e9436821b1d4f54de05cb89421ab6b8f646c785ff85a53353c4d41de6d8c4be",
+          "path": "/translated_semantic/pack/interface",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 5,
+          "canonical_json_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+          "path": "/translated_semantic/pack/budget_exceeded",
+          "type": "bool"
+        },
+        {
+          "canonical_json_bytes": 4,
+          "canonical_json_sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+          "path": "/translated_semantic/pack/coverage_satisfied",
+          "type": "bool"
+        },
+        {
+          "canonical_json_bytes": 4,
+          "canonical_json_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "path": "/translated_semantic/pack/production_slice_cid",
+          "type": "NoneType"
+        }
+      ]
+    },
+    "/translated_semantic/pack/pack": {
+      "canonical_json_bytes": 1444,
+      "fields": [
+        {
+          "canonical_json_bytes": 353,
+          "canonical_json_sha256": "69ccfa91dd2716eae297090893270fd0795c03adb33cc0b28dff54132e16f97e",
+          "path": "/translated_semantic/pack/pack/assumptions",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 257,
+          "canonical_json_sha256": "11cb16850689c91ec347e171aa36172c2ca9d5c004306df8302c445bc9500d6d",
+          "path": "/translated_semantic/pack/pack/dependency_capsule_cids",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 192,
+          "canonical_json_sha256": "c89595373fde036abccdc8713e21ff8cf7144d24f2f901b4aac975746c71b4e3",
+          "path": "/translated_semantic/pack/pack/token_totals",
+          "type": "dict"
+        },
+        {
+          "canonical_json_bytes": 61,
+          "canonical_json_sha256": "452c590f208019e78eff1afba9063b55945044afcdfd32624659fe63ed972ac7",
+          "path": "/translated_semantic/pack/pack/delta_cid",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 61,
+          "canonical_json_sha256": "40d0aeba04d2cd8194546ed76b8cdea3702506ff5a4cbc795b3b630797fc04d8",
+          "path": "/translated_semantic/pack/pack/surrounding_source_cid",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 61,
+          "canonical_json_sha256": "40d0aeba04d2cd8194546ed76b8cdea3702506ff5a4cbc795b3b630797fc04d8",
+          "path": "/translated_semantic/pack/pack/target_source_cid",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 61,
+          "canonical_json_sha256": "5d162a2d681ec9d0ae89000c7324461fb56c69d615e007beb3e4bced7e7dc0d1",
+          "path": "/translated_semantic/pack/pack/test_source_cid",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 36,
+          "canonical_json_sha256": "f5359a60cc219c7274ae8b192c3a273100413a77396884ce408c0784a8c5f262",
+          "path": "/translated_semantic/pack/pack/estimator_version",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 32,
+          "canonical_json_sha256": "a0615347bc7715969001f4b70e03950a63e29647ca6c78e544f9088fcc69ea86",
+          "path": "/translated_semantic/pack/pack/objective",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 19,
+          "canonical_json_sha256": "32d9a88230b042ee2f414b73efb7f8612bdf441def3ed446debe6ebdef4747d2",
+          "path": "/translated_semantic/pack/pack/route",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 6,
+          "canonical_json_sha256": "30a0924a3360be687d1df9fcbbfdff62c01bc0fd14036ab9076cf7f451568666",
+          "path": "/translated_semantic/pack/pack/escalation_recommendation",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 5,
+          "canonical_json_sha256": "364bb7082249ee9fbc5247ee49735c4246f271b82c2745a35107ddda0d7cabcc",
+          "path": "/translated_semantic/pack/pack/risk",
+          "type": "str"
+        },
+        {
+          "canonical_json_bytes": 2,
+          "canonical_json_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "path": "/translated_semantic/pack/pack/counterexample_cids",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 2,
+          "canonical_json_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "path": "/translated_semantic/pack/pack/exclusions",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 2,
+          "canonical_json_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "path": "/translated_semantic/pack/pack/interface_cids",
+          "type": "list"
+        },
+        {
+          "canonical_json_bytes": 2,
+          "canonical_json_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "path": "/translated_semantic/pack/pack/obligation_cids",
+          "type": "list"
+        }
+      ]
+    }
+  },
+  "status": "read_only_prioritization_no_candidate_implemented"
+}

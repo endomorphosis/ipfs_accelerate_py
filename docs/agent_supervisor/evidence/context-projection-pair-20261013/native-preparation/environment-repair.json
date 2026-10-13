@@ -1,0 +1,55 @@
+{
+  "credential_contents_read": false,
+  "failure": {
+    "attempt": "attempt-01",
+    "error_type": "TypeError",
+    "message": "type 'Choice' is not subscriptable",
+    "output_retained": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/grok-legacy-01",
+    "phase": "Harbor CLI import before dry-run",
+    "provider_calls": 0,
+    "provider_dispatch_observed": false
+  },
+  "model_calls": 0,
+  "repair": "Use existing Harbor virtualenv site-packages before host system/user packages; no dependency install or source changes.",
+  "schema": "source-context-live-prepare-environment-repair@1",
+  "versions": [
+    {
+      "attempt": "attempt-01",
+      "command_manifest": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/live-trial-commands.json",
+      "modules": {
+        "click": {
+          "origin": "/usr/lib/python3/dist-packages/click/__init__.py",
+          "version": "8.1.6"
+        },
+        "harbor": {
+          "origin": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/harbor/__init__.py",
+          "version": "0.23.0"
+        },
+        "typer": {
+          "origin": "/home/barberb/.local/lib/python3.12/site-packages/typer/__init__.py",
+          "version": "0.24.1"
+        }
+      },
+      "provider_calls": 0
+    },
+    {
+      "attempt": "attempt-02",
+      "command_manifest": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/attempt-02/live-trial-commands.json",
+      "modules": {
+        "click": {
+          "origin": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/click/__init__.py",
+          "version": "8.5.0"
+        },
+        "harbor": {
+          "origin": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/harbor/__init__.py",
+          "version": "0.23.0"
+        },
+        "typer": {
+          "origin": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/typer/__init__.py",
+          "version": "0.27.2"
+        }
+      },
+      "provider_calls": 0
+    }
+  ]
+}

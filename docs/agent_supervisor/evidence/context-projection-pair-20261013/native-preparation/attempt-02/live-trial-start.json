@@ -1,0 +1,14 @@
+{
+  "only_harbor_dry_run_authorized": true,
+  "provider_calls": 0,
+  "runtime_before": {
+    "archive_sha256": "6426e1a06dbea6182c245bd8f96ec367103e25d674fdf578432a7a5832ed0918",
+    "manifest_sha256": "bc5c655108f15f7a81245f5ec7914c32b90fc12cb877a9014781af305cded4c6",
+    "worktree_head": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3"
+  },
+  "schema": "isolated-source-context-live-trial-start@1",
+  "started_at_utc": "2026-10-13T03:24:50.330225+00:00",
+  "worktree_clean_before": true,
+  "worktree_created_fresh": true,
+  "worktree_detached": true
+}

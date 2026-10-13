@@ -1,0 +1,21 @@
+{
+  "credential_contents_read": false,
+  "model_generation_calls": 0,
+  "production_sources_modified": false,
+  "schema": "source-context-live-runtime-preparation@1",
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012": {
+      "head": "f47161b757190380e9898aff155067c1ad609217",
+      "status": ""
+    },
+    "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit": {
+      "head": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "status": ""
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011": {
+      "head": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3",
+      "status": "?? benchmarks/agent_supervisor/container_coding/context_projection_trace_comparison.py"
+    }
+  },
+  "started_at_utc": "2026-10-13T03:18:21.548499+00:00"
+}

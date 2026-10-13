@@ -1,0 +1,12 @@
+{
+  "archive": "/home/barberb/lift_coding/artifacts/terminal-expansion-20261005/grok-bundle-07/runtime.tar.gz",
+  "archive_sha256": "b7af6134e611c1e5e180b4f67628ed71b33c4996c453f5818da4058d4f319f8c",
+  "bytes": 142867512,
+  "manifest_sha256": "0ae724d6b10bec783af96e68683d8572ca39d15c580d319ed2a8d655a89f102f",
+  "member": "providers/grok/grok",
+  "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-1.0.46/grok",
+  "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+  "version": "grok 1.0.46 (2765805b9442)",
+  "version_returncode": 0,
+  "version_stderr_bytes": 0
+}

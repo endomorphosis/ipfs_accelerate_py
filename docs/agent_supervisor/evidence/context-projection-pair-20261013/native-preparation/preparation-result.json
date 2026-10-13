@@ -1,0 +1,158 @@
+{
+  "assets": {
+    "checkpoint_bytes": 493355,
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "embedding_asset_count": 9,
+    "embedding_bytes": 67691071,
+    "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+    "extensions": {
+      "ducklake": {
+        "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension",
+        "sha256": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+      },
+      "httpfs": {
+        "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension",
+        "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9"
+      },
+      "quack": {
+        "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+        "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+      }
+    },
+    "lean_versions": {
+      "lake": "Lake version 5.0.0-src+5045d00 (Lean version 4.34.1)",
+      "lean": "Lean (version 4.34.1, aarch64-unknown-linux-gnu, commit 5045d0056413266e57c625dcd7c365b10e377c52, Release)"
+    },
+    "source384_config": "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+    "source384_config_sha256": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5",
+    "torch_wheel_bytes": 155005253,
+    "torch_wheel_sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+  },
+  "bundle_returncode": 0,
+  "credential_contents_read": false,
+  "elapsed_seconds": 50.362022752990015,
+  "grok_recovery": {
+    "archive": "/home/barberb/lift_coding/artifacts/terminal-expansion-20261005/grok-bundle-07/runtime.tar.gz",
+    "archive_sha256": "b7af6134e611c1e5e180b4f67628ed71b33c4996c453f5818da4058d4f319f8c",
+    "bytes": 142867512,
+    "manifest_sha256": "0ae724d6b10bec783af96e68683d8572ca39d15c580d319ed2a8d655a89f102f",
+    "member": "providers/grok/grok",
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-1.0.46/grok",
+    "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+    "version": "grok 1.0.46 (2765805b9442)",
+    "version_returncode": 0,
+    "version_stderr_bytes": 0
+  },
+  "model_generation_calls": 0,
+  "production_sources_modified": false,
+  "runtime": {
+    "archive_bytes": 1411195374,
+    "archive_sha256": "6426e1a06dbea6182c245bd8f96ec367103e25d674fdf578432a7a5832ed0918",
+    "credentials_in_archive": false,
+    "directory": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/runtime-01",
+    "file_count": 27498,
+    "grok_cli_assets": {
+      "bytes": 142867512,
+      "path": "providers/grok/grok",
+      "platform": "linux-aarch64",
+      "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+      "version": "1.0.46",
+      "version_output": "grok 1.0.46 (2765805b9442) [stable]"
+    },
+    "manifest_sha256": "bc5c655108f15f7a81245f5ec7914c32b90fc12cb877a9014781af305cded4c6",
+    "source384": {
+      "config": {
+        "checkpoint_path": "/opt/ipfs-supervisor/models/source384/checkpoint.json",
+        "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+        "download_calls": 0,
+        "embedding_assets": [
+          {
+            "bytes": 190,
+            "name": "1_Pooling/config.json",
+            "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+          },
+          {
+            "bytes": 583,
+            "name": "config.json",
+            "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+          },
+          {
+            "bytes": 66746168,
+            "name": "model.safetensors",
+            "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+          },
+          {
+            "bytes": 385,
+            "name": "modules.json",
+            "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+          },
+          {
+            "bytes": 57,
+            "name": "sentence_bert_config.json",
+            "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+          },
+          {
+            "bytes": 125,
+            "name": "special_tokens_map.json",
+            "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+          },
+          {
+            "bytes": 711661,
+            "name": "tokenizer.json",
+            "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+          },
+          {
+            "bytes": 394,
+            "name": "tokenizer_config.json",
+            "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+          },
+          {
+            "bytes": 231508,
+            "name": "vocab.txt",
+            "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+          }
+        ],
+        "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+        "embedding_snapshot": "/opt/ipfs-supervisor/models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+        "mode": "pinned_parent",
+        "schema": "terminal-source384-config@1",
+        "training_steps": 0
+      },
+      "config_path": "models/source384/config.json",
+      "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+      "schema": "terminal-source384-assets@1",
+      "source_training_data_included": false
+    },
+    "task_inputs_in_archive": false
+  },
+  "schema": "source-context-live-runtime-preparation@1",
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012": {
+      "head": "f47161b757190380e9898aff155067c1ad609217",
+      "status": ""
+    },
+    "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit": {
+      "head": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "status": ""
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011": {
+      "head": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3",
+      "status": "?? benchmarks/agent_supervisor/container_coding/context_projection_trace_comparison.py"
+    }
+  },
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012": {
+      "head": "f47161b757190380e9898aff155067c1ad609217",
+      "status": ""
+    },
+    "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit": {
+      "head": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "status": ""
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011": {
+      "head": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3",
+      "status": "?? benchmarks/agent_supervisor/container_coding/context_projection_trace_comparison.py"
+    }
+  },
+  "started_at_utc": "2026-10-13T03:18:21.548499+00:00"
+}

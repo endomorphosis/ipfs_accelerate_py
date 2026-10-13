@@ -1,0 +1,32 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/source-context-substitution-20261013/regressions-01/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 289 items
+
+benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py . [  0%]
+...................................................                      [ 17%]
+benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py . [ 18%]
+........................................                                 [ 32%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py . [ 32%]
+.....................................................                    [ 50%]
+test/api/test_semantic_metadata_view.py ................................ [ 61%]
+.............................................                            [ 77%]
+test/api/test_semantic_metadata_dispatch.py ..............               [ 82%]
+test/api/test_representation_displacement.py ........................... [ 91%]
+........................                                                 [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source-context-substitution-20261013/regressions-01/junit.xml -
+============================= slowest 10 durations =============================
+1.19s setup    benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_token_counted_collector_preserves_caller_identities_without_a_counter[legacy]
+0.98s setup    test/api/test_representation_displacement.py::test_all_authority_usage_and_semantic_verification_flags_are_strict_false
+0.91s setup    test/api/test_representation_displacement.py::test_existing_selection_mismatch_and_unknown_claims_refuse[mutation0]
+0.88s setup    test/api/test_representation_displacement.py::test_exact_selected_input_is_observed_without_exporting_source_or_owner_text
+0.86s setup    test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[original_translated_semantic_sha256]
+0.85s setup    test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[scope]
+0.84s call     test/api/test_representation_displacement.py::test_instruction_duplicate_reference_retains_complete_verbatim_source[None]
+0.84s call     test/api/test_semantic_metadata_dispatch.py::test_implementation_argv_selects_only_explicit_semantic_model_route
+0.84s setup    test/api/test_representation_displacement.py::test_validator_refuses_selected_join_types_unknown_fields_and_omission_status[treatment-source_omission]
+0.84s setup    test/api/test_semantic_metadata_view.py::test_invalid_counter_identity_falls_back_before_any_count[change3]
+======================= 289 passed in 173.09s (0:02:53) ========================

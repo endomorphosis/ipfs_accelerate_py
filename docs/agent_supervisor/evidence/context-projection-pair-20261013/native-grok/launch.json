@@ -1,0 +1,22 @@
+{
+  "schema": "source-context-native-launch@1",
+  "command": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+    "execute",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/grok-legacy-02"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/metadata-live-20261013",
+  "command_manifest_sha256": "608efdace23c834a56f537d23159f7a83a1bee28046409eef963b433c9e8e1c4",
+  "command_manifest": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/attempt-02/live-trial-commands.json",
+  "preparation_sha256": "302bf980ee3eabca5a7754429665d40c4a8b8dc3c13fe1c68ff1aaaf364b6077",
+  "script_sha256": "c5ac5e0c4466598e214997dc89f3c609bad5e07f4968572c2df6bac08078c06f",
+  "started_at_utc": "2026-10-13T03:26:21.899636+00:00",
+  "provider_profile": "grok-4.7-cli-1.0.46@1",
+  "source_view_profile": "identity@1",
+  "semantic_metadata_view": "legacy",
+  "inherited_environment_values_retained": false
+}

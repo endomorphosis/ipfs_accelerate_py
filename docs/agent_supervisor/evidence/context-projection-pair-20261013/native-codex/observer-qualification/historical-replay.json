@@ -1,0 +1,23 @@
+{
+  "current_trial_results_established": false,
+  "historical_only": true,
+  "observer_sha256": "132e38c624e4a97fc9cdcb110004dd61dc468404f2bb2ad85c3b048694b0a898",
+  "provider_calls": 0,
+  "rows": [
+    {
+      "cached_input_included": true,
+      "historical_arm": "baseline-01",
+      "official_reward": 1.0,
+      "receipt_sha256": "5203be5ab0f9a1ed2a271a2c6f6cc9767f85cad1ecc3074258ebb76ecd693829",
+      "total_tokens": 246992
+    },
+    {
+      "cached_input_included": true,
+      "historical_arm": "compact-01",
+      "official_reward": 1.0,
+      "receipt_sha256": "d17bb9052949a39cafee79a09dbaa0ed2bf913ad4726030707ba9bf44511ba43",
+      "total_tokens": 327117
+    }
+  ],
+  "schema": "native-result-observer-historical-replay@1"
+}

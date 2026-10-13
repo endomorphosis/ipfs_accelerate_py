@@ -1,0 +1,70 @@
+{
+  "blocking_findings": [],
+  "checks": {
+    "catalog_identity_normalization_preserves_other_facts": true,
+    "codec_roundtrip_and_complete_rendering_used": true,
+    "comparator_frozen_hashes_match_regression": true,
+    "copied_artifact_count": 67,
+    "copied_artifact_mismatches": [],
+    "full_supervisor_excluded_from_offline_claim": true,
+    "markdown_link_errors": {
+      "docs/agent_supervisor/context_projection_pair.md": [],
+      "docs/agent_supervisor/evidence/context-projection-pair-20261013/README.md": [],
+      "docs/agent_supervisor/reversible_codebase_views_plan.md": [],
+      "docs/agent_supervisor/source_view_read_edit_pair.md": [],
+      "docs/agent_supervisor/terminal_token_metadata_plan.md": []
+    },
+    "no_native_token_advantage_claimed": true,
+    "numeric_claims_match_artifacts": true,
+    "read_only_owner_evidence_not_authenticated": true,
+    "source_body_deferral_scoped_to_fixture": true
+  },
+  "disclosure_review": {
+    "note": "Pattern scan plus manual review of publication inventory and scripts; paths, digests, public source identities and nonsecret schema/invocation metadata are intentionally retained. Raw captures and private databases are excluded.",
+    "raw_capture_filenames_present": [],
+    "scanned_file_count": 70,
+    "secret_or_raw_prompt_pattern_matches": [],
+    "symlinks": []
+  },
+  "native_execution_performed_by_this_review": false,
+  "observations": {
+    "logical_operations": 11,
+    "native_provider_tokens": null,
+    "official_reward": null,
+    "offline_bytes": {
+      "baseline": 79362,
+      "difference": 885,
+      "treatment": 78477
+    },
+    "physical_calls_each": 12,
+    "provider_calls": 0,
+    "source_bindings": 110
+  },
+  "pending_before_final_publication": [
+    {
+      "finding": "Current publication includes Grok readiness failure and the Codex launcher; add final Codex pair preparation/outcome summaries after active trials finish. Freeze evidence manifest after these additions. No native advantage is established by this review.",
+      "path": "docs/agent_supervisor/evidence/context-projection-pair-20261013"
+    }
+  ],
+  "production_or_docs_files_changed": false,
+  "resolved_during_review": [
+    {
+      "finding": "Initial draft described all native Grok outcomes as pending. Root updated README to record completed Grok credential readiness failure and separate pending Codex fallback while review proceeded.",
+      "path": "docs/agent_supervisor/evidence/context-projection-pair-20261013/README.md"
+    }
+  ],
+  "reviewed_at_utc": "2026-10-13T03:38:50.846292+00:00",
+  "reviewed_code_sha256": {
+    "benchmarks/agent_supervisor/container_coding/context_projection_trace_comparison.py": "631389f2020e6ac84a67b8d4489277bba37b1df6942126c3877daf819ed869a9",
+    "benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py": "92da425b0eb2b90307f2d754bf54aaa45e869d86f4f402e2b1e5057ce421b474"
+  },
+  "reviewed_document_sha256": {
+    "docs/agent_supervisor/context_projection_pair.md": "0fa2e8902ffde8ff7d58103b7ccfa784144477ba345fd206c5d4bbf4ce05e3e8",
+    "docs/agent_supervisor/evidence/context-projection-pair-20261013/README.md": "4091fb7f86ba3d323c85991f635bc20a65dea323a3f9e4595e5b59d71bd211a5",
+    "docs/agent_supervisor/reversible_codebase_views_plan.md": "f9c46bc9d1deb4805e8b8b301df6aef1c7e21bfa7f3552740e97647bea7a4635",
+    "docs/agent_supervisor/source_view_read_edit_pair.md": "ffa902a592a71504c4605e521a759f6a7d91b135ebe4388370c3b590d0d26257",
+    "docs/agent_supervisor/terminal_token_metadata_plan.md": "a4c101ccb769a5dc451e10140a233228e9e1802839171181ef822bd0afc303c8"
+  },
+  "schema": "context-projection-documentation-review@1",
+  "scope": "Read-only review of current draft documentation and publication evidence. No pending Codex trial conclusion. Comparator self-review supplements the separately retained independent code review."
+}

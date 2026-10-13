@@ -1,0 +1,14 @@
+{
+  "active_frozen_pair_changed": false,
+  "baseline_completed": true,
+  "baseline_diagnosis": "legacy-diagnosis.json",
+  "baseline_observation": "observation-02.json",
+  "final_pair_outcome": false,
+  "installer_timeout_observed": false,
+  "paired_advantage_established": false,
+  "projected_trial_running_when_recorded": true,
+  "public_arm64_package_fetch_milliseconds": 466976,
+  "runtime_binaries_or_raw_logs_published": false,
+  "schema": "context-projection-native-interim-evidence@1",
+  "treatment_setup_completed": true
+}

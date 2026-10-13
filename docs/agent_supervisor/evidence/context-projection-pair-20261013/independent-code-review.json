@@ -1,0 +1,44 @@
+{
+  "blocking_findings": [],
+  "catalog_scope": "Only catalog comparison normalizes enumerated generation-scoped CIDs and parent artifact references; exact original artifacts remain replay-bound. No authenticated owner replay or general semantic equivalence is claimed.",
+  "checks": {
+    "catalog_generation_scope_recomputed": true,
+    "catalog_names_kinds_and_uncertainty_preserved": true,
+    "catalog_original_owner_replay_hashes_retained": true,
+    "catalog_source_and_producer_hashes_preserved": true,
+    "catalog_unknown_facts_preserved": true,
+    "fixed_codec_reconstructed_from_actual_captured_baseline": true,
+    "full_prompt_candidate_selection_replayed": true,
+    "historical_audit_replays_both_receipts": true,
+    "metadata_source_reader_combination_wired": true,
+    "nonshrinking_selection_fallback_tested_in_reviewed_test_source": true,
+    "provider_usage_not_claimed_by_comparator": true,
+    "raw_source_values_preserved_by_roundtrip": true,
+    "selection_preserves_suffix_and_original_response_encoder": true,
+    "source_admission_authentication_not_claimed_by_comparator": true,
+    "source_workload_pagination_edit_cleanup_checks_reused": true
+  },
+  "production_files_edited": false,
+  "provider_generation_calls": 0,
+  "repository_head": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3",
+  "retained_pair_observation": {
+    "baseline_minus_treatment_scripted_exposure_bytes": 885,
+    "model_calls": 0,
+    "official_reward": null,
+    "provider_calls": 0,
+    "provider_tokens": null
+  },
+  "reviewed_at_utc": "2026-10-13T03:27:00.302149+00:00",
+  "reviewed_comparison_artifact": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/docker_pair/collected-03/comparison.json",
+  "reviewed_comparison_sha256": "8b8b6633d1376c4b306bd30cae574336ff2af75081edc87fa77078df3e3031f3",
+  "reviewed_file_sha256": {
+    "benchmarks/agent_supervisor/container_coding/context_projection_trace_comparison.py": "631389f2020e6ac84a67b8d4489277bba37b1df6942126c3877daf819ed869a9",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "72ba6d0b05986334660ba12e5e899dc436e37d0c9c3908868d47d223a1696856",
+    "benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py": "92da425b0eb2b90307f2d754bf54aaa45e869d86f4f402e2b1e5057ce421b474",
+    "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py": "eb1423b0be436c19eb57ce96dd79667478daebba3923423a88d8fde7ed760f6b",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d"
+  },
+  "schema": "source-context-independent-code-review@1",
+  "scope": "Read-only code review; separate focused test and Docker execution artifacts establish execution outcomes."
+}

@@ -77,8 +77,11 @@ avoided expansion tokens.
 
 ## Implication for indexed context
 
-The current optional compact reader leaves required source in the initial
-prompt. This result gives little reason to expect comment removal alone to
+The current optional compact reader changes later source reads; it does not
+itself decide initial source admission. A subsequent
+[prompt census and metadata comparison](context_projection_pair.md) established
+that this fixture already defers both program bodies and retains three support
+files inline. This result gives little reason to expect comment removal alone to
 reduce complete-session tokens substantially on these small inputs. It does not
 measure the value of DuckDB/DuckLake, capsules, target-trained CodebaseIR or any
 other IR checkpoint: no checkpoint inference or source proof was performed by
@@ -89,7 +92,7 @@ isolated worker qualification, not full supervisor START.
 
 The next implementation should connect the
 [indexed reading plan](reversible_codebase_views_plan.md) to actual context
-replacement: select task-relevant source and small source-bound capsules, keep
+replacement where source is still repeated: select task-relevant source and small source-bound capsules, keep
 maps and full proof artifacts with the owner, and expand only when needed.
 Measure initial disclosure and subsequent ordinary/indexed reads together.
 Model-driven compact-edit submission still needs its own production contract.
