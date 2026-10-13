@@ -4,7 +4,7 @@ Three bounded native deterministic qualifications against committed production s
 
 ## LAC-S4-011 Qualify materialized entity-index observation intake
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
