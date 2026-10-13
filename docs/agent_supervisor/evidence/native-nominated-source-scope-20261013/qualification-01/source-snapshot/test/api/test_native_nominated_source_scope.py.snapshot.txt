@@ -1,0 +1,293 @@
+"""Historical nominations joined to real task claims and exact owner reads.
+
+The native claim/coordinator/DuckDB/grants and Git/CAS are real. Quack listener
+lifecycle and deployment metadata reuse the existing authored fixture seam.
+These tests never dispatch providers, authenticate a coding child, or qualify
+full signed Terminal profile selection or managed allocation ownership.
+"""
+from copy import deepcopy
+from dataclasses import replace
+
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.runtime import repository_source_scope as scopes
+from ipfs_accelerate_py.agent_supervisor.runtime import source_lookup_worker_broker as broker
+from ipfs_datasets_py.logic.software_contracts.content import canonical_dag_json_bytes, cid_for_bytes, cid_for_structured
+from test.api.test_current_source_task_admission import (
+    SOURCE, _native_case, _payload, _update_body,
+)
+from test.api.test_repository_source_inventory import _git
+
+SUPPORT = b"Review only the selected public source.\n"
+OTHER = b"UNSELECTED = True\n"
+
+
+@pytest.fixture
+def nominated_native(tmp_path, monkeypatch):
+    files = {b"module.py": SOURCE, b"instruction.md": SUPPORT, b"other.py": OTHER}
+    with _native_case(tmp_path, monkeypatch, defer_source_binding=True, source_files=files) as case:
+        _git(case.canonical, "worktree", "add", "--detach", "-q", str(case.workspace))
+        try:
+            yield case
+        finally:
+            if case.session is not None:
+                case.session.close()
+
+
+def nomination(case):
+    return scopes.nominate_source_scope(cas=case.retained.cas,
+        expected_inventory_cid=case.retained.ref.inventory_cid,
+        request=case.retained.request, limits=case.retained.limits,
+        selected_paths=tuple(sorted(p.hex() for p in (b"module.py", b"instruction.md"))),
+        required_paths=(b"instruction.md".hex(),), program_paths=(b"module.py".hex(),))
+
+
+def arguments(case, scope=None):
+    scope = nomination(case) if scope is None else scope
+    return dict(scope=scope, expected_scope_cid=scope.observation()["scope_cid"],
+        repository=case.workspace, cas=case.retained.cas,
+        expected_inventory_cid=case.retained.ref.inventory_cid,
+        request=case.retained.request, limits=case.retained.limits,
+        context_cid=cid_for_structured({"host_context": case.task_cid}),
+        max_response_bytes=4096, max_slice_bytes=512)
+
+
+def bind(case, *, scope=None, **kwargs):
+    case.binding = case.handle.bind_nominated_current_source_lookup(**(arguments(case, scope) | kwargs))
+    return case.binding
+
+
+def test_nominated_scope_binds_real_native_task_and_exact_reader(nominated_native):
+    case = nominated_native
+    scope = nomination(case)
+    historical = scope.observation()
+    bind(case, **arguments(case, scope))
+    observed = case.handle.require_nominated_source_scope()
+    assert observed["source_scope_cid"] == historical["scope_cid"]
+    assert observed["frontier_cid"] == historical["frontier_cid"]
+    assert observed["source_inventory_cid"] == case.retained.ref.inventory_cid
+    assert observed["source_binding_cid"] == case.binding["binding_cid"]
+    assert observed["task_cid"] == case.task_cid
+    assert observed["context_cid"] == case.binding["context_cid"]
+    assert observed["selected_count"] == 2 and observed["frontier_count"] == 1
+    assert historical["request"]["task_id"] != case.native_task.task_alias
+    assert historical["task_admission_verified"] is False
+    assert all(observed[k] is False for k in (
+        "proof_authority", "execution_authority", "completion_authority", "allocation_ownership_verified"))
+    assert case.binding["allowed_path_count"] == 2
+    case.session = broker.start_source_lookup_worker_broker(**case.factory)
+    result = case.session._read_source(_payload(case))
+    assert result["content"].encode() == SOURCE and result["working_source_verified"] is True
+    other = _payload(case) | dict(raw_path_hex=b"other.py".hex(), source_cid=cid_for_bytes(OTHER))
+    with pytest.raises((ValueError, RuntimeError)):
+        case.session._read_source(other)
+    assert case.server._command_gateway._current_source_lookup._paths == tuple(r["raw_path_hex"] for r in historical["selected"])
+    assert case.daemon.provider_invocation_recorded(case.attempt.attempt_id,
+        idempotency_key="provider:" + case.attempt.attempt_id) is None
+    observed["task_cid"] = "changed-detached-observation"
+    assert case.handle.require_nominated_source_scope()["task_cid"] == case.task_cid
+
+
+@pytest.mark.parametrize("change", ["scope_cid", "inventory_cid", "request", "limits", "serialized_scope"])
+def test_independent_pins_and_exact_scope_type_refuse_before_publication(nominated_native, change):
+    case = nominated_native
+    args = arguments(case)
+    if change == "scope_cid": args["expected_scope_cid"] = cid_for_structured({"foreign_scope": True})
+    elif change == "inventory_cid": args["expected_inventory_cid"] = cid_for_structured({"foreign_inventory": True})
+    elif change == "request": args["request"] = replace(case.retained.request, task_id="foreign-capture")
+    elif change == "limits": args["limits"] = replace(case.retained.limits, max_entries=case.retained.limits.max_entries+1)
+    else: args["scope"] = args["scope"].observation()
+    with pytest.raises((ValueError, RuntimeError)):
+        case.handle.bind_nominated_current_source_lookup(**args)
+    assert case.server._command_gateway._current_source_lookup is None
+    with pytest.raises((ValueError, RuntimeError)): case.handle.require_nominated_source_scope()
+    bind(case)
+    assert case.handle.require_nominated_source_scope()["selected_count"] == 2
+
+
+@pytest.mark.parametrize("change", ["revoke_grant", "released_lease", "task_body"])
+def test_native_admission_loss_refuses_nominated_binding(nominated_native, change):
+    case = nominated_native
+    args = arguments(case)
+    if change == "revoke_grant": case.server._command_gateway.revoke_grant(case.daemon_grant_id)
+    elif change == "released_lease":
+        claim = case.daemon.coordinator.get_task_claim(case.attempt.claim_id)
+        lease = case.daemon.coordinator.protect_task_claim(claim)
+        case.daemon.coordinator.release(lease, reason="authored nominated scope test release")
+    else:
+        body = deepcopy(dict(case.native_task.body));body["title"] = "changed before source binding"
+        _update_body(case, body)
+    with pytest.raises((ValueError, RuntimeError)):
+        case.handle.bind_nominated_current_source_lookup(**args)
+    assert case.server._command_gateway._current_source_lookup is None
+
+
+@pytest.mark.parametrize("path", ["module.py", "other.py"])
+def test_changed_committed_source_population_refuses_before_binding(nominated_native, path):
+    case = nominated_native
+    args = arguments(case)
+    (case.workspace / path).write_bytes(b"CHANGED = True\n")
+    with pytest.raises((ValueError, RuntimeError)):
+        case.handle.bind_nominated_current_source_lookup(**args)
+    assert case.server._command_gateway._current_source_lookup is None
+
+
+def test_cas_source_corruption_cannot_replay_a_previously_valid_nomination(nominated_native):
+    case = nominated_native
+    args = arguments(case)
+    source = next(case.retained.cas.source_root.rglob(cid_for_bytes(OTHER)))
+    source.write_bytes(b"corrupt retained unselected original")
+    with pytest.raises((ValueError, RuntimeError)):
+        case.handle.bind_nominated_current_source_lookup(**args)
+    assert case.server._command_gateway._current_source_lookup is None
+
+
+def test_request_mutation_during_cold_replay_refuses_without_source_publication(nominated_native, monkeypatch):
+    case = nominated_native
+    args = arguments(case)
+    original = case.retained.cas.get_bytes
+    def changed(cid):
+        value = original(cid)
+        object.__setattr__(case.retained.request, "task_id", "mutated-by-cas-callback")
+        return value
+    monkeypatch.setattr(case.retained.cas, "get_bytes", changed)
+    with pytest.raises((ValueError, RuntimeError)):
+        case.handle.bind_nominated_current_source_lookup(**args)
+    assert case.server._command_gateway._current_source_lookup is None
+
+
+def test_reentrant_legacy_and_nominated_binds_cannot_bypass_in_progress_guard(nominated_native, monkeypatch):
+    case = nominated_native
+    args = arguments(case)
+    original = case.retained.cas.get
+    seen = []
+    def callback(cid):
+        value = original(cid)
+        if not seen:
+            seen.append(cid)
+            with pytest.raises((ValueError, RuntimeError)):
+                case.handle.bind_nominated_current_source_lookup(**args)
+            legacy = {k:v for k,v in args.items() if k not in {"scope", "expected_scope_cid"}}
+            with pytest.raises((ValueError, RuntimeError)):
+                case.handle.bind_current_source_lookup(**legacy, allowed_paths=(b"module.py".hex(),))
+        return value
+    monkeypatch.setattr(case.retained.cas, "get", callback)
+    bind(case, **args)
+    assert len(seen) == 1 and case.binding["allowed_path_count"] == 2
+
+
+def test_publication_failure_retains_bind_once_reader_and_scope_join(nominated_native, monkeypatch):
+    case = nominated_native
+    args = arguments(case)
+    original = case.server.bind_current_source_lookup
+    def publish_then_fail(**kwargs):
+        original(**kwargs)
+        raise RuntimeError("authored failure after actual gateway publication")
+    monkeypatch.setattr(case.server, "bind_current_source_lookup", publish_then_fail)
+    with pytest.raises(RuntimeError, match="after actual gateway publication"):
+        case.handle.bind_nominated_current_source_lookup(**args)
+    service = case.server._command_gateway._current_source_lookup
+    assert service is not None and service._native_source_task_admission is case.handle
+    assert case.handle.require_nominated_source_scope()["selected_count"] == 2
+    with pytest.raises((ValueError, RuntimeError)):
+        case.handle.bind_nominated_current_source_lookup(**args)
+    legacy = {k:v for k,v in args.items() if k not in {"scope", "expected_scope_cid"}}
+    with pytest.raises((ValueError, RuntimeError)):
+        case.handle.bind_current_source_lookup(**legacy, allowed_paths=(b"module.py".hex(),))
+
+
+def test_postpublication_task_change_refuses_join_without_unbinding_reader(nominated_native, monkeypatch):
+    case = nominated_native
+    args = arguments(case)
+    original = case.server.bind_current_source_lookup
+    def publish_then_change(**kwargs):
+        original(**kwargs)
+        body = deepcopy(dict(case.native_task.body));body["title"] = "changed after source publication"
+        _update_body(case, body)
+    monkeypatch.setattr(case.server, "bind_current_source_lookup", publish_then_change)
+    with pytest.raises((ValueError, RuntimeError)):
+        case.handle.bind_nominated_current_source_lookup(**args)
+    assert case.server._command_gateway._current_source_lookup is not None
+    with pytest.raises((ValueError, RuntimeError)): case.handle.require_nominated_source_scope()
+    with pytest.raises((ValueError, RuntimeError)): case.handle.bind_nominated_current_source_lookup(**args)
+
+
+def test_join_refuses_revoked_task_and_substituted_reader_after_binding(nominated_native, monkeypatch):
+    case = nominated_native
+    bind(case)
+    service = case.server._command_gateway._current_source_lookup
+    with monkeypatch.context() as changed:
+        changed.setattr(case.server._command_gateway, "_current_source_lookup", object())
+        with pytest.raises((ValueError, RuntimeError)): case.handle.require_nominated_source_scope()
+    assert case.server._command_gateway._current_source_lookup is service
+    case.server._command_gateway.revoke_grant(case.daemon_grant_id)
+    with pytest.raises((ValueError, RuntimeError)): case.handle.require_nominated_source_scope()
+
+
+def test_legacy_native_binding_cannot_claim_a_nomination_join(tmp_path, monkeypatch):
+    with _native_case(tmp_path, monkeypatch) as case:
+        with pytest.raises((ValueError, RuntimeError)): case.handle.require_nominated_source_scope()
+        assert case.session._read_source(_payload(case))["content"].encode() == SOURCE
+
+
+def test_self_consistent_constructed_scope_requires_independent_cas_replay(nominated_native):
+    case = nominated_native
+    scope = nomination(case)
+    value = scope.observation()
+    value["selected"][0]["source_sha256"] = "0" * 64
+    value["scope_cid"] = cid_for_structured({k:v for k,v in value.items() if k != "scope_cid"})
+    authored = scopes.RepositorySourceScope(canonical_dag_json_bytes(value), scope._frontier_rows)
+    assert authored.observation()["scope_cid"] != scope.observation()["scope_cid"]
+    with pytest.raises((ValueError, RuntimeError)):
+        case.handle.bind_nominated_current_source_lookup(**arguments(case, authored))
+    assert case.server._command_gateway._current_source_lookup is None
+
+
+def test_closing_native_clock_source_edit_refuses_nomination_observation(nominated_native, monkeypatch):
+    case = nominated_native
+    bind(case)
+    original = case.retained.cas.get
+    armed = []
+    def arm_during_replay(cid):
+        value = original(cid)
+        if not armed:
+            armed.append(cid)
+            case.clock.reads_until_edit = 1
+        return value
+    monkeypatch.setattr(case.retained.cas, "get", arm_during_replay)
+    with pytest.raises((ValueError, RuntimeError)):
+        case.handle.require_nominated_source_scope()
+    assert case.clock.edited is True
+    assert case.server._command_gateway._current_source_lookup is not None
+
+
+def test_observer_cas_callback_cannot_reenter_native_scope_observation(nominated_native, monkeypatch):
+    case = nominated_native
+    bind(case)
+    original = case.retained.cas.get
+    seen = []
+    def attempt_reentry(cid):
+        value = original(cid)
+        if not seen:
+            seen.append(cid)
+            with pytest.raises((ValueError, RuntimeError)):
+                case.handle.require_nominated_source_scope()
+        return value
+    monkeypatch.setattr(case.retained.cas, "get", attempt_reentry)
+    assert case.handle.require_nominated_source_scope()["selected_count"] == 2
+    assert len(seen) == 1
+
+
+def test_input_mutation_after_factory_replay_refuses_before_binding(nominated_native, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.runtime import current_source_task_admission as admission
+    case = nominated_native
+    args = arguments(case)
+    original = admission.nominate_source_scope
+    def replay_then_change(**kwargs):
+        result = original(**kwargs)
+        object.__setattr__(case.retained.limits, "max_entries", case.retained.limits.max_entries+1)
+        return result
+    monkeypatch.setattr(admission, "nominate_source_scope", replay_then_change)
+    with pytest.raises((ValueError, RuntimeError)):
+        case.handle.bind_nominated_current_source_lookup(**args)
+    assert case.server._command_gateway._current_source_lookup is None

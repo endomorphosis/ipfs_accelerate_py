@@ -1,0 +1,21 @@
+{
+  "after_sha256": "ecd7b48d1a42ade0d401d3f622b17c36352c4f81595da700245a9232789a2d1d",
+  "before_sha256": "9e5e2d398e702f44fe928da06df3991786ead23b5479548479c503249bb8f5ed",
+  "changed_test_file": "test/api/test_native_nominated_source_scope.py",
+  "changes": [
+    "Use max_entries-1, a valid different limit, in independent limits mismatch.",
+    "Use the same valid limit mutation in the post-factory callback guard case."
+  ],
+  "earlier_raw_outputs_and_snapshots_preserved": true,
+  "failed_case": "test_independent_pins_and_exact_scope_type_refuse_before_publication[limits]",
+  "failure_cause": "The fixture constructed SourceInventoryLimits(max_entries=hard_ceiling+1), which refused in dataclass validation before calling native handoff.",
+  "final_attempt": "qualification-02",
+  "initial_attempt": "qualification-01",
+  "initial_distinct_cases": 168,
+  "initial_failures": 1,
+  "initial_passes": 167,
+  "rerun_scope": "Same six selected suites, one new invocation, without separate collection.",
+  "runtime_changed": false,
+  "runtime_sha256": "eece603dcd9f72d28d9aa572934fd23785f87602ecb36d8c0c2e2d97e0712df5",
+  "schema": "native-nominated-source-scope-fixture-correction@1"
+}

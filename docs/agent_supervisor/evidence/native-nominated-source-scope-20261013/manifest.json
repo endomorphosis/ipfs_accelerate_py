@@ -1,0 +1,185 @@
+{
+  "base_revision": "f7cf87104e079d1159226c137449e29bf98bfd40",
+  "changed_guides": 3,
+  "changed_runtime_modules": 1,
+  "changed_test_fixture_modules": 1,
+  "coding_child_adoption_qualified": false,
+  "docker_run": false,
+  "documentation": {
+    "relative_anchors": 9,
+    "relative_links": 70,
+    "status": "pass",
+    "workflow_blocks": 4
+  },
+  "files": [
+    {
+      "bytes": 25857,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+      "sha256": "eece603dcd9f72d28d9aa572934fd23785f87602ecb36d8c0c2e2d97e0712df5"
+    },
+    {
+      "bytes": 22616,
+      "path": "test/api/test_current_source_task_admission.py",
+      "sha256": "1ff08889ada83fe92f45db800406834dfc7bc053a7ebc477c0a0e8fcdbe5b6f6"
+    },
+    {
+      "bytes": 14894,
+      "path": "test/api/test_native_nominated_source_scope.py",
+      "sha256": "ecd7b48d1a42ade0d401d3f622b17c36352c4f81595da700245a9232789a2d1d"
+    },
+    {
+      "bytes": 16354,
+      "path": "docs/agent_supervisor/current_source_task_admission.md",
+      "sha256": "82fbcbbf119b005a608e3bc64c308686e39227a3f7e4c620fcff103dbfe8dd59"
+    },
+    {
+      "bytes": 8373,
+      "path": "docs/agent_supervisor/repository_source_scope.md",
+      "sha256": "1c744b8f571863205d31d4860fcb5aad969d358d296c9b989cdb01fbbd2301a8"
+    },
+    {
+      "bytes": 57047,
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "c4962de1dd22bdcf3ed28bd7d2de8c0c98bdf8f49e2d3482f2af0d4022e0364a"
+    },
+    {
+      "bytes": 63,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/.gitattributes",
+      "sha256": "4bd43f02cc20beb96409dd4ff2550287edc5b8f59cf4a6e6f367f877bc616f1d"
+    },
+    {
+      "bytes": 7042,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/README.md",
+      "sha256": "eacde6b8d097689a517da49d2addea93fad367bffa0f0e8a0c76a3835f5c1895"
+    },
+    {
+      "bytes": 145508,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/documentation-checks.json",
+      "sha256": "fc686567277ef57b6fdf2a89d569f23e7fca99316c460f5f75df4547ed21e87d"
+    },
+    {
+      "bytes": 435,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/documentation-workflow.log",
+      "sha256": "007d47e19ec10a99772d770bfde907fd57c3ef7d4059cebb00d6dd7ceb432a39"
+    },
+    {
+      "bytes": 16585,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/documentation_runner.py",
+      "sha256": "d428b10e0ebe0bf358350372ca6e4c0b60dbf953d441949f07960b0a066a9eb0"
+    },
+    {
+      "bytes": 1191,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/fixture-correction.json",
+      "sha256": "9874291349fc810cf36f77732093970a82c369194f6fc83079b59219656fde6a"
+    },
+    {
+      "bytes": 102986,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-01/commands.json",
+      "sha256": "a95b7e3fd90327f3c53adcfaaeab51ef1d719921d44047d78243900103b169e9"
+    },
+    {
+      "bytes": 28288,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-01/junit.xml",
+      "sha256": "2f7422f98be465321c9ca22ca53918fa518279bc089c7b3ca1906c10c593687e"
+    },
+    {
+      "bytes": 25857,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py.snapshot.txt",
+      "sha256": "eece603dcd9f72d28d9aa572934fd23785f87602ecb36d8c0c2e2d97e0712df5"
+    },
+    {
+      "bytes": 22616,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-01/source-snapshot/test/api/test_current_source_task_admission.py.snapshot.txt",
+      "sha256": "1ff08889ada83fe92f45db800406834dfc7bc053a7ebc477c0a0e8fcdbe5b6f6"
+    },
+    {
+      "bytes": 14894,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-01/source-snapshot/test/api/test_native_nominated_source_scope.py.snapshot.txt",
+      "sha256": "9e5e2d398e702f44fe928da06df3991786ead23b5479548479c503249bb8f5ed"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-01/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 43913,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-01/tests.stdout.log",
+      "sha256": "f7eb9b94c1e706f75eae6bc89d4c47c12a3277aa199c7d83f0538fbafd7e0ecf"
+    },
+    {
+      "bytes": 102986,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-02/commands.json",
+      "sha256": "e872480e1ce3e152875ab7d178fe771a11bd7b01a6929f8dca9635ba056093f3"
+    },
+    {
+      "bytes": 27136,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-02/junit.xml",
+      "sha256": "a67be87ea92b4f1ff61e1def91ddd397818d37eed4fc20562712f79a605e54b8"
+    },
+    {
+      "bytes": 25857,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py.snapshot.txt",
+      "sha256": "eece603dcd9f72d28d9aa572934fd23785f87602ecb36d8c0c2e2d97e0712df5"
+    },
+    {
+      "bytes": 22616,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-02/source-snapshot/test/api/test_current_source_task_admission.py.snapshot.txt",
+      "sha256": "1ff08889ada83fe92f45db800406834dfc7bc053a7ebc477c0a0e8fcdbe5b6f6"
+    },
+    {
+      "bytes": 14894,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-02/source-snapshot/test/api/test_native_nominated_source_scope.py.snapshot.txt",
+      "sha256": "ecd7b48d1a42ade0d401d3f622b17c36352c4f81595da700245a9232789a2d1d"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-02/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 24612,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification-02/tests.stdout.log",
+      "sha256": "14ac22d1c5fa752ca3406d7bada64ffa6e7ffb371066016784960677f82038ce"
+    },
+    {
+      "bytes": 9947,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/qualification_runner.py",
+      "sha256": "e8a51cfcaa9f0039d33430fc817297c33d09bf92619f275959542988c0f7b1c2"
+    },
+    {
+      "bytes": 4595,
+      "path": "docs/agent_supervisor/evidence/native-nominated-source-scope-20261013/review-observations.json",
+      "sha256": "104830f1ba9df289b01ba01fbd6bb7176059ec3f014494c4315ed614828a9cdb"
+    }
+  ],
+  "files_excluding_manifest": 28,
+  "manifest_self_excluded": true,
+  "model_calls": 0,
+  "native_owner_nomination_join_qualified": true,
+  "new_models_or_embeddings": false,
+  "new_test_modules": 1,
+  "provider_calls": 0,
+  "qualification": {
+    "accelerator_source_bindings": 143,
+    "datasets_revision": "7e60814a93fb81604092a0e0627fbc1996e644b7",
+    "datasets_source_bindings": 51,
+    "errors": 0,
+    "failures": 0,
+    "final_attempt": "qualification-02",
+    "final_invocations": 1,
+    "initial_fixture_failure_retained": true,
+    "kit_revision": "8ac00bb1974b1378e12091d546d8425af34049e0",
+    "new_cases": 22,
+    "skipped": 0,
+    "source_bindings": 194,
+    "suites": 6,
+    "tests": 168,
+    "total_invocations": 2
+  },
+  "schema": "native-nominated-source-scope-manifest@1",
+  "signed_terminal_subset_selection_qualified": false,
+  "solver_calls": 0,
+  "total_session_token_savings_established": false,
+  "training_steps": 0
+}

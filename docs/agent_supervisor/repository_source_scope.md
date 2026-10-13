@@ -96,6 +96,16 @@ Each page also revalidates and hashes the complete in-memory frontier. Output
 pagination makes neither acquisition nor host work lazy. No latency, native
 token reduction, task advantage or proof-cache reuse is established here.
 
+## Join an existing live native task
+
+The optional [native nomination binder](current_source_task_admission.md#bind-a-pinned-historical-nomination)
+cold-replays this exact scope with independent pins before deriving a selected
+path binding through the existing task owner. Its detached observation joins
+historical identities to that actual live task, reader and context; it does not
+change this object's historical flags or establish allocation, coding-child or
+signed Terminal profile admission. The existing native broker's 32-path ceiling
+remains independent of the nomination's 64-file ceiling.
+
 ## Reconcile the parallel repository stack
 
 A read-only local survey found repository-planning commit

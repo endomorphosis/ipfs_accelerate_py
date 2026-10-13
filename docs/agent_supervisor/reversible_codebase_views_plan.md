@@ -724,3 +724,61 @@ reply contract, runtime/resource budgets and setup policy fixed. Retain failed
 attempts, fallback selection and changed plans. Use repeated balanced matched
 pairs before a repeatable savings claim. If expansion or repair erases the
 benefit, keep exact source as the selected view for that task/profile.
+
+## Native nomination handoff, 2026-10-13
+
+The [live task-owner handoff](current_source_task_admission.md#bind-a-pinned-historical-nomination)
+now replays the historical nomination with independent CAS/inventory/request/limit
+and scope pins, then derives an exact selected path binding through the original
+native source reader. Task claims, owner grants and current originals remain
+independent checks. Publication failures retain bind-once state; a detached
+observation does not become authority.
+
+This closes the host nomination-to-reader join. The separate signed Terminal
+semantic/read scope still needs coordinated preparation, index/partition, loader,
+task-data and rebind changes, plus actual worker/allocation integration. Preserve
+the complete signed task inventory. Keep a future signed selection declarative:
+putting its postcommit inventory CID into the indexed task profile creates a
+content cycle. Join those identities in a later checked receipt instead.
+
+The existing parallel repository sessions/compiler/planning stack remains the
+implementation to reconcile. Its policy helper/schema collision is unchanged;
+this increment creates no competing sessions, decoder checkpoints or databases.
+Matched full-session token/task measurements remain necessary after native
+worker adoption. The [qualification bundle](evidence/native-nominated-source-scope-20261013/README.md)
+records the tested boundary and its limits.
+
+## Reuse the fresh live baseline, 2026-10-13
+
+The parallel [live comparison](https://github.com/endomorphosis/ipfs_accelerate_py/blob/4ea2271709bf697f175a198d3df02ac1e1a38205/docs/agent_supervisor/live_indexed_baseline.md)
+published three fresh successful `largest-eigenval` trials. Native Codex reported
+113,883 tokens, no-index supervision 358,492 and indexed supervision 333,973.
+Indexed supervision used 6.84% fewer reported native tokens than no-index, while
+still using 2.93 times the native harness's tokens. This single sequential pilot
+is a useful baseline, not a demonstrated overall token advantage over native
+Codex. Auxiliary refresh accounting is incomplete; these are reported native
+session counters rather than exhaustive pipeline cost or billing.
+
+That indexed arm reused four symbols and four worker capsules, hydrated three
+DuckLake catalogs and delivered eight numerical planning hints. It made zero
+optional numerical retrieval calls, all 105 obligations remained unresolved,
+Source384's four candidates were unsupported, and IntentIR had no selected
+checkpoint. Source views were disabled. These observations support testing
+actual selective-tool adoption, decoder coverage and successor refresh; they do
+not measure this nomination handoff or reversible minification.
+
+The same publication repairs queued-completion output observation after the
+frozen live runs. It does not recover those runs' missing output hashes. Retain
+its original benchmark runtime pins separately from the current qualification
+and later merged publication. The next live comparison should preserve all
+three harness arms, repeat matched tasks, count planning/coding/refresh/retrieval
+and failed attempts, verify final output custody, and record whether nominated
+source scopes and optional retrieval tools were actually consumed. Introduce one
+representation change at a time before attributing any token difference to it.
+
+Nominated scope discovery also needs an explicit expansion policy: this native
+reader remains bind-once for one admitted attempt, and unselected frontier entries
+cannot be fetched through it. Qualify a new scope/task-generation admission and
+retire stale capabilities before widening a read set. Charge any new planning,
+admission and reconstruction work to the complete-session experiment; silently
+mutating the existing path scope would invalidate its original custody contract.
