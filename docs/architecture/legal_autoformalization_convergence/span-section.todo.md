@@ -48,7 +48,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S6-044 Qualify exact raw span-to-section bridge
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
