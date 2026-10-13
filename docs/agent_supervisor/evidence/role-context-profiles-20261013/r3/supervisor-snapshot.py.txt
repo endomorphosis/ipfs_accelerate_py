@@ -1,0 +1,31 @@
+"""Retain a detached validation process identity and final exit without retries."""
+from pathlib import Path
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+
+root = Path(__file__).resolve().parent
+label = sys.argv[1]
+assert label.isalnum()
+run = root / label
+assert (run / 'source-freeze.json').is_file()
+signal.signal(signal.SIGHUP, signal.SIG_IGN)
+started = time.time()
+with (run / 'run.log').open('x') as output:
+    process = subprocess.Popen([sys.executable, '-B', str(root / 'run_merge_validation.py'), label, 'full'],
+        stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT)
+    with (run / 'process.json').open('x') as stream:
+        json.dump({'schema': 'detached-validation-process@1', 'supervisor_pid': os.getpid(),
+                   'validation_pid': process.pid, 'started_unix_seconds': started,
+                   'automatic_retries': 0}, stream, indent=2)
+        stream.write('\n')
+    code = process.wait()
+with (run / 'exit.json').open('x') as stream:
+    json.dump({'schema': 'detached-validation-exit@1', 'validation_pid': process.pid,
+               'exit_code': code, 'elapsed_seconds': time.time() - started,
+               'verification_receipt_exists': (run / 'verification.json').is_file()}, stream, indent=2)
+    stream.write('\n')
+raise SystemExit(code)

@@ -1,0 +1,8 @@
+{
+  "schema": "role-profile-post-merge-source-check@1",
+  "merge_commit": "cdf746c7e080f1144fa0f37a3075c6bc6c6a8a2d",
+  "previous_qualification_commit": "7b1f70f2d5c8f8a6ddfebb7bca4d2c7733f70d8a",
+  "inventoried_sources_from_r2_unchanged": true,
+  "previous_inventory_count": 1101,
+  "scope": "Existing r2 files are byte-identical; new peer comparator files require separate focused qualification."
+}

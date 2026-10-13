@@ -1,0 +1,215 @@
+"""Run fresh, source-pinned role preparation and context compiler tests without provider dispatch."""
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import sys
+import time
+from collections import Counter
+
+W = Path('/home/barberb/lift_coding')
+A = Path('/home/barberb/lift_coding_worktrees/role-context-selection-20261013')
+P = W / 'external/ipfs_datasets'
+K = W / 'external/ipfs_kit'
+H = W / '.venvs/terminal-bench-harbor/lib/python3.12/site-packages'
+R = Path(__file__).resolve().parent
+TESTS = (
+    'benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py',
+    'benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py',
+)
+
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def hashes(paths):
+    return {str(p): sha(p.read_bytes()) for p in sorted(paths)}
+
+
+def require(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+
+def inventory():
+    paths = {Path(__file__).resolve(), R / 'supervise_merge_validation.py'}
+    for root in (
+        A / 'ipfs_accelerate_py/agent_supervisor/runtime',
+        A / 'ipfs_accelerate_py/agent_supervisor/semantic_state',
+        A / 'ipfs_accelerate_py/agent_supervisor/context',
+        A / 'ipfs_accelerate_py/agent_supervisor/analysis',
+        A / 'ipfs_accelerate_py/agent_supervisor/proof',
+        A / 'ipfs_accelerate_py/testing',
+        A / 'benchmarks/agent_supervisor/container_coding',
+        P / 'ipfs_datasets_py/logic/software_contracts',
+        P / 'ipfs_datasets_py/proof_context',
+    ):
+        paths.update(root.rglob('*.py'))
+    paths.update(A / t for t in TESTS)
+    paths.update(A / t for t in (
+        'conftest.py', 'test/conftest.py', 'test/api/conftest.py',
+        'ipfs_accelerate_py/__init__.py', 'benchmarks/__init__.py',
+        'benchmarks/agent_supervisor/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/runtime/README.md',
+    ))
+    paths.update((P / 'ipfs_datasets_py/__init__.py',
+                  K / 'ipfs_kit_py/__init__.py'))
+    return paths
+
+
+def real_package(name, root):
+    spec = importlib.util.spec_from_file_location(
+        name, root / '__init__.py', submodule_search_locations=[str(root)])
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    require(Path(module.__file__).resolve() == root / '__init__.py', 'package origin differs')
+    return module
+
+
+def origins():
+    result = {}
+    for name, module in tuple(sys.modules.items()):
+        path = getattr(module, '__file__', None)
+        if path is None:
+            continue
+        for prefix, root in (('ipfs_accelerate_py', A), ('ipfs_datasets_py', P),
+                             ('ipfs_kit_py', K), ('benchmarks', A)):
+            if name == prefix or name.startswith(prefix + '.'):
+                resolved = Path(path).resolve()
+                require(resolved.is_relative_to(root), 'foreign project module: ' + name)
+                result[name] = str(resolved)
+                break
+    return result
+
+
+def main():
+    label = sys.argv[1]
+    require(label.isalnum(), 'bounded run label required')
+    run = R / label
+    if len(sys.argv) > 2 and sys.argv[2] == 'freeze':
+        run.mkdir(exist_ok=False)
+        frozen = hashes(inventory())
+        (run / 'source-freeze.json').write_text(json.dumps(frozen, indent=2) + '\n')
+        print(json.dumps({'sources': len(frozen), 'source_freeze': str(run / 'source-freeze.json')}))
+        return
+    mode = sys.argv[2] if len(sys.argv) > 2 else 'full'
+    require(mode == 'full', 'unknown validation mode')
+    selected = TESTS
+    freeze_raw = (run / 'source-freeze.json').read_bytes()
+    frozen = json.loads(freeze_raw)
+    require(set(frozen) == {str(p) for p in inventory()}, 'source population differs')
+    require(hashes(map(Path, frozen)) == frozen, 'source changed before imports')
+    settings = {
+        'PYTHONDONTWRITEBYTECODE': '1', 'PYTEST_DISABLE_PLUGIN_AUTOLOAD': '1',
+        'PYTHONPATH': os.pathsep.join(map(str, (P, K, A, H))),
+        'OPENBLAS_NUM_THREADS': '1', 'OMP_NUM_THREADS': '1',
+        'MKL_NUM_THREADS': '1', 'NUMEXPR_NUM_THREADS': '1',
+        'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1',
+        'IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI': '0', 'IPFS_KIT_DISABLE': '1',
+        'IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB': str(run / 'seal.duckdb'),
+        'IPFS_ACCELERATE_META_INDEX_DUCKDB': str(run / 'meta.duckdb'),
+        'IPFS_TEST_PROOF_REUSE_CACHE_DIR': str(run / 'proof-cache'),
+        'IPFS_TEST_PROOF_REUSE_MODE': 'write',
+        'IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR': str(run / 'orchestration'),
+        'ASEH_TASK_ID': 'ROLE-CONTEXT-PROFILES-20261013-' + label,
+    }
+    require(not (run / 'seal.duckdb').exists() and not (run / 'proof-cache').exists(),
+            'fresh seal and write-only proof cache required')
+    os.environ.update(settings)
+    os.chdir(A)
+    sys.dont_write_bytecode = True
+    sys.path[:0] = list(map(str, (P, K, A, H)))
+    import ipfs_datasets_py
+    require(Path(ipfs_datasets_py.__file__).resolve().is_relative_to(P), 'datasets tree drifted')
+    real_package('ipfs_accelerate_py', A / 'ipfs_accelerate_py')
+    real_package('ipfs_kit_py', K / 'ipfs_kit_py')
+    real_package('benchmarks', A / 'benchmarks')
+    before_origins = origins()
+    import pytest
+    from ipfs_accelerate_py.testing import pytest_ast_seal
+    from ipfs_accelerate_py.testing.proof_reuse import plugin as proof
+
+    class Observer:
+        collected = None
+        phases = None
+        seals = None
+        config = None
+
+        def pytest_sessionstart(self, session):
+            self.config = session.config
+            self.phases, self.seals = [], {}
+            state = getattr(session.config, pytest_ast_seal._CONFIG_KEY, None)
+            require(state and state['enabled'] is True, 'mandatory AST seal unavailable')
+            require(proof.get_proof_reuse_config(session.config).mode.value == 'write',
+                    'proof reuse is not fresh write-only')
+
+        def pytest_collection_finish(self, session):
+            self.collected = [item.nodeid for item in session.items]
+
+        def pytest_runtest_call(self, item):
+            seal = getattr(item.config, pytest_ast_seal._CONFIG_KEY)['seals'][item.nodeid]
+            paths = {Path(entry.path).resolve() for entry in seal.files}
+            require(paths and Path(str(item.path)).resolve() in paths, 'empty/missing test seal')
+            require(str(Path(str(item.path)).resolve()) in frozen, 'test not in source freeze')
+            self.seals[item.nodeid] = sorted(map(str, paths))
+
+        def pytest_runtest_logreport(self, report):
+            self.phases.append(dict(nodeid=report.nodeid, when=report.when, outcome=report.outcome))
+
+    observer = Observer()
+    arguments = ['-q', '-x', '-o', 'addopts=', '-o', 'junit_family=xunit1',
+                 '-o', 'cache_dir=' + str(run / 'pytest-cache'),
+                 '--basetemp=' + str(run / 'temporary'),
+                 '--junitxml=' + str(run / 'junit.xml'), *selected]
+    started = time.perf_counter()
+    code = int(pytest.main(arguments, plugins=[observer, pytest_ast_seal, proof]))
+    seconds = time.perf_counter() - started
+    after = hashes(map(Path, frozen))
+    after_origins = origins()
+    actual = Counter((r['nodeid'], r['when']) for r in observer.phases)
+    expected = Counter((node, phase) for node in observer.collected
+                       for phase in ('setup', 'call', 'teardown'))
+    all_phases = actual == expected and all(r['outcome'] == 'passed' for r in observer.phases)
+    metrics = getattr(observer.config, proof.METRICS_ATTRIBUTE, None)
+    metrics = metrics.snapshot().to_dict() if metrics is not None else {}
+    no_reuse = bool(metrics) and all(metrics['counts'].get(k) == 0
+        for k in ('predicted', 'verified', 'skipped', 'deferred', 'degraded'))
+    passed = code == 0 and all_phases and no_reuse and frozen == after and bool(observer.collected)
+    samples = []
+    for path in sorted((run / 'temporary').rglob('result.json')):
+        try:
+            sample = json.loads(path.read_bytes())
+        except (ValueError, OSError):
+            continue
+        ref = sample.get('context_selection_observation', {})
+        if ref.get('schema') == 'supervisor-context-selection-observation-ref@1':
+            samples.append({'capsules': sample['worker_capsules'], 'worker_bytes': sample['compact_bytes'],
+                'observation_bytes': ref['bytes'],
+                'observation_computation_seconds': sample['context_selection_observation_seconds']})
+    receipt = dict(schema='role-context-profiles-validation@1', validation_passed=passed,
+        exit_code=code, elapsed_seconds=seconds, mode=mode, arguments=arguments, environment=settings,
+        collected=observer.collected, phase_reports=observer.phases, test_seals=observer.seals,
+        all_setup_call_teardown_passed_once=all_phases, proof_metrics=metrics,
+        no_reused_skipped_predicted_verified_deferred_or_degraded=no_reuse,
+        source_freeze_sha256=sha(freeze_raw), guarded_source_count=len(frozen),
+        guarded_sources_unchanged=frozen == after,
+        changed_sources=[p for p in frozen if frozen[p] != after[p]],
+        origins_before=before_origins, origins_after=after_origins,
+        samples=samples, sample_scope='authored integration-test preparations, not live Terminal Bench',
+        source_guard_scope='explicit source inventory, not a complete imported dependency closure',
+        provider_calls=0, downloads=0, lake_builds=0, lean_admits=0,
+        token_savings_established=False, official_task_success_established=False)
+    (run / 'verification.json').write_text(json.dumps(receipt, indent=2) + '\n')
+    print(json.dumps(dict(validation_passed=passed, actual_test_calls=sum(r['when'] == 'call'
+        for r in observer.phases), guarded_source_count=len(frozen), samples=len(samples),
+        sources_unchanged=frozen == after, seconds=seconds)))
+    raise SystemExit(0 if passed else 1)
+
+
+if __name__ == '__main__':
+    main()
