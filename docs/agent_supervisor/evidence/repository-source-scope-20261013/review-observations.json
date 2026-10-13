@@ -1,0 +1,55 @@
+{
+  "current_source_or_native_admission_established": false,
+  "delivery": "Preserved observations from collaboration messages; this receipt is root-authored.",
+  "final_read_only_docs_review": {
+    "blockers": [],
+    "module_sha256_verified": "522f0c96d4b0542ee4f7d88ea2a78a635568c7dae503ecf701266bf1215a0e9f",
+    "result": "Guide and tracked doc changes match historical-only nomination, explicit bounds, complete signed-profile separation, current-owner requirements, cold replay and frontier hashing, detached exports, non-persisted CIDs and direct-construction limits; parallel claims match retained survey.",
+    "reviewer": "/root/allocation_docs_review/admission_contract_review",
+    "tests_imports_or_edits": false
+  },
+  "initial_module_sha256": "06f19b3ad09c5fa27f213c1da8932fe470f96fc53a975178fc85642e8ca11002",
+  "observations": [
+    "No static fixture blocker reported; gitlink setup matches the existing committed inventory fixture.",
+    "Fixture population and frontier accounting checked against committed regular paths, symlink and gitlink.",
+    "Semantic producer and WorkerSourceViews call signatures were reviewed against current source.",
+    "The reader fixture uses authored semantic pins: it exercises selected hashes, scope enforcement and stale-byte refusal, not an actual admitted semantic-artifact handoff.",
+    "Historical capture task_id is provenance and cannot establish a current native task or allocation grant.",
+    "Full CAS replay and full in-memory frontier validation remain nonlazy; bounded pages constrain output bytes.",
+    "Direct immutable-value construction establishes self-consistency; the factory with independent CAS pins establishes historical provenance.",
+    "Mandatory supports must be explicitly selected within the same file and original per-path byte bounds.",
+    "Current signed complete task_profile.input_paths must remain complete; an independent versioned semantic/read scope is still needed.",
+    "Existing parallel sessions/compiler/planning consumers should be reconciled, preserving the current SourceViewPolicy recipe; same-named schema and CLI have incompatible meanings."
+  ],
+  "proof_authority": false,
+  "qualification_result_source": "qualification-01/commands.json",
+  "qualification_was_run_by_root": true,
+  "qualified_changed_sources": [
+    {
+      "bytes": 18119,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_scope.py",
+      "sha256": "522f0c96d4b0542ee4f7d88ea2a78a635568c7dae503ecf701266bf1215a0e9f",
+      "snapshot": "docs/agent_supervisor/evidence/repository-source-scope-20261013/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_scope.py.snapshot.txt"
+    },
+    {
+      "bytes": 19736,
+      "path": "test/api/test_repository_source_scope.py",
+      "sha256": "85a46b87fe06c72ff5a4feff4ee7b0d053a08bcfe6571276f33cd392096c6884",
+      "snapshot": "docs/agent_supervisor/evidence/repository-source-scope-20261013/qualification-01/source-snapshot/test/api/test_repository_source_scope.py.snapshot.txt"
+    }
+  ],
+  "read_only_reviewers": [
+    "/root/allocation_docs_review",
+    "/root/allocation_docs_review/admission_contract_review"
+  ],
+  "receipt_author": "root",
+  "recorded_at_utc": "2026-10-13T09:28:31.310308+00:00",
+  "reviewer_tests_imports_or_edits": false,
+  "root_followup_before_qualification": [
+    "Check selected raw-path hex length before decoding.",
+    "Check frontier tuple length before parsing rows."
+  ],
+  "schema": "repository-source-scope-review-observations@1",
+  "separate_reviewer_authored_receipt": false,
+  "token_savings_measured": false
+}

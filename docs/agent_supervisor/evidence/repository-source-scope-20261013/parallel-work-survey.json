@@ -1,0 +1,80 @@
+{
+  "common_base": "6691119e75d96888b106c52ac495e7dccf0dbae4",
+  "compiler_dependency": "ce2cd1026f21e52384ddf29c50c4a459baef927e",
+  "current_base": "5ad92f61bb643d4138749d3df16663a2af1c79c1",
+  "foreign_worktrees_modified": false,
+  "live_worktrees": [
+    {
+      "clean": true,
+      "edited_here": false,
+      "head": "24bafa1179d4d754b58d7d77080d811424404cca",
+      "path": "/home/barberb/lift_coding_worktrees/repository-planning-consumer-20261013"
+    },
+    {
+      "clean": true,
+      "edited_here": false,
+      "head": "ce2cd1026f21e52384ddf29c50c4a459baef927e",
+      "path": "/home/barberb/lift_coding_worktrees/repository-context-compiler-20261013"
+    }
+  ],
+  "main_side_commits": 89,
+  "new_model_or_training_run": false,
+  "observed_at_utc": "2026-10-13T09:20:30.867255+00:00",
+  "overlap_paths": [
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py",
+    "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/README.md",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
+    "test/api/test_agent_supervisor_context_delta_bytes.py"
+  ],
+  "parallel_changed_paths": 137,
+  "parallel_side_commits": 21,
+  "parallel_stack": "24bafa1179d4d754b58d7d77080d811424404cca",
+  "remaining_integration": [
+    "Separate older helper module/schema/CLI and source_view_policy kwarg meaning before merging.",
+    "Reconcile role-context/compiler changes and preserve present shared recipe defaults and decoder assets.",
+    "Review native catalog owner injection and inventory frontiers.",
+    "Add versioned reviewed task semantic scope while preserving complete original input_paths and mandatory supports.",
+    "Qualify actual native task/allocation/current-source handoff and later provider token ablations."
+  ],
+  "remote_branch_ref_query": {
+    "argv": [
+      "git",
+      "ls-remote",
+      "origin",
+      "refs/heads/codex/repository-planning-consumer-20261013",
+      "refs/heads/codex/repository-context-compiler-20261013"
+    ],
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "reuse_decision": "Keep parallel sessions/compiler/planning consumer as the existing implementation to reconcile; implement only the distinct pure historical inventory nomination bridge now. Do not duplicate those sessions or rewrite signed complete task profiles.",
+  "schema": "repository-source-scope-parallel-survey@1",
+  "shared_module_collision": {
+    "blind_merge_safe": false,
+    "main_api": "closed SourceViewPolicy JSON recipe and immutable resolver/codec binding",
+    "main_sha256": "3545f7db90c225b9eed1969170d5f91c0196afb24e49f7149b3650ad6fb68043",
+    "parallel_api": "legacy/source-view-raw@1/source-view-compact@1 helpers; validate_policy/create_binding",
+    "parallel_sha256": "d1e1e7598c4d1a1fa1938645a0e1374c87573b2de629d90990feda4948ac45fc",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
+    "schema": "supervisor-source-view-policy@1"
+  }
+}

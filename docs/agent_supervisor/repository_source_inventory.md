@@ -20,6 +20,12 @@ reads every retained frame, checks its length/raw CID, recomputes the complete
 source CID and verifies Git's blob-object hash. Neither a manifest hash nor
 the metadata parser alone establishes source byte integrity.
 
+The [source-scope nomination adapter](repository_source_scope.md) now joins this
+complete historical inventory to an explicit bounded metadata subset, retaining
+all excluded/unsupported entries as a paged frontier. It creates no new store
+or current-source/native task authority. Signed task-profile and actual worker
+admission remain separate.
+
 ## Caller-supplied source and storage
 
 Supply the existing exact native `ImmutableCAS` object, such as an already
