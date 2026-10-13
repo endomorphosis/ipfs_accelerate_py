@@ -1,0 +1,136 @@
+{
+  "base_revision": "5ad92f61bb643d4138749d3df16663a2af1c79c1",
+  "changed_guides": 3,
+  "current_native_admission_established": false,
+  "docker_run": false,
+  "documentation": {
+    "exact_workflow_blocks": 4,
+    "relative_anchors": 6,
+    "relative_links": 66,
+    "status": "pass"
+  },
+  "files": [
+    {
+      "bytes": 18119,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_scope.py",
+      "sha256": "522f0c96d4b0542ee4f7d88ea2a78a635568c7dae503ecf701266bf1215a0e9f"
+    },
+    {
+      "bytes": 19736,
+      "path": "test/api/test_repository_source_scope.py",
+      "sha256": "85a46b87fe06c72ff5a4feff4ee7b0d053a08bcfe6571276f33cd392096c6884"
+    },
+    {
+      "bytes": 7772,
+      "path": "docs/agent_supervisor/repository_source_scope.md",
+      "sha256": "a665f7315fb0eb1c1d5c645a44ab969442126a967cb6f6d4eb4772f65d8e1597"
+    },
+    {
+      "bytes": 10148,
+      "path": "docs/agent_supervisor/repository_source_inventory.md",
+      "sha256": "359e8b711af2a4f1becd75aa0ab5c7ee13eab9bada9582b36238a8a8a2fea2a8"
+    },
+    {
+      "bytes": 53211,
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "b56eb137243fe94ded71d69f59aa7735fb4a1571ab72f319b88b46892dc234ba"
+    },
+    {
+      "bytes": 63,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/.gitattributes",
+      "sha256": "4bd43f02cc20beb96409dd4ff2550287edc5b8f59cf4a6e6f367f877bc616f1d"
+    },
+    {
+      "bytes": 4963,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/README.md",
+      "sha256": "9c5f1779fa53fd079b41be28187f714b5b6c949b66cd472b10fee807f3bbf408"
+    },
+    {
+      "bytes": 157155,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/documentation-checks.json",
+      "sha256": "76da4cc16e9fe3c2c1d96f08584372602efdad4b75214bb556d398a9320679ae"
+    },
+    {
+      "bytes": 435,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/documentation-workflow.log",
+      "sha256": "007d47e19ec10a99772d770bfde907fd57c3ef7d4059cebb00d6dd7ceb432a39"
+    },
+    {
+      "bytes": 15987,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/documentation_runner.py",
+      "sha256": "d8c1dcf9a8476b4d8f92782ea583b278b199f5d0804d50bb42e764588a63f183"
+    },
+    {
+      "bytes": 4422,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/parallel-work-survey.json",
+      "sha256": "1359db3aebe8795697db9fa110c7f1023ab81cfe049b2bf9e9816e6b581e24b7"
+    },
+    {
+      "bytes": 99776,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/qualification-01/commands.json",
+      "sha256": "8c8a23c821a320dd7a1b19d8c10621126ab7bd5a8a9a91757a5aa9f2fd69f463"
+    },
+    {
+      "bytes": 34779,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/qualification-01/junit.xml",
+      "sha256": "6b1b674f19bb70a6672f235c18353c52e585ddaef616d90573b82120b9de3387"
+    },
+    {
+      "bytes": 18119,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_scope.py.snapshot.txt",
+      "sha256": "522f0c96d4b0542ee4f7d88ea2a78a635568c7dae503ecf701266bf1215a0e9f"
+    },
+    {
+      "bytes": 19736,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/qualification-01/source-snapshot/test/api/test_repository_source_scope.py.snapshot.txt",
+      "sha256": "85a46b87fe06c72ff5a4feff4ee7b0d053a08bcfe6571276f33cd392096c6884"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/qualification-01/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 30913,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/qualification-01/tests.stdout.log",
+      "sha256": "958a6933f571cfd10e252b824e056c4d723c527e6f3aae4f1ab7851a82a37552"
+    },
+    {
+      "bytes": 10027,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/qualification_runner.py",
+      "sha256": "2ac6d08b84e1b2500db023df09b10ff1e1fe0ddbc45cc1d540531067df1f13fb"
+    },
+    {
+      "bytes": 3651,
+      "path": "docs/agent_supervisor/evidence/repository-source-scope-20261013/review-observations.json",
+      "sha256": "ed9d1d5c6542578b9d38700062419f09da5b1dadc3b1acbc604bae518aa49c23"
+    }
+  ],
+  "files_excluding_manifest": 19,
+  "historical_nomination_only": true,
+  "manifest_self_excluded": true,
+  "model_calls": 0,
+  "models_or_embeddings_changed": false,
+  "new_runtime_modules": 1,
+  "new_test_modules": 1,
+  "parallel_repository_stack_merged": false,
+  "provider_calls": 0,
+  "qualification": {
+    "accelerator_source_bindings": 137,
+    "datasets_revision": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+    "datasets_source_bindings": 51,
+    "errors": 0,
+    "failures": 0,
+    "invocations": 1,
+    "kit_revision": "8ac00bb1974b1378e12091d546d8425af34049e0",
+    "new_cases": 56,
+    "skipped": 0,
+    "source_bindings": 188,
+    "suites": 6,
+    "tests": 219
+  },
+  "schema": "repository-source-scope-publication-manifest@1",
+  "solver_calls": 0,
+  "total_session_token_savings_established": false,
+  "training_steps": 0
+}

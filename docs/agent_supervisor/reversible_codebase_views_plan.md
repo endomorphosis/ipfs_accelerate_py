@@ -11,7 +11,9 @@ reconciles accelerator `cdca08b03c9ca015b7ba8799b9161de6ac20ce4d` and the parent
 datasets pin `b95938c2a816075466f8dc84f339cf622414030d`, including parallel
 compact-edit and LegalIR permission-retention publications. It distinguishes
 source already omitted during preparation from later reads, and identifies
-shared view policy, discovery transport and read tracing as the next gaps.
+shared view policy, discovery transport and read tracing as the next gaps at
+that revision. Shared policy and client discovery are now implemented below;
+complete inventory-to-task admission and general read tracing remain open.
 
 The subsequent [matched Docker read/edit experiment](source_view_read_edit_pair.md)
 implements strict comparison of complete scripted traces. Exact and compact
@@ -243,9 +245,12 @@ now offers `--discover` alongside `--path`, validates the closed metadata shape
 and joins shared pages to descriptor policy/scope pins. Discovery contains no
 source bodies, verifies deterministic cache projections, and charges its wire
 bytes while counting rows separately from source slices. It remains baseline
-only within the existing admitted scope. Next, join complete inventory metadata
-to bounded task-specific source admission, retaining excluded, unsupported and
-unresolved frontiers. Discovering a path does not authorize a new source read or
+only within the existing admitted scope. The new
+[historical scope nomination](repository_source_scope.md) joins complete inventory
+metadata to a reviewed bounded subset and retains every remaining frontier.
+It supplies detached semantic arguments, not current-source or native task
+admission. Next, version the signed task's semantic/read selection and qualify
+its actual owner/worker handoff. Discovering a path does not authorize a new source read or
 expand the current 64-file limit.
 
 Present discovery, symbol/span selection, compact reads, exact expansion and
@@ -540,8 +545,11 @@ The immediate implementation order within those steps is:
 Shared owner policy is implemented. The discovery/transport increment adds
 client paging within the admitted population and carries an owner-selected
 policy. Benchmark preparation now freezes that policy through the coding owner
-and checks the collected session against it. Joining repository-wide metadata
-to new admission remains open. General
+and checks the collected session against it. Historical inventory nominations
+now retain a complete frontier beside a bounded reviewed subset; current-source,
+signed task-profile and native worker admission remain open. The existing
+parallel repository-session/compiler/planning stack needs explicit schema and
+CLI reconciliation before integration. General
 read observations and subsequent comparisons remain proposed. The earlier
 compact-edit bundle retains its 729-test and 11 authored numerical-fixture
 results; this phase records its own selected regression run separately, without
