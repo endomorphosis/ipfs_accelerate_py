@@ -279,7 +279,7 @@
     {
       "repository": "accelerator",
       "path": "scripts/legal_autoformalization_source_views.py",
-      "sha256": "f93e515ecb05e910cf2513df111750ab927b60e98a92ab2602d993eadca66383",
+      "sha256": "4e5d8b2c15302cedb00ca42525d443861e77dafbbd77e6dce7420ab9702a7fa0",
       "bytes": 39670
     },
     {
@@ -1000,6 +1000,26 @@
       "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-custody-20261013-01/delivery-verification.json",
       "bytes": 1763,
       "sha256": "149ecf461a5deabf8071ce4f926668136cbc1af6795889dcacc9b9234f611269"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-views-20261013-01/source-views-controller-final-v06.xml",
+      "bytes": 10075,
+      "sha256": "44bc784404b78c88108cc44b28a70a47c0fa7e912031cd7631b340e51bd6519d"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-views-20261013-01/source-views-controller-final-v06-lease.json",
+      "bytes": 349,
+      "sha256": "7a319398350c1a8d1bfbb105c3b04c4bfbec7e6f45e8349940d4068289dae8a0"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-views-20261013-01/producer-lineage-qualified-v02-lease.json",
+      "bytes": 346,
+      "sha256": "7212cbf969b8eb6317c2f61a5925cb8a3ed901fe33547f3dfc60e4d6aecaf414"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-views-20261013-01/producer-lineage-investigation-v02.json",
+      "bytes": 13151,
+      "sha256": "9247c5c2db8d615ef8de61b548f1a5f38a0f74d510369490c26125ee6aec0631"
     }
   ],
   "acceptance": {
@@ -1038,5 +1058,18 @@
     "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-custody-20261013-01/completion.json",
     "bytes": 21650,
     "sha256": "d606654f587b7d015da94d52dd3b21d094fe3b4fcc2fc8386d42beaa0e3d47b3"
+  },
+  "controller_qualification": {
+    "case_count": 60,
+    "lease": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-views-20261013-01/source-views-controller-final-v06-lease.json",
+      "bytes": 349,
+      "sha256": "7a319398350c1a8d1bfbb105c3b04c4bfbec7e6f45e8349940d4068289dae8a0"
+    },
+    "JUnit": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-views-20261013-01/source-views-controller-final-v06.xml",
+      "bytes": 10075,
+      "sha256": "44bc784404b78c88108cc44b28a70a47c0fa7e912031cd7631b340e51bd6519d"
+    }
   }
 }

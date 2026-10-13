@@ -27,8 +27,8 @@ TASKS = ("LAC-S8-011", "LAC-S8-024", "LAC-S8-044")
 # their bounded real baselines exceed the old phase7 four-MiB ceiling.
 MAX_BYTES = 16 * 1024 * 1024
 MAX_RESULT_BYTES = 900 * 1024  # Below unchanged native 1,048,576-byte file gate.
-MAX_COMPRESSED_REPORT_BYTES = 525 * 1024
-MAX_ENCODED_REPORT_BYTES = 700 * 1024
+MAX_COMPRESSED_REPORT_BYTES = 625 * 1024
+MAX_ENCODED_REPORT_BYTES = 840 * 1024
 REPORT_ENVELOPE_SCHEMA = "legal-autoformalization-source-views-real-report-envelope/v1"
 MAX_FAILURE_CASES = 5
 MAX_FAILURE_FIELD_BYTES = 512
