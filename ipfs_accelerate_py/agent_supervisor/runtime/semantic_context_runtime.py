@@ -221,6 +221,7 @@ def prepare_semantic_context(
     worker_max_bytes: int = 32768,
     worker_retrieval: dict | None = None,
     max_payload_bytes: int = 2_000_000,
+    observation_role: str = "coding",
     _refresh_lineage: dict | None = None,
 ) -> dict:
     """Build a fresh, bounded worker context using the native producer APIs.
@@ -228,6 +229,8 @@ def prepare_semantic_context(
     A private source snapshot prevents the scanner from expanding a subdirectory
     to its containing Git repository. The manifest binds every copied byte.
     Compact JSON is lossless wire minification, not a semantic equivalence proof.
+    observation_role is an owner-declared host label, outside the worker wire;
+    it does not establish a provider route, modality coverage or relevance.
     """
     from ..semantic_state.datasets_adapter import IpfsDatasetsSemanticStateProvider
     from ..semantic_state.context_pack import pack_context
@@ -244,6 +247,8 @@ def prepare_semantic_context(
     from ..semantic_state.wire import cid_for_payload, canonicalize_artifact
     from ...mcp_server.mcplusplus.kubo_cid import cid_for_bytes
 
+    if type(observation_role) is not str or observation_role not in {"planning", "coding", "review"}:
+        raise ValueError("explicit supported observation role required")
     repository = repository.resolve(strict=True)
     if type(max_symbols) is not int or not 1 <= max_symbols <= 1024:
         raise ValueError("semantic symbol bound must be an integer from 1 to 1024")
@@ -401,7 +406,7 @@ def prepare_semantic_context(
         selection_observation = build_context_selection_observation(
             # Observe the producer's exact JSON wire snapshot. Its in-memory
             # contracts can contain string enums and immutable sequences.
-            payload=json.loads(compact), payload_bytes=compact, role="coding",
+            payload=json.loads(compact), payload_bytes=compact, role=observation_role,
         )
         selection_bytes = encode_context_selection_observation(selection_observation)
     except ContextSelectionObservationLimit:
@@ -411,7 +416,7 @@ def prepare_semantic_context(
             "schema": "supervisor-context-selection-observation-unavailable@1",
             "status": "unavailable",
             "reason": "observation_resource_bound",
-            "role": "coding",
+            "role": observation_role,
         }
     else:
         selection_ref = {
@@ -420,7 +425,7 @@ def prepare_semantic_context(
             "cid": cid_for_bytes(selection_bytes),
             "sha256": hashlib.sha256(selection_bytes).hexdigest(),
             "bytes": len(selection_bytes),
-            "role": "coding",
+            "role": observation_role,
         }
     observation_seconds = time.perf_counter() - observation_started
     output.mkdir(parents=True, exist_ok=False)

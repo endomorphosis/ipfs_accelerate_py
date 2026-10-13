@@ -29,6 +29,7 @@ Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resou
 | `operational_campaign` | `runtime/operational_campaign.py` |
 | `provider_batch_scheduler` | `runtime/provider_batch_scheduler.py` |
 | `resource_scheduler` | `runtime/resource_scheduler.py` |
+| `role_context_selection` | `runtime/role_context_selection.py` |
 | `router_public_instruction` | `runtime/router_public_instruction.py` |
 | `runtime_cas` | `runtime/runtime_cas.py` |
 | `runtime_temporal_monitor` | `runtime/runtime_temporal_monitor.py` |
@@ -66,6 +67,58 @@ If the observation exceeds its own resource bounds, preparation records a fixed
 unavailable status and publishes no partial sidecar. The native context and its
 acceptance requirements remain unchanged. Oversized worker payloads skip
 observation decoding.
+
+`role_context_selection` prepares separate, immutable host artifacts for an
+explicit planning, coding or review profile. A profile binds its policy revision,
+query, capsule limit, byte limit and optional verified retrieval artifact. It
+uses the existing lexical or independently replayed retrieval selection; it is
+not a learned role ranker. Required raw sources and native admission checks stay
+in effect. Changing only the owner-declared observation role leaves worker bytes
+unchanged. The role appears in the existing selection observation and its
+DuckDB/DuckLake metadata reference; `role-context.json` additionally binds the
+profile and exact worker/observation artifacts outside the worker prompt.
+
+Use separate fresh output directories, and retain the returned reference and
+the independently chosen profile:
+
+```python
+from pathlib import Path
+from ipfs_accelerate_py.agent_supervisor.runtime.role_context_selection import (
+    RoleContextProfile, prepare_role_semantic_context, load_role_semantic_context,
+)
+
+repository = Path("/path/to/repository").resolve()
+profile = RoleContextProfile(
+    role="planning", query="public contract", capsule_limit=2,
+    policy_id="repair-context", policy_revision=1,
+)
+reference = prepare_role_semantic_context(
+    profile=profile, repository=repository,
+    paths=["code.py", "instruction.md"], program_paths=["code.py"],
+    required_raw_paths=["instruction.md"],
+    objective="Repair the program while preserving its public contract.",
+    task_id="repair-001", output=repository / ".semantic" / "planning-v1",
+)
+worker_bytes = load_role_semantic_context(
+    repository=repository, artifact=reference["artifact"],
+    expected_sha256=reference["sha256"], task_id="repair-001", profile=profile,
+)
+```
+
+The loader checks the expected profile, native producer reconstruction, current
+sources, selection controls and available observation bytes. Stale profiles
+require explicit preparation into another fresh directory; the existing native
+refresh API does not carry this host profile. An unavailable observation remains
+explicitly unavailable. Neither a role label nor a successful load establishes
+provider delivery, semantic relevance, modality coverage, proof or token savings.
+This API does not change the benchmark's current planning/coding artifact reuse
+or add a review provider route. The peer repository context compiler and planning
+consumer remain the intended integration point for mandatory domain evidence,
+question-bound expansion and retry deltas.
+
+`ContextCompiler` enforces the provider byte ceiling on both transmitted retry
+deltas and reconstructed full inputs, including consumer reverification. These
+checks supplement the existing token, invariant-core and required-coverage gates.
 
 ## Extending
 
