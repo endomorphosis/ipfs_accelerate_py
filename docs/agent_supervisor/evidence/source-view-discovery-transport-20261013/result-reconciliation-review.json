@@ -1,0 +1,297 @@
+{
+  "approval": {
+    "meaning": "The retained single merged pytest execution passed all 1,603 unique cases. The original integration runner reported fail because its collection-line regex omitted the actual standard verbose prefix. Separate reconciliation corrects that metadata interpretation while retaining all original execution evidence and its failed runner status.",
+    "remaining_substantive_blockers": [],
+    "status": "reconciliation_verified"
+  },
+  "claims": {
+    "completion_authority": false,
+    "execution_authority": false,
+    "official_task_result_established": false,
+    "omission_authority": false,
+    "proof_authority": false,
+    "total_token_savings_measured": false,
+    "training_or_model_quality_established": false,
+    "whole_repository_or_runtime_equivalence_established": false
+  },
+  "execution_input_bindings": [
+    {
+      "bytes": 106346,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/integration-01/commands.json",
+      "sha256": "26622171cd6ac057f4324cd8aea56f4f25e17b19cbb3fd96c95867fb3cf4d27a"
+    },
+    {
+      "bytes": 277480,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/integration-01/tests.stdout.log",
+      "sha256": "2abc934ed9a282bf732bb54ec8c22815049d9354f615de9682c18192d37ff99b"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/integration-01/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 317352,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/integration-01/junit.xml",
+      "sha256": "5d8615769959423db7cb713a95b735263164e3c439286fc00947e82b925ba21f"
+    }
+  ],
+  "independent_raw_observations": {
+    "accelerator_source_binding_count": 115,
+    "actual_before_after_arrays_equal": true,
+    "current_source_digest_mismatches": 0,
+    "datasets_checkout_vs_afad_Git_object_mismatches": 0,
+    "datasets_parent_pin_actually_executed_by_root_integration": true,
+    "datasets_source_binding_count": 51,
+    "distinct_testcase_identity_count": 1603,
+    "junit_totals": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 1603
+    },
+    "kit_head_before_after_equal": true,
+    "observed_checkout_heads": {
+      "accelerator": "8aafb960fd634d218478376aa18bc83f8b121dce",
+      "datasets": "afadfbcf8d33a67568c133bb761c43d42a9a133c",
+      "kit": "8ac00bb1974b1378e12091d546d8425af34049e0"
+    },
+    "pytest_exit_code": 0,
+    "pytest_invocations": 1,
+    "source_before_after_equal": true,
+    "source_binding_count": 166,
+    "stdout_final_pass_summary": "1603 passed in 830.13s (0:13:50)",
+    "testcase_count": 1603,
+    "testcase_identity": "(classname, name)",
+    "unsuccessful_case_element_counts": {
+      "error": 0,
+      "failure": 0,
+      "skipped": 0
+    }
+  },
+  "metadata_replay": {
+    "authorized_by_parent": true,
+    "command": [
+      "python",
+      "-B",
+      "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/reconcile_integration_result.py",
+      "--check"
+    ],
+    "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+    "exit_code": 0,
+    "metadata_check_only": true,
+    "product_imports": false,
+    "pytest_invocations_by_reviewer": 0,
+    "stderr": "",
+    "stdout": "{\"status\": \"pass\", \"collected_tests\": 1603, \"source_bindings_verified\": 166}\n",
+    "tests_executed": 0
+  },
+  "original_failure_classification": {
+    "actual_collection_line": "collecting ... collected 1603 items",
+    "corrected_pattern": "^(?:collecting \\.\\.\\. )?collected ([0-9]+) items?\\s*$",
+    "corrected_pattern_match_count": 1,
+    "kind": "collection_count_parser_metadata_failure",
+    "observed_count": 1603,
+    "original_collected_count_observations": [],
+    "original_collected_tests": null,
+    "original_collection_execution_count_agrees": false,
+    "original_pattern": "^collected ([0-9]+) items?\\s*$",
+    "original_pattern_match_count": 0,
+    "original_runner_status": "fail",
+    "pytest_exit_code": 0,
+    "source": "Original integration_runner.py count parser and preserved stdout; exact input hashes are bound below.",
+    "test_execution_failure": false
+  },
+  "preservation": {
+    "all_16_failed_attempt_artifacts_preserved": true,
+    "original_commands_status_and_bytes_preserved": true,
+    "original_execution_logs_and_JUnit_bytes_preserved": true,
+    "original_integration_and_full_runners_preserved": true,
+    "result_reconciliation_receipt_not_rewritten_by_reviewer": true,
+    "reviewer_output_only": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/result-reconciliation-review.json",
+    "reviewer_product_test_or_prior_evidence_edits": [],
+    "three_prior_review_JSONs_preserved": true
+  },
+  "preserved_prior_bindings": [
+    {
+      "bytes": 58573,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/independent-review.json",
+      "preserved_unchanged": true,
+      "sha256": "199c5d52e8b3a715e684a235ee77b177e52efd7047bebd0ed957008a00ee8094"
+    },
+    {
+      "bytes": 51984,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/independent-review-02.json",
+      "preserved_unchanged": true,
+      "sha256": "738a759b5271b0aff91ceaaef173d967e0ce5c719ec168257f155ea768c000df"
+    },
+    {
+      "bytes": 94103,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/integration-review.json",
+      "preserved_unchanged": true,
+      "sha256": "f33c7547b52c5fc9e1e3bb4ddb4763aae3039d1c2e8d9447d48c435f1440ec3d"
+    },
+    {
+      "bytes": 25473,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/integration_runner.py",
+      "preserved_unchanged": true,
+      "sha256": "c5a1be94f25cfa7269966bc0f6ca6c10c261d6542c59059d3f57655a06ed8d3d"
+    },
+    {
+      "bytes": 18021,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification_runner.py",
+      "preserved_unchanged": true,
+      "sha256": "187a352e3252fe53286f900511476f86cb41af60993b25af7489f2e918798b24"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-01/collection.stderr.log",
+      "preserved_unchanged": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 173647,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-01/collection.stdout.log",
+      "preserved_unchanged": true,
+      "sha256": "4ba83c1a6b2c3459207e3343c3c7948792de43c1b612f0658ef97103339a20be"
+    },
+    {
+      "bytes": 84521,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-01/commands.json",
+      "preserved_unchanged": true,
+      "sha256": "2148ffa4860c6f5311552f4fe5964e44c0a84aa9edefc237174b255904915b9a"
+    },
+    {
+      "bytes": 8992,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-01/junit.xml",
+      "preserved_unchanged": true,
+      "sha256": "840cbe2af1cf506a829f084ba4dd00de5609734a1dcf87e88821bc42608bef81"
+    },
+    {
+      "bytes": 183013,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-01/nodeids.json",
+      "preserved_unchanged": true,
+      "sha256": "bd5d85311c14c9dac60b54fb76ac27ecbf4c1624892fa1d2210172d064ad1b07"
+    },
+    {
+      "bytes": 36139,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-01/test_worker_source_discovery_transport.py.snapshot.txt",
+      "preserved_unchanged": true,
+      "sha256": "802c899f0b5d14ba3cfad23aa6dbc3b9b0922c7651ac03243458be281dd28a3b"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-01/tests.stderr.log",
+      "preserved_unchanged": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 3150,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-01/tests.stdout.log",
+      "preserved_unchanged": true,
+      "sha256": "88e101475c91bb7ff0caaf6ef277de7ad05d4b1cd302dd6c13004ab850b18f30"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-02/collection.stderr.log",
+      "preserved_unchanged": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 173647,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-02/collection.stdout.log",
+      "preserved_unchanged": true,
+      "sha256": "3e42059da072724d028914f753e44f334ea2a3a80ffad1718b3d4864f6ba6d66"
+    },
+    {
+      "bytes": 84522,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-02/commands.json",
+      "preserved_unchanged": true,
+      "sha256": "c020f42cf909198be3313c59089e8ea583dc7da83c7a0daea0c566140f11e21d"
+    },
+    {
+      "bytes": 108399,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-02/junit.xml",
+      "preserved_unchanged": true,
+      "sha256": "df60ef242662e039171cbb76126d11f89168bac21bb81dd15043870a15953d5b"
+    },
+    {
+      "bytes": 183013,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-02/nodeids.json",
+      "preserved_unchanged": true,
+      "sha256": "bd5d85311c14c9dac60b54fb76ac27ecbf4c1624892fa1d2210172d064ad1b07"
+    },
+    {
+      "bytes": 13166,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-02/test_source_view_worker_wiring.py.snapshot.txt",
+      "preserved_unchanged": true,
+      "sha256": "b3ca3996fa6c44d525fe65c020ddb97a778c2c3a9dd3d81c8945e2394b63dc99"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-02/tests.stderr.log",
+      "preserved_unchanged": true,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 5964,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-02/tests.stdout.log",
+      "preserved_unchanged": true,
+      "sha256": "0d5710cb41411b3e20c8727b0088512a95d8137e67638212b98036a70b1177ae"
+    }
+  ],
+  "reconciler_source_binding": {
+    "bytes": 7375,
+    "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/reconcile_integration_result.py",
+    "sha256": "c7b55ebd24aebaf910dbb02c0c157f2f6eeb12a8459773b6d44e19917b9577f8"
+  },
+  "reconciliation_result_binding": {
+    "bytes": 2273,
+    "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/integration-01/result-reconciliation.json",
+    "sha256": "1e50dd1dafa7dc9fc8273ad35317e7fd65aee3b25375eca01f1b2a2ede9b57ff"
+  },
+  "reviewed_at_utc": "2026-10-13T05:44:50.577091+00:00",
+  "reviewer": {
+    "agent": "/root/displacement_contract_audit",
+    "authorship_boundary": "Reviewer authored the original source client, independently reviewed source consumers and integration, and now independently reviewed the root-authored standard-library result reconciler. This is an evidence metadata replay, not a new product qualification."
+  },
+  "schema": "source-view-discovery-transport-result-reconciliation-review@1",
+  "scope_limits": [
+    "The pass interpretation applies to these 1,603 local tests and the 166 listed source bindings. It is neither whole-runtime/toolchain attestation nor an official TerminalBench result.",
+    "The earlier qualification-01 and qualification-02 fixture failures remain retained and are not reclassified as passes. Only the completed merged integration count parser metadata is reconciled.",
+    "The metadata replay does not run models, embeddings, distillation, providers, solvers, Docker or tests, and does not establish reconstruction quality, proof, source omission authority or total token savings."
+  ],
+  "static_reconciler_review": {
+    "findings": [
+      {
+        "finding": "Requires the precise original count-parser failure shape and rejects runner, final-source or JUnit observation errors; requires one pytest invocation with exit zero.",
+        "line": 37
+      },
+      {
+        "finding": "Checks exact stdout/stderr sizes and hashes and JUnit hash against the original command receipt before interpreting any counts.",
+        "line": 49
+      },
+      {
+        "finding": "Accepts only an optional exact collecting ... prefix before the same collected N items line, then requires one positive count.",
+        "line": 54
+      },
+      {
+        "finding": "Requires collection count, recorded JUnit totals, actual unique nonempty (classname,name) identities, and recorded testcase counts to agree, with zero failure/error/skipped elements.",
+        "line": 58
+      },
+      {
+        "finding": "Requires before/after source equality, retained DS execution/reference/HEAD equality, current DS and kit HEADs, historical runner/codec guards, and every current source digest; DS source bytes must also match immutable Git objects.",
+        "line": 70
+      },
+      {
+        "finding": "Produces a separate source-scope receipt retaining original_runner_status=fail, input digests and reconciler digest, with tests_rerun=False, product_imports=False, and no official task/proof/token-savings claim.",
+        "line": 101
+      },
+      {
+        "finding": "--check rebuilds the metadata and compares it with the existing receipt after removing only its recording timestamp; it does not rewrite any retained receipt.",
+        "line": 119
+      }
+    ],
+    "scope": "Bounded retained phase evidence from this one completed run. This is not an authorization validator for arbitrary external receipts."
+  }
+}

@@ -138,7 +138,7 @@ replacement of the original conversation content.
 | Contract | Current capability | Next acceptance condition |
 | --- | --- | --- |
 | Restore an unchanged snapshot | Exact bytes from retained original blobs and deterministic view maps | Already qualified within the admitted inventory; retain explicit coverage frontiers |
-| Navigate a complete admitted repository | Complete stored inventory; smaller bounded coding-reader population | Page repository-wide path/symbol discovery into task-specific read scopes without sending every body or removing response bounds |
+| Navigate a complete admitted repository | Complete stored inventory; path/pin discovery within the bounded coding-reader population | Page repository-wide path/symbol discovery into task-specific read scopes without sending every body or removing response bounds |
 | Preserve edits made while using compact views | Host-only preimage-bound mapping and one-file application in a clean fenced candidate; expanded-source editing and working refresh remain available | Qualify the actual worker write tool, repeated candidate edits and explicit population deltas for supported create/move/delete operations |
 | Execute a physically minified checkout | No such profile | Separate language/runtime/import/reflection/tooling validation and original-task acceptance |
 | Reduce total provider tokens | No qualified compact-source session benefit | Show displaced content and repeated reads, then compare complete native usage at equal official success |
@@ -212,8 +212,12 @@ adding a more aggressive source transform.
 
 The [shared-policy qualification](evidence/shared-source-view-policy-20261013/README.md)
 now passes 798 selected regressions, including 52 new policy cases, without
-changing codec bytes or existing model assets. This is owner API convergence;
-actual coding-client policy selection and source discovery remain open.
+changing codec bytes or existing model assets. The subsequent
+[discovery and policy transport](evidence/source-view-discovery-transport-20261013/README.md)
+passes 1,603 selected tests, including 79 new transport cases, and adds an actual
+client operation for admitted paths carrying an owner-selected shared policy
+through the source socket. Benchmark-level shared-policy selection
+and repository-wide admission remain open.
 
 The legacy complete inventory and coding reader share a codec but select views
 differently: inventory handles `.py`/`.pyi` and caller-protected lines, while
@@ -223,18 +227,23 @@ now converges inventory, host reader and edit adapter on one resolver. New
 versioned roots/admissions bind configuration and resolver/codec identity to
 the admitted path/source generation; the mapper consumes the checked owner
 projection. Old defaults, codec manifests, roots and checkpoints retain their
-identities. Shared pages are host-only in this increment and intentionally
-refuse through the legacy closed worker protocol. Coordinated transport support
-and reader discovery remain open before model-facing selection or full export.
+identities. Shared pages now use descriptor version 2 and request version 3;
+the owner fixes the policy, and the client selects that pinned protocol. Legacy
+requests refuse shared pages. The benchmark's existing profile flag still selects
+legacy defaults; adding a frozen shared-policy configuration remains separate
+from carrying an already admitted owner policy or exporting a filesystem.
 
 [`WorkerSourceViews.discovery()`](../../ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py)
-already produces bounded host path/pin pages. The actual
+produces bounded host path/pin pages. The actual
 [worker client](../../ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py)
-requires `--path`, and its closed request/broker protocol does not expose that
-discovery operation. Expose it first within the existing admitted scope. Then
-join complete inventory metadata to bounded task-specific source admission,
-retaining excluded, unsupported and unresolved frontiers. Discovering a path
-does not authorize a new source read or expand the current 64-file limit.
+now offers `--discover` alongside `--path`, validates the closed metadata shape
+and joins shared pages to descriptor policy/scope pins. Discovery contains no
+source bodies, verifies deterministic cache projections, and charges its wire
+bytes while counting rows separately from source slices. It remains baseline
+only within the existing admitted scope. Next, join complete inventory metadata
+to bounded task-specific source admission, retaining excluded, unsupported and
+unresolved frontiers. Discovering a path does not authorize a new source read or
+expand the current 64-file limit.
 
 Present discovery, symbol/span selection, compact reads, exact expansion and
 candidate capsules as one model-facing workflow. Retain the distinct native
@@ -524,11 +533,14 @@ The immediate implementation order within those steps is:
 | Matched live comparison | Same route, provider/model and task controls; repeated official outcomes and complete all-attempt usage |
 | IR/proof reuse ablations | Add one relevant family or checked fact at a time, preserving source/model/dependency identity and cold versus reused setup costs |
 
-These are proposed increments. The retained compact-edit qualification now
-includes 729 passing combined regressions and 11 authored numerical fixture
-cases; neither is a new execution in this documentation audit or a live token
-measurement. No new training, decoder, embeddings or database owner are needed
-to establish the first four increments.
+Shared owner policy is implemented. The discovery/transport increment adds
+client paging within the admitted population and carries an owner-selected
+policy; joining repository-wide metadata to new admission remains open. General
+read observations and subsequent comparisons remain proposed. The earlier
+compact-edit bundle retains its 729-test and 11 authored numerical-fixture
+results; this phase records its own selected regression run separately, without
+a live token measurement. No new training, decoder, embeddings or database owner
+are needed to establish the first four increments.
 
 ## Provide repository-wide views with explicit edit handling
 

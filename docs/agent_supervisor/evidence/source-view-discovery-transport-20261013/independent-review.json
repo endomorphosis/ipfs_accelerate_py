@@ -1,0 +1,986 @@
+{
+  "accelerator_baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+  "accelerator_execution_head_observed": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+  "approval": {
+    "meaning": "No remaining substantive blocker found in the reviewed frozen source-reader discovery/shared-policy integrations. This static approval is not a qualification pass, provider outcome, native task result or token-savings result.",
+    "remaining_substantive_blockers": [],
+    "status": "approved_for_scoped_offline_qualification"
+  },
+  "claims": {
+    "canonical_read_interception_established": false,
+    "completion_authority": false,
+    "execution_authority": false,
+    "official_task_result_established": false,
+    "omission_authority": false,
+    "proof_authority": false,
+    "provider_token_savings_established": false,
+    "semantic_equivalence_established": false,
+    "whole_codebase_minified_toggle_established": false,
+    "whole_repository_or_runtime_equivalence_established": false
+  },
+  "datasets": {
+    "execution_head_observed": "f47161b757190380e9898aff155067c1ad609217",
+    "execution_revision": "f47161b757190380e9898aff155067c1ad609217",
+    "mismatch_count": 0,
+    "parent_pin_executed_by_qualification": false,
+    "parent_pin_executed_by_reviewer": false,
+    "parent_pin_reference_only": "5723a541c5d575b88f01532e4d241dc95a1f3e99",
+    "scope": "Only the 29 listed runner dependencies are byte-identical between execution Git objects, updated parent-reference Git objects and execution checkout. No whole-datasets, runtime, environment, solver or toolchain equivalence is asserted.",
+    "scoped_dependency_count": 29,
+    "source_comparisons": [
+      {
+        "execution_blob_oid": "7d8b29b674206355ec12a84f69920a819338e43c",
+        "execution_checkout_bytes": 56829,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9",
+        "execution_object_bytes": 56829,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9",
+        "parent_reference_blob_oid": "7d8b29b674206355ec12a84f69920a819338e43c",
+        "parent_reference_object_bytes": 56829,
+        "parent_reference_object_sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9",
+        "path": "ipfs_datasets_py/__init__.py"
+      },
+      {
+        "execution_blob_oid": "e0bb0d8e74e83cd6bc24513e48f6759bce8c575a",
+        "execution_checkout_bytes": 86862,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+        "execution_object_bytes": 86862,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+        "parent_reference_blob_oid": "e0bb0d8e74e83cd6bc24513e48f6759bce8c575a",
+        "parent_reference_object_bytes": 86862,
+        "parent_reference_object_sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+        "path": "ipfs_datasets_py/logic/backends/smt/compiler.py"
+      },
+      {
+        "execution_blob_oid": "913cead23854064b5958a973a663a6fc8644f36e",
+        "execution_checkout_bytes": 51399,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+        "execution_object_bytes": 51399,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+        "parent_reference_blob_oid": "913cead23854064b5958a973a663a6fc8644f36e",
+        "parent_reference_object_bytes": 51399,
+        "parent_reference_object_sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+        "path": "ipfs_datasets_py/logic/families/registry.py"
+      },
+      {
+        "execution_blob_oid": "346f8e3fc2dea42192062e141d4d414019d9e287",
+        "execution_checkout_bytes": 57876,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+        "execution_object_bytes": 57876,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+        "parent_reference_blob_oid": "346f8e3fc2dea42192062e141d4d414019d9e287",
+        "parent_reference_object_bytes": 57876,
+        "parent_reference_object_sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+        "path": "ipfs_datasets_py/logic/software_contracts/cache.py"
+      },
+      {
+        "execution_blob_oid": "17b7912dd99c7bfcaa8d95efa71d0e4d52c06de8",
+        "execution_checkout_bytes": 22146,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+        "execution_object_bytes": 22146,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+        "parent_reference_blob_oid": "17b7912dd99c7bfcaa8d95efa71d0e4d52c06de8",
+        "parent_reference_object_bytes": 22146,
+        "parent_reference_object_sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+        "path": "ipfs_datasets_py/logic/software_contracts/content.py"
+      },
+      {
+        "execution_blob_oid": "7f1c1c1d629ed34e2e67251ec6a9820fb7b87817",
+        "execution_checkout_bytes": 53460,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+        "execution_object_bytes": 53460,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+        "parent_reference_blob_oid": "7f1c1c1d629ed34e2e67251ec6a9820fb7b87817",
+        "parent_reference_object_bytes": 53460,
+        "parent_reference_object_sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+        "path": "ipfs_datasets_py/logic/software_contracts/python_frontend.py"
+      },
+      {
+        "execution_blob_oid": "26b2b6dd6e699a5a2e88686ecbff7d4262dd7f1b",
+        "execution_checkout_bytes": 22314,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d",
+        "execution_object_bytes": 22314,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d",
+        "parent_reference_blob_oid": "26b2b6dd6e699a5a2e88686ecbff7d4262dd7f1b",
+        "parent_reference_object_bytes": 22314,
+        "parent_reference_object_sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py"
+      },
+      {
+        "execution_blob_oid": "874470606a0e28cd103b42c7d2e00155f386dad9",
+        "execution_checkout_bytes": 14891,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15",
+        "execution_object_bytes": 14891,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15",
+        "parent_reference_blob_oid": "874470606a0e28cd103b42c7d2e00155f386dad9",
+        "parent_reference_object_bytes": 14891,
+        "parent_reference_object_sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py"
+      },
+      {
+        "execution_blob_oid": "99660842f38aff730abf7c8ef58250e39b97de62",
+        "execution_checkout_bytes": 8128,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102",
+        "execution_object_bytes": 8128,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102",
+        "parent_reference_blob_oid": "99660842f38aff730abf7c8ef58250e39b97de62",
+        "parent_reference_object_bytes": 8128,
+        "parent_reference_object_sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py"
+      },
+      {
+        "execution_blob_oid": "87074b234b82bfdde77572b5caf0a9603257b49d",
+        "execution_checkout_bytes": 34958,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75",
+        "execution_object_bytes": 34958,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75",
+        "parent_reference_blob_oid": "87074b234b82bfdde77572b5caf0a9603257b49d",
+        "parent_reference_object_bytes": 34958,
+        "parent_reference_object_sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py"
+      },
+      {
+        "execution_blob_oid": "711658231a1174565b85577366b7b74b37106128",
+        "execution_checkout_bytes": 22375,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68",
+        "execution_object_bytes": 22375,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68",
+        "parent_reference_blob_oid": "711658231a1174565b85577366b7b74b37106128",
+        "parent_reference_object_bytes": 22375,
+        "parent_reference_object_sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py"
+      },
+      {
+        "execution_blob_oid": "eb338af638187bb5fcce4967e970d584e35e91f3",
+        "execution_checkout_bytes": 30681,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "45a0ab3fae08e91db2971540e5d933c8e82c47e7f65b3e5ec88912dbedc67ab4",
+        "execution_object_bytes": 30681,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "45a0ab3fae08e91db2971540e5d933c8e82c47e7f65b3e5ec88912dbedc67ab4",
+        "parent_reference_blob_oid": "eb338af638187bb5fcce4967e970d584e35e91f3",
+        "parent_reference_object_bytes": 30681,
+        "parent_reference_object_sha256": "45a0ab3fae08e91db2971540e5d933c8e82c47e7f65b3e5ec88912dbedc67ab4",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/pytest_analysis.py"
+      },
+      {
+        "execution_blob_oid": "40bfc116b007f5f0368fee2f4073957d7a3960fd",
+        "execution_checkout_bytes": 54595,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "744c5d1699403239d3eb5e9588a38a38cbc0cc56799c2884d8821f1a4e1bdd76",
+        "execution_object_bytes": 54595,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "744c5d1699403239d3eb5e9588a38a38cbc0cc56799c2884d8821f1a4e1bdd76",
+        "parent_reference_blob_oid": "40bfc116b007f5f0368fee2f4073957d7a3960fd",
+        "parent_reference_object_bytes": 54595,
+        "parent_reference_object_sha256": "744c5d1699403239d3eb5e9588a38a38cbc0cc56799c2884d8821f1a4e1bdd76",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py"
+      },
+      {
+        "execution_blob_oid": "920781061c7f34ab9cc710bbbbe306590b64f73d",
+        "execution_checkout_bytes": 32144,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+        "execution_object_bytes": 32144,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+        "parent_reference_blob_oid": "920781061c7f34ab9cc710bbbbe306590b64f73d",
+        "parent_reference_object_bytes": 32144,
+        "parent_reference_object_sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py"
+      },
+      {
+        "execution_blob_oid": "3f222cfb5917abf32c01108ccbd835d24f793662",
+        "execution_checkout_bytes": 48191,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+        "execution_object_bytes": 48191,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+        "parent_reference_blob_oid": "3f222cfb5917abf32c01108ccbd835d24f793662",
+        "parent_reference_object_bytes": 48191,
+        "parent_reference_object_sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py"
+      },
+      {
+        "execution_blob_oid": "add09f7e03aef556b67b2ec1cef26324dede34d0",
+        "execution_checkout_bytes": 18520,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "4e269d1e2f39ea27582e98f240996696d61b0fe0b1358e363ff2376baa7972e3",
+        "execution_object_bytes": 18520,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "4e269d1e2f39ea27582e98f240996696d61b0fe0b1358e363ff2376baa7972e3",
+        "parent_reference_blob_oid": "add09f7e03aef556b67b2ec1cef26324dede34d0",
+        "parent_reference_object_bytes": 18520,
+        "parent_reference_object_sha256": "4e269d1e2f39ea27582e98f240996696d61b0fe0b1358e363ff2376baa7972e3",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py"
+      },
+      {
+        "execution_blob_oid": "07ed4927be7f1d1dad1825796989ec0dfa93abef",
+        "execution_checkout_bytes": 43440,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51",
+        "execution_object_bytes": 43440,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51",
+        "parent_reference_blob_oid": "07ed4927be7f1d1dad1825796989ec0dfa93abef",
+        "parent_reference_object_bytes": 43440,
+        "parent_reference_object_sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py"
+      },
+      {
+        "execution_blob_oid": "234fea82b071c80f9f7ddc8b33909257cdf6400c",
+        "execution_checkout_bytes": 20976,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc",
+        "execution_object_bytes": 20976,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc",
+        "parent_reference_blob_oid": "234fea82b071c80f9f7ddc8b33909257cdf6400c",
+        "parent_reference_object_bytes": 20976,
+        "parent_reference_object_sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/bindings.py"
+      },
+      {
+        "execution_blob_oid": "f2162e00dc4e6f17755463141cf153a02443d65a",
+        "execution_checkout_bytes": 31668,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d",
+        "execution_object_bytes": 31668,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d",
+        "parent_reference_blob_oid": "f2162e00dc4e6f17755463141cf153a02443d65a",
+        "parent_reference_object_bytes": 31668,
+        "parent_reference_object_sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py"
+      },
+      {
+        "execution_blob_oid": "2dd0c89502613d5bd705ba91c8ce048b050a6da6",
+        "execution_checkout_bytes": 33366,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0",
+        "execution_object_bytes": 33366,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0",
+        "parent_reference_blob_oid": "2dd0c89502613d5bd705ba91c8ce048b050a6da6",
+        "parent_reference_object_bytes": 33366,
+        "parent_reference_object_sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/merkle.py"
+      },
+      {
+        "execution_blob_oid": "b86dae240c3f90bc3de0967bd7cde14f795c53b4",
+        "execution_checkout_bytes": 102763,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586",
+        "execution_object_bytes": 102763,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586",
+        "parent_reference_blob_oid": "b86dae240c3f90bc3de0967bd7cde14f795c53b4",
+        "parent_reference_object_bytes": 102763,
+        "parent_reference_object_sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py"
+      },
+      {
+        "execution_blob_oid": "40fd1568678706af29dbaf7011dbb24bd131be03",
+        "execution_checkout_bytes": 44955,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+        "execution_object_bytes": 44955,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+        "parent_reference_blob_oid": "40fd1568678706af29dbaf7011dbb24bd131be03",
+        "parent_reference_object_bytes": 44955,
+        "parent_reference_object_sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py"
+      },
+      {
+        "execution_blob_oid": "24906aebfd5dfa3a15b5950d5cf000bdbf4928d6",
+        "execution_checkout_bytes": 6798,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+        "execution_object_bytes": 6798,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+        "parent_reference_blob_oid": "24906aebfd5dfa3a15b5950d5cf000bdbf4928d6",
+        "parent_reference_object_bytes": 6798,
+        "parent_reference_object_sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py"
+      },
+      {
+        "execution_blob_oid": "e7bc6dd90057c907a9cbbdc9db767ac4eee76344",
+        "execution_checkout_bytes": 28735,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+        "execution_object_bytes": 28735,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+        "parent_reference_blob_oid": "e7bc6dd90057c907a9cbbdc9db767ac4eee76344",
+        "parent_reference_object_bytes": 28735,
+        "parent_reference_object_sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_source.py"
+      },
+      {
+        "execution_blob_oid": "9da72916ff034adef5342fc41bc74c0ab422ccb9",
+        "execution_checkout_bytes": 58065,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+        "execution_object_bytes": 58065,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+        "parent_reference_blob_oid": "9da72916ff034adef5342fc41bc74c0ab422ccb9",
+        "parent_reference_object_bytes": 58065,
+        "parent_reference_object_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+        "path": "ipfs_datasets_py/logic/software_verification/program.py"
+      },
+      {
+        "execution_blob_oid": "693228e46e6559d40be6a0bcd17d3a633e168d72",
+        "execution_checkout_bytes": 76841,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003",
+        "execution_object_bytes": 76841,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003",
+        "parent_reference_blob_oid": "693228e46e6559d40be6a0bcd17d3a633e168d72",
+        "parent_reference_object_bytes": 76841,
+        "parent_reference_object_sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003",
+        "path": "ipfs_datasets_py/logic/software_verification/source_adapters.py"
+      },
+      {
+        "execution_blob_oid": "02f886dde43eea867a1066e910a55cf364d6d37b",
+        "execution_checkout_bytes": 47941,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+        "execution_object_bytes": 47941,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+        "parent_reference_blob_oid": "02f886dde43eea867a1066e910a55cf364d6d37b",
+        "parent_reference_object_bytes": 47941,
+        "parent_reference_object_sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+        "path": "ipfs_datasets_py/logic/software_verification/syntax_bridge.py"
+      },
+      {
+        "execution_blob_oid": "129c5c4079d2ef05924bcf62c76fb7d3fd22d5e7",
+        "execution_checkout_bytes": 56966,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+        "execution_object_bytes": 56966,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+        "parent_reference_blob_oid": "129c5c4079d2ef05924bcf62c76fb7d3fd22d5e7",
+        "parent_reference_object_bytes": 56966,
+        "parent_reference_object_sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+        "path": "ipfs_datasets_py/logic/syntax_core/ast.py"
+      },
+      {
+        "execution_blob_oid": "ce8eb3447fdb9ed57c348e0cb16fe60528d440b6",
+        "execution_checkout_bytes": 30488,
+        "execution_checkout_matches_object": true,
+        "execution_checkout_sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf",
+        "execution_object_bytes": 30488,
+        "execution_object_matches_parent_object": true,
+        "execution_object_sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf",
+        "parent_reference_blob_oid": "ce8eb3447fdb9ed57c348e0cb16fe60528d440b6",
+        "parent_reference_object_bytes": 30488,
+        "parent_reference_object_sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf",
+        "path": "ipfs_datasets_py/logic/syntax_core/signatures.py"
+      }
+    ],
+    "source_path_origin": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification_runner.py DATASETS_SOURCES parsed as a restricted static expression without module execution"
+  },
+  "initial_finding_and_resolution": {
+    "finding": "An exact SourceViewPolicy object mutated to profile disabled could compare equal to disabled argv and return None before validating the full policy. Invalid explicit policy configuration was silently ignored.",
+    "initial_line": 178,
+    "initial_path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+    "initial_source_sha256": "1e5298b4be7b18e8b9a9b90c00b0e9a00761511cb5725bef5864cb99ae5e10c7",
+    "regression_execution_by_reviewer": false,
+    "regression_path": "test/api/test_worker_source_discovery_transport.py",
+    "regression_test": "test_owner_policy_disabled_or_resolver_drift_refuses_before_session",
+    "resolution": "Root added exact SourceViewPolicy type validation and view_policy.to_dict() before the profile equality and disabled return. Static re-review confirms mutated/unsupported profiles fail policy validation before prompt consumption or session construction.",
+    "resolved_line": 180,
+    "resolved_path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py"
+  },
+  "limits": [
+    "Discovery covers only the existing task-admitted bounded population: up to 64 canonical source paths and the existing one-MiB source bound. It is not complete repository inventory export or a whole-filesystem minified state.",
+    "Discovery is for the baseline admission. A changed workspace invalidates baseline discovery; working-candidate read/context generation is separate and does not admit new paths or refresh accepted formal evidence.",
+    "This transport does not intercept ordinary cat/grep/tool reads, make compact text executable, implement a whole-codebase toggle, or change the already implemented host-only mapped edit workflow.",
+    "Legacy audit schemas remain structurally supported, but guidance digests are checked against the matching software guidance implementation; historical archives require their source revision and are not granted cross-version replay by this static review.",
+    "The isolated CLI fixture authors the descriptor UID loader seam under one UID. It exercises the real socket/registered descendant path when run, but does not by itself qualify a separate owner/worker filesystem boundary.",
+    "Byte and row accounting is not tokenizer usage, unique source coverage, model comprehension, semantic equivalence, native task correctness or total TerminalBench savings. No provider/model/solver outcome is established."
+  ],
+  "preservation": {
+    "codec_and_pure_mapper_equal_baseline": true,
+    "current_tracked_changed_paths_observed": [
+      "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py",
+      "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "docs/agent_supervisor/reversible_source_views.md",
+      "docs/agent_supervisor/worker_source_views.md",
+      "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py"
+    ],
+    "current_untracked_paths_observed": [
+      "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/.gitattributes",
+      "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/README.md",
+      "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification_runner.py",
+      "test/api/test_worker_source_discovery_transport.py"
+    ],
+    "parallel_comparator_equal_baseline": true,
+    "policy_resolver_and_host_edit_adapter_equal_baseline": true,
+    "prior_phase_tracked_evidence_changed_paths": [],
+    "reviewer_output_only": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/independent-review.json",
+    "reviewer_product_or_test_edits_during_final_review": [],
+    "scope": "The observed change set is source-reader protocol/integration, tests, docs and new phase evidence. The reviewer changed no decoder checkpoints, embeddings, datasets, prior phase evidence, model registry or remote repositories. This is not a fresh filesystem-wide model asset inventory."
+  },
+  "qualification": {
+    "collection_executed_by_reviewer": false,
+    "execution_owner": "/root",
+    "product_modules_imported_by_reviewer": false,
+    "qualification_outcome_adjudicated_by_this_static_review": false,
+    "runner_path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification_runner.py",
+    "status": "Root-owned qualification is separate; this artifact records no qualification result and predicts no pass.",
+    "target_count": 35,
+    "targets": [
+      "test/api/test_worker_source_discovery_transport.py",
+      "test/api/test_shared_source_view_policy.py",
+      "test/api/test_reversible_source_view.py",
+      "test/api/test_repository_code_view_inventory.py",
+      "test/api/test_repository_source_inventory.py",
+      "test/api/test_worker_source_views.py",
+      "test/api/test_worker_source_working_views.py",
+      "test/api/test_source_view_edits.py",
+      "test/api/test_source_view_edit_adversarial.py",
+      "test/api/test_source_view_edit_candidate.py",
+      "test/api/test_source_view_edit_formal_refresh.py",
+      "test/api/test_worker_candidate_context.py",
+      "test/api/test_worker_candidate_context_admission.py",
+      "test/api/test_worker_candidate_context_client.py",
+      "test/api/test_worker_candidate_context_broker.py",
+      "test/api/test_worker_source_client.py",
+      "test/api/test_worker_source_working_client.py",
+      "test/api/test_worker_source_broker.py",
+      "test/api/test_worker_source_working_broker.py",
+      "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py",
+      "benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+      "test/api/test_numerical_obligation_client.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py",
+      "benchmarks/agent_supervisor/container_coding/test_numerical_obligation_worker_wiring.py",
+      "test/api/test_numerical_obligation_router.py",
+      "test/api/test_semantic_router_translation.py",
+      "test/api/test_semantic_router_integration.py",
+      "test/api/test_source_lookup_worker_router.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py",
+      "test/api/test_context_selection_observation.py",
+      "test/api/test_context_selection_preparation.py",
+      "benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py"
+    ],
+    "tests_executed_by_reviewer": 0
+  },
+  "review_findings": [
+    {
+      "finding": "Descriptor@2 adds exact policy and baseline scope digests; request@3 distinguishes closed discovery/read queries. Legacy descriptor@1 and requests@1/@2 retain their field shapes. Shared owner sessions refuse old source reads and mismatched/null policy selection, while legacy discovery requests use null policy. Worker requests do not choose or mutate codec profiles. The owner factory requires a valid explicit policy whose profile matches non-disabled argv.",
+      "sources": [
+        {
+          "line": 74,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+        },
+        {
+          "line": 24,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py"
+        },
+        {
+          "line": 171,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py"
+        }
+      ],
+      "status": "no_remaining_blocker",
+      "topic": "Closed versioned source wire and explicit owner policy"
+    },
+    {
+      "finding": "Optional descriptor_schema defaults to the previous numerical/source schema. Descriptor validation and current-context checks occur before descriptor publication/listen; failure cleans up the same socket/descriptor identities. Client discovery and reads share the existing authenticated, deadline-bound peer/socket transport. No separate owner, permission grant or delivery bypass was added.",
+      "sources": [
+        {
+          "line": 114,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py"
+        },
+        {
+          "line": 375,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+        }
+      ],
+      "status": "no_remaining_blocker",
+      "topic": "Descriptor construction and authenticated child lifecycle"
+    },
+    {
+      "finding": "Owner sessions pin semantic artifact, source admission, policy digest and baseline scope. Discovery/baseline reads require baseline source currentness. Working reads use the existing captured candidate generation and original baseline admission; source page@4 retains false baseline evidence applicability. Shared baseline/discovery pages join the descriptor baseline scope; working candidate scope is not incorrectly compared with baseline scope. Existing candidate-context requests remain available under their prior generation contracts.",
+      "sources": [
+        {
+          "line": 78,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py"
+        },
+        {
+          "line": 97,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py"
+        },
+        {
+          "line": 173,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+        }
+      ],
+      "status": "no_remaining_blocker",
+      "topic": "Baseline and working-candidate identity separation"
+    },
+    {
+      "finding": "Discovery checks exact captured originals, view-key population and retained cache equality, then independently rebuilds each exported projection before emitting its pins. The wire exposes only bounded sorted unique canonical paths, sizes, effective profiles and digests; no body, restoration map or private database locator. Row offsets/counts/exhaustion, continuation budget and query binding remain explicit; one-use cursor identity is enforced by the host.",
+      "sources": [
+        {
+          "line": 454,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py"
+        },
+        {
+          "line": 287,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+        }
+      ],
+      "status": "no_remaining_blocker",
+      "topic": "Discovery rows rebuilt from current admitted source population"
+    },
+    {
+      "finding": "Shared dispatch receipt@2 joins both descriptor digests and semantic/boundary/profile identity; legacy receipt@1 remains closed. Shared audit@3 requires typed discovery fields on every record. Historical legacy audit records without a complete discovery vocabulary remain unknown rather than counted as zero. Discovery pages/rows, candidate bytes and source slice bytes are distinct; generic accounting still verifies exact prepared/delivered transport response totals. Repeated reads/rows remain counted as repeated delivery rather than unique source coverage.",
+      "sources": [
+        {
+          "line": 198,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+        },
+        {
+          "line": 37,
+          "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py"
+        },
+        {
+          "line": 75,
+          "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py"
+        },
+        {
+          "line": 113,
+          "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py"
+        }
+      ],
+      "status": "no_remaining_blocker",
+      "topic": "Router receipt and historical accounting separation"
+    },
+    {
+      "finding": "All six changed product/collector paths already appear in the unchanged explicit capability SOURCE_PATHS set. Existing package and benchmark Python-file enumeration includes these existing files in rebuilt archives. Changed bytes require matching source guard hashes; there is no newly unpinned filename. Ordinary isolated deployment still calls the existing factory without explicit view_policy, so shared policy remains a host API opt-in rather than a new implicit benchmark setting.",
+      "sources": [
+        {
+          "line": 17,
+          "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py"
+        },
+        {
+          "line": 89,
+          "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py"
+        },
+        {
+          "line": 843,
+          "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py"
+        },
+        {
+          "line": 113,
+          "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py"
+        }
+      ],
+      "status": "no_remaining_blocker",
+      "topic": "Source pins and runtime archive population"
+    },
+    {
+      "finding": "Static test review matches protocol/query/page shapes, typed accounting, tamper controls, stale-cache refusal, working generation and candidate-context joins. Root corrected the fully qualified validation_runtime helper import and supplied explicit memfd sealing flags before freeze. The root runner now pins the reconciled base/reference, 35 unique targets, both comparator paths and fixture producer dependencies. This reviewer did not execute any authored test or collect cases.",
+      "sources": [
+        {
+          "line": 1,
+          "path": "test/api/test_worker_source_discovery_transport.py"
+        },
+        {
+          "line": 32,
+          "path": "test/api/test_worker_source_discovery_transport.py"
+        },
+        {
+          "line": 524,
+          "path": "test/api/test_worker_source_discovery_transport.py"
+        },
+        {
+          "line": 31,
+          "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification_runner.py"
+        }
+      ],
+      "status": "no_remaining_static_compatibility_blocker",
+      "topic": "Frozen authored tests and qualification targets"
+    }
+  ],
+  "review_method": "Read source and diffs, inspect test compatibility, parse Python AST without importing product code, compare actual Git objects and checkout bytes. No collection, tests, isolated CLI, provider, model, solver, training, Docker, deployment or publication was executed by this reviewer.",
+  "reviewed_at_utc": "2026-10-13T04:41:06.230975+00:00",
+  "reviewer": {
+    "agent": "/root/displacement_contract_audit",
+    "authorship_boundary": "Reviewer authored worker_source_client.py for this phase. Consumer, lifecycle, router, collector, tests and runner review is independent of their authorship; the client itself is not claimed as independently authored/reviewed by this reviewer. Root separately reviewed the client diff."
+  },
+  "runtime_capability_pin_check": {
+    "all_changed_product_paths_in_existing_SOURCE_PATHS": true,
+    "archive_or_container_built_by_reviewer": false,
+    "capability_source_path_count": 32,
+    "changed_product_paths": [
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py"
+    ],
+    "new_runtime_source_filenames": []
+  },
+  "schema": "source-view-discovery-transport-independent-review@1",
+  "source_binding_count": 26,
+  "source_binding_scope": "Actual frozen checkout bytes plus immutable baseline Git blobs for the listed paths. working_copy_matches_baseline_object records this observation at review time, not future working-copy equivalence or whole-runtime attestation.",
+  "source_bindings": [
+    {
+      "baseline_blob_oid": "389c6f70cb19c25cc86a5a505dc764991b60c2ae",
+      "baseline_bytes": 35358,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "9afb32bd0237550567b79dc56fc2c4af7e80263a9e17f027f1b6819c95c60a0d",
+      "bytes": 35358,
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "review_role": "unchanged_owner_broker_creation_and_child_lifecycle",
+      "sha256": "9afb32bd0237550567b79dc56fc2c4af7e80263a9e17f027f1b6819c95c60a0d",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "d82b27124c3a5726759ccb6ae082dc4a56c600d9",
+      "baseline_bytes": 16217,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "631389f2020e6ac84a67b8d4489277bba37b1df6942126c3877daf819ed869a9",
+      "bytes": 16217,
+      "path": "benchmarks/agent_supervisor/container_coding/context_projection_trace_comparison.py",
+      "review_role": "parallel_comparator_preserved_from_new_baseline_not_reimplemented",
+      "sha256": "631389f2020e6ac84a67b8d4489277bba37b1df6942126c3877daf819ed869a9",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "036da7cdd41fd5e2eded9f75247bae1f4aecc014",
+      "baseline_bytes": 82189,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+      "bytes": 82189,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "review_role": "unchanged_runtime_archive_file_population",
+      "sha256": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "8ef2b65877e6b9f92a1f1ec9445d642e77843854",
+      "baseline_bytes": 13690,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "37b0a40c2958d864d013c11a8044f7b5ecdc79abe030c04d465aa80ea3615ff1",
+      "bytes": 13690,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py",
+      "review_role": "unchanged_strict_generic_transport_accounting",
+      "sha256": "37b0a40c2958d864d013c11a8044f7b5ecdc79abe030c04d465aa80ea3615ff1",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "4e4ba4d6fff3dfbde2054a1e43b0ede50b6b6ea7",
+      "baseline_bytes": 10191,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "202907e3ec8efbc012d8b4d76ea507aab72e2fa38b912edb6e14013ef08d7959",
+      "bytes": 12397,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+      "review_role": "independently_reviewed_collector",
+      "sha256": "aea92b1fd46cd5a1fa96c6a710479e80993c3ff083651d2e015574475fcf431b",
+      "working_copy_matches_baseline_object": false
+    },
+    {
+      "baseline_blob_oid": "51848cc77cadfc890eeae210a398a13813451930",
+      "baseline_bytes": 6265,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "2e9b97f0d0f94f78043a36c82ec33ccbd2db33f9618abeb63d9e7cd702339d6c",
+      "bytes": 6265,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "review_role": "unchanged_runtime_capability_pin_list",
+      "sha256": "2e9b97f0d0f94f78043a36c82ec33ccbd2db33f9618abeb63d9e7cd702339d6c",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "125ce7cbbf2cd66d8fb20b198f0623f2c54008db",
+      "baseline_bytes": 17144,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "92da425b0eb2b90307f2d754bf54aaa45e869d86f4f402e2b1e5057ce421b474",
+      "bytes": 17144,
+      "path": "benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py",
+      "review_role": "parallel_comparator_cases_preserved_and_included_in_root_targets",
+      "sha256": "92da425b0eb2b90307f2d754bf54aaa45e869d86f4f402e2b1e5057ce421b474",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "34591153d1ab97ef6f35ba633665eeb1298b6ff7",
+      "baseline_bytes": 10951,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "ebc38bbbc6b697f9323dfe0c48123d49e850edb45adcb5b6b86dcbbb4b7860c0",
+      "bytes": 21126,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py",
+      "review_role": "independently_reviewed_authored_cases_not_executed",
+      "sha256": "a3648c30d9e93ee2de56933cd8a248a259f1300dc1d675e6c40fc9340136c1d3",
+      "working_copy_matches_baseline_object": false
+    },
+    {
+      "baseline_blob_oid": null,
+      "baseline_bytes": null,
+      "baseline_exists": false,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": null,
+      "bytes": 18021,
+      "path": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification_runner.py",
+      "review_role": "independently_reviewed_qualification_runner_not_executed_by_reviewer",
+      "sha256": "187a352e3252fe53286f900511476f86cb41af60993b25af7489f2e918798b24",
+      "working_copy_matches_baseline_object": null
+    },
+    {
+      "baseline_blob_oid": "05f10b335de8f7ee78b13196894820908b6abc11",
+      "baseline_bytes": 293498,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "3104bce772ddf996618578da149071d3bfe620947e41effb653f67232bd63406",
+      "bytes": 293498,
+      "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "review_role": "unchanged_fixture_producer_dependency",
+      "sha256": "3104bce772ddf996618578da149071d3bfe620947e41effb653f67232bd63406",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "3350d7468258df1d8e410b5c2b0cb21ea230d205",
+      "baseline_bytes": 48931,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e",
+      "bytes": 48931,
+      "path": "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+      "review_role": "unchanged_fixture_contract_dependency",
+      "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "9c9ccdbc1d475b1a302d820824def846f9465054",
+      "baseline_bytes": 19087,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "7607cfae3eaec33b3a188f26a2ba3d87fc818b22ea529ceeaa40d0048ac46882",
+      "bytes": 19208,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
+      "review_role": "independently_reviewed_shared_session_lifecycle",
+      "sha256": "52dad9568206c2e1b0f2f1048d2fc88a901bf626f827a7c2f60c7394337b5004",
+      "working_copy_matches_baseline_object": false
+    },
+    {
+      "baseline_blob_oid": "10d372d848cc08d7bae642096ffd2b769015f83f",
+      "baseline_bytes": 18893,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "28cfa7637b0f94cd77dec3071600263a2289738ede4ffd696ef4e2de34ffeaf6",
+      "bytes": 18893,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py",
+      "review_role": "unchanged_authenticated_transport_protocol",
+      "sha256": "28cfa7637b0f94cd77dec3071600263a2289738ede4ffd696ef4e2de34ffeaf6",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "5d3c19124de60b3c5967ab2d2ee00f9cc5a3ea3e",
+      "baseline_bytes": 17882,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "4abe658400ca70f8f68fdae08b5914dfeb417e0c5d120d12b9acc16b88a49a41",
+      "bytes": 17882,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py",
+      "review_role": "unchanged_inventory_policy_consumer",
+      "sha256": "4abe658400ca70f8f68fdae08b5914dfeb417e0c5d120d12b9acc16b88a49a41",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "ed19110901ea0e525f893671a186e65094b8a98b",
+      "baseline_bytes": 13539,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+      "bytes": 13539,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+      "review_role": "unchanged_codec",
+      "sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "91c16a5fe01f1c3aa5460a364941d6c8d2b3f946",
+      "baseline_bytes": 66396,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e",
+      "bytes": 66675,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "review_role": "independently_reviewed_dispatch_receipt_consumer",
+      "sha256": "e3e6736dfcad800a9a528d4b2ee19b50781eb04c54e6795879930667d55f34fc",
+      "working_copy_matches_baseline_object": false
+    },
+    {
+      "baseline_blob_oid": "f744769f0e0edd44161614b95b35c9aab5c3e6b2",
+      "baseline_bytes": 10311,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "4995b7dc62749d23942bed99bb475c500b8ab81eb1b4e43442590e9fede4763d",
+      "bytes": 10311,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py",
+      "review_role": "unchanged_host_edit_adapter",
+      "sha256": "4995b7dc62749d23942bed99bb475c500b8ab81eb1b4e43442590e9fede4763d",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "80383e8516bb4c06fcb9e823d7c2b8fe9e80c527",
+      "baseline_bytes": 9068,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0",
+      "bytes": 9068,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py",
+      "review_role": "unchanged_pure_edit_mapper",
+      "sha256": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "8591330b418c768c75f7a790cd0787d04b6dc82f",
+      "baseline_bytes": 6817,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "18ac32e0246a8af5985b5b3311a37d08f09786cfd8cb25373b0b92175892b57b",
+      "bytes": 6817,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
+      "review_role": "unchanged_policy_contract",
+      "sha256": "18ac32e0246a8af5985b5b3311a37d08f09786cfd8cb25373b0b92175892b57b",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "d355628fcb55eacb7a90104bad19912be5414ff2",
+      "baseline_bytes": 12194,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+      "bytes": 12194,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py",
+      "review_role": "unchanged_candidate_context_consumer",
+      "sha256": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "75f0eb2cf4674b7f440ae0640ed12952942fbece",
+      "baseline_bytes": 16554,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "4542ebbd5914a5b7675173b784bd7b91a5dba4d25d6170547a2e2f8fb9655ee0",
+      "bytes": 16554,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context_client.py",
+      "review_role": "unchanged_candidate_protocol",
+      "sha256": "4542ebbd5914a5b7675173b784bd7b91a5dba4d25d6170547a2e2f8fb9655ee0",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": "15a7620cac111da0abe9a0f2e50cba6cfc4efed7",
+      "baseline_bytes": 9050,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "faa0e1e4920c1d8cb386a3c86858befe0585f7ca44e6e09e65dd1a89c0d5ef8f",
+      "bytes": 12051,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "review_role": "independently_reviewed_consumer",
+      "sha256": "1a56f1a615e1a696a6c1ca42020247e695778e2a1b893c38e6c27341aecd475d",
+      "working_copy_matches_baseline_object": false
+    },
+    {
+      "baseline_blob_oid": "c85aa5152eb039e215069d06b29a1a0558ddefea",
+      "baseline_bytes": 19774,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "77f483a8bbff65ced9229233293c2b557164b5745d6d34b9faf90042c4c43647",
+      "bytes": 29599,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "review_role": "reviewer_authored_client_protocol_and_CLI_not_independent_authorship_review",
+      "sha256": "a6466c96719feb1aa94c5400c4a0a90c6a6dd663e3309bcc955b68dcfe9f3bb6",
+      "working_copy_matches_baseline_object": false
+    },
+    {
+      "baseline_blob_oid": "f258514d4725b76bd7802931b0fb19d2e7ec6eda",
+      "baseline_bytes": 29068,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "bd3ee1ee56f24bb64ba7d23eb45d94130917f4fd27d2292614c478b4c01c4353",
+      "bytes": 29798,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
+      "review_role": "independently_reviewed_discovery_currentness_consumer",
+      "sha256": "08cd587a17ba5b94fc46b096f9522e9d2ce833f38d3780ec350212682cd4857d",
+      "working_copy_matches_baseline_object": false
+    },
+    {
+      "baseline_blob_oid": "5bd1119fc1898c867788f2c41dd27b8502d8b077",
+      "baseline_bytes": 129651,
+      "baseline_exists": true,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": "8181d562c0631c172b1706716ff14b556ee10ce38d655967e0b089314dc75d4d",
+      "bytes": 129651,
+      "path": "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+      "review_role": "unchanged_memfd_fixture_dependency",
+      "sha256": "8181d562c0631c172b1706716ff14b556ee10ce38d655967e0b089314dc75d4d",
+      "working_copy_matches_baseline_object": true
+    },
+    {
+      "baseline_blob_oid": null,
+      "baseline_bytes": null,
+      "baseline_exists": false,
+      "baseline_revision": "49b01d2515f338af73f8c14a96bbf235e339e4bd",
+      "baseline_sha256": null,
+      "bytes": 36139,
+      "path": "test/api/test_worker_source_discovery_transport.py",
+      "review_role": "independently_reviewed_authored_cases_not_executed",
+      "sha256": "802c899f0b5d14ba3cfad23aa6dbc3b9b0922c7651ac03243458be281dd28a3b",
+      "working_copy_matches_baseline_object": null
+    }
+  ],
+  "superseded_pre_freeze_reference": {
+    "accelerator_base_revision": "2c220ae4b7c79ad9980122c3329ebdf9ef4131a3",
+    "datasets_parent_reference_only": "cc94dafaf39123bb24b8eb2a043168d9255ff92d",
+    "reason": "Origin/main advanced with a parallel context projection comparator and datasets LegalIR temporal work before qualification. The final review binds the reconciled immutable accelerator baseline and updated datasets parent reference."
+  }
+}

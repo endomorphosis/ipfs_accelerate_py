@@ -1,0 +1,23 @@
+{
+  "current_test_sha256": "fa6d44079443ba61e612cd895e0caa05e35b6f54ad75cc0bb3b6f34d00bb4957",
+  "failed_attempt": "qualification-01",
+  "failed_attempt_result": {
+    "errors": 0,
+    "failures": 1,
+    "skipped": 0,
+    "tests": 49
+  },
+  "failure": "read_cursor fixture indexed a refused source page whose complete metadata did not fit the 2048-byte request budget",
+  "fix": "Use a 4096-byte budget consistently for discovery/read in the cross-operation cursor case; assert the authentic read cursor is not a valid discovery cursor before the owner forgery refusal control. Other minimum-budget discovery cases stay at 2048.",
+  "new_attempt": "qualification-02",
+  "new_attempt_result_claimed_here": false,
+  "patch": "--- qualification-01/test/api/test_worker_source_discovery_transport.py\n+++ qualification-02/test/api/test_worker_source_discovery_transport.py\n@@ -342,16 +342,18 @@\n def test_discovery_continuations_are_one_use_and_query_bound(service_factory, monkeypatch, change):\n     service = service_factory()\n     authored_reader(service, monkeypatch)\n-    first = answer(service, max_bytes=2048)[\"page\"]\n+    first = answer(service, max_bytes=4096)[\"page\"]\n     cursor = deepcopy(first[\"next_cursor\"])\n     assert cursor is not None\n-    budget = 2048\n+    budget = 4096\n     if change == \"budget\": budget += 1\n     elif change == \"offset\": cursor[\"offset\"] += 1\n     elif change == \"token\": cursor[\"token\"] = \"0\" * 32\n     elif change == \"read_cursor\":\n-        cursor = answer(service, \"read\", view=\"original\", max_bytes=2048)[\"page\"][\"next_cursor\"]\n+        cursor = answer(service, \"read\", view=\"original\", max_bytes=4096)[\"page\"][\"next_cursor\"]\n         assert cursor is not None\n+        with pytest.raises(ValueError):\n+            client.validate_request(query(service, cursor=cursor, max_bytes=budget))\n         # Source byte offsets cannot be used as discovery row offsets. Smaller\n         # syntactically valid offsets are separately bound by the owner query.\n         cursor[\"offset\"] = 1\n",
+  "prior_test_sha256": "802c899f0b5d14ba3cfad23aa6dbc3b9b0922c7651ac03243458be281dd28a3b",
+  "prior_test_snapshot": "docs/agent_supervisor/evidence/source-view-discovery-transport-20261013/qualification-01/test_worker_source_discovery_transport.py.snapshot.txt",
+  "product_files_changed_by_fix": false,
+  "reconstruction_matches_recorded_source_sha256": true,
+  "recorded_at_utc": "2026-10-13T04:48:59.342580+00:00",
+  "schema": "source-discovery-qualification-fixture-fix@1",
+  "source_snapshot_reconstructed_after_attempt": true,
+  "test_path": "test/api/test_worker_source_discovery_transport.py"
+}

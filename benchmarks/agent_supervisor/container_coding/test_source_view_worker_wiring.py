@@ -155,7 +155,7 @@ def endpoint(allocated, monkeypatch, tmp_path):
     encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=repository)
     profile = "python-whitespace@1"
     descriptor_path = tmp_path / "authored-source-descriptor.json"
-    descriptor = dict(session_id="1" * 32, workspace=str(workspace),
+    descriptor = dict(schema=client.DESCRIPTOR_SCHEMA, session_id="1" * 32, workspace=str(workspace),
         boundary_manifest_sha256="b" * 64, **client.semantic_binding(encoded, profile))
     checks = []
 
