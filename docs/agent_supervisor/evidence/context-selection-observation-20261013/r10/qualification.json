@@ -1,0 +1,196 @@
+{
+  "schema": "context-selection-observation-qualification@1",
+  "validation_passed": true,
+  "actual_test_calls": 79,
+  "actual_passed_test_calls": 79,
+  "actual_pytest_phases": 237,
+  "junit_testcases": 79,
+  "guarded_source_count": 1101,
+  "guarded_sources_still_unchanged": true,
+  "source_guard_scope": "explicit source inventory, not a complete imported dependency closure",
+  "elapsed_validation_seconds": 615.4473491369281,
+  "proof_metrics": {
+    "schema": "ipfs_accelerate_py/testing/proof-reuse-metrics@1",
+    "interface": "ProofReuseMetrics@1",
+    "counts": {
+      "predicted": 0,
+      "verified": 0,
+      "skipped": 0,
+      "executed": 79,
+      "deferred": 0,
+      "degraded": 0
+    },
+    "reasons": {},
+    "verify_latency_ms": 0.0,
+    "execution_latency_ms": 260278.849,
+    "bytes_read": 0,
+    "bytes_written": 0
+  },
+  "samples": [
+    {
+      "capsules": 3,
+      "worker_bytes": 15946,
+      "observation_bytes": 6315,
+      "observation_computation_seconds": 0.001243998995050788
+    },
+    {
+      "capsules": 5,
+      "worker_bytes": 21939,
+      "observation_bytes": 8180,
+      "observation_computation_seconds": 0.0017185639590024948
+    },
+    {
+      "capsules": 3,
+      "worker_bytes": 15946,
+      "observation_bytes": 6315,
+      "observation_computation_seconds": 0.0012337260413914919
+    },
+    {
+      "capsules": 0,
+      "worker_bytes": 5859,
+      "observation_bytes": 3113,
+      "observation_computation_seconds": 0.0005361350486055017
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 21879,
+      "observation_bytes": 4142,
+      "observation_computation_seconds": 0.0009878510609269142
+    },
+    {
+      "capsules": 0,
+      "worker_bytes": 18314,
+      "observation_bytes": 3212,
+      "observation_computation_seconds": 0.0012545749777927995
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10136,
+      "observation_bytes": 4140,
+      "observation_computation_seconds": 0.001048284932039678
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 11096,
+      "observation_bytes": 4140,
+      "observation_computation_seconds": 0.0008661069441586733
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 10222,
+      "observation_bytes": 4142,
+      "observation_computation_seconds": 0.0009777561062946916
+    },
+    {
+      "capsules": 1,
+      "worker_bytes": 11239,
+      "observation_bytes": 4142,
+      "observation_computation_seconds": 0.0009029540233314037
+    }
+  ],
+  "sample_scope": "authored integration-test preparations, not live Terminal Bench",
+  "helper_computation_seconds_median": 0.0010180679964832962,
+  "helper_computation_seconds_maximum": 0.0017185639590024948,
+  "helper_timer_scope": "construction, encoding and reference hashes; excludes extra artifact/catalog/DuckLake writes",
+  "source_freeze_sha256": "1bd6dd0797e090bfaa7ecfd8f74dcb1a34be9a6a171c2efe3df8b7e1c90d4403",
+  "verification_sha256": "156cee01d15cfaaa40d50e0e4f60c85aedbcfe95cb8dab0b6812131e65762791",
+  "junit_sha256": "bf1a875fc4ab7e079a4493ec6193a0b1f8c7263c02cd9c986bb985a09b5cd637",
+  "driver_sha256": "a8e8500c3de06beee21ac079ffebc0e9811b74489dc8aae58d6b016021c9179d",
+  "summarizer_sha256": "83e4b6861800c29051c75bcfbb1ad1b1cde92456e9b8fd1dd836082b01d660e2",
+  "earlier_attempts": [
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r1/run.log",
+      "disposition": "Harness interpreter lacked pytest; failed before collection. Retained. System Python used for guarded runs."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r2/verification.json",
+      "sha256": "068e40c381e49f23ed80655ffb0c81a51bceca96fde23dfde98852943a09f6ee",
+      "validation_passed": false,
+      "actual_calls": 85,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r3/verification.json",
+      "sha256": "1ab1119a44cb3d0c7525e209f84d8803bb3012edacd8152cf8cb0d4d7ec58b1a",
+      "validation_passed": false,
+      "actual_calls": 1,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r4/verification.json",
+      "sha256": "60a60b6ba7ce0fd390cc8f863ddc0cbde834f07b036c18b2e1ee6d2e495dd07e",
+      "validation_passed": false,
+      "actual_calls": 4,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r5/verification.json",
+      "sha256": "d0975cc4594e3347c7ab6e41dd161739b61af2792019de6310b8336f185215ca",
+      "validation_passed": false,
+      "actual_calls": 4,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r6/verification.json",
+      "sha256": "5c17ab8ff01b9c5b31116571d81e16c95c5925fabcd7037e94fc83169719e66d",
+      "validation_passed": true,
+      "actual_calls": 1,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r7/verification.json",
+      "sha256": "4f087b8df24d6a7804e92f3dc3768326aa8574f0fdc6e758bcde9fffaacf69ad",
+      "validation_passed": true,
+      "actual_calls": 299,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r8/verification.json",
+      "sha256": "6cc374337d4bd644ed1b79d3de0963ebd383562035c1fb7301864f514a41ea9e",
+      "validation_passed": true,
+      "actual_calls": 18,
+      "guarded_sources_unchanged": true,
+      "disposition": "Separate retained attempt, not included in final execution totals."
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r9/interrupted-attempt.json",
+      "sha256": "c69ba3cac83b870659fc19602dabe528fa37dcd5564fd0cce61a94940b41ab6b",
+      "validation_passed": false,
+      "qualification_granted": false,
+      "disposition": "Interrupted, retained diagnostic attempt; final guard and phase receipt did not complete. Not included in final execution totals."
+    }
+  ],
+  "provider_calls": 0,
+  "downloads": 0,
+  "lake_builds": 0,
+  "lean_admits": 0,
+  "token_savings_established": false,
+  "official_task_success_established": false,
+  "runtime_scope": "Native preparation observation only; modality-guided ranking and live provider trials remain separate work",
+  "implementation_commit": "c5ef9f597247ad900b23565a9faaa24f40ab9b76",
+  "upstream_base": "a3b26502d23d8a267ae64c04715bbf21c6113859",
+  "run_label": "r10",
+  "actual_collected_tests": 79,
+  "all_setup_call_teardown_passed_once": true,
+  "no_reused_skipped_predicted_verified_deferred_or_degraded": true,
+  "retained_local_verification": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r10/verification.json",
+  "retained_local_log": "/home/barberb/lift_coding/artifacts/context-selection-observation-20261013/r10/run.log",
+  "prepared_worker_bytes_unchanged": true,
+  "sidecar_in_prepared_worker_payload": false,
+  "provider_delivery_observed": false,
+  "observed_modalities": {
+    "codebase": "structural producer",
+    "intent": "not observed in this preparation payload",
+    "security": "not observed in this preparation payload",
+    "ui_ux": "not observed in this preparation payload"
+  },
+  "test_scope": "Post-merge native preparation, shared source-view policy, worker capability and source-view policy regressions",
+  "new_proof_execution_or_completion_authority_granted": false,
+  "native_semantic_acceptance_gates_relaxed": false
+}
