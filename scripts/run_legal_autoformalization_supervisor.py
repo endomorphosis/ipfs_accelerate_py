@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -128,28 +129,153 @@ def live_group(pgid):
     return found
 
 
-def terminate_group(child, grace_seconds, receipt, persist):
-    """Retain admission until every executing member of the owned group stops."""
-    for sig, wait_seconds in ((signal.SIGTERM, grace_seconds), (signal.SIGKILL, 5)):
-        if not live_group(child.pid):
-            break
+def process_birth(pid):
+    fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    return int(fields[1]), int(fields[19])
+
+
+class NativeFenceObserver:
+    """Accept only native STOP evidence bound to this exact launched master.
+
+    Managed tracks deliberately create new sessions. Their native coordinator
+    owns marker-based cleanup and publishes all_trees_fenced only after those
+    trees reach its empty fixed point. The outer process group is insufficient.
+    This observer never converts a receipt PID into signaling authority.
+    """
+    ACTIVE = "ipfs_accelerate_py.agent_supervisor.multi-supervisor-active-binding@1"
+    TERMINAL = "ipfs_accelerate_py.agent_supervisor.multi-supervisor-terminal@1"
+
+    def __init__(self, path, label, child, launched_at_ns, identity):
+        self.path, self.label, self.child = path, label, child
+        self.launched_at_ns, self.identity = launched_at_ns, identity
+        self.child_birth = process_birth(child.pid)[1]
+        self.generation = None
+        self.master_birth = None
+        self.active_cid = None
+        self.reason = "current_native_terminal_missing"
+        self.proof = None
+
+    def owned_master(self, pid):
+        if pid == self.child.pid:
+            # The Popen child remains exact authority after reaping; its
+            # generation is additionally bound to the pre-Popen wall clock.
+            return True
+        seen = set()
+        while pid > 1 and pid not in seen:
+            seen.add(pid)
+            parent, started = process_birth(pid)
+            if parent == self.child.pid:
+                return process_birth(parent)[1] == self.child_birth
+            pid = parent
+        return False
+
+    def read(self):
+        descriptor = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW)
         try:
-            os.killpg(child.pid, sig)
+            before = os.fstat(descriptor)
+            if not stat.S_ISREG(before.st_mode) or before.st_size > 1024 * 1024:
+                raise ValueError("native run artifact is not bounded regular JSON")
+            with os.fdopen(descriptor, "rb", closefd=False) as stream:
+                payload = json.loads(stream.read(1024 * 1024 + 1))
+            if not isinstance(payload, dict):
+                raise ValueError("native run artifact must be a JSON object")
+            after = os.fstat(descriptor)
+            if (before.st_ino, before.st_size, before.st_mtime_ns) != (
+                    after.st_ino, after.st_size, after.st_mtime_ns):
+                raise ValueError("native run artifact changed during observation")
+            return payload
+        finally:
+            os.close(descriptor)
+
+    def observe(self):
+        try:
+            payload = self.read()
+            schema = payload.get("schema")
+            field = "active_binding_cid" if schema == self.ACTIVE else "terminal_receipt_cid"
+            if schema not in (self.ACTIVE, self.TERMINAL):
+                raise ValueError("unsupported native run artifact")
+            body = dict(payload)
+            claimed = body.pop(field, None)
+            if not claimed or self.identity(body) != claimed:
+                raise ValueError("native run artifact CID differs")
+            pid, started = payload.get("master_pid"), payload.get("run_started_at_epoch_nanoseconds")
+            if (type(pid) is not int or type(started) is not int
+                    or payload.get("label") != self.label
+                    or not self.launched_at_ns <= started <= time.time_ns()):
+                raise ValueError("native run artifact is not this launch generation")
+            generation = (pid, started)
+            if self.generation is None:
+                if not self.owned_master(pid):
+                    raise ValueError("native master is not the exact child or observed descendant")
+                self.generation = generation
+                self.master_birth = self.child_birth if pid == self.child.pid else process_birth(pid)[1]
+            if self.generation != generation:
+                raise ValueError("native master generation changed")
+            if schema == self.ACTIVE:
+                if payload.get("active") is not True:
+                    raise ValueError("native active binding is inactive")
+                if self.active_cid is not None and self.active_cid != claimed:
+                    raise ValueError("native active binding changed")
+                self.active_cid = claimed
+                self.reason = "current_native_master_active"
+                return False
+            # Fast direct children may finish before ACTIVE is observed.
+            # Their exact Popen PID+fresh start+terminal CID bind the run;
+            # when ACTIVE was observed its CID must also match exactly.
+            if not isinstance(payload.get("active_binding_cid"), str) or not payload["active_binding_cid"]:
+                raise ValueError("native terminal has no active-generation binding")
+            if self.active_cid is not None and payload.get("active_binding_cid") != self.active_cid:
+                raise ValueError("native terminal belongs to a different active binding")
+            if payload.get("all_trees_fenced") is not True:
+                self.reason = "native_stop_did_not_fence_all_trees"
+                return False
+            self.proof = {"master_pid": pid, "run_started_at_epoch_nanoseconds": started,
+                "master_start_time_ticks": self.master_birth,
+                "active_binding_cid": payload["active_binding_cid"],
+                "terminal_receipt_cid": claimed, "all_trees_fenced": True}
+            self.reason = "native_managed_trees_fenced"
+            return True
+        except (OSError, ValueError, TypeError, KeyError):
+            self.reason = "native_run_artifact_missing_invalid_or_unbound"
+            return False
+
+
+def terminate_group(child, grace_seconds, receipt, persist, native_fence,
+                    native_stop_seconds):
+    """Keep admission through native detached-tree STOP and outer group exit."""
+    receipt["native_stop_verified"] = native_fence.observe()
+    if live_group(child.pid):
+        try:
+            os.killpg(child.pid, signal.SIGTERM)
         except ProcessLookupError:
-            break
-        deadline = time.monotonic() + wait_seconds
-        while time.monotonic() < deadline and live_group(child.pid):
-            child.poll()
-            time.sleep(0.1)
-    # An uninterruptible kernel task cannot safely be declared stopped. Keep
-    # the native lease heartbeating while acting only as its recovery monitor.
-    while live_group(child.pid):
-        receipt["status"] = "owned_group_reaper_pending"
-        receipt["cleanup_pending"] = True
-        persist()
-        time.sleep(1)
+            pass
+    deadline = time.monotonic() + max(grace_seconds, native_stop_seconds)
+    last_receipt = 0.0
+    while live_group(child.pid) or not receipt["native_stop_verified"]:
+        child.poll()
+        receipt["native_stop_verified"] = native_fence.observe()
+        receipt["native_fence_reason"] = native_fence.reason
+        if time.monotonic() >= deadline and live_group(child.pid):
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if time.monotonic() - last_receipt >= 15:
+            receipt["status_before_fence_monitor"] = receipt.get(
+                "status_before_fence_monitor", receipt["status"])
+            receipt["status"] = "resource_held_pending_native_fence"
+            receipt["cleanup_pending"] = True
+            persist()
+            last_receipt = time.monotonic()
+        # Missing native evidence deliberately retains the heartbeating lease
+        # even after outer group exit. A foreign/unbound PID is never signaled.
+        time.sleep(0.25)
     child.wait(timeout=5)
     receipt["owned_group_quiescent"] = True
+    receipt["native_fence_proof"] = native_fence.proof
+    receipt["cleanup_pending"] = False
+    if receipt["status"] == "resource_held_pending_native_fence":
+        receipt["status"] = receipt["status_before_fence_monitor"]
 
 
 def read_policy(path):
@@ -216,6 +342,9 @@ def arguments():
     parser.add_argument("--queue-timeout-seconds", type=positive, default=300)
     parser.add_argument("--acquire-timeout-seconds", type=positive, default=5)
     parser.add_argument("--stop-grace-seconds", type=positive, default=10)
+    parser.add_argument("--native-stop-timeout-seconds", type=positive, default=180)
+    parser.add_argument("--native-terminal-receipt", required=True, type=Path)
+    parser.add_argument("--native-label", required=True)
     parser.add_argument("--cpu-slots", type=int, choices=(1, 2, 3), default=3)
     parser.add_argument("--memory-mib", type=int, choices=(1024, 2048, 3072, 4096), default=3072)
     parser.add_argument("--process-slots", type=int, choices=(1, 2, 3, 4), default=4)
@@ -227,7 +356,7 @@ def arguments():
         parser.error("supervisor command is required after --")
     if not re.fullmatch(r"[0-9a-f]{64}", args.expected_policy_sha256):
         parser.error("expected-policy-sha256 must be 64 lowercase hexadecimal characters")
-    for name in ("datasets_root", "repo_root", "runtime_root", "scheduler_state"):
+    for name in ("datasets_root", "repo_root", "runtime_root", "scheduler_state", "native_terminal_receipt"):
         path = getattr(args, name)
         if not path.is_absolute():
             parser.error(name.replace("_", "-") + " must be absolute")
@@ -261,7 +390,10 @@ def main():
         "accounting_scope": "whole bounded CPU inventory supervisor; thread environment is advisory",
         "process_accounting": "declared native admission units; does not count or cap every supervisor, provider, collector, or validation descendant",
         "parallelism_limit": "at most three one-thread inventory jobs; provider concurrency remains separately gated by native supervisor",
-        "descendant_scope": "owned session process group; daemonizing children are forbidden",
+        "descendant_scope": "outer owned process group plus current-generation native all_trees_fenced receipt for detached managed trees",
+        "native_terminal_receipt": str(args.native_terminal_receipt),
+        "native_label": args.native_label,
+        "native_stop_verified": False,
         "completion_authority": False,
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -283,10 +415,15 @@ def main():
     lease = None
     child = None
     output_thread = None
+    native_fence = None
     result = 70
     try:
         native, scheduler, original = pinned_scheduler(
             args.datasets_root, args.scheduler_state, args.expected_policy_sha256)
+        sys.path.insert(0, str(args.repo_root))
+        from ipfs_accelerate_py.agent_supervisor.proof import formal_verification_contracts as contracts
+        if not Path(contracts.__file__).resolve().is_relative_to(args.repo_root):
+            raise ValueError("native fence checker import escaped controller source root")
         receipt["scheduler_source_sha256"] = hashlib.sha256(Path(native.__file__).read_bytes()).hexdigest()
         receipt["validation_reserve"] = scheduler.config.reservations()["validation"].to_dict()
         queue_deadline = time.monotonic() + args.queue_timeout_seconds
@@ -323,9 +460,12 @@ def main():
             # exported into child environment, argv, logs, or launch receipts.
             child_environment["IPFS_DATASETS_RESOURCE_SCHEDULER_PATH"] = str(args.scheduler_state)
             deadline = time.monotonic() + args.duration_seconds
+            launched_at_ns = time.time_ns()
             child = subprocess.Popen(args.command, cwd=args.repo_root,
                 env=child_environment, stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+            native_fence = NativeFenceObserver(args.native_terminal_receipt,
+                args.native_label, child, launched_at_ns, contracts.content_identity)
             receipt.update(status="running", child_pid=child.pid,
                            child_pgid=child.pid, owned_group_quiescent=False)
             atomic_json(attempt / "pid.json", {"wrapper_pid": os.getpid(),
@@ -337,6 +477,7 @@ def main():
             persist()
             last_receipt = time.monotonic()
             while child.poll() is None:
+                native_fence.observe()
                 if cancelled.is_set():
                     receipt["status"] = "stopping_for_signal"
                     result = 128 + signal_seen[-1]
@@ -373,7 +514,19 @@ def main():
             result = 128 + (signal_seen[-1] if signal_seen else signal.SIGTERM)
     finally:
         if child is not None:
-            terminate_group(child, args.stop_grace_seconds, receipt, persist)
+            # A failed observer construction still cannot make group absence
+            # evidence for detached descendants: retain admission and monitor.
+            while native_fence is None:
+                if live_group(child.pid):
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                receipt["status"] = "resource_held_native_observer_unavailable"
+                persist()
+                time.sleep(15)
+            terminate_group(child, args.stop_grace_seconds, receipt, persist,
+                            native_fence, args.native_stop_timeout_seconds)
             receipt["child_returncode"] = child.returncode
         if output_thread is not None:
             output_thread.join(timeout=5)
