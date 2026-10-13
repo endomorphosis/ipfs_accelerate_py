@@ -4,7 +4,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S7-011 Qualify complete authored-provenance observations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
