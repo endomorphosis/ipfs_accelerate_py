@@ -1,0 +1,43 @@
+{
+  "complete": true,
+  "grammar_and_checkpoint_pins_equal": true,
+  "native_provider_tokens": null,
+  "owner_sha256": "25db715d83f99d459b823ea5e6a0c3b24136e781ee50ee677a08d7b7ac8be036",
+  "pager_sha256": "8a044dae64a12cccee904929d60b8a7c0aec51d0266592394e237ca4bbe90e85",
+  "provider_calls": 0,
+  "rows": [
+    {
+      "historical_pages_equal": true,
+      "historical_summary_equal": true,
+      "inline_pending": 0,
+      "profile": "python-numerical-structure@1",
+      "report_bytes_equal": true,
+      "summary_bytes": 8008,
+      "summary_sha256": "6544175060a8c4d345300fecaa71c09af35f84b991ccc453b11c756caef60520",
+      "version": 1
+    },
+    {
+      "historical_pages_equal": true,
+      "historical_summary_equal": true,
+      "inline_pending": 0,
+      "profile": "python-numerical-guarded-structure@2",
+      "report_bytes_equal": true,
+      "summary_bytes": 7900,
+      "summary_sha256": "201a75e779162778ad1b15b40505331e0fe64d3201667fa16a6ac95e91b52b6d",
+      "version": 2
+    },
+    {
+      "historical_pages_equal": true,
+      "historical_summary_equal": false,
+      "inline_pending": 8,
+      "profile": "python-numerical-control-structure@3",
+      "report_bytes_equal": true,
+      "summary_bytes": 8064,
+      "summary_sha256": "26c0207a61c00b31f26239e13d626b6e4badab621cfef6dc6f03745bc26ef9b4",
+      "version": 3
+    }
+  ],
+  "schema": "numerical-planning-selection-public-replay@1",
+  "source_executed": false,
+  "source_obligations_discharged": 0
+}

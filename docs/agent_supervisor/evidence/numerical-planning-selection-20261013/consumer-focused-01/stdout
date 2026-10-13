@@ -1,0 +1,54 @@
+
+----------------------------- live log collection ------------------------------
+2026-10-13 08:40:45 [    INFO] Using standard filesystem operations (distributed storage disabled) (storage_wrapper.py:99)
+
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_balanced_hints_keep_paths_functions_loops_and_all_proof_phases PASSED [  2%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_packing_preserves_omissions_already_applied_by_native_summary[functions] PASSED [  5%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_packing_preserves_omissions_already_applied_by_native_summary[assertions] PASSED [  8%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_packing_preserves_omissions_already_applied_by_native_summary[compounds] PASSED [ 11%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_oversized_rows_do_not_evict_all_short_actionable_hints PASSED [ 14%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_no_pending_work_keeps_empty_hints_and_explicit_scope PASSED [ 17%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_exact_hint_id_returns_complete_owner_row_and_no_continuation PASSED [ 20%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_omitted_and_none_id_preserve_native_page_bytes_and_pager_call_shape PASSED [ 23%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_exact_id_conjunctive_filters_and_foreign_scan_cursor PASSED [ 26%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_invalid_exact_id_refuses[] PASSED [ 29%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_invalid_exact_id_refuses[False] PASSED [ 32%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_invalid_exact_id_refuses[value2] PASSED [ 35%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_invalid_exact_id_refuses[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx] PASSED [ 38%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_invalid_exact_id_refuses[\ud800] PASSED [ 41%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py::test_exact_id_does_not_bypass_stale_source_validation PASSED [ 44%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_earlier_profile_planning_summary_retains_prior_bytes[python-numerical-structure@1-46aa10055716290998b1bd3dc0b2b68d9f12b7f37ab40448e6e9e0dc145d4db8] PASSED [ 47%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_earlier_profile_planning_summary_retains_prior_bytes[python-numerical-guarded-structure@2-8ccc62143c3194ac6bc3d32cc6a5f35b41cb0c8dbfbb1da405ca81f92147956e] PASSED [ 50%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_replays_lakes_and_keeps_unresolved_loop_references PASSED [ 52%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_paging_retains_exact_cfg_occurrences_and_iteration_contexts PASSED [ 55%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_profile_cannot_reuse_earlier_tree_or_cursor[python-numerical-structure@1] PASSED [ 58%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_profile_cannot_reuse_earlier_tree_or_cursor[python-numerical-guarded-structure@2] PASSED [ 61%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_changed_profile_cannot_relabel_control_receipt[python-numerical-structure@1] PASSED [ 64%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_changed_profile_cannot_relabel_control_receipt[python-numerical-guarded-structure@2] PASSED [ 67%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_changed_profile_cannot_relabel_control_receipt[python-numerical-control-structure@4] PASSED [ 70%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_changed_profile_cannot_relabel_control_receipt[True] PASSED [ 73%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_changed_profile_cannot_relabel_control_receipt[None] PASSED [ 76%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_source_v3.py] PASSED [ 79%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_logic_v3.py] PASSED [ 82%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_source_v2.py] PASSED [ 85%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_logic_v2.py] PASSED [ 88%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_source.py] PASSED [ 91%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_logic.py] PASSED [ 94%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_summary_charges_omitted_rows_without_stripping_loop_scope PASSED [ 97%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_advice_reaches_planner_before_goals_then_admitted_indexes 
+-------------------------------- live log call ---------------------------------
+2026-10-13 08:41:20 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-418/test_control_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-13 08:41:21 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-418/test_control_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-13 08:41:21 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-418/test_control_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-13 08:41:22 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-418/test_control_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-13 08:41:22 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-418/test_control_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-13 08:41:22 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-418/test_control_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-13 08:41:23 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-418/test_control_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-13 08:41:23 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-418/test_control_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-13 08:41:23 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-418/test_control_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-13 08:41:24 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-418/test_control_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-13 08:41:24 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-418/test_control_advice_reaches_pl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/numerical-planning-selection-20261013/consumer-focused-01/junit.xml -
+============================= 34 passed in 39.62s ==============================

@@ -1,0 +1,331 @@
+{
+  "assertion_requirement_count": 4,
+  "assertion_requirements": [
+    {
+      "function_id": "function:102",
+      "guarded_region_ids": [
+        "guarded-region:192"
+      ],
+      "path": "eval.py",
+      "predicate_expression_id": "expr:185",
+      "requirement_id": "assertion-control-requirement:8cc9f2798519562016497d48785c70e1"
+    }
+  ],
+  "autoencoder_coverage_changed": false,
+  "completion_authority": false,
+  "compound_contract_count": 2,
+  "compound_contracts": [],
+  "control_flow_semantics_verified": false,
+  "control_reference_count": 2,
+  "control_references": [
+    {
+      "cfg_ids": [
+        "cfg:3"
+      ],
+      "control_region_ids": [],
+      "function_ids": [
+        "function:2"
+      ],
+      "loop_region_ids": [],
+      "omitted_cfg_ids": 0,
+      "omitted_control_region_ids": 0,
+      "omitted_function_ids": 0,
+      "omitted_loop_region_ids": 0,
+      "path": "eigen.py"
+    },
+    {
+      "cfg_ids": [
+        "cfg:103",
+        "cfg:345",
+        "cfg:7"
+      ],
+      "control_region_ids": [
+        "control-region:396",
+        "control-region:611"
+      ],
+      "function_ids": [
+        "function:102",
+        "function:344",
+        "function:6"
+      ],
+      "loop_region_ids": [
+        "control-region:396",
+        "control-region:611"
+      ],
+      "omitted_cfg_ids": 0,
+      "omitted_control_region_ids": 0,
+      "omitted_function_ids": 0,
+      "omitted_loop_region_ids": 0,
+      "path": "eval.py"
+    }
+  ],
+  "execution_authority": false,
+  "families_with_artifacts": [
+    "first_order",
+    "higher_order",
+    "program"
+  ],
+  "files": 2,
+  "functions": 4,
+  "interpretation": "Structural hints only; retrieve full pending rows before interpretation. Loop proof applicability is distinct from source-anchor evaluation. Guards, runtime effects, reachability, invariants and termination are unverified. Assertions are local requirements if reached with assertions enabled. Read source before editing.",
+  "linked_source_unit_count": 4,
+  "loop_invariants_verified": false,
+  "model_inference_calls": 0,
+  "obligation_retrieval": {
+    "api": "ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context.retrieve_numerical_obligations",
+    "isolated_worker_command": "/opt/ipfs-supervisor/venv/bin/python -I /opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py --path <source_path>",
+    "isolated_worker_usage": "Use --path and --obligation-id for an exact hint; optional --function-id/--kind are conjunctive. Full rows remain unresolved; source edits invalidate retrieval. Use --cursor for scans.",
+    "max_page_bytes": 8192,
+    "max_page_rows": 8,
+    "omitted_source_paths": 0,
+    "requires_validated_context_receipt": true,
+    "schema": "supervisor-numerical-obligation-retrieval@1",
+    "source_paths": [
+      "eigen.py",
+      "eval.py"
+    ]
+  },
+  "omitted_assertion_requirement_summaries": 3,
+  "omitted_compound_contract_summaries": 2,
+  "omitted_control_reference_summaries": 0,
+  "omitted_function_summaries": 1,
+  "omitted_obligation_summaries": 97,
+  "omitted_source_unit_link_summaries": 4,
+  "partial_or_unsupported_functions": 0,
+  "pending_obligation_count": 105,
+  "pending_obligation_kinds": {
+    "assertion_evaluation_semantics": 4,
+    "conditional_evaluation_semantics": 2,
+    "control_flow_semantics": 2,
+    "eigenpair_residual": 2,
+    "formatting_evaluation_semantics": 9,
+    "index_safety": 4,
+    "iterator_advance_semantics": 2,
+    "iterator_creation_semantics": 2,
+    "joined_string_evaluation_semantics": 7,
+    "library_semantics_and_effects": 37,
+    "loop_exit_reasoning": 2,
+    "loop_invariant_initialization": 2,
+    "loop_invariant_preservation": 2,
+    "loop_target_binding_semantics": 2,
+    "loop_termination": 2,
+    "matrix_shape": 2,
+    "selected_eigenpair_approximate_residual": 2,
+    "selected_eigenpair_dimensions": 2,
+    "selected_eigenpair_finite": 2,
+    "selected_eigenpair_magnitude_selection": 2,
+    "selected_eigenpair_nonzero": 2,
+    "selected_eigenpair_runtime_interpretation": 2,
+    "selected_eigenpair_value_column": 2,
+    "selection": 2,
+    "slice_safety": 2,
+    "source_assertion_predicate": 4
+  },
+  "pending_obligations": [
+    {
+      "cfg_ids": [
+        "cfg:3"
+      ],
+      "expression_id": "expr:39",
+      "function_ids": [
+        "function:2"
+      ],
+      "kind": "library_semantics_and_effects",
+      "obligation_id": "numerical-control:1937fe4e75047bf494f1935f21854c53",
+      "path": "eigen.py",
+      "scope": "source_evaluation"
+    },
+    {
+      "cfg_ids": [
+        "cfg:103"
+      ],
+      "expression_id": "expr:142",
+      "function_ids": [
+        "function:102"
+      ],
+      "kind": "library_semantics_and_effects",
+      "obligation_id": "numerical-control:8b604891e2d6512e7aa10b54ec252e9d",
+      "path": "eval.py",
+      "scope": "source_evaluation"
+    },
+    {
+      "cfg_ids": [
+        "cfg:345"
+      ],
+      "control_region_ids": [
+        "control-region:396"
+      ],
+      "expression_id": "expr:408",
+      "function_ids": [
+        "function:344"
+      ],
+      "kind": "loop_invariant_initialization",
+      "loop_region_ids": [
+        "control-region:396"
+      ],
+      "obligation_id": "numerical-control:a93b8021251ec1560ee6046525150d93",
+      "path": "eval.py",
+      "proof_phase": "activation_entry",
+      "proof_scope_cfg_id": "cfg:345",
+      "proof_scope_control_region_id": "control-region:396",
+      "scope": "proof_applicability"
+    },
+    {
+      "cfg_ids": [
+        "cfg:7"
+      ],
+      "expression_id": "expr:42",
+      "function_ids": [
+        "function:6"
+      ],
+      "kind": "library_semantics_and_effects",
+      "obligation_id": "numerical-control:7a1f5f1c792bf9dd22ba422c31fc4d53",
+      "path": "eval.py",
+      "scope": "source_evaluation"
+    },
+    {
+      "cfg_ids": [
+        "cfg:345"
+      ],
+      "control_region_ids": [
+        "control-region:611"
+      ],
+      "expression_id": "expr:631",
+      "function_ids": [
+        "function:344"
+      ],
+      "kind": "loop_invariant_preservation",
+      "loop_region_ids": [
+        "control-region:611"
+      ],
+      "obligation_id": "numerical-control:3be0282f7f16761c55f0ff438f8977b2",
+      "path": "eval.py",
+      "proof_phase": "normal_or_continue_backedge",
+      "proof_scope_cfg_id": "cfg:345",
+      "proof_scope_control_region_id": "control-region:611",
+      "scope": "proof_applicability"
+    },
+    {
+      "cfg_ids": [
+        "cfg:345"
+      ],
+      "control_region_ids": [
+        "control-region:396"
+      ],
+      "expression_id": "expr:416",
+      "function_ids": [
+        "function:344"
+      ],
+      "kind": "loop_exit_reasoning",
+      "loop_region_ids": [
+        "control-region:396"
+      ],
+      "obligation_id": "numerical-control:dc3914f0668088feb526e424a1c9d925",
+      "path": "eval.py",
+      "proof_phase": "exit_cause_and_post_state",
+      "proof_scope_cfg_id": "cfg:345",
+      "proof_scope_control_region_id": "control-region:396",
+      "scope": "proof_applicability"
+    },
+    {
+      "cfg_ids": [
+        "cfg:345"
+      ],
+      "control_region_ids": [
+        "control-region:611"
+      ],
+      "expression_id": "expr:631",
+      "function_ids": [
+        "function:344"
+      ],
+      "kind": "loop_termination",
+      "loop_region_ids": [
+        "control-region:611"
+      ],
+      "obligation_id": "numerical-control:00b642ed2420e4b8aca70543e8d87eaa",
+      "path": "eval.py",
+      "proof_phase": "whole_activation_progress",
+      "proof_scope_cfg_id": "cfg:345",
+      "proof_scope_control_region_id": "control-region:611",
+      "scope": "proof_applicability"
+    },
+    {
+      "cfg_ids": [
+        "cfg:345"
+      ],
+      "control_region_ids": [
+        "control-region:611"
+      ],
+      "expression_id": "expr:623",
+      "function_ids": [
+        "function:344"
+      ],
+      "kind": "loop_invariant_initialization",
+      "loop_region_ids": [
+        "control-region:611"
+      ],
+      "obligation_id": "numerical-control:bdb808f698d59600adc66fbc9623cbaa",
+      "path": "eval.py",
+      "proof_phase": "activation_entry",
+      "proof_scope_cfg_id": "cfg:345",
+      "proof_scope_control_region_id": "control-region:611",
+      "scope": "proof_applicability"
+    }
+  ],
+  "per_function": [
+    {
+      "function_id": "function:2",
+      "path": "eigen.py",
+      "pending_obligation_count": 16,
+      "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+      "structurally_complete": true
+    },
+    {
+      "function_id": "function:344",
+      "path": "eval.py",
+      "pending_obligation_count": 50,
+      "qualified_name": "test_speedup",
+      "structurally_complete": true
+    },
+    {
+      "function_id": "function:102",
+      "path": "eval.py",
+      "pending_obligation_count": 23,
+      "qualified_name": "test_eigen_pair",
+      "structurally_complete": true
+    }
+  ],
+  "planning_hint_contract": {
+    "evaluation_guard_verified": false,
+    "full_context_required": true,
+    "proof_applicability_verified": false,
+    "proof_phase_established": false,
+    "reference_lists_truncated": false,
+    "relevance_ranked": false,
+    "runtime_effects_verified": false,
+    "runtime_truthiness_verified": false,
+    "schema": "numerical-planning-hints@1",
+    "scope_meanings": {
+      "proof_applicability": "Source anchor only; full proof_scope applicability remains unresolved.",
+      "source_evaluation": "Unverified source evaluation; full guards required."
+    },
+    "standalone_program_evaluation_complete": false
+  },
+  "profile": "python-numerical-control-structure@3",
+  "proof_authority": false,
+  "provider_calls": 0,
+  "reachability_verified": false,
+  "schema": "terminal-numerical-formalization-planning-summary@1",
+  "source_obligations_discharged": 0,
+  "source_semantics_verified": false,
+  "source_tree_id": "baguqeerax4x6vqcnrdsj3g7trwhv7teid543pzpmucvzaxbzlapr3cawetza",
+  "source_unit_count": 4,
+  "source_unit_link_origin": "deterministic_source_projection",
+  "source_unit_links": [],
+  "source_unit_links_establish_learned_coverage": false,
+  "structurally_complete_functions": 4,
+  "termination_verified": false,
+  "training_steps": 0,
+  "unmatched_source_unit_count": 0,
+  "whole_program_semantics_verified": false
+}

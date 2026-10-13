@@ -80,21 +80,24 @@ def test_control_context_replays_lakes_and_keeps_unresolved_loop_references(cont
     full = {row["obligation_id"]: row for row in report["pending_obligations"]}
     assert any(row["loop_region_ids"] for row in full.values())
     assert summary["pending_obligations"][0]["proof_phase"] == "activation_entry"
+    hint_contract = summary["planning_hint_contract"]
+    assert hint_contract["schema"] == "numerical-planning-hints@1"
+    assert hint_contract["full_context_required"] is True
+    assert hint_contract["evaluation_guard_verified"] is hint_contract["standalone_program_evaluation_complete"] is False
     for row in summary["pending_obligations"]:
         source = full[row["obligation_id"]]
-        assert row["control_region_ids"] == source["control_region_ids"]
-        assert row["loop_region_ids"] == source["loop_region_ids"]
+        assert row.get("control_region_ids", []) == source["control_region_ids"]
+        assert row.get("loop_region_ids", []) == source["loop_region_ids"]
         assert row["cfg_ids"] == sorted({value["cfg_id"] for value in source["cfg_occurrences"]})
-        assert row["cfg_block_ids"] == sorted({value["block_id"] for value in source["cfg_occurrences"]})
-        assert row["cfg_command_ids"] == sorted({value["command_id"] for value in source["cfg_occurrences"]})
         assert "cfg_occurrences" not in row and "evaluation_contexts" not in row
-        assert row["evaluation_guard_verified"] is row["standalone_program_evaluation_complete"] is False
+        assert row["expression_id"] == source["expression_id"]
         if "proof_scope" in source:
-            assert row["evaluation_context_role"] == "source_anchor_only"
-            assert row["logical_guard_scope"] == "unresolved_proof_scope_applicability"
+            assert row["scope"] == "proof_applicability"
             assert row["proof_phase"] == source["proof_scope"]["proof_phase"]
             assert row["proof_scope_control_region_id"] == source["proof_scope"]["control_region_id"]
-            assert row["proof_phase_established"] is row["proof_applicability_verified"] is False
+            assert hint_contract["proof_phase_established"] is hint_contract["proof_applicability_verified"] is False
+        else:
+            assert row["scope"] == "source_evaluation"
     assert summary["source_obligations_discharged"] == receipt["model_inference_calls"] == receipt["provider_calls"] == 0
     assert summary["source_semantics_verified"] is summary["proof_authority"] is False
     assert len(summary["pending_obligations"]) + summary["omitted_obligation_summaries"] == len(full)
@@ -184,7 +187,7 @@ def test_control_summary_charges_omitted_rows_without_stripping_loop_scope(contr
     assert len(compact["pending_obligations"]) + compact["omitted_obligation_summaries"] == compact["pending_obligation_count"]
     assert len(compact["control_references"]) + compact["omitted_control_reference_summaries"] == len(reports)
     for row in compact["pending_obligations"]:
-        assert "loop_region_ids" in row and "cfg_block_ids" in row
+        assert "scope" in row and "cfg_ids" in row
 
 
 def test_control_advice_reaches_planner_before_goals_then_admitted_indexes(original, monkeypatch):
@@ -199,7 +202,7 @@ def test_control_advice_reaches_planner_before_goals_then_admitted_indexes(origi
         calls.append(prompt)
         assert native.CONTROL_PROFILE in prompt
         assert "Loop" in prompt and "termination" in prompt
-        assert "loop_region_ids" in prompt and "cfg_block_ids" in prompt
+        assert "loop_region_ids" in prompt and "cfg_ids" in prompt
         assert '"evaluation_guard_verified":false' in prompt.replace(" ", "")
         return {"text": _proposal_json(prepared), "observation": {}, "execution_receipt": None}
     _version(monkeypatch)

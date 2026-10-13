@@ -1,0 +1,91 @@
+{
+  "accelerator_base": "5ad92f61bb643d4138749d3df16663a2af1c79c1",
+  "datasets_base": "6cfc5a640a4715dfc4da1a8f5d180719b4bc6fbe",
+  "frozen_producer_sha256": {
+    "ipfs_datasets_py.logic.software_verification.numerical_logic": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "ipfs_datasets_py.logic.software_verification.numerical_logic_v2": "e335faff26b909c3da6d3496f1856eadabaa180d8ee939d499f7c44f0fbbc58d",
+    "ipfs_datasets_py.logic.software_verification.numerical_logic_v3": "fb2cf7a2ae7050bb03e57db643b7617c94ee2b415750b279bfdbd175a276200b",
+    "ipfs_datasets_py.logic.software_verification.numerical_source": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "ipfs_datasets_py.logic.software_verification.numerical_source_v2": "1943dd506a31a4b2854de2c9decd2fc2ad6625ff8669f63aa6c6f129ca924e4b",
+    "ipfs_datasets_py.logic.software_verification.numerical_source_v3": "49deaa1dd0c6692c0dd691219e7c1fdcf54b1cbbde9524013c9e962220c15b33",
+    "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+  },
+  "owner_sha256": "33852987f9c3e3c69a40402f841dbe3725e1b4cd3d16fe64bbcb68ee63739edb",
+  "pager_sha256": "7822e0878a75e44924bfb55522f6d2ad16e742d7e67ee4c985e4b358a683d9e0",
+  "provider_calls": 0,
+  "rows": [
+    {
+      "inline_pending": 0,
+      "page_sha256": "c595eb68e6cb384586db241a319fdf62c495c1f871d560e2dd04a4188e54dff3",
+      "profile": "python-numerical-structure@1",
+      "report_hashes": {
+        "eigen.py": "a919f301e7707b4fe54c8574372c61717c45ea9419a14054dac6f296c9e34f11",
+        "eval.py": "31654d0037267c444436fc63e2379bd6c4502e5266a7c2a789a1e8f7f771cf89"
+      },
+      "summary_bytes": 8008,
+      "summary_sha256": "6544175060a8c4d345300fecaa71c09af35f84b991ccc453b11c756caef60520",
+      "version": 1
+    },
+    {
+      "inline_pending": 0,
+      "page_sha256": "64301cba4a27874d45870a46553cba6f65fede41c8f6e5eb7af2e17f5e9d9078",
+      "profile": "python-numerical-guarded-structure@2",
+      "report_hashes": {
+        "eigen.py": "f208a6245483f8b3fca576f1e3aefba0eb00b38f7dc998f649dae27122377dd3",
+        "eval.py": "7b026b3e5e920acced0c9a5a2b7038f86c68a0824c7cf5f26575ca8230588fde"
+      },
+      "summary_bytes": 7900,
+      "summary_sha256": "201a75e779162778ad1b15b40505331e0fe64d3201667fa16a6ac95e91b52b6d",
+      "version": 2
+    },
+    {
+      "inline_pending": 0,
+      "page_sha256": "9ff96e43dcf7298b0d1bd840bca893244679b8d9d5f5985c94ecae2d590947e6",
+      "profile": "python-numerical-control-structure@3",
+      "report_hashes": {
+        "eigen.py": "106cc79fc8438d9b9740d35d35bcb66f5b41d2e18422d66d1c9a45f23075cd7b",
+        "eval.py": "b76794d82cbea33daa45b60ef145a12b6d829193ea4ef26d651ac7ff11481da0"
+      },
+      "summary_bytes": 7614,
+      "summary_sha256": "4bcc3e4caa67d092c79c5ceeac5d75e639dafc61b49504b48a79ab3802c6f401",
+      "version": 3
+    }
+  ],
+  "schema": "numerical-planning-selection-baseline@1",
+  "source_executed": false,
+  "source_sha256": {
+    "eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+    "eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+  },
+  "structured_checkpoint_implementation": {
+    "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+    "shared_runtime": {
+      "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+      "native": {
+        "dependencies": {
+          "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+          "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+          "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+          "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+          "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+          "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+          "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+          "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+        },
+        "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+        "scope": "listed_numerical_and_native_validator_modules_only"
+      },
+      "numerical": {
+        "files": {
+          "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+          "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+          "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+          "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+          "tree_pin.py": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2"
+        },
+        "scope": "listed_latent_decoder_and_grammar_sources_only"
+      },
+      "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+    }
+  }
+}

@@ -286,6 +286,53 @@ def test_valid_success_and_closed_refusal_do_not_gain_authority():
         assert client.validate_response(body, request=request(), descriptor=descriptor()) == body
 
 
+@pytest.mark.parametrize("selected", ["obligation:1", "é" * 256, "' OR 1=1 --"])
+def test_exact_id_query_is_a_bounded_literal(selected):
+    incoming = request(obligation_id=selected)
+    assert client.validate_request(incoming) is incoming
+    body = response()
+    body["page"].update(matched_count=0, next_cursor=None, offset=0, remaining_count=0, exhausted=True, status="exhausted")
+    body["page"]["query"]["obligation_id"] = selected
+    assert client.validate_response(body, request=incoming) is body
+    body["page"].update(rows=[dict(obligation_id=selected)], returned_count=1, matched_count=1)
+    assert client.validate_response(body, request=incoming) is body
+
+
+@pytest.mark.parametrize("selected", [None, "", 1, True, [], "é" * 257, "a\n", "\ud800"])
+def test_invalid_id_query_refused_before_transport(selected):
+    with pytest.raises(client.NumericalObligationClientError):
+        client.validate_request(request(obligation_id=selected))
+
+
+@pytest.mark.parametrize("change", ["missing_filter", "other_filter", "extra_filter",
+    "foreign_row", "duplicate_rows", "missing_count", "bool_count", "cursor", "count", "offset", "remaining_count", "exhausted", "status", "kind", "function_id"])
+def test_exact_id_response_cannot_substitute_or_paginate_another_obligation(change):
+    incoming = request(obligation_id="selected")
+    body = response()
+    page = body["page"]
+    page["query"]["obligation_id"] = "selected"
+    page.update(rows=[dict(obligation_id="selected")], returned_count=1, matched_count=1, next_cursor=None, offset=0, remaining_count=0, exhausted=True, status="exhausted")
+    if change == "missing_filter": del page["query"]["obligation_id"]
+    elif change == "other_filter": page["query"]["obligation_id"] = "foreign"
+    elif change == "extra_filter": del incoming["query"]["obligation_id"]
+    elif change == "foreign_row": page["rows"][0]["obligation_id"] = "foreign"
+    elif change == "duplicate_rows":
+        page["rows"] *= 2
+        page.update(returned_count=2, matched_count=2)
+    elif change == "missing_count": del page["matched_count"]
+    elif change == "bool_count": page["matched_count"] = True
+    elif change == "cursor": page["next_cursor"] = {"offset": 1}
+    elif change in ("offset", "remaining_count"): page[change] = 1
+    elif change == "exhausted": page[change] = False
+    elif change == "status": page[change] = "more_available"
+    elif change in ("kind", "function_id"):
+        incoming["query"][change] = page["query"][change] = "requested"
+        page["rows"][0]["kind" if change == "kind" else "function_ids"] = "other" if change == "kind" else ["other"]
+    else: page["matched_count"] = 0
+    with pytest.raises(client.NumericalObligationClientError):
+        client.validate_response(body, request=incoming)
+
+
 def test_cli_error_never_prints_exception_or_user_paths(capsys, monkeypatch):
     monkeypatch.setattr(client, "request_page", lambda *a, **k: (_ for _ in ()).throw(ValueError("secret /owner/private")))
     code = client.main([client.DESCRIPTOR_FLAG, "/owner/private", client.DIGEST_FLAG, "a" * 64, "--path", "sample.py"])
@@ -303,14 +350,16 @@ def test_cli_reads_only_explicit_descriptor_environment(capsys, monkeypatch):
         calls.append((args, kwargs))
         return response(ok=False)
     monkeypatch.setattr(client, "request_page", invoke)
-    assert client.main(["--path", "sample.py", "--kind", "nonempty"]) == 2
+    assert client.main(["--path", "sample.py", "--kind", "nonempty", "--obligation-id", "selected"]) == 2
     assert calls[0][0] == ("/owner/descriptor", "a" * 64)
     assert calls[0][1]["kind"] == "nonempty"
+    assert calls[0][1]["obligation_id"] == "selected"
     assert json.loads(capsys.readouterr().out)["reason_code"] == "stale_context"
 
 
+@pytest.mark.parametrize("selected", [None, "selected"])
 @pytest.mark.parametrize("outcome", ["page", "refused", "oversized"])
-def test_request_page_uses_real_framing_and_peer_checks(owner_files, outcome):
+def test_request_page_uses_real_framing_and_peer_checks(owner_files, outcome, selected):
     path, digest, value, _, listener = owner_files
     listener.settimeout(3)
     observed = []
@@ -324,6 +373,9 @@ def test_request_page_uses_real_framing_and_peer_checks(owner_files, outcome):
                 observed.append(incoming)
                 outgoing = response(ok=outcome != "refused")
                 outgoing["request_id"] = incoming["request_id"]
+                if selected is not None and outgoing["ok"]:
+                    outgoing["page"]["query"]["obligation_id"] = selected
+                    outgoing["page"].update(matched_count=0, next_cursor=None, offset=0, remaining_count=0, exhausted=True, status="exhausted")
                 if outcome == "oversized":
                     outgoing["page"]["padding"] = "x" * 4096
                 client.send_frame(channel, outgoing)
@@ -334,13 +386,16 @@ def test_request_page_uses_real_framing_and_peer_checks(owner_files, outcome):
     try:
         if outcome == "oversized":
             with pytest.raises(ValueError, match="frame exceeds"):
-                client.request_page(path, digest, path="sample.py", max_bytes=1024)
+                client.request_page(path, digest, path="sample.py", max_bytes=1024, obligation_id=selected)
         else:
-            result = client.request_page(path, digest, path="sample.py")
+            result = client.request_page(path, digest, path="sample.py", obligation_id=selected)
             assert result["ok"] is (outcome == "page")
         assert len(observed) == 1
         assert observed[0]["session_id"] == value["session_id"]
         assert observed[0]["query"]["path"] == "sample.py"
+        assert ("obligation_id" in observed[0]["query"]) is (selected is not None)
+        if selected is not None:
+            assert observed[0]["query"]["obligation_id"] == selected
     finally:
         worker.join(4)
     assert not worker.is_alive()

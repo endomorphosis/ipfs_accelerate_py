@@ -1,0 +1,376 @@
+[
+  {
+    "first": {
+      "binding": {
+        "path": "eigen.py",
+        "report_id": "56e9a24e5a6b8f265f3132c49844dd6403ee907435d1be8a78e48bfef90a78bf",
+        "report_sha256": "f208a6245483f8b3fca576f1e3aefba0eb00b38f7dc998f649dae27122377dd3",
+        "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+      },
+      "completion_authority": false,
+      "execution_authority": false,
+      "exhausted": false,
+      "filtered_out_count": 0,
+      "formalization_authority": false,
+      "matched_count": 16,
+      "model_inference_calls": 0,
+      "next_cursor": {
+        "offset": 1,
+        "request_sha256": "d2be69e83b65ab23dd1394010930b7c45bced643116d42355ebbec37f4f71061",
+        "schema": "numerical-obligation-cursor@1"
+      },
+      "offset": 0,
+      "proof_authority": false,
+      "provider_calls": 0,
+      "query": {
+        "function_id": null,
+        "kind": null,
+        "limit": 1,
+        "max_bytes": 8192
+      },
+      "remaining_count": 15,
+      "request_sha256": "d2be69e83b65ab23dd1394010930b7c45bced643116d42355ebbec37f4f71061",
+      "returned_count": 1,
+      "rows": [
+        {
+          "assumptions_asserted": false,
+          "completion_authority": false,
+          "evaluation_contexts": [
+            {
+              "command_id": "command:31",
+              "function_id": "function:2",
+              "guard_conditions": [
+                {
+                  "command_id": "command:31",
+                  "kind": "command_reached"
+                }
+              ],
+              "guarded_region_ids": []
+            }
+          ],
+          "evaluation_guard_interpretation": "disjunction of listed entry contexts; no condition or normal completion is established",
+          "evaluation_guard_verified": false,
+          "execution_authority": false,
+          "expression_id": "expr:29",
+          "function_ids": [
+            "function:2"
+          ],
+          "guarded_region_ids": [],
+          "kind": "library_semantics_and_effects",
+          "model_inference_executed": false,
+          "obligation_id": "numerical-guarded:c42b068b9ae3adc107f18356b65c718e",
+          "proof_authority": false,
+          "reason": "Call result, exceptions, dispatch, mutation and aliasing remain opaque; imported names do not prove runtime identity.",
+          "roles": {
+            "callee_expression": "expr:25",
+            "imported_callee": "numpy.linalg.eig",
+            "qualified_callee": "np.linalg.eig"
+          },
+          "runtime_effects_verified": false,
+          "runtime_truthiness_verified": false,
+          "source_binding_is_semantic_proof": false,
+          "source_executed": false,
+          "source_ref_ids": [
+            "source:eigen.py"
+          ],
+          "source_semantics_verified": false,
+          "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+          "span_ids": [
+            "span:30"
+          ],
+          "standalone_program_evaluation_complete": false,
+          "status": "pending",
+          "whole_program_semantics_verified": false
+        }
+      ],
+      "schema": "numerical-obligation-page@1",
+      "solver_calls": 0,
+      "source_executed": false,
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "status": "more_available",
+      "total_count": 16,
+      "whole_program_semantics_verified": false
+    },
+    "path": "eigen.py",
+    "second": {
+      "binding": {
+        "path": "eigen.py",
+        "report_id": "56e9a24e5a6b8f265f3132c49844dd6403ee907435d1be8a78e48bfef90a78bf",
+        "report_sha256": "f208a6245483f8b3fca576f1e3aefba0eb00b38f7dc998f649dae27122377dd3",
+        "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+      },
+      "completion_authority": false,
+      "execution_authority": false,
+      "exhausted": false,
+      "filtered_out_count": 0,
+      "formalization_authority": false,
+      "matched_count": 16,
+      "model_inference_calls": 0,
+      "next_cursor": {
+        "offset": 2,
+        "request_sha256": "d2be69e83b65ab23dd1394010930b7c45bced643116d42355ebbec37f4f71061",
+        "schema": "numerical-obligation-cursor@1"
+      },
+      "offset": 1,
+      "proof_authority": false,
+      "provider_calls": 0,
+      "query": {
+        "function_id": null,
+        "kind": null,
+        "limit": 1,
+        "max_bytes": 8192
+      },
+      "remaining_count": 14,
+      "request_sha256": "d2be69e83b65ab23dd1394010930b7c45bced643116d42355ebbec37f4f71061",
+      "returned_count": 1,
+      "rows": [
+        {
+          "assumptions_asserted": false,
+          "completion_authority": false,
+          "evaluation_contexts": [
+            {
+              "command_id": "command:31",
+              "function_id": "function:2",
+              "guard_conditions": [
+                {
+                  "command_id": "command:31",
+                  "kind": "command_reached"
+                }
+              ],
+              "guarded_region_ids": []
+            }
+          ],
+          "evaluation_guard_interpretation": "disjunction of listed entry contexts; no condition or normal completion is established",
+          "evaluation_guard_verified": false,
+          "execution_authority": false,
+          "expression_id": "expr:29",
+          "function_ids": [
+            "function:2"
+          ],
+          "guarded_region_ids": [],
+          "kind": "matrix_shape",
+          "model_inference_executed": false,
+          "obligation_id": "numerical-guarded:ad6dff2caa4c4f5789a592e049fd51de",
+          "proof_authority": false,
+          "reason": "Bind actual ndarray rank and trailing dimensions; mathematical square-matrix template does not establish dtype or runtime shape.",
+          "roles": {
+            "imported_callee": "numpy.linalg.eig",
+            "input_expression": "expr:27",
+            "result_expression": "expr:29"
+          },
+          "runtime_effects_verified": false,
+          "runtime_truthiness_verified": false,
+          "source_binding_is_semantic_proof": false,
+          "source_executed": false,
+          "source_ref_ids": [
+            "source:eigen.py"
+          ],
+          "source_semantics_verified": false,
+          "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+          "span_ids": [
+            "span:30"
+          ],
+          "standalone_program_evaluation_complete": false,
+          "status": "pending",
+          "whole_program_semantics_verified": false
+        }
+      ],
+      "schema": "numerical-obligation-page@1",
+      "solver_calls": 0,
+      "source_executed": false,
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "status": "more_available",
+      "total_count": 16,
+      "whole_program_semantics_verified": false
+    }
+  },
+  {
+    "first": {
+      "binding": {
+        "path": "eval.py",
+        "report_id": "3624d46189e0a6e93965fdbae2690398dbb7e2182c6b8ca7f63d6542c01281cd",
+        "report_sha256": "7b026b3e5e920acced0c9a5a2b7038f86c68a0824c7cf5f26575ca8230588fde",
+        "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      },
+      "completion_authority": false,
+      "execution_authority": false,
+      "exhausted": false,
+      "filtered_out_count": 0,
+      "formalization_authority": false,
+      "matched_count": 59,
+      "model_inference_calls": 0,
+      "next_cursor": {
+        "offset": 1,
+        "request_sha256": "4e4ee2ce0ebd9df0bf6dbb18f8ce0c086472c5ca39147c23f5af0870f40f472d",
+        "schema": "numerical-obligation-cursor@1"
+      },
+      "offset": 0,
+      "proof_authority": false,
+      "provider_calls": 0,
+      "query": {
+        "function_id": null,
+        "kind": null,
+        "limit": 1,
+        "max_bytes": 8192
+      },
+      "remaining_count": 58,
+      "request_sha256": "4e4ee2ce0ebd9df0bf6dbb18f8ce0c086472c5ca39147c23f5af0870f40f472d",
+      "returned_count": 1,
+      "rows": [
+        {
+          "assumptions_asserted": false,
+          "completion_authority": false,
+          "evaluation_contexts": [
+            {
+              "command_id": "command:121",
+              "function_id": "function:81",
+              "guard_conditions": [
+                {
+                  "command_id": "command:121",
+                  "kind": "command_reached"
+                }
+              ],
+              "guarded_region_ids": []
+            }
+          ],
+          "evaluation_guard_interpretation": "disjunction of listed entry contexts; no condition or normal completion is established",
+          "evaluation_guard_verified": false,
+          "execution_authority": false,
+          "expression_id": "expr:111",
+          "function_ids": [
+            "function:81"
+          ],
+          "guarded_region_ids": [],
+          "kind": "library_semantics_and_effects",
+          "model_inference_executed": false,
+          "obligation_id": "numerical-guarded:5a038dd462b6be503d9522b52123007d",
+          "proof_authority": false,
+          "reason": "Call result, exceptions, dispatch, mutation and aliasing remain opaque; imported names do not prove runtime identity.",
+          "roles": {
+            "callee_expression": "expr:103",
+            "imported_callee": "numpy.random.normal",
+            "qualified_callee": "np.random.normal"
+          },
+          "runtime_effects_verified": false,
+          "runtime_truthiness_verified": false,
+          "source_binding_is_semantic_proof": false,
+          "source_executed": false,
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "source_semantics_verified": false,
+          "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+          "span_ids": [
+            "span:112"
+          ],
+          "standalone_program_evaluation_complete": false,
+          "status": "pending",
+          "whole_program_semantics_verified": false
+        }
+      ],
+      "schema": "numerical-obligation-page@1",
+      "solver_calls": 0,
+      "source_executed": false,
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "status": "more_available",
+      "total_count": 59,
+      "whole_program_semantics_verified": false
+    },
+    "path": "eval.py",
+    "second": {
+      "binding": {
+        "path": "eval.py",
+        "report_id": "3624d46189e0a6e93965fdbae2690398dbb7e2182c6b8ca7f63d6542c01281cd",
+        "report_sha256": "7b026b3e5e920acced0c9a5a2b7038f86c68a0824c7cf5f26575ca8230588fde",
+        "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      },
+      "completion_authority": false,
+      "execution_authority": false,
+      "exhausted": false,
+      "filtered_out_count": 0,
+      "formalization_authority": false,
+      "matched_count": 59,
+      "model_inference_calls": 0,
+      "next_cursor": {
+        "offset": 2,
+        "request_sha256": "4e4ee2ce0ebd9df0bf6dbb18f8ce0c086472c5ca39147c23f5af0870f40f472d",
+        "schema": "numerical-obligation-cursor@1"
+      },
+      "offset": 1,
+      "proof_authority": false,
+      "provider_calls": 0,
+      "query": {
+        "function_id": null,
+        "kind": null,
+        "limit": 1,
+        "max_bytes": 8192
+      },
+      "remaining_count": 57,
+      "request_sha256": "4e4ee2ce0ebd9df0bf6dbb18f8ce0c086472c5ca39147c23f5af0870f40f472d",
+      "returned_count": 1,
+      "rows": [
+        {
+          "assumptions_asserted": false,
+          "completion_authority": false,
+          "evaluation_contexts": [
+            {
+              "command_id": "command:121",
+              "function_id": "function:81",
+              "guard_conditions": [
+                {
+                  "command_id": "command:121",
+                  "kind": "command_reached"
+                }
+              ],
+              "guarded_region_ids": []
+            }
+          ],
+          "evaluation_guard_interpretation": "disjunction of listed entry contexts; no condition or normal completion is established",
+          "evaluation_guard_verified": false,
+          "execution_authority": false,
+          "expression_id": "expr:119",
+          "function_ids": [
+            "function:81"
+          ],
+          "guarded_region_ids": [],
+          "kind": "library_semantics_and_effects",
+          "model_inference_executed": false,
+          "obligation_id": "numerical-guarded:9b4a4e9a2c9b8c87ddab888bb414bef0",
+          "proof_authority": false,
+          "reason": "Call result, exceptions, dispatch, mutation and aliasing remain opaque; imported names do not prove runtime identity.",
+          "roles": {
+            "callee_expression": "expr:113",
+            "imported_callee": null,
+            "qualified_callee": null
+          },
+          "runtime_effects_verified": false,
+          "runtime_truthiness_verified": false,
+          "source_binding_is_semantic_proof": false,
+          "source_executed": false,
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "source_semantics_verified": false,
+          "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+          "span_ids": [
+            "span:120"
+          ],
+          "standalone_program_evaluation_complete": false,
+          "status": "pending",
+          "whole_program_semantics_verified": false
+        }
+      ],
+      "schema": "numerical-obligation-page@1",
+      "solver_calls": 0,
+      "source_executed": false,
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "status": "more_available",
+      "total_count": 59,
+      "whole_program_semantics_verified": false
+    }
+  }
+]
