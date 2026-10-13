@@ -19,8 +19,10 @@ from .repository_source_inventory import (
 from .reversible_source_view import (
     build_source_view, restore_source_view, current_codec_binding,
 )
+from .source_view_policy import SourceViewPolicy
 
 SCHEMA = "supervisor-historical-code-view-inventory@1"
+SHARED_SCHEMA = "supervisor-historical-code-view-inventory@2"
 PAGE_SCHEMA = "supervisor-historical-code-view-index-page@1"
 PROFILES = {"identity@1", "python-whitespace@1", "python-comments@1"}
 MAX_BLOCK = 1024 * 1024
@@ -103,8 +105,16 @@ def _policy(profile, protected_lines):
     return dict(sorted(result.items()))
 
 
-def _inputs(request, source_limits, profile, protected_lines):
+def _inputs(request, source_limits, profile, protected_lines, view_policy):
     native_guard = _input_guard(request, source_limits)
+    shared_binding = None
+    if view_policy is not None:
+        _require(type(view_policy) is SourceViewPolicy, "exact shared source-view policy required")
+        _require(type(profile) is str and profile == "python-whitespace@1" and protected_lines is None,
+                 "shared policy cannot be combined with legacy view configuration")
+        shared_binding = view_policy.binding()
+        profile = view_policy.profile
+        protected_lines = view_policy.to_dict()["protected_lines"]
     policy = _policy(profile, protected_lines)
     binding = current_codec_binding()
 
@@ -112,13 +122,23 @@ def _inputs(request, source_limits, profile, protected_lines):
         native_guard()
         _require(_policy(profile, protected_lines) == policy, "code view policy changed")
         _require(current_codec_binding() == binding, "code view codec binding changed")
+        if view_policy is not None:
+            _require(view_policy.binding() == shared_binding, "shared source-view policy changed")
     return (SourceInventoryRequest(**asdict(request)), SourceInventoryLimits(**asdict(source_limits)),
-            policy, binding, guard)
+            profile, policy, binding, shared_binding, guard)
 
 
 def _profile_for(source, profile):
     return profile if source.entry.git_mode in {"100644", "100755"} and bytes.fromhex(
         source.entry.raw_path_hex).endswith((b".py", b".pyi")) else "identity@1"
+
+
+def _projection(source, profile, policy, view_policy):
+    if view_policy is not None:
+        return view_policy.project(source.data, raw_path=bytes.fromhex(source.entry.raw_path_hex),
+            regular_file=source.entry.git_mode in {"100644", "100755"})
+    return build_source_view(source.data, profile=_profile_for(source, profile),
+        protected_lines=tuple(policy.get(source.entry.raw_path_hex, ())))
 
 
 class _Metadata:
@@ -155,11 +175,15 @@ def _validate_policy_sources(sources, policy):
     _require(set(policy) <= eligible, "protected policy differs from regular Python source scope")
 
 
-def _root(source_cid, request, limits, profile, policy, binding, pages, count):
-    return dict(schema=SCHEMA, source_inventory_cid=source_cid, request=asdict(request),
+def _root(source_cid, request, limits, profile, policy, binding, shared_binding, pages, count):
+    result = dict(schema=SCHEMA if shared_binding is None else SHARED_SCHEMA,
+        source_inventory_cid=source_cid, request=asdict(request),
         source_limits=asdict(limits), profile=profile, protected_lines=policy,
         codec_binding=binding, entry_pages=pages, entry_count=count,
         historical_only=True, completion_authority=False)
+    if shared_binding is not None:
+        result["view_policy_binding"] = shared_binding
+    return result
 
 
 def _page_values(records):
@@ -175,9 +199,15 @@ def _page_values(records):
         yield dict(schema=PAGE_SCHEMA, records=page)
 
 
-def _replay(store, metadata, root_cid, root, *, source_cid, request, limits, profile, policy, binding):
-    _require(type(root) is dict and set(root) == _ROOT_FIELDS and root["schema"] == SCHEMA,
+def _replay(store, metadata, root_cid, root, *, source_cid, request, limits, profile, policy, binding,
+            shared_binding, view_policy):
+    fields = _ROOT_FIELDS if shared_binding is None else _ROOT_FIELDS | {"view_policy_binding"}
+    schema = SCHEMA if shared_binding is None else SHARED_SCHEMA
+    _require(type(root) is dict and set(root) == fields and root["schema"] == schema,
              "unsupported code view inventory schema")
+    if shared_binding is not None:
+        _require(canonical_dag_json_bytes(root["view_policy_binding"])
+                 == canonical_dag_json_bytes(shared_binding), "shared source-view policy binding differs")
     _require(root["source_inventory_cid"] == source_cid
              and canonical_dag_json_bytes(root["request"]) == canonical_dag_json_bytes(asdict(request))
              and canonical_dag_json_bytes(root["source_limits"]) == canonical_dag_json_bytes(asdict(limits)),
@@ -237,8 +267,7 @@ def _replay(store, metadata, root_cid, root, *, source_cid, request, limits, pro
             _require(record["view_storage"] == "retained-view" and record["view_bytes"] <= MAX_BLOCK,
                      "unsupported retained code view")
             view = store.get_bytes(record["view_cid"], record["view_bytes"])
-        candidate = build_source_view(source.data, profile=_profile_for(source, profile),
-            protected_lines=tuple(policy.get(expected.raw_path_hex, ())))
+        candidate = _projection(source, profile, policy, view_policy)
         _require(record["view_storage"] == ("original-source" if candidate.view == source.data else "retained-view")
                  and record["view_cid"] == cid_for_bytes(candidate.view)
                  and record["manifest_cid"] == cid_for_structured(candidate.manifest),
@@ -256,9 +285,11 @@ def _replay(store, metadata, root_cid, root, *, source_cid, request, limits, pro
 
 
 def retain_code_view_inventory(*, cas, expected_source_inventory_cid, request,
-        source_limits=SourceInventoryLimits(), profile="python-whitespace@1", protected_lines=None):
+        source_limits=SourceInventoryLimits(), profile="python-whitespace@1", protected_lines=None,
+        view_policy=None):
     """Retain read-only candidates; original source remains in its existing inventory."""
-    request, limits, policy, binding, guard = _inputs(request, source_limits, profile, protected_lines)
+    request, limits, profile, policy, binding, shared_binding, guard = _inputs(
+        request, source_limits, profile, protected_lines, view_policy)
     source_cid = _cid(expected_source_inventory_cid)
     store = _BoundCAS(cas, guard)
     sources = load_source_inventory(cas=cas, expected_inventory_cid=source_cid, request=request, limits=limits)
@@ -272,8 +303,7 @@ def retain_code_view_inventory(*, cas, expected_source_inventory_cid, request,
             view_cid=None, view_bytes=None, view_storage="gitlink-reference",
             manifest_cid=None, manifest_sha256=None)
         if source.data is not None:
-            view = build_source_view(source.data, profile=_profile_for(source, profile),
-                protected_lines=tuple(policy.get(entry.raw_path_hex, ())))
+            view = _projection(source, profile, policy, view_policy)
             view_cid = cid_for_bytes(view.view)
             same = view.view == source.data
             if not same:
@@ -283,10 +313,11 @@ def retain_code_view_inventory(*, cas, expected_source_inventory_cid, request,
                 manifest_cid=metadata.put(view.manifest), manifest_sha256=view.manifest_sha256)
         records.append(record)
     pages = [metadata.put(page) for page in _page_values(records)]
-    root = _root(source_cid, request, limits, profile, policy, binding, pages, len(records))
+    root = _root(source_cid, request, limits, profile, policy, binding, shared_binding, pages, len(records))
     root_cid = cid_for_structured(root)
     args = dict(source_cid=source_cid, request=request, limits=limits,
-                profile=profile, policy=policy, binding=binding)
+                profile=profile, policy=policy, binding=binding,
+                shared_binding=shared_binding, view_policy=view_policy)
     _replay(store, _Metadata(store, limits), root_cid, root, **args)
     metadata.put(root)
     _replay(store, _Metadata(store, limits), root_cid, store.get(root_cid), **args)
@@ -295,12 +326,15 @@ def retain_code_view_inventory(*, cas, expected_source_inventory_cid, request,
 
 
 def load_code_view_inventory(*, cas, expected_inventory_cid, expected_source_inventory_cid,
-        request, source_limits=SourceInventoryLimits(), profile="python-whitespace@1", protected_lines=None):
+        request, source_limits=SourceInventoryLimits(), profile="python-whitespace@1", protected_lines=None,
+        view_policy=None):
     """Restore unchanged historical bytes from a separately pinned read-only view."""
-    request, limits, policy, binding, guard = _inputs(request, source_limits, profile, protected_lines)
+    request, limits, profile, policy, binding, shared_binding, guard = _inputs(
+        request, source_limits, profile, protected_lines, view_policy)
     root_cid, source_cid = _cid(expected_inventory_cid), _cid(expected_source_inventory_cid)
     store = _BoundCAS(cas, guard)
     metadata = _Metadata(store, limits)
     root = metadata.get(root_cid)
     return _replay(store, metadata, root_cid, root, source_cid=source_cid, request=request,
-                   limits=limits, profile=profile, policy=policy, binding=binding)
+                   limits=limits, profile=profile, policy=policy, binding=binding,
+                   shared_binding=shared_binding, view_policy=view_policy)

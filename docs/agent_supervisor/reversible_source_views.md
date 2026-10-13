@@ -74,6 +74,47 @@ It then joins retained view bytes for KEEP ranges with original bytes for DELETE
 ranges and checks exact equality. A rehashed arbitrary deletion map, edited
 view, stale binding or changed profile cannot masquerade as that codec output.
 
+## Share an explicit policy across owner APIs
+
+The additive [policy resolver](../../ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py)
+lets the inventory, host source reader and edit adapter use the same regular
+`.py`/`.pyi` classification and caller-protected physical lines:
+
+```python
+from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy
+
+policy = SourceViewPolicy.from_mapping(
+    profile="python-comments@1",
+    protected_lines={b"pkg/types.pyi".hex(): [2]},
+)
+resolved = policy.resolve(raw_path=b"pkg/types.pyi", regular_file=True)
+assert resolved.python_eligible and resolved.protected_lines == (2,)
+```
+
+Pass the same `view_policy=policy` to `retain_code_view_inventory`,
+`load_code_view_inventory` and `WorkerSourceViews`. Leave their legacy `profile`
+argument at its default and the inventory's legacy `protected_lines` unset;
+the policy supplies both. Protection keys must refer to admitted regular Python
+paths. The immutable policy detaches caller mappings and binds configuration,
+resolver implementation bytes and the unchanged codec. Inventory roots use
+`supervisor-historical-code-view-inventory@2`; old roots and defaults retain
+their original schema and identities.
+
+The owner source reader binds that policy to its admitted source population and
+candidate generations. Its checked `working_projection` accessor supplies the
+edit adapter's view/map instead of a second suffix/protection recipe. Shared
+application receipts use `supervisor-source-view-edit-application@2` and retain
+the policy binding digest. Protected lines preserve display text and physical
+coordinates; they do not prohibit edits within retained bytes. The existing
+mapper refuses newline-changing edits while caller-protected lines exist.
+
+This first policy API is host-only. Shared baseline/working pages use versions
+3/4 and discovery uses version 2; the current closed worker transport accepts
+the legacy policy only. Exposing policy selection to the actual coding client
+needs a coordinated descriptor/client/broker version. The
+[qualification evidence](evidence/shared-source-view-policy-20261013/README.md)
+keeps this boundary separate from token savings and model-driven editing.
+
 ## Map an explicit compact edit to original bytes
 
 [`source_view_edits.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py)
