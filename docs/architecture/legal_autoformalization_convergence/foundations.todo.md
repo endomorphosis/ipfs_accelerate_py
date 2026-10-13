@@ -26,7 +26,7 @@ Exactly three native deterministic qualification tasks. These are preparatory sp
 
 ## LAC-S2-006 Observe exact runtime and tool capabilities
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
