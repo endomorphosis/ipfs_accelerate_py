@@ -48,7 +48,7 @@ Three native deterministic source-contract qualifications. Original full-plan ac
 
 ## LAC-S3-045 Qualify exact reverse dependency invalidation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
