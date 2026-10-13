@@ -389,12 +389,15 @@ def prepare_semantic_context(
     # host metadata, not additional worker input or source-omission authority.
     from .context_selection_observation import (
         ContextSelectionObservationLimit,
+        MAX_PAYLOAD_BYTES,
         build_context_selection_observation,
         encode_context_selection_observation,
     )
     observation_started = time.perf_counter()
     selection_bytes = None
     try:
+        if len(compact) > MAX_PAYLOAD_BYTES:
+            raise ContextSelectionObservationLimit("native payload byte bound exceeded")
         selection_observation = build_context_selection_observation(
             # Observe the producer's exact JSON wire snapshot. Its in-memory
             # contracts can contain string enums and immutable sequences.

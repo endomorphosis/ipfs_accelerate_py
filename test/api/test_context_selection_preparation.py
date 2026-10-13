@@ -9,6 +9,7 @@ unchanged; two tests inject observer faults to check exception handling.
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
 import pytest
@@ -403,17 +404,36 @@ def test_host_sidecar_is_separately_verified_and_never_worker_dispatch_authority
         )
 
 
-def test_observation_resource_bound_preserves_real_worker_and_native_gates(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failure_mode", ["observer_limit", "wire_size"])
+def test_observation_resource_bound_preserves_real_worker_and_native_gates(tmp_path, monkeypatch, failure_mode):
     from ipfs_accelerate_py.agent_supervisor.runtime import (
         context_selection_observation as observer,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        semantic_context_runtime as runtime,
     )
 
     def bounded_observation(**_arguments):
         raise observer.ContextSelectionObservationLimit("authored telemetry resource bound")
 
-    monkeypatch.setattr(observer, "build_context_selection_observation", bounded_observation)
     repository = _repository(tmp_path)
-    output, result = _prepare(repository, program=["code.py"], worker_query="inspect")
+    if failure_mode == "observer_limit":
+        monkeypatch.setattr(observer, "build_context_selection_observation", bounded_observation)
+        output, result = _prepare(repository, program=["code.py"], worker_query="inspect")
+    else:
+        def forbidden_loads(*_arguments, **_keywords):
+            pytest.fail("oversize observer wire must be bounded before JSON normalization")
+
+        # A narrow module-local proxy leaves native producer/storage JSON APIs
+        # intact. Restore it before worker replay and current-source loading.
+        with monkeypatch.context() as scoped:
+            scoped.setattr(observer, "MAX_PAYLOAD_BYTES", 8192)
+            scoped.setattr(runtime, "json", SimpleNamespace(dumps=json.dumps, loads=forbidden_loads))
+            output, result = _prepare(
+                repository, program=["code.py"], worker_query="inspect " * 1000,
+                worker_capsule_limit=1,
+            )
+        assert runtime.json is json
     unavailable = {
         "schema": "supervisor-context-selection-observation-unavailable@1",
         "status": "unavailable",
@@ -423,6 +443,8 @@ def test_observation_resource_bound_preserves_real_worker_and_native_gates(tmp_p
     assert result["context_selection_observation"] == unavailable
     assert not (output / "context-selection.json").exists()
     raw = (output / "worker-context.json").read_bytes()
+    if failure_mode == "wire_size":
+        assert len(raw) > 8192
     payload = json.loads(raw)
     assert _regenerate_worker(repository, payload)[1] == raw
     assert "context_selection_observation" not in payload

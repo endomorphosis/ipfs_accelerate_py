@@ -64,7 +64,8 @@ observation against a caller-supplied trusted producer payload; callers still
 use the native semantic loader for task and source freshness checks.
 If the observation exceeds its own resource bounds, preparation records a fixed
 unavailable status and publishes no partial sidecar. The native context and its
-acceptance requirements remain unchanged.
+acceptance requirements remain unchanged. Oversized worker payloads skip
+observation decoding.
 
 ## Extending
 
