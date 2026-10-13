@@ -26,7 +26,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S5-040 Qualify lossless primary graph record decoding
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
