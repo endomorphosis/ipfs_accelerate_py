@@ -4372,6 +4372,30 @@ class ContextCompiler:
             pass
         return result
 
+    def _check_delta_provider_bytes(
+        self,
+        delta: ContextDeltaCapsule,
+        reconstructed: ContextCapsule,
+    ) -> None:
+        """Bound both retry representations using the actual provider payloads."""
+
+        if self.provider_max_input_bytes is None:
+            return
+        if (
+            len(canonical_context_json_bytes(delta.to_record()))
+            > self.provider_max_input_bytes
+        ):
+            raise ContextDeltaBudgetError(
+                "retry delta exceeds the provider input-byte budget"
+            )
+        if (
+            len(canonical_context_json_bytes(reconstructed.provider_input_payload))
+            > self.provider_max_input_bytes
+        ):
+            raise ContextDeltaBudgetError(
+                "reconstructed full context exceeds the provider input-byte budget"
+            )
+
     def verify_delta_result(
         self, result: ContextDeltaResult
     ) -> ContextDeltaResult:
@@ -4381,11 +4405,15 @@ class ContextCompiler:
         identity, coverage, and reconstruction bindings.  Provider token
         accounting additionally requires the same effective tokenizer used
         by this compiler, so this final producer gate recomputes both sides
-        instead of trusting counts carried by the receipt.
+        instead of trusting counts carried by the receipt. Both provider
+        representations must also fit this verifier's current byte ceiling.
         """
 
         if not isinstance(result, ContextDeltaResult):
             raise ContextDeltaError("result must be a ContextDeltaResult")
+        self._check_delta_provider_bytes(
+            result.delta_capsule, result.reconstructed_capsule
+        )
         reconstructed_tokens = self.estimate_capsule_input(
             result.reconstructed_capsule
         )
@@ -5235,6 +5263,7 @@ class ContextCompiler:
                 "retry delta exceeds the serialized-byte budget"
             )
         reconstructed = reconstruct_context(parent, delta_capsule)
+        self._check_delta_provider_bytes(delta_capsule, reconstructed)
         # The delta is its compact provider wire record.  Full replay is the
         # canonical provider input, conservatively floored by the same
         # component accounting used for the effective-budget check; it does
