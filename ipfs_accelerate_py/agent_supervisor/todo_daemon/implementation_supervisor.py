@@ -12620,7 +12620,7 @@ class PortalImplementationSupervisor:
             return ()
         result = subprocess.run(
             [
-                "git",
+                "git", "--no-optional-locks",
                 "status",
                 "--porcelain",
                 "--untracked-files=all",
@@ -13200,7 +13200,7 @@ class PortalImplementationSupervisor:
         try:
             status = subprocess.run(
                 [
-                    "git",
+                    "git", "--no-optional-locks",
                     "status",
                     "--porcelain",
                     "--untracked-files=all",
@@ -13635,7 +13635,7 @@ class PortalImplementationSupervisor:
             "returncode": 1,
             "branch": merge_head,
             "target_branch": target_branch,
-            "command": ["git", "status", "--short"],
+            "command": ["git", "--no-optional-locks", "status", "--short"],
             "reason": "supervisor_main_checkout_merge_in_progress",
             "stdout": "\n".join(self._git_status_short(repo_root)),
             "stderr": "",
@@ -14000,7 +14000,7 @@ class PortalImplementationSupervisor:
     def _git_status_short(repo_root: Path) -> list[str]:
         try:
             result = subprocess.run(
-                ["git", "status", "--short"],
+                ["git", "--no-optional-locks", "status", "--short"],
                 cwd=repo_root,
                 text=True,
                 capture_output=True,
@@ -14028,7 +14028,7 @@ class PortalImplementationSupervisor:
         try:
             result = subprocess.run(
                 [
-                    "git",
+                    "git", "--no-optional-locks",
                     "-c",
                     "color.status=false",
                     "status",

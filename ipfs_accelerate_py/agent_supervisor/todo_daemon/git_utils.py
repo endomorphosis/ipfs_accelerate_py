@@ -470,7 +470,7 @@ def git_path_activity_snapshot(
     revision_range = f"{run_baseline_head}..HEAD"
     head = run_command_fn(["git", "rev-parse", "--short", "HEAD"], cwd=repo_root, timeout=timeout)
     status = run_command_fn(
-        ["git", "status", "--short", "--", *paths], cwd=repo_root, timeout=timeout
+        ["git", "--no-optional-locks", "status", "--short", "--", *paths], cwd=repo_root, timeout=timeout
     )
     diff_stat = run_command_fn(
         ["git", "diff", "--stat", "--", *paths], cwd=repo_root, timeout=timeout

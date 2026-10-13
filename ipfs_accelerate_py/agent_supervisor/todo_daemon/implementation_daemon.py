@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 from contextvars import ContextVar
 import base64
 import fcntl
@@ -126,6 +127,14 @@ from ..merge.checkout_lock import (
     release_checkout_mutation_lease,
     serialized_lock_update,
     update_checkout_mutation_lease,
+)
+from ..merge.git_checkout_transaction import (
+    CheckoutGitMutationBlocked,
+    capture_checkout_index,
+    checkout_git_mutation,
+    git_lock_contention,
+    retain_git_contention_custody,
+    serialize_checkout_git,
 )
 from ..merge.worktree_lifecycle import (
     DEFAULT_LEASE_SECONDS,
@@ -420,6 +429,11 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
         "lock_exists",
         "lock_unavailable",
         "lock_cleanup_failed",
+        "checkout_mutation_lock_exists",
+        "checkout_mutation_lock_unavailable",
+        "checkout_mutation_lock_cleanup_failed",
+        "checkout_git_mutation_busy",
+        "checkout_git_foreign_lock_present",
     }
 )
 ABANDONED_MERGE_RECONCILE_REASONS = frozenset(
@@ -6624,7 +6638,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         status = subprocess.run(
             [
-                "git",
+                "git", "--no-optional-locks",
                 "status",
                 "--porcelain",
                 "--untracked-files=all",
@@ -6680,7 +6694,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return {}
         confirmed_status = subprocess.run(
             [
-                "git",
+                "git", "--no-optional-locks",
                 "status",
                 "--porcelain",
                 "--untracked-files=all",
@@ -7154,7 +7168,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if not rollback_proof:
             status = subprocess.run(
                 [
-                    "git",
+                    "git", "--no-optional-locks",
                     "status",
                     "--porcelain",
                     "--untracked-files=all",
@@ -23329,7 +23343,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 try:
                     status = subprocess.run(
                         [
-                            "git",
+                            "git", "--no-optional-locks",
                             "status",
                             "--porcelain",
                             "--untracked-files=all",
@@ -23491,6 +23505,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         result["checkout_mutation_recovery_required"] = True
         return result
 
+    @serialize_checkout_git()
     def _mark_tasks_ready_in_todo(
         self,
         task_ids: Sequence[str],
@@ -24873,6 +24888,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["database_projection_snapshot"] = database_projection_snapshot
         return result
 
+    @serialize_checkout_git()
     def _mark_tasks_completed_in_todo(
         self,
         task_ids: Sequence[str],
@@ -25827,6 +25843,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             current = parent.resolve()
         return results
 
+    @serialize_checkout_git(repo_parameter="repo")
     def _commit_specific_path(self, repo: Path, relative: str, *, subject: str) -> dict[str, Any]:
         if not self._repo_relative_path_safe(relative):
             return {"committed": False, "reason": "unsafe_path", "repo": str(repo), "path": relative}
@@ -25852,6 +25869,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         status = self._path_status(repo, relative)
         if not status:
             return {"committed": False, "reason": "no_changes", "repo": str(repo), "path": relative}
+        before_index = capture_checkout_index(repo)
+        before_head = self._run_git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
         add = subprocess.run(
             ["git", "add", "--", relative],
             cwd=repo,
@@ -25868,6 +25887,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "returncode": add.returncode,
                 "stdout": add.stdout[-4000:],
                 "stderr": add.stderr[-4000:],
+                **({
+                    "reason": "git_lock_contention", "infrastructure_failure": True,
+                    "provider_dispatched": False,
+                    "git_state_custody": retain_git_contention_custody(
+                        repo, before_index=before_index, task_id="",
+                        branch="generated_path:" + relative,
+                        before_head=before_head, result=add,
+                    ),
+                } if git_lock_contention(add) else {}),
             }
         staged = subprocess.run(
             ["git", "diff", "--cached", "--quiet", "--", relative],
@@ -25905,6 +25933,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "returncode": commit.returncode,
                 "stdout": commit.stdout[-4000:],
                 "stderr": commit.stderr[-4000:],
+                **({
+                    "reason": "git_lock_contention", "infrastructure_failure": True,
+                    "provider_dispatched": False,
+                    "git_state_custody": retain_git_contention_custody(
+                        repo, before_index=before_index, task_id="",
+                        branch="generated_path:" + relative,
+                        before_head=before_head, result=commit,
+                    ),
+                } if git_lock_contention(commit) else {}),
             }
         commit_ref = self._run_git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
         return {
@@ -25947,7 +25984,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
     def _path_status(self, repo: Path, relative: str) -> str:
         result = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=all", "--", relative],
+            ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", relative],
             cwd=repo,
             text=True,
             capture_output=True,
@@ -34399,7 +34436,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if self._resolve_git_commit_in_repo(target, "HEAD") != baseline_revision:
                 return failure("configured_submodule_not_at_baseline", relative)
             tracked_status = subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=no"],
+                ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=no"],
                 cwd=target,
                 text=True,
                 capture_output=True,
@@ -34547,7 +34584,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 check=False,
             )
             status = subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=no"],
+                ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=no"],
                 cwd=target,
                 text=True,
                 capture_output=True,
@@ -34568,7 +34605,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             check=False,
         )
         parent_status = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=no"],
+            ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=no"],
             cwd=worktree_path,
             text=True,
             capture_output=True,
@@ -34902,7 +34939,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if root_apply.get("no_change"):
                     parent_status = subprocess.run(
                         [
-                            "git",
+                            "git", "--no-optional-locks",
                             "status",
                             "--porcelain",
                             "--untracked-files=no",
@@ -37612,6 +37649,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ),
         )
 
+    @serialize_checkout_git(repo_parameter="worktree_path")
     def _commit_worktree_changes_unchecked(
         self,
         worktree_path: Path,
@@ -42529,7 +42567,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         try:
             status_result = subprocess.run(
                 [
-                    "git",
+                    "git", "--no-optional-locks",
                     "status",
                     "--porcelain=v1",
                     "-z",
@@ -45816,7 +45854,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if not scope:
             return ()
         status = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=all", "--", *scope],
+            ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", *scope],
             cwd=workspace_path,
             text=True,
             capture_output=True,
@@ -48792,7 +48830,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         merge_workspace: Path | None = None
         merge_workspace_ephemeral = False
         removed_untracked: dict[str, bytes] = {}
+        checkout_guards = ExitStack()
         try:
+            # The target may already be checked out in a sibling worktree.
+            # Fence that physical index before preparation can restore paths.
+            for target_checkout in sorted(
+                self._branch_checked_out_worktree_paths(target_branch), key=str,
+            ):
+                checkout_guards.enter_context(checkout_git_mutation(target_checkout))
             completion_recheck = self._merge_candidate_completion_recheck(
                 branch_name,
                 task,
@@ -48884,6 +48929,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
             merge_workspace = Path(str(workspace_result["path"]))
             merge_workspace_ephemeral = bool(workspace_result.get("ephemeral", False))
+            checkout_guards.enter_context(checkout_git_mutation(merge_workspace))
             # Shared main checkouts accumulate detached submodule HEADs from
             # prior implement worktrees (e.g. swissknife left on an attempt
             # branch). That dirt blocks merges that also touch the submodule
@@ -49040,6 +49086,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 merge_source,
             ]
             pre_merge_commit = self._run_git(["rev-parse", "HEAD"], cwd=merge_workspace).stdout.strip()
+            before_index = capture_checkout_index(merge_workspace)
             merge = subprocess.run(
                 command,
                 cwd=merge_workspace,
@@ -49047,6 +49094,46 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 capture_output=True,
                 check=False,
             )
+            if git_lock_contention(merge):
+                # A Git lock is an infrastructure boundary, never evidence of
+                # a content conflict. Keep exact partial index state under
+                # owned custody; neither abort/reset nor a provider may edit
+                # a checkout concurrently held by an unknown Git writer.
+                # Preserve the checkout before receipt I/O: a publication or
+                # fsync failure cannot become authority to force-remove its
+                # partially staged output or an unknown writer's Git lock.
+                was_ephemeral = merge_workspace_ephemeral
+                merge_workspace_ephemeral = False
+                custody_error = None
+                try:
+                    custody = retain_git_contention_custody(
+                        merge_workspace, before_index=before_index,
+                        task_id=task.task_id, branch=branch_name,
+                        before_head=pre_merge_commit, result=merge,
+                    )
+                except (OSError, CheckoutGitMutationBlocked) as exc:
+                    custody_error = f"{type(exc).__name__}: {exc}"[:512]
+                    custody = {"checkout_preserved": True,
+                               "receipt_publication_failed": True,
+                               "completion_authority": False}
+                result = {
+                    "attempted": True, "merged": False,
+                    "returncode": merge.returncode, "branch": branch_name,
+                    "target_branch": target_branch, "command": command,
+                    "started_at": started_at, "finished_at": utc_now(),
+                    "merge_commit": "", "stdout": merge.stdout[-4000:],
+                    "stderr": merge.stderr[-4000:],
+                    "reason": ("git_lock_contention_custody_failed" if custody_error
+                               else "git_lock_contention"), "infrastructure_failure": True,
+                    "provider_dispatched": False, "git_state_custody": custody,
+                    "main_worktree_path": str(merge_workspace),
+                    "used_ephemeral_main_worktree": was_ephemeral,
+                    "submodule_merge_results": [],
+                }
+                if custody_error:
+                    result["custody_error"] = custody_error
+                self._record_event("merge_finished", result)
+                return result
             finished_at = utc_now()
             merge_commit = ""
             submodule_merge_results: list[dict[str, Any]] = []
@@ -49272,13 +49359,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self._record_event("merge_finished", result)
             return result
         finally:
-            if merge_workspace is not None:
-                merge_workspace_cleanup = self._cleanup_main_merge_workspace(
-                    merge_workspace,
-                    ephemeral=merge_workspace_ephemeral,
-                )
-                if not merge_workspace_cleanup.get("cleaned", False):
-                    self._record_event("main_merge_worktree_cleanup_failed", merge_workspace_cleanup)
+            try:
+                if merge_workspace is not None:
+                    merge_workspace_cleanup = self._cleanup_main_merge_workspace(
+                        merge_workspace,
+                        ephemeral=merge_workspace_ephemeral,
+                    )
+                    if not merge_workspace_cleanup.get("cleaned", False):
+                        self._record_event("main_merge_worktree_cleanup_failed", merge_workspace_cleanup)
+            finally:
+                checkout_guards.close()
 
     def _scrub_tracked_shared_worktree_paths(self, cwd: Path, *, task: PortalTask) -> dict[str, Any]:
         removed: list[dict[str, Any]] = []
@@ -49314,7 +49404,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if failed:
             return {"ok": False, "scrubbed": True, "paths": removed, "reason": "git_rm_failed"}
         status = subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", "--no-optional-locks", "status", "--porcelain"],
             cwd=cwd,
             text=True,
             capture_output=True,
@@ -49442,7 +49532,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 continue
             status = subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=all"],
+                ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=all"],
                 cwd=checkout,
                 text=True,
                 capture_output=True,
@@ -49466,7 +49556,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     check=False,
                 )
                 status = subprocess.run(
-                    ["git", "status", "--porcelain", "--untracked-files=all"],
+                    ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=all"],
                     cwd=checkout,
                     text=True,
                     capture_output=True,
@@ -50115,7 +50205,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "stderr": align_before.stderr[-1000:],
             }
         tracked_status = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=no"],
+            ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=no"],
             cwd=workspace,
             text=True,
             capture_output=True,
@@ -50516,7 +50606,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 entries.append(entry)
                 continue
             status = subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=all"],
+                ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=all"],
                 cwd=checkout,
                 text=True,
                 capture_output=True,
@@ -51500,7 +51590,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _submodule_transaction_status(repo: Path) -> subprocess.CompletedProcess[bytes]:
         return subprocess.run(
             [
-                "git",
+                "git", "--no-optional-locks",
                 "status",
                 "--porcelain=v1",
                 "-z",
@@ -52329,7 +52419,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if target_parent_ref:
                 target_checkout_status = subprocess.run(
                     [
-                        "git",
+                        "git", "--no-optional-locks",
                         "status",
                         "--porcelain",
                         "--untracked-files=all",
@@ -52590,7 +52680,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         # Check 2: Working tree is clean
         status = subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", "--no-optional-locks", "status", "--porcelain"],
             cwd=source,
             text=True,
             capture_output=True,
@@ -54331,7 +54421,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
     def _unmerged_add_add_paths(self, cwd: Path) -> list[str]:
         result = subprocess.run(
-            ["git", "status", "--porcelain", "-z"],
+            ["git", "--no-optional-locks", "status", "--porcelain", "-z"],
             cwd=cwd,
             capture_output=True,
             check=False,
@@ -54446,7 +54536,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
     def _dirty_worktree_paths(self, cwd: Path) -> set[str]:
         result = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=all"],
+            ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=all"],
             cwd=cwd,
             text=True,
             capture_output=True,
@@ -54481,7 +54571,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         result = subprocess.run(
             [
-                "git",
+                "git", "--no-optional-locks",
                 "status",
                 "--porcelain=v1",
                 "-z",
@@ -54663,7 +54753,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if tracked.returncode != 0 or tracked.stdout.strip():
                     continue
                 status = subprocess.run(
-                    ["git", "status", "--porcelain", "--untracked-files=all", "--", directory_name],
+                    ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", directory_name],
                     cwd=source,
                     text=True,
                     capture_output=True,
@@ -54809,7 +54899,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return False
         status = subprocess.run(
             [
-                "git",
+                "git", "--no-optional-locks",
                 "--literal-pathspecs",
                 "status",
                 "--porcelain=v1",
@@ -56647,6 +56737,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if not isinstance(merge_result, dict) or merge_result.get("merged"):
             return False
         if merge_result.get("attempted"):
+            return True
+        if merge_result.get("checkout_mutation_recovery_required") is True:
             return True
         return str(merge_result.get("reason") or "") in TRANSIENT_MERGE_LOCK_REASONS
 
@@ -59273,6 +59365,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         return payload
 
+    @serialize_checkout_git()
     def _run_checkout_mutation_transaction(
         self,
         *,
@@ -59283,9 +59376,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         callback: Callable[[], dict[str, Any]],
         failure_fields: Mapping[str, Any] | None = None,
         extra: Mapping[str, Any] | None = None,
+        timeout_seconds: float = 0.0,
     ) -> dict[str, Any]:
         """Run a complete shared-checkout mutation under one atomic lease."""
 
+        wait_ceiling = (
+            30.0 if operation == "requalify_post_merge_callback_integration"
+            else 5.0
+        )
+        if (
+            type(timeout_seconds) not in (int, float)
+            or not math.isfinite(timeout_seconds)
+            or timeout_seconds < 0
+            or timeout_seconds > wait_ceiling
+        ):
+            raise ValueError(
+                "timeout_seconds must be finite, numeric and within the "
+                f"{wait_ceiling:g}s checkout operation bound"
+            )
+        timeout_seconds = float(timeout_seconds)
         current = self._current_checkout_mutation_lease()
         if (
             current is None
@@ -59297,14 +59406,39 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "checkout_mutation_lease_recovered",
                     False,
                 ):
-                    return {
-                        **dict(failure_fields or {}),
-                        **recovery,
-                        "reason": str(
-                            recovery.get("reason")
-                            or "protected_checkout_recovery_required"
-                        ),
-                    }
+                    # A foreign recovery journal is never adopted or cleared
+                    # here. Only callback requalification may wait boundedly
+                    # for a verified live owner to finish its own transaction.
+                    foreign = read_checkout_mutation_lease(self._repo_merge_lock_path())
+                    verified_live = bool(
+                        foreign is not None
+                        and recovery.get("reason") == "external_protected_checkout_recovery_required"
+                        and checkout_lock_repository_matches(dict(foreign.metadata), self.repo_root) is True
+                        and self._lock_owner_is_active(dict(foreign.metadata), expected_kind="merge")
+                    )
+                    if verified_live:
+                        confirmed = read_checkout_mutation_lease(foreign.lock_path)
+                        verified_live = bool(
+                            confirmed is not None
+                            and (confirmed.device, confirmed.inode, confirmed.lease_id)
+                            == (foreign.device, foreign.inode, foreign.lease_id)
+                        )
+                    recovery["foreign_owner_liveness"] = (
+                        "verified_live" if verified_live else "not_verified_live"
+                    )
+                    if not (
+                        verified_live
+                        and operation == "requalify_post_merge_callback_integration"
+                        and timeout_seconds > 0
+                    ):
+                        return {
+                            **dict(failure_fields or {}),
+                            **recovery,
+                            "reason": str(
+                                recovery.get("reason")
+                                or "protected_checkout_recovery_required"
+                            ),
+                        }
                 current = self._current_checkout_mutation_lease()
         if current is not None:
             transaction_depth = int(
@@ -59372,6 +59506,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         callback=callback,
                         failure_fields=failure_fields,
                         extra=extra,
+                        timeout_seconds=timeout_seconds,
                     )
                 return {
                     **dict(failure_fields or {}),
@@ -59397,6 +59532,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         callback=callback,
                         failure_fields=failure_fields,
                         extra=extra,
+                        timeout_seconds=timeout_seconds,
                     )
                 allowed = set(
                     getattr(
@@ -59442,6 +59578,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 branch=branch,
                 operation=operation,
                 extra=extra,
+                timeout_seconds=timeout_seconds,
                 preserve_existing=(
                     self.manual_completion_authority_revalidation_only
                 ),
@@ -59452,6 +59589,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 **dict(failure_fields or {}),
                 "reason": f"checkout_mutation_{reason}",
                 "lock_path": str(self._repo_merge_lock_path()),
+                "checkout_mutation_timeout_seconds": timeout_seconds,
+                "checkout_mutation_waited_seconds": _waited,
             }
             if existing:
                 result["lock_owner_pid"] = int(
@@ -59463,6 +59602,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 result["lock_owner_branch"] = str(
                     existing.get("branch") or ""
                 )
+                result["lock_owner_lease_id"] = str(existing.get("lease_id") or "")
             return result
         self._checkout_mutation_context.lease = lease
         self._checkout_mutation_context.transaction_depth = 1
@@ -61058,7 +61198,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         return result.stdout.strip()
 
     def _run_git(self, args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-        result = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=False)
+        result = subprocess.run(["git", "--no-optional-locks", *args], cwd=cwd, text=True, capture_output=True, check=False)
         if result.returncode != 0:
             raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
         return result
@@ -67913,7 +68053,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         restored: list[str] = []
         try:
             status = subprocess.run(
-                ["git", "-C", str(workspace_path), "status", "--porcelain", "-uall"],
+                ["git", "--no-optional-locks", "-C", str(workspace_path), "status", "--porcelain", "-uall"],
                 check=False,
                 capture_output=True,
                 text=True,
