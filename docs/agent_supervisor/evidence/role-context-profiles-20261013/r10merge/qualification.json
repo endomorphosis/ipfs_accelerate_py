@@ -1,0 +1,146 @@
+{
+  "schema": "role-context-profiles-qualification@1",
+  "implementation_commit": "72d15fa002ae00efa625c025b7401d9d55683737",
+  "upstream_base": "e1c410bcbd7651c31fca84beb82e3ef2fe9ac836",
+  "run_label": "r10merge",
+  "validation_passed": true,
+  "validation_partition": "intent",
+  "selected_pytest_targets": [
+    "test/api/test_role_context_selection.py::test_native_roles_select_different_symbols_and_keep_exact_source_gates",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_real_published_checkpoint_enters_benchmark_preplanning_without_manual_advice",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py::test_real_bounded_child_exports_only_closed_facts",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py::test_real_child_uses_loaded_benchmark_owner_before_foreign_namespace",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_shared_source_policy.py::test_absent_recipe_preserves_legacy_configuration_and_observations",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_shared_source_policy.py::test_configuration_detaches_recipe_and_control_digest_binds_each_protected_line",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_shared_source_policy.py::test_agent_forwards_one_canonical_recipe_argument_and_records_its_bindings"
+  ],
+  "selected_test_files": [
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_shared_source_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py",
+    "test/api/test_role_context_selection.py"
+  ],
+  "test_scope": "Eight targeted post-merge checks of native role/source gates, actual local checkpoint planning, bounded child ownership, and default/enabled source-policy delivery; the prior354-case suite was not repeated",
+  "actual_test_calls": 8,
+  "actual_pytest_phases": 24,
+  "all_setup_call_teardown_passed_once": true,
+  "no_reused_skipped_predicted_verified_deferred_or_degraded": true,
+  "proof_metrics": {
+    "schema": "ipfs_accelerate_py/testing/proof-reuse-metrics@1",
+    "interface": "ProofReuseMetrics@1",
+    "counts": {
+      "predicted": 0,
+      "verified": 0,
+      "skipped": 0,
+      "executed": 8,
+      "deferred": 0,
+      "degraded": 0
+    },
+    "reasons": {},
+    "verify_latency_ms": 0.0,
+    "execution_latency_ms": 60006.653,
+    "bytes_read": 0,
+    "bytes_written": 0
+  },
+  "guarded_source_count": 1643,
+  "source_guard_scope": "explicit source inventory, not a complete imported dependency closure",
+  "guarded_sources_unchanged": true,
+  "elapsed_seconds": 132.94619681697804,
+  "source_freeze_sha256": "80a367f1fbf8386687bfab4e24c228968783c473376e58afaffb33dff8a19773",
+  "verification_sha256": "b7923a06c45e6c75bc9ee4018bd505b604c7bec895e941771aceecbaf3ba82e8",
+  "junit_sha256": "87a0adb6334df189a7262d5f93bf6afe2ad3b2f33ff21bc6ee515e909a563b96",
+  "driver_sha256": "3c7ebcf570ed1f25710f20a813be2f49102035ae21c4b4039c7d8a466185f946",
+  "supervisor_sha256": "90a64a152f26895a10c6235c613536574e309f4d2198fe12d352ba02a5126f36",
+  "local_documentation_checks_sha256": "fdc9a073dee8d757a2d120354e0397d7deb82e7662671a1a6a061f63e3ec50f7",
+  "local_documentation_checks_scope": "Local workflow commands; not GitHub Actions status or pytest counts",
+  "retained_local_verification": "/home/barberb/lift_coding/artifacts/role-context-profiles-20261013/r10merge/verification.json",
+  "retained_local_log": "/home/barberb/lift_coding/artifacts/role-context-profiles-20261013/r10merge/run.log",
+  "native_preparation_samples": [
+    {
+      "capsules": 1,
+      "worker_bytes": 10003,
+      "observation_bytes": 3837,
+      "observation_computation_seconds": 0.0008229899685829878
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12991,
+      "observation_bytes": 4767,
+      "observation_computation_seconds": 0.0009956329595297575
+    },
+    {
+      "capsules": 2,
+      "worker_bytes": 12991,
+      "observation_bytes": 4769,
+      "observation_computation_seconds": 0.0010424819774925709
+    }
+  ],
+  "sample_scope": "authored integration-test preparations, not live Terminal Bench",
+  "observation_helper_seconds_median": 0.0009956329595297575,
+  "observation_helper_seconds_maximum": 0.0010424819774925709,
+  "helper_timer_scope": "construction, encoding and reference hashes; excludes storage/catalog/DuckLake writes",
+  "features": [
+    "host-only immutable role profiles over existing lexical/verified-retrieval controls",
+    "separate native preparation outputs and expected-profile/source-current loader",
+    "owner-declared role metadata outside unchanged native worker wire",
+    "provider byte ceiling enforced on retry delta and reconstructed full input"
+  ],
+  "peer_reuse": {
+    "commit": "ce2cd1026f21e52384ddf29c50c4a459baef927e",
+    "slice": "ContextCompiler provider-byte ceiling fix and eight focused regression cases",
+    "historical_qualification_reused": false,
+    "repository_session_and_planning_consumer_imported": false
+  },
+  "real_published_intent_checkpoint_inference_tested": true,
+  "existing_local_semantic_embeddings_executed": true,
+  "controlled_provider_fixture_used": true,
+  "live_provider_calls": 0,
+  "model_dependency_versions": {
+    "transformers": {
+      "version": "4.52.1",
+      "origin": "/home/barberb/.local/lib/python3.12/site-packages/transformers/__init__.py"
+    },
+    "tokenizers": {
+      "version": "0.21.4",
+      "origin": "/home/barberb/.local/lib/python3.12/site-packages/tokenizers/__init__.py"
+    },
+    "sentence_transformers": {
+      "version": "5.4.1",
+      "origin": "/home/barberb/.local/lib/python3.12/site-packages/sentence_transformers/__init__.py"
+    },
+    "torch": {
+      "version": "2.13.0+cu130",
+      "origin": "/home/barberb/.local/lib/python3.12/site-packages/torch/__init__.py"
+    },
+    "huggingface_hub": {
+      "version": "0.36.2",
+      "origin": "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/__init__.py"
+    }
+  },
+  "system_or_user_packages_modified": false,
+  "provider_delivery_observed": false,
+  "role_specific_ranker_trained": false,
+  "decoder_fidelity_established": false,
+  "released_teacher_or_semantic_embedding_qualification": false,
+  "canonical_current_pin_loader_tested_with_authored_checkpoint": false,
+  "authored_diagnostic_pin_transition_fixtures_used": false,
+  "benchmark_role_routing_changed": false,
+  "review_provider_route_added": false,
+  "modality_coverage_expanded": false,
+  "new_database_owner": false,
+  "native_semantic_acceptance_gates_relaxed": false,
+  "retained_interrupted_attempts_not_qualified": [
+    {
+      "path": "/home/barberb/lift_coding/artifacts/role-context-profiles-20261013/r1/interrupted-attempt.json",
+      "sha256": "2e4cf58a4c81f0d76b5c385138411e6eb70726d42c025c04adc7afd4adae2604",
+      "qualification_granted": false
+    }
+  ],
+  "new_proof_execution_or_completion_authority_granted": false,
+  "provider_calls": 0,
+  "downloads": 0,
+  "lake_builds": 0,
+  "lean_admits": 0,
+  "token_savings_established": false,
+  "official_task_success_established": false
+}

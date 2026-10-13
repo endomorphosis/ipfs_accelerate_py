@@ -1,0 +1,42 @@
+{
+  "schema": "canonical-intent-dependency-integration@1",
+  "canonical_tree": "/home/barberb/lift_coding/external/ipfs_datasets",
+  "published_source_commit": "afadfbcf8d33a67568c133bb761c43d42a9a133c",
+  "files": [
+    {
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/intent_action_checkpoint_384.py",
+      "before_sha256": null,
+      "after_sha256": "467b5e00df9e6960618a36064255d2680f2b369e3f27bf1901b6260a132b5eab",
+      "source_commit": "afadfbcf8d33a67568c133bb761c43d42a9a133c"
+    },
+    {
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/intent_action_runtime_384.py",
+      "before_sha256": "71fafaf27a3e1644b5e8f1c882821e1a5890e9e26b1631ac1a8149f72690e218",
+      "after_sha256": "c358f7fee51c3fceadf8b37c306ca5f37744b3f4e0917b98906ca231b5f43a89",
+      "source_commit": "afadfbcf8d33a67568c133bb761c43d42a9a133c"
+    },
+    {
+      "path": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py",
+      "before_sha256": "c33754993c686755cfa59c92e98d1c6fd02a6626370d7b9108a579242f840433",
+      "after_sha256": "ff12ae5c3a10fc7ea34a0e4f6913e99843ec6285a41c8c7bc05ba0b0c432792d",
+      "source_commit": "afadfbcf8d33a67568c133bb761c43d42a9a133c"
+    },
+    {
+      "path": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py",
+      "before_sha256": "2712260f2e1e24a555adefb47c01d510c3777bee28b1dd79fae9e972444eff57",
+      "after_sha256": "91a99d1ca12c013c25f25130389f1c2cbc0b092d47fcdf36f6192eeb055de146",
+      "source_commit": "afadfbcf8d33a67568c133bb761c43d42a9a133c"
+    }
+  ],
+  "old_files_backed_up": true,
+  "tree_pin_sha256_preserved": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d",
+  "tree_switched": false,
+  "HACC_edited": false,
+  "weights_modified": false,
+  "portable_owner_test": {
+    "path": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py",
+    "sha256": "95c16489e7cca116c36ec9fb988a8f30a5c5c11f68552a4a026ce8e9e85e1975",
+    "commit": "a6f5638b4f7031490a342c0b2f71a2baad9adf97",
+    "scope": "Actual current pin strict loading without patches plus explicitly authored diagnostic transition fixtures; not a production pin relaxation"
+  }
+}
