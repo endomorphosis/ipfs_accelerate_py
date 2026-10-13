@@ -359,6 +359,19 @@ def test_real_bounded_child_exports_only_closed_facts(authored):
     assert "PRIVATE" not in json.dumps(result)
 
 
+def test_real_child_uses_loaded_benchmark_owner_before_foreign_namespace(authored, tmp_path, monkeypatch):
+    foreign = tmp_path / "foreign"
+    package = foreign / "benchmarks"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('raise RuntimeError("PRIVATE-FOREIGN-PACKAGE-CANARY")\n')
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(
+        value for value in (str(foreign), os.environ.get("PYTHONPATH")) if value))
+    result = observation.collect(native_state=authored.native, workspace_root=authored.root,
+        repository=authored.app, scope=authored.scope, report=authored.report, timeout_seconds=5)
+    assert result["status"] == "observed"
+    assert "PRIVATE" not in json.dumps(result)
+
+
 @pytest.mark.parametrize("umask", [0o022, 0o027, 0o077])
 @pytest.mark.parametrize("child", [False, True])
 def test_native_event_writer_permissions_under_private_attempt(authored, umask, child):

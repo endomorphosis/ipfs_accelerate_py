@@ -342,10 +342,18 @@ def collect(*, native_state, workspace_root, repository, scope, report, timeout_
         request = json.dumps(dict(scope=scope, report=selected), allow_nan=False).encode()
         if len(request) > MAX_REQUEST_BYTES:
             return _base("observation_request_exceeds_bound")
+        # The parent may have explicitly loaded this benchmark owner while a
+        # different repository's generic ``benchmarks`` package precedes it on
+        # PYTHONPATH. Bind the child to this owner's package, preserving all
+        # other dependency paths (including the selected datasets checkout).
+        environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+        owner = str(Path(__file__).resolve().parents[3])
+        environment["PYTHONPATH"] = os.pathsep.join(
+            value for value in (owner, environment.get("PYTHONPATH")) if value)
         process = subprocess.run([sys.executable, "-B", "-P", "-m", __name__,
             "--native-state", str(native_state), "--workspace-root", str(workspace_root),
             "--repository", str(repository)], input=request, capture_output=True, check=False,
-            timeout=min(5., timeout_seconds), env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+            timeout=min(5., timeout_seconds), env=environment)
         if process.returncode or len(process.stdout) > MAX_RESULT_BYTES:
             return _base("observation_process_unavailable")
         result = _json(process.stdout)
