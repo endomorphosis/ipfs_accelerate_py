@@ -4,7 +4,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S5-011 Qualify primary graph manifest and file custody
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
