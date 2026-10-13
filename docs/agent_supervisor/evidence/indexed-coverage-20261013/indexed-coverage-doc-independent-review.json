@@ -1,0 +1,175 @@
+{
+  "blocking_claim_findings": [],
+  "combined_test_ledger_review": {
+    "all_combined_rows_match_exactly": true,
+    "counts_by_repository": {
+      "accelerate": 681,
+      "datasets": 61
+    },
+    "counts_by_suite": {
+      "intent": 182,
+      "observer": 295,
+      "readiness": 291
+    },
+    "guide_and_readme_claims_match": true,
+    "helper_sha256": "7e3da3b28787556173f26f6b973cae7e66a1d70da776c913107eed2bda15e070",
+    "independent_audit_sha256": "8225e1d653f38ada9365945425fac1690a73d9504cd8aecab15366ecd121c29e",
+    "new_test_execution": false,
+    "overlapping_nodes": 26,
+    "pairwise_overlap": {
+      "observer:intent": 0,
+      "observer:readiness": 0,
+      "readiness:intent": 26
+    },
+    "status": "passed",
+    "unique_passed": 742
+  },
+  "conclusions": [
+    "No new Terminal Bench score, full supervisor START or token savings is claimed.",
+    "Historical missing output hashes remain unknown, and authored lifecycle qualification is explicitly separated from native supervisor execution.",
+    "295 unique observer/progress/comparison cases are the deduplicated inventory, not the sum of test executions.",
+    "Checkpoint compatibility is the exact diagnostic stdout-to-stderr pin change, preserving all numerical, schema, provenance and source-tree rejection checks.",
+    "Actual local controlled-language inference is distinguished from unchanged benchmark instruction fail-open with zero model calls.",
+    "The source audit correctly states 4 matched spans, 2 structurally complete functions, 45 pending obligations and 0 source discharges; timing zero means missing coverage.",
+    "Future grammar, loop, compositional learned head and semantic-refinement work is described as proposed work rather than implemented capability.",
+    "TLA+/temporal/deontic/separation/concurrency projections are not claimed without source-grounded semantics.",
+    "Final guide/README742 distinct-pass claim was independently recomputed from the three retained inputs:295 observer plus291 readiness plus182 Intent, with26 readiness/Intent transport overlaps counted once; all742 full ledger rows match."
+  ],
+  "document": "docs/agent_supervisor/indexed_coverage_readiness.md",
+  "document_sha256": "d73f841ac64691fe79a0ab82e3eb7c310519b75719b26d90c93d09fc2c937212",
+  "evidence_readme_review": {
+    "blocking_claim_findings": [],
+    "local_links": [
+      {
+        "exists": true,
+        "target": "../../indexed_coverage_readiness.md"
+      },
+      {
+        "exists": true,
+        "target": "output-observation/diagnosis.json"
+      },
+      {
+        "exists": true,
+        "target": "output-observation/docker/run-02/qualification.json"
+      },
+      {
+        "exists": true,
+        "target": "output-observation/docker/run-02/results/observation.json"
+      },
+      {
+        "exists": true,
+        "target": "intent384/qualification-03/qualification-result.json"
+      },
+      {
+        "exists": true,
+        "target": "intent384/compatibility-diagnosis.json"
+      },
+      {
+        "exists": true,
+        "target": "intent384/qualification-result.json"
+      },
+      {
+        "exists": true,
+        "target": "intent384/qualification-02/qualification-result.json"
+      },
+      {
+        "exists": true,
+        "target": "intent384/readiness-qualification-result.json"
+      },
+      {
+        "exists": true,
+        "target": "four-function-coverage-audit.json"
+      },
+      {
+        "exists": true,
+        "target": "audit_four_numerical_functions.py"
+      },
+      {
+        "exists": true,
+        "target": "combined-test-results.json"
+      },
+      {
+        "exists": true,
+        "target": "intent384/optional-tests-01-result.json"
+      },
+      {
+        "exists": true,
+        "target": "intent384/final-summary.json"
+      },
+      {
+        "exists": true,
+        "target": "terminal-output-observer-independent-review.json"
+      },
+      {
+        "exists": true,
+        "target": "intent-action-readiness-independent-review.json"
+      }
+    ],
+    "path": "docs/agent_supervisor/evidence/indexed-coverage-20261013/README.md",
+    "sha256": "b332899e3b423880b37a15b052d6b392a4987dbf0a461deebf4f77a0557cb947"
+  },
+  "limitations": [
+    "Pinned GitHub source links were verified against available local commit objects, not a remote HTTP fetch.",
+    "Final frozen guide and evidence README were checked at the recorded hashes; all local links resolve and optional real-checkpoint history remains separately recorded.",
+    "Any later optional real-checkpoint test result remains separate from the historical tests-03 run scope."
+  ],
+  "links": [
+    {
+      "exists": true,
+      "kind": "local_markdown_target",
+      "target": "evidence/indexed-coverage-20261013/README.md"
+    },
+    {
+      "exists": true,
+      "kind": "local_markdown_target",
+      "target": "context_projection_pair.md"
+    },
+    {
+      "exists": true,
+      "kind": "local_markdown_target",
+      "target": "../../benchmarks/agent_supervisor/container_coding/terminal_output_observation.py"
+    },
+    {
+      "exists": true,
+      "kind": "local_markdown_target",
+      "target": "../../benchmarks/agent_supervisor/container_coding/benchmark_comparison.py"
+    },
+    {
+      "kind": "pinned_datasets_source",
+      "local_git_object_exists": true,
+      "remote_http_checked": false,
+      "source_sha256": "467b5e00df9e6960618a36064255d2680f2b369e3f27bf1901b6260a132b5eab",
+      "target": "https://github.com/endomorphosis/ipfs_datasets_py/blob/afadfbcf8d33a67568c133bb761c43d42a9a133c/ipfs_datasets_py/logic/formalization/autoencoder/intent_action_checkpoint_384.py"
+    },
+    {
+      "kind": "pinned_datasets_source",
+      "local_git_object_exists": true,
+      "remote_http_checked": false,
+      "source_sha256": "c358f7fee51c3fceadf8b37c306ca5f37744b3f4e0917b98906ca231b5f43a89",
+      "target": "https://github.com/endomorphosis/ipfs_datasets_py/blob/afadfbcf8d33a67568c133bb761c43d42a9a133c/ipfs_datasets_py/logic/formalization/autoencoder/intent_action_runtime_384.py"
+    },
+    {
+      "exists": true,
+      "kind": "local_markdown_target",
+      "target": "../../benchmarks/agent_supervisor/container_coding/terminal_deployment.py"
+    },
+    {
+      "exists": true,
+      "kind": "local_markdown_target",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/intent_384_advisor.py"
+    },
+    {
+      "exists": true,
+      "kind": "local_markdown_target",
+      "target": "../../benchmarks/agent_supervisor/container_coding/terminal_intent_action_readiness.py"
+    },
+    {
+      "exists": true,
+      "kind": "local_markdown_target",
+      "target": "../../benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py"
+    }
+  ],
+  "pending": [],
+  "reviewer": "context_pair_design",
+  "schema": "indexed-coverage-document-independent-review@1"
+}

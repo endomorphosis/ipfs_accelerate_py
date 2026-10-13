@@ -1,0 +1,23 @@
+{
+  "authored_lifecycle_fixture": true,
+  "complete": false,
+  "container_id": "21f7f5b5856feb89982aeaa4991f2a6022c10383c4c00ae02704035d9a56c65a",
+  "container_removed": true,
+  "error_type": "CalledProcessError",
+  "image_id": "sha256:771900c18b663b33a5bf96e066346b2d5c842506523efb167aebe8d3a99b5c07",
+  "network": "none",
+  "official_verifier_executed": false,
+  "private_state_retained": false,
+  "provider_calls": 0,
+  "schema": "declared-output-observation-docker-qualification@1",
+  "seconds": 0.7050548980478197,
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_output_observation.py": "eee10df4461525743dc8d98d9d2369221e8f668ce398843d41a5ae2c8b7e15b1",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/event_log.py": "25c3f517ab96b5297d57a0b4744bb0f3b3d469be3086728a04ecba81d09e099b",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7",
+    "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/output-observation/docker/owner_probe.py": "67a34e66663dbaa48c87c356096b39be905be3528cfa55319272873665187ac0",
+    "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/output-observation/docker/run.py": "edeabe8d1fae5c8d28daea157ad4dac7404614df51e1ca01c9acc50689c7fdf1"
+  },
+  "source_unchanged": true,
+  "supervisor_start_executed": false
+}

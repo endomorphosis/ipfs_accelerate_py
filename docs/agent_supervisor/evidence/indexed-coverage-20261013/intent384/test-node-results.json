@@ -1,0 +1,1117 @@
+{
+  "classification": "180 passing executions in tests-03 plus the two selected real-checkpoint tests executed separately with matching offline dependencies.",
+  "evidence": [
+    {
+      "bytes": 272,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/tests-03.stdout",
+      "sha256": "5a7e73bb36694e5500275524c83886cd4485bc1d3bf4187dbeb06c6a72e21016"
+    },
+    {
+      "bytes": 3229,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/optional-tests-01.stdout",
+      "sha256": "f5c980600316cc32bb9a204507d0a37dc46edb70f783f2d7dd09b4d12e0d4b4b"
+    }
+  ],
+  "failed": 0,
+  "historical_attempts_retained": [
+    "tests-01.stdout",
+    "tests-02.stdout"
+  ],
+  "passed": 182,
+  "schema": "intent384-deduplicated-test-results@1",
+  "skipped": 0,
+  "tests": [
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_explicit_runtime_view_preserves_artifact_components_and_numerical_output[False]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_explicit_runtime_view_preserves_artifact_components_and_numerical_output[True]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_every_other_pin_transition_is_rejected[unknown_old]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_every_other_pin_transition_is_rejected[unknown_current]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_every_other_pin_transition_is_rejected[reverse]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_every_other_pin_transition_is_rejected[missing_tree]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_every_other_pin_transition_is_rejected[ui]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_every_other_pin_transition_is_rejected[intent_decoder]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_every_other_pin_transition_is_rejected[intent_schema]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_every_other_pin_transition_is_rejected[numerical]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_every_other_pin_transition_is_rejected[runtime]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_every_other_pin_transition_is_rejected[extra_pin]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_ordinary_structured_validation_still_applies[domain]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_ordinary_structured_validation_still_applies[schema]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_ordinary_structured_validation_still_applies[weight]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_ordinary_structured_validation_still_applies[projection]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_ordinary_structured_validation_still_applies[shape]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_ordinary_structured_validation_still_applies[split]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_ordinary_structured_validation_still_applies[authority]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_ordinary_structured_validation_still_applies[extra]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_exact_regular_artifact_and_endpoint_fences[hash]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_exact_regular_artifact_and_endpoint_fences[symlink]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_exact_regular_artifact_and_endpoint_fences[missing]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_exact_regular_artifact_and_endpoint_fences[oversized]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_exact_regular_artifact_and_endpoint_fences[during_load]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_exact_regular_artifact_and_endpoint_fences[swapped_symlink]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_exact_regular_artifact_and_endpoint_fences[swapped_fifo]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_exact_regular_artifact_and_endpoint_fences[same_bytes_replaced]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_saved_receipt_requires_full_artifact_replay[profile]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_saved_receipt_requires_full_artifact_replay[domain_id]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_saved_receipt_requires_full_artifact_replay[changed_pins]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_saved_receipt_requires_full_artifact_replay[unchanged_content_sha256]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_saved_receipt_requires_full_artifact_replay[artifact_modified]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py::test_saved_receipt_requires_full_artifact_replay[extra]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_predicted_native_effects_remain_distinct_from_exact_source_provenance",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_saved_report_mutation_requires_replay[path0]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_saved_report_mutation_requires_replay[path1]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_saved_report_mutation_requires_replay[path2]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_saved_report_mutation_requires_replay[path3]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_saved_report_mutation_requires_replay[path4]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_saved_report_mutation_requires_replay[path5]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_saved_report_mutation_requires_replay[path6]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_saved_report_mutation_requires_replay[path7]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_source_parser_cannot_correct_wrong_learned_operator",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_permission_only_instruction_does_not_run_contract_model",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_producer_drift_discards_bound_advice",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_missing_checkpoint_fails_open_without_download",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_invalid_source_is_rejected[None]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_invalid_source_is_rejected[]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py::test_invalid_source_is_rejected[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py::test_gitless_package_checks_loaded_function_and_disk_hash",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py::test_disk_drift_is_rejected_even_if_module_loaded_before_first_pin[before_first_pin]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py::test_disk_drift_is_rejected_even_if_module_loaded_before_first_pin[after_first_pin]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py::test_loaded_function_drift_cannot_be_blessed_by_unchanged_disk[before_first_pin]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py::test_loaded_function_drift_cannot_be_blessed_by_unchanged_disk[after_first_pin]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py::test_producer_must_resolve_to_its_exact_selected_package_module[external_path]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py::test_producer_must_resolve_to_its_exact_selected_package_module[different_name]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py::test_producer_must_resolve_to_its_exact_selected_package_module[external_symlink]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py::test_producer_must_resolve_to_its_exact_selected_package_module[nonmodule]",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py::test_intent_pin_population_includes_the_portable_checker",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py::test_gitless_helper_import_and_pin_work_in_an_isolated_fresh_interpreter",
+      "repository": "datasets",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_closed_assets_relocate_and_leave_retrieval_disabled",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_packaging_uses_same_intent_checkpoint_owner_as_inference",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_invalid_local_selection_is_rejected_before_archive[null_snapshot]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_invalid_local_selection_is_rejected_before_archive[missing_snapshot]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_invalid_local_selection_is_rejected_before_archive[changed_checkpoint]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_invalid_local_selection_is_rejected_before_archive[missing_checkpoint]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_invalid_local_selection_is_rejected_before_archive[wrong_domain]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_invalid_local_selection_is_rejected_before_archive[extra_field]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_invalid_local_selection_is_rejected_before_archive[relative_checkpoint]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_duplicate_config_fields_and_config_symlink_are_rejected",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_cached_blob_symlinks_are_captured_but_external_targets_refused",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_tampered_manifest_selection_rejected[path]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_tampered_manifest_selection_rejected[config_path]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_tampered_manifest_selection_rejected[checkpoint_sha256]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_tampered_manifest_selection_rejected[embedding_path]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_tampered_manifest_selection_rejected[embedding_assets]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_tampered_manifest_selection_rejected[extra_member]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_tampered_manifest_selection_rejected[missing_member]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_tampered_manifest_selection_rejected[member_hash]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_tampered_manifest_selection_rejected[duplicate_member]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_changed_archive_bytes_refused_even_when_outer_hash_is_updated",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_legacy_and_new_selection_cannot_mix",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_real_harbor_entrypoint_forwards_packaged_config[full]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_real_harbor_entrypoint_forwards_packaged_config[no-index]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_container_cli_forwards_exact_selection_without_model_call",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py::test_benchmark_preparation_retains_config_binding_and_rejects_wrong_selection",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_no_selection_does_not_import_or_infer_a_model",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_selected_shared_checkpoint_is_replayed_and_both_candidates_remain_separate",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_unsupported_native_candidate_is_preserved_without_becoming_an_effect",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_unknown_or_incomplete_configuration_fails_open_without_owner_import[schema]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_unknown_or_incomplete_configuration_fails_open_without_owner_import[extra]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_unknown_or_incomplete_configuration_fails_open_without_owner_import[hash]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_unknown_or_incomplete_configuration_fails_open_without_owner_import[relative_checkpoint]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_unknown_or_incomplete_configuration_fails_open_without_owner_import[relative_snapshot]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_unknown_or_incomplete_configuration_fails_open_without_owner_import[missing]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_changed_shared_report_is_rejected_by_numerical_replay[raw_candidate]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_changed_shared_report_is_rejected_by_numerical_replay[native_candidate]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_changed_shared_report_is_rejected_by_numerical_replay[source]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_changed_shared_report_is_rejected_by_numerical_replay[checkpoint]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_changed_shared_report_is_rejected_by_numerical_replay[authority]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_changed_shared_report_is_rejected_by_numerical_replay[extra]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_owner_transport_cannot_silently_drop_identity_or_authority_fields[source]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_owner_transport_cannot_silently_drop_identity_or_authority_fields[checkpoint]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_owner_transport_cannot_silently_drop_identity_or_authority_fields[path]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_owner_transport_cannot_silently_drop_identity_or_authority_fields[snapshot]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_owner_transport_cannot_silently_drop_identity_or_authority_fields[authority]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_owner_transport_cannot_silently_drop_identity_or_authority_fields[digest]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_owner_transport_cannot_silently_drop_identity_or_authority_fields[missing_native]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_owner_transport_cannot_silently_drop_identity_or_authority_fields[raw_kind]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_numerical_replay_cannot_mutate_its_contract_input[changed-False-prepare]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_numerical_replay_cannot_mutate_its_contract_input[changed-False-saved]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_numerical_replay_cannot_mutate_its_contract_input[changed-True-prepare]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_numerical_replay_cannot_mutate_its_contract_input[changed-True-saved]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_numerical_replay_cannot_mutate_its_contract_input[original-True-prepare]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_numerical_replay_cannot_mutate_its_contract_input[original-True-saved]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_caller_advice_changed_during_replay_cannot_be_accepted[contract]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_caller_advice_changed_during_replay_cannot_be_accepted[authority]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_caller_advice_changed_during_replay_cannot_be_accepted[configuration]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_preparation_detaches_producer_report_before_replay",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_mutated_replay_cannot_supply_planner_contract_slots",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[raw_candidate]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[native_candidate]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[report_native]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[raw_hash]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[native_hash]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[instruction]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[authority]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[scope]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[replay_claim]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance[extra]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_new_schema_dispatch_uses_verified_native_document_and_keeps_old_route_separate",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_cross_source_transport_uses_bound_native_document_and_preserves_raw_candidate",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_missing_shared_owner_is_sanitized_and_preserves_original_instruction",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_adapter_document_envelope_matches_real_association_builder_identity",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_effect_boundary_requires_exact_replayed_bound_envelope[missing]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_effect_boundary_requires_exact_replayed_bound_envelope[bare_document]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_effect_boundary_requires_exact_replayed_bound_envelope[changed_document]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_effect_boundary_requires_exact_replayed_bound_envelope[extra]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "optional-tests-01.stdout",
+      "node_id": "test/api/semantic_state/test_intent_384_advisor.py::test_real_effect_checkpoint_replay_keeps_learned_and_bound_documents_distinct",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_disabled_selection_never_reads_configuration_or_imports_model",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_saved_candidate_replays_current_config_and_learned_contract_summary",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_cannot_replace_audited_contract_during_saved_selection[saved_load-False]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_cannot_replace_audited_contract_during_saved_selection[saved_load-True]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_cannot_replace_audited_contract_during_saved_selection[planner_summary-False]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_cannot_replace_audited_contract_during_saved_selection[planner_summary-True]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_contract_mutation_preserves_original_provider_planning[False]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_contract_mutation_preserves_original_provider_planning[True]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_replay_cannot_use_selection_files_changed_after_saved_load[configuration]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_replay_cannot_use_selection_files_changed_after_saved_load[saved_advice]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_replay_source_drift_stops_planning_before_provider",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_selection_changed_by_replay_callback_cannot_supply_saved_advice[enabled]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_selection_changed_by_replay_callback_cannot_supply_saved_advice[config_path]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_selection_changed_by_replay_callback_cannot_supply_saved_advice[config_sha256]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_selection_changed_by_replay_callback_cannot_supply_saved_advice[extra_field]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_invalid_config_is_optional_failure_without_model_call[missing]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_invalid_config_is_optional_failure_without_model_call[malformed]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_invalid_config_is_optional_failure_without_model_call[oversized]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_invalid_config_is_optional_failure_without_model_call[symlink]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_invalid_config_is_optional_failure_without_model_call[duplicate]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_invalid_config_is_optional_failure_without_model_call[unknown_field]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_invalid_config_is_optional_failure_without_model_call[wrong_hash]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[config_bytes]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[config_checkpoint]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[sidecar_bytes]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[sidecar_rehashed_candidate]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[source]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[selection_extra]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[selection_digest]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[selection_disabled]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_changed_config_source_or_rehashed_prediction_cannot_supply_planner_advice[sidecar_symlink]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_configuration_is_rechecked_after_model_execution[prepare]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_configuration_is_rechecked_after_model_execution[load]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_over_budget_keeps_original_instruction_available",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_configured_inference_precedes_declarations_and_reaches_original_planner",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_optional_route_failures_preserve_exact_original_planner_request[missing_config]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_optional_route_failures_preserve_exact_original_planner_request[stale_config]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_optional_route_failures_preserve_exact_original_planner_request[disabled]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_ambiguous_preplanning_routes_are_refused_before_repository_mutation[intent_checkpoint_descriptor]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_ambiguous_preplanning_routes_are_refused_before_repository_mutation[intent_projection_request]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "tests-03.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_ambiguous_preplanning_routes_are_refused_before_repository_mutation[enable_source_unit_autoencoder]",
+      "repository": "accelerate",
+      "status": "passed"
+    },
+    {
+      "evidence": "optional-tests-01.stdout",
+      "node_id": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_real_published_checkpoint_enters_benchmark_preplanning_without_manual_advice",
+      "repository": "accelerate",
+      "status": "passed"
+    }
+  ]
+}

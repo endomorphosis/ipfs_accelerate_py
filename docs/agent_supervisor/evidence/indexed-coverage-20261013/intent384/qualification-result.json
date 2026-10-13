@@ -1,0 +1,121 @@
+{
+  "actual_call_counts": {
+    "checkpoint_load_calls": 5
+  },
+  "case_expectations_met": false,
+  "cases": [
+    {
+      "actual_call_counts": {
+        "checkpoint_load_calls": 4
+      },
+      "advice": {
+        "bytes": 3704,
+        "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/controlled_scalar-advice.json",
+        "sha256": "b0d4ee6854e8dba549c9b9486098b52d1f9569d4af5d9ce1a61d8464a5e313b5"
+      },
+      "completion_authority": false,
+      "error_type": null,
+      "execution_authority": false,
+      "failure_stage": null,
+      "formal_logic_projection_executed": false,
+      "instruction_bytes": 108,
+      "instruction_sha256": "608eca7854f91cc3b2e0896cd2f833ef07ac87578fec6ee8743e91ea3c0c62b6",
+      "label": "controlled_scalar",
+      "lake_executed": false,
+      "numerical_replay_verified": false,
+      "planner_summary_bytes": 0,
+      "planner_summary_present": false,
+      "planner_summary_sha256": null,
+      "preparation_seconds": 0.04156921,
+      "proof_authority": false,
+      "reason": "implementation pins differ",
+      "saved_advice_replay_equal": true,
+      "saved_advice_replay_status": "fail_open_unavailable",
+      "saved_advice_shared_status": "fail_open_unavailable",
+      "shared_embedding_provenance_present": false,
+      "shared_model_inference_executed": false,
+      "shared_producer_pins_present": false,
+      "shared_status": "fail_open_unavailable",
+      "source_preserved": true,
+      "status": "fail_open_unavailable",
+      "total_seconds": 0.07486294698901474
+    },
+    {
+      "actual_call_counts": {
+        "checkpoint_load_calls": 0
+      },
+      "advice": {
+        "bytes": 4362,
+        "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/largest-eigenval_original_instruction-advice.json",
+        "sha256": "f945cf4fc9b65d105a55616153b5ef1eaa10fcc680def21ad4c045c5882a1083"
+      },
+      "completion_authority": false,
+      "error_type": null,
+      "execution_authority": false,
+      "failure_stage": null,
+      "formal_logic_projection_executed": false,
+      "instruction_bytes": 716,
+      "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+      "label": "largest-eigenval_original_instruction",
+      "lake_executed": false,
+      "numerical_replay_verified": false,
+      "planner_summary_bytes": 0,
+      "planner_summary_present": false,
+      "planner_summary_sha256": null,
+      "preparation_seconds": 0.000737203,
+      "proof_authority": false,
+      "reason": "bounded single-line explicit contract source required",
+      "saved_advice_replay_equal": true,
+      "saved_advice_replay_status": "fail_open_input_out_of_scope",
+      "saved_advice_shared_status": "fail_open_input_out_of_scope",
+      "shared_embedding_provenance_present": false,
+      "shared_model_inference_executed": false,
+      "shared_producer_pins_present": false,
+      "shared_status": "fail_open_input_out_of_scope",
+      "source_preserved": true,
+      "status": "fail_open_input_out_of_scope",
+      "total_seconds": 0.004090576083399355
+    }
+  ],
+  "checkpoint_bytes_unchanged": true,
+  "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+  "configuration_path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/selected-config.json",
+  "configuration_sha256": "526126205a3577341b917d1afe1ff5115ca80f8b91aead9f850407b50be140f1",
+  "default_model_promoted": false,
+  "download_calls": 0,
+  "embedding_models_in_private_cache": 0,
+  "limitations": [
+    "This is local optional preprocessing, not a supervisor benchmark or task correctness test.",
+    "The supported control is authored controlled language, not arbitrary benchmark instruction semantics.",
+    "The source-audited action route has no separate projection request and performs no Lake build.",
+    "The unsupported benchmark instruction is refused before checkpoint numerical inference; selecting these weights cannot broaden their grammar.",
+    "Function-call instrumentation counts loaded shared functions without replacing them; timings include profiling and replay costs."
+  ],
+  "packaging_readiness": {
+    "archive_built": false,
+    "error_type": "ValueError",
+    "model_inference_executed": false,
+    "reason": "implementation pins differ",
+    "status": "unavailable"
+  },
+  "producer_pins": {
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/formalization/autoencoder/intent_action_runtime_384.py": "71fafaf27a3e1644b5e8f1c882821e1a5890e9e26b1631ac1a8149f72690e218",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_384.py": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/formalization/autoencoder/structured_source_384.py": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/intent_384_advisor.py": "e316aec6d7a965a6df5877c04bca38d8c9e8e0050263aaf65334abe8f7ef6ccb",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/intent_advisor_selection.py": "a5b5274a5f70d5b82bd6bc2f3e5cc3225db1c2aca2862551130adce861ddc939"
+  },
+  "proof_authority": false,
+  "provider_calls": 0,
+  "schema": "selected-intent384-local-qualification@1",
+  "seconds": 0.15678697708062828,
+  "source_semantics_verified": false,
+  "training_steps": 0,
+  "versions": {
+    "numpy": "1.26.4",
+    "sentence-transformers": "5.4.1",
+    "torch": "2.13.0",
+    "transformers": "4.52.1"
+  }
+}

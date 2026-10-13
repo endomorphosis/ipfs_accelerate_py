@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "test/api/semantic_state/test_intent_384_advisor.py::test_real_effect_checkpoint_replay_keeps_learned_and_bound_documents_distinct",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_real_published_checkpoint_enters_benchmark_preplanning_without_manual_advice"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "DOCTOR_COMPOSITION_LEAN": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+    "ELAN_TOOLCHAIN": "leanprover/lean4:v4.34.1",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/qualification-03/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/optional-seal-01.duckdb",
+    "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+    "IPFS_KIT_DISABLE": "1",
+    "IR384_TEST_INTENT_ACTION_CONFIG": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/selected-config.json",
+    "IR384_TEST_INTENT_ACTION_INSTRUCTION": "the calculator must compute result; requires left > 0; ensures result = old(right) + old(left) and returned.",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/home/barberb/.local/lib/python3.12/site-packages:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "network_expected": false,
+  "provider_calls": 0,
+  "timeout_seconds": 240,
+  "training_steps": 0
+}

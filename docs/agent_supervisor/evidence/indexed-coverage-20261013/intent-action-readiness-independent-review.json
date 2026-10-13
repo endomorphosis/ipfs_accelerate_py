@@ -1,0 +1,150 @@
+{
+  "actual_local_qualification": {
+    "cases": [
+      {
+        "actual_call_counts": {
+          "gte_embedding_calls": 4,
+          "intent_checkpoint_load_calls": 4,
+          "structured_inference_calls": 4
+        },
+        "completion_authority": false,
+        "execution_authority": false,
+        "formal_logic_projection_executed": false,
+        "instruction_bytes": 108,
+        "instruction_sha256": "608eca7854f91cc3b2e0896cd2f833ef07ac87578fec6ee8743e91ea3c0c62b6",
+        "label": "controlled_scalar",
+        "lake_executed": false,
+        "numerical_replay_verified": true,
+        "proof_authority": false,
+        "saved_advice_replay_equal": true,
+        "shared_model_inference_executed": true,
+        "shared_status": "source_supported_action_contract",
+        "source_preserved": true,
+        "status": "semantic_candidate_advice"
+      },
+      {
+        "actual_call_counts": {
+          "gte_embedding_calls": 0,
+          "intent_checkpoint_load_calls": 0,
+          "structured_inference_calls": 0
+        },
+        "completion_authority": false,
+        "execution_authority": false,
+        "formal_logic_projection_executed": false,
+        "instruction_bytes": 716,
+        "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+        "label": "largest-eigenval_original_instruction",
+        "lake_executed": false,
+        "numerical_replay_verified": false,
+        "proof_authority": false,
+        "saved_advice_replay_equal": true,
+        "shared_model_inference_executed": false,
+        "shared_status": "fail_open_input_out_of_scope",
+        "source_preserved": true,
+        "status": "fail_open_input_out_of_scope"
+      }
+    ],
+    "checkpoint_bytes_unchanged": true,
+    "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "download_calls": 0,
+    "producer_pins_match_reviewed_sources": true,
+    "provider_calls": 0,
+    "receipt_sha256": "93ed51e881d9589523ce5400659e2a84bcd122c14fcff71c6b3ca860761e273f",
+    "training_steps": 0
+  },
+  "contract_checks": [
+    "Asset selection is separate from current host loader eligibility, which is separate from complete instruction grammar scope. Archive-only selection does not claim a host/container model was loaded.",
+    "Readiness performs no embedding, model prediction, download, provider call, training, solver or Lake build. Runtime construction validates finite tensor shapes and metadata only.",
+    "The complete input string is screened once; no split, paraphrase, parser target or repaired prediction is fed into planning.",
+    "Preparation uses the existing Harbor newline normalization and never rewrites instruction.md. Source hashing now occurs before readiness reads and the existing final task-integrity check encloses preparation.",
+    "Grammar and loader operational failures yield bounded enum metadata, no exception text, private paths, source strings, model weights or training rows.",
+    "Mismatched explicit local config or selected archive pins still reject preparation, preserving admission integrity; this is distinct from optional grammar/load operational failure.",
+    "Receipt bodies contain selected identities, implementation hashes, component hashes and fixed scope text; no instruction bodies or checkpoint payloads are exported.",
+    "The compatibility delta accepts only the exact OLD_TREE_SHA256 to NEW_TREE_SHA256 leaf transition; every other implementation field must equal the active owner. Strict current artifacts remain strict.",
+    "A detached runtime view changes only the known implementation leaf; caller-pinned checkpoint bytes, weights, target schema, manifests and all other content are retained and validated by the ordinary structured.Runtime.",
+    "Both packaging and actual Intent inference call the same shared datasets checkpoint owner; the runtime records that owner in producer pins. Security scalar decoding and general structured checkpoint loading remain unchanged."
+  ],
+  "findings": [],
+  "independently_verified_tree_change": {
+    "change": "sys import, explanatory docstring, diagnostic print directed to stderr; tree rejection and numerical behavior unchanged",
+    "commit": "c1b1f65f254f5f3ee8f307cdddf923c62450f78e",
+    "new_sha256": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+    "old_sha256": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+  },
+  "limitations": [
+    "The local positive control exercises authored scalar controlled language, not arbitrary Terminal Bench prompts.",
+    "The unchanged largest-eigenval instruction is out of scope and invokes zero checkpoint/embedding/model calls. Packaging compatibility does not broaden grammar coverage.",
+    "Readiness eligibility is not proof of future successful embedding inference, successful decode, formal source meaning, task correctness or token savings.",
+    "No full supervisor START, paid model run, official benchmark verifier, formal-logic projection or Lake build is established by this review.",
+    "Test runs overlap; their counts must not be added to claim distinct test coverage. Recorded test receipts were inspected, not independently rerun by this reviewer.",
+    "Current source hashes are review-time bindings; these pytest commands did not independently retain before/after source pins. The real local qualification does retain matching producer pins."
+  ],
+  "recommendation": "accept bounded optional readiness and exact Intent-only diagnostic compatibility",
+  "recorded_tests": {
+    "independent_test_rerun": false,
+    "later_optional_real_checkpoint_run": {
+      "combined_unique_passes_for_shared_suite": 182,
+      "deduplicated_inventory_sha256": "e6499fe1e639b583825ffbc55719f6fbb947615bb63b2c761c87739d44703cb1",
+      "failed": 0,
+      "historical_tests_03_preserved": true,
+      "independent_test_rerun": false,
+      "node_ids": [
+        "test/api/semantic_state/test_intent_384_advisor.py::test_real_effect_checkpoint_replay_keeps_learned_and_bound_documents_distinct",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_real_published_checkpoint_enters_benchmark_preplanning_without_manual_advice"
+      ],
+      "passed": 2,
+      "result_sha256": "a6a6a0f34a92757788fc011aede297869d96c218f68b28d24c84ffc3526fc797",
+      "skipped": 0
+    },
+    "readiness_preparation_transport": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 291
+    },
+    "receipt_sha256": {
+      "intent384/tests-03-command.json": "63f5a7741ca6a9ace3fb09651c36bb71c1b95d63eb5c5b211ae9e398c01ee171",
+      "intent384/tests-03-result.json": "21f6ff473c808f19f3cd5791177411b3be23b4bee665d3cd088cf919ac61baa2",
+      "intent384/tests-03.stdout": "5a7e73bb36694e5500275524c83886cd4485bc1d3bf4187dbeb06c6a72e21016",
+      "readiness/run-02/command.json": "5603a0ae96e5def02caa692ad8597e6e0e862a4199c05e0ae2f3975f1ea3307f",
+      "readiness/run-02/pytest.log": "473f1ff76f7c2a23769feff691f89395a00157637eaf618c7c7e7c30c7af8df7",
+      "readiness/run-02/pytest.xml": "0a398edafcd2738433908774de55b84a2b4ba97e936bd65716b27730bbfd2fa2"
+    },
+    "shared_loader_runtime_transport": {
+      "failed": 0,
+      "passed": 180,
+      "skipped": 2
+    },
+    "source_before_after_pins_not_recorded_by_these_pytest_commands": true
+  },
+  "resolved_findings": [
+    {
+      "issue": "Optional codec RuntimeError/OSError could escape readiness and abort preparation.",
+      "resolution": "ImportError/OSError/RuntimeError now produce input_scope unavailable and preserve continue_planning; ValueError/TypeError remain out_of_scope; three fault-injection tests added."
+    },
+    {
+      "issue": "Initial or final checkpoint path read could follow a substituted special file or perform an unbounded final read.",
+      "resolution": "Both reads now use bounded O_NOFOLLOW|O_NONBLOCK regular descriptors, pre/open/post named-path identity, exact byte hash and final equal identity/bytes; symlink/FIFO/replacement tests added."
+    }
+  ],
+  "reviewed_source_sha256": {
+    "accelerate": {
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "337a9286fab17caa43a659da96160b4641e7571d54ecb663442953fb2b67a02f",
+      "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "79583cd472f8f9e9701db6560d717b557536e4ef4038c70fff12010749762be5",
+      "benchmarks/agent_supervisor/container_coding/terminal_intent_action_readiness.py": "505b315c1ec3f7d8027be958eadf1d4839835b802368ae0332bc2071d1f7b977",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py": "cceed6630bf54d54d1614a9bb4a5991469e098c959f5261186a1efc39772e877",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py": "a90b02d31f499ec18645057e992dddbc717ed42355d73ba7b54153c886791cc2",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_readiness.py": "073892fed0353813d72a90854d33d415f4784dbd717ae63a97fd36da236b335f"
+    },
+    "datasets": {
+      "ipfs_datasets_py/logic/formalization/autoencoder/intent_action_checkpoint_384.py": "467b5e00df9e6960618a36064255d2680f2b369e3f27bf1901b6260a132b5eab",
+      "ipfs_datasets_py/logic/formalization/autoencoder/intent_action_runtime_384.py": "c358f7fee51c3fceadf8b37c306ca5f37744b3f4e0917b98906ca231b5f43a89",
+      "ipfs_datasets_py/logic/formalization/autoencoder/structured_source_384.py": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+      "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py": "a50508c9a42af9b11f47d689a413ed06cfcb7cda1dbd595fa9005ebb96136100",
+      "tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py": "ff12ae5c3a10fc7ea34a0e4f6913e99843ec6285a41c8c7bc05ba0b0c432792d",
+      "tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py": "91a99d1ca12c013c25f25130389f1c2cbc0b092d47fcdf36f6192eeb055de146"
+    }
+  },
+  "reviewer": "context_pair_design",
+  "schema": "intent-action-readiness-independent-review@1"
+}

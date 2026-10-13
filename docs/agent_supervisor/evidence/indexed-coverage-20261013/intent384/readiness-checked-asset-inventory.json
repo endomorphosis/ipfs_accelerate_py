@@ -1,0 +1,125 @@
+{
+  "files": [
+    {
+      "bytes": 384106,
+      "path": "models/intent-action-384/checkpoint.json",
+      "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+    },
+    {
+      "bytes": 190,
+      "path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/1_Pooling/config.json",
+      "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+    },
+    {
+      "bytes": 583,
+      "path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/config.json",
+      "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+    },
+    {
+      "bytes": 66746168,
+      "path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors",
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    {
+      "bytes": 385,
+      "path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/modules.json",
+      "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+    },
+    {
+      "bytes": 57,
+      "path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/sentence_bert_config.json",
+      "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+    },
+    {
+      "bytes": 125,
+      "path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/special_tokens_map.json",
+      "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+    },
+    {
+      "bytes": 711661,
+      "path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer.json",
+      "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+    },
+    {
+      "bytes": 394,
+      "path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer_config.json",
+      "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+    },
+    {
+      "bytes": 231508,
+      "path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/vocab.txt",
+      "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+    },
+    {
+      "bytes": 373,
+      "path": "models/intent-action-384/config.json",
+      "sha256": "d6020d1db7e62105e41cdd6d2137b00f124a703c86d41c6e01a4063179f50e63"
+    }
+  ],
+  "intent_action_384": {
+    "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "config": {
+      "checkpoint_path": "/opt/ipfs-supervisor/models/intent-action-384/checkpoint.json",
+      "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+      "embedding_snapshot_path": "/opt/ipfs-supervisor/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+      "schema": "supervisor-intent-action-384-config/v1"
+    },
+    "config_path": "models/intent-action-384/config.json",
+    "config_sha256": "d6020d1db7e62105e41cdd6d2137b00f124a703c86d41c6e01a4063179f50e63",
+    "embedding_assets": [
+      {
+        "bytes": 190,
+        "name": "1_Pooling/config.json",
+        "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+      },
+      {
+        "bytes": 583,
+        "name": "config.json",
+        "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+      },
+      {
+        "bytes": 66746168,
+        "name": "model.safetensors",
+        "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+      },
+      {
+        "bytes": 385,
+        "name": "modules.json",
+        "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+      },
+      {
+        "bytes": 57,
+        "name": "sentence_bert_config.json",
+        "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+      },
+      {
+        "bytes": 125,
+        "name": "special_tokens_map.json",
+        "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+      },
+      {
+        "bytes": 711661,
+        "name": "tokenizer.json",
+        "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+      },
+      {
+        "bytes": 394,
+        "name": "tokenizer_config.json",
+        "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+      },
+      {
+        "bytes": 231508,
+        "name": "vocab.txt",
+        "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+      }
+    ],
+    "embedding_path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+    "mode": "frozen_source_audited_action_384_inference",
+    "path": "models/intent-action-384/checkpoint.json",
+    "runtime_download_calls": 0,
+    "runtime_training_steps": 0,
+    "schema": "terminal-intent-action-384-assets@1",
+    "source_training_data_included": false
+  }
+}

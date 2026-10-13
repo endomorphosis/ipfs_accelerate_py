@@ -1,0 +1,413 @@
+{
+  "actual_call_counts": {
+    "checkpoint_load_calls": 3,
+    "embedding_calls": 0,
+    "numerical_inference_calls": 0
+  },
+  "archive_created_or_verified": false,
+  "asset_inventory": {
+    "bytes": 5335,
+    "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/readiness-checked-asset-inventory.json",
+    "sha256": "4326f43c7bbf6e238523cffc34bd4066051e1a917de51fcd19be8934d41086a9"
+  },
+  "cases": [
+    {
+      "actual_call_counts": {
+        "checkpoint_load_calls": 1,
+        "embedding_calls": 0,
+        "numerical_inference_calls": 0
+      },
+      "label": "controlled_scalar",
+      "observation": {
+        "checkpoint_check_scope": "explicit_local_checkpoint_current_runtime",
+        "checkpoint_compatibility": {
+          "admitted": false,
+          "applied": true,
+          "artifact_modified": false,
+          "artifact_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+          "changed_pins": [
+            {
+              "after": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+              "before": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d",
+              "path": [
+                "shared_runtime",
+                "numerical",
+                "files",
+                "tree_pin.py"
+              ]
+            }
+          ],
+          "checkpoint_schema": "structured-source-384-autoencoder/v1",
+          "domain_id": "intent_ir",
+          "download_calls": 0,
+          "mode": "known_tree_pin_stderr_diagnostic",
+          "numerical_weights_modified": false,
+          "original_implementation": {
+            "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+            "shared_runtime": {
+              "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+              "native": {
+                "dependencies": {
+                  "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                  "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                  "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                  "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                  "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                  "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                  "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                  "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                },
+                "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                "scope": "listed_numerical_and_native_validator_modules_only"
+              },
+              "numerical": {
+                "files": {
+                  "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                  "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                  "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                  "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                  "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+                },
+                "scope": "listed_latent_decoder_and_grammar_sources_only"
+              },
+              "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+            }
+          },
+          "profile": "intent-structured384-known-stderr-tree-pin/v1",
+          "proof_authority": false,
+          "provider_calls": 0,
+          "publication_performed": false,
+          "qualified": false,
+          "runtime_implementation": {
+            "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+            "shared_runtime": {
+              "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+              "native": {
+                "dependencies": {
+                  "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                  "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                  "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                  "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                  "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                  "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                  "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                  "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                },
+                "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                "scope": "listed_numerical_and_native_validator_modules_only"
+              },
+              "numerical": {
+                "files": {
+                  "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                  "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                  "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                  "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                  "tree_pin.py": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2"
+                },
+                "scope": "listed_latent_decoder_and_grammar_sources_only"
+              },
+              "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+            }
+          },
+          "runtime_view_persisted": false,
+          "runtime_view_sha256": "6e312b6211eac9aa71ee8ce6109c7ba4934613c7848235b62d18a92d43944b73",
+          "schema": "intent-action-384-checkpoint-compatibility/v1",
+          "scope": "Only the exact reviewed tree diagnostic stdout-to-stderr pin transition may differ. Intent validators, numerical code, checkout rejection, weights, schema and every other checkpoint field remain exact. Compatibility does not establish instruction meaning or proof.",
+          "source_semantics_verified": false,
+          "target_schema_modified": false,
+          "training_executed": false,
+          "training_manifests_modified": false,
+          "unchanged_component_sha256": {
+            "config": "53fe42f8d381264d1bf214406bb2de649a442e218c4e06d6e35a221444176ddc",
+            "head_state": "6319a31a06ea946ac37262ef858b014438c00cac3bbc36a3ea3e4ac416c1f8e3",
+            "input_transform": "5e769ca2e9b2733b357173b39271df5f240b04fa178b5495e801c0393048a6b4",
+            "lineage": "45e0ed37ace5920f9094d8b19a35b0117fb401316d14685667667016db223a41",
+            "parent_binding": "60c05b77898286c404d8e89aba1ab0d9c7a6af8e191979e3083f87f824bf4e0d",
+            "projection_state": "4e90ec5a3ff3978d3f6d40fb366ea01f2a056fe6c59b3fddcf7c50f66366afd7",
+            "target_schema": "387c30a80bfe741217bb251f5c360e7b33c6b530ea035db82dea7c4bf916f8bd",
+            "training": "0da48472b5199f18b4c3751a50dbe33fb35bdf79940630d285173079f323ddb8",
+            "training_manifest": "c29bc5282d94467dc153393cdbe745b1cfe6c92ca76ac898da231b105c38368b",
+            "validation_manifest": "9a108795a85734f548dcb30930c11d0959f2183317d4f9d111aaa01f70a956bd"
+          },
+          "unchanged_content_sha256": "8529fb844cff3fb4acbbf835f9be41e924b95c0ee7a9c70d37722436c58f73aa"
+        },
+        "checkpoint_load_eligibility": "eligible",
+        "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+        "completion_authority": false,
+        "continue_planning": true,
+        "download_calls": 0,
+        "embedding_asset_pins_validated": true,
+        "embedding_inference_executed": false,
+        "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+        "execution_authority": false,
+        "inference_readiness": "eligible_for_inference",
+        "input_grammar": "intent-explicit-action-contract/v1",
+        "input_scope": "in_scope",
+        "instruction_bytes": 108,
+        "instruction_sha256": "608eca7854f91cc3b2e0896cd2f833ef07ac87578fec6ee8743e91ea3c0c62b6",
+        "model_inference_executed": false,
+        "proof_authority": false,
+        "provider_calls": 0,
+        "raw_instruction_preserved": true,
+        "schema": "terminal-intent-action-384-readiness@1",
+        "selection": "selected",
+        "source_semantics_verified": false,
+        "training_steps": 0
+      },
+      "selection": "explicit_local_config"
+    },
+    {
+      "actual_call_counts": {
+        "checkpoint_load_calls": 0,
+        "embedding_calls": 0,
+        "numerical_inference_calls": 0
+      },
+      "label": "controlled_scalar",
+      "observation": {
+        "checkpoint_check_scope": "not_checked",
+        "checkpoint_compatibility": null,
+        "checkpoint_load_eligibility": "not_checked",
+        "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+        "completion_authority": false,
+        "continue_planning": true,
+        "download_calls": 0,
+        "embedding_asset_pins_validated": true,
+        "embedding_inference_executed": false,
+        "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+        "execution_authority": false,
+        "inference_readiness": "checkpoint_not_checked",
+        "input_grammar": "intent-explicit-action-contract/v1",
+        "input_scope": "in_scope",
+        "instruction_bytes": 108,
+        "instruction_sha256": "608eca7854f91cc3b2e0896cd2f833ef07ac87578fec6ee8743e91ea3c0c62b6",
+        "model_inference_executed": false,
+        "proof_authority": false,
+        "provider_calls": 0,
+        "raw_instruction_preserved": true,
+        "schema": "terminal-intent-action-384-readiness@1",
+        "selection": "selected",
+        "source_semantics_verified": false,
+        "training_steps": 0
+      },
+      "selection": "binding_only"
+    },
+    {
+      "actual_call_counts": {
+        "checkpoint_load_calls": 1,
+        "embedding_calls": 0,
+        "numerical_inference_calls": 0
+      },
+      "label": "largest-eigenval_original_instruction",
+      "observation": {
+        "checkpoint_check_scope": "explicit_local_checkpoint_current_runtime",
+        "checkpoint_compatibility": {
+          "admitted": false,
+          "applied": true,
+          "artifact_modified": false,
+          "artifact_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+          "changed_pins": [
+            {
+              "after": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+              "before": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d",
+              "path": [
+                "shared_runtime",
+                "numerical",
+                "files",
+                "tree_pin.py"
+              ]
+            }
+          ],
+          "checkpoint_schema": "structured-source-384-autoencoder/v1",
+          "domain_id": "intent_ir",
+          "download_calls": 0,
+          "mode": "known_tree_pin_stderr_diagnostic",
+          "numerical_weights_modified": false,
+          "original_implementation": {
+            "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+            "shared_runtime": {
+              "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+              "native": {
+                "dependencies": {
+                  "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                  "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                  "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                  "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                  "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                  "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                  "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                  "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                },
+                "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                "scope": "listed_numerical_and_native_validator_modules_only"
+              },
+              "numerical": {
+                "files": {
+                  "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                  "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                  "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                  "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                  "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+                },
+                "scope": "listed_latent_decoder_and_grammar_sources_only"
+              },
+              "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+            }
+          },
+          "profile": "intent-structured384-known-stderr-tree-pin/v1",
+          "proof_authority": false,
+          "provider_calls": 0,
+          "publication_performed": false,
+          "qualified": false,
+          "runtime_implementation": {
+            "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+            "shared_runtime": {
+              "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+              "native": {
+                "dependencies": {
+                  "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                  "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                  "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                  "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                  "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                  "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                  "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                  "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                },
+                "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                "scope": "listed_numerical_and_native_validator_modules_only"
+              },
+              "numerical": {
+                "files": {
+                  "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                  "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                  "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                  "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                  "tree_pin.py": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2"
+                },
+                "scope": "listed_latent_decoder_and_grammar_sources_only"
+              },
+              "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+            }
+          },
+          "runtime_view_persisted": false,
+          "runtime_view_sha256": "6e312b6211eac9aa71ee8ce6109c7ba4934613c7848235b62d18a92d43944b73",
+          "schema": "intent-action-384-checkpoint-compatibility/v1",
+          "scope": "Only the exact reviewed tree diagnostic stdout-to-stderr pin transition may differ. Intent validators, numerical code, checkout rejection, weights, schema and every other checkpoint field remain exact. Compatibility does not establish instruction meaning or proof.",
+          "source_semantics_verified": false,
+          "target_schema_modified": false,
+          "training_executed": false,
+          "training_manifests_modified": false,
+          "unchanged_component_sha256": {
+            "config": "53fe42f8d381264d1bf214406bb2de649a442e218c4e06d6e35a221444176ddc",
+            "head_state": "6319a31a06ea946ac37262ef858b014438c00cac3bbc36a3ea3e4ac416c1f8e3",
+            "input_transform": "5e769ca2e9b2733b357173b39271df5f240b04fa178b5495e801c0393048a6b4",
+            "lineage": "45e0ed37ace5920f9094d8b19a35b0117fb401316d14685667667016db223a41",
+            "parent_binding": "60c05b77898286c404d8e89aba1ab0d9c7a6af8e191979e3083f87f824bf4e0d",
+            "projection_state": "4e90ec5a3ff3978d3f6d40fb366ea01f2a056fe6c59b3fddcf7c50f66366afd7",
+            "target_schema": "387c30a80bfe741217bb251f5c360e7b33c6b530ea035db82dea7c4bf916f8bd",
+            "training": "0da48472b5199f18b4c3751a50dbe33fb35bdf79940630d285173079f323ddb8",
+            "training_manifest": "c29bc5282d94467dc153393cdbe745b1cfe6c92ca76ac898da231b105c38368b",
+            "validation_manifest": "9a108795a85734f548dcb30930c11d0959f2183317d4f9d111aaa01f70a956bd"
+          },
+          "unchanged_content_sha256": "8529fb844cff3fb4acbbf835f9be41e924b95c0ee7a9c70d37722436c58f73aa"
+        },
+        "checkpoint_load_eligibility": "eligible",
+        "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+        "completion_authority": false,
+        "continue_planning": true,
+        "download_calls": 0,
+        "embedding_asset_pins_validated": true,
+        "embedding_inference_executed": false,
+        "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+        "execution_authority": false,
+        "inference_readiness": "input_out_of_scope",
+        "input_grammar": "intent-explicit-action-contract/v1",
+        "input_scope": "out_of_scope",
+        "instruction_bytes": 716,
+        "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+        "model_inference_executed": false,
+        "proof_authority": false,
+        "provider_calls": 0,
+        "raw_instruction_preserved": true,
+        "schema": "terminal-intent-action-384-readiness@1",
+        "selection": "selected",
+        "source_semantics_verified": false,
+        "training_steps": 0
+      },
+      "selection": "explicit_local_config"
+    },
+    {
+      "actual_call_counts": {
+        "checkpoint_load_calls": 0,
+        "embedding_calls": 0,
+        "numerical_inference_calls": 0
+      },
+      "label": "largest-eigenval_original_instruction",
+      "observation": {
+        "checkpoint_check_scope": "not_checked",
+        "checkpoint_compatibility": null,
+        "checkpoint_load_eligibility": "not_checked",
+        "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+        "completion_authority": false,
+        "continue_planning": true,
+        "download_calls": 0,
+        "embedding_asset_pins_validated": true,
+        "embedding_inference_executed": false,
+        "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+        "execution_authority": false,
+        "inference_readiness": "input_out_of_scope",
+        "input_grammar": "intent-explicit-action-contract/v1",
+        "input_scope": "out_of_scope",
+        "instruction_bytes": 716,
+        "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+        "model_inference_executed": false,
+        "proof_authority": false,
+        "provider_calls": 0,
+        "raw_instruction_preserved": true,
+        "schema": "terminal-intent-action-384-readiness@1",
+        "selection": "selected",
+        "source_semantics_verified": false,
+        "training_steps": 0
+      },
+      "selection": "binding_only"
+    }
+  ],
+  "downloads": 0,
+  "expectations_met": true,
+  "inventory_from_checked_local_asset_bytes": true,
+  "limitations": [
+    "Binding-only observations validate the actual local asset inventory structure; no archive was created or read in this qualification.",
+    "Eligibility validates the current shared checkpoint loader, not successful numerical decode, formal projection, instruction meaning or proof."
+  ],
+  "provider_calls": 0,
+  "schema": "intent384-real-asset-readiness-qualification@1",
+  "seconds": 0.5990303080761805,
+  "source_sha256": "505b315c1ec3f7d8027be958eadf1d4839835b802368ae0332bc2071d1f7b977",
+  "training_steps": 0,
+  "unselected": {
+    "checkpoint_check_scope": "not_checked",
+    "checkpoint_compatibility": null,
+    "checkpoint_load_eligibility": "not_checked",
+    "checkpoint_sha256": null,
+    "completion_authority": false,
+    "continue_planning": true,
+    "download_calls": 0,
+    "embedding_asset_pins_validated": false,
+    "embedding_inference_executed": false,
+    "embedding_revision": null,
+    "execution_authority": false,
+    "inference_readiness": "not_selected",
+    "input_grammar": null,
+    "input_scope": "not_checked",
+    "instruction_bytes": 716,
+    "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+    "model_inference_executed": false,
+    "proof_authority": false,
+    "provider_calls": 0,
+    "raw_instruction_preserved": true,
+    "schema": "terminal-intent-action-384-readiness@1",
+    "selection": "not_selected",
+    "source_semantics_verified": false,
+    "training_steps": 0
+  }
+}

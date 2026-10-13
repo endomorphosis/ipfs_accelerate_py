@@ -1,0 +1,9 @@
+{
+  "returncode": 0,
+  "seconds": 36.97579192300327,
+  "source_after": {
+    "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py": "eee10df4461525743dc8d98d9d2369221e8f668ce398843d41a5ae2c8b7e15b1",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py": "735f508f9b7be7de0563ac4b8d3467285f599201a852ab3aec4900fd8214b4b1"
+  },
+  "source_unchanged": true
+}

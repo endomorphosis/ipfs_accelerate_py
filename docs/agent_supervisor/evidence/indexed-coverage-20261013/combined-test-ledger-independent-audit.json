@@ -1,0 +1,40 @@
+{
+  "all_combined_rows_match_exactly": true,
+  "counts_by_repository": {
+    "accelerate": 681,
+    "datasets": 61
+  },
+  "counts_by_suite": {
+    "intent": 182,
+    "observer": 295,
+    "readiness": 291
+  },
+  "helper_sha256": "7e3da3b28787556173f26f6b973cae7e66a1d70da776c913107eed2bda15e070",
+  "inputs_sha256": {
+    "combined-test-results.json": "594d320738986c00eaedd2e37c06ebfd8eb6f14995a3ea87da2e2692523b7621",
+    "intent384/test-node-results.json": "e6499fe1e639b583825ffbc55719f6fbb947615bb63b2c761c87739d44703cb1",
+    "output-observation/combined-test-inventory.json": "5fc001315eed70f792f0905e80b7a9ebeea157527ad33878aea708a1f29139cd",
+    "readiness/run-02/pytest.xml": "0a398edafcd2738433908774de55b84a2b4ba97e936bd65716b27730bbfd2fa2"
+  },
+  "intent_inventory_evidence_digests_match": true,
+  "limitations": [
+    "The Intent compact stdout is a count summary; its retained node inventory supplies per-node identities. The real-checkpoint run remains separate historical evidence."
+  ],
+  "observer_inventories_replayed_from_junit": true,
+  "overlapping_files": {
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py": 26
+  },
+  "overlapping_nodes": 26,
+  "pairwise_overlap": {
+    "observer:intent": 0,
+    "observer:readiness": 0,
+    "readiness:intent": 26
+  },
+  "readiness_replayed_from_junit": true,
+  "repeated_memberships": 26,
+  "schema": "independent-combined-test-ledger-audit@1",
+  "scope": "Independent set-union and exact-row audit of retained successful test inventories; no new tests, benchmark, model inference or source proof.",
+  "status": "passed",
+  "tests_executed_by_auditor": 0,
+  "unique_passed": 742
+}

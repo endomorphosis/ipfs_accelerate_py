@@ -1,0 +1,443 @@
+{
+  "compatibility": {
+    "admitted": false,
+    "applied": true,
+    "artifact_modified": false,
+    "artifact_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "changed_pins": [
+      {
+        "after": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+        "before": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d",
+        "path": [
+          "shared_runtime",
+          "numerical",
+          "files",
+          "tree_pin.py"
+        ]
+      }
+    ],
+    "checkpoint_schema": "structured-source-384-autoencoder/v1",
+    "domain_id": "intent_ir",
+    "download_calls": 0,
+    "mode": "known_tree_pin_stderr_diagnostic",
+    "numerical_weights_modified": false,
+    "original_implementation": {
+      "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+      "shared_runtime": {
+        "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+        "native": {
+          "dependencies": {
+            "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+            "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+            "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+            "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+            "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+            "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+            "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+            "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+          },
+          "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+          "scope": "listed_numerical_and_native_validator_modules_only"
+        },
+        "numerical": {
+          "files": {
+            "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+            "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+            "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+            "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+            "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+          },
+          "scope": "listed_latent_decoder_and_grammar_sources_only"
+        },
+        "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+      }
+    },
+    "profile": "intent-structured384-known-stderr-tree-pin/v1",
+    "proof_authority": false,
+    "provider_calls": 0,
+    "publication_performed": false,
+    "qualified": false,
+    "runtime_implementation": {
+      "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+      "shared_runtime": {
+        "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+        "native": {
+          "dependencies": {
+            "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+            "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+            "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+            "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+            "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+            "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+            "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+            "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+          },
+          "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+          "scope": "listed_numerical_and_native_validator_modules_only"
+        },
+        "numerical": {
+          "files": {
+            "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+            "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+            "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+            "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+            "tree_pin.py": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2"
+          },
+          "scope": "listed_latent_decoder_and_grammar_sources_only"
+        },
+        "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+      }
+    },
+    "runtime_view_persisted": false,
+    "runtime_view_sha256": "6e312b6211eac9aa71ee8ce6109c7ba4934613c7848235b62d18a92d43944b73",
+    "schema": "intent-action-384-checkpoint-compatibility/v1",
+    "scope": "Only the exact reviewed tree diagnostic stdout-to-stderr pin transition may differ. Intent validators, numerical code, checkout rejection, weights, schema and every other checkpoint field remain exact. Compatibility does not establish instruction meaning or proof.",
+    "source_semantics_verified": false,
+    "target_schema_modified": false,
+    "training_executed": false,
+    "training_manifests_modified": false,
+    "unchanged_component_sha256": {
+      "config": "53fe42f8d381264d1bf214406bb2de649a442e218c4e06d6e35a221444176ddc",
+      "head_state": "6319a31a06ea946ac37262ef858b014438c00cac3bbc36a3ea3e4ac416c1f8e3",
+      "input_transform": "5e769ca2e9b2733b357173b39271df5f240b04fa178b5495e801c0393048a6b4",
+      "lineage": "45e0ed37ace5920f9094d8b19a35b0117fb401316d14685667667016db223a41",
+      "parent_binding": "60c05b77898286c404d8e89aba1ab0d9c7a6af8e191979e3083f87f824bf4e0d",
+      "projection_state": "4e90ec5a3ff3978d3f6d40fb366ea01f2a056fe6c59b3fddcf7c50f66366afd7",
+      "target_schema": "387c30a80bfe741217bb251f5c360e7b33c6b530ea035db82dea7c4bf916f8bd",
+      "training": "0da48472b5199f18b4c3751a50dbe33fb35bdf79940630d285173079f323ddb8",
+      "training_manifest": "c29bc5282d94467dc153393cdbe745b1cfe6c92ca76ac898da231b105c38368b",
+      "validation_manifest": "9a108795a85734f548dcb30930c11d0959f2183317d4f9d111aaa01f70a956bd"
+    },
+    "unchanged_content_sha256": "8529fb844cff3fb4acbbf835f9be41e924b95c0ee7a9c70d37722436c58f73aa"
+  },
+  "current_runtime_bug_fixed": {
+    "artifact_rewritten": false,
+    "change": "Exact reviewed tree_pin diagnostic stdout-to-stderr transition only; existing structured loader stays strict.",
+    "default_model_promoted": false,
+    "diagnosis": {
+      "bytes": 722,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/compatibility-diagnosis.json",
+      "sha256": "cf63efe2d55be8bf7ea5b6cc1c2164eaec51ac4d1d3400faabedcc7ef66570cd"
+    },
+    "failure": "implementation pins differ",
+    "weights_changed": false
+  },
+  "embedding_models_in_private_cache_after_qualification": 1,
+  "environment_repair": {
+    "command": {
+      "bytes": 1830,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/qualification-03/qualification-command.json",
+      "sha256": "63707d5842fe3f8a3c0bfa52ac0d21c61ccdb4875e805d42c685b9708b3f621f"
+    },
+    "packages_installed_or_changed": false,
+    "scope": "qualification-only PYTHONPATH order selects existing matching user dependencies before Harbor venv",
+    "versions": {
+      "numpy": "1.26.4",
+      "sentence-transformers": "5.4.1",
+      "tokenizers": "0.21.4",
+      "torch": "2.13.0",
+      "transformers": "4.52.1"
+    }
+  },
+  "files_frozen": {
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/formalization/autoencoder/intent_action_checkpoint_384.py": {
+      "bytes": 7118,
+      "path": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/formalization/autoencoder/intent_action_checkpoint_384.py",
+      "sha256": "467b5e00df9e6960618a36064255d2680f2b369e3f27bf1901b6260a132b5eab"
+    },
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/formalization/autoencoder/intent_action_runtime_384.py": {
+      "bytes": 7401,
+      "path": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/formalization/autoencoder/intent_action_runtime_384.py",
+      "sha256": "c358f7fee51c3fceadf8b37c306ca5f37744b3f4e0917b98906ca231b5f43a89"
+    },
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py": {
+      "bytes": 9618,
+      "path": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py",
+      "sha256": "a50508c9a42af9b11f47d689a413ed06cfcb7cda1dbd595fa9005ebb96136100"
+    },
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py": {
+      "bytes": 5169,
+      "path": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py",
+      "sha256": "ff12ae5c3a10fc7ea34a0e4f6913e99843ec6285a41c8c7bc05ba0b0c432792d"
+    },
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py": {
+      "bytes": 4185,
+      "path": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py",
+      "sha256": "91a99d1ca12c013c25f25130389f1c2cbc0b092d47fcdf36f6192eeb055de146"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_deployment.py": {
+      "bytes": 82295,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "sha256": "79583cd472f8f9e9701db6560d717b557536e4ef4038c70fff12010749762be5"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py": {
+      "bytes": 20133,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py",
+      "sha256": "cceed6630bf54d54d1614a9bb4a5991469e098c959f5261186a1efc39772e877"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py": {
+      "bytes": 12953,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py",
+      "sha256": "a90b02d31f499ec18645057e992dddbc717ed42355d73ba7b54153c886791cc2"
+    }
+  },
+  "limitations": [
+    "The original largest-eigenval instruction is 716 bytes and outside the complete controlled scalar grammar. No instruction was rewritten, split or replaced with an authored contract.",
+    "The action384 adapter has no separate projection request. These qualifications executed no formal-family projection or Lake build and do not establish benchmark instruction meaning, program correctness or whole-program proof.",
+    "This fixes checkpoint runtime compatibility and makes readiness measurable; it does not broaden training vocabulary, promote model defaults, train weights, or create a new Terminal-Bench score.",
+    "Four inference and four embedding calls in the positive control include preparation and independent saved-advice replays. One private GTE model remained cached afterward; constructor calls were not directly counted.",
+    "File checks are bounded regular descriptor and endpoint identity fences. They are not an atomic snapshot of every dependency in the running Python environment."
+  ],
+  "model_constructor_count_instrumented": false,
+  "observed_cases": [
+    {
+      "actual_call_counts": {
+        "gte_embedding_calls": 4,
+        "intent_checkpoint_load_calls": 4,
+        "structured_inference_calls": 4
+      },
+      "completion_authority": false,
+      "execution_authority": false,
+      "formal_logic_projection_executed": false,
+      "instruction_bytes": 108,
+      "instruction_sha256": "608eca7854f91cc3b2e0896cd2f833ef07ac87578fec6ee8743e91ea3c0c62b6",
+      "label": "controlled_scalar",
+      "lake_executed": false,
+      "numerical_replay_verified": true,
+      "planner_summary_bytes": 1339,
+      "planner_summary_present": true,
+      "preparation_seconds": 7.689082423,
+      "proof_authority": false,
+      "saved_advice_replay_equal": true,
+      "saved_advice_replay_status": "semantic_candidate_advice",
+      "shared_embedding_provenance_present": true,
+      "shared_model_inference_executed": true,
+      "shared_producer_pins_present": true,
+      "shared_status": "source_supported_action_contract",
+      "status": "semantic_candidate_advice",
+      "total_seconds": 8.291939125047065
+    },
+    {
+      "actual_call_counts": {
+        "gte_embedding_calls": 0,
+        "intent_checkpoint_load_calls": 0,
+        "structured_inference_calls": 0
+      },
+      "completion_authority": false,
+      "execution_authority": false,
+      "formal_logic_projection_executed": false,
+      "instruction_bytes": 716,
+      "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+      "label": "largest-eigenval_original_instruction",
+      "lake_executed": false,
+      "numerical_replay_verified": false,
+      "planner_summary_bytes": 0,
+      "planner_summary_present": false,
+      "preparation_seconds": 0.000817383,
+      "proof_authority": false,
+      "saved_advice_replay_equal": true,
+      "saved_advice_replay_status": "fail_open_input_out_of_scope",
+      "shared_embedding_provenance_present": false,
+      "shared_model_inference_executed": false,
+      "shared_producer_pins_present": false,
+      "shared_status": "fail_open_input_out_of_scope",
+      "status": "fail_open_input_out_of_scope",
+      "total_seconds": 0.004420518991537392
+    }
+  ],
+  "original_pilot_configuration": "Intent checkpoint was not selected; prior fail_open_no_checkpoint did not exercise the action384 route.",
+  "qualification": {
+    "bytes": 17161,
+    "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/qualification-03/qualification-result.json",
+    "sha256": "93ed51e881d9589523ce5400659e2a84bcd122c14fcff71c6b3ca860761e273f"
+  },
+  "readiness": {
+    "actual_call_counts": {
+      "checkpoint_load_calls": 3,
+      "embedding_calls": 0,
+      "numerical_inference_calls": 0
+    },
+    "archive_created_or_verified": false,
+    "evidence": {
+      "bytes": 23429,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/readiness-qualification-result.json",
+      "sha256": "fb94a2bdf96c506672f6736de9068c844b3af5a2511c2c25e203faf5bdb26b04"
+    },
+    "inventory_from_checked_local_asset_bytes": true,
+    "observed": [
+      {
+        "actual_call_counts": {
+          "checkpoint_load_calls": 1,
+          "embedding_calls": 0,
+          "numerical_inference_calls": 0
+        },
+        "checkpoint_load_eligibility": "eligible",
+        "inference_readiness": "eligible_for_inference",
+        "input_scope": "in_scope",
+        "label": "controlled_scalar",
+        "selection": "explicit_local_config"
+      },
+      {
+        "actual_call_counts": {
+          "checkpoint_load_calls": 0,
+          "embedding_calls": 0,
+          "numerical_inference_calls": 0
+        },
+        "checkpoint_load_eligibility": "not_checked",
+        "inference_readiness": "checkpoint_not_checked",
+        "input_scope": "in_scope",
+        "label": "controlled_scalar",
+        "selection": "binding_only"
+      },
+      {
+        "actual_call_counts": {
+          "checkpoint_load_calls": 1,
+          "embedding_calls": 0,
+          "numerical_inference_calls": 0
+        },
+        "checkpoint_load_eligibility": "eligible",
+        "inference_readiness": "input_out_of_scope",
+        "input_scope": "out_of_scope",
+        "label": "largest-eigenval_original_instruction",
+        "selection": "explicit_local_config"
+      },
+      {
+        "actual_call_counts": {
+          "checkpoint_load_calls": 0,
+          "embedding_calls": 0,
+          "numerical_inference_calls": 0
+        },
+        "checkpoint_load_eligibility": "not_checked",
+        "inference_readiness": "input_out_of_scope",
+        "input_scope": "out_of_scope",
+        "label": "largest-eigenval_original_instruction",
+        "selection": "binding_only"
+      }
+    ]
+  },
+  "real_planner_boundary_tests": {
+    "docker_or_supervisor_daemon_started": false,
+    "live_provider_calls": 0,
+    "passed": 2,
+    "planner_provider": "authored local fixture; no live generation",
+    "real_checkpoint_inference": true,
+    "real_goal_preparation_and_saved_advice_replay": true,
+    "result": {
+      "bytes": 3873,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/optional-tests-01-result.json",
+      "sha256": "a6a6a0f34a92757788fc011aede297869d96c218f68b28d24c84ffc3526fc797"
+    }
+  },
+  "remaining_skips": 0,
+  "retained_attempts": [
+    {
+      "evidence": {
+        "bytes": 6120,
+        "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/qualification-result.json",
+        "sha256": "174944f695b34839083e3ef99f95d470ebd6fa88252a423250b17f1e25f09229"
+      },
+      "result": "strict checkpoint load rejected known tree diagnostic pin; zero embeddings or numerical inference"
+    },
+    {
+      "evidence": {
+        "bytes": 17126,
+        "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/qualification-02/qualification-result.json",
+        "sha256": "82799421c9677c55c02623573235037ffefef2a8d39f375cf4a1f9d2f7c61b9e"
+      },
+      "result": "checkpoint compatibility and packaging ready; host dependency order selected incompatible tokenizers0.23.2, so no numerical inference"
+    },
+    {
+      "evidence": {
+        "bytes": 17161,
+        "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/qualification-03/qualification-result.json",
+        "sha256": "93ed51e881d9589523ce5400659e2a84bcd122c14fcff71c6b3ca860761e273f"
+      },
+      "result": "supported control numerical inference/replay passed; original benchmark instruction screened out before inference"
+    }
+  ],
+  "schema": "intent384-current-supervisor-wiring-closeout@1",
+  "selection": {
+    "checkpoint": {
+      "bytes": 384106,
+      "path": "/home/barberb/lift_coding/artifacts/intent-action-contracts-20261002/publication/5dd54fae01f9a5faa543195e5455b28a5c8cbdcf543cf024ae535aacabea3032/checkpoint.json",
+      "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+    },
+    "configuration": {
+      "bytes": 546,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/selected-config.json",
+      "sha256": "526126205a3577341b917d1afe1ff5115ca80f8b91aead9f850407b50be140f1"
+    },
+    "embedding_assets": [
+      {
+        "bytes": 190,
+        "name": "1_Pooling/config.json",
+        "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+      },
+      {
+        "bytes": 583,
+        "name": "config.json",
+        "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+      },
+      {
+        "bytes": 66746168,
+        "name": "model.safetensors",
+        "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+      },
+      {
+        "bytes": 385,
+        "name": "modules.json",
+        "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+      },
+      {
+        "bytes": 57,
+        "name": "sentence_bert_config.json",
+        "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+      },
+      {
+        "bytes": 125,
+        "name": "special_tokens_map.json",
+        "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+      },
+      {
+        "bytes": 711661,
+        "name": "tokenizer.json",
+        "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+      },
+      {
+        "bytes": 394,
+        "name": "tokenizer_config.json",
+        "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+      },
+      {
+        "bytes": 231508,
+        "name": "vocab.txt",
+        "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+      }
+    ],
+    "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+    "embedding_snapshot_path": "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/extracted-03/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "historical_hub_reference": {
+      "checkpoint_path": "experiments/action-contracts-384/v1/5dd54fae01f9a5faa543195e5455b28a5c8cbdcf543cf024ae535aacabea3032/checkpoint.json",
+      "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+      "repository_id": "Publicus/intent-ir-autoencoder",
+      "revision": "d12dd68fcc54441ded09ed217526e02b7bdfd9e3",
+      "schema": "intent-action-384-hub-reference/v1"
+    },
+    "live_hub_checked_this_turn": false
+  },
+  "status": "complete_with_explicit_grammar_limit",
+  "tests": {
+    "bytes": 58788,
+    "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/test-node-results.json",
+    "sha256": "e6499fe1e639b583825ffbc55719f6fbb947615bb63b2c761c87739d44703cb1"
+  },
+  "totals": {
+    "checkpoints_uploaded": 0,
+    "downloads": 0,
+    "live_provider_calls": 0,
+    "native_benchmark_trials": 0,
+    "new_runtime_archives": 0,
+    "training_steps": 0
+  },
+  "unique_passing_tests": 182
+}

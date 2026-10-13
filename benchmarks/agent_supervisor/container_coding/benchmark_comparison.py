@@ -27,6 +27,11 @@ SUPERVISOR_PHASES = ("prepare_seconds", "initial_context_seconds", "planning_sec
                      "context_seconds", "doctor_seconds", "post_publication_refresh_seconds")
 EMBEDDING_COUNTERS = ("local_embedding_calls", "local_embedding_texts",
                       "remote_embedding_calls", "text_generation_calls")
+DECLARED_OUTPUT_FAILURE_STAGES = frozenset({
+    "admitted_scope", "settlement_and_cleanup", "native_directory", "attempt_directory",
+    "attempt_binding", "owner_event_log", "allocation_event", "allocation_root",
+    "invocation_join", "declared_output_files",
+})
 LABELS = {
     "native-codex": "Native Codex harness",
     "no-index": "Supervisor: no indexed context",
@@ -359,6 +364,12 @@ def _declared_output_observation(report):
     if result["status"] == "observed" and (not rows or any(row[label]["status"] != "observed"
             for row in result["outputs"] for label in ("candidate", "canonical"))):
         result["status"] = "partial" if rows else "unavailable"
+    # This diagnostic is an enum, never exception text or an authority claim.
+    # Omit it for legacy receipts and inconsistent/nonfailure observations.
+    stage = raw.get("evidence_stage")
+    if (raw["status"] == "unavailable" and raw.get("reason") == "binding_or_file_evidence_unavailable"
+            and type(stage) is str and stage in DECLARED_OUTPUT_FAILURE_STAGES):
+        result["evidence_stage"] = stage
     return result
 
 

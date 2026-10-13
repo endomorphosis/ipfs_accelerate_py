@@ -1,0 +1,43 @@
+{
+  "command": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py",
+    "--tb=short",
+    "-o",
+    "log_cli=false",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/output-observation/comparison-stage-01/pytest-cache",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/output-observation/comparison-stage-01/junit.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/output-observation/comparison-stage-01/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/output-observation/comparison-stage-01/seal.duckdb",
+    "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1",
+    "DOCTOR_COMPOSITION_LEAN": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+    "ELAN_TOOLCHAIN": "leanprover/lean4:v4.34.1"
+  },
+  "source_before": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "fba2883f6139b7f6e781d3cbb3858e2d3ec2bf695d51f6e4a9fbac49e2c25d9c",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "cad9cf08bd419c20f0db039da59824f77e9a4406c6150ed13ff995f27aceddf2",
+    "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py": "eee10df4461525743dc8d98d9d2369221e8f668ce398843d41a5ae2c8b7e15b1",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py": "735f508f9b7be7de0563ac4b8d3467285f599201a852ab3aec4900fd8214b4b1"
+  }
+}
