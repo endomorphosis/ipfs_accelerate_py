@@ -1,0 +1,122 @@
+{
+  "commands": {
+    "collect_argv": [
+      "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+      "-B",
+      "-m",
+      "benchmarks.agent_supervisor.container_coding.native_codex_baseline",
+      "collect",
+      "--output",
+      "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/next-native-baseline/native-codex-01"
+    ],
+    "execute_argv": [
+      "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+      "-B",
+      "-m",
+      "benchmarks.agent_supervisor.container_coding.native_codex_baseline",
+      "execute",
+      "--output",
+      "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/next-native-baseline/native-codex-01"
+    ],
+    "prepare_argv": [
+      "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+      "-B",
+      "-m",
+      "benchmarks.agent_supervisor.container_coding.native_codex_baseline",
+      "prepare",
+      "--output",
+      "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/next-native-baseline/native-codex-01",
+      "--dataset",
+      "/home/barberb/lift_coding/.benchmarks/terminal-bench-2",
+      "--task",
+      "largest-eigenval",
+      "--resource-profile",
+      "source384-5cpu-20gib-formalization@1"
+    ]
+  },
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_note": "The recorded PATH includes an inherited host suffix, as disclosed in environment-notes.json; other ambient environment values were not retained.",
+  "expected_intentional_control_difference": [
+    "experimental_controls_sha256.numerical_formalization_profile"
+  ],
+  "files": {
+    "environment-notes.json": {
+      "bytes": 620,
+      "sha256": "33a26913222e597c098117cdde6ad003554df1f4410793e9356d7563ed4d0b33"
+    },
+    "environment.json": {
+      "bytes": 3066,
+      "sha256": "b6a7a52e51c2de6fb8e3bd18a217dc278ae33a363c1fd501aa2678f6850f4697"
+    },
+    "host-cli-receipt.json": {
+      "bytes": 890,
+      "sha256": "847908e68193e3053f4fe4856a39e8d8a7062bab744b66cf60a3c1f32f983fec"
+    },
+    "host-version.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "host-version.stdout": {
+      "bytes": 18,
+      "sha256": "f6464b8cc67af75deb2589fe1dbcde152fc15ffb76a91de1cf0686b4623afb1e"
+    },
+    "native-codex-01/config.json": {
+      "bytes": 2540,
+      "sha256": "25db8adde89d5c2a9897adfbe1f87727459b6f745d92fae2841fcbf464a14206"
+    },
+    "native-codex-01/native-dry-run.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native-codex-01/native-dry-run.stdout": {
+      "bytes": 44,
+      "sha256": "6e929b76f9ee4d916ea2ab5a89aff303adf465f1de36ffb732e02c25454c59c3"
+    },
+    "native-codex-01/preparation.json": {
+      "bytes": 7306,
+      "sha256": "0f408fc86c918967235bcf79bb9253a7c531546e87fb663004de81843110e045"
+    },
+    "prepare-result.json": {
+      "bytes": 682,
+      "sha256": "478227de7e270347ef58eda2f9e9cd67c41699e33384ae66478dacb837b92ea0"
+    },
+    "prepare_native.py": {
+      "bytes": 5013,
+      "sha256": "62542e52851afd3f4b22eeae5a664699328bf7713352d7c0c21b2f626ffb3165"
+    },
+    "recipe.json": {
+      "bytes": 1625,
+      "sha256": "a9ea5bc417335152a43071b51d4a318adaa513d8883726d36f08ebe5fa4f6228"
+    },
+    "source-pins.json": {
+      "bytes": 3669,
+      "sha256": "a16083d2aefb0aa94349a3de41f0bd11bf847319e840d888c8872557f79c0c7a"
+    }
+  },
+  "host_cli": {
+    "bytes": 248966648,
+    "relative_path": "bin/codex",
+    "sha256": "50b06603bdcdac39b714f5c3e68583c002b8ad8779ebfdaaf4932ff016b379c0",
+    "usage": "Only host version preflight; container install remains native Harbor production behavior.",
+    "version": "codex-cli 0.160.0"
+  },
+  "independent_review_pending": true,
+  "launch_conditions": [
+    "Root must wait for the full supervisor trial to finish.",
+    "Independent native preparation/release audit must pass.",
+    "A separate native runner must recheck this manifest, environment, source pins, task/config/preparation identities and one-shot invocation marker before execute.",
+    "Current native source/CLI/profile/task identity must remain unchanged; do not use the ambient 0.162.1 CLI."
+  ],
+  "native_execution_started": false,
+  "prepared_for_independent_review": true,
+  "provider_generation_calls": 0,
+  "provider_work_budget_equality_claimed": false,
+  "schema": "native-codex-separate-baseline-release@1",
+  "shared_outer_resource_profile": "source384-5cpu-20gib-formalization@1",
+  "source_pins_sha256": "a16083d2aefb0aa94349a3de41f0bd11bf847319e840d888c8872557f79c0c7a",
+  "supervisor_frozen_pair_modified": false,
+  "supervisor_preparation_sha256": {
+    "full": "3a7d2e384440ff15b95485104a8ca6a14931237773315fad9d4e699aa4dd5f6a",
+    "no-index": "a794ba7f681fa03b3c733a0c200b789c6d98c59c215cc5798b5b1172ac68dc5c"
+  }
+}

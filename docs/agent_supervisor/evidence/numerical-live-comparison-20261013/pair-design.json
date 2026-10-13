@@ -1,0 +1,152 @@
+{
+  "allowed_config_diff_paths": [
+    "/agents/0/kwargs/arm",
+    "/job_name",
+    "/jobs_dir"
+  ],
+  "arms": {
+    "baseline": {
+      "arm": "no-index",
+      "fresh_container": true,
+      "numerical_context_consumed": false,
+      "numerical_profile_requested": true,
+      "source384_assets_present": true,
+      "source384_inference_expected": false
+    },
+    "treatment": {
+      "arm": "full",
+      "fresh_container": true,
+      "numerical_context_consumed": true,
+      "numerical_profile_requested": true,
+      "source384_assets_present": true,
+      "source384_inference_expected": true
+    }
+  },
+  "common_controls": {
+    "attempts_per_arm": 1,
+    "capsule_selection": "lexical-query-symbol-name@1",
+    "coding_reply_mode": "legacy",
+    "concurrent_trials": 1,
+    "intent_action_384": null,
+    "intent_requirement_contract": null,
+    "learned_numerical_selection": null,
+    "numerical_formalization_profile": "python-numerical-control-structure@3",
+    "orchestrator_retries": 0,
+    "provider_profile": "pending_metadata_readiness_gate",
+    "reasoning_effort": "high",
+    "resource_profile": "source384-5cpu-20gib-formalization@1",
+    "runtime_archive": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/live-preparation/runtime-01",
+    "semantic_metadata_view": "legacy",
+    "semantic_transport_schema": "supervisor-semantic-router-input@1",
+    "setup_cache_policy": null,
+    "source384_config_sha256": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5",
+    "source384_mode": "pinned_parent",
+    "source384_training_steps": 0,
+    "source_view_policy": null,
+    "source_view_profile": "disabled",
+    "task_profile_sha256": "ce7c469c8baedb445392d1540a4b17076c1426c71e0c1ecfd37c1280a3383d27",
+    "training": false
+  },
+  "comparison_scope": "Bundled indexed-supervisor ablation; not an isolated test of compact hints, exact-ID retrieval, minification, autoencoder quality, or proof discharge.",
+  "evidence_checklist": {
+    "actual_execution": [
+      "provider/model/CLI/effort on every real invocation",
+      "supervisor goal/subgoal/task planning receipt and completion state",
+      "full index hydration/catalog/world records and no-index explicit absence",
+      "actual compact numerical summary, source function coverage, pending/discharged counts, actual exact-ID or filtered/fullscan retrieval counts including zero",
+      "Source384 selected/load/inference/unsupported outcome distinct from deterministic grammar",
+      "Intent no-checkpoint fail-open observation",
+      "declared output candidate/canonical hashes from the repaired observer, including unavailable reason/stage",
+      "official benchmark reward and verifier aggregate only",
+      "setup, preparation, planning, coding, cleanup and total elapsed time",
+      "all retained failures, cancellations and attempts"
+    ],
+    "controls": [
+      "environment overrides without secrets",
+      "bundle/prepare/execute/collect argv",
+      "current repository commits and source hashes",
+      "runtime archive/manifest digests and asset verification",
+      "task profile/public input hashes plus complete task identity hashes without hidden contents",
+      "allowed config diff audit and preparation hashes",
+      "route metadata readiness and any rejected preflights"
+    ],
+    "privacy": [
+      "Keep raw prompts, transcripts, copied credentials, session descriptors, signing material, databases and worker/private-owner state local.",
+      "Publish only reviewed content-free aggregate receipts, command recipes and source/asset hashes."
+    ],
+    "token_accounting": [
+      "Sum each distinct provider invocation once; retain planning and coding subtotals.",
+      "Use final cumulative provider token counters rather than summing cumulative stream snapshots.",
+      "Report input, cached input, output and total; cached input is a subset of input and must not be added twice.",
+      "Keep raw prompt/metadata byte counts separate from actual billed/token counters.",
+      "If model usage is unavailable, mark unavailable; never infer tokens from text bytes."
+    ]
+  },
+  "execution_authorized_by_this_file": false,
+  "forbidden_inferences": [
+    "A byte reduction is not a token saving.",
+    "Pending structural obligations and Lean compilation do not discharge numerical or algorithmic correctness.",
+    "Four-function structural coverage does not imply the Source384 scalar decoder supports four functions.",
+    "A one-task one-attempt pair cannot establish statistical or causal generality.",
+    "This is not a native Codex harness baseline; both arms use the supervisor and the llm_router.",
+    "No selected Intent384 checkpoint means the Intent path remains fail-open; this is not a fully trained multi-IR experiment."
+  ],
+  "hidden_benchmark_content_read": false,
+  "history": {
+    "old_runtime_archive_reusable": false,
+    "previous_comparison": "Both arms full; legacy versus common-bindings@1 metadata projection, identity@1 source reader, ordinary-completion@1 coding reply. That pair is not the present no-index baseline.",
+    "previous_pair_root": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013",
+    "prior_token_reduction": false,
+    "prior_total_tokens": [
+      313979,
+      313980
+    ]
+  },
+  "permitted_input_hashes": [
+    {
+      "bytes": 716,
+      "path": "instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    {
+      "bytes": 642,
+      "path": "environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "bytes": 2246,
+      "path": "environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "provider_calls": 0,
+  "question": "For this one fresh task pair, what are measured total provider tokens, reward, preparation cost and elapsed time for the current indexed supervisor bundle versus its no-index ablation?",
+  "recorded_at_utc": "2026-10-13T18:32:15.427054+00:00",
+  "release_gates": [
+    "Freeze one matching provider profile after the repeated metadata readiness gate.",
+    "Build a new runtime with current P/D/K; verify archive and manifest digests, source closure, checkpoint/embedding/Lean/extension bindings.",
+    "Retain producer source hashes before and after both trials; no producer edits mid-pair.",
+    "Prepare both arms before launch, with identical public inputs, task hashes, assets, resource budget and provider profile.",
+    "Independently diff generated configs and preparations; only listed config paths may differ, aside from expected integrity digests over those differences.",
+    "Verify full preparation advertises v3 and matching source384; no-index has the same requested profile/assets and explicitly disabled consumption.",
+    "Keep no Intent384 selection, no target training, no learned numerical selector, no ordinary-completion reply, no metadata projection/source-view/setup-cache extras.",
+    "Start each trial from its own fresh task container and output directory; do not feed first-arm plans/results/edits into the second.",
+    "Run to the existing fixed budget; retain setup/preflight/model failures and all attempts. No asymmetric extension, patch or retry.",
+    "Collect final official reward, provider usage, output observation, cleanup and integrity receipts from both before drawing conclusions."
+  ],
+  "route_selection": {
+    "first_choice": "grok-4.7-cli-1.0.46@1",
+    "matched_fallback": "codex-gpt-6.1-sol-0.160.0@1",
+    "rule": "Select one route after metadata-only readiness and freeze it for both arms. Preserve rejected preflights separately. No implicit provider fallback within a prepared pair; if a later route change is necessary, retain failed attempts and create a fresh complete pair."
+  },
+  "schema": "numerical-full-no-index-pair-design@1",
+  "setup_policy": "Normal native provider installation in both fresh trials. Retained public npm tarballs are verified but no shared qualified install-cache integration is selected. Do not add full-only page-cache advice or silently preinstall one arm. Record provider/package setup latency separately from agent and preparation timing.",
+  "source384_expected_limit": "Pinned parent checkpoint is matched to prior assets; previous source384 inference yielded four unsupported learned source contracts. The independent deterministic v3 frontend supports four function structures and retains unresolved obligations; record the new actual receipt rather than assuming the old outcome.",
+  "source_execution": false,
+  "status": "common_controls_selected_provider_and_release_pending",
+  "task": "largest-eigenval",
+  "task_profile": {
+    "path": "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/largest-eigenval-profile.json",
+    "sha256": "ce7c469c8baedb445392d1540a4b17076c1426c71e0c1ecfd37c1280a3383d27"
+  }
+}

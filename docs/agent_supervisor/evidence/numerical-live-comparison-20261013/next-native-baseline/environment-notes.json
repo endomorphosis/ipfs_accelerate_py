@@ -1,0 +1,10 @@
+{
+  "correction": "environment.json inherited_environment_values_recorded=false excludes the selected PATH override; that override deliberately includes the isolated pinned-bin prefix and the inherited host PATH suffix. No credential values are recorded.",
+  "environment_overrides_changed_by_note": false,
+  "environment_sha256": "b6a7a52e51c2de6fb8e3bd18a217dc278ae33a363c1fd501aa2678f6850f4697",
+  "frozen_environment_file_modified": false,
+  "inherited_PATH_recorded": true,
+  "other_inherited_environment_values_recorded": false,
+  "preparation_affected": false,
+  "schema": "native-baseline-environment-notes@1"
+}

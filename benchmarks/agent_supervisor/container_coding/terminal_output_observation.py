@@ -181,6 +181,57 @@ def _private_directory(path, stack):
     return fd
 
 
+def _allocation_reconciliation(event, events, *, operation):
+    """Join the native queued completion shape without granting merge authority.
+
+    Portal omits lifecycle_finalize on a queued implementation_finished event.
+    DatabasePortalExecutionBridge._accepted_source_transition instead joins a
+    later resolved merge_reconciled event by these exact native identity fields.
+    This observation uses the same join only after independently checked
+    database completion, STOP, runtime close and worker cleanup. It does not
+    replay or replace the native Git integration proof.
+    """
+    finalization = event.get("lifecycle_finalize")
+    if type(finalization) is dict and finalization.get("finalized") is True:
+        return None
+    board = event.get("board_completion")
+    if (finalization is not None or operation != "database_complete"
+            or event.get("returncode") != 0
+            or board != {
+                "complete": False, "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration"}
+            or board["complete"] is not False or board["pending_merge"] is not True
+            or type(event.get("merge_result")) is not dict
+            or event["merge_result"].get("queued") is not True):
+        raise ValueError("allocation lifecycle unavailable")
+    _text(event.get("canonical_task_key"))
+    commit = event.get("implementation_commit")
+    if type(commit) is not str or re.fullmatch("[0-9a-f]{40}", commit) is None:
+        raise ValueError("allocation implementation identity unavailable")
+    keys = ("task_id", "attempt", "implementation_commit", "canonical_task_cid", "canonical_task_key")
+    # Include matching predecessors when testing uniqueness: an old or repeated
+    # reconciliation cannot become current merely by appending another event.
+    matched = [(index, row) for index, row in enumerate(events)
+        if row.get("type") == "merge_reconciled"
+        and all(row.get(key) == event[key] for key in keys)]
+    if len(matched) != 1 or matched[0][0] <= events.index(event):
+        raise ValueError("allocation reconciliation is missing or ambiguous")
+    row = matched[0][1]
+    if type(row.get("attempt")) is not int or row.get("resolved") is not True:
+        raise ValueError("allocation reconciliation is unresolved")
+    # Native reconciliations may omit these fields. If supplied, they cannot
+    # contradict the allocation selected by the original finished event.
+    for key in ("task_cid", "baseline_ref", "worktree_path"):
+        if key in row and row[key] != event[key]:
+            raise ValueError("allocation reconciliation differs")
+    cleanup = row.get("cleanup_result")
+    if cleanup is not None and (type(cleanup) is not dict
+            or "worktree_path" in cleanup and cleanup["worktree_path"] != event["worktree_path"]
+            or "cleaned" in cleanup and cleanup["cleaned"] is not True):
+        raise ValueError("allocation cleanup identity differs")
+    return row
+
+
 def observe(*, native_state, workspace_root, repository, scope, report):
     """Observe a terminal owner-bound allocation; never settle or mutate it."""
     result = _base()
@@ -258,9 +309,9 @@ def observe(*, native_state, workspace_root, repository, scope, report):
                     or event.get("baseline_ref") != scope["baseline_commit"]
                     or type(event.get("attempt")) is not int or not 1 <= event["attempt"] < 65536
                     or event.get("provider_dispatched") is not True or event.get("attempt_consumed") is not True
-                    or event.get("lifecycle_finalize", {}).get("finalized") is not True
                     or type(event.get("returncode")) is not int):
                 raise ValueError("allocation event differs")
+            reconciliation = _allocation_reconciliation(event, events, operation=operation)
             workspace = Path(_text(event["worktree_path"]))
             stage = "allocation_root"
             root = Path(workspace_root)
@@ -282,6 +333,10 @@ def observe(*, native_state, workspace_root, repository, scope, report):
                 invocation_join="router_receipt_workspace_and_task_match_owner_finished_event",
                 allocation_binding="owner_private_native_attempt_binding_and_finished_event",
                 original_allocation_inode_verified=False)
+            if reconciliation is not None:
+                result.update(allocation_lifecycle="owner_finished_and_reconciled_events",
+                    reconciliation_event_sha256=_sha(json.dumps(reconciliation,
+                        sort_keys=True, separators=(",", ":"), allow_nan=False).encode()))
             stage = "declared_output_files"
             roots = {}
             for label, path in (("candidate", workspace), ("canonical", Path(repository))):

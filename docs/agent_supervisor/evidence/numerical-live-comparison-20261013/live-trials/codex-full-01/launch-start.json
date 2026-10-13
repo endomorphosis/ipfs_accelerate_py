@@ -1,0 +1,21 @@
+{
+  "schema": "numerical-live-pair-launch@1",
+  "arm": "full",
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+    "execute",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/live-trials/codex-full-01"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "pair_lock_sha256": "10f0884d233c833d85fb216411eede7477320a0e098f53382876ad98bc13550d",
+  "recipe_sha256": "339abef483a4032d7e2f43428084d45f5127af8f6a0dc37a7705f563bf6cbd32",
+  "script_sha256": "d1582a7c38d74a8fccc4d020317ab1c20c93c346df00b225e64c7fc13a7865b6",
+  "environment_manifest_sha256": "fc6807ac1ccec68576a5ab367b5259edb35f2944b93a8e1b2d56f077b5c9e313",
+  "preparation_sha256": "3a7d2e384440ff15b95485104a8ca6a14931237773315fad9d4e699aa4dd5f6a",
+  "started_at_utc": "2026-10-13T18:58:21.951391+00:00",
+  "inherited_environment_values_retained": false
+}

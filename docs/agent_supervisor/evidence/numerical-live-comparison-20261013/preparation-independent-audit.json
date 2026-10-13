@@ -1,0 +1,253 @@
+{
+  "archive_member_verification_receipt_sha256": "d5222c12231a180bd228e8080f2aba3d6926148ce2cbfc8cf137b6d28c3a3264",
+  "archive_sha256": "488ae75f90bd9c4c9cc88b520d4db68157984625ea8bbef3874f63da48b5f94a",
+  "blockers": [],
+  "check_count": 47,
+  "checks": [
+    {
+      "check": "runtime_archive_independently_rehashed",
+      "passed": true
+    },
+    {
+      "check": "retained_all_member_verification",
+      "passed": true
+    },
+    {
+      "check": "archive_no_credentials_or_task_inputs",
+      "passed": true
+    },
+    {
+      "check": "archive_codex_pin",
+      "passed": true
+    },
+    {
+      "check": "optional_model_selections_absent",
+      "passed": true
+    },
+    {
+      "check": "source384_pinned_parent_no_training",
+      "passed": true
+    },
+    {
+      "check": "source384_prior_checkpoint",
+      "passed": true
+    },
+    {
+      "check": "all_packaged_repository_files_match_current",
+      "counts": {
+        "datasets": 8129,
+        "kit": 1299,
+        "source": 2883
+      },
+      "mismatch_paths": [],
+      "passed": true
+    },
+    {
+      "check": "selected_v3_numerical_producer_capability",
+      "passed": true
+    },
+    {
+      "check": "accelerate_commit_and_tracked_clean",
+      "passed": true
+    },
+    {
+      "check": "datasets_commit_and_tracked_clean",
+      "passed": true
+    },
+    {
+      "check": "kit_commit_and_tracked_clean",
+      "passed": true
+    },
+    {
+      "check": "no-index_prepared",
+      "passed": true
+    },
+    {
+      "check": "no-index_identity",
+      "passed": true
+    },
+    {
+      "check": "no-index_same_verified_archive",
+      "passed": true
+    },
+    {
+      "check": "no-index_config_hash",
+      "passed": true
+    },
+    {
+      "check": "no-index_controls_independently_reconstructed",
+      "passed": true
+    },
+    {
+      "check": "no-index_frozen_route_replay",
+      "passed": true
+    },
+    {
+      "check": "no-index_resource_profile",
+      "passed": true
+    },
+    {
+      "check": "no-index_no_optional_treatments",
+      "passed": true
+    },
+    {
+      "check": "no-index_same_source384_binding_expected_consumption",
+      "passed": true
+    },
+    {
+      "check": "no-index_numerical_v3_requested_and_ablation_explicit",
+      "passed": true
+    },
+    {
+      "check": "no-index_intent_unselected",
+      "passed": true
+    },
+    {
+      "check": "no-index_intent_readiness_no_model",
+      "passed": true,
+      "readiness_status": null
+    },
+    {
+      "check": "no-index_host_producers_current",
+      "file_count": 316,
+      "mismatch_names": [],
+      "passed": true
+    },
+    {
+      "check": "no-index_no_execution_at_audit_start",
+      "passed": true
+    },
+    {
+      "check": "full_prepared",
+      "passed": true
+    },
+    {
+      "check": "full_identity",
+      "passed": true
+    },
+    {
+      "check": "full_same_verified_archive",
+      "passed": true
+    },
+    {
+      "check": "full_config_hash",
+      "passed": true
+    },
+    {
+      "check": "full_controls_independently_reconstructed",
+      "passed": true
+    },
+    {
+      "check": "full_frozen_route_replay",
+      "passed": true
+    },
+    {
+      "check": "full_resource_profile",
+      "passed": true
+    },
+    {
+      "check": "full_no_optional_treatments",
+      "passed": true
+    },
+    {
+      "check": "full_same_source384_binding_expected_consumption",
+      "passed": true
+    },
+    {
+      "check": "full_numerical_v3_requested_and_ablation_explicit",
+      "passed": true
+    },
+    {
+      "check": "full_intent_unselected",
+      "passed": true
+    },
+    {
+      "check": "full_intent_readiness_no_model",
+      "passed": true,
+      "readiness_status": null
+    },
+    {
+      "check": "full_host_producers_current",
+      "file_count": 316,
+      "mismatch_names": [],
+      "passed": true
+    },
+    {
+      "check": "full_no_execution_at_audit_start",
+      "passed": true
+    },
+    {
+      "check": "complete_task_input_hashes_match",
+      "file_count": 7,
+      "passed": true
+    },
+    {
+      "check": "all_host_producer_bindings_match",
+      "passed": true
+    },
+    {
+      "check": "common_preparation_source384",
+      "passed": true
+    },
+    {
+      "check": "common_preparation_intent_action_384_readiness",
+      "passed": true
+    },
+    {
+      "check": "common_preparation_resource_profile",
+      "passed": true
+    },
+    {
+      "check": "exact_config_diff_allowlist",
+      "passed": true,
+      "paths": [
+        "/agents/0/kwargs/arm",
+        "/job_name",
+        "/jobs_dir"
+      ]
+    },
+    {
+      "check": "exact_preparation_diff_allowlist",
+      "passed": true,
+      "paths": [
+        "/arm",
+        "/command/3",
+        "/comparison_controls/configuration_sha256",
+        "/comparison_controls/sha256",
+        "/config_sha256",
+        "/numerical_formalization_disabled_reason",
+        "/numerical_formalization_enabled",
+        "/source384_enabled"
+      ]
+    }
+  ],
+  "commits": {
+    "accelerate": "a8f57366ff4110a87f1f13d1e60992f83f689821",
+    "datasets": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+    "kit": "8ac00bb1974b1378e12091d546d8425af34049e0"
+  },
+  "credentials_inspected": false,
+  "elapsed_seconds": 1.3555197960231453,
+  "files": {
+    "full": {
+      "config_sha256": "e50a5814bbdc9bf8ecd9d40ee64c52b78c0ab725139c7065854c886e39c9454c",
+      "preparation_sha256": "3a7d2e384440ff15b95485104a8ca6a14931237773315fad9d4e699aa4dd5f6a"
+    },
+    "no-index": {
+      "config_sha256": "7cc82a88e5aef779cad251828a56cdebd79cce17f3c770b739439764d157e3a8",
+      "preparation_sha256": "a794ba7f681fa03b3c733a0c200b789c6d98c59c215cc5798b5b1172ac68dc5c"
+    }
+  },
+  "helper_sha256": "e880f59e05c4b384f296b9e2f8957beba4af9b09c7b3afa4506a0c7fd3b23cce",
+  "hidden_benchmark_content_read": false,
+  "manifest_sha256": "21fa1dc8db3bc333bd28baf115ca7608f86b03a9379e702ce0474b4743d7ec3a",
+  "model_calls": 0,
+  "passed": true,
+  "provider_calls": 0,
+  "provider_profile": "codex-gpt-6.1-sol-0.160.0@1",
+  "runtime_archive_hash_recomputed_this_audit": true,
+  "runtime_archive_members_rehashed_this_audit": false,
+  "schema": "numerical-live-pair-independent-preparation-audit@1",
+  "scope": "Read-only preparation and matched-control release audit; no assertion about future provider use, reward, token savings or proof discharge.",
+  "trial_executions": 0
+}

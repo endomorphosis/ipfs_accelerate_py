@@ -1,0 +1,18 @@
+{
+  "schema": "numerical-native-baseline-launch@1",
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.native_codex_baseline",
+    "execute",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/next-native-baseline/native-codex-01"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "execution_lock_sha256": "7ad2337dcf58c59973da41c43c8a8d847355a2972950fd8194a562e5e631812f",
+  "script_sha256": "d5e7f495972c0e092e93dd559f1c86f8d48a880111caba963958d647e47674e6",
+  "recipe_sha256": "a9ea5bc417335152a43071b51d4a318adaa513d8883726d36f08ebe5fa4f6228",
+  "environment_sha256": "b6a7a52e51c2de6fb8e3bd18a217dc278ae33a363c1fd501aa2678f6850f4697",
+  "started_at_utc": "2026-10-13T19:09:23.100662+00:00"
+}

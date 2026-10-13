@@ -1,0 +1,32 @@
+{
+  "container_and_tmpfs_removed": true,
+  "container_image_id": "sha256:54c85f3c47607a77f32adec749d3c81d1348bf25833671f512b26a9b6d778cb3",
+  "credential_contents_or_digest_retained": false,
+  "driver_sha256": "d5a325eed569dbe5ff7e4ee94ce922c748e22553f60ed95f7c69550e6a0f5143",
+  "elapsed_seconds": 0.4879828130360693,
+  "external_auth_refresh_requested": false,
+  "guard_source_sha256": "cb093c8e99506b739134c9a49ac3facf05a6d6ac91d6617fdc3dd88e60b85706",
+  "helper_sha256": "ccd5f4ab5cdff0a18a7b5c4fddcd6b88cd18c57df3f32caad32a6667446aede8",
+  "host_auth_unchanged": true,
+  "host_auth_write_performed": false,
+  "host_temporary_auth_copy_removed": true,
+  "login_performed": false,
+  "native_cli_may_mutate_only_copied_auth": true,
+  "observation": {
+    "docker_exit_code": 1,
+    "native_catalog_commands": 0,
+    "status": "probe_container_failed",
+    "stderr_bytes": 284,
+    "stdout_bytes": 0,
+    "text_generation_calls": 0
+  },
+  "observed_at_utc": "2026-10-13T18:31:49.765277+00:00",
+  "pinned_binary_bytes": 142867512,
+  "pinned_binary_sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+  "pinned_provider_profile": "grok-4.7-cli-1.0.46@1",
+  "production_service_changes": 0,
+  "provider_generation_calls": 0,
+  "raw_native_output_retained": false,
+  "schema": "isolated-grok-metadata-precheck@1",
+  "scope": "Fresh disposable UID1001 container with copied auth and fixed bounded models command; no full supervisor boundary qualification"
+}

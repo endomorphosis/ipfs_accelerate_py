@@ -1,0 +1,18 @@
+{
+  "ambient_command_sha256": "61b0194f3bb6534439c8d26a3ed57d0805f84b884588b761795323eeb92fcf70",
+  "ambient_command_unchanged": true,
+  "cache_modified": false,
+  "credential_contents_inspected": false,
+  "executable_bytes": 248966648,
+  "executable_mode": "0o500",
+  "executable_sha256": "50b06603bdcdac39b714f5c3e68583c002b8ad8779ebfdaaf4932ff016b379c0",
+  "host_global_install_modified": false,
+  "member": "package/vendor/aarch64-unknown-linux-musl/bin/codex",
+  "network_download_calls": 0,
+  "observed_version": "codex-cli 0.160.0",
+  "package_bytes": 155716078,
+  "package_sha256": "9286a7e01d500ab224c9e5b4b223b7adf5dd901fba23efd6a438316426798b17",
+  "provider_generation_calls": 0,
+  "schema": "native-baseline-isolated-host-cli@1",
+  "scope": "Host CLI version preflight only; native Harbor container continues to install the pinned CLI through its original production route."
+}

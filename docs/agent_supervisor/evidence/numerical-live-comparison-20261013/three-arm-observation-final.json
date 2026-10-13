@@ -1,0 +1,341 @@
+{
+  "all_registered_attempts_control_integrity": true,
+  "arms": {
+    "full": {
+      "native_usage_complete_observed": true,
+      "official_passes": 1,
+      "retained_attempts": 1,
+      "retained_native_trials": 1,
+      "tokens": {
+        "cached_input_tokens": 265600,
+        "input_tokens": 327785,
+        "output_tokens": 6188,
+        "total_tokens": 333973
+      },
+      "unknown_rewards": 0
+    },
+    "native-codex": {
+      "native_usage_complete_observed": true,
+      "official_passes": 1,
+      "retained_attempts": 1,
+      "retained_native_trials": 1,
+      "tokens": {
+        "cached_input_tokens": 86016,
+        "input_tokens": 107689,
+        "output_tokens": 6194,
+        "total_tokens": 113883
+      },
+      "unknown_rewards": 0
+    },
+    "no-index": {
+      "native_usage_complete_observed": true,
+      "official_passes": 1,
+      "retained_attempts": 1,
+      "retained_native_trials": 1,
+      "tokens": {
+        "cached_input_tokens": 283392,
+        "input_tokens": 346026,
+        "output_tokens": 12466,
+        "total_tokens": 358492
+      },
+      "unknown_rewards": 0
+    }
+  },
+  "attempts": [
+    {
+      "arm": "full",
+      "control_integrity": true,
+      "launch_exit_code": 0,
+      "launch_seconds": 529.6268809239846,
+      "receipt_binding": {
+        "availability": "observed",
+        "bytes": 260603,
+        "sha256": "a4e8ba8eed4e3aa773dc486f77a103c029e48792517c42302606710e9205c80e"
+      },
+      "status": "observed",
+      "trials": [
+        {
+          "arm": "full",
+          "detail_scope": "full coverage, index, output and retrieval details retained in the separately bound pair observation",
+          "durations_seconds": {
+            "agent_execution": 271.755056,
+            "agent_setup": 235.39429,
+            "environment_setup": 3.153718,
+            "verifier": 2.076236
+          },
+          "exception_type": null,
+          "native_total_seconds": null,
+          "official_reward": 1.0,
+          "outcome": "official_verifier_passed",
+          "supervisor_error_type": null,
+          "supervisor_seconds": 270.01893631601706,
+          "task": "largest-eigenval",
+          "trial": "largest-eigenval__ePRwqVj",
+          "usage": {
+            "cache_included_in_input": true,
+            "native_usage_complete_observed": true,
+            "observed_router_sessions": 2,
+            "tokens": {
+              "cached_input_tokens": 265600,
+              "input_tokens": 327785,
+              "output_tokens": 6188,
+              "total_tokens": 333973
+            }
+          }
+        }
+      ]
+    },
+    {
+      "arm": "no-index",
+      "control_integrity": true,
+      "launch_exit_code": 0,
+      "launch_seconds": 800.2468057519291,
+      "receipt_binding": {
+        "availability": "observed",
+        "bytes": 77332,
+        "sha256": "195635b14c20f43603507c5e4794a7e9e2e755c3daeb8d874a0e37d0c8abaf47"
+      },
+      "status": "observed",
+      "trials": [
+        {
+          "arm": "no-index",
+          "detail_scope": "full coverage, index, output and retrieval details retained in the separately bound pair observation",
+          "durations_seconds": {
+            "agent_execution": 443.083852,
+            "agent_setup": 333.579155,
+            "environment_setup": 3.26498,
+            "verifier": 2.152355
+          },
+          "exception_type": null,
+          "native_total_seconds": null,
+          "official_reward": 1.0,
+          "outcome": "official_verifier_passed",
+          "supervisor_error_type": null,
+          "supervisor_seconds": 441.4366087500239,
+          "task": "largest-eigenval",
+          "trial": "largest-eigenval__beFUuMt",
+          "usage": {
+            "cache_included_in_input": true,
+            "native_usage_complete_observed": true,
+            "observed_router_sessions": 2,
+            "tokens": {
+              "cached_input_tokens": 283392,
+              "input_tokens": 346026,
+              "output_tokens": 12466,
+              "total_tokens": 358492
+            }
+          }
+        }
+      ]
+    },
+    {
+      "arm": "native-codex",
+      "bindings": {
+        "config": {
+          "availability": "observed",
+          "bytes": 2540,
+          "sha256": "25db8adde89d5c2a9897adfbe1f87727459b6f745d92fae2841fcbf464a14206"
+        },
+        "invocation": {
+          "availability": "observed",
+          "bytes": 277,
+          "sha256": "3a0be35b20c821ec6f9aae7c23727d669336bc81a75c04bcac613146298a5e80"
+        },
+        "launch_result": {
+          "availability": "observed",
+          "bytes": 585,
+          "sha256": "e3590fddfee8ad2d84473778a348d4e7d0da5ca10da3df6b5a46d7b9c897894c"
+        },
+        "launch_start": {
+          "availability": "observed",
+          "bytes": 882,
+          "sha256": "7c2dad88f239aecc11d3d8ad20bbb4039bca2fb8116b56e3712b79c96d8f5a6c"
+        },
+        "preparation": {
+          "availability": "observed",
+          "bytes": 7306,
+          "sha256": "0f408fc86c918967235bcf79bb9253a7c531546e87fb663004de81843110e045"
+        },
+        "receipt": {
+          "availability": "observed",
+          "bytes": 7541,
+          "sha256": "6637fa775c114e83722e6639e1f113736e49b88f799b037e3d728405662c7cdf"
+        }
+      },
+      "control_integrity": true,
+      "controls": {
+        "configuration_unchanged": true,
+        "declared_matches_frozen": true,
+        "declared_sha256": "d13239a3668182ce4570900ecb33c512c4e5d148e452df178f431671486a6c6f",
+        "matched_controls": true,
+        "reason": null,
+        "status": "observed"
+      },
+      "launch_exit_code": 0,
+      "launch_seconds": 300.12619789794553,
+      "native_job_usage_corroborated": true,
+      "receipt_complete_single_trial": true,
+      "status": "observed",
+      "trials": [
+        {
+          "arm": "native-codex",
+          "declared_output_observation": {
+            "reason": "native_collector_does_not_capture_declared_output_hashes",
+            "status": "unavailable"
+          },
+          "durations_seconds": {
+            "agent_execution": 181.690497,
+            "agent_setup": 99.442305,
+            "environment_setup": 3.065623,
+            "verifier": 2.049549
+          },
+          "exception_type": null,
+          "identity_matches": true,
+          "native_total_seconds": 299.294324,
+          "official_reward": 1.0,
+          "outcome": "official_verifier_passed",
+          "task": "largest-eigenval",
+          "trial": "largest-eigenval__8vAYxJm",
+          "usage": {
+            "billing_total_verified": false,
+            "cache_included_in_input": true,
+            "counter_scope": "one_final_cumulative_total_per_distinct_native_session",
+            "issues": [],
+            "known_coherent_subtotals": {
+              "cached_input_tokens": 86016,
+              "input_tokens": 107689,
+              "output_tokens": 6194,
+              "total_tokens": 113883
+            },
+            "native_usage_complete_observed": true,
+            "observed_native_sessions": 1,
+            "reported_counts": {
+              "cached_input_tokens": 86016,
+              "input_tokens": 107689,
+              "output_tokens": 6194,
+              "total_tokens": 113883
+            },
+            "sessions": [
+              {
+                "coherent_counts": true,
+                "completion_observed": true,
+                "reported_counts": {
+                  "cached_input_tokens": 86016,
+                  "input_tokens": 107689,
+                  "output_tokens": 6194,
+                  "total_tokens": 113883
+                },
+                "route_matches": true,
+                "session_id_sha256": "558979c37b33a6332022c74cc74312d73d391f0aed6b4a9917f49d44bc4d49c1",
+                "token_count_events": 6,
+                "transcript_sha256": "99be51bb47cd352b133d373aed451f4c51b117e214ef8b49f695f37d5efda19e"
+              }
+            ],
+            "tokens": {
+              "cached_input_tokens": 86016,
+              "input_tokens": 107689,
+              "output_tokens": 6194,
+              "total_tokens": 113883
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "billing_total_verified": false,
+  "budget_note": "Same 6480-second outer agent cap; supervisor separately reserves preparation and caps planning at 600 and coding at 1800 seconds, while native coding can use its outer agent budget.",
+  "causal_advantage_claimed": false,
+  "explicit_experiment_control_audit": [
+    {
+      "allowed_intentional_difference": [
+        "experimental_controls_sha256.numerical_formalization_profile"
+      ],
+      "arm": "full",
+      "common_control_differences": [],
+      "common_controls_equal": true,
+      "explicit_three_arm_declaration_matches": true,
+      "intentional_experimental_difference_valid": true,
+      "production_comparator": {
+        "differences": [
+          "experimental_controls_sha256.numerical_formalization_profile"
+        ],
+        "matches": false,
+        "status": "mismatch"
+      },
+      "production_comparator_unchanged": true,
+      "runtime_enforcement_verified": false
+    },
+    {
+      "allowed_intentional_difference": [
+        "experimental_controls_sha256.numerical_formalization_profile"
+      ],
+      "arm": "no-index",
+      "common_control_differences": [],
+      "common_controls_equal": true,
+      "explicit_three_arm_declaration_matches": true,
+      "intentional_experimental_difference_valid": true,
+      "production_comparator": {
+        "differences": [
+          "experimental_controls_sha256.numerical_formalization_profile"
+        ],
+        "matches": false,
+        "status": "mismatch"
+      },
+      "production_comparator_unchanged": true,
+      "runtime_enforcement_verified": false
+    }
+  ],
+  "full_minus_no_index_tokens": {
+    "cached_input_tokens": -17792,
+    "input_tokens": -18241,
+    "output_tokens": -6278,
+    "total_tokens": -24519
+  },
+  "implementation_sha256": {
+    "collector": "e9d738a40a6285c292f18510a02370eac952b0f130c2d7ac9fec98e7d7875b68",
+    "controls": "f07f97467a8494c0d569308a578d45a2faec7d68cd70a44030dee57bea2522cf",
+    "pair_collector": "ee1f9d55f256b9002494875e5e6de6fd57b85855ae5b8e88a88cfb54a8835137"
+  },
+  "model_calls": 0,
+  "observed_at_utc": "2026-10-13T19:15:01.557003+00:00",
+  "observer_provider_calls": 0,
+  "pair_controls_matched": true,
+  "production_generic_comparator_match": false,
+  "provider_work_budget_equality_claimed": false,
+  "randomized_trial_order": false,
+  "raw_transcripts_read": false,
+  "schema": "numerical-three-arm-observation@1",
+  "scope": "All registered native/full/no-index attempts. Native session counters and supervisor router invocation counters have distinct call-count scopes. Cached input is included in input. No proof discharge or broad efficiency claim.",
+  "sources": {
+    "native_execution_lock": {
+      "availability": "observed",
+      "bytes": 7697,
+      "sha256": "7ad2337dcf58c59973da41c43c8a8d847355a2972950fd8194a562e5e631812f"
+    },
+    "pair_lock": {
+      "availability": "observed",
+      "bytes": 83596,
+      "sha256": "10f0884d233c833d85fb216411eede7477320a0e098f53382876ad98bc13550d"
+    },
+    "pair_observation": {
+      "availability": "observed",
+      "bytes": 122281,
+      "sha256": "fb61fbb85ee1c322dac4923b24c77639cddbff5f391ee53d65f7379e7682384e"
+    }
+  },
+  "supervisor_minus_native_tokens": {
+    "full": {
+      "cached_input_tokens": 179584,
+      "input_tokens": 220096,
+      "output_tokens": -6,
+      "total_tokens": 220090
+    },
+    "no-index": {
+      "cached_input_tokens": 197376,
+      "input_tokens": 238337,
+      "output_tokens": 6272,
+      "total_tokens": 244609
+    }
+  },
+  "task_or_hidden_verifier_contents_read": false
+}

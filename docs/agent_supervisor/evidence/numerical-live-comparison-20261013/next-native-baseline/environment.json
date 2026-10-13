@@ -1,0 +1,29 @@
+{
+  "changed_override_fields": [
+    "PATH"
+  ],
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "DOCTOR_COMPOSITION_LEAN": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+    "ELAN_TOOLCHAIN": "leanprover/lean4:v4.34.1",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/seal.duckdb",
+    "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PATH": "/home/barberb/lift_coding/artifacts/numerical-live-pair-20261013/next-native-baseline/bin:/home/barberb/.codex/packages/app-server-daemon/releases/0.162.1-aarch64-unknown-linux-musl/codex-path:/home/barberb/.elan/bin:/home/barberb/.local/bin:/usr/local/cuda/bin:/opt/bin/:/home/barberb/.codex/tmp/arg0/codex-arg0QT0I41:/home/barberb/.codex/packages/app-server-daemon/releases/0.162.1-aarch64-unknown-linux-musl/codex-path:/home/barberb/.codex/tmp/arg0/codex-arg0JGM7Ns:/home/barberb/.codex/packages/app-server-daemon/releases/0.162.0-aarch64-unknown-linux-musl/codex-path:/home/barberb/.codex/tmp/arg0/codex-arg01sCPhI:/home/barberb/.codex/packages/app-server-daemon/releases/0.161.0-aarch64-unknown-linux-musl/codex-path:/home/barberb/.codex/tmp/arg0/codex-arg0D3Ndr5:/home/barberb/.codex/packages/app-server-daemon/releases/0.160.1-aarch64-unknown-linux-musl/codex-path:/home/barberb/.codex/tmp/arg0/codex-arg03ApdWQ:/home/barberb/.codex/packages/app-server-daemon/releases/0.160.0-aarch64-unknown-linux-musl/codex-path:/home/barberb/.codex/tmp/arg0/codex-arg0yWYza4:/usr/local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/codex-path:/home/barberb/.elan/bin:/home/barberb/.local/bin:/home/barberb/.grok/bin:/home/barberb/.cargo/bin:/usr/local/cuda/bin:/opt/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/home/barberb/.local/lib/python3.12/site-packages:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "inherited_environment_values_recorded": false,
+  "parent_environment_sha256": "fc6807ac1ccec68576a5ab367b5259edb35f2944b93a8e1b2d56f077b5c9e313",
+  "python": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python"
+}
