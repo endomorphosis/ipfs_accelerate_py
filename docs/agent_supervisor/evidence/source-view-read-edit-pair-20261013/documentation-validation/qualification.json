@@ -1,0 +1,29 @@
+{
+  "schema": "source-view-pair-documentation-validation@1",
+  "command": [
+    "/usr/bin/python3",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "exit_code": 0,
+  "workflow_blocks_passed": 4,
+  "extra_links_and_anchors": true,
+  "errors": [],
+  "source_before": {
+    "docs/agent_supervisor/source_view_read_edit_pair.md": "6918814975cfd7439661ed686afadeaf267fcbcdcef6acedb421e4087679c345",
+    "docs/agent_supervisor/worker_source_views.md": "0c469d6f963fec3c060ffcc09356acf174af810c869ec873d277b5d7428eef61",
+    "docs/agent_supervisor/reversible_codebase_views_plan.md": "39952d04c3c9b3669fbff7c3a799c57884e3757871d76999b2c3fffd9c6d92d6",
+    "docs/agent_supervisor/evidence/source-view-read-edit-pair-20261013/README.md": "4b04426d157a69264ec3c21384e5228023f8d76f59004eda866c42abf6b10b17"
+  },
+  "source_after": {
+    "docs/agent_supervisor/source_view_read_edit_pair.md": "6918814975cfd7439661ed686afadeaf267fcbcdcef6acedb421e4087679c345",
+    "docs/agent_supervisor/worker_source_views.md": "0c469d6f963fec3c060ffcc09356acf174af810c869ec873d277b5d7428eef61",
+    "docs/agent_supervisor/reversible_codebase_views_plan.md": "39952d04c3c9b3669fbff7c3a799c57884e3757871d76999b2c3fffd9c6d92d6",
+    "docs/agent_supervisor/evidence/source-view-read-edit-pair-20261013/README.md": "4b04426d157a69264ec3c21384e5228023f8d76f59004eda866c42abf6b10b17"
+  },
+  "sources_unchanged": true,
+  "checker_sha256": "596a0038b18d592f2e605643890afc85e457558f7b887932a474557d7586819e",
+  "runner_sha256": "2563783db120e9e02c07fd1860939066e4985a8516f5e1085bae2d5907fd5db2",
+  "stdout_sha256": "3ee5d7242b0b646a480b60c7ce9d3e9c1052f7d794069acb52919a4e03b93db7",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

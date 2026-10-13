@@ -1,0 +1,17 @@
+{
+  "exit_code": 0,
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/source_view_trace_comparison.py": "5bed4f8e3a95250d6f98fe3ca4192133cc0e0486396690f0726652d43d4b6829",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py": "f080bed25d9f8a5901f6bc22277cac8d2d3e48c5561050dd265f3c21388657dc"
+  },
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/source_view_trace_comparison.py": "5bed4f8e3a95250d6f98fe3ca4192133cc0e0486396690f0726652d43d4b6829",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py": "f080bed25d9f8a5901f6bc22277cac8d2d3e48c5561050dd265f3c21388657dc"
+  },
+  "source_unchanged": true,
+  "tests": 41,
+  "distinct_tests": 41,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0
+}

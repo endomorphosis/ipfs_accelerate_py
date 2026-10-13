@@ -1,0 +1,32 @@
+{
+  "schema": "source-read-edit-host-mapper-lineage@1",
+  "observed_utc": "2026-10-13T00:44:49.619021+00:00",
+  "historical_qualification": "docs/agent_supervisor/evidence/compact-source-edit-20261012/public-fixture-01/qualification.json",
+  "historical_qualification_sha256": "7977aebbdfdc3d27e3152a2ea272dd3c6988cd39118fc1add22581af2422c96e",
+  "historical_application_receipt_sha256": "50d4078eef91e1a477f297914fa39acd07d8778834ceab8a2cb753b6584a5d6d",
+  "mapper_modules_unchanged": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py": "b5a6d6634272b8cc03f7ca6207fafaa9e27f1a9319d7ebf315284d5fbac0cec8"
+  },
+  "candidate_sha256": "6ffc01fe089eac6a9331d7bb836519d7857f8d0cf8ef9dc0dd489a39ec132f8b",
+  "arms": {
+    "exact": {
+      "owner_qualification_sha256": "45d8ea0d084234c9063703098fc39ba0227260bcb773a356206802348732c8c5",
+      "same_original_source": true,
+      "same_candidate_postimage": true,
+      "docker_edit_used_mapper": false
+    },
+    "compact": {
+      "owner_qualification_sha256": "7700b9ff86e43eba6dba1ffc96aa0b58f5274fab6fe73d8a141d9b29399dcdfe",
+      "same_original_source": true,
+      "same_candidate_postimage": true,
+      "docker_edit_used_mapper": false
+    }
+  },
+  "historical_authored_numerical_cases": 11,
+  "new_numerical_cases_run": 0,
+  "new_mapped_applications_run": 0,
+  "model_mapped_edit_handoff_exercised": false,
+  "avoided_expansion_or_token_savings_claimed": false,
+  "scope": "The two current Docker original-file edits reach the exact public-source postimage qualified previously through the host mapped-edit adapter. This joins retained evidence; it does not run or price a model-facing mapped-edit tool."
+}

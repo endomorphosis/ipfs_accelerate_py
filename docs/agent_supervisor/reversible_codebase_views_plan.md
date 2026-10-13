@@ -13,6 +13,13 @@ compact-edit and LegalIR permission-retention publications. It distinguishes
 source already omitted during preparation from later reads, and identifies
 shared view policy, discovery transport and read tracing as the next gaps.
 
+The subsequent [matched Docker read/edit experiment](source_view_read_edit_pair.md)
+implements strict comparison of complete scripted traces. Exact and compact
+views produce the same source edit; one-pass prompt plus default CLI exposure
+falls from 79,362 to 79,229 bytes (0.17%). This measures neither model tokens nor
+IR/proof reuse. It leaves general read accounting, context substitution and
+matched live-model qualification open.
+
 The October 12 follow-up audit includes publications through
 `48f442b4ca468b8cf2e858bca72a676812344302`. Unchanged repository restoration
 already works. The next token-efficiency priority is to identify which source

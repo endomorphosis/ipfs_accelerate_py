@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/comparator-final-01/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 97 items
+
+benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py . [  1%]
+........................................                                 [ 42%]
+benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py . [ 43%]
+..............................................                           [ 90%]
+benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py . [ 91%]
+........                                                                 [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/comparator-final-01/junit.xml -
+============================= slowest 10 durations =============================
+0.94s setup    benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py::test_source_guidance_matches_actual_historical_model_projection
+0.14s call     benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py::test_source_counts_are_exact_and_contain_no_raw_source_or_token_estimate
+0.06s call     benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py::test_source_guidance_matches_actual_historical_model_projection
+
+(7 durations < 0.005s hidden.  Use -vv to show these durations.)
+============================= 97 passed in 26.37s ==============================

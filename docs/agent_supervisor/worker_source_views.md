@@ -152,8 +152,13 @@ They are not provider tokens or unique source coverage. Native planning and
 coding usage remains the measure for a subsequent token comparison, including
 tool results, expansions and repairs.
 
+The [matched scripted read/edit pair](source_view_read_edit_pair.md) now compares
+`identity@1` with `python-comments@1`, counting complete prepared input and actual
+default CLI text. It saves 133 bytes out of 79,362 (0.17%) on that trace; it has
+zero model calls and supplies no token or official reward score.
+
 General capsule expansion, rebuilding formal indexes after working edits,
-translating compact edits into original patches, and measured live-model savings
-remain separate work. A useful first source-view comparison is `identity@1` versus
-`python-whitespace@1` through this same channel, with fixed harness controls and
-repeated official task verification.
+model-facing submission to the [host compact-edit mapper](reversible_source_views.md#map-an-explicit-compact-edit-to-original-bytes),
+and measured live-model savings remain separate work. Complete-session
+comparisons need fixed harness controls, all-attempt native usage and repeated
+official task verification.

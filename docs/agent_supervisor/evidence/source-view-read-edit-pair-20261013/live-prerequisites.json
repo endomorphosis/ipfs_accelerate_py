@@ -1,0 +1,300 @@
+{
+  "calls": {
+    "credential_contents_read": false,
+    "external_service_mutations": 0,
+    "model_calls": 0,
+    "provider_generation_calls": 0
+  },
+  "current_treatment": {
+    "additive_read_pair_runnable_after_fresh_bundle": true,
+    "claims_not_established": [
+      "whole-codebase compact editing",
+      "total native provider token savings",
+      "official reward from offline probes"
+    ],
+    "editing_guidance_requires_exact_expansion": true,
+    "model_to_owner_compact_edit_handoff_runnable": false,
+    "next_gap": "Admitted generation-bound model edit proposal to owner mapper, patch admission/application and refreshed generation; separately qualify omission of replaced raw source.",
+    "owner_only_compact_edit_mapper_exists": true,
+    "profiles": [
+      "identity@1",
+      "python-comments@1"
+    ],
+    "required_raw_source_remains_inline": true,
+    "true_source_substitution_runnable": false
+  },
+  "fairness_controls": [
+    "Same archive/task sources, provider/model/reasoning/version, full arm, Source384 checkpoint, semantic policies and resource profile; only source-view profile changes.",
+    "Fresh state/output/container per cold-index arm; indexing wall time charged.",
+    "Router response cache disabled; remote provider cache not assumed disabled. Record cached input separately without double counting.",
+    "No cross-arm task solution/proof cache reuse. Warm-index reuse requires separate bound treatment.",
+    "Count native cumulative usage once per invocation, across planning/coding/repairs/failed attempts.",
+    "Collect official Harbor rewards/failures; alternate/randomize repeated arm order before general savings claims.",
+    "Codex setup-cache advice is not a remote-cache control and is incompatible with Grok."
+  ],
+  "local_readiness": {
+    "disk_free_bytes": 426948186112,
+    "disk_used_fraction": 0.8433013273257891,
+    "docker_daemon_responded": true,
+    "docker_runtime_qualified_this_audit": false,
+    "harbor_executable": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/harbor",
+    "harbor_executable_exists": true,
+    "harbor_python": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python"
+  },
+  "observed_at_utc": "2026-10-13T00:41:34.969844+00:00",
+  "observed_metadata_commands": [
+    {
+      "argv": [
+        "codex",
+        "--version"
+      ],
+      "output": "codex-cli 0.162.1"
+    },
+    {
+      "argv": [
+        "grok",
+        "--version"
+      ],
+      "output": "grok 1.0.52 (0920c8169e27) [stable]"
+    },
+    {
+      "argv": [
+        "docker",
+        "version",
+        "--format",
+        "{{.Server.Version}}"
+      ],
+      "output": "29.2.1"
+    }
+  ],
+  "provider": {
+    "backup_requires_separate_explicit_trial": "codex-gpt-6.1-sol-0.160.0@1",
+    "benchmark_default": "codex-gpt-6.1-sol-0.160.0@1",
+    "codex_credential_available": true,
+    "container_codex_install_pin": "0.160.0",
+    "container_route_verified_this_audit": false,
+    "credential_authentication_verified": false,
+    "cross_provider_fallback": false,
+    "explicit_user_route": "grok-4.7-cli-1.0.46@1",
+    "grok_credential_available": true,
+    "grok_recovery_candidate": {
+      "archive": "/home/barberb/lift_coding/artifacts/terminal-expansion-20261005/grok-bundle-07/runtime.tar.gz",
+      "bytes": 142867512,
+      "expected_sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+      "member": "providers/grok/grok",
+      "member_hash_verified_this_audit": false,
+      "next_step": "Verify retained archive/member against manifest, then extract to fresh local path; do not replace host CLI.",
+      "version": "1.0.46"
+    },
+    "historical_host_grok_pin_available": false,
+    "host_codex_matches_pin": false,
+    "host_grok_matches_pin": false
+  },
+  "retained_evidence": {
+    "completed_pair": {
+      "actual_comparison": "semantic reference transport @1 versus @2, not source views or compact editing",
+      "baseline": {
+        "cached_input_tokens": 176896,
+        "native_total_tokens": 246992,
+        "reward": 1.0
+      },
+      "compact": {
+        "cached_input_tokens": 254592,
+        "native_total_tokens": 327117,
+        "reward": 1.0
+      },
+      "coverage": "Latest completed matched pair identified in audited paths; not exhaustive.",
+      "receipts": [
+        "baseline-01/receipt.json",
+        "compact-01/receipt.json"
+      ],
+      "root": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007"
+    },
+    "newer_planning_census": {
+      "coding_attempts": 0,
+      "native_tokens": 25441,
+      "official_reward": null,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-live-census-20261011/actual-live-census-02.json",
+      "scope": "Planning/Source384 census only. Historical operational script points to stale worktrees."
+    }
+  },
+  "schema": "source-view-live-prerequisites@1",
+  "scope": "Read-only source and retained-artifact audit. This JSON is the only written artifact; command recipes were not executed.",
+  "source": {
+    "audited_revision": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+    "intervening_changed_paths": [
+      "docs/agent_supervisor/evidence/context-reading-audit-20261013/README.md",
+      "docs/agent_supervisor/evidence/context-reading-audit-20261013/documentation-checks.json",
+      "docs/agent_supervisor/evidence/context-reading-audit-20261013/documentation-workflow.log",
+      "docs/agent_supervisor/evidence/context-reading-audit-20261013/ir-store-review.json",
+      "docs/agent_supervisor/evidence/context-reading-audit-20261013/publication-manifest.json",
+      "docs/agent_supervisor/evidence/context-reading-audit-20261013/read-exposure-review.json",
+      "docs/agent_supervisor/evidence/context-reading-audit-20261013/representation-review.json",
+      "docs/agent_supervisor/reversible_codebase_views_plan.md"
+    ],
+    "intervening_changes_docs_only": true,
+    "ipfs_accelerate_py": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+    "ipfs_datasets_py": "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012",
+    "ipfs_kit_py": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+    "retention_revision": "32e79ae431df12b47c410927f5e0a12ec5b9084f"
+  },
+  "source_evidence": {
+    "archive_argument_is_directory": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py:282",
+    "bundle_cli": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py:1356",
+    "editing_guidance": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py:271",
+    "provider": "benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py:8",
+    "router_fallback_controls": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py:885",
+    "trial_cli": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py:563"
+  },
+  "task": {
+    "intended_output_file": "eigen.py",
+    "limitation": "Small public-source integration pilot, not representative suite performance. No hidden verifier or solution files read.",
+    "name": "largest-eigenval",
+    "permitted_source_files": [
+      "eigen.py",
+      "eval.py"
+    ],
+    "profile": "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/largest-eigenval-profile.json"
+  },
+  "unexecuted_recipes": {
+    "bundle_argv": [
+      "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+      "-B",
+      "-m",
+      "benchmarks.agent_supervisor.container_coding.terminal_deployment",
+      "bundle",
+      "--output",
+      "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/live-bundle-FRESH",
+      "--source",
+      "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+      "--datasets",
+      "/home/barberb/lift_coding/.worktrees/numerical-obligation-datasets-20261012",
+      "--kit",
+      "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+      "--extension-dir",
+      "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64",
+      "--source384-config",
+      "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+      "--torch-cpu-wheel",
+      "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "--torch-cpu-wheel-sha256",
+      "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604",
+      "--lean-toolchain",
+      "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1",
+      "--grok-binary",
+      "<VERIFIED_RECOVERED_GROK_1.0.46_BINARY>"
+    ],
+    "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+    "requirements": [
+      "Fresh nonexisting output directories and newly built current-source archive for both arms.",
+      "Replace Grok binary placeholder with hash-verified recovered 1.0.46 binary.",
+      "Verify offline Source384 config/checkpoint, cached GTE assets, Torch wheel, DuckDB extensions and Lean toolchain.",
+      "Native container provider/model readiness and credential usability must pass before generation.",
+      "Grok uses legacy coding-reply mode; ordinary-completion@1 is Codex-only."
+    ],
+    "trials": {
+      "compact": {
+        "collect_argv": [
+          "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+          "-B",
+          "-m",
+          "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+          "collect",
+          "--output",
+          "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/live-compact-FRESH"
+        ],
+        "execute_argv": [
+          "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+          "-B",
+          "-m",
+          "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+          "execute",
+          "--output",
+          "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/live-compact-FRESH"
+        ],
+        "prepare_argv": [
+          "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+          "-B",
+          "-m",
+          "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+          "prepare",
+          "--output",
+          "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/live-compact-FRESH",
+          "--dataset",
+          "/home/barberb/lift_coding/.benchmarks/terminal-bench-2",
+          "--task",
+          "largest-eigenval",
+          "--task-profile",
+          "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/largest-eigenval-profile.json",
+          "--archive",
+          "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/live-bundle-FRESH",
+          "--arm",
+          "full",
+          "--provider-profile",
+          "grok-4.7-cli-1.0.46@1",
+          "--resource-profile",
+          "source384-5cpu-20gib-formalization@1",
+          "--semantic-transport-schema",
+          "supervisor-semantic-router-input@1",
+          "--semantic-metadata-view",
+          "common-bindings@1",
+          "--source384-config",
+          "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+          "--source-view-profile",
+          "python-comments@1"
+        ]
+      },
+      "exact": {
+        "collect_argv": [
+          "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+          "-B",
+          "-m",
+          "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+          "collect",
+          "--output",
+          "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/live-exact-FRESH"
+        ],
+        "execute_argv": [
+          "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+          "-B",
+          "-m",
+          "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+          "execute",
+          "--output",
+          "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/live-exact-FRESH"
+        ],
+        "prepare_argv": [
+          "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+          "-B",
+          "-m",
+          "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+          "prepare",
+          "--output",
+          "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/live-exact-FRESH",
+          "--dataset",
+          "/home/barberb/lift_coding/.benchmarks/terminal-bench-2",
+          "--task",
+          "largest-eigenval",
+          "--task-profile",
+          "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/largest-eigenval-profile.json",
+          "--archive",
+          "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/live-bundle-FRESH",
+          "--arm",
+          "full",
+          "--provider-profile",
+          "grok-4.7-cli-1.0.46@1",
+          "--resource-profile",
+          "source384-5cpu-20gib-formalization@1",
+          "--semantic-transport-schema",
+          "supervisor-semantic-router-input@1",
+          "--semantic-metadata-view",
+          "common-bindings@1",
+          "--source384-config",
+          "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+          "--source-view-profile",
+          "identity@1"
+        ]
+      }
+    }
+  }
+}

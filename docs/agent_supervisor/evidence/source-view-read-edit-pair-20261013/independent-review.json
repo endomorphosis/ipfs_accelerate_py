@@ -1,0 +1,232 @@
+{
+  "accounting": {
+    "compact": {
+      "calls": 12,
+      "logical_operations": 11,
+      "prepared_prompt_bytes": 53940,
+      "scripted_argv_json_bytes": 4141,
+      "scripted_exposure_bytes": 79229,
+      "stderr_bytes": 0,
+      "stdout_bytes": 25289,
+      "transport_response_json_bytes": 39709
+    },
+    "exact": {
+      "calls": 12,
+      "logical_operations": 11,
+      "prepared_prompt_bytes": 53933,
+      "scripted_argv_json_bytes": 4141,
+      "scripted_exposure_bytes": 79362,
+      "stderr_bytes": 0,
+      "stdout_bytes": 25429,
+      "transport_response_json_bytes": 39645
+    }
+  },
+  "cleanup": {
+    "owned_container_removed": true,
+    "retention_timeout_can_no_longer_skip_removal_attempt": true,
+    "source_and_runners_unchanged": true
+  },
+  "code_review": {
+    "blockers": [],
+    "trust_limits": [
+      "Owner replay receipts and source/runtime control hashes are caller-supplied; hashes are bindings, not authenticated authority.",
+      "Native codec/catalog semantics rely on independent owner replay. This run supplies that replay; this review separately reran codec source reconstruction.",
+      "Aggregate trace bound is checked after in-memory serialization; this offline helper is not a hardened unauthenticated network parser."
+    ],
+    "validated": [
+      "Closed core records; strict bool/int distinctions; duplicate JSON and nonfinite refusal.",
+      "Stream lengths/digests, native CLI final newline, bounded calls/pages, continuation identity and exact source pre/postimage edit.",
+      "Separate displayed text, canonical argv and native response accounting.",
+      "Explicit no-provider, no-proof, no-mapped-edit claims."
+    ]
+  },
+  "conclusion": {
+    "meaning": "133 fewer UTF-8 bytes in this authored one-pass exposure. Native response JSON increases by 64 bytes; no conversion of either ledger into provider tokens.",
+    "native_response_json_increase_bytes": 64,
+    "official_reward": null,
+    "one_pass_exposure_reduction_bytes": 133,
+    "one_pass_exposure_reduction_percent": 0.1675865023562914,
+    "provider_native_tokens": null
+  },
+  "documentation_review": {
+    "guide_claims_consistent": true,
+    "no_full_START_claim": true,
+    "readme_boundary_consistent": true,
+    "suggested_precision": "Prefer no checkpoint inference or proof-discharge stage ran over universal no-prover wording, while retaining static/index work explicitly."
+  },
+  "fairness": [
+    "Same admitted sources, owner prompt, edit, logical operation sequence, page budget and client paths.",
+    "Prepared prompt differs only by exact profile-specific reader guidance.",
+    "Generation roles and initial source-pin policy match. All pages, exact expansions, optional catalog and stale refusals are counted.",
+    "Original sources restored, worktree clean and no remaining worker UID processes between arms.",
+    "Independent owner native catalog rebuild joins captured baseline generation and complete admitted source scope.",
+    "One shared preflight, fixed arm order; no cold/warm or timing comparison."
+  ],
+  "independent_source_replays": [
+    {
+      "arm": "exact",
+      "bytes": 642,
+      "operation_id": "bootstrap:eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "arm": "exact",
+      "bytes": 642,
+      "operation_id": "baseline_read:eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "arm": "exact",
+      "bytes": 2246,
+      "operation_id": "baseline_read:eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    {
+      "arm": "exact",
+      "bytes": 642,
+      "operation_id": "pre_edit_expansion:eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "arm": "exact",
+      "bytes": 636,
+      "operation_id": "edited_refresh:eigen.py",
+      "sha256": "6ffc01fe089eac6a9331d7bb836519d7857f8d0cf8ef9dc0dd489a39ec132f8b"
+    },
+    {
+      "arm": "exact",
+      "bytes": 2246,
+      "operation_id": "edited_read:eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    {
+      "arm": "exact",
+      "bytes": 636,
+      "operation_id": "post_edit_expansion:eigen.py",
+      "sha256": "6ffc01fe089eac6a9331d7bb836519d7857f8d0cf8ef9dc0dd489a39ec132f8b"
+    },
+    {
+      "arm": "exact",
+      "bytes": 642,
+      "operation_id": "restored_refresh:eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "arm": "compact",
+      "bytes": 607,
+      "operation_id": "bootstrap:eigen.py",
+      "sha256": "65f8544bf32190de79e8b9649b10033d5cb20c4752c365709cf595de3d161b96"
+    },
+    {
+      "arm": "compact",
+      "bytes": 607,
+      "operation_id": "baseline_read:eigen.py",
+      "sha256": "65f8544bf32190de79e8b9649b10033d5cb20c4752c365709cf595de3d161b96"
+    },
+    {
+      "arm": "compact",
+      "bytes": 2246,
+      "operation_id": "baseline_read:eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    {
+      "arm": "compact",
+      "bytes": 642,
+      "operation_id": "pre_edit_expansion:eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "arm": "compact",
+      "bytes": 601,
+      "operation_id": "edited_refresh:eigen.py",
+      "sha256": "6d16dd8c06d45c960421e8af9ee867e88b3b5e9c8fe0385781c3bd90f622baf5"
+    },
+    {
+      "arm": "compact",
+      "bytes": 2246,
+      "operation_id": "edited_read:eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    {
+      "arm": "compact",
+      "bytes": 636,
+      "operation_id": "post_edit_expansion:eigen.py",
+      "sha256": "6ffc01fe089eac6a9331d7bb836519d7857f8d0cf8ef9dc0dd489a39ec132f8b"
+    },
+    {
+      "arm": "compact",
+      "bytes": 607,
+      "operation_id": "restored_refresh:eigen.py",
+      "sha256": "65f8544bf32190de79e8b9649b10033d5cb20c4752c365709cf595de3d161b96"
+    }
+  ],
+  "input_sha256": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/source_view_trace_comparison.py": "5bed4f8e3a95250d6f98fe3ca4192133cc0e0486396690f0726652d43d4b6829",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py": "f080bed25d9f8a5901f6bc22277cac8d2d3e48c5561050dd265f3c21388657dc",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/docs/agent_supervisor/evidence/source-view-read-edit-pair-20261013/README.md": "4b04426d157a69264ec3c21384e5228023f8d76f59004eda866c42abf6b10b17",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/docs/agent_supervisor/source_view_read_edit_pair.md": "6918814975cfd7439661ed686afadeaf267fcbcdcef6acedb421e4087679c345",
+    "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/docker_pair/collect_pair.py": "10790a9e704c432d0c648bfcde7e7ff39d6365c855ab16a056d44453534b414e",
+    "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/docker_pair/collected-03/collection-provenance.json": "40bd30c6a7fe6a4e88747e1624d2ed27252257b02dace80ef384890b30c3af23",
+    "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/docker_pair/collected-03/comparison.json": "69a60d8ffbcf514430213b8725f9e3aa2a70e04f268244e042b143d678827cf0",
+    "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/docker_pair/collected-03/controls.json": "89042c8a3350b734f9f6f942e861a441c7695d4b7a0a1760622ebe790e444ee6",
+    "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/docker_pair/run-02/qualification.json": "a0b30f2351442d77002473ff7f2c05f15302cfa1db5fc183f535e97221207c7c",
+    "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/docker_pair/run-02/runner-snapshot/owner_probe.py": "7a2dfb0fe2b9150c480cb2a879d4495c497c08fe709bc2f03060e6a831e42ce6",
+    "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/docker_pair/run-02/runner-snapshot/run_docker_qualification.py": "acbc192781613d18aefe035252d9c506ae6a9512c4c7600f598a19fc27f0d778",
+    "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/docker_pair/run-02/runner-snapshot/worker_probe.py": "54d816ea2add0c0ff6090af9afbfdc83d8033c3ac4f884ae5ec5b29eedfc1a63"
+  },
+  "limitations": [
+    "No model decision, native provider token accounting or official verifier.",
+    "Original source remains inline; no true source substitution.",
+    "Worker writes original source after expansion; compact mapper is not invoked."
+  ],
+  "model_calls": 0,
+  "preflight_scope": {
+    "doctor_diagnostic_findings": 28,
+    "doctor_stages": {
+      "impact": "not_run",
+      "planning": "not_run",
+      "proof": "not_run",
+      "synthesis": "not_run",
+      "transaction": "not_run"
+    },
+    "full_capsules": 8,
+    "full_supervisor_START": false,
+    "intent_checkpoint_inference": false,
+    "learned_embeddings": false,
+    "native_fact_rows_replayed": 4,
+    "recommended_description": "Native authored-plan preflight, static indexing/capsules/world construction and Doctor diagnostic eligibility ran. No checkpoint inference or proof-discharge stage ran. Generated worker sessions then ran without full supervisor START.",
+    "source384_checkpoint_inference": false,
+    "source_unit_checkpoint_inference": false,
+    "static_indexed_symbols": 4,
+    "worker_capsules": 4
+  },
+  "production_files_modified": false,
+  "provider_calls": 0,
+  "publication_boundary": {
+    "credential_like_file_names": [],
+    "credential_value_pattern_hits": {
+      "api_token": [],
+      "bearer": [],
+      "private_key": []
+    },
+    "private_store_payloads_published": false,
+    "raw_worker_traces_and_prompts_published": false,
+    "reviewed_bytes": 270084,
+    "reviewed_files": 40,
+    "scan_limitation": "Heuristic sensitive-value scan and declared-content review, not a universal secret-detection proof.",
+    "scope": "Content-free observations plus public scripts/commands/test outputs. Absolute local paths and hashes remain. Raw-source replay requires retained local captures."
+  },
+  "reviewed_at_utc": "2026-10-13T00:51:49.290999+00:00",
+  "reviewed_collection": "/home/barberb/lift_coding/artifacts/source-view-read-edit-pair-20261013/docker_pair/collected-03",
+  "schema": "source-view-independent-review@1",
+  "status": "no_blocker_for_declared_offline_exposure_claim",
+  "verification": {
+    "collection_provenance_current": true,
+    "current_comparator_replay_exactly_matches_retained_result": true,
+    "focused_tests_rerun_in_this_review": false,
+    "focused_tests_retained_passed": 41,
+    "native_source_codec_replays": 16,
+    "no_target_source_execution": true,
+    "retained_input_source_and_runner_hashes_match": true
+  }
+}
