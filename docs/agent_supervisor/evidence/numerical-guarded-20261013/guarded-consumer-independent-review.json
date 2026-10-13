@@ -1,0 +1,61 @@
+{
+  "schema": "numerical-guarded-readonly-review@1",
+  "reviewer": "source_context_wiring",
+  "scope": "Independent read-only frontend, guarded projection, source replay and bounded-page review. No new source execution, solver or provider calls.",
+  "source_sha256": {
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_verification/numerical_source_v2.py": "1943dd506a31a4b2854de2c9decd2fc2ad6625ff8669f63aa6c6f129ca924e4b",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_verification/numerical_logic_v2.py": "e335faff26b909c3da6d3496f1856eadabaa180d8ee939d499f7c44f0fbbc58d",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py": "50a713b0f6ef64c397a58012c6d8a670696db0294bb87f6bcdbdda691302e3c5",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "3274c21bb44ed6940912e74d46f2197c02a380e3beea8dd883d0708512394eee",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "3ace20fa3069c3265979357450973facd66906505e7a3d1b0490a744849f4cbb"
+  },
+  "blocking_findings": [],
+  "checks": [
+    {
+      "area": "conditional evaluation",
+      "finding": "Opaque conditional ProgramIR node contains only eager test operand. Then/else roots live in required source-bound sidecar. Context rows add normal test completion plus the selected truthiness result; both branches are not represented as eager operands."
+    },
+    {
+      "area": "assertion and formatting evaluation",
+      "finding": "ASSERT has one predicate. Message root is separate and conditioned on command reachability, assertions enabled, normal predicate completion and false truthiness. Formatted-value operands preserve value then format-spec ordering before conversion/format obligations; later components require earlier normal completion."
+    },
+    {
+      "area": "closure and partial syntax",
+      "finding": "Graph validator traverses eager and side roots, enforces function/symbol/source-span ownership, acyclicity, exact reachability, and conservative MAY-read effects. Failed outer expressions prune successful inner graphs. Unsupported control flow remains a diagnostic/fence; per-function structural completion does not confer program proof."
+    },
+    {
+      "area": "formal obligations",
+      "finding": "FOL and SMT project unresolved guarded implications; SMT guard-to-source binding is an explicit prerequisite with no asserted assumptions. Lean per-source declarations retain unresolved guard and requirement parameters. ProgramIR projection is explicitly incomplete without guarded extension. Source proof/discharge flags stay false or zero."
+    },
+    {
+      "area": "compound contracts",
+      "finding": "V1 straight-line matchers apply only to complete functions without guarded/assert/format constructs; new compound IDs and contexts keep entry reachability unresolved. This does not derive a matcher for guarded eigenpair implementations."
+    },
+    {
+      "area": "report identity and dispatch",
+      "finding": "Exact source/report replay is required before linking or paging. New selection requires both explicit v2 profile and schema; wrong or mixed values cannot be relabeled into valid reports. Consumer pins selected and reused implementations and binds v2 profile into tree/record/planning identity."
+    },
+    {
+      "area": "bounded paging",
+      "finding": "Pages preserve whole original rows including all evaluation contexts. Exact query/report/context receipt bind continuations, canonical UTF-8 envelope and cursor overhead count against byte limit, and deterministic cursor boundaries reject skipped/replayed foreign offsets. Source/producers/artifacts are fenced after retrieval."
+    },
+    {
+      "area": "compact planning",
+      "finding": "V2 pending rows retain guarded-region references, interpretation and unverified flags. Global summary states branch/message deferral; assertions omit nested contexts but retain references. Whole-row dropping records omissions under 8192 bytes. Full contexts remain available in replayed report and pending retrieval rows."
+    }
+  ],
+  "limitations": [
+    "An individual obligation with very deep contexts can exceed the 8192-byte consumer page budget. Existing pager safely refuses it; this is not a promise that every syntactically accepted program is retrievable under every budget.",
+    "Standalone graph validation is structural custody, not Python/library semantics. Exact-source replay is still required and runtime identity, truthiness, effects, reachability and obligations remain unproved.",
+    "Review pins represent files at review time; final qualification must use stable final source hashes."
+  ],
+  "observed_fence": {
+    "artifact": "accelerator-targeted-02/result.json",
+    "status": "refused_after_producer_change",
+    "detail": "Authored planner delivery reached planning; admission then refused numerical artifacts/producers changed while numerical_source_v2.py changed during the test. Captured before and after hashes substantiate the fence; this failed run is not final qualification."
+  },
+  "new_source_or_provider_execution": false,
+  "proof_authority": false
+}

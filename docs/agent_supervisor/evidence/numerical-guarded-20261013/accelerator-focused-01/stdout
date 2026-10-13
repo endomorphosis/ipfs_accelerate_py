@@ -1,0 +1,66 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/numerical-guarded-coverage-20261013/accelerator-focused-01/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 154 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py . [  0%]
+..FFFF.....                                                              [  7%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py . [  8%]
+........................................................................ [ 55%]
+.............                                                            [ 63%]
+test/api/test_published_numerical.py ................................... [ 86%]
+.....................                                                    [100%]
+
+=================================== FAILURES ===================================
+_ test_changed_profile_cannot_relabel_guarded_receipt[python-numerical-structure@1] _
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py:113: in test_changed_profile_cannot_relabel_guarded_receipt
+    changed["receipt_sha256"] = native._write(native.Path(receipt["output"]) / "receipt.json", body)
+ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py:53: in _write
+    with Path(path).open("xb") as stream:
+/usr/lib/python3.12/pathlib.py:1015: in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+E   FileExistsError: [Errno 17] File exists: '/tmp/pytest-of-barberb/pytest-375/test_changed_profile_cannot_re0/guarded/receipt.json'
+_ test_changed_profile_cannot_relabel_guarded_receipt[python-numerical-structure@2] _
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py:113: in test_changed_profile_cannot_relabel_guarded_receipt
+    changed["receipt_sha256"] = native._write(native.Path(receipt["output"]) / "receipt.json", body)
+ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py:53: in _write
+    with Path(path).open("xb") as stream:
+/usr/lib/python3.12/pathlib.py:1015: in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+E   FileExistsError: [Errno 17] File exists: '/tmp/pytest-of-barberb/pytest-375/test_changed_profile_cannot_re1/guarded/receipt.json'
+__________ test_changed_profile_cannot_relabel_guarded_receipt[True] ___________
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py:113: in test_changed_profile_cannot_relabel_guarded_receipt
+    changed["receipt_sha256"] = native._write(native.Path(receipt["output"]) / "receipt.json", body)
+ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py:53: in _write
+    with Path(path).open("xb") as stream:
+/usr/lib/python3.12/pathlib.py:1015: in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+E   FileExistsError: [Errno 17] File exists: '/tmp/pytest-of-barberb/pytest-375/test_changed_profile_cannot_re2/guarded/receipt.json'
+__________ test_changed_profile_cannot_relabel_guarded_receipt[None] ___________
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py:113: in test_changed_profile_cannot_relabel_guarded_receipt
+    changed["receipt_sha256"] = native._write(native.Path(receipt["output"]) / "receipt.json", body)
+ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py:53: in _write
+    with Path(path).open("xb") as stream:
+/usr/lib/python3.12/pathlib.py:1015: in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+E   FileExistsError: [Errno 17] File exists: '/tmp/pytest-of-barberb/pytest-375/test_changed_profile_cannot_re3/guarded/receipt.json'
+- generated xml file: /home/barberb/lift_coding/artifacts/numerical-guarded-coverage-20261013/accelerator-focused-01/junit.xml -
+============================= slowest 10 durations =============================
+1.03s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_guarded_selection_cannot_reuse_legacy_tree_or_cursor
+0.89s call     test/api/test_published_numerical.py::test_regenerates_exact_python_subset_and_reloads_native_ducklake[python-numerical-structure@1]
+0.89s call     test/api/test_published_numerical.py::test_regenerates_exact_python_subset_and_reloads_native_ducklake[python-numerical-guarded-structure@2]
+0.88s setup    benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_guarded_context_replays_lakes_and_retains_conditional_planning_scope
+0.83s setup    test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-guarded-structure@2-not_completed]
+0.83s setup    test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-guarded-structure@2-source_symlink]
+0.83s setup    test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-structure@1-source]
+0.82s call     test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-structure@1-artifact]
+0.82s call     test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-structure@1-source]
+0.81s call     test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-structure@1-expanded_family_path]
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_changed_profile_cannot_relabel_guarded_receipt[python-numerical-structure@1]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_changed_profile_cannot_relabel_guarded_receipt[python-numerical-structure@2]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_changed_profile_cannot_relabel_guarded_receipt[True]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_changed_profile_cannot_relabel_guarded_receipt[None]
+=================== 4 failed, 150 passed in 82.10s (0:01:22) ===================

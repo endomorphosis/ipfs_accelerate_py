@@ -1,0 +1,1436 @@
+{
+  "authored_python_probe": {
+    "benchmark_source_executed": false,
+    "cases_passed": 17,
+    "implementation": "CPython 3.12.3",
+    "path": "authored-evaluation-observation.json",
+    "sha256": "b0cef77ca2d80363b48daa9bd15ce6a493128777656fb773487c967473a2a73b"
+  },
+  "baseline_revision": "afadfbcf8d33a67568c133bb761c43d42a9a133c",
+  "benchmark_source_executed": false,
+  "findings": [
+    "ProgramIR eager operands omit deferred IfExp branches and assertion messages; closed sidecar supplies owner/scope/read validation.",
+    "Dynamic format specification completes before !s/!r/!a conversion; conversion and formatting exceptions prevent later fields.",
+    "Assertion predicate and message are guarded by assertion enablement; message additionally requires false successful truthiness; message exceptions do not imply AssertionError.",
+    "Projection entry guards retain command reachability, branch truthiness, assertion enablement, preceding expression normal completion and region identities; all interpretations remain unresolved.",
+    "Typed FOL uses a guarded implication. SMT index/shape artifacts use a conditional goal with an uninterpreted evaluation-context flag, no assumptions and no solver execution.",
+    "Lean bindings use explicit GuardedRequirement parameters; building them checks artifact syntax and conditional lemmas, not Python or NumPy behavior.",
+    "Straight-line selected-eigenpair matching is retained only for complete functions without guarded or formatting constructs; all v2 contract and obligation IDs are rebound.",
+    "P guarded planning assertions permit absent symbol_definitions only in v2 and retain guard references; full contexts remain in exact source-replayed retrieval rows.",
+    "Changing the link and pager producer files honestly changes producer pins; historical link receipts need rebuild. Historical numerical v1 producers and core/checkpoint source modules remain unchanged."
+  ],
+  "frozen_owned_files": [
+    {
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_logic_v2.py",
+      "sha256": "e335faff26b909c3da6d3496f1856eadabaa180d8ee939d499f7c44f0fbbc58d"
+    },
+    {
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
+      "sha256": "50a713b0f6ef64c397a58012c6d8a670696db0294bb87f6bcdbdda691302e3c5"
+    },
+    {
+      "path": "ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py",
+      "sha256": "3274c21bb44ed6940912e74d46f2197c02a380e3beea8dd883d0708512394eee"
+    },
+    {
+      "path": "tests/unit/logic/software_verification/test_numerical_logic_v2.py",
+      "sha256": "1546378237dbecc5f04ffcf179fa7099d9d0b1201289bb9cf316bcc3b87339f9"
+    }
+  ],
+  "legacy_exact_source_checks": [
+    {
+      "baseline_sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "current_sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_source.py",
+      "unchanged": true
+    },
+    {
+      "baseline_sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "current_sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py",
+      "unchanged": true
+    },
+    {
+      "baseline_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+      "current_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+      "path": "ipfs_datasets_py/logic/software_verification/program.py",
+      "unchanged": true
+    },
+    {
+      "baseline_sha256": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+      "current_sha256": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py",
+      "unchanged": true
+    }
+  ],
+  "limitations": [
+    "No benchmark source, learned model or provider executed in this audit.",
+    "No source obligation discharged; source truthiness, library identity, effects and numerical correctness remain unverified.",
+    "Optional native Lake checks were skipped in logic-tests-02 because no explicit toolchain environment was selected; parent owns final native qualification.",
+    "Unsupported assertion-message syntax stays partial; v2 assertion predicate requirements are extracted only for structurally complete functions.",
+    "Loops remain explicit unsupported fences. A later loop profile needs iteration-indexed state, iterator/next or repeated truthiness, zero-iteration/break/continue/else/exception edges, assignment effects and separate invariant/termination obligations."
+  ],
+  "provider_calls": 0,
+  "schema": "numerical-guarded-integration-audit/v1",
+  "source_obligations_discharged": 0,
+  "source_worktree": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+  "test_counts_overlap": true,
+  "tests": [
+    {
+      "cases": [
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_conditional_library_and_index_obligations_keep_opposite_branch_guards",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_assert_message_and_later_field_retain_enablement_false_and_prefix_completion",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_nested_conditions_accumulate_not_replace_guards",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_all_projection_families_preserve_exact_guard_bindings_and_do_not_assert_them",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_bounded_summary_keeps_guard_references",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[drop_guard]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[flip_branch]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[projection_guard]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[strip_extension]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[authority]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[obligation]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[lean]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_pager_retains_whole_guard_rows_and_refuses_cross_profile_cursor",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_dispatch_never_accepts_mixed_or_unknown_profile[python-numerical-guarded-structure@2-numerical-source-logic/v1]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_dispatch_never_accepts_mixed_or_unknown_profile[python-numerical-structure@1-numerical-source-logic/v2]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_dispatch_never_accepts_mixed_or_unknown_profile[foreign-numerical-source-logic/v2]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_unit_links_include_all_side_branch_and_message_obligations",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_unresolved_loops_remain_partial_and_do_not_gain_assertion_requirements",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_prepare_and_replay_never_run_target_or_subprocess",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_original_path_or_source_required_even_when_ast_is_unchanged",
+          "status": "passed"
+        }
+      ],
+      "failed": 0,
+      "file": "logic-tests-01.xml",
+      "passed": 20,
+      "sha256": "6542203a97756f0989bbe59a0f02367f9657c5188745a9cbce5fb58f503cf275",
+      "skipped": 0
+    },
+    {
+      "cases": [
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_conditional_library_and_index_obligations_keep_opposite_branch_guards",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_assert_message_and_later_field_retain_enablement_false_and_prefix_completion",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_nested_conditions_accumulate_not_replace_guards",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_all_projection_families_preserve_exact_guard_bindings_and_do_not_assert_them",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_bounded_summary_keeps_guard_references",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_complete_straight_line_compounds_survive_but_guarded_siblings_are_fenced",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[drop_guard]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[flip_branch]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[projection_guard]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[strip_extension]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[authority]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[obligation]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[lean]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_pager_retains_whole_guard_rows_and_refuses_cross_profile_cursor",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_dispatch_never_accepts_mixed_or_unknown_profile[python-numerical-guarded-structure@2-numerical-source-logic/v1]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_dispatch_never_accepts_mixed_or_unknown_profile[python-numerical-structure@1-numerical-source-logic/v2]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_dispatch_never_accepts_mixed_or_unknown_profile[foreign-numerical-source-logic/v2]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_unit_links_include_all_side_branch_and_message_obligations",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_unresolved_loops_remain_partial_and_do_not_gain_assertion_requirements",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_prepare_and_replay_never_run_target_or_subprocess",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_original_path_or_source_required_even_when_ast_is_unchanged",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_authored_numerical_structure_preserves_nested_calls_tuple_targets_and_slices",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_dynamic_receiver_and_keyword_evaluation_order_is_not_sorted",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_exact_raw_byte_spans_after_unicode_comments_and_with_inline_comment[\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_exact_raw_byte_spans_after_unicode_comments_and_with_inline_comment[\\r\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_exact_raw_byte_spans_after_unicode_comments_and_with_inline_comment[\\r]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_declared_import_resolution_is_explicit_not_runtime_authority[import numpy as nx-nx.linalg.eig(a)-numpy.linalg.eig]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_declared_import_resolution_is_explicit_not_runtime_authority[from numpy.linalg import eig as decompose-decompose(a)-numpy.linalg.eig]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_declared_import_resolution_is_explicit_not_runtime_authority[import numpy.linalg-numpy.linalg.eig(a)-numpy.linalg.eig]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_rebinding_never_promotes_apparent_imported_callee[import numpy as nx\\nnx = replacement\\ndef f(a):\\n    return nx.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_rebinding_never_promotes_apparent_imported_callee[import numpy as nx\\ndef f(a, nx):\\n    return nx.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_rebinding_never_promotes_apparent_imported_callee[import numpy as nx\\ndef f(a):\\n    value = nx.linalg.eig(a)\\n    nx = other\\n    return value\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_rebinding_never_promotes_apparent_imported_callee[import numpy as nx\\ndef f(a):\\n    import other as nx\\n    return nx.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_rebinding_never_promotes_apparent_imported_callee[import numpy as nx\\ndef f(a):\\n    def nx():\\n        pass\\n    return nx.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_rebinding_never_promotes_apparent_imported_callee[import numpy as nx\\ndef f(a):\\n    nx.linalg.eig = other\\n    return nx.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_rebinding_never_promotes_apparent_imported_callee[import numpy as nx\\ndef f(a):\\n    global nx\\n    return nx.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_rebinding_never_promotes_apparent_imported_callee[import numpy as nx\\nfrom other import *\\ndef f(a):\\n    return nx.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_rebinding_never_promotes_apparent_imported_callee[import numpy as nx\\nfrom .other import nx\\ndef f(a):\\n    return nx.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_rebinding_never_promotes_apparent_imported_callee[import numpy as nx\\nif condition:\\n    import other as nx\\ndef f(a):\\n    return nx.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_rebinding_never_promotes_apparent_imported_callee[import numpy as nx\\nnx.linalg.eig = other\\ndef f(a):\\n    return nx.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_argument_expansion_and_duplicate_keywords_fail_closed[f(*a)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_argument_expansion_and_duplicate_keywords_fail_closed[f(**a)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_argument_expansion_and_duplicate_keywords_fail_closed[f(x=1, x=2)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_tuple_pattern_keeps_repeated_target_order_and_rhs_occurs_once",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_unsupported_control_flow_is_a_fence_not_linearized[for item in data:\\n        hidden_call(item)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_unsupported_control_flow_is_a_fence_not_linearized[while condition:\\n        hidden_call(data)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_unsupported_control_flow_is_a_fence_not_linearized[if condition:\\n        hidden_call(data)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_unsupported_control_flow_is_a_fence_not_linearized[try:\\n        hidden_call(data)\\n    except Exception:\\n        pass]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_structural_assert_predicate_retains_residual_but_defers_fstring_message",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_float_literal_is_lossless_without_claiming_real_number_semantics",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_numerical_structure_never_enters_the_scalar_source_proof_profile",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_replay_rejects_source_path_claim_and_structural_tampering",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_never_executes_source_and_records_top_level_effect_gap",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_path_requires_canonical_relative_identity[/tmp/a.py]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_path_requires_canonical_relative_identity[../a.py]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_path_requires_canonical_relative_identity[a/./b.py]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_path_requires_canonical_relative_identity[a//b.py]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_path_requires_canonical_relative_identity[a\\\\b.py]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_path_requires_canonical_relative_identity[]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_resource_bounds_and_invalid_source_are_explicit",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_edge_syntax_abstains_without_native_canonicalization_failure[def f():\\n    [] = []\\n    return 0\\n-python.assignment.unsupported_target_or_value]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_edge_syntax_abstains_without_native_canonicalization_failure[def f():\\n    return '\\\\ud800'\\n-python.literal.unsupported]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_source.py::test_edge_syntax_abstains_without_native_canonicalization_failure[def f(x, x):\\n    return x\\n-python.function.duplicate_parameter]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_native_registry_routes_and_lazy_public_api",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_source_bound_obligations_are_pending_not_assumptions_or_proofs",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_fol_has_typed_referents_and_no_truth_axioms",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_smt_reuses_shared_compiler_without_discharge_or_assumptions",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_tuple_index_is_split_into_source_axes_not_coerced_to_an_integer",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_known_nonscalar_index_is_not_projected_as_integer_bounds[None]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_known_nonscalar_index_is_not_projected_as_integer_bounds[True]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_known_nonscalar_index_is_not_projected_as_integer_bounds[1.5]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_known_nonscalar_index_is_not_projected_as_integer_bounds['name']",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_known_nonscalar_index_is_not_projected_as_integer_bounds[[1, 2]]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_selection_direction_and_permutation_template_follow_declared_call[argmax-SelectionMax]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_selection_direction_and_permutation_template_follow_declared_call[argmin-SelectionMin]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_selection_direction_and_permutation_template_follow_declared_call[argsort-Ordering]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_smt_constraints_are_not_valid_without_source_witnesses",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_unresolved_or_shadowed_calls_do_not_acquire_numpy_contracts[def f(np, a):\\n    return np.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_unresolved_or_shadowed_calls_do_not_acquire_numpy_contracts[import numpy as np\\ndef f(np, a):\\n    return np.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_unresolved_or_shadowed_calls_do_not_acquire_numpy_contracts[import numpy as np\\nnp = other\\ndef f(a):\\n    return np.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_unresolved_or_shadowed_calls_do_not_acquire_numpy_contracts[import numpy as np\\ndef f(a):\\n    np = other\\n    return np.linalg.eig(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_unresolved_or_shadowed_calls_do_not_acquire_numpy_contracts[def f(a):\\n    return a.argsort()\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_declared_import_alias_and_keyword_are_source_bound_but_opaque[from numpy.linalg import eig as solve\\ndef f(a):\\n    return solve(a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_declared_import_alias_and_keyword_are_source_bound_but_opaque[import numpy\\ndef f(a):\\n    return numpy.linalg.eigh(a=a)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_summary_is_bounded_and_separates_structural_from_proof_coverage",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_syntax_failure_has_no_ghost_projection_or_lemmas",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_obligation_bound_refuses_overflow_instead_of_silently_dropping_work",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_report_roundtrip_and_source_path_binding",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_exact_replay_rejects_modified_artifacts_even_with_source_unchanged[authority]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_exact_replay_rejects_modified_artifacts_even_with_source_unchanged[obligation]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_exact_replay_rejects_modified_artifacts_even_with_source_unchanged[fol]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_exact_replay_rejects_modified_artifacts_even_with_source_unchanged[smt]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_exact_replay_rejects_modified_artifacts_even_with_source_unchanged[lean]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_exact_replay_rejects_modified_artifacts_even_with_source_unchanged[summary]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_exact_replay_rejects_modified_artifacts_even_with_source_unchanged[hash]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_preparation_makes_no_process_calls",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_lean_source_has_explicit_residual_equation_and_no_admission",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_actual_native_lake_conditional_lemmas_and_false_claim_rejection[False]",
+          "status": "skipped"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic.py::test_actual_native_lake_conditional_lemmas_and_false_claim_rejection[True]",
+          "status": "skipped"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_four_assertion_predicates_keep_negation_and_argument_direction_without_invented_requirements",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_callable_and_tuple_component_relationships_are_replayable_source_links",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_predicate_span_bytes_preserve_unicode_comments_and_failure_messages[\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_predicate_span_bytes_preserve_unicode_comments_and_failure_messages[\\r\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_predicate_span_bytes_preserve_unicode_comments_and_failure_messages[\\r]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_keyword_literals_and_comparison_direction_remain_exact_without_default_tolerance",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_rebinding_versions_use_previous_rhs_binding_not_the_new_lhs",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_simultaneous_unpacking_preserves_nested_components_and_rhs_environment",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_duplicate_unpack_target_retains_no_ambiguous_definition_witness",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_shadowed_call_remains_a_generic_requirement_not_numpy_interpretation[def check(np, x):\\n    assert not np.isnan(x)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_shadowed_call_remains_a_generic_requirement_not_numpy_interpretation[import numpy as np\\nnp = other\\ndef check(x):\\n    assert not np.isnan(x)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_shadowed_call_remains_a_generic_requirement_not_numpy_interpretation[import numpy as np\\ndef check(x):\\n    np = other\\n    assert not np.isnan(x)\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_intervening_call_effects_are_explicit_without_dropping_syntactic_definition",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_control_flow_or_other_unsupported_constructs_fence_function[if x:\\n        assert valid(x)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_control_flow_or_other_unsupported_constructs_fence_function[for y in x:\\n        assert valid(y)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_control_flow_or_other_unsupported_constructs_fence_function[assert valid(x)\\n    if x:\\n        mutate(x)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_control_flow_or_other_unsupported_constructs_fence_function[x[0] = 0\\n    assert valid(x)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_control_flow_or_other_unsupported_constructs_fence_function[assert valid(*x)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_control_flow_or_other_unsupported_constructs_fence_function[global x\\n    assert valid(x)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_control_flow_or_other_unsupported_constructs_fence_function[return x\\n    assert valid(x)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_generic_predicate_does_not_invent_call_or_boolean_runtime_interpretation[x]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_generic_predicate_does_not_invent_call_or_boolean_runtime_interpretation[not x]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_generic_predicate_does_not_invent_call_or_boolean_runtime_interpretation[x + 1]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_generic_predicate_does_not_invent_call_or_boolean_runtime_interpretation[x < 2]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_generic_predicate_does_not_invent_call_or_boolean_runtime_interpretation[not not valid(x)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_source_assertions_have_no_smt_discharge_or_implicit_truth_assumption",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_summary_counts_bounds_and_total_obligation_limit_include_assertions",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_compact_definition_ids_join_full_versioned_records_without_inlining_dependencies",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_replay_rejects_assertion_binding_changes_even_after_rehash[predicate]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_replay_rejects_assertion_binding_changes_even_after_rehash[definition]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_replay_rejects_assertion_binding_changes_even_after_rehash[span]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_replay_rejects_assertion_binding_changes_even_after_rehash[effects]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_replay_rejects_assertion_binding_changes_even_after_rehash[origin]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_replay_rejects_assertion_binding_changes_even_after_rehash[summary]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_replay_rejects_assertion_binding_changes_even_after_rehash[authority]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_preparation_replay_is_process_free_and_syntax_failure_has_no_ghost_requirements",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_native_lake_assertion_polarity_and_false_positive_rejection[False]",
+          "status": "skipped"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py::test_native_lake_assertion_polarity_and_false_positive_rejection[True]",
+          "status": "skipped"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_compound_joins_exact_source_commands_expressions_and_pending_families",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_compound_spans_are_exact_raw_bytes_after_unicode_comments[\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_compound_spans_are_exact_raw_bytes_after_unicode_comments[\\r\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_compound_spans_are_exact_raw_bytes_after_unicode_comments[\\r]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_renaming_aliases_and_supported_call_shapes_preserve_contract[import numpy as nx\\ndef choose(matrix):\\n    roots, basis = nx.linalg.eig(matrix)\\n    selected = nx.argmax(nx.abs(roots))\\n    return roots[selected], basis[:, selected]\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_renaming_aliases_and_supported_call_shapes_preserve_contract[import numpy\\ndef choose(matrix):\\n    values, vectors = numpy.linalg.eig(matrix)\\n    selected = numpy.argmax(numpy.abs(values))\\n    return values[selected], vectors[:, selected]\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_renaming_aliases_and_supported_call_shapes_preserve_contract[from numpy.linalg import eig as solve\\nfrom numpy import argmax, abs as magnitude\\ndef choose(matrix):\\n    values, vectors = solve(matrix)\\n    selected = argmax(magnitude(values))\\n    return values[selected], vectors[:, selected]\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_renaming_aliases_and_supported_call_shapes_preserve_contract[import numpy as np\\ndef choose(matrix):\\n    values, vectors = np.linalg.eig(a=matrix)\\n    selected = np.argmax(a=np.abs(values))\\n    return values[selected], vectors[:, selected]\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_renaming_aliases_and_supported_call_shapes_preserve_contract[import numpy as np\\ndef choose(matrix):\\n    [values, vectors] = np.linalg.eig(matrix)\\n    selected = np.argmax(np.abs(values))\\n    return values[selected], vectors[:, selected]\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_renaming_aliases_and_supported_call_shapes_preserve_contract[import numpy as np\\ndef choose(matrix):\\n    pass\\n    values, vectors = np.linalg.eig(matrix)\\n    selected = np.argmax(np.abs(values))\\n    return values[selected], vectors[:, selected]\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[eig(matrix)-eig(matrix, other)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[eig(matrix)-eig(b=matrix)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[np.abs(values)-np.abs(x=values)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[np.abs(values)-np.abs(values, out=values)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[argmax(np.abs(values))-argmax(np.abs(values), axis=0)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[argmax(np.abs(values))-argmax(np.abs(values), keepdims=True)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[argmax(np.abs(values))-argmax(np.abs(values), out=values)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[argmax-argmin]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[argmax-argsort]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[linalg.eig-linalg.eigh]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[np.abs(values)-values]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[np.abs(values)-values.real]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[np.abs(values)-np.abs(vectors)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[values[selected], vectors[:, selected]-vectors[selected], values[:, selected]]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[values[selected], vectors[:, selected]-values[selected], vectors[:, 0]]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[values[selected], vectors[:, selected]-values[0], vectors[:, selected]]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[vectors[:, selected]-vectors[selected, :]]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[vectors[:, selected]-vectors[1:, selected]]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[vectors[:, selected]-vectors[::1, selected]]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[vectors[:, selected]-vectors[None, selected]]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[vectors[:, selected]-vectors[[0], selected]]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[vectors[:, selected]-vectors[:, selected + 1]]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[return values[selected], vectors[:, selected]-return [values[selected], vectors[:, selected]]]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[values, vectors =-values, values =]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[values, vectors =-matrix, vectors =]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[selected =-values =]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[selected =-matrix =]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_unmatched_call_shapes_indices_and_rebindings_abstain[def choose(matrix)-def choose(matrix, extra)]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[values = other]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[vectors = other]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[selected = 0]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[side_effect()]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[values[0] = 9]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[matrix[0] = 9]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[np.linalg.eig = other]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[np = other]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[if matrix:\\n        side_effect()]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[for x in matrix:\\n        pass]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[global values]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[nonlocal values]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[assert ready]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_intervening_mutations_effects_or_control_flow_abstain[import numpy as other]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_module_alias_mutation_does_not_inherit_declared_numpy_contract[np = other]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_module_alias_mutation_does_not_inherit_declared_numpy_contract[np.linalg.eig = other]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_module_alias_mutation_does_not_inherit_declared_numpy_contract[del np.linalg.eig]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_other_partial_function_does_not_hide_supported_function_or_invent_contract",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_summaries_are_bounded_and_compound_obligations_count_toward_limit",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_exact_replay_rejects_compound_tampering_even_with_rehashed_report[roles]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_exact_replay_rejects_compound_tampering_even_with_rehashed_report[span]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_exact_replay_rejects_compound_tampering_even_with_rehashed_report[id]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_exact_replay_rejects_compound_tampering_even_with_rehashed_report[tolerance]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_exact_replay_rejects_compound_tampering_even_with_rehashed_report[authority]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_exact_replay_rejects_compound_tampering_even_with_rehashed_report[summary]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_preparation_runs_no_code_models_or_solvers",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_native_lake_conditional_contract_and_zero_vector_refutation[False]",
+          "status": "skipped"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_value_contracts.py::test_native_lake_conditional_contract_and_zero_vector_refutation[True]",
+          "status": "skipped"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_all_pages_retain_complete_rows_in_order_with_exact_counts",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_binding_distinguishes_native_report_id_and_full_canonical_digest",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_byte_budget_reduces_rows_without_slicing_or_losing_continuation",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_filters_keep_distinct_full_and_matched_populations",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_empty_native_obligation_population_is_honest_not_a_proof",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_unicode_source_path_uses_utf8_byte_budget_and_exact_source_binding",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs0]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs1]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs2]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs3]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs4]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs5]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs6]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs7]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs8]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs9]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs10]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs11]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs12]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_invalid_limits_and_filters_refused[kwargs13]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_malformed_or_nonboundary_cursor_refused[boolean]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_malformed_or_nonboundary_cursor_refused[zero]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_malformed_or_nonboundary_cursor_refused[negative]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_malformed_or_nonboundary_cursor_refused[float]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_malformed_or_nonboundary_cursor_refused[end]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_malformed_or_nonboundary_cursor_refused[middle]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_malformed_or_nonboundary_cursor_refused[extra]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_malformed_or_nonboundary_cursor_refused[schema]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_malformed_or_nonboundary_cursor_refused[binding]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_query_change_invalidates_cursor[change0]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_query_change_invalidates_cursor[change1]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_query_change_invalidates_cursor[change2]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_query_change_invalidates_cursor[change3]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_changed_source_with_overlapping_local_ids_cannot_reuse_cursor",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_rehashed_report_tamper_fails_source_replay[authority]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_rehashed_report_tamper_fails_source_replay[status]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_rehashed_report_tamper_fails_source_replay[source]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_rehashed_report_tamper_fails_source_replay[path]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_rehashed_report_tamper_fails_source_replay[omitted_row]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_foreign_path_or_source_cannot_replay_native_report",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_too_small_complete_row_refused_instead_of_truncated_or_empty_cursor",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_obligation_retrieval.py::test_returned_rows_are_detached_from_supplied_native_report",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_exact_function_ranges_ids_counts_and_replay",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_artifact_refs_resolve_to_exact_payloads_without_copying_bodies",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_changed_module_import_invalidates_identical_function_body_join",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_duplicate_names_join_distinct_exact_ranges_not_name_identity",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_nested_and_class_units_never_match_a_containing_function",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_utf8_comments_have_independent_raw_byte_ranges[# caf\\xe9\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_utf8_comments_have_independent_raw_byte_ranges[# Unicode\\u2028inside a comment\\n]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_crlf_extractor_frontier_keeps_native_unmatched_functions_and_obligations",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_frontiers_do_not_invent_unit_or_proof_coverage[x = 1\\n-no_function_units]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_frontiers_do_not_invent_unit_or_proof_coverage[def malformed(:\\n    pass\\n-complete_python_source_required]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_partial_loop_with_zero_obligations_does_not_inherit_other_function_lean_artifact",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_existing_scalar_eligible_shape_is_not_a_candidate_or_proof",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_inventory_tampering_is_rejected[id]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_inventory_tampering_is_rejected[hash]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_inventory_tampering_is_rejected[normalization]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_inventory_tampering_is_rejected[range]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_inventory_tampering_is_rejected[map]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_inventory_tampering_is_rejected[producer]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_inventory_tampering_is_rejected[extra]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_inventory_tampering_is_rejected[authority]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_inventory_tampering_is_rejected[drop]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_native_report_tampering_is_rejected[path]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_native_report_tampering_is_rejected[span]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_native_report_tampering_is_rejected[function]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_native_report_tampering_is_rejected[obligation]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_native_report_tampering_is_rejected[contract]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_native_report_tampering_is_rejected[artifact]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_native_report_tampering_is_rejected[authority]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_resealed_native_report_tampering_is_rejected[hash]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_link_replay_rejects_metadata_promotions_and_resealed_references[id]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_link_replay_rejects_metadata_promotions_and_resealed_references[hash]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_link_replay_rejects_metadata_promotions_and_resealed_references[count]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_link_replay_rejects_metadata_promotions_and_resealed_references[authority]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_link_replay_rejects_metadata_promotions_and_resealed_references[shape]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_link_replay_rejects_metadata_promotions_and_resealed_references[artifact]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_link_replay_rejects_metadata_promotions_and_resealed_references[pointer]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_link_replay_rejects_metadata_promotions_and_resealed_references[unmatched]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_link_replay_rejects_metadata_promotions_and_resealed_references[import]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_link_replay_rejects_metadata_promotions_and_resealed_references[producer]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_wrong_or_oversize_original_bytes_rejected[]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_wrong_or_oversize_original_bytes_rejected[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_wrong_or_oversize_original_bytes_rejected[def f(): pass]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_wrong_or_oversize_original_bytes_rejected[\\xff]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_input_json_bound_and_non_json_rejected",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_prepare_is_pure_and_never_executes_source_or_subprocess",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_contracts/test_source_unit_numerical_links.py::test_unit_and_native_bounds_are_hard_refusals_never_partial_inventory",
+          "status": "passed"
+        }
+      ],
+      "failed": 0,
+      "file": "logic-tests-02.xml",
+      "passed": 285,
+      "sha256": "b320752bc00323c45878100da81d380852de73eea53741391542f119151a6525",
+      "skipped": 6
+    },
+    {
+      "cases": [
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_conditional_library_and_index_obligations_keep_opposite_branch_guards",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_assert_message_and_later_field_retain_enablement_false_and_prefix_completion",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_nested_conditions_accumulate_not_replace_guards",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_all_projection_families_preserve_exact_guard_bindings_and_do_not_assert_them",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_bounded_summary_keeps_guard_references",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_complete_straight_line_compounds_survive_but_guarded_siblings_are_fenced",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[drop_guard]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[flip_branch]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[projection_guard]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[strip_extension]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[authority]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[obligation]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_rehashed_guard_or_projection_mutation_fails_exact_source_replay[lean]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_pager_retains_whole_guard_rows_and_refuses_cross_profile_cursor",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_dispatch_never_accepts_mixed_or_unknown_profile[python-numerical-guarded-structure@2-numerical-source-logic/v1]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_dispatch_never_accepts_mixed_or_unknown_profile[python-numerical-structure@1-numerical-source-logic/v2]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_dispatch_never_accepts_mixed_or_unknown_profile[foreign-numerical-source-logic/v2]",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_unit_links_include_all_side_branch_and_message_obligations",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_unresolved_loops_remain_partial_and_do_not_gain_assertion_requirements",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_prepare_and_replay_never_run_target_or_subprocess",
+          "status": "passed"
+        },
+        {
+          "nodeid": "tests/unit/logic/software_verification/test_numerical_logic_v2.py::test_original_path_or_source_required_even_when_ast_is_unchanged",
+          "status": "passed"
+        }
+      ],
+      "failed": 0,
+      "file": "logic-tests-03.xml",
+      "passed": 21,
+      "sha256": "4bcd393f5128d3c29134f832d3a41b357cf4e1614c3debb95ea9f65f31433ce2",
+      "skipped": 0
+    }
+  ],
+  "training_performed": false
+}

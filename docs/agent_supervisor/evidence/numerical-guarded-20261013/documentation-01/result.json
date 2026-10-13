@@ -1,0 +1,22 @@
+{
+  "schema": "numerical-guarded-documentation-checks@1",
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "command": [
+    "/usr/bin/python3",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "gate_exit_code": 0,
+  "additional_files": [
+    "docs/agent_supervisor/numerical_guarded_coverage.md",
+    "docs/agent_supervisor/evidence/numerical-guarded-20261013/README.md"
+  ],
+  "explicit_link_errors": [],
+  "git_diff_check_exit_code": 0,
+  "git_diff_check_output": "",
+  "source_sha256": {
+    "docs/agent_supervisor/numerical_guarded_coverage.md": "1b28b1a9560d462f557940a66af47dffd0818087b26691e9fd852a0104452574",
+    "docs/agent_supervisor/evidence/numerical-guarded-20261013/README.md": "abd031d23a31a54ed461858f1df8989c8476cb2a292cae700bada6b323a6ad2f"
+  },
+  "helper_sha256": "63011574c2903a99e3156863b0de657e1654e07696db88a572da23f41946b541",
+  "passed": true
+}

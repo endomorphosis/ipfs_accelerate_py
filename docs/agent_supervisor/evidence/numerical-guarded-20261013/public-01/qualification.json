@@ -1,0 +1,177 @@
+{
+  "authored_guard_build_passed": true,
+  "baseline_sha256": "893ce8c68b3a706e4b65cb3199c802b888728a50a8cdf286346d2029cd859412",
+  "complete": true,
+  "false_source_truth_build_rejected": true,
+  "files": [
+    {
+      "assertion_requirement_count": 0,
+      "canonical_report_sha256": "f208a6245483f8b3fca576f1e3aefba0eb00b38f7dc998f649dae27122377dd3",
+      "compound_contract_count": 1,
+      "guarded_region_count": 0,
+      "lean_source_sha256": "db0c774bdd1be05c30d8673d47890dc9ce20c6d9f0d166a24cdd140361b926a6",
+      "modified_guard_refused": true,
+      "obligation_kinds": {
+        "eigenpair_residual": 1,
+        "index_safety": 2,
+        "library_semantics_and_effects": 3,
+        "matrix_shape": 1,
+        "selected_eigenpair_approximate_residual": 1,
+        "selected_eigenpair_dimensions": 1,
+        "selected_eigenpair_finite": 1,
+        "selected_eigenpair_magnitude_selection": 1,
+        "selected_eigenpair_nonzero": 1,
+        "selected_eigenpair_runtime_interpretation": 1,
+        "selected_eigenpair_value_column": 1,
+        "selection": 1,
+        "slice_safety": 1
+      },
+      "path": "eigen.py",
+      "pending_obligations": 16,
+      "per_function": [
+        {
+          "function_id": "function:2",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        }
+      ],
+      "previous_pending_obligations": 16,
+      "previous_per_function": [
+        {
+          "function_id": "function:2",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        }
+      ],
+      "real_lake_status": "passed",
+      "report_sha256": "56e9a24e5a6b8f265f3132c49844dd6403ee907435d1be8a78e48bfef90a78bf",
+      "source_obligations_discharged": 0,
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "source_unchanged": true,
+      "v1_exact_report_unchanged": true
+    },
+    {
+      "assertion_requirement_count": 4,
+      "canonical_report_sha256": "7b026b3e5e920acced0c9a5a2b7038f86c68a0824c7cf5f26575ca8230588fde",
+      "compound_contract_count": 1,
+      "guarded_region_count": 6,
+      "lean_source_sha256": "92ca74244ba2fa2090b90576d498f977f835a1a9d446b651edbd9c86ff3eeb77",
+      "modified_guard_refused": true,
+      "obligation_kinds": {
+        "assertion_evaluation_semantics": 4,
+        "conditional_evaluation_semantics": 2,
+        "eigenpair_residual": 1,
+        "formatting_evaluation_semantics": 9,
+        "index_safety": 2,
+        "joined_string_evaluation_semantics": 7,
+        "library_semantics_and_effects": 20,
+        "matrix_shape": 1,
+        "selected_eigenpair_approximate_residual": 1,
+        "selected_eigenpair_dimensions": 1,
+        "selected_eigenpair_finite": 1,
+        "selected_eigenpair_magnitude_selection": 1,
+        "selected_eigenpair_nonzero": 1,
+        "selected_eigenpair_runtime_interpretation": 1,
+        "selected_eigenpair_value_column": 1,
+        "selection": 1,
+        "slice_safety": 1,
+        "source_assertion_predicate": 4
+      },
+      "path": "eval.py",
+      "pending_obligations": 59,
+      "per_function": [
+        {
+          "function_id": "function:6",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "ref_solution",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        },
+        {
+          "function_id": "function:81",
+          "name_truncated": false,
+          "pending_obligation_count": 23,
+          "qualified_name": "test_eigen_pair",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        },
+        {
+          "function_id": "function:282",
+          "name_truncated": false,
+          "pending_obligation_count": 20,
+          "qualified_name": "test_speedup",
+          "status": "partial",
+          "structurally_complete": false,
+          "unsupported_construct_count": 1
+        }
+      ],
+      "previous_pending_obligations": 29,
+      "previous_per_function": [
+        {
+          "function_id": "function:6",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "ref_solution",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        },
+        {
+          "function_id": "function:81",
+          "name_truncated": false,
+          "pending_obligation_count": 13,
+          "qualified_name": "test_eigen_pair",
+          "status": "partial",
+          "structurally_complete": false,
+          "unsupported_construct_count": 1
+        },
+        {
+          "function_id": "function:243",
+          "name_truncated": false,
+          "pending_obligation_count": 0,
+          "qualified_name": "test_speedup",
+          "status": "partial",
+          "structurally_complete": false,
+          "unsupported_construct_count": 4
+        }
+      ],
+      "real_lake_status": "passed",
+      "report_sha256": "3624d46189e0a6e93965fdbae2690398dbb7e2182c6b8ca7f63d6542c01281cd",
+      "source_obligations_discharged": 0,
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "source_unchanged": true,
+      "v1_exact_report_unchanged": true
+    }
+  ],
+  "hidden_verifier_read": false,
+  "model_inference_calls": 0,
+  "native_provider_tokens": null,
+  "official_terminal_bench_score": null,
+  "original_public_source_executed": false,
+  "producer_sha256": {
+    "ipfs_datasets_py.logic.software_verification.numerical_logic": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "ipfs_datasets_py.logic.software_verification.numerical_logic_v2": "e335faff26b909c3da6d3496f1856eadabaa180d8ee939d499f7c44f0fbbc58d",
+    "ipfs_datasets_py.logic.software_verification.numerical_source": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "ipfs_datasets_py.logic.software_verification.numerical_source_v2": "1943dd506a31a4b2854de2c9decd2fc2ad6625ff8669f63aa6c6f129ca924e4b"
+  },
+  "profile": "python-numerical-guarded-structure@2",
+  "provider_calls": 0,
+  "real_lake_builds": 4,
+  "schema": "numerical-guarded-public-source-qualification@1",
+  "seconds": 2.972381209023297,
+  "source_obligations_discharged": 0,
+  "source_semantics_verified": false,
+  "structured_checkpoint_pins_unchanged": true,
+  "v1_exact_reports_unchanged": true
+}

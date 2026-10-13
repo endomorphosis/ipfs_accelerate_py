@@ -1,0 +1,344 @@
+{
+  "benchmark_source_executed": false,
+  "cases": [
+    {
+      "events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.format:>4"
+      ],
+      "exception": null,
+      "expected_events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.format:>4"
+      ],
+      "expected_exception": null,
+      "name": "format_no_conversion",
+      "optimize": 0,
+      "passed": true,
+      "source": "result = f\"{value():{spec()}}\"",
+      "source_sha256": "2a9573c7c1e3161ccc104499c1e90e7d576fbe766dadf999fa4c2ce7deff8db1"
+    },
+    {
+      "events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.repr"
+      ],
+      "exception": null,
+      "expected_events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.repr"
+      ],
+      "expected_exception": null,
+      "name": "format_repr",
+      "optimize": 0,
+      "passed": true,
+      "source": "result = f\"{value()!r:{spec()}}\"",
+      "source_sha256": "e79f6916cd5166163beb586cc42ec61f5bb6c2d323fe1497f9198f50b0845c6d"
+    },
+    {
+      "events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.str"
+      ],
+      "exception": null,
+      "expected_events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.str"
+      ],
+      "expected_exception": null,
+      "name": "format_str",
+      "optimize": 0,
+      "passed": true,
+      "source": "result = f\"{value()!s:{spec()}}\"",
+      "source_sha256": "a058d0f3671ebb195b8331074928b976d99675f0f6ef08af5bb6a223830bb266"
+    },
+    {
+      "events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.repr"
+      ],
+      "exception": null,
+      "expected_events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.repr"
+      ],
+      "expected_exception": null,
+      "name": "format_ascii",
+      "optimize": 0,
+      "passed": true,
+      "source": "result = f\"{value()!a:{spec()}}\"",
+      "source_sha256": "ffab0bc89e3df5edc1d9371582e8055d985b8ffe12a7593d76b8677f57f1ef38"
+    },
+    {
+      "events": [
+        "value",
+        "spec"
+      ],
+      "exception": "RuntimeError",
+      "expected_events": [
+        "value",
+        "spec"
+      ],
+      "expected_exception": "RuntimeError",
+      "name": "format_spec_error",
+      "optimize": 0,
+      "passed": true,
+      "source": "result = f\"{value()!r:{spec()}} {later()}\"",
+      "source_sha256": "8fb7be4bc9415849e5082a4b6e1cba960762f38329e7175c11606a4559613b0e"
+    },
+    {
+      "events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.repr"
+      ],
+      "exception": "LookupError",
+      "expected_events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.repr"
+      ],
+      "expected_exception": "LookupError",
+      "name": "format_repr_error",
+      "optimize": 0,
+      "passed": true,
+      "source": "result = f\"{value()!r:{spec()}} {later()}\"",
+      "source_sha256": "8fb7be4bc9415849e5082a4b6e1cba960762f38329e7175c11606a4559613b0e"
+    },
+    {
+      "events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.format:>4"
+      ],
+      "exception": "ArithmeticError",
+      "expected_events": [
+        "value",
+        "spec",
+        "spec.format:",
+        "value.format:>4"
+      ],
+      "expected_exception": "ArithmeticError",
+      "name": "format_error",
+      "optimize": 0,
+      "passed": true,
+      "source": "result = f\"{value():{spec()}} {later()}\"",
+      "source_sha256": "e2ea0f80bf0f47f32a4410efe32922b2324bd773053079354a02ea3854a82d92"
+    },
+    {
+      "events": [
+        "value",
+        "value.format:",
+        "later"
+      ],
+      "exception": null,
+      "expected_events": [
+        "value",
+        "value.format:",
+        "later"
+      ],
+      "expected_exception": null,
+      "name": "format_left_to_right",
+      "optimize": 0,
+      "passed": true,
+      "source": "result = f\"{value()} {later()}\"",
+      "source_sha256": "cdf8824f145aedfd5506a697bf8d2f77ac7879231e14da15e409cb9dc8dca6ce"
+    },
+    {
+      "events": [
+        "condition",
+        "condition.bool",
+        "then"
+      ],
+      "exception": null,
+      "expected_events": [
+        "condition",
+        "condition.bool",
+        "then"
+      ],
+      "expected_exception": null,
+      "name": "conditional_true",
+      "optimize": 0,
+      "passed": true,
+      "source": "result = then() if condition() else otherwise()",
+      "source_sha256": "1902ac0a01303d5a44ba7753767f81f0add00d8e90ecc194e307a7b2423ff8d1"
+    },
+    {
+      "events": [
+        "condition",
+        "condition.bool",
+        "else"
+      ],
+      "exception": null,
+      "expected_events": [
+        "condition",
+        "condition.bool",
+        "else"
+      ],
+      "expected_exception": null,
+      "name": "conditional_false",
+      "optimize": 0,
+      "passed": true,
+      "source": "result = then() if condition() else otherwise()",
+      "source_sha256": "1902ac0a01303d5a44ba7753767f81f0add00d8e90ecc194e307a7b2423ff8d1"
+    },
+    {
+      "events": [
+        "condition",
+        "condition.bool"
+      ],
+      "exception": "ValueError",
+      "expected_events": [
+        "condition",
+        "condition.bool"
+      ],
+      "expected_exception": "ValueError",
+      "name": "conditional_bool_error",
+      "optimize": 0,
+      "passed": true,
+      "source": "result = then() if condition() else otherwise()",
+      "source_sha256": "1902ac0a01303d5a44ba7753767f81f0add00d8e90ecc194e307a7b2423ff8d1"
+    },
+    {
+      "events": [
+        "condition",
+        "condition.bool"
+      ],
+      "exception": null,
+      "expected_events": [
+        "condition",
+        "condition.bool"
+      ],
+      "expected_exception": null,
+      "name": "assert_true",
+      "optimize": 0,
+      "passed": true,
+      "source": "assert condition(), f\"{value()!r:{spec()}}\"",
+      "source_sha256": "4d551eba4816d95e704ad597cc39cfb8d4e1493cce2fb2c95f971d90e82102a0"
+    },
+    {
+      "events": [
+        "condition",
+        "condition.bool",
+        "value",
+        "spec",
+        "spec.format:",
+        "value.repr"
+      ],
+      "exception": "AssertionError",
+      "expected_events": [
+        "condition",
+        "condition.bool",
+        "value",
+        "spec",
+        "spec.format:",
+        "value.repr"
+      ],
+      "expected_exception": "AssertionError",
+      "name": "assert_false",
+      "optimize": 0,
+      "passed": true,
+      "source": "assert condition(), f\"{value()!r:{spec()}}\"",
+      "source_sha256": "4d551eba4816d95e704ad597cc39cfb8d4e1493cce2fb2c95f971d90e82102a0"
+    },
+    {
+      "events": [
+        "condition",
+        "condition.bool"
+      ],
+      "exception": "ValueError",
+      "expected_events": [
+        "condition",
+        "condition.bool"
+      ],
+      "expected_exception": "ValueError",
+      "name": "assert_bool_error",
+      "optimize": 0,
+      "passed": true,
+      "source": "assert condition(), f\"{value()!r:{spec()}}\"",
+      "source_sha256": "4d551eba4816d95e704ad597cc39cfb8d4e1493cce2fb2c95f971d90e82102a0"
+    },
+    {
+      "events": [
+        "condition",
+        "condition.bool",
+        "value",
+        "spec",
+        "spec.format:",
+        "value.format:>4"
+      ],
+      "exception": "ArithmeticError",
+      "expected_events": [
+        "condition",
+        "condition.bool",
+        "value",
+        "spec",
+        "spec.format:",
+        "value.format:>4"
+      ],
+      "expected_exception": "ArithmeticError",
+      "name": "assert_format_error",
+      "optimize": 0,
+      "passed": true,
+      "source": "assert condition(), f\"{value():{spec()}}\"",
+      "source_sha256": "dd5809dc50de81607e9c111e306445b8892d6b4a690b4de09ddd8c4538bea0c6"
+    },
+    {
+      "events": [],
+      "exception": null,
+      "expected_events": [],
+      "expected_exception": null,
+      "name": "assert_optimized_false",
+      "optimize": 1,
+      "passed": true,
+      "source": "assert condition(), f\"{value()!r:{spec()}}\"",
+      "source_sha256": "4d551eba4816d95e704ad597cc39cfb8d4e1493cce2fb2c95f971d90e82102a0"
+    },
+    {
+      "events": [],
+      "exception": null,
+      "expected_events": [],
+      "expected_exception": null,
+      "name": "assert_optimized_bool_error",
+      "optimize": 2,
+      "passed": true,
+      "source": "assert condition(), f\"{value()!r:{spec()}}\"",
+      "source_sha256": "4d551eba4816d95e704ad597cc39cfb8d4e1493cce2fb2c95f971d90e82102a0"
+    }
+  ],
+  "executed_authored_examples_only": true,
+  "implementation": "CPython",
+  "numerical_semantics_proven": false,
+  "passed": 17,
+  "probe_sha256": "33ae89261ddde2a2b18f8cc3a076c6ef4b309ef59dc0da8dbd0faf94ab226d23",
+  "production_ir_conformance_test": false,
+  "provider_calls": 0,
+  "python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+  "references": [
+    "https://docs.python.org/3.12/reference/expressions.html#conditional-expressions",
+    "https://docs.python.org/3.12/reference/lexical_analysis.html#f-strings",
+    "https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement"
+  ],
+  "schema": "authored-cpython-evaluation-observation/v1",
+  "solver_calls": 0,
+  "source_semantics_proven": false
+}
