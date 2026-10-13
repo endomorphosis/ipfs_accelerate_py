@@ -15,7 +15,6 @@ import re
 
 from ..semantic_state.worktree import IsolatedWorktree, PatchScope, WorktreePhase
 from .doctor_candidate_runner import _git
-from .reversible_source_view import build_source_view
 from .source_view_edits import map_source_view_edit
 from .worker_source_views import MAX_SOURCE_BYTES, WorkerSourceViews, canonical_json, _digest, _path, _workspace
 
@@ -101,8 +100,8 @@ def apply_source_view_edit_candidate(*, owner, views, scope, lease_id, fence, pa
         source = views.working_sources(expected_workspace_generation=expected_workspace_generation)
         _need(path in source, "compact edit path outside admitted source population")
         original = source[path]
-        profile = baseline["requested_profile"] if path.endswith(".py") else "identity@1"
-        projection = build_source_view(original, profile=profile)
+        projection = views.working_projection(path=path,
+            expected_workspace_generation=expected_workspace_generation)
         _need(_sha(original) == expected_source_sha256 and _sha(projection.view) == expected_view_sha256
             and projection.manifest_sha256 == expected_manifest_sha256,
             "compact edit source/view/manifest pins differ")
@@ -164,6 +163,9 @@ def apply_source_view_edit_candidate(*, owner, views, scope, lease_id, fence, pa
             execution_authority=False, publication_authority=False, completion_authority=False,
             source_obligations_discharged=0, provider_calls=0, prover_calls=0,
             atomic_application_claimed=False)
+        if "view_policy_binding" in baseline:
+            result.update(schema="supervisor-source-view-edit-application@2",
+                view_policy_binding_sha256=_sha(canonical_json(baseline["view_policy_binding"])))
         result["receipt_sha256"] = _sha(canonical_json(result))
         return result
 

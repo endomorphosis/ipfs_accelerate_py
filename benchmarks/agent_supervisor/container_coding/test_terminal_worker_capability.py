@@ -66,6 +66,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_artifacts.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_selection.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py',
@@ -86,7 +87,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
 @pytest.mark.parametrize('name', ['terminal_container_supervisor.py', 'terminal_output_observation.py',
     'llm_router.py', 'grok_stream_capture.py', 'cli_metadata.py', 'grok_native_usage.py',
     'source_formalization_context.py', 'validation_runtime.py', 'representation_displacement.py',
-    'numerical_obligation_broker.py', 'numerical_obligation_client.py'])
+    'numerical_obligation_broker.py', 'numerical_obligation_client.py', 'source_view_policy.py'])
 @pytest.mark.parametrize('kind', ['missing', 'stale', 'copied-feature'])
 def test_output_observation_requires_matching_owner_driver_and_collector(packaged, name, kind):
     manifest = copy.deepcopy(packaged[1])

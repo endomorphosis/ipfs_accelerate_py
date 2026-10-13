@@ -199,16 +199,22 @@ adding a more aggressive source transform.
 
 ## Make repository views one consistent reading workflow
 
-The current complete inventory and coding reader share a codec but do not share
-one representation resolver. The inventory transforms `.py` and `.pyi` and
-accepts an explicit protected-line policy. The coding reader and new mapped-edit
-adapter transform only `.py`, without that caller-supplied protected-line input.
-Source bytes and a profile name alone therefore do not identify the same view.
-Define an additive resolver contract binding admitted source generation, raw
-path, original blob, requested/effective profile, protected-line policy and codec
-identity. Have inventory, worker and mapper consume that same policy before
-exporting a complete view. Preserve existing versioned views and checkpoints;
-changing this contract does not silently reinterpret their hashes.
+The [shared-policy qualification](evidence/shared-source-view-policy-20261013/README.md)
+now passes 798 selected regressions, including 52 new policy cases, without
+changing codec bytes or existing model assets. This is owner API convergence;
+actual coding-client policy selection and source discovery remain open.
+
+The legacy complete inventory and coding reader share a codec but select views
+differently: inventory handles `.py`/`.pyi` and caller-protected lines, while
+the original coding reader handles `.py` without that caller policy. The new
+[explicit shared policy](reversible_source_views.md#share-an-explicit-policy-across-owner-apis)
+now converges inventory, host reader and edit adapter on one resolver. New
+versioned roots/admissions bind configuration and resolver/codec identity to
+the admitted path/source generation; the mapper consumes the checked owner
+projection. Old defaults, codec manifests, roots and checkpoints retain their
+identities. Shared pages are host-only in this increment and intentionally
+refuse through the legacy closed worker protocol. Coordinated transport support
+and reader discovery remain open before model-facing selection or full export.
 
 [`WorkerSourceViews.discovery()`](../../ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py)
 already produces bounded host path/pin pages. The actual

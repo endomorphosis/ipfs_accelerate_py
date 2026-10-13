@@ -1,0 +1,59 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+cachedir: /tmp/shared-source-view-policy-qualification-01-w1i2urp5/tests-state/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011
+configfile: pytest.ini
+collected 798 items
+
+test/api/test_shared_source_view_policy.py ............................. [  3%]
+.......................                                                  [  6%]
+test/api/test_reversible_source_view.py .....................            [  9%]
+test/api/test_repository_code_view_inventory.py ...................      [ 11%]
+test/api/test_repository_source_inventory.py ........................... [ 14%]
+.                                                                        [ 15%]
+test/api/test_worker_source_views.py ................................... [ 19%]
+.............................                                            [ 23%]
+test/api/test_worker_source_working_views.py ...................         [ 25%]
+test/api/test_source_view_edits.py ..................................... [ 30%]
+...................                                                      [ 32%]
+test/api/test_source_view_edit_adversarial.py ...................        [ 34%]
+test/api/test_source_view_edit_candidate.py ............................ [ 38%]
+.............                                                            [ 39%]
+test/api/test_source_view_edit_formal_refresh.py .                       [ 40%]
+test/api/test_worker_candidate_context.py .............................. [ 43%]
+............................                                             [ 47%]
+test/api/test_worker_candidate_context_admission.py ...                  [ 47%]
+test/api/test_worker_candidate_context_client.py ....................... [ 50%]
+...............................................                          [ 56%]
+test/api/test_worker_candidate_context_broker.py ......                  [ 57%]
+test/api/test_worker_source_client.py .................................. [ 61%]
+................                                                         [ 63%]
+test/api/test_worker_source_working_client.py .......................... [ 66%]
+...............................                                          [ 70%]
+test/api/test_worker_source_broker.py .......................            [ 73%]
+test/api/test_worker_source_working_broker.py .........                  [ 74%]
+benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py . [ 74%]
+...............................                                          [ 78%]
+benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py . [ 78%]
+........................................                                 [ 83%]
+benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py . [ 83%]
+........                                                                 [ 84%]
+benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py . [ 85%]
+........................................................................ [ 94%]
+.....................................                                    [ 98%]
+benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py . [ 98%]
+.........                                                                [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/junit.xml -
+============================= slowest 10 durations =============================
+8.19s call     test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[token-limit]
+7.53s setup    test/api/test_shared_source_view_policy.py::test_existing_closed_wire_rejects_shared_host_pages_instead_of_legacy_relabeling[False]
+7.42s setup    test/api/test_shared_source_view_policy.py::test_real_mapped_edit_uses_shared_recipe_preserves_protected_comment_and_refreshes[blue-green-pkg/module.py]
+7.41s setup    test/api/test_shared_source_view_policy.py::test_legacy_inventory_identity_and_worker_stub_default_are_unchanged
+7.41s setup    test/api/test_shared_source_view_policy.py::test_shared_configuration_rejects_default_equal_profile_subclass[worker]
+7.39s setup    test/api/test_shared_source_view_policy.py::test_real_mapped_edit_uses_shared_recipe_preserves_protected_comment_and_refreshes[blue-green-pkg/types.pyi]
+7.34s setup    test/api/test_shared_source_view_policy.py::test_shared_configuration_rejects_default_equal_profile_subclass[inventory]
+7.34s setup    test/api/test_shared_source_view_policy.py::test_policy_object_mutation_invalidates_all_existing_worker_custody[baseline-True]
+7.28s setup    test/api/test_shared_source_view_policy.py::test_mutated_policy_during_inventory_io_refuses_before_artifact_bytes
+7.27s setup    test/api/test_shared_source_view_policy.py::test_policy_mutation_during_mapping_refuses_before_native_application
+======================= 798 passed in 487.15s (0:08:07) ========================

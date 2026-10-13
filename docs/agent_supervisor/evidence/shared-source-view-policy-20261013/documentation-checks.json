@@ -1,0 +1,2232 @@
+{
+  "additional_docker_run": false,
+  "additional_pytest_run": false,
+  "all_103_qualified_sources_match_before_and_after_documentation": true,
+  "completed_at_utc": "2026-10-13T01:35:52.406314+00:00",
+  "completion_authority": false,
+  "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+  "document_bindings_after": [
+    {
+      "bytes": 16976,
+      "path": "docs/agent_supervisor/reversible_source_views.md",
+      "sha256": "1cd79fcd961d2ba24ca3ac63f9651579793431f743379ec5c897fa23b835a71b"
+    },
+    {
+      "bytes": 10485,
+      "path": "docs/agent_supervisor/worker_source_views.md",
+      "sha256": "b2d90095d5b64517ad39b159b952e39316208a82ee006f65d06a7b7c4ea05b8e"
+    },
+    {
+      "bytes": 50395,
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "c5c040e0f00a594ce7e756ceec0dee4c935b5ece0e92d96ee434472ac9123a71"
+    },
+    {
+      "bytes": 4991,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/README.md",
+      "sha256": "a28b9985f3bdd2ac65067186adf6ce798fc2288a8e3d3db8fe984bb8e5b49279"
+    }
+  ],
+  "document_bindings_before": [
+    {
+      "bytes": 16976,
+      "path": "docs/agent_supervisor/reversible_source_views.md",
+      "sha256": "1cd79fcd961d2ba24ca3ac63f9651579793431f743379ec5c897fa23b835a71b"
+    },
+    {
+      "bytes": 10485,
+      "path": "docs/agent_supervisor/worker_source_views.md",
+      "sha256": "b2d90095d5b64517ad39b159b952e39316208a82ee006f65d06a7b7c4ea05b8e"
+    },
+    {
+      "bytes": 50395,
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "c5c040e0f00a594ce7e756ceec0dee4c935b5ece0e92d96ee434472ac9123a71"
+    },
+    {
+      "bytes": 4991,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/README.md",
+      "sha256": "a28b9985f3bdd2ac65067186adf6ce798fc2288a8e3d3db8fe984bb8e5b49279"
+    }
+  ],
+  "documents_unchanged_during_checks": true,
+  "exact_workflow_run_blocks": 4,
+  "git_branch": "agent/shared-source-view-policy-20261013",
+  "git_head": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+  "hosted_ci_status_verified_here": false,
+  "limitations": [
+    "Four local offline workflow run blocks plus links/anchors for the three changed guides and new README.",
+    "Existing798-test qualification was inspected only; no new product, provider, model or benchmark execution.",
+    "Publication manifest is filled separately by root; this checker leaves its placeholder untouched."
+  ],
+  "log_bytes": 6661,
+  "log_path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/documentation-workflow.log",
+  "log_sha256": "62e342e9e4c8bf2997b40e0eb8dad133fc79f0fa3e4bdbcfb1244b0dbd8f3b89",
+  "manual_check_api_source": {
+    "bytes": 10445,
+    "path": "scripts/docs/check_current_docs_links.py",
+    "sha256": "596a0038b18d592f2e605643890afc85e457558f7b887932a474557d7586819e"
+  },
+  "manual_relative_link_checks": [
+    {
+      "bytes": 16976,
+      "check_anchors": true,
+      "checker_api": "check_file(path, check_anchors=True)",
+      "errors": [],
+      "external_link_count": 0,
+      "markdown_link_count": 13,
+      "path": "docs/agent_supervisor/reversible_source_views.md",
+      "relative_anchor_count": 0,
+      "relative_link_count": 13,
+      "sha256": "1cd79fcd961d2ba24ca3ac63f9651579793431f743379ec5c897fa23b835a71b",
+      "status": "pass"
+    },
+    {
+      "bytes": 10485,
+      "check_anchors": true,
+      "checker_api": "check_file(path, check_anchors=True)",
+      "errors": [],
+      "external_link_count": 0,
+      "markdown_link_count": 7,
+      "path": "docs/agent_supervisor/worker_source_views.md",
+      "relative_anchor_count": 2,
+      "relative_link_count": 7,
+      "sha256": "b2d90095d5b64517ad39b159b952e39316208a82ee006f65d06a7b7c4ea05b8e",
+      "status": "pass"
+    },
+    {
+      "bytes": 50395,
+      "check_anchors": true,
+      "checker_api": "check_file(path, check_anchors=True)",
+      "errors": [],
+      "external_link_count": 2,
+      "markdown_link_count": 39,
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "relative_anchor_count": 5,
+      "relative_link_count": 37,
+      "sha256": "c5c040e0f00a594ce7e756ceec0dee4c935b5ece0e92d96ee434472ac9123a71",
+      "status": "pass"
+    },
+    {
+      "bytes": 4991,
+      "check_anchors": true,
+      "checker_api": "check_file(path, check_anchors=True)",
+      "errors": [],
+      "external_link_count": 0,
+      "markdown_link_count": 12,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/README.md",
+      "relative_anchor_count": 2,
+      "relative_link_count": 12,
+      "sha256": "a28b9985f3bdd2ac65067186adf6ce798fc2288a8e3d3db8fe984bb8e5b49279",
+      "status": "pass"
+    }
+  ],
+  "model_calls": 0,
+  "preserved_phase_evidence_after": [
+    {
+      "bytes": 36,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/.gitattributes",
+      "sha256": "12bd40ab9c92a762f06d84f63108edc057e2cdadc7e68f321e4354e5cbbe9830"
+    },
+    {
+      "bytes": 4991,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/README.md",
+      "sha256": "a28b9985f3bdd2ac65067186adf6ce798fc2288a8e3d3db8fe984bb8e5b49279"
+    },
+    {
+      "bytes": 29125,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/independent-review.json",
+      "sha256": "b3c56ecfc1241ab85b71ab237ed5279c982dedc5066d31273a987d438bd5b74d"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/collection.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 102108,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/collection.stdout.log",
+      "sha256": "c3e0dcac7c6c3ca0a37274d3fa2f7cf8ae19c907cf18ff8ecd8dab9702cc449a"
+    },
+    {
+      "bytes": 70025,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/commands.json",
+      "sha256": "7de27fc57a1db27846527d56e622509bd0a8aec5706b39a1b9cd7a009962c28d"
+    },
+    {
+      "bytes": 134246,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/junit.xml",
+      "sha256": "240082dcbafb984065b817668b14c71782d943b0d91720b8a34f0acd19c515ce"
+    },
+    {
+      "bytes": 107817,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/nodeids.json",
+      "sha256": "7726aa47f6c08309ec7f12b3e926bbbab76c69b4488179d6675c11fe5321a1b4"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 5217,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/tests.stdout.log",
+      "sha256": "49cd2306206dfafabf3f15a9dbd92ae356d5ffa9c60bd065546504ed8646dda2"
+    },
+    {
+      "bytes": 16424,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification_runner.py",
+      "sha256": "db60582594dbd1aedfbf0173d1a97875bbbe7fdcb49cbaa18eb01dba6430bc7d"
+    }
+  ],
+  "preserved_phase_evidence_before": [
+    {
+      "bytes": 36,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/.gitattributes",
+      "sha256": "12bd40ab9c92a762f06d84f63108edc057e2cdadc7e68f321e4354e5cbbe9830"
+    },
+    {
+      "bytes": 4991,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/README.md",
+      "sha256": "a28b9985f3bdd2ac65067186adf6ce798fc2288a8e3d3db8fe984bb8e5b49279"
+    },
+    {
+      "bytes": 29125,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/independent-review.json",
+      "sha256": "b3c56ecfc1241ab85b71ab237ed5279c982dedc5066d31273a987d438bd5b74d"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/collection.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 102108,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/collection.stdout.log",
+      "sha256": "c3e0dcac7c6c3ca0a37274d3fa2f7cf8ae19c907cf18ff8ecd8dab9702cc449a"
+    },
+    {
+      "bytes": 70025,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/commands.json",
+      "sha256": "7de27fc57a1db27846527d56e622509bd0a8aec5706b39a1b9cd7a009962c28d"
+    },
+    {
+      "bytes": 134246,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/junit.xml",
+      "sha256": "240082dcbafb984065b817668b14c71782d943b0d91720b8a34f0acd19c515ce"
+    },
+    {
+      "bytes": 107817,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/nodeids.json",
+      "sha256": "7726aa47f6c08309ec7f12b3e926bbbab76c69b4488179d6675c11fe5321a1b4"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 5217,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/tests.stdout.log",
+      "sha256": "49cd2306206dfafabf3f15a9dbd92ae356d5ffa9c60bd065546504ed8646dda2"
+    },
+    {
+      "bytes": 16424,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification_runner.py",
+      "sha256": "db60582594dbd1aedfbf0173d1a97875bbbe7fdcb49cbaa18eb01dba6430bc7d"
+    }
+  ],
+  "preserved_phase_evidence_unchanged": true,
+  "product_edits": false,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "publication_manifest_placeholder_unmodified": true,
+  "python_version": "3.12.3",
+  "qualification_executed_by_documentation_checker": false,
+  "qualified_source_binding_checks_after": [
+    {
+      "actual_bytes": 8373,
+      "actual_sha256": "9ef67389a1e48727f43d266255661ca87a2ada119967e9d62591bb75ca5cdf7a",
+      "expected_bytes": 8373,
+      "expected_sha256": "9ef67389a1e48727f43d266255661ca87a2ada119967e9d62591bb75ca5cdf7a",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 35358,
+      "actual_sha256": "9afb32bd0237550567b79dc56fc2c4af7e80263a9e17f027f1b6819c95c60a0d",
+      "expected_bytes": 35358,
+      "expected_sha256": "9afb32bd0237550567b79dc56fc2c4af7e80263a9e17f027f1b6819c95c60a0d",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 41695,
+      "actual_sha256": "a9881646059882ed5d1b8cf17f77b82d0cf774e75ff5edcc454fc081cbe945b0",
+      "expected_bytes": 41695,
+      "expected_sha256": "a9881646059882ed5d1b8cf17f77b82d0cf774e75ff5edcc454fc081cbe945b0",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 40684,
+      "actual_sha256": "915854e4b1a6f07dc13aeee831fa4ea7fe987de4129bf7eb03c0351b3be72cdf",
+      "expected_bytes": 40684,
+      "expected_sha256": "915854e4b1a6f07dc13aeee831fa4ea7fe987de4129bf7eb03c0351b3be72cdf",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 27188,
+      "actual_sha256": "5bed4f8e3a95250d6f98fe3ca4192133cc0e0486396690f0726652d43d4b6829",
+      "expected_bytes": 27188,
+      "expected_sha256": "5bed4f8e3a95250d6f98fe3ca4192133cc0e0486396690f0726652d43d4b6829",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/source_view_trace_comparison.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 82189,
+      "actual_sha256": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+      "expected_bytes": 82189,
+      "expected_sha256": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13690,
+      "actual_sha256": "37b0a40c2958d864d013c11a8044f7b5ecdc79abe030c04d465aa80ea3615ff1",
+      "expected_bytes": 13690,
+      "expected_sha256": "37b0a40c2958d864d013c11a8044f7b5ecdc79abe030c04d465aa80ea3615ff1",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 19070,
+      "actual_sha256": "b22ff1ba85b618c0b763bead05d9d00221378398ec53719052935f88573e7cc9",
+      "expected_bytes": 19070,
+      "expected_sha256": "b22ff1ba85b618c0b763bead05d9d00221378398ec53719052935f88573e7cc9",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10191,
+      "actual_sha256": "202907e3ec8efbc012d8b4d76ea507aab72e2fa38b912edb6e14013ef08d7959",
+      "expected_bytes": 10191,
+      "expected_sha256": "202907e3ec8efbc012d8b4d76ea507aab72e2fa38b912edb6e14013ef08d7959",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 6181,
+      "actual_sha256": "fc239a7d07ae6d97bd9112d1a8c054f0fd90fc8760ccdf807129974f5d7fcfce",
+      "expected_bytes": 6181,
+      "expected_sha256": "fc239a7d07ae6d97bd9112d1a8c054f0fd90fc8760ccdf807129974f5d7fcfce",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 15174,
+      "actual_sha256": "f080bed25d9f8a5901f6bc22277cac8d2d3e48c5561050dd265f3c21388657dc",
+      "expected_bytes": 15174,
+      "expected_sha256": "f080bed25d9f8a5901f6bc22277cac8d2d3e48c5561050dd265f3c21388657dc",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13166,
+      "actual_sha256": "b3ca3996fa6c44d525fe65c020ddb97a778c2c3a9dd3d81c8945e2394b63dc99",
+      "expected_bytes": 13166,
+      "expected_sha256": "b3ca3996fa6c44d525fe65c020ddb97a778c2c3a9dd3d81c8945e2394b63dc99",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 1828,
+      "actual_sha256": "7276ae28bf60f5e6a248d43e3463a3099f819bdaf63f05b0b79f488ad2ae7efb",
+      "expected_bytes": 1828,
+      "expected_sha256": "7276ae28bf60f5e6a248d43e3463a3099f819bdaf63f05b0b79f488ad2ae7efb",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 7334,
+      "actual_sha256": "9a65112e741894fa5c704b054114bee90f2702d32ddc5985ba5d29dff2a5e226",
+      "expected_bytes": 7334,
+      "expected_sha256": "9a65112e741894fa5c704b054114bee90f2702d32ddc5985ba5d29dff2a5e226",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10951,
+      "actual_sha256": "ebc38bbbc6b697f9323dfe0c48123d49e850edb45adcb5b6b86dcbbb4b7860c0",
+      "expected_bytes": 10951,
+      "expected_sha256": "ebc38bbbc6b697f9323dfe0c48123d49e850edb45adcb5b6b86dcbbb4b7860c0",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 16624,
+      "actual_sha256": "a5b4b7388805d4e458fc747a0ddae838bcfe83ad7f612020de3e020be3c82a12",
+      "expected_bytes": 16624,
+      "expected_sha256": "a5b4b7388805d4e458fc747a0ddae838bcfe83ad7f612020de3e020be3c82a12",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 6658,
+      "actual_sha256": "852e190193920752eb46dae782daaae063d8f354da59abe7f997d97312a2bb02",
+      "expected_bytes": 6658,
+      "expected_sha256": "852e190193920752eb46dae782daaae063d8f354da59abe7f997d97312a2bb02",
+      "matches": true,
+      "path": "conftest.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 16424,
+      "actual_sha256": "db60582594dbd1aedfbf0173d1a97875bbbe7fdcb49cbaa18eb01dba6430bc7d",
+      "expected_bytes": 16424,
+      "expected_sha256": "db60582594dbd1aedfbf0173d1a97875bbbe7fdcb49cbaa18eb01dba6430bc7d",
+      "matches": true,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification_runner.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 40208,
+      "actual_sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03",
+      "expected_bytes": 40208,
+      "expected_sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03",
+      "matches": true,
+      "path": "ipfs_accelerate_py/__init__.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 125294,
+      "actual_sha256": "d0ea3bfd59690f3758d6458774e7c94eca2d963112ee2aeba38b047530e2713d",
+      "expected_bytes": 125294,
+      "expected_sha256": "d0ea3bfd59690f3758d6458774e7c94eca2d963112ee2aeba38b047530e2713d",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10885,
+      "actual_sha256": "72dad0c763067785d30315057ddc44f245a7be934be08ac6db96d480a0f19b83",
+      "expected_bytes": 10885,
+      "expected_sha256": "72dad0c763067785d30315057ddc44f245a7be934be08ac6db96d480a0f19b83",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_candidate_runner.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 19087,
+      "actual_sha256": "7607cfae3eaec33b3a188f26a2ba3d87fc818b22ea529ceeaa40d0048ac46882",
+      "expected_bytes": 19087,
+      "expected_sha256": "7607cfae3eaec33b3a188f26a2ba3d87fc818b22ea529ceeaa40d0048ac46882",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 18893,
+      "actual_sha256": "28cfa7637b0f94cd77dec3071600263a2289738ede4ffd696ef4e2de34ffeaf6",
+      "expected_bytes": 18893,
+      "expected_sha256": "28cfa7637b0f94cd77dec3071600263a2289738ede4ffd696ef4e2de34ffeaf6",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 17882,
+      "actual_sha256": "4abe658400ca70f8f68fdae08b5914dfeb417e0c5d120d12b9acc16b88a49a41",
+      "expected_bytes": 17882,
+      "expected_sha256": "4abe658400ca70f8f68fdae08b5914dfeb417e0c5d120d12b9acc16b88a49a41",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 18872,
+      "actual_sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+      "expected_bytes": 18872,
+      "expected_sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13539,
+      "actual_sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+      "expected_bytes": 13539,
+      "expected_sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 66396,
+      "actual_sha256": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e",
+      "expected_bytes": 66396,
+      "expected_sha256": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 7723,
+      "actual_sha256": "6737a0c21c5e29f8f1afca9b02d5f93e2f202be5a8258a4fc851c59f29dbba59",
+      "expected_bytes": 7723,
+      "expected_sha256": "6737a0c21c5e29f8f1afca9b02d5f93e2f202be5a8258a4fc851c59f29dbba59",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 46125,
+      "actual_sha256": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829",
+      "expected_bytes": 46125,
+      "expected_sha256": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 37823,
+      "actual_sha256": "f177adbddff6409960c2f5ce47b61c1f62560cbe334d61812e2ea4b221afb3d8",
+      "expected_bytes": 37823,
+      "expected_sha256": "f177adbddff6409960c2f5ce47b61c1f62560cbe334d61812e2ea4b221afb3d8",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 20874,
+      "actual_sha256": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+      "expected_bytes": 20874,
+      "expected_sha256": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10311,
+      "actual_sha256": "4995b7dc62749d23942bed99bb475c500b8ab81eb1b4e43442590e9fede4763d",
+      "expected_bytes": 10311,
+      "expected_sha256": "4995b7dc62749d23942bed99bb475c500b8ab81eb1b4e43442590e9fede4763d",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 9068,
+      "actual_sha256": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0",
+      "expected_bytes": 9068,
+      "expected_sha256": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 6817,
+      "actual_sha256": "18ac32e0246a8af5985b5b3311a37d08f09786cfd8cb25373b0b92175892b57b",
+      "expected_bytes": 6817,
+      "expected_sha256": "18ac32e0246a8af5985b5b3311a37d08f09786cfd8cb25373b0b92175892b57b",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 53490,
+      "actual_sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9",
+      "expected_bytes": 53490,
+      "expected_sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10847,
+      "actual_sha256": "43fb1fa8944993008ffd6292467ec6207c4669965ae1d0c3265c73e3c6ae5d84",
+      "expected_bytes": 10847,
+      "expected_sha256": "43fb1fa8944993008ffd6292467ec6207c4669965ae1d0c3265c73e3c6ae5d84",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_artifacts.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 12194,
+      "actual_sha256": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+      "expected_bytes": 12194,
+      "expected_sha256": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 16554,
+      "actual_sha256": "4542ebbd5914a5b7675173b784bd7b91a5dba4d25d6170547a2e2f8fb9655ee0",
+      "expected_bytes": 16554,
+      "expected_sha256": "4542ebbd5914a5b7675173b784bd7b91a5dba4d25d6170547a2e2f8fb9655ee0",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 15627,
+      "actual_sha256": "ac1da0918f2c1363b8e3541bf586d92f099e7db1b7c6b353df8ff274efff9999",
+      "expected_bytes": 15627,
+      "expected_sha256": "ac1da0918f2c1363b8e3541bf586d92f099e7db1b7c6b353df8ff274efff9999",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_selection.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 9050,
+      "actual_sha256": "faa0e1e4920c1d8cb386a3c86858befe0585f7ca44e6e09e65dd1a89c0d5ef8f",
+      "expected_bytes": 9050,
+      "expected_sha256": "faa0e1e4920c1d8cb386a3c86858befe0585f7ca44e6e09e65dd1a89c0d5ef8f",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 19774,
+      "actual_sha256": "77f483a8bbff65ced9229233293c2b557164b5745d6d34b9faf90042c4c43647",
+      "expected_bytes": 19774,
+      "expected_sha256": "77f483a8bbff65ced9229233293c2b557164b5745d6d34b9faf90042c4c43647",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 29068,
+      "actual_sha256": "bd3ee1ee56f24bb64ba7d23eb45d94130917f4fd27d2292614c478b4c01c4353",
+      "expected_bytes": 29068,
+      "expected_sha256": "bd3ee1ee56f24bb64ba7d23eb45d94130917f4fd27d2292614c478b4c01c4353",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 26476,
+      "actual_sha256": "6e035e86cb2a8697397779d3c35d4c206e55f6a464559ec49b4bb24a276d56c9",
+      "expected_bytes": 26476,
+      "expected_sha256": "6e035e86cb2a8697397779d3c35d4c206e55f6a464559ec49b4bb24a276d56c9",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 51750,
+      "actual_sha256": "d0d6a5a30900ed044d16be9f5581c0c31f325949fedf1e314e437ef6893b5db5",
+      "expected_bytes": 51750,
+      "expected_sha256": "d0d6a5a30900ed044d16be9f5581c0c31f325949fedf1e314e437ef6893b5db5",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 36860,
+      "actual_sha256": "275a9b1bb53acf802d82541024fb85f522e6d05ee07729a0e05aba2d6262f5e9",
+      "expected_bytes": 36860,
+      "expected_sha256": "275a9b1bb53acf802d82541024fb85f522e6d05ee07729a0e05aba2d6262f5e9",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/scheduling_contracts.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 7956,
+      "actual_sha256": "fc96c96b33748da3428ef13b11c0c70a0a0c771001866fb0f6f3fc1e3f5ca25d",
+      "expected_bytes": 7956,
+      "expected_sha256": "fc96c96b33748da3428ef13b11c0c70a0a0c771001866fb0f6f3fc1e3f5ca25d",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 68073,
+      "actual_sha256": "5c42865e9785b3d394cd3fd0ad2d3cdbad140f1ced6a38908a43c9efe8135f4f",
+      "expected_bytes": 68073,
+      "expected_sha256": "5c42865e9785b3d394cd3fd0ad2d3cdbad140f1ced6a38908a43c9efe8135f4f",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/worktree.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 203668,
+      "actual_sha256": "5f457e3a95329c4bcfee3b35209c566c9ae070344bc3c987cf27c4edd89a2a2c",
+      "expected_bytes": 203668,
+      "expected_sha256": "5f457e3a95329c4bcfee3b35209c566c9ae070344bc3c987cf27c4edd89a2a2c",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/validation/proposal_validation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 18519,
+      "actual_sha256": "42930334f4de159e71e6c345075a05b863fe427992bc1782f0cfbdf62b44ff9e",
+      "expected_bytes": 18519,
+      "expected_sha256": "42930334f4de159e71e6c345075a05b863fe427992bc1782f0cfbdf62b44ff9e",
+      "matches": true,
+      "path": "ipfs_accelerate_py/testing/pytest_ast_seal.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 3556,
+      "actual_sha256": "a4b1418743a539807d0c2d90fb1fa986d0811cd3d1c3ea287885f8dbf028c10a",
+      "expected_bytes": 3556,
+      "expected_sha256": "a4b1418743a539807d0c2d90fb1fa986d0811cd3d1c3ea287885f8dbf028c10a",
+      "matches": true,
+      "path": "pytest.ini",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 5648,
+      "actual_sha256": "83c546b08d8d12a685948ace9c65022579b9c41636a6a54b1f77565b917c2b43",
+      "expected_bytes": 5648,
+      "expected_sha256": "83c546b08d8d12a685948ace9c65022579b9c41636a6a54b1f77565b917c2b43",
+      "matches": true,
+      "path": "test/api/conftest.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 15352,
+      "actual_sha256": "f412fb9999eaa084e0a9b6b4f2b03d7e6acf273d0e351aed68aeaba89093500b",
+      "expected_bytes": 15352,
+      "expected_sha256": "f412fb9999eaa084e0a9b6b4f2b03d7e6acf273d0e351aed68aeaba89093500b",
+      "matches": true,
+      "path": "test/api/test_numerical_obligation_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 16073,
+      "actual_sha256": "247d2a0587b571139ef7538354b8330b8364fff9eddc1ab98af88f885cfc571a",
+      "expected_bytes": 16073,
+      "expected_sha256": "247d2a0587b571139ef7538354b8330b8364fff9eddc1ab98af88f885cfc571a",
+      "matches": true,
+      "path": "test/api/test_repository_code_view_inventory.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 21232,
+      "actual_sha256": "6ff5c4c8a0ce504d4197e3626a3b9026f655aa8f87aaf9d6ff5d1928fa0d7e3c",
+      "expected_bytes": 21232,
+      "expected_sha256": "6ff5c4c8a0ce504d4197e3626a3b9026f655aa8f87aaf9d6ff5d1928fa0d7e3c",
+      "matches": true,
+      "path": "test/api/test_repository_source_inventory.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10307,
+      "actual_sha256": "7570ccf71539743ea92d42b9af6fd6c11f31d136d99d1bcb2023bf410c0e8722",
+      "expected_bytes": 10307,
+      "expected_sha256": "7570ccf71539743ea92d42b9af6fd6c11f31d136d99d1bcb2023bf410c0e8722",
+      "matches": true,
+      "path": "test/api/test_reversible_source_view.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13673,
+      "actual_sha256": "bbc1e98dbca9c53428323c08148da41e080893c506ed33b161aaeec90d5099f0",
+      "expected_bytes": 13673,
+      "expected_sha256": "bbc1e98dbca9c53428323c08148da41e080893c506ed33b161aaeec90d5099f0",
+      "matches": true,
+      "path": "test/api/test_semantic_router_integration.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 28602,
+      "actual_sha256": "90251862dfcf8b67ab5340a562f89729762e757de6c637c21c4acac29dc2715b",
+      "expected_bytes": 28602,
+      "expected_sha256": "90251862dfcf8b67ab5340a562f89729762e757de6c637c21c4acac29dc2715b",
+      "matches": true,
+      "path": "test/api/test_semantic_router_translation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 22111,
+      "actual_sha256": "4d16fa2e649ba0d5892ff93e59ea8fb7cbeb7347dbde40274867827365d673de",
+      "expected_bytes": 22111,
+      "expected_sha256": "4d16fa2e649ba0d5892ff93e59ea8fb7cbeb7347dbde40274867827365d673de",
+      "matches": true,
+      "path": "test/api/test_shared_source_view_policy.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 8482,
+      "actual_sha256": "796b7e3efa70d06d2e72c61b4bb98b33a0125d7a3ea2a6e68dd94351d82ae5e4",
+      "expected_bytes": 8482,
+      "expected_sha256": "796b7e3efa70d06d2e72c61b4bb98b33a0125d7a3ea2a6e68dd94351d82ae5e4",
+      "matches": true,
+      "path": "test/api/test_source_view_edit_adversarial.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13265,
+      "actual_sha256": "e4aff32577eb0ab7868adf4ceffa32959d69d74c5de0eed518bf922cc5f3ac8f",
+      "expected_bytes": 13265,
+      "expected_sha256": "e4aff32577eb0ab7868adf4ceffa32959d69d74c5de0eed518bf922cc5f3ac8f",
+      "matches": true,
+      "path": "test/api/test_source_view_edit_candidate.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 1531,
+      "actual_sha256": "70fdb2ac8769836d4931d1758f6059c986dfb1476d3dbb07b89df719a13a5f77",
+      "expected_bytes": 1531,
+      "expected_sha256": "70fdb2ac8769836d4931d1758f6059c986dfb1476d3dbb07b89df719a13a5f77",
+      "matches": true,
+      "path": "test/api/test_source_view_edit_formal_refresh.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13000,
+      "actual_sha256": "f1fdfd9a59c436cbb4e30fc728ad1698200c0f61e7036ae6dec29e20e4b7ff46",
+      "expected_bytes": 13000,
+      "expected_sha256": "f1fdfd9a59c436cbb4e30fc728ad1698200c0f61e7036ae6dec29e20e4b7ff46",
+      "matches": true,
+      "path": "test/api/test_source_view_edits.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 17317,
+      "actual_sha256": "88f61d6b736fa2405f4d3edb5f2d0e5df52a475399d2b96581225023be47f292",
+      "expected_bytes": 17317,
+      "expected_sha256": "88f61d6b736fa2405f4d3edb5f2d0e5df52a475399d2b96581225023be47f292",
+      "matches": true,
+      "path": "test/api/test_worker_candidate_context.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 5255,
+      "actual_sha256": "f485409f0577b7bd20d9aa9e28585452f6132ce8b440ea9c4efb5152d77ce0b7",
+      "expected_bytes": 5255,
+      "expected_sha256": "f485409f0577b7bd20d9aa9e28585452f6132ce8b440ea9c4efb5152d77ce0b7",
+      "matches": true,
+      "path": "test/api/test_worker_candidate_context_admission.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 4560,
+      "actual_sha256": "23be2fda1d59a608c1b10f6b1ce6e477a4303e39b7e12671d123bb69b118e1f0",
+      "expected_bytes": 4560,
+      "expected_sha256": "23be2fda1d59a608c1b10f6b1ce6e477a4303e39b7e12671d123bb69b118e1f0",
+      "matches": true,
+      "path": "test/api/test_worker_candidate_context_broker.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 14179,
+      "actual_sha256": "e89f2f2679421fa1699984049c491dabe30dd15d6e182649a7cd1a2c5c32625c",
+      "expected_bytes": 14179,
+      "expected_sha256": "e89f2f2679421fa1699984049c491dabe30dd15d6e182649a7cd1a2c5c32625c",
+      "matches": true,
+      "path": "test/api/test_worker_candidate_context_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10011,
+      "actual_sha256": "49b5afcdd9cf14f1a10d8f489f14549aafed4b7d7c507bf0373c0bc554422ede",
+      "expected_bytes": 10011,
+      "expected_sha256": "49b5afcdd9cf14f1a10d8f489f14549aafed4b7d7c507bf0373c0bc554422ede",
+      "matches": true,
+      "path": "test/api/test_worker_source_broker.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10344,
+      "actual_sha256": "dbb8d58a07b8674ab5ef0b3776a127430c7a5ca35c3c573ffcd7e5d5a8751cb5",
+      "expected_bytes": 10344,
+      "expected_sha256": "dbb8d58a07b8674ab5ef0b3776a127430c7a5ca35c3c573ffcd7e5d5a8751cb5",
+      "matches": true,
+      "path": "test/api/test_worker_source_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 14823,
+      "actual_sha256": "4aaedef11cf17d43fc0e565f7f6c4a03d72e53a356854e2d2b23d63fb83a008f",
+      "expected_bytes": 14823,
+      "expected_sha256": "4aaedef11cf17d43fc0e565f7f6c4a03d72e53a356854e2d2b23d63fb83a008f",
+      "matches": true,
+      "path": "test/api/test_worker_source_views.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 7060,
+      "actual_sha256": "74c0e1aca2c5bdcaacf25a0f06524532e962c692bbef4a2196da983479cf9f9a",
+      "expected_bytes": 7060,
+      "expected_sha256": "74c0e1aca2c5bdcaacf25a0f06524532e962c692bbef4a2196da983479cf9f9a",
+      "matches": true,
+      "path": "test/api/test_worker_source_working_broker.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13554,
+      "actual_sha256": "da73fbac6f6c6efc2a67a65d5acf1486f31239d2501b7772a0d903ea9af5d4f0",
+      "expected_bytes": 13554,
+      "expected_sha256": "da73fbac6f6c6efc2a67a65d5acf1486f31239d2501b7772a0d903ea9af5d4f0",
+      "matches": true,
+      "path": "test/api/test_worker_source_working_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 11342,
+      "actual_sha256": "d1e180b0502b55c7b8064008c2d89994ef5b1de5d17e50da01ed4cc1d3667513",
+      "expected_bytes": 11342,
+      "expected_sha256": "d1e180b0502b55c7b8064008c2d89994ef5b1de5d17e50da01ed4cc1d3667513",
+      "matches": true,
+      "path": "test/api/test_worker_source_working_views.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 8178,
+      "actual_sha256": "27437a4d4ec8da69de8ccd9267ffd1dbfd025865660ac67a4016a48f653cac46",
+      "expected_bytes": 8178,
+      "expected_sha256": "27437a4d4ec8da69de8ccd9267ffd1dbfd025865660ac67a4016a48f653cac46",
+      "matches": true,
+      "path": "test/common/fixtures.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10427,
+      "actual_sha256": "9fe7f7c2b4384c376a937e7007cf1e8539ca3d979b2890d454ae22948ffd33c5",
+      "expected_bytes": 10427,
+      "expected_sha256": "9fe7f7c2b4384c376a937e7007cf1e8539ca3d979b2890d454ae22948ffd33c5",
+      "matches": true,
+      "path": "test/conftest.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 56829,
+      "actual_sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9",
+      "expected_bytes": 56829,
+      "expected_sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9",
+      "matches": true,
+      "path": "ipfs_datasets_py/__init__.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 86862,
+      "actual_sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+      "expected_bytes": 86862,
+      "expected_sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/backends/smt/compiler.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 51399,
+      "actual_sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+      "expected_bytes": 51399,
+      "expected_sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/families/registry.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 57876,
+      "actual_sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+      "expected_bytes": 57876,
+      "expected_sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 22146,
+      "actual_sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+      "expected_bytes": 22146,
+      "expected_sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 53460,
+      "actual_sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+      "expected_bytes": 53460,
+      "expected_sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/python_frontend.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 22314,
+      "actual_sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d",
+      "expected_bytes": 22314,
+      "expected_sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 14891,
+      "actual_sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15",
+      "expected_bytes": 14891,
+      "expected_sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 8128,
+      "actual_sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102",
+      "expected_bytes": 8128,
+      "expected_sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 34958,
+      "actual_sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75",
+      "expected_bytes": 34958,
+      "expected_sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 22375,
+      "actual_sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68",
+      "expected_bytes": 22375,
+      "expected_sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 30681,
+      "actual_sha256": "45a0ab3fae08e91db2971540e5d933c8e82c47e7f65b3e5ec88912dbedc67ab4",
+      "expected_bytes": 30681,
+      "expected_sha256": "45a0ab3fae08e91db2971540e5d933c8e82c47e7f65b3e5ec88912dbedc67ab4",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/pytest_analysis.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 54595,
+      "actual_sha256": "744c5d1699403239d3eb5e9588a38a38cbc0cc56799c2884d8821f1a4e1bdd76",
+      "expected_bytes": 54595,
+      "expected_sha256": "744c5d1699403239d3eb5e9588a38a38cbc0cc56799c2884d8821f1a4e1bdd76",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 32144,
+      "actual_sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+      "expected_bytes": 32144,
+      "expected_sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 48191,
+      "actual_sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+      "expected_bytes": 48191,
+      "expected_sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 18520,
+      "actual_sha256": "4e269d1e2f39ea27582e98f240996696d61b0fe0b1358e363ff2376baa7972e3",
+      "expected_bytes": 18520,
+      "expected_sha256": "4e269d1e2f39ea27582e98f240996696d61b0fe0b1358e363ff2376baa7972e3",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 43440,
+      "actual_sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51",
+      "expected_bytes": 43440,
+      "expected_sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 20976,
+      "actual_sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc",
+      "expected_bytes": 20976,
+      "expected_sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/bindings.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 31668,
+      "actual_sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d",
+      "expected_bytes": 31668,
+      "expected_sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 33366,
+      "actual_sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0",
+      "expected_bytes": 33366,
+      "expected_sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/merkle.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 102763,
+      "actual_sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586",
+      "expected_bytes": 102763,
+      "expected_sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 44955,
+      "actual_sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "expected_bytes": 44955,
+      "expected_sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 6798,
+      "actual_sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+      "expected_bytes": 6798,
+      "expected_sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 28735,
+      "actual_sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "expected_bytes": 28735,
+      "expected_sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_source.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 58065,
+      "actual_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+      "expected_bytes": 58065,
+      "expected_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/program.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 76841,
+      "actual_sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003",
+      "expected_bytes": 76841,
+      "expected_sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/source_adapters.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 47941,
+      "actual_sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+      "expected_bytes": 47941,
+      "expected_sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/syntax_bridge.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 56966,
+      "actual_sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+      "expected_bytes": 56966,
+      "expected_sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/syntax_core/ast.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 30488,
+      "actual_sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf",
+      "expected_bytes": 30488,
+      "expected_sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/syntax_core/signatures.py",
+      "repository": "datasets_execution_checkout"
+    }
+  ],
+  "qualified_source_binding_checks_before": [
+    {
+      "actual_bytes": 8373,
+      "actual_sha256": "9ef67389a1e48727f43d266255661ca87a2ada119967e9d62591bb75ca5cdf7a",
+      "expected_bytes": 8373,
+      "expected_sha256": "9ef67389a1e48727f43d266255661ca87a2ada119967e9d62591bb75ca5cdf7a",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 35358,
+      "actual_sha256": "9afb32bd0237550567b79dc56fc2c4af7e80263a9e17f027f1b6819c95c60a0d",
+      "expected_bytes": 35358,
+      "expected_sha256": "9afb32bd0237550567b79dc56fc2c4af7e80263a9e17f027f1b6819c95c60a0d",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 41695,
+      "actual_sha256": "a9881646059882ed5d1b8cf17f77b82d0cf774e75ff5edcc454fc081cbe945b0",
+      "expected_bytes": 41695,
+      "expected_sha256": "a9881646059882ed5d1b8cf17f77b82d0cf774e75ff5edcc454fc081cbe945b0",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 40684,
+      "actual_sha256": "915854e4b1a6f07dc13aeee831fa4ea7fe987de4129bf7eb03c0351b3be72cdf",
+      "expected_bytes": 40684,
+      "expected_sha256": "915854e4b1a6f07dc13aeee831fa4ea7fe987de4129bf7eb03c0351b3be72cdf",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 27188,
+      "actual_sha256": "5bed4f8e3a95250d6f98fe3ca4192133cc0e0486396690f0726652d43d4b6829",
+      "expected_bytes": 27188,
+      "expected_sha256": "5bed4f8e3a95250d6f98fe3ca4192133cc0e0486396690f0726652d43d4b6829",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/source_view_trace_comparison.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 82189,
+      "actual_sha256": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+      "expected_bytes": 82189,
+      "expected_sha256": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13690,
+      "actual_sha256": "37b0a40c2958d864d013c11a8044f7b5ecdc79abe030c04d465aa80ea3615ff1",
+      "expected_bytes": 13690,
+      "expected_sha256": "37b0a40c2958d864d013c11a8044f7b5ecdc79abe030c04d465aa80ea3615ff1",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 19070,
+      "actual_sha256": "b22ff1ba85b618c0b763bead05d9d00221378398ec53719052935f88573e7cc9",
+      "expected_bytes": 19070,
+      "expected_sha256": "b22ff1ba85b618c0b763bead05d9d00221378398ec53719052935f88573e7cc9",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10191,
+      "actual_sha256": "202907e3ec8efbc012d8b4d76ea507aab72e2fa38b912edb6e14013ef08d7959",
+      "expected_bytes": 10191,
+      "expected_sha256": "202907e3ec8efbc012d8b4d76ea507aab72e2fa38b912edb6e14013ef08d7959",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 6181,
+      "actual_sha256": "fc239a7d07ae6d97bd9112d1a8c054f0fd90fc8760ccdf807129974f5d7fcfce",
+      "expected_bytes": 6181,
+      "expected_sha256": "fc239a7d07ae6d97bd9112d1a8c054f0fd90fc8760ccdf807129974f5d7fcfce",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 15174,
+      "actual_sha256": "f080bed25d9f8a5901f6bc22277cac8d2d3e48c5561050dd265f3c21388657dc",
+      "expected_bytes": 15174,
+      "expected_sha256": "f080bed25d9f8a5901f6bc22277cac8d2d3e48c5561050dd265f3c21388657dc",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13166,
+      "actual_sha256": "b3ca3996fa6c44d525fe65c020ddb97a778c2c3a9dd3d81c8945e2394b63dc99",
+      "expected_bytes": 13166,
+      "expected_sha256": "b3ca3996fa6c44d525fe65c020ddb97a778c2c3a9dd3d81c8945e2394b63dc99",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 1828,
+      "actual_sha256": "7276ae28bf60f5e6a248d43e3463a3099f819bdaf63f05b0b79f488ad2ae7efb",
+      "expected_bytes": 1828,
+      "expected_sha256": "7276ae28bf60f5e6a248d43e3463a3099f819bdaf63f05b0b79f488ad2ae7efb",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 7334,
+      "actual_sha256": "9a65112e741894fa5c704b054114bee90f2702d32ddc5985ba5d29dff2a5e226",
+      "expected_bytes": 7334,
+      "expected_sha256": "9a65112e741894fa5c704b054114bee90f2702d32ddc5985ba5d29dff2a5e226",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10951,
+      "actual_sha256": "ebc38bbbc6b697f9323dfe0c48123d49e850edb45adcb5b6b86dcbbb4b7860c0",
+      "expected_bytes": 10951,
+      "expected_sha256": "ebc38bbbc6b697f9323dfe0c48123d49e850edb45adcb5b6b86dcbbb4b7860c0",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 16624,
+      "actual_sha256": "a5b4b7388805d4e458fc747a0ddae838bcfe83ad7f612020de3e020be3c82a12",
+      "expected_bytes": 16624,
+      "expected_sha256": "a5b4b7388805d4e458fc747a0ddae838bcfe83ad7f612020de3e020be3c82a12",
+      "matches": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 6658,
+      "actual_sha256": "852e190193920752eb46dae782daaae063d8f354da59abe7f997d97312a2bb02",
+      "expected_bytes": 6658,
+      "expected_sha256": "852e190193920752eb46dae782daaae063d8f354da59abe7f997d97312a2bb02",
+      "matches": true,
+      "path": "conftest.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 16424,
+      "actual_sha256": "db60582594dbd1aedfbf0173d1a97875bbbe7fdcb49cbaa18eb01dba6430bc7d",
+      "expected_bytes": 16424,
+      "expected_sha256": "db60582594dbd1aedfbf0173d1a97875bbbe7fdcb49cbaa18eb01dba6430bc7d",
+      "matches": true,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification_runner.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 40208,
+      "actual_sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03",
+      "expected_bytes": 40208,
+      "expected_sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03",
+      "matches": true,
+      "path": "ipfs_accelerate_py/__init__.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 125294,
+      "actual_sha256": "d0ea3bfd59690f3758d6458774e7c94eca2d963112ee2aeba38b047530e2713d",
+      "expected_bytes": 125294,
+      "expected_sha256": "d0ea3bfd59690f3758d6458774e7c94eca2d963112ee2aeba38b047530e2713d",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10885,
+      "actual_sha256": "72dad0c763067785d30315057ddc44f245a7be934be08ac6db96d480a0f19b83",
+      "expected_bytes": 10885,
+      "expected_sha256": "72dad0c763067785d30315057ddc44f245a7be934be08ac6db96d480a0f19b83",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_candidate_runner.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 19087,
+      "actual_sha256": "7607cfae3eaec33b3a188f26a2ba3d87fc818b22ea529ceeaa40d0048ac46882",
+      "expected_bytes": 19087,
+      "expected_sha256": "7607cfae3eaec33b3a188f26a2ba3d87fc818b22ea529ceeaa40d0048ac46882",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 18893,
+      "actual_sha256": "28cfa7637b0f94cd77dec3071600263a2289738ede4ffd696ef4e2de34ffeaf6",
+      "expected_bytes": 18893,
+      "expected_sha256": "28cfa7637b0f94cd77dec3071600263a2289738ede4ffd696ef4e2de34ffeaf6",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 17882,
+      "actual_sha256": "4abe658400ca70f8f68fdae08b5914dfeb417e0c5d120d12b9acc16b88a49a41",
+      "expected_bytes": 17882,
+      "expected_sha256": "4abe658400ca70f8f68fdae08b5914dfeb417e0c5d120d12b9acc16b88a49a41",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 18872,
+      "actual_sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+      "expected_bytes": 18872,
+      "expected_sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13539,
+      "actual_sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+      "expected_bytes": 13539,
+      "expected_sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 66396,
+      "actual_sha256": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e",
+      "expected_bytes": 66396,
+      "expected_sha256": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 7723,
+      "actual_sha256": "6737a0c21c5e29f8f1afca9b02d5f93e2f202be5a8258a4fc851c59f29dbba59",
+      "expected_bytes": 7723,
+      "expected_sha256": "6737a0c21c5e29f8f1afca9b02d5f93e2f202be5a8258a4fc851c59f29dbba59",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 46125,
+      "actual_sha256": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829",
+      "expected_bytes": 46125,
+      "expected_sha256": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 37823,
+      "actual_sha256": "f177adbddff6409960c2f5ce47b61c1f62560cbe334d61812e2ea4b221afb3d8",
+      "expected_bytes": 37823,
+      "expected_sha256": "f177adbddff6409960c2f5ce47b61c1f62560cbe334d61812e2ea4b221afb3d8",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 20874,
+      "actual_sha256": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+      "expected_bytes": 20874,
+      "expected_sha256": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10311,
+      "actual_sha256": "4995b7dc62749d23942bed99bb475c500b8ab81eb1b4e43442590e9fede4763d",
+      "expected_bytes": 10311,
+      "expected_sha256": "4995b7dc62749d23942bed99bb475c500b8ab81eb1b4e43442590e9fede4763d",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 9068,
+      "actual_sha256": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0",
+      "expected_bytes": 9068,
+      "expected_sha256": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 6817,
+      "actual_sha256": "18ac32e0246a8af5985b5b3311a37d08f09786cfd8cb25373b0b92175892b57b",
+      "expected_bytes": 6817,
+      "expected_sha256": "18ac32e0246a8af5985b5b3311a37d08f09786cfd8cb25373b0b92175892b57b",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 53490,
+      "actual_sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9",
+      "expected_bytes": 53490,
+      "expected_sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10847,
+      "actual_sha256": "43fb1fa8944993008ffd6292467ec6207c4669965ae1d0c3265c73e3c6ae5d84",
+      "expected_bytes": 10847,
+      "expected_sha256": "43fb1fa8944993008ffd6292467ec6207c4669965ae1d0c3265c73e3c6ae5d84",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_artifacts.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 12194,
+      "actual_sha256": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+      "expected_bytes": 12194,
+      "expected_sha256": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 16554,
+      "actual_sha256": "4542ebbd5914a5b7675173b784bd7b91a5dba4d25d6170547a2e2f8fb9655ee0",
+      "expected_bytes": 16554,
+      "expected_sha256": "4542ebbd5914a5b7675173b784bd7b91a5dba4d25d6170547a2e2f8fb9655ee0",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 15627,
+      "actual_sha256": "ac1da0918f2c1363b8e3541bf586d92f099e7db1b7c6b353df8ff274efff9999",
+      "expected_bytes": 15627,
+      "expected_sha256": "ac1da0918f2c1363b8e3541bf586d92f099e7db1b7c6b353df8ff274efff9999",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_selection.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 9050,
+      "actual_sha256": "faa0e1e4920c1d8cb386a3c86858befe0585f7ca44e6e09e65dd1a89c0d5ef8f",
+      "expected_bytes": 9050,
+      "expected_sha256": "faa0e1e4920c1d8cb386a3c86858befe0585f7ca44e6e09e65dd1a89c0d5ef8f",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 19774,
+      "actual_sha256": "77f483a8bbff65ced9229233293c2b557164b5745d6d34b9faf90042c4c43647",
+      "expected_bytes": 19774,
+      "expected_sha256": "77f483a8bbff65ced9229233293c2b557164b5745d6d34b9faf90042c4c43647",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 29068,
+      "actual_sha256": "bd3ee1ee56f24bb64ba7d23eb45d94130917f4fd27d2292614c478b4c01c4353",
+      "expected_bytes": 29068,
+      "expected_sha256": "bd3ee1ee56f24bb64ba7d23eb45d94130917f4fd27d2292614c478b4c01c4353",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 26476,
+      "actual_sha256": "6e035e86cb2a8697397779d3c35d4c206e55f6a464559ec49b4bb24a276d56c9",
+      "expected_bytes": 26476,
+      "expected_sha256": "6e035e86cb2a8697397779d3c35d4c206e55f6a464559ec49b4bb24a276d56c9",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 51750,
+      "actual_sha256": "d0d6a5a30900ed044d16be9f5581c0c31f325949fedf1e314e437ef6893b5db5",
+      "expected_bytes": 51750,
+      "expected_sha256": "d0d6a5a30900ed044d16be9f5581c0c31f325949fedf1e314e437ef6893b5db5",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 36860,
+      "actual_sha256": "275a9b1bb53acf802d82541024fb85f522e6d05ee07729a0e05aba2d6262f5e9",
+      "expected_bytes": 36860,
+      "expected_sha256": "275a9b1bb53acf802d82541024fb85f522e6d05ee07729a0e05aba2d6262f5e9",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/scheduling_contracts.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 7956,
+      "actual_sha256": "fc96c96b33748da3428ef13b11c0c70a0a0c771001866fb0f6f3fc1e3f5ca25d",
+      "expected_bytes": 7956,
+      "expected_sha256": "fc96c96b33748da3428ef13b11c0c70a0a0c771001866fb0f6f3fc1e3f5ca25d",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 68073,
+      "actual_sha256": "5c42865e9785b3d394cd3fd0ad2d3cdbad140f1ced6a38908a43c9efe8135f4f",
+      "expected_bytes": 68073,
+      "expected_sha256": "5c42865e9785b3d394cd3fd0ad2d3cdbad140f1ced6a38908a43c9efe8135f4f",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/worktree.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 203668,
+      "actual_sha256": "5f457e3a95329c4bcfee3b35209c566c9ae070344bc3c987cf27c4edd89a2a2c",
+      "expected_bytes": 203668,
+      "expected_sha256": "5f457e3a95329c4bcfee3b35209c566c9ae070344bc3c987cf27c4edd89a2a2c",
+      "matches": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/validation/proposal_validation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 18519,
+      "actual_sha256": "42930334f4de159e71e6c345075a05b863fe427992bc1782f0cfbdf62b44ff9e",
+      "expected_bytes": 18519,
+      "expected_sha256": "42930334f4de159e71e6c345075a05b863fe427992bc1782f0cfbdf62b44ff9e",
+      "matches": true,
+      "path": "ipfs_accelerate_py/testing/pytest_ast_seal.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 3556,
+      "actual_sha256": "a4b1418743a539807d0c2d90fb1fa986d0811cd3d1c3ea287885f8dbf028c10a",
+      "expected_bytes": 3556,
+      "expected_sha256": "a4b1418743a539807d0c2d90fb1fa986d0811cd3d1c3ea287885f8dbf028c10a",
+      "matches": true,
+      "path": "pytest.ini",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 5648,
+      "actual_sha256": "83c546b08d8d12a685948ace9c65022579b9c41636a6a54b1f77565b917c2b43",
+      "expected_bytes": 5648,
+      "expected_sha256": "83c546b08d8d12a685948ace9c65022579b9c41636a6a54b1f77565b917c2b43",
+      "matches": true,
+      "path": "test/api/conftest.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 15352,
+      "actual_sha256": "f412fb9999eaa084e0a9b6b4f2b03d7e6acf273d0e351aed68aeaba89093500b",
+      "expected_bytes": 15352,
+      "expected_sha256": "f412fb9999eaa084e0a9b6b4f2b03d7e6acf273d0e351aed68aeaba89093500b",
+      "matches": true,
+      "path": "test/api/test_numerical_obligation_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 16073,
+      "actual_sha256": "247d2a0587b571139ef7538354b8330b8364fff9eddc1ab98af88f885cfc571a",
+      "expected_bytes": 16073,
+      "expected_sha256": "247d2a0587b571139ef7538354b8330b8364fff9eddc1ab98af88f885cfc571a",
+      "matches": true,
+      "path": "test/api/test_repository_code_view_inventory.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 21232,
+      "actual_sha256": "6ff5c4c8a0ce504d4197e3626a3b9026f655aa8f87aaf9d6ff5d1928fa0d7e3c",
+      "expected_bytes": 21232,
+      "expected_sha256": "6ff5c4c8a0ce504d4197e3626a3b9026f655aa8f87aaf9d6ff5d1928fa0d7e3c",
+      "matches": true,
+      "path": "test/api/test_repository_source_inventory.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10307,
+      "actual_sha256": "7570ccf71539743ea92d42b9af6fd6c11f31d136d99d1bcb2023bf410c0e8722",
+      "expected_bytes": 10307,
+      "expected_sha256": "7570ccf71539743ea92d42b9af6fd6c11f31d136d99d1bcb2023bf410c0e8722",
+      "matches": true,
+      "path": "test/api/test_reversible_source_view.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13673,
+      "actual_sha256": "bbc1e98dbca9c53428323c08148da41e080893c506ed33b161aaeec90d5099f0",
+      "expected_bytes": 13673,
+      "expected_sha256": "bbc1e98dbca9c53428323c08148da41e080893c506ed33b161aaeec90d5099f0",
+      "matches": true,
+      "path": "test/api/test_semantic_router_integration.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 28602,
+      "actual_sha256": "90251862dfcf8b67ab5340a562f89729762e757de6c637c21c4acac29dc2715b",
+      "expected_bytes": 28602,
+      "expected_sha256": "90251862dfcf8b67ab5340a562f89729762e757de6c637c21c4acac29dc2715b",
+      "matches": true,
+      "path": "test/api/test_semantic_router_translation.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 22111,
+      "actual_sha256": "4d16fa2e649ba0d5892ff93e59ea8fb7cbeb7347dbde40274867827365d673de",
+      "expected_bytes": 22111,
+      "expected_sha256": "4d16fa2e649ba0d5892ff93e59ea8fb7cbeb7347dbde40274867827365d673de",
+      "matches": true,
+      "path": "test/api/test_shared_source_view_policy.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 8482,
+      "actual_sha256": "796b7e3efa70d06d2e72c61b4bb98b33a0125d7a3ea2a6e68dd94351d82ae5e4",
+      "expected_bytes": 8482,
+      "expected_sha256": "796b7e3efa70d06d2e72c61b4bb98b33a0125d7a3ea2a6e68dd94351d82ae5e4",
+      "matches": true,
+      "path": "test/api/test_source_view_edit_adversarial.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13265,
+      "actual_sha256": "e4aff32577eb0ab7868adf4ceffa32959d69d74c5de0eed518bf922cc5f3ac8f",
+      "expected_bytes": 13265,
+      "expected_sha256": "e4aff32577eb0ab7868adf4ceffa32959d69d74c5de0eed518bf922cc5f3ac8f",
+      "matches": true,
+      "path": "test/api/test_source_view_edit_candidate.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 1531,
+      "actual_sha256": "70fdb2ac8769836d4931d1758f6059c986dfb1476d3dbb07b89df719a13a5f77",
+      "expected_bytes": 1531,
+      "expected_sha256": "70fdb2ac8769836d4931d1758f6059c986dfb1476d3dbb07b89df719a13a5f77",
+      "matches": true,
+      "path": "test/api/test_source_view_edit_formal_refresh.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13000,
+      "actual_sha256": "f1fdfd9a59c436cbb4e30fc728ad1698200c0f61e7036ae6dec29e20e4b7ff46",
+      "expected_bytes": 13000,
+      "expected_sha256": "f1fdfd9a59c436cbb4e30fc728ad1698200c0f61e7036ae6dec29e20e4b7ff46",
+      "matches": true,
+      "path": "test/api/test_source_view_edits.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 17317,
+      "actual_sha256": "88f61d6b736fa2405f4d3edb5f2d0e5df52a475399d2b96581225023be47f292",
+      "expected_bytes": 17317,
+      "expected_sha256": "88f61d6b736fa2405f4d3edb5f2d0e5df52a475399d2b96581225023be47f292",
+      "matches": true,
+      "path": "test/api/test_worker_candidate_context.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 5255,
+      "actual_sha256": "f485409f0577b7bd20d9aa9e28585452f6132ce8b440ea9c4efb5152d77ce0b7",
+      "expected_bytes": 5255,
+      "expected_sha256": "f485409f0577b7bd20d9aa9e28585452f6132ce8b440ea9c4efb5152d77ce0b7",
+      "matches": true,
+      "path": "test/api/test_worker_candidate_context_admission.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 4560,
+      "actual_sha256": "23be2fda1d59a608c1b10f6b1ce6e477a4303e39b7e12671d123bb69b118e1f0",
+      "expected_bytes": 4560,
+      "expected_sha256": "23be2fda1d59a608c1b10f6b1ce6e477a4303e39b7e12671d123bb69b118e1f0",
+      "matches": true,
+      "path": "test/api/test_worker_candidate_context_broker.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 14179,
+      "actual_sha256": "e89f2f2679421fa1699984049c491dabe30dd15d6e182649a7cd1a2c5c32625c",
+      "expected_bytes": 14179,
+      "expected_sha256": "e89f2f2679421fa1699984049c491dabe30dd15d6e182649a7cd1a2c5c32625c",
+      "matches": true,
+      "path": "test/api/test_worker_candidate_context_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10011,
+      "actual_sha256": "49b5afcdd9cf14f1a10d8f489f14549aafed4b7d7c507bf0373c0bc554422ede",
+      "expected_bytes": 10011,
+      "expected_sha256": "49b5afcdd9cf14f1a10d8f489f14549aafed4b7d7c507bf0373c0bc554422ede",
+      "matches": true,
+      "path": "test/api/test_worker_source_broker.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10344,
+      "actual_sha256": "dbb8d58a07b8674ab5ef0b3776a127430c7a5ca35c3c573ffcd7e5d5a8751cb5",
+      "expected_bytes": 10344,
+      "expected_sha256": "dbb8d58a07b8674ab5ef0b3776a127430c7a5ca35c3c573ffcd7e5d5a8751cb5",
+      "matches": true,
+      "path": "test/api/test_worker_source_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 14823,
+      "actual_sha256": "4aaedef11cf17d43fc0e565f7f6c4a03d72e53a356854e2d2b23d63fb83a008f",
+      "expected_bytes": 14823,
+      "expected_sha256": "4aaedef11cf17d43fc0e565f7f6c4a03d72e53a356854e2d2b23d63fb83a008f",
+      "matches": true,
+      "path": "test/api/test_worker_source_views.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 7060,
+      "actual_sha256": "74c0e1aca2c5bdcaacf25a0f06524532e962c692bbef4a2196da983479cf9f9a",
+      "expected_bytes": 7060,
+      "expected_sha256": "74c0e1aca2c5bdcaacf25a0f06524532e962c692bbef4a2196da983479cf9f9a",
+      "matches": true,
+      "path": "test/api/test_worker_source_working_broker.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 13554,
+      "actual_sha256": "da73fbac6f6c6efc2a67a65d5acf1486f31239d2501b7772a0d903ea9af5d4f0",
+      "expected_bytes": 13554,
+      "expected_sha256": "da73fbac6f6c6efc2a67a65d5acf1486f31239d2501b7772a0d903ea9af5d4f0",
+      "matches": true,
+      "path": "test/api/test_worker_source_working_client.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 11342,
+      "actual_sha256": "d1e180b0502b55c7b8064008c2d89994ef5b1de5d17e50da01ed4cc1d3667513",
+      "expected_bytes": 11342,
+      "expected_sha256": "d1e180b0502b55c7b8064008c2d89994ef5b1de5d17e50da01ed4cc1d3667513",
+      "matches": true,
+      "path": "test/api/test_worker_source_working_views.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 8178,
+      "actual_sha256": "27437a4d4ec8da69de8ccd9267ffd1dbfd025865660ac67a4016a48f653cac46",
+      "expected_bytes": 8178,
+      "expected_sha256": "27437a4d4ec8da69de8ccd9267ffd1dbfd025865660ac67a4016a48f653cac46",
+      "matches": true,
+      "path": "test/common/fixtures.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 10427,
+      "actual_sha256": "9fe7f7c2b4384c376a937e7007cf1e8539ca3d979b2890d454ae22948ffd33c5",
+      "expected_bytes": 10427,
+      "expected_sha256": "9fe7f7c2b4384c376a937e7007cf1e8539ca3d979b2890d454ae22948ffd33c5",
+      "matches": true,
+      "path": "test/conftest.py",
+      "repository": "accelerator"
+    },
+    {
+      "actual_bytes": 56829,
+      "actual_sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9",
+      "expected_bytes": 56829,
+      "expected_sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9",
+      "matches": true,
+      "path": "ipfs_datasets_py/__init__.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 86862,
+      "actual_sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+      "expected_bytes": 86862,
+      "expected_sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/backends/smt/compiler.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 51399,
+      "actual_sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+      "expected_bytes": 51399,
+      "expected_sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/families/registry.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 57876,
+      "actual_sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+      "expected_bytes": 57876,
+      "expected_sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 22146,
+      "actual_sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+      "expected_bytes": 22146,
+      "expected_sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 53460,
+      "actual_sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+      "expected_bytes": 53460,
+      "expected_sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/python_frontend.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 22314,
+      "actual_sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d",
+      "expected_bytes": 22314,
+      "expected_sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 14891,
+      "actual_sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15",
+      "expected_bytes": 14891,
+      "expected_sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 8128,
+      "actual_sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102",
+      "expected_bytes": 8128,
+      "expected_sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 34958,
+      "actual_sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75",
+      "expected_bytes": 34958,
+      "expected_sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 22375,
+      "actual_sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68",
+      "expected_bytes": 22375,
+      "expected_sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 30681,
+      "actual_sha256": "45a0ab3fae08e91db2971540e5d933c8e82c47e7f65b3e5ec88912dbedc67ab4",
+      "expected_bytes": 30681,
+      "expected_sha256": "45a0ab3fae08e91db2971540e5d933c8e82c47e7f65b3e5ec88912dbedc67ab4",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/pytest_analysis.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 54595,
+      "actual_sha256": "744c5d1699403239d3eb5e9588a38a38cbc0cc56799c2884d8821f1a4e1bdd76",
+      "expected_bytes": 54595,
+      "expected_sha256": "744c5d1699403239d3eb5e9588a38a38cbc0cc56799c2884d8821f1a4e1bdd76",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 32144,
+      "actual_sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+      "expected_bytes": 32144,
+      "expected_sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 48191,
+      "actual_sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+      "expected_bytes": 48191,
+      "expected_sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 18520,
+      "actual_sha256": "4e269d1e2f39ea27582e98f240996696d61b0fe0b1358e363ff2376baa7972e3",
+      "expected_bytes": 18520,
+      "expected_sha256": "4e269d1e2f39ea27582e98f240996696d61b0fe0b1358e363ff2376baa7972e3",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 43440,
+      "actual_sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51",
+      "expected_bytes": 43440,
+      "expected_sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 20976,
+      "actual_sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc",
+      "expected_bytes": 20976,
+      "expected_sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/bindings.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 31668,
+      "actual_sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d",
+      "expected_bytes": 31668,
+      "expected_sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 33366,
+      "actual_sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0",
+      "expected_bytes": 33366,
+      "expected_sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/merkle.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 102763,
+      "actual_sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586",
+      "expected_bytes": 102763,
+      "expected_sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 44955,
+      "actual_sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "expected_bytes": 44955,
+      "expected_sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 6798,
+      "actual_sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+      "expected_bytes": 6798,
+      "expected_sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 28735,
+      "actual_sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "expected_bytes": 28735,
+      "expected_sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_source.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 58065,
+      "actual_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+      "expected_bytes": 58065,
+      "expected_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/program.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 76841,
+      "actual_sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003",
+      "expected_bytes": 76841,
+      "expected_sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/source_adapters.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 47941,
+      "actual_sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+      "expected_bytes": 47941,
+      "expected_sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/software_verification/syntax_bridge.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 56966,
+      "actual_sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+      "expected_bytes": 56966,
+      "expected_sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/syntax_core/ast.py",
+      "repository": "datasets_execution_checkout"
+    },
+    {
+      "actual_bytes": 30488,
+      "actual_sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf",
+      "expected_bytes": 30488,
+      "expected_sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf",
+      "matches": true,
+      "path": "ipfs_datasets_py/logic/syntax_core/signatures.py",
+      "repository": "datasets_execution_checkout"
+    }
+  ],
+  "qualified_source_bindings_count": 103,
+  "retained_existing_case_count": 746,
+  "retained_junit_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 798
+  },
+  "retained_new_policy_case_count": 52,
+  "retained_nodeid_count": 798,
+  "retained_qualification_command_binding": {
+    "bytes": 70025,
+    "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/commands.json",
+    "sha256": "7de27fc57a1db27846527d56e622509bd0a8aec5706b39a1b9cd7a009962c28d"
+  },
+  "runtime_database_files_in_public_evidence": [],
+  "schema": "shared-source-view-policy-documentation-checks@1",
+  "self_output_targets_exist_before_manual_link_check": true,
+  "solver_run": false,
+  "started_at_utc": "2026-10-13T01:35:52.207323+00:00",
+  "status": "pass",
+  "steps": [
+    {
+      "argv": [
+        "bash",
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        "-c",
+        "python scripts/docs/check_agent_supervisor_docs.py\n"
+      ],
+      "completed_at_utc": "2026-10-13T01:35:52.241461+00:00",
+      "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+      "exit_code": 0,
+      "name": "Supervisor primary-doc vocabulary",
+      "script": "python scripts/docs/check_agent_supervisor_docs.py\n",
+      "started_at_utc": "2026-10-13T01:35:52.207393+00:00",
+      "stderr": "",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n",
+      "stdout_bytes": 70,
+      "stdout_sha256": "8be454e062447d45dad3557d627eb43375fc1e49d4177aa71cb29bb0402e6555",
+      "workflow_run_line": 39
+    },
+    {
+      "argv": [
+        "bash",
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        "-c",
+        "python scripts/docs/check_current_docs_links.py\n"
+      ],
+      "completed_at_utc": "2026-10-13T01:35:52.351915+00:00",
+      "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+      "exit_code": 0,
+      "name": "Maintained-surface relative links",
+      "script": "python scripts/docs/check_current_docs_links.py\n",
+      "started_at_utc": "2026-10-13T01:35:52.241544+00:00",
+      "stderr": "",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n",
+      "stdout_bytes": 88,
+      "stdout_sha256": "3813659ed5f44a1eb37d0667dfac72ae79955e80939583586d37f18f2dfb8b7a",
+      "workflow_run_line": 42
+    },
+    {
+      "argv": [
+        "bash",
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        "-c",
+        "python - <<'PY'\nfrom __future__ import annotations\n\nimport re\nimport sys\nfrom pathlib import Path\n\nroot = Path(\".\")\n\n\ndef need(path: Path, pattern: str, label: str) -> str:\n    text = path.read_text(encoding=\"utf-8\")\n    match = re.search(pattern, text, flags=re.M)\n    if not match:\n        print(f\"FAIL: {label} not found in {path}\", file=sys.stderr)\n        raise SystemExit(1)\n    return match.group(1)\n\n\npyproject = need(\n    root / \"pyproject.toml\",\n    r'^version\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"pyproject version\",\n)\nsetup = need(\n    root / \"setup.py\",\n    r'^\\s*version\\s*=\\s*\"([^\"]+)\"\\s*,?\\s*$',\n    \"setup.py version\",\n)\npackaging = need(\n    root / \"ipfs_accelerate_py\" / \"__init__.py\",\n    r'^_PACKAGING_VERSION\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"_PACKAGING_VERSION\",\n)\ninit_text = (root / \"ipfs_accelerate_py\" / \"__init__.py\").read_text(\n    encoding=\"utf-8\"\n)\nif not re.search(\n    r'^__version__\\s*=\\s*_PACKAGING_VERSION\\s*$',\n    init_text,\n    flags=re.M,\n):\n    print(\n        \"FAIL: __version__ must be assigned from _PACKAGING_VERSION\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nif not (pyproject == setup == packaging):\n    print(\n        \"FAIL: version pins disagree: \"\n        f\"pyproject={pyproject!r} setup={setup!r} \"\n        f\"_PACKAGING_VERSION={packaging!r}\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nprint(f\"OK: packaging pins aligned at {pyproject}\")\nPY\n\n"
+      ],
+      "completed_at_utc": "2026-10-13T01:35:52.385495+00:00",
+      "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+      "exit_code": 0,
+      "name": "Packaging version pin alignment",
+      "script": "python - <<'PY'\nfrom __future__ import annotations\n\nimport re\nimport sys\nfrom pathlib import Path\n\nroot = Path(\".\")\n\n\ndef need(path: Path, pattern: str, label: str) -> str:\n    text = path.read_text(encoding=\"utf-8\")\n    match = re.search(pattern, text, flags=re.M)\n    if not match:\n        print(f\"FAIL: {label} not found in {path}\", file=sys.stderr)\n        raise SystemExit(1)\n    return match.group(1)\n\n\npyproject = need(\n    root / \"pyproject.toml\",\n    r'^version\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"pyproject version\",\n)\nsetup = need(\n    root / \"setup.py\",\n    r'^\\s*version\\s*=\\s*\"([^\"]+)\"\\s*,?\\s*$',\n    \"setup.py version\",\n)\npackaging = need(\n    root / \"ipfs_accelerate_py\" / \"__init__.py\",\n    r'^_PACKAGING_VERSION\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"_PACKAGING_VERSION\",\n)\ninit_text = (root / \"ipfs_accelerate_py\" / \"__init__.py\").read_text(\n    encoding=\"utf-8\"\n)\nif not re.search(\n    r'^__version__\\s*=\\s*_PACKAGING_VERSION\\s*$',\n    init_text,\n    flags=re.M,\n):\n    print(\n        \"FAIL: __version__ must be assigned from _PACKAGING_VERSION\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nif not (pyproject == setup == packaging):\n    print(\n        \"FAIL: version pins disagree: \"\n        f\"pyproject={pyproject!r} setup={setup!r} \"\n        f\"_PACKAGING_VERSION={packaging!r}\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nprint(f\"OK: packaging pins aligned at {pyproject}\")\nPY\n\n",
+      "started_at_utc": "2026-10-13T01:35:52.351975+00:00",
+      "stderr": "",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "OK: packaging pins aligned at 0.0.45\n",
+      "stdout_bytes": 37,
+      "stdout_sha256": "f0dc43d8c650aebdd4176518bdcb44cc085a655144d0b6f629e2f707dc79b780",
+      "workflow_run_line": 45
+    },
+    {
+      "argv": [
+        "bash",
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        "-c",
+        "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"\n"
+      ],
+      "completed_at_utc": "2026-10-13T01:35:52.389875+00:00",
+      "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+      "exit_code": 0,
+      "name": "Closeout navigation markers",
+      "script": "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"\n",
+      "started_at_utc": "2026-10-13T01:35:52.385534+00:00",
+      "stderr": "",
+      "stderr_bytes": 0,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "OK: closeout navigation markers present\n",
+      "stdout_bytes": 40,
+      "stdout_sha256": "4cf9ea0515604a43f0a1abc22e4a57b7876794fc938373536054115a3b098b1b",
+      "workflow_run_line": 105
+    }
+  ],
+  "token_savings_measured": false,
+  "training_run": false,
+  "workflow_path": ".github/workflows/documentation-gates.yml",
+  "workflow_sha256": "0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763",
+  "workflow_unchanged": true
+}

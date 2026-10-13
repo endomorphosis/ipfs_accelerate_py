@@ -99,6 +99,24 @@ advisory capsules and pending formulas for an explicitly pinned working
 generation. Its artifact bytes are accounted separately from source slices;
 accepted indexes and proof receipts retain their own publication lifecycle.
 
+## Explicit shared policy in host APIs
+
+`WorkerSourceViews(..., view_policy=policy)` accepts the immutable
+[`SourceViewPolicy`](reversible_source_views.md#share-an-explicit-policy-across-owner-apis)
+used by repository inventories. It handles admitted regular `.py` and `.pyi`
+files with caller-protected lines, binds resolver/codec/configuration identity
+into admission, and carries that policy through working generations and mapped
+edits. The host edit adapter obtains the exact checked candidate projection via
+`working_projection(path=..., expected_workspace_generation=...)`.
+
+The original constructor defaults retain `.py`-only selection and legacy wire
+identities. Explicit shared-policy admissions are version 2; baseline/working
+pages are versions 3/4 with `view_policy_binding_sha256`, and host discovery is
+version 2. The current client/broker supports the legacy versions only and
+refuses these new pages. This is owner API convergence, with transport selection
+and indexed discovery still requiring their own coordinated implementation.
+It does not widen admitted scope or make compact editing a model tool.
+
 ## Currentness and worker lifecycle
 
 The existing owner launcher seals the compiled prompt, independently replays

@@ -1,0 +1,545 @@
+{
+  "accelerator_baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+  "accelerator_execution_head_observed": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+  "approval": {
+    "meaning": "The frozen additive host policy integration has no remaining substantive blocker found in the reviewed scope. This is not a qualification result or provider/task outcome.",
+    "remaining_substantive_blockers": [],
+    "status": "approved_for_scoped_offline_qualification"
+  },
+  "claims": {
+    "completion_authority": false,
+    "execution_authority": false,
+    "official_task_result_established": false,
+    "omission_authority": false,
+    "proof_authority": false,
+    "provider_token_savings_established": false,
+    "semantic_equivalence_established": false,
+    "whole_repository_or_runtime_equivalence_established": false
+  },
+  "datasets": {
+    "execution_revision": "f47161b757190380e9898aff155067c1ad609217",
+    "parent_pin_executed_by_qualification": false,
+    "parent_pin_reference_only": "b95938c2a816075466f8dc84f339cf622414030d",
+    "qualification_execution_source_row_count": 29,
+    "scoped_source_equivalence": "All 29 listed qualification dependency files are byte-identical in immutable f471 and b959 Git objects and the f471 execution checkout. This is neither whole-repository nor whole-runtime/toolchain equivalence.",
+    "source_comparisons": [
+      {
+        "bytes": 56829,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/__init__.py",
+        "sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9"
+      },
+      {
+        "bytes": 86862,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/backends/smt/compiler.py",
+        "sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5"
+      },
+      {
+        "bytes": 51399,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/families/registry.py",
+        "sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450"
+      },
+      {
+        "bytes": 57876,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+        "sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f"
+      },
+      {
+        "bytes": 22146,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+        "sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df"
+      },
+      {
+        "bytes": 53460,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/python_frontend.py",
+        "sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df"
+      },
+      {
+        "bytes": 22314,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py",
+        "sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d"
+      },
+      {
+        "bytes": 14891,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py",
+        "sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15"
+      },
+      {
+        "bytes": 8128,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py",
+        "sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102"
+      },
+      {
+        "bytes": 34958,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+        "sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75"
+      },
+      {
+        "bytes": 22375,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py",
+        "sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68"
+      },
+      {
+        "bytes": 30681,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/pytest_analysis.py",
+        "sha256": "45a0ab3fae08e91db2971540e5d933c8e82c47e7f65b3e5ec88912dbedc67ab4"
+      },
+      {
+        "bytes": 54595,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py",
+        "sha256": "744c5d1699403239d3eb5e9588a38a38cbc0cc56799c2884d8821f1a4e1bdd76"
+      },
+      {
+        "bytes": 32144,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+        "sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1"
+      },
+      {
+        "bytes": 48191,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+        "sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6"
+      },
+      {
+        "bytes": 18520,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py",
+        "sha256": "4e269d1e2f39ea27582e98f240996696d61b0fe0b1358e363ff2376baa7972e3"
+      },
+      {
+        "bytes": 43440,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+        "sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51"
+      },
+      {
+        "bytes": 20976,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/bindings.py",
+        "sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc"
+      },
+      {
+        "bytes": 31668,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py",
+        "sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d"
+      },
+      {
+        "bytes": 33366,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/merkle.py",
+        "sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0"
+      },
+      {
+        "bytes": 102763,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+        "sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586"
+      },
+      {
+        "bytes": 44955,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py",
+        "sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822"
+      },
+      {
+        "bytes": 6798,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
+        "sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f"
+      },
+      {
+        "bytes": 28735,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_source.py",
+        "sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5"
+      },
+      {
+        "bytes": 58065,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_verification/program.py",
+        "sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+      },
+      {
+        "bytes": 76841,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_verification/source_adapters.py",
+        "sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003"
+      },
+      {
+        "bytes": 47941,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/software_verification/syntax_bridge.py",
+        "sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116"
+      },
+      {
+        "bytes": 56966,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/syntax_core/ast.py",
+        "sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4"
+      },
+      {
+        "bytes": 30488,
+        "execution_checkout_matches_object": true,
+        "execution_object_matches_parent_object": true,
+        "matches_qualification_source_before": true,
+        "path": "ipfs_datasets_py/logic/syntax_core/signatures.py",
+        "sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf"
+      }
+    ]
+  },
+  "observed_at_utc": "2026-10-13T01:22:40.898548+00:00",
+  "qualification_observation": {
+    "completed_at_utc_observed": null,
+    "observed_status": "in_progress",
+    "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification-01/commands.json",
+    "phases_observed": [
+      {
+        "exit_code": 0,
+        "phase": "collection"
+      },
+      {
+        "exit_code": null,
+        "phase": "tests"
+      }
+    ],
+    "qualification_result_established_by_this_review": false,
+    "record_mutable_while_running": true,
+    "result_handling": "The root-owned qualification was running during this static review. Consult its final retained commands/nodeids/JUnit for the completed result; this review does not predict it or bind a changing command-record hash.",
+    "reviewed_source_rows_match_retained_before": true
+  },
+  "resolved_review_findings": [
+    {
+      "id": "coherently_changed_cached_source_and_view",
+      "initial_issue": "The first working_projection implementation compared the rebuilt projection only with its cached view tuple; coherent changes to cached original and cached view could return a projection not bound to the retained generation hashes.",
+      "references": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py:272-300",
+        "test/api/test_shared_source_view_policy.py:319-332"
+      ],
+      "resolution": "working_projection now validates the entire copied original population, exact byte types and every source SHA against candidate hashes before projection, then checks unchanged cached originals after the final source verification. Refusal invalidates the working cache and continuations.",
+      "status": "fixed_and_statically_rechecked"
+    },
+    {
+      "id": "default_equal_profile_subclass",
+      "initial_issue": "Shared-mode conflict guards originally compared the legacy profile with the default before overwriting it, allowing equality-compatible string subclasses.",
+      "references": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py:111-117",
+        "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py:131-136",
+        "test/api/test_shared_source_view_policy.py:214-224"
+      ],
+      "resolution": "Both inventory and worker shared-mode guards require type(profile) is str as well as the exact default value before accepting the policy.",
+      "status": "fixed_and_statically_rechecked"
+    },
+    {
+      "id": "unconditional_runtime_import_dependency",
+      "initial_issue": "The new module is unconditionally imported by worker_source_views, so even legacy source-view mode requires its presence. The initial worker capability source list did not pin it.",
+      "references": [
+        "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py:33-41",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py:65-102",
+        "benchmarks/agent_supervisor/container_coding/terminal_deployment.py:843-862",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py:41-54"
+      ],
+      "resolution": "terminal_worker_capability SOURCE_PATHS now includes source_view_policy. Its exact expected-set assertion and missing/stale/copied-feature controls include the helper. Recursive runtime archive enumeration already includes regular .py files; no separate packaging pipeline was introduced.",
+      "status": "fixed_and_statically_rechecked"
+    }
+  ],
+  "review_kind": "Static source/diff and binding inspection; no product modules imported or tests executed by this reviewer",
+  "reviewer": "displacement_contract_audit",
+  "reviewer_actions": {
+    "docker_runs": 0,
+    "model_calls": 0,
+    "only_created_artifact": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/independent-review.json",
+    "product_module_imports": 0,
+    "provider_calls": 0,
+    "publication_performed": false,
+    "solver_calls": 0,
+    "source_or_product_files_edited_during_review": false,
+    "test_runs": 0,
+    "training_steps": 0
+  },
+  "schema": "supervisor-shared-source-view-policy-independent-review@1",
+  "scoped_limitations": [
+    "This review is independent for the consumer integration and packaging change; the reviewer authored the new pure policy module and does not claim independent authorship review of that module.",
+    "This is an explicit host API increment. It does not implement canonical ordinary-tool interception, protocol discovery, whole-codebase minified filesystem export or a production shared-policy worker switch.",
+    "The host adapter still accepts one mapped edit through a fresh clean fenced candidate. Sequential source checks do not lock out external writers; post-write refusal can leave a failed isolated candidate. No atomic application or rollback guarantee is added.",
+    "Caller-protected lines are display/physical-line policy, not behavioral invariants or immutable text authorization. Exact retained-byte restoration still needs original bytes/maps; compact edits still require owner patch admission and subsequent validation.",
+    "No provider delivery, model training, IR reconstruction improvement, proof completion, official benchmark outcome, or total token savings follows from this static review or policy identity."
+  ],
+  "source_binding_scope": "Seven frozen changed source/test files, four unchanged codec/mapper/wire files, two unchanged archive packaging references, and the frozen qualification runner; hashes describe inspected working-copy bytes, with explicit immutable baseline comparisons.",
+  "source_bindings": [
+    {
+      "baseline_object_exists": false,
+      "bytes": 6817,
+      "matches_qualification_source_before": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "frozen_changed_source_or_test",
+      "sha256": "18ac32e0246a8af5985b5b3311a37d08f09786cfd8cb25373b0b92175892b57b"
+    },
+    {
+      "baseline_object_exists": true,
+      "baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+      "baseline_sha256": "5bc6b1c38a376db73e840dac84c5db4ab95223ab834fd4d6d2eb9b6835626cc2",
+      "byte_identical_to_baseline": false,
+      "bytes": 17882,
+      "matches_qualification_source_before": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "frozen_changed_source_or_test",
+      "sha256": "4abe658400ca70f8f68fdae08b5914dfeb417e0c5d120d12b9acc16b88a49a41"
+    },
+    {
+      "baseline_object_exists": true,
+      "baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+      "baseline_sha256": "18a0c6d95c27efeb7eceeb0d79fe92f3a007d67626bcad4271b98ef3e17e9e1b",
+      "byte_identical_to_baseline": false,
+      "bytes": 29068,
+      "matches_qualification_source_before": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "frozen_changed_source_or_test",
+      "sha256": "bd3ee1ee56f24bb64ba7d23eb45d94130917f4fd27d2292614c478b4c01c4353"
+    },
+    {
+      "baseline_object_exists": true,
+      "baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+      "baseline_sha256": "b5a6d6634272b8cc03f7ca6207fafaa9e27f1a9319d7ebf315284d5fbac0cec8",
+      "byte_identical_to_baseline": false,
+      "bytes": 10311,
+      "matches_qualification_source_before": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "frozen_changed_source_or_test",
+      "sha256": "4995b7dc62749d23942bed99bb475c500b8ab81eb1b4e43442590e9fede4763d"
+    },
+    {
+      "baseline_object_exists": true,
+      "baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+      "baseline_sha256": "7f6edd5dc63cc1fd3e2dc7ae532cd7d544bb6e3b91cb5f66d5d1b99d7f4ae6c1",
+      "byte_identical_to_baseline": false,
+      "bytes": 6181,
+      "matches_qualification_source_before": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "frozen_changed_source_or_test",
+      "sha256": "fc239a7d07ae6d97bd9112d1a8c054f0fd90fc8760ccdf807129974f5d7fcfce"
+    },
+    {
+      "baseline_object_exists": true,
+      "baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+      "baseline_sha256": "faa7f22be028c6f515a266ac4a203688f9a67ab330da2edad0c3d782e1e61dd7",
+      "byte_identical_to_baseline": false,
+      "bytes": 16624,
+      "matches_qualification_source_before": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "frozen_changed_source_or_test",
+      "sha256": "a5b4b7388805d4e458fc747a0ddae838bcfe83ad7f612020de3e020be3c82a12"
+    },
+    {
+      "baseline_object_exists": false,
+      "bytes": 22111,
+      "matches_qualification_source_before": true,
+      "path": "test/api/test_shared_source_view_policy.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "frozen_changed_source_or_test",
+      "sha256": "4d16fa2e649ba0d5892ff93e59ea8fb7cbeb7347dbde40274867827365d673de"
+    },
+    {
+      "baseline_object_exists": true,
+      "baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+      "baseline_sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+      "byte_identical_to_baseline": true,
+      "bytes": 13539,
+      "matches_qualification_source_before": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "unchanged_codec_mapper_or_wire",
+      "sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011"
+    },
+    {
+      "baseline_object_exists": true,
+      "baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+      "baseline_sha256": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0",
+      "byte_identical_to_baseline": true,
+      "bytes": 9068,
+      "matches_qualification_source_before": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "unchanged_codec_mapper_or_wire",
+      "sha256": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0"
+    },
+    {
+      "baseline_object_exists": true,
+      "baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+      "baseline_sha256": "77f483a8bbff65ced9229233293c2b557164b5745d6d34b9faf90042c4c43647",
+      "byte_identical_to_baseline": true,
+      "bytes": 19774,
+      "matches_qualification_source_before": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "unchanged_codec_mapper_or_wire",
+      "sha256": "77f483a8bbff65ced9229233293c2b557164b5745d6d34b9faf90042c4c43647"
+    },
+    {
+      "baseline_object_exists": true,
+      "baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+      "baseline_sha256": "faa0e1e4920c1d8cb386a3c86858befe0585f7ca44e6e09e65dd1a89c0d5ef8f",
+      "byte_identical_to_baseline": true,
+      "bytes": 9050,
+      "matches_qualification_source_before": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "unchanged_codec_mapper_or_wire",
+      "sha256": "faa0e1e4920c1d8cb386a3c86858befe0585f7ca44e6e09e65dd1a89c0d5ef8f"
+    },
+    {
+      "baseline_object_exists": true,
+      "baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+      "baseline_sha256": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+      "byte_identical_to_baseline": true,
+      "bytes": 82189,
+      "matches_qualification_source_before": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "unchanged_archive_packaging_reference",
+      "sha256": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d"
+    },
+    {
+      "baseline_object_exists": true,
+      "baseline_revision": "85b21ded006fa9850ab49ee9f33bd320457a79a5",
+      "baseline_sha256": "9a65112e741894fa5c704b054114bee90f2702d32ddc5985ba5d29dff2a5e226",
+      "byte_identical_to_baseline": true,
+      "bytes": 7334,
+      "matches_qualification_source_before": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "unchanged_archive_packaging_reference",
+      "sha256": "9a65112e741894fa5c704b054114bee90f2702d32ddc5985ba5d29dff2a5e226"
+    },
+    {
+      "baseline_object_exists": false,
+      "bytes": 16424,
+      "matches_qualification_source_before": true,
+      "path": "docs/agent_supervisor/evidence/shared-source-view-policy-20261013/qualification_runner.py",
+      "repository": "ipfs_accelerate_py",
+      "role": "frozen_qualification_runner",
+      "sha256": "db60582594dbd1aedfbf0173d1a97875bbbe7fdcb49cbaa18eb01dba6430bc7d"
+    }
+  ],
+  "substantive_conclusions": [
+    {
+      "finding": "Shared policy is explicit and immutable under ordinary assignment; public operations revalidate canonical profile and protected-line tuples. Inventory and worker constructors reject protection references outside their admitted regular Python populations. Regular .py and .pyi remain Python-eligible even under identity@1. Caller file-kind classification in the pure resolver itself grants no admission.",
+      "id": "explicit_shared_policy_and_canonical_scope",
+      "references": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py:172-175",
+        "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py:131-140",
+        "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py:70-111"
+      ]
+    },
+    {
+      "finding": "The codec and pure mapper are byte-identical to the accelerator baseline. Legacy inventory roots retain schema@1, the same codec projection arguments and closed field set; shared roots use schema@2 and a separately compared complete policy binding. No import or comment was added to the self-hashed codec. Historical replay still requires the matching Python/stdlib codec binding.",
+      "id": "historical_codec_identity_and_replay",
+      "references": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py:178-225",
+        "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py:73-81",
+        "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py:236-278"
+      ]
+    },
+    {
+      "finding": "Shared baseline admission@2 binds the full policy, resolver hash and codec identity. Working admission@2 inherits it and generation derivation includes baseline scope. Binding checks compare current policy and canonical retained binding; policy changes invalidate existing custody. Working pages retain the policy SHA through inherited metadata and use page@4; baseline shared pages use page@3 and shared discovery uses discovery@2.",
+      "id": "working_generation_and_policy_binding",
+      "references": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py:149-209",
+        "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py:490-530"
+      ]
+    },
+    {
+      "finding": "The existing client and broker are unchanged. Shared host pages have distinct closed shapes and schema@3/@4; existing wire validation accepts only legacy baseline@1/working@2. No CLI, broker descriptor or production router opt-in for shared policy is added by this increment.",
+      "id": "host_only_wire_boundary",
+      "references": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py:145-182",
+        "test/api/test_shared_source_view_policy.py:399-410"
+      ]
+    },
+    {
+      "finding": "The host edit adapter obtains a checked generation projection from its admitted views rather than independently selecting filename suffixes. Shared application@2 records the policy binding SHA. The unchanged pure mapper carries the original protected-line tuple into candidate replay; protection preserves displayed text and physical-line anchors, allows same-line edits, and conservatively refuses LF-changing edits when any caller lines are declared.",
+      "id": "edit_recipe_and_protected_line_semantics",
+      "references": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py:98-119",
+        "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py:154-169",
+        "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py:124-147"
+      ]
+    }
+  ]
+}

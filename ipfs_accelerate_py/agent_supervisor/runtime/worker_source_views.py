@@ -20,6 +20,7 @@ import stat
 import threading
 
 from .reversible_source_view import build_source_view, current_codec_binding, restore_source_view
+from .source_view_policy import SourceViewPolicy
 from .source_formalization_context import _relative, _workspace
 
 PAGE_SCHEMA = "supervisor-worker-source-view-page@1"
@@ -120,12 +121,23 @@ class WorkerSourceViews:
 
     def __init__(self, *, repository, workspace, source_hashes, task_id, scope_cid,
                  semantic_root_cid, semantic_sha256, native_prompt_sha256,
-                 source_manifest_sha256, profile="python-whitespace@1"):
+                 source_manifest_sha256, profile="python-whitespace@1", view_policy=None):
         _need(type(source_hashes) is dict and 1 <= len(source_hashes) <= MAX_FILES,
             "bounded owner-admitted source hashes required")
         for name, digest in source_hashes.items():
             _path(name)
             _need(_digest(digest), "exact admitted source SHA256 required")
+        policy_binding = None
+        if view_policy is not None:
+            _need(type(view_policy) is SourceViewPolicy, "exact shared source-view policy required")
+            _need(type(profile) is str and profile == "python-whitespace@1",
+                  "shared policy cannot be combined with legacy profile")
+            policy_binding = canonical_json(view_policy.binding())
+            profile = view_policy.profile
+            eligible = {name.encode("utf-8").hex() for name in source_hashes
+                        if name.endswith((".py", ".pyi"))}
+            _need(set(view_policy.to_dict()["protected_lines"]) <= eligible,
+                  "protected policy differs from admitted regular Python source scope")
         _need(type(profile) is str and profile in {"identity@1", "python-whitespace@1", "python-comments@1"},
             "unsupported source-view profile")
         for value in (task_id, scope_cid, semantic_root_cid):
@@ -137,6 +149,7 @@ class WorkerSourceViews:
         self._roots = {root: _identity(root.lstat()) for root in (self._root, self._workspace)}
         self._hashes = dict(sorted(source_hashes.items()))
         self._profile = profile
+        self._view_policy, self._policy_binding = view_policy, policy_binding
         self._codec = canonical_json(current_codec_binding())
         self._scope = dict(schema=ADMISSION_SCHEMA, task_id=task_id, scope_cid=scope_cid,
             semantic_root_cid=semantic_root_cid, semantic_sha256=semantic_sha256,
@@ -145,6 +158,9 @@ class WorkerSourceViews:
             requested_profile=profile, codec_binding_sha256=_sha(self._codec),
             workspace_binding_sha256=_sha(canonical_json({str(root): list(identity)
                 for root, identity in self._roots.items()})))
+        if policy_binding is not None:
+            self._scope.update(schema="supervisor-worker-source-view-admission@2",
+                               view_policy_binding=json.loads(policy_binding))
         self._scope_raw = canonical_json(self._scope)
         self._scope_sha = _sha(self._scope_raw)
         self._continuations = {}
@@ -159,12 +175,21 @@ class WorkerSourceViews:
     def _build_views(self):
         self._views = {}
         for name, original in self._originals.items():
-            codec_profile = self._profile if name.endswith(".py") else "identity@1"
-            projected = build_source_view(original, profile=codec_profile)
+            projected = self._project(name, original)
             _need(restore_source_view(original=original, view=projected.view, manifest=projected.manifest,
                 expected_manifest_sha256=projected.manifest_sha256) == original,
                 "source-view restoration differs")
             self._views[name] = (projected.view, canonical_json(projected.manifest), projected.manifest_sha256)
+
+    def _project(self, path, original):
+        if self._view_policy is not None:
+            return self._view_policy.project(original, raw_path=path.encode("utf-8"), regular_file=True)
+        return build_source_view(original, profile=self._profile if path.endswith(".py") else "identity@1")
+
+    def _python_eligible(self, path):
+        if self._view_policy is not None:
+            return self._view_policy.resolve(raw_path=path.encode("utf-8"), regular_file=True).python_eligible
+        return path.endswith(".py")
 
     def _check_binding(self):
         _need(canonical_json(self._scope) == self._scope_raw and _sha(self._scope_raw) == self._scope_sha
@@ -172,6 +197,14 @@ class WorkerSourceViews:
             and self._profile == self._scope["requested_profile"]
             and _sha(canonical_json({str(root): list(identity) for root, identity in self._roots.items()}))
                 == self._scope["workspace_binding_sha256"], "source admission changed")
+        if self._policy_binding is None:
+            _need(self._view_policy is None and "view_policy_binding" not in self._scope,
+                  "legacy source-view policy changed")
+        else:
+            _need(type(self._view_policy) is SourceViewPolicy
+                  and canonical_json(self._view_policy.binding()) == self._policy_binding
+                  and canonical_json(self._scope["view_policy_binding"]) == self._policy_binding,
+                  "shared source-view policy changed")
         _need(canonical_json(current_codec_binding()) == self._codec, "source-view codec changed")
         _need(_workspace(self._root, self._workspace) == (self._root, self._workspace),
             "allocated source repository changed")
@@ -236,6 +269,36 @@ class WorkerSourceViews:
                 self._discard_working()
                 raise
 
+    def working_projection(self, *, path, expected_workspace_generation):
+        """Owner-only projection of one checked candidate using its admitted policy.
+
+        This does not refresh, expand admission or expose a worker operation.
+        The edit adapter consumes this projection instead of selecting its own
+        suffix/protection recipe. Retained original/view/map pins must agree.
+        """
+        with self._lock:
+            try:
+                _path(path)
+                _need(path in self._hashes and _digest(expected_workspace_generation),
+                      "admitted path and exact working generation required")
+                candidate = self._working
+                _need(candidate is not None and candidate.generation == expected_workspace_generation,
+                      "working source generation differs")
+                candidate._check_sources()
+                sources = dict(candidate._originals)
+                _need(set(sources) == set(candidate._hashes)
+                      and all(type(raw) is bytes and _sha(raw) == candidate._hashes[name]
+                              for name, raw in sources.items()), "captured working source differs")
+                projected = candidate._project(path, sources[path])
+                _need(candidate._views[path] == (projected.view, canonical_json(projected.manifest),
+                      projected.manifest_sha256), "working source projection differs")
+                candidate._check_sources()
+                _need(candidate._originals == sources, "captured working source changed during projection")
+                return projected
+            except (OSError, ValueError, RuntimeError):
+                self._discard_working()
+                raise
+
     def working_page(self, *, path, view="compact", cursor=None, max_bytes=8192,
                      expected_source_sha256=None, expected_view_sha256=None,
                      expected_workspace_generation=None):
@@ -279,6 +342,9 @@ class WorkerSourceViews:
         self._working = None
 
     def _page_metadata(self, path):
+        if self._policy_binding is not None:
+            return dict(schema="supervisor-worker-source-view-page@3",
+                        view_policy_binding_sha256=_sha(self._policy_binding))
         return {}
 
     def admission(self):
@@ -363,7 +429,7 @@ class WorkerSourceViews:
                     source_sha256=self._hashes[path], view_sha256=manifest["view_sha256"],
                     manifest_sha256=manifest_sha, source_bytes=len(original), view_bytes=len(compact),
                     requested_profile=self._profile, effective_profile=manifest["effective_profile"],
-                    fallback_reason=manifest["fallback_reason"] if path.endswith(".py") else "non_python_identity",
+                    fallback_reason=manifest["fallback_reason"] if self._python_eligible(path) else "non_python_identity",
                     representation_sha256=_sha(data), slice_sha256=_sha(part), encoding=encoding, content=content,
                     offset=offset, end_offset=end, representation_bytes=len(data), exhausted=end == len(data),
                     next_cursor=None if end == len(data) else self._next(query, end, token),
@@ -409,6 +475,9 @@ class WorkerSourceViews:
                     total_count=len(names), returned_count=len(rows), offset=offset, end_offset=end,
                     rows=list(rows), exhausted=end == len(names),
                     next_cursor=None if end == len(names) else self._next(query, end, token), **_FLAGS)
+                if self._policy_binding is not None:
+                    candidate.update(schema="supervisor-worker-source-view-discovery@2",
+                        view_policy_binding_sha256=_sha(self._policy_binding))
                 # The final entry can fit after the continuation disappears,
                 # even when its predecessor did not. Population is <=64.
                 if len(canonical_json(candidate)) <= max_bytes:
@@ -424,6 +493,7 @@ class _WorkingSourceViews(WorkerSourceViews):
         self._parent = parent
         self._root, self._workspace = parent._root, parent._workspace
         self._roots, self._profile, self._codec = dict(parent._roots), parent._profile, parent._codec
+        self._view_policy, self._policy_binding = parent._view_policy, parent._policy_binding
         self._hashes = {name: _sha(raw) for name, raw in captured.items()}
         self.generation = _sha(canonical_json(dict(baseline_scope_sha256=parent._scope_sha,
             session=parent._working_session, counter=counter, source_hashes=self._hashes)))
@@ -431,6 +501,8 @@ class _WorkingSourceViews(WorkerSourceViews):
             "source_hashes_sha256": _sha(canonical_json(self._hashes)),
             "baseline_scope_sha256": parent._scope_sha, "workspace_generation": self.generation,
             "source_state": "working-candidate", "baseline_evidence_applicable": False}
+        if self._policy_binding is not None:
+            self._scope["schema"] = "supervisor-worker-working-source-admission@2"
         self._scope_raw = canonical_json(self._scope)
         self._scope_sha = _sha(self._scope_raw)
         self._continuations, self._lock = {}, threading.Lock()
@@ -451,9 +523,11 @@ class _WorkingSourceViews(WorkerSourceViews):
             raise
 
     def _page_metadata(self, path):
-        return dict(schema="supervisor-worker-source-view-page@2", source_state="working-candidate",
+        return {**super()._page_metadata(path), **dict(
+            schema="supervisor-worker-source-view-page@2" if self._policy_binding is None
+                   else "supervisor-worker-source-view-page@4", source_state="working-candidate",
             workspace_generation=self.generation, baseline_source_sha256=self._parent._hashes[path],
-            baseline_evidence_applicable=False, source_check_profile="owner-working-source-candidate@1")
+            baseline_evidence_applicable=False, source_check_profile="owner-working-source-candidate@1")}
 
 
 __all__ = ["WorkerSourceViews", "PAGE_SCHEMA", "DISCOVERY_SCHEMA", "ADMISSION_SCHEMA", "canonical_json"]
