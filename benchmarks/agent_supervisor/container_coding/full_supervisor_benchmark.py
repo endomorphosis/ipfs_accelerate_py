@@ -314,18 +314,27 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         _, expected_binding = _source384_assets(load_source384_config(source384_config))
         if selected_source384 != expected_binding:
             raise ValueError("selected Source384 config differs from the runtime archive")
+    host_config = None
     if intent_action_384_config is not None:
         host_config = load_intent_action_384_config(intent_action_384_config)
         _, expected_binding = _intent_action_384_assets(host_config)
         if selected_intent != expected_binding:
             raise ValueError("selected Intent384 config differs from the runtime archive")
+    from .terminal_intent_action_readiness import intent_action_readiness
+    task_hashes = _task_hashes(task)
+    with (task / "instruction.md").open("rb") as stream:
+        public_instruction = stream.read(MAX_PUBLIC_INSTRUCTION_BYTES + 1)
+    if len(public_instruction) > MAX_PUBLIC_INSTRUCTION_BYTES:
+        raise ValueError("public instruction exceeds its byte bound")
+    intent_readiness = intent_action_readiness(
+        public_instruction.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n"),
+        manifest=manifest, config=host_config)
     from .terminal_setup_cache_advice import select_setup_cache, validate_setup_cache_prerequisites
     setup_cache_selection = select_setup_cache(archive, setup_cache_policy)
     validate_setup_cache_prerequisites(setup_cache_selection, install_codex=True,
         auth_json=Path.home() / (".codex/auth.json" if selected_provider["provider"] == "codex_cli" else ".grok/auth.json"), arm=arm, resource_profile=resource_profile)
     requirements = _load_intent_requirement_contract(intent_requirement_contract, dataset=dataset, task_name=task_name)
     validate_header_planning_selection(selected_source384, requirements, arm)
-    task_hashes = _task_hashes(task)
     declared_config = config_for(dataset, output, archive, arm,
         model_revision=model_revision,
         intent_requirement_contract=requirements, resource_profile=resource_profile,
@@ -373,6 +382,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               "planning_and_cold_index_charged_to_agent_time": True,
               "benchmark_advantage_claimed": False, **_intent_selection(requirements),
               "intent_action_384": selected_intent, "source384": selected_source384,
+              "intent_action_384_readiness": intent_readiness,
               "source384_enabled": selected_source384 is not None and arm == "full",
               **({"numerical_selection_384": selected_numerical,
                   "numerical_selection_enabled": arm == "full"} if selected_numerical is not None else {}),

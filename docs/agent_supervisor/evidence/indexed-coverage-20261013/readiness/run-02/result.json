@@ -1,0 +1,15 @@
+{
+  "schema": "indexed-coverage-readiness-regressions@1",
+  "passed": 291,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 0,
+  "junit_sha256": "0a398edafcd2738433908774de55b84a2b4ba97e936bd65716b27730bbfd2fa2",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_intent_action_readiness.py": "505b315c1ec3f7d8027be958eadf1d4839835b802368ae0332bc2071d1f7b977",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "337a9286fab17caa43a659da96160b4641e7571d54ecb663442953fb2b67a02f",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_readiness.py": "073892fed0353813d72a90854d33d415f4784dbd717ae63a97fd36da236b335f"
+  },
+  "initial_collection_error_retained": "../pytest.xml",
+  "initial_collection_error_fixed": "Test imports changed from relative to the repository convention of absolute imports."
+}

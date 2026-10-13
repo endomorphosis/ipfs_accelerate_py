@@ -20,6 +20,7 @@ from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent i
 )
 from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs, _supervisor_inputs
 from ipfs_datasets_py.logic.formalization.autoencoder import structured_source_384 as structured
+from ipfs_datasets_py.logic.formalization.autoencoder import intent_action_checkpoint_384 as checkpoint_owner
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_embedding_runtime as embedding
 
 
@@ -35,12 +36,12 @@ def selected(tmp_path, monkeypatch):
     monkeypatch.setattr(embedding, '_PINNED_ASSETS', pins)
     checkpoint = tmp_path / 'checkpoint.json'
     checkpoint.write_text('{"domain":"intent_ir","transport_fixture_only":true}')
-    def native_load(path, *, expected_sha256, expected_domain):
-        assert expected_domain == 'intent_ir'
+    def native_load(path, *, expected_sha256):
         assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == expected_sha256
-        if json.loads(Path(path).read_text())['domain'] != expected_domain:
+        if json.loads(Path(path).read_text())['domain'] != 'intent_ir':
             raise ValueError('checkpoint domain mismatch')
-    monkeypatch.setattr(structured, 'load_checkpoint', native_load)
+        return None, {'test_transport_only': True}
+    monkeypatch.setattr(checkpoint_owner, 'load_intent_action_checkpoint_384', native_load)
     config = dict(schema='supervisor-intent-action-384-config/v1', checkpoint_path=str(checkpoint),
         checkpoint_sha256=hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
         embedding_snapshot_path=str(snapshot))
@@ -76,6 +77,21 @@ def test_closed_assets_relocate_and_leave_retrieval_disabled(tmp_path, selected)
         assert archived == bound['config']
         assert len([x for x in bundle if x.name.startswith('models/intent-action-384/')]) == 5
         assert all(not member.issym() and not member.islnk() for member in bundle)
+
+
+def test_packaging_uses_same_intent_checkpoint_owner_as_inference(tmp_path, selected, monkeypatch):
+    observed = []
+    owner = checkpoint_owner.load_intent_action_checkpoint_384
+    def record(path, *, expected_sha256):
+        observed.append((Path(path), expected_sha256))
+        return owner(path, expected_sha256=expected_sha256)
+    monkeypatch.setattr(checkpoint_owner, 'load_intent_action_checkpoint_384', record)
+    def strict_bypass(*args, **kwargs):
+        raise AssertionError('packaging bypassed Intent-specific checkpoint validation')
+    monkeypatch.setattr(structured, 'load_checkpoint', strict_bypass)
+    _, binding = deployment._intent_action_384_assets(selected[0])
+    assert observed == [(Path(selected[0]['checkpoint_path']), selected[0]['checkpoint_sha256'])]
+    assert binding['checkpoint_sha256'] == selected[0]['checkpoint_sha256']
 
 
 @pytest.mark.parametrize('mutation', ['null_snapshot','missing_snapshot','changed_checkpoint','missing_checkpoint','wrong_domain','extra_field','relative_checkpoint'])

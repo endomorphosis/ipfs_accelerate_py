@@ -388,6 +388,7 @@ def _intent_action_384_assets(config):
         return [], None
     from ipfs_accelerate_py.agent_supervisor.runtime.intent_384_advisor import _config
     from ipfs_datasets_py.logic.formalization.autoencoder import structured_source_384 as structured
+    from ipfs_datasets_py.logic.formalization.autoencoder.intent_action_checkpoint_384 import load_intent_action_checkpoint_384
     from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_embedding_runtime as embedding
     config = _config(config)
     if config["embedding_snapshot_path"] is None:
@@ -395,7 +396,7 @@ def _intent_action_384_assets(config):
     checkpoint = Path(config["checkpoint_path"])
     payload = _portable_asset_bytes(checkpoint, expected_sha256=config["checkpoint_sha256"],
         maximum=structured.MAX_BYTES)
-    structured.load_checkpoint(checkpoint, expected_sha256=config["checkpoint_sha256"], expected_domain="intent_ir")
+    load_intent_action_checkpoint_384(checkpoint, expected_sha256=config["checkpoint_sha256"])
     snapshot, manifest = embedding._snapshot_assets(config["embedding_snapshot_path"])
     embedding_path = INTENT_ACTION_384_EMBEDDING + embedding.PINNED_REVISION
     assets = [(INTENT_ACTION_384_PATH, payload)]

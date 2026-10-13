@@ -1,0 +1,22 @@
+{
+  "schema": "indexed-coverage-documentation-checks@1",
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "command": [
+    "/usr/bin/python3",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "gate_exit_code": 0,
+  "additional_files": [
+    "docs/agent_supervisor/indexed_coverage_readiness.md",
+    "docs/agent_supervisor/evidence/indexed-coverage-20261013/README.md"
+  ],
+  "explicit_link_errors": [],
+  "git_diff_check_exit_code": 0,
+  "git_diff_check_output": "",
+  "source_sha256": {
+    "docs/agent_supervisor/indexed_coverage_readiness.md": "d73f841ac64691fe79a0ab82e3eb7c310519b75719b26d90c93d09fc2c937212",
+    "docs/agent_supervisor/evidence/indexed-coverage-20261013/README.md": "b332899e3b423880b37a15b052d6b392a4987dbf0a461deebf4f77a0557cb947"
+  },
+  "helper_sha256": "36a40b4caf97dd2700f68c1248990c076bfc8e0b045751d5e3f368416a958644",
+  "passed": true
+}

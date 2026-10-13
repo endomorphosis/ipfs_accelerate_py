@@ -1,0 +1,143 @@
+{
+  "changed_authority": false,
+  "committed_or_pushed": false,
+  "docker_qualification": {
+    "artifact": {
+      "bytes": 1607,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/output-observation/docker/run-02/qualification.json",
+      "sha256": "7cfd35bdf226cd5ecb86455967f6c6e60adcde137b16665051ac28e956fa6d56"
+    },
+    "attempt_directory_mode": "0700",
+    "authored_lifecycle_fixture": true,
+    "candidate_sha256": "e91eea4682e75cedf208c478fa21073ea8dc4c9e63f83b223e91effe8db6eda7",
+    "canonical_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+    "complete": true,
+    "container_removed": true,
+    "event_mode": "0644",
+    "first_attempt_issue": "run-01 failed while copying a matching root-owned DuckDB extension already in the image; fresh run-02 hash-verified and reused the existing extension, with no production fix for this fixture setup.",
+    "observation": {
+      "bytes": 1960,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/output-observation/docker/run-02/results/observation.json",
+      "sha256": "73ce44ab28fbaa2a9573aa9b9c083b32bcb9a5f2d139b136a3b539134c1dff13"
+    },
+    "official_verifier_executed": false,
+    "owner_uid": 1000,
+    "private_state_retained": false,
+    "provider_calls": 0,
+    "public_profile": "largest-eigenval",
+    "source_scope": "Exactly eigen.py output selected from independently verified public-profile admission; eval.py and instruction are permitted preflight inputs. No hidden test or solution input was mounted.",
+    "supervisor_start_executed": false,
+    "worker_owner_state_access_denied": true,
+    "worker_uid": 1001
+  },
+  "fix": "Accept owner-owned, single-link regular event logs without group/world write permission only after the existing native/attempt private-directory checks. Preserve 0600 binding privacy, bounded/no-follow/identity-stable reads, native binding/settlement/invocation joins and lifecycle cleanup gates. Export only a closed evidence_stage on failures.",
+  "focused_tests": {
+    "artifact": {
+      "bytes": 413,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/output-observation/focused-01/result.json",
+      "sha256": "1f8c07f7bdbd75827e19ef05adfcf1d75a37ce533bc16a4a7a59d97d30b40bb4"
+    },
+    "datasets_checkout": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+    "datasets_commit": "5723a541c5d575b88f01532e4d241dc95a1f3e99",
+    "failures": 0,
+    "junit": {
+      "bytes": 53002,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/output-observation/focused-01/junit.xml",
+      "sha256": "9ca0828dc3975819f5f66e77023706fae2d51e1cc662d0166c2c2e1c2ce591f8"
+    },
+    "passed": 269
+  },
+  "future_native_trial_required_for_new_benchmark_output_hashes": true,
+  "historical_exact_failure_stage_established": false,
+  "historical_limitation": "Containers and owner-private binding/event files were removed; existing receipts identify only the broad binding/file failure after settlement passed. The new producer-realistic tests reproduce a concrete permission-contract mismatch, not a retrospective proof of the exact failed stage in either historical trial.",
+  "historical_receipts": [
+    {
+      "arm": "codex-legacy-01",
+      "cleanup_passed": true,
+      "observation": {
+        "attempt_id_sha256": "692862ce6f168784e55f8e0fd1c5b00fbcf2b2c0e53d44a37b2a41a104a07b52",
+        "baseline_commit": "cfb36ba5bf67c26541212ff87b3d55224abc56d4",
+        "completion_authority": false,
+        "observation_boundary": "after_native_settlement_stop_and_worker_cleanup_before_container_removal",
+        "observation_only": true,
+        "outputs": [],
+        "patch_application_established": false,
+        "provider_calls": 0,
+        "raw_source_exported": false,
+        "reason": "binding_or_file_evidence_unavailable",
+        "retry_authority": false,
+        "schema": "terminal-declared-output-observation@1",
+        "settlement_authority": false,
+        "status": "unavailable",
+        "task_cid_sha256": "8f811fe258772effdde104189e5d220c452115caabd97a685db2f02ea29b50a9",
+        "task_correctness_established": false,
+        "writer_identity_established": false
+      },
+      "receipt": {
+        "bytes": 164470,
+        "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-legacy-01/receipt.json",
+        "sha256": "38052a2851048283a80a92ea73cf8ef5c85ff1170e1227b6e2d2b72646dfddb4"
+      },
+      "settlement_operation": "database_complete"
+    },
+    {
+      "arm": "codex-projected-01",
+      "cleanup_passed": true,
+      "observation": {
+        "attempt_id_sha256": "908a998038cef83de4cf33c6838f6bc8dabb6ea31a07b4cbe08f389c6990d8ed",
+        "baseline_commit": "50bac272201f2c3c6c50e18eae564dd8832849c1",
+        "completion_authority": false,
+        "observation_boundary": "after_native_settlement_stop_and_worker_cleanup_before_container_removal",
+        "observation_only": true,
+        "outputs": [],
+        "patch_application_established": false,
+        "provider_calls": 0,
+        "raw_source_exported": false,
+        "reason": "binding_or_file_evidence_unavailable",
+        "retry_authority": false,
+        "schema": "terminal-declared-output-observation@1",
+        "settlement_authority": false,
+        "status": "unavailable",
+        "task_cid_sha256": "02c83655fa4f8419c38690e315acf3dd1ea9d63919752dde5735f4adcf99d686",
+        "task_correctness_established": false,
+        "writer_identity_established": false
+      },
+      "receipt": {
+        "bytes": 172550,
+        "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-trials/codex-projected-01/receipt.json",
+        "sha256": "7a10264ed46b36ef71558a7708e3fd87da35d2f778b8083024b96bad7feae83b"
+      },
+      "settlement_operation": "database_complete"
+    }
+  ],
+  "observed_at_utc": "2026-10-13T04:38:21.635637+00:00",
+  "old_pair_outputs_recovered": false,
+  "patch_application_established": false,
+  "pre_fix_reproduction": {
+    "artifact": {
+      "bytes": 3048,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/output-observation/pre-fix/junit.xml",
+      "sha256": "2d422cd48f2c87c0fc66ca6c3c68162a45e643b5646c991c29b39340a4579de6"
+    },
+    "failures": 4,
+    "passed": 2,
+    "scope": "Native event writer under 0022/0027/0077 umasks; direct and bounded child."
+  },
+  "producer_contract": "append_jsonl_event opens the owner event log with ordinary append permissions, so umask 0022/0027 yields 0644/0640 inside a private 0700 attempt directory. The previous observer required every private event file itself to be 0600.",
+  "schema": "declared-output-observation-permission-fix-diagnosis@1",
+  "source_files": [
+    {
+      "bytes": 19961,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_output_observation.py",
+      "sha256": "eee10df4461525743dc8d98d9d2369221e8f668ce398843d41a5ae2c8b7e15b1"
+    },
+    {
+      "bytes": 28815,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py",
+      "sha256": "735f508f9b7be7de0563ac4b8d3467285f599201a852ab3aec4900fd8214b4b1"
+    }
+  ],
+  "status": "reproduced_fixed_and_qualified",
+  "task_correctness_established": false,
+  "writer_identity_established": false
+}

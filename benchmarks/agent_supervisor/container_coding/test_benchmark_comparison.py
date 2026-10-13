@@ -657,6 +657,63 @@ def test_absent_or_malformed_byte_observation_remains_unknown(malformed):
     assert "private" not in json.dumps(result) and "bad" not in json.dumps(result)
 
 
+@pytest.mark.parametrize("stage", [
+    "admitted_scope", "settlement_and_cleanup", "native_directory", "attempt_directory",
+    "attempt_binding", "owner_event_log", "allocation_event", "allocation_root",
+    "invocation_join", "declared_output_files",
+])
+def test_closed_output_failure_stage_survives_comparison(tmp_path, stage):
+    observation = {"schema": "terminal-declared-output-observation@1", "status": "unavailable",
+        "reason": "binding_or_file_evidence_unavailable", "outputs": [], "evidence_stage": stage,
+        "exception": "PRIVATE-EXCEPTION-CANARY", "completion_authority": True}
+    receipt = _receipt(tmp_path, "output-stage.json", SUPERVISOR, [{"trial": "output-stage",
+        "supervisor": {"task_completed": True, "declared_output_observation": observation}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    retained = row["declared_output_observation"]
+    assert retained["status"] == "unavailable"
+    assert retained["evidence_stage"] == stage
+    assert retained["outputs"] == [] and retained["completion_authority"] is False
+    assert row["native_task_completed"] is True and row["official_reward"] is None
+    assert row["tokens"]["total_tokens"] is None
+    assert "PRIVATE" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("value", [None, "", "PRIVATE-EXCEPTION-CANARY", "owner_event_log\nPRIVATE",
+    " owner_event_log", "owner_event_log ", [], {}, True, 1])
+def test_unknown_output_stage_is_omitted_without_losing_byte_observation(value):
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _declared_output_observation
+    raw = {"schema": "terminal-declared-output-observation@1", "status": "unavailable",
+        "reason": "binding_or_file_evidence_unavailable", "outputs": [], "evidence_stage": value}
+    result = _declared_output_observation({"declared_output_observation": raw})
+    assert result["status"] == "unavailable" and result["outputs"] == []
+    assert "evidence_stage" not in result
+    assert "PRIVATE" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("change", [
+    {"status": "observed"}, {"status": "partial"}, {"reason": "PRIVATE-EXCEPTION-CANARY"},
+    {"schema": "unknown"}, {"outputs": None},
+])
+def test_stage_is_not_retained_from_inconsistent_or_malformed_observation(change):
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _declared_output_observation
+    raw = {"schema": "terminal-declared-output-observation@1", "status": "unavailable",
+        "reason": "binding_or_file_evidence_unavailable", "outputs": [], "evidence_stage": "owner_event_log", **change}
+    result = _declared_output_observation({"declared_output_observation": raw})
+    assert "evidence_stage" not in result
+    assert "PRIVATE" not in json.dumps(result)
+
+
+def test_historical_output_observation_does_not_gain_a_failure_stage():
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _declared_output_observation
+    raw = {"schema": "terminal-declared-output-observation@1", "status": "unavailable",
+        "reason": "binding_or_file_evidence_unavailable", "outputs": []}
+    result = _declared_output_observation({"declared_output_observation": raw})
+    assert result["status"] == "unavailable"
+    assert result["reason"] == "reported_declared_byte_observation"
+    assert "evidence_stage" not in result
+
+
 def test_doctor_selection_is_distinct_from_matching_worker_materialization(tmp_path):
     receipt = _receipt(tmp_path, "doctor.json", SUPERVISOR, [{"trial": "doctor",
         "supervisor": {"implementation_route": "doctor_candidate",

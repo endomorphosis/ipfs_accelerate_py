@@ -1,0 +1,303 @@
+{
+  "actual_call_counts": {
+    "gte_embedding_calls": 4,
+    "intent_checkpoint_load_calls": 5
+  },
+  "case_expectations_met": false,
+  "cases": [
+    {
+      "actual_call_counts": {
+        "gte_embedding_calls": 4,
+        "intent_checkpoint_load_calls": 4
+      },
+      "advice": {
+        "bytes": 11296,
+        "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/qualification-02/controlled_scalar-advice.json",
+        "sha256": "6abec2dc131a4bd41601b25d842e8618ea7d77bc78014ae3746a04fd3cd8fcca"
+      },
+      "checkpoint_compatibility": {
+        "admitted": false,
+        "applied": true,
+        "artifact_modified": false,
+        "artifact_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+        "changed_pins": [
+          {
+            "after": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+            "before": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d",
+            "path": [
+              "shared_runtime",
+              "numerical",
+              "files",
+              "tree_pin.py"
+            ]
+          }
+        ],
+        "checkpoint_schema": "structured-source-384-autoencoder/v1",
+        "domain_id": "intent_ir",
+        "download_calls": 0,
+        "mode": "known_tree_pin_stderr_diagnostic",
+        "numerical_weights_modified": false,
+        "original_implementation": {
+          "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+          "shared_runtime": {
+            "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+            "native": {
+              "dependencies": {
+                "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+              },
+              "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+              "scope": "listed_numerical_and_native_validator_modules_only"
+            },
+            "numerical": {
+              "files": {
+                "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+              },
+              "scope": "listed_latent_decoder_and_grammar_sources_only"
+            },
+            "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+          }
+        },
+        "profile": "intent-structured384-known-stderr-tree-pin/v1",
+        "proof_authority": false,
+        "provider_calls": 0,
+        "publication_performed": false,
+        "qualified": false,
+        "runtime_implementation": {
+          "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+          "shared_runtime": {
+            "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+            "native": {
+              "dependencies": {
+                "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+              },
+              "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+              "scope": "listed_numerical_and_native_validator_modules_only"
+            },
+            "numerical": {
+              "files": {
+                "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                "tree_pin.py": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2"
+              },
+              "scope": "listed_latent_decoder_and_grammar_sources_only"
+            },
+            "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+          }
+        },
+        "runtime_view_persisted": false,
+        "runtime_view_sha256": "6e312b6211eac9aa71ee8ce6109c7ba4934613c7848235b62d18a92d43944b73",
+        "schema": "intent-action-384-checkpoint-compatibility/v1",
+        "scope": "Only the exact reviewed tree diagnostic stdout-to-stderr pin transition may differ. Intent validators, numerical code, checkout rejection, weights, schema and every other checkpoint field remain exact. Compatibility does not establish instruction meaning or proof.",
+        "source_semantics_verified": false,
+        "target_schema_modified": false,
+        "training_executed": false,
+        "training_manifests_modified": false,
+        "unchanged_component_sha256": {
+          "config": "53fe42f8d381264d1bf214406bb2de649a442e218c4e06d6e35a221444176ddc",
+          "head_state": "6319a31a06ea946ac37262ef858b014438c00cac3bbc36a3ea3e4ac416c1f8e3",
+          "input_transform": "5e769ca2e9b2733b357173b39271df5f240b04fa178b5495e801c0393048a6b4",
+          "lineage": "45e0ed37ace5920f9094d8b19a35b0117fb401316d14685667667016db223a41",
+          "parent_binding": "60c05b77898286c404d8e89aba1ab0d9c7a6af8e191979e3083f87f824bf4e0d",
+          "projection_state": "4e90ec5a3ff3978d3f6d40fb366ea01f2a056fe6c59b3fddcf7c50f66366afd7",
+          "target_schema": "387c30a80bfe741217bb251f5c360e7b33c6b530ea035db82dea7c4bf916f8bd",
+          "training": "0da48472b5199f18b4c3751a50dbe33fb35bdf79940630d285173079f323ddb8",
+          "training_manifest": "c29bc5282d94467dc153393cdbe745b1cfe6c92ca76ac898da231b105c38368b",
+          "validation_manifest": "9a108795a85734f548dcb30930c11d0959f2183317d4f9d111aaa01f70a956bd"
+        },
+        "unchanged_content_sha256": "8529fb844cff3fb4acbbf835f9be41e924b95c0ee7a9c70d37722436c58f73aa"
+      },
+      "completion_authority": false,
+      "error_type": null,
+      "execution_authority": false,
+      "failure_stage": null,
+      "formal_logic_projection_executed": false,
+      "instruction_bytes": 108,
+      "instruction_sha256": "608eca7854f91cc3b2e0896cd2f833ef07ac87578fec6ee8743e91ea3c0c62b6",
+      "label": "controlled_scalar",
+      "lake_executed": false,
+      "numerical_replay_verified": false,
+      "planner_summary_bytes": 0,
+      "planner_summary_present": false,
+      "planner_summary_sha256": null,
+      "preparation_seconds": 2.139350349,
+      "proof_authority": false,
+      "reason": "tokenizers>=0.21,<0.22 is required for a normal functioning of this module, but found tokenizers==0.23.2.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
+      "saved_advice_replay_equal": true,
+      "saved_advice_replay_status": "fail_open_unavailable",
+      "saved_advice_shared_status": "fail_open_unavailable",
+      "shared_embedding_provenance_present": false,
+      "shared_model_inference_executed": false,
+      "shared_producer_pins_present": false,
+      "shared_status": "fail_open_unavailable",
+      "source_preserved": true,
+      "status": "fail_open_unavailable",
+      "total_seconds": 2.5665386780165136
+    },
+    {
+      "actual_call_counts": {
+        "gte_embedding_calls": 0,
+        "intent_checkpoint_load_calls": 0
+      },
+      "advice": {
+        "bytes": 4400,
+        "path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/qualification-02/largest-eigenval_original_instruction-advice.json",
+        "sha256": "cba9a90ffe28d03b839822431dfc37af64ab12c9acc0b70a8e8e60dec029eeb6"
+      },
+      "checkpoint_compatibility": null,
+      "completion_authority": false,
+      "error_type": null,
+      "execution_authority": false,
+      "failure_stage": null,
+      "formal_logic_projection_executed": false,
+      "instruction_bytes": 716,
+      "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+      "label": "largest-eigenval_original_instruction",
+      "lake_executed": false,
+      "numerical_replay_verified": false,
+      "planner_summary_bytes": 0,
+      "planner_summary_present": false,
+      "planner_summary_sha256": null,
+      "preparation_seconds": 0.00093292,
+      "proof_authority": false,
+      "reason": "bounded single-line explicit contract source required",
+      "saved_advice_replay_equal": true,
+      "saved_advice_replay_status": "fail_open_input_out_of_scope",
+      "saved_advice_shared_status": "fail_open_input_out_of_scope",
+      "shared_embedding_provenance_present": false,
+      "shared_model_inference_executed": false,
+      "shared_producer_pins_present": false,
+      "shared_status": "fail_open_input_out_of_scope",
+      "source_preserved": true,
+      "status": "fail_open_input_out_of_scope",
+      "total_seconds": 0.004994362010620534
+    }
+  ],
+  "checkpoint_bytes_unchanged": true,
+  "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+  "configuration_path": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/qualification-02/selected-config.json",
+  "configuration_sha256": "526126205a3577341b917d1afe1ff5115ca80f8b91aead9f850407b50be140f1",
+  "default_model_promoted": false,
+  "download_calls": 0,
+  "embedding_models_in_private_cache": 0,
+  "limitations": [
+    "This is local optional preprocessing, not a supervisor benchmark or task correctness test.",
+    "The supported control is authored controlled language, not arbitrary benchmark instruction semantics.",
+    "The source-audited action route has no separate projection request and performs no Lake build.",
+    "The unsupported benchmark instruction is refused before checkpoint numerical inference; selecting these weights cannot broaden their grammar.",
+    "Function-call instrumentation counts loaded shared functions without replacing them; timings include profiling and replay costs."
+  ],
+  "packaging_readiness": {
+    "archive_built": false,
+    "asset_bytes": 68075550,
+    "asset_count": 11,
+    "binding": {
+      "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+      "config": {
+        "checkpoint_path": "/opt/ipfs-supervisor/models/intent-action-384/checkpoint.json",
+        "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+        "embedding_snapshot_path": "/opt/ipfs-supervisor/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+        "schema": "supervisor-intent-action-384-config/v1"
+      },
+      "config_path": "models/intent-action-384/config.json",
+      "config_sha256": "d6020d1db7e62105e41cdd6d2137b00f124a703c86d41c6e01a4063179f50e63",
+      "embedding_assets": [
+        {
+          "bytes": 190,
+          "name": "1_Pooling/config.json",
+          "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+        },
+        {
+          "bytes": 583,
+          "name": "config.json",
+          "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+        },
+        {
+          "bytes": 66746168,
+          "name": "model.safetensors",
+          "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+        },
+        {
+          "bytes": 385,
+          "name": "modules.json",
+          "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+        },
+        {
+          "bytes": 57,
+          "name": "sentence_bert_config.json",
+          "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+        },
+        {
+          "bytes": 125,
+          "name": "special_tokens_map.json",
+          "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+        },
+        {
+          "bytes": 711661,
+          "name": "tokenizer.json",
+          "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+        },
+        {
+          "bytes": 394,
+          "name": "tokenizer_config.json",
+          "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+        },
+        {
+          "bytes": 231508,
+          "name": "vocab.txt",
+          "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+        }
+      ],
+      "embedding_path": "models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+      "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+      "mode": "frozen_source_audited_action_384_inference",
+      "path": "models/intent-action-384/checkpoint.json",
+      "runtime_download_calls": 0,
+      "runtime_training_steps": 0,
+      "schema": "terminal-intent-action-384-assets@1",
+      "source_training_data_included": false
+    },
+    "model_inference_executed": false,
+    "status": "ready"
+  },
+  "producer_pins": {
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/formalization/autoencoder/intent_action_checkpoint_384.py": "96ebebddff2b479c4feed4409f98b82d1d7daa2aa4180b68928b9bc13fc1eeb9",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/formalization/autoencoder/intent_action_runtime_384.py": "c358f7fee51c3fceadf8b37c306ca5f37744b3f4e0917b98906ca231b5f43a89",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_384.py": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/formalization/autoencoder/structured_source_384.py": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "79583cd472f8f9e9701db6560d717b557536e4ef4038c70fff12010749762be5",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/intent_384_advisor.py": "e316aec6d7a965a6df5877c04bca38d8c9e8e0050263aaf65334abe8f7ef6ccb",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/intent_advisor_selection.py": "a5b5274a5f70d5b82bd6bc2f3e5cc3225db1c2aca2862551130adce861ddc939"
+  },
+  "proof_authority": false,
+  "provider_calls": 0,
+  "schema": "selected-intent384-local-qualification@1",
+  "seconds": 2.9869216819060966,
+  "source_semantics_verified": false,
+  "training_steps": 0,
+  "versions": {
+    "numpy": "1.26.4",
+    "sentence-transformers": "5.4.1",
+    "torch": "2.13.0",
+    "transformers": "4.52.1"
+  }
+}

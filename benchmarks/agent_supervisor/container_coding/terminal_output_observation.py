@@ -114,7 +114,7 @@ def _identity(info):
         "st_dev", "st_ino", "st_mode", "st_uid", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns"))
 
 
-def _read(root_fd, relative, *, limit, private=False):
+def _read(root_fd, relative, *, limit, private=False, owner_controlled=False):
     """No-follow, single-link read with both FD and named-path identity checks."""
     _relative(relative)
     with ExitStack() as stack:
@@ -131,7 +131,9 @@ def _read(root_fd, relative, *, limit, private=False):
         before = os.fstat(fd)
         if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
                 or not 0 <= before.st_size <= limit
-                or private and (before.st_uid != os.geteuid() or before.st_mode & 0o077)):
+                or (private or owner_controlled) and before.st_uid != os.geteuid()
+                or private and before.st_mode & 0o077
+                or owner_controlled and before.st_mode & 0o022):
             raise ValueError("unsafe file")
         raw = bytearray()
         while len(raw) <= limit:
@@ -182,10 +184,12 @@ def _private_directory(path, stack):
 def observe(*, native_state, workspace_root, repository, scope, report):
     """Observe a terminal owner-bound allocation; never settle or mutate it."""
     result = _base()
+    stage = "admitted_scope"
     try:
         _scope(scope)
         result.update(task_cid_sha256=_sha(scope["task_cid"].encode()),
             baseline_commit=scope["baseline_commit"])
+        stage = "settlement_and_cleanup"
         task = report["native_progress"]["latest"]["task"]
         state = report["task_state"]
         completion = task["completion_receipt"]
@@ -211,11 +215,14 @@ def observe(*, native_state, workspace_root, repository, scope, report):
         attempt_hash = _digest(completion["attempt_id_sha256"])
         result["attempt_id_sha256"] = attempt_hash
         with ExitStack() as stack:
+            stage = "native_directory"
             _private_directory(Path(native_state), stack)
             attempt_path = Path(native_state) / "run/admitted_database_portal_attempts" / attempt_hash[:24]
+            stage = "attempt_directory"
             attempt_fd = _private_directory(attempt_path, stack)
             # Reuse the native closed binding verifier through the pinned FD.
             # The extra read enforces privacy, duplicate-key and byte bounds.
+            stage = "attempt_binding"
             raw = _read(attempt_fd, "database-attempt-binding.json", limit=65536, private=True)
             binding = _json(raw)
             from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import DatabasePortalExecutionBridge
@@ -227,13 +234,20 @@ def observe(*, native_state, workspace_root, repository, scope, report):
                     or any(type(completion.get(key)) is not int or completion[key] != binding[key]
                            for key in ("fencing_token", "fence_epoch"))):
                 raise ValueError("binding differs from native settlement")
-            events_raw = _read(attempt_fd, "portal-events.jsonl", limit=MAX_EVENTS_BYTES, private=True)
+            stage = "owner_event_log"
+            # append_jsonl_event uses the native process umask, commonly
+            # producing a 0644 log. Its verified 0700 owner directory supplies
+            # privacy; require owner custody and no other write permission on
+            # the file, while retaining the stricter 0600 binding contract.
+            events_raw = _read(attempt_fd, "portal-events.jsonl", limit=MAX_EVENTS_BYTES,
+                owner_controlled=True)
             lines = events_raw.splitlines()
             if len(lines) > 4096:
                 raise ValueError("event count exceeds bound")
             events = [_json(line) for line in lines if line.strip()]
             if any(type(event) is not dict for event in events):
                 raise ValueError("invalid event")
+            stage = "allocation_event"
             finished = [event for event in events if event.get("type") == "implementation_finished"]
             if len(finished) != 1:
                 raise ValueError("ambiguous allocation")
@@ -248,6 +262,7 @@ def observe(*, native_state, workspace_root, repository, scope, report):
                     or type(event.get("returncode")) is not int):
                 raise ValueError("allocation event differs")
             workspace = Path(_text(event["worktree_path"]))
+            stage = "allocation_root"
             root = Path(workspace_root)
             if not root.is_absolute() or workspace.parent != root or str(workspace) != event["worktree_path"]:
                 raise ValueError("allocation outside owned root")
@@ -255,6 +270,7 @@ def observe(*, native_state, workspace_root, repository, scope, report):
             info = os.fstat(root_fd)
             if info.st_uid != os.geteuid() or info.st_mode & 0o022:
                 raise ValueError("worker-writable allocation parent")
+            stage = "invocation_join"
             matches = [row for row in report.get("provider_invocations", []) if type(row) is dict
                 and row.get("schema") == "router-implementation-invocation@1"
                 and row.get("phase") == row.get("purpose") == "coding" and row.get("workspace") == str(workspace)]
@@ -266,6 +282,7 @@ def observe(*, native_state, workspace_root, repository, scope, report):
                 invocation_join="router_receipt_workspace_and_task_match_owner_finished_event",
                 allocation_binding="owner_private_native_attempt_binding_and_finished_event",
                 original_allocation_inode_verified=False)
+            stage = "declared_output_files"
             roots = {}
             for label, path in (("candidate", workspace), ("canonical", Path(repository))):
                 try:
@@ -301,6 +318,7 @@ def observe(*, native_state, workspace_root, repository, scope, report):
     except Exception:
         # Never export exception text: it can contain source or private paths.
         result["reason"] = "binding_or_file_evidence_unavailable"
+        result["evidence_stage"] = stage
         return result
 
 

@@ -1,0 +1,451 @@
+{
+  "activity": {
+    "hidden_benchmark_inputs_read": false,
+    "lake_build_executed": false,
+    "model_calls": 0,
+    "production_edits": false,
+    "solver_calls": 0,
+    "source_executed": false,
+    "training_runs": 0
+  },
+  "datasets_commit": "5723a541c5d575b88f01532e4d241dc95a1f3e99",
+  "distinctions": {
+    "deterministic_ast_facts": "source-hash and exact-byte-bound ProgramIR, numerical pattern roles and assertion requirements, replayed without model calls",
+    "learned_candidate": "actual pinned SecurityIR checkpoint output, validated by an intentionally narrow two-int-parameter source contract; numerical candidates remain unsupported",
+    "proof_discharge": "none: FOL predicates, abstract SMT constraints, and Lean definitions/conditional lemmas do not establish NumPy runtime identity, floating-point refinement, reachability, or speed"
+  },
+  "files": [
+    {
+      "exact_replay_passed": true,
+      "functions": [
+        {
+          "assertion_requirement_count": 0,
+          "ast_node_counts": {
+            "Assign": 2,
+            "Attribute": 5,
+            "Call": 3,
+            "Constant": 1,
+            "Expr": 1,
+            "FunctionDef": 1,
+            "Load": 19,
+            "Name": 13,
+            "Return": 1,
+            "Slice": 1,
+            "Store": 4,
+            "Subscript": 2,
+            "Tuple": 3,
+            "arg": 1,
+            "arguments": 1
+          },
+          "compound_contract_count": 1,
+          "end_byte": 641,
+          "guard_observation": "current deterministic guard replay, not a rerun of historical neural inference",
+          "normalized_body_sha256": "8abb894029599f96c8e8054997c5d0279927d7829d0a9bd1c3bad90bb796c0ae",
+          "pending_obligation_count": 16,
+          "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+          "raw_span_sha256": "8abb894029599f96c8e8054997c5d0279927d7829d0a9bd1c3bad90bb796c0ae",
+          "scalar_guard_reason": "two_distinct_parameters_required",
+          "scalar_guard_status": "unsupported",
+          "source_obligations_discharged": 0,
+          "start_byte": 21,
+          "status": "matched",
+          "structural_status": "structurally_complete",
+          "unit_id": "3c45193b7d05eb9ae25e76d1eb9901c6e09cfba1b94bddaa3895d3e2e6930974",
+          "unsupported_constructs": []
+        }
+      ],
+      "lean_source_sha256": "3b15a14e1ec469d9f6c618766ec43edda88edfcc764c68dfbb964f3a302d4a32",
+      "lean_status": "prepared_not_built",
+      "module_diagnostics": [],
+      "obligation_kinds": {
+        "eigenpair_residual": 1,
+        "index_safety": 2,
+        "library_semantics_and_effects": 3,
+        "matrix_shape": 1,
+        "selected_eigenpair_approximate_residual": 1,
+        "selected_eigenpair_dimensions": 1,
+        "selected_eigenpair_finite": 1,
+        "selected_eigenpair_magnitude_selection": 1,
+        "selected_eigenpair_nonzero": 1,
+        "selected_eigenpair_runtime_interpretation": 1,
+        "selected_eigenpair_value_column": 1,
+        "selection": 1,
+        "slice_safety": 1
+      },
+      "path": "eigen.py",
+      "pending_obligation_count": 16,
+      "projection_counts": {
+        "first_order": 16,
+        "smt": 3
+      },
+      "report_sha256": "786b65b7ce4b9a8d3d6ad38431a81a17223d0141685efd26a3aab326360a5a3f",
+      "source_bytes": 642,
+      "source_scope": "admitted public task program",
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "exact_replay_passed": true,
+      "functions": [
+        {
+          "assertion_requirement_count": 0,
+          "ast_node_counts": {
+            "Assign": 2,
+            "Attribute": 4,
+            "Call": 3,
+            "Constant": 1,
+            "Expr": 1,
+            "FunctionDef": 1,
+            "Load": 17,
+            "Name": 12,
+            "Return": 1,
+            "Slice": 1,
+            "Store": 4,
+            "Subscript": 2,
+            "Tuple": 3,
+            "arg": 1,
+            "arguments": 1
+          },
+          "compound_contract_count": 1,
+          "end_byte": 386,
+          "guard_observation": "current deterministic guard replay, not a rerun of historical neural inference",
+          "normalized_body_sha256": "7e44e4ca561fd59c32216556523cb2cf71498a73f13db4f6de4ea4701fad337e",
+          "pending_obligation_count": 16,
+          "qualified_name": "ref_solution",
+          "raw_span_sha256": "7e44e4ca561fd59c32216556523cb2cf71498a73f13db4f6de4ea4701fad337e",
+          "scalar_guard_reason": "two_distinct_parameters_required",
+          "scalar_guard_status": "unsupported",
+          "source_obligations_discharged": 0,
+          "start_byte": 173,
+          "status": "matched",
+          "structural_status": "structurally_complete",
+          "unit_id": "b6d7596b67c4a1a2170f3d24b8ee56da17d7941be8591685df16cd1ccf50c68d",
+          "unsupported_constructs": []
+        },
+        {
+          "assertion_requirement_count": 4,
+          "ast_node_counts": {
+            "Assert": 4,
+            "Assign": 4,
+            "Attribute": 13,
+            "BinOp": 6,
+            "Call": 9,
+            "Constant": 10,
+            "Div": 1,
+            "Expr": 1,
+            "FormattedValue": 3,
+            "FunctionDef": 1,
+            "JoinedStr": 3,
+            "Load": 42,
+            "MatMult": 2,
+            "Mult": 2,
+            "Name": 33,
+            "Not": 3,
+            "Store": 6,
+            "Sub": 1,
+            "Tuple": 2,
+            "UnaryOp": 3,
+            "arg": 1,
+            "arguments": 1,
+            "keyword": 1
+          },
+          "compound_contract_count": 0,
+          "end_byte": 1302,
+          "guard_observation": "current deterministic guard replay, not a rerun of historical neural inference",
+          "normalized_body_sha256": "6c153cfe290ae28ee1b73dd4b9110d8685cf685dfccad41edf539d7d02584cdb",
+          "pending_obligation_count": 13,
+          "qualified_name": "test_eigen_pair",
+          "raw_span_sha256": "6c153cfe290ae28ee1b73dd4b9110d8685cf685dfccad41edf539d7d02584cdb",
+          "scalar_guard_reason": "source_encoding_unsupported",
+          "scalar_guard_status": "unsupported",
+          "source_obligations_discharged": 0,
+          "start_byte": 389,
+          "status": "matched",
+          "structural_status": "partial",
+          "unit_id": "2459b87b4a1d358a713ab70626435b018cec0b675f078c42389a863f455901ad",
+          "unsupported_constructs": [
+            "python.assert.message_expression_deferred"
+          ]
+        },
+        {
+          "assertion_requirement_count": 0,
+          "ast_node_counts": {
+            "Assign": 10,
+            "Attribute": 18,
+            "BinOp": 2,
+            "Call": 22,
+            "Constant": 13,
+            "Expr": 7,
+            "For": 2,
+            "FormattedValue": 6,
+            "FunctionDef": 1,
+            "IfExp": 2,
+            "JoinedStr": 4,
+            "List": 2,
+            "Load": 64,
+            "Name": 54,
+            "Store": 12,
+            "Sub": 2,
+            "Tuple": 2,
+            "arg": 1,
+            "arguments": 1,
+            "keyword": 2
+          },
+          "compound_contract_count": 0,
+          "end_byte": 2132,
+          "guard_observation": "current deterministic guard replay, not a rerun of historical neural inference",
+          "normalized_body_sha256": "8dba913427cb13311027843cc2d5d331324863a72c8e3075213c6b4795b0bb65",
+          "pending_obligation_count": 0,
+          "qualified_name": "test_speedup",
+          "raw_span_sha256": "8dba913427cb13311027843cc2d5d331324863a72c8e3075213c6b4795b0bb65",
+          "scalar_guard_reason": "two_distinct_parameters_required",
+          "scalar_guard_status": "unsupported",
+          "source_obligations_discharged": 0,
+          "start_byte": 1305,
+          "status": "matched",
+          "structural_status": "partial",
+          "unit_id": "21dd1d5f1cf37884aba0dc435628266deb24807e2a41b43bbbfcd2e16846ed33",
+          "unsupported_constructs": [
+            "python.assignment.unsupported_target_or_value",
+            "python.expr.IfExp",
+            "python.expr.JoinedStr",
+            "python.stmt.For"
+          ]
+        }
+      ],
+      "lean_source_sha256": "3208073c5b6528cd75f035eab5002f8c670c418f5ae7aa30c4ed8293162079e1",
+      "lean_status": "prepared_not_built",
+      "module_diagnostics": [
+        "python.module.Assign",
+        "python.module.If"
+      ],
+      "obligation_kinds": {
+        "eigenpair_residual": 1,
+        "index_safety": 2,
+        "library_semantics_and_effects": 12,
+        "matrix_shape": 1,
+        "selected_eigenpair_approximate_residual": 1,
+        "selected_eigenpair_dimensions": 1,
+        "selected_eigenpair_finite": 1,
+        "selected_eigenpair_magnitude_selection": 1,
+        "selected_eigenpair_nonzero": 1,
+        "selected_eigenpair_runtime_interpretation": 1,
+        "selected_eigenpair_value_column": 1,
+        "selection": 1,
+        "slice_safety": 1,
+        "source_assertion_predicate": 4
+      },
+      "path": "eval.py",
+      "pending_obligation_count": 29,
+      "projection_counts": {
+        "first_order": 29,
+        "smt": 3
+      },
+      "report_sha256": "91f15fe1e7149b3ec190d81dc51154cef977147c4d248e8315ff5a58d26664d4",
+      "source_bytes": 2246,
+      "source_scope": "admitted public task program",
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "findings": [
+    "The four decoder failures are an architecture/profile mismatch, not four missing installations or syntax errors.",
+    "The first, reference and speed functions fail the two-parameter scalar guard; the assertion helper first fails the ASCII executable-token guard because its failure string contains Unicode. Removing that lexical restriction still leaves its one-argument numerical body unsupported.",
+    "Both selected-eigenpair functions are already structurally complete, with 16 pending obligations each. Further scalar guard relaxation cannot improve their learned candidates soundly.",
+    "The assertion helper already contributes all four public assertions and 13 pending obligations. Its sole structural gap is a deferred formatted failure message; completing that expression does not prove the assertions.",
+    "The timing helper has two unlowered For bodies, two conditional expressions, and formatted output. This is substantive missing source coverage and explains its zero current obligations. Loop bodies must not be flattened into unconditional straight-line commands.",
+    "ProgramIR conditional expressions and shared scalar IfExp grammar exist, but their typed semantics do not establish Python object truthiness or NumPy/timing semantics. Any numerical reuse must preserve guarded branch evaluation explicitly.",
+    "The released numpy-unary-selection-384@1 head admits only a direct argmax/argmin return in one plain function. It is not a checkpoint for eig-abs-argmax-tuple compositions.",
+    "No automatic projection to temporal, transition, deontic, separation, or concurrency families is justified by these source shapes alone."
+  ],
+  "historical_decoder": {
+    "candidate_origin": "learned_checkpoint_inference",
+    "candidate_samples": [
+      {
+        "candidate_sha256": "17b677c9b035647d975758dd0633655d2d486011db4840c167fc04fa11a7ba8d",
+        "path": "eigen.py",
+        "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+        "source_validation_reason": "two_distinct_parameters_required",
+        "source_validation_status": "unsupported",
+        "status": "fail_open_source_contract_unsupported"
+      },
+      {
+        "candidate_sha256": "a07887ac0888ebb3ce6b03023292242a71e7e29a4180fd615520191f28b2f5a5",
+        "path": "eval.py",
+        "qualified_name": "ref_solution",
+        "source_validation_reason": "two_distinct_parameters_required",
+        "source_validation_status": "unsupported",
+        "status": "fail_open_source_contract_unsupported"
+      }
+    ],
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "coverage": {
+      "candidate_statuses": {
+        "fail_open_source_contract_unsupported": 4
+      },
+      "file_dispositions": {
+        "inventoried": 2
+      },
+      "files": 2,
+      "functions": 4,
+      "selected_units": 4,
+      "unit_dispositions": {
+        "decoded_unverified_candidate": 4
+      }
+    },
+    "neural_inference_rerun": false,
+    "omitted_candidates": 2,
+    "report_sha256": "b0b8b2141de2b947341fa82b80dde48a1f357664e8c32914a3d67dcb39c5a965",
+    "sampled_candidate_content": "two retained candidates are scalar >= expressions unrelated to the numerical program; not repaired or promoted",
+    "source_aligned_candidate_count": 0,
+    "source_validation_scope": "guarded_scalar_source_candidate_alignment"
+  },
+  "limitations": [
+    "Only two historical candidate samples were retained; guard reasons for the other two are current pure-source replay observations.",
+    "This audit did not rerun inference or Lake; prior native compilation must be cited from its original evidence separately.",
+    "Structural completeness is not source semantic correctness, and zero current obligations for a fenced function is missing coverage, not safety."
+  ],
+  "producer_sha256": {
+    "numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+    "source_program_binding_384.py": "3bf9f897b0260ac5dd8a4ea671cdce3bcbf7f7201b7dcdf23b82b1890b513d19",
+    "source_unit_numerical_links.py": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0"
+  },
+  "profile": {
+    "completion_authority": false,
+    "contract_vc_status": "unsupported_without_reviewed_numerical_semantics",
+    "execution_authority": false,
+    "model_inference_executed": false,
+    "opt_in": true,
+    "profile": "python-numerical-structure@1",
+    "proof_authority": false,
+    "provider_calls": 0,
+    "routes": [
+      {
+        "encoding": "ProgramIR",
+        "family": "program",
+        "owner": "SoftwareVerificationSyntaxBridge@1",
+        "status": "structural_only"
+      },
+      {
+        "encoding": "TypedExpression",
+        "family": "first_order",
+        "status": "pending_predicates"
+      },
+      {
+        "encoding": "SMT-LIB",
+        "family": "first_order",
+        "owner": "SoftwareVerificationSMTCompiler@1",
+        "status": "pending_abstract_integer_constraints"
+      },
+      {
+        "encoding": "Lean4",
+        "family": "higher_order",
+        "status": "definitions_and_conditional_lemmas"
+      }
+    ],
+    "schema": "numerical-source-logic/v1",
+    "solver_calls": 0,
+    "source_executed": false,
+    "source_semantics_verified": false,
+    "unsupported_families": [
+      {
+        "family": "transition_system",
+        "reason": "No reviewed numerical transition relation; TLA+ is not generated from a CFG alone.",
+        "status": "unsupported"
+      },
+      {
+        "family": "temporal",
+        "reason": "No source-grounded temporal specification or trace semantics.",
+        "status": "unsupported"
+      },
+      {
+        "family": "separation_logic",
+        "reason": "No reviewed heap, aliasing or ownership model.",
+        "status": "unsupported"
+      },
+      {
+        "family": "concurrency",
+        "reason": "No thread/interference semantics.",
+        "status": "unsupported"
+      },
+      {
+        "family": "hyperproperty",
+        "reason": "No explicit information-flow policy and trace relation.",
+        "status": "unsupported"
+      },
+      {
+        "family": "refinement",
+        "reason": "No reviewed numerical implementation/specification refinement relation.",
+        "status": "unsupported"
+      },
+      {
+        "family": "horn_chc",
+        "reason": "No complete numerical verification-condition semantics.",
+        "status": "unsupported"
+      },
+      {
+        "family": "frame_logic",
+        "reason": "No reviewed object/frame interpretation.",
+        "status": "unsupported"
+      },
+      {
+        "family": "dcec",
+        "reason": "No supplied cognitive, normative or event interpretation.",
+        "status": "unsupported"
+      },
+      {
+        "family": "tdfol",
+        "reason": "No supplied temporal/normative interpretation.",
+        "status": "unsupported"
+      }
+    ],
+    "whole_program_semantics_verified": false
+  },
+  "recommended_order": [
+    {
+      "action": "Add separately versioned numerical source grammar for structured conditional expressions and formatted strings, retaining exact expression graphs, conditional evaluation and unknown effects.",
+      "boundary": "Keep Source384 candidate statuses and proof counters unchanged; do not widen existing scalar profiles or reinterpret imported names as trusted libraries.",
+      "expected_effect": "meaningful expression fidelity; assertion helper can become structurally complete only after its complete failure-message structure is represented",
+      "priority": 1
+    },
+    {
+      "action": "Add reviewed structured For-loop body/iterator/target/else representation with CFG or guarded region ownership, then attach child-call obligations with that region context.",
+      "boundary": "Require explicit handling/refusal of break, continue, return, nested loops, iterator exceptions, and for-else before claiming complete coverage.",
+      "expected_effect": "Represent the timing helper calls and data dependencies presently hidden behind loop fences; no performance theorem or unconditional effect assertion.",
+      "priority": 2
+    },
+    {
+      "action": "Reuse shared structured 384D training/decoder infrastructure for a separately versioned compositional numerical grammar, starting with authored eig-selection and tuple/index fixtures.",
+      "boundary": "Do not substitute deterministic targets for predictions, do not train on benchmark labels/hidden inputs, and retain exact checkpoint/holdout provenance.",
+      "expected_effect": "A future candidate head can express actual numerical source structure and be independently compared with the whole-file deterministic ProgramIR.",
+      "priority": 3
+    },
+    {
+      "action": "Define a reviewed numerical semantic boundary, explicit runtime/library/dtype/shape/tolerance witnesses, and source-to-model refinement before trying to discharge the 45 obligations.",
+      "boundary": "Reuse the separate source-AST/target-correspondence discipline in codebase_integer_lowering_lean; do not reuse its integer semantics for floating point or assume NumPy correctness.",
+      "expected_effect": "A path from structural coverage to real source-bound proof obligations rather than additional vacuous compilation.",
+      "priority": 4
+    }
+  ],
+  "schema": "four-numerical-function-coverage-audit@1",
+  "test_requirements": [
+    "Retain existing scalar mismatch/unsupported tests and exact learned candidate bytes; no unsupported candidate acquires qualified/proved status.",
+    "Use authored fixtures for new grammar with independent exact UTF-8/CRLF byte spans and source replay mutation rejection.",
+    "Conditional expressions: preserve test-before-selected-branch semantics, branch order and object-valued truthiness; never execute both branches or claim Bool typing from syntax.",
+    "Formatted strings: retain conversions !s/!r/!a, format specs, nested/dynamic spec dependencies, Unicode, repeated operands and source spans; failure messages are evaluated only on failed assertions.",
+    "Loop regions: demonstrate bodies remain conditional/repeated, body calls have enclosing-region provenance, and break/continue/for-else/early-return cases are modeled or explicitly refused.",
+    "Retain unknown library effects, stale-source/import-shadowing rejection and conservative unresolved runtime identity.",
+    "Replay ProgramIR bridge, FOL and SMT projections and run lake build on generated Lean syntax, with source obligations still pending unless a separately scoped theorem is actually checked.",
+    "Run admitted public-source replay after production tests; report separate learned, structural, syntax-build and discharged-proof coverage counts."
+  ],
+  "totals": {
+    "assertion_requirements": 4,
+    "compound_contracts": 2,
+    "functions": 4,
+    "learned_source_aligned_candidates": 0,
+    "matched_function_spans": 4,
+    "pending_obligations": 45,
+    "source_obligations_discharged": 0,
+    "structurally_complete_functions": 2
+  }
+}

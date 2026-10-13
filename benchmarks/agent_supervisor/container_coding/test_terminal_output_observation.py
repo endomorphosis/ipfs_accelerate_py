@@ -359,6 +359,126 @@ def test_real_bounded_child_exports_only_closed_facts(authored):
     assert "PRIVATE" not in json.dumps(result)
 
 
+@pytest.mark.parametrize("umask", [0o022, 0o027, 0o077])
+@pytest.mark.parametrize("child", [False, True])
+def test_native_event_writer_permissions_under_private_attempt(authored, umask, child):
+    """Use the production append path, whose log inherits the process umask."""
+    from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
+
+    path = authored.directory / "portal-events.jsonl"
+    path.unlink()
+    previous = os.umask(umask)
+    try:
+        append_jsonl_event(path, "implementation_finished", authored.event)
+    finally:
+        os.umask(previous)
+    assert path.stat().st_mode & 0o777 == 0o666 & ~umask
+    if child:
+        result = observation.collect(native_state=authored.native, workspace_root=authored.root,
+            repository=authored.app, scope=authored.scope, report=authored.report, timeout_seconds=5)
+    else:
+        result = observe(authored)
+    assert result["status"] == "observed"
+    assert result["outputs"][0]["candidate"]["sha256"] == sha(b"authored changed candidate\n")
+    assert result["outputs"][0]["canonical"]["sha256"] == sha(b"authored baseline\n")
+    assert result["patch_application_established"] is False
+    assert result["writer_identity_established"] is False
+    assert "PRIVATE" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("mode", [0o620, 0o602, 0o664, 0o666])
+def test_owner_event_log_with_other_write_permission_is_rejected(authored, mode, monkeypatch):
+    (authored.directory / "portal-events.jsonl").chmod(mode)
+    monkeypatch.setattr(observation, "_file", lambda *args: pytest.fail("unsafe event selected outputs"))
+    result = observe(authored)
+    assert result["status"] == "unavailable"
+    assert result["evidence_stage"] == "owner_event_log"
+
+
+@pytest.mark.parametrize("kind", ["foreign_owner", "symlink", "hardlink", "fifo"])
+def test_owner_event_log_requires_native_owned_regular_file(authored, kind, monkeypatch):
+    path = authored.directory / "portal-events.jsonl"
+    if kind == "foreign_owner":
+        inode = path.stat().st_ino
+        original = observation.os.fstat
+        def foreign(fd):
+            value = original(fd)
+            if value.st_ino != inode:
+                return value
+            fields = {key: getattr(value, key) for key in dir(value) if key.startswith("st_")}
+            return SimpleNamespace(**(fields | {"st_uid": os.geteuid() + 1}))
+        monkeypatch.setattr(observation.os, "fstat", foreign)
+    else:
+        path.unlink()
+        target = authored.native / "unrelated-event.jsonl"
+        private_json(target, authored.event)
+        if kind == "symlink": path.symlink_to(target)
+        elif kind == "hardlink": os.link(target, path)
+        else: os.mkfifo(path)
+    monkeypatch.setattr(observation, "_file", lambda *args: pytest.fail("unsafe event selected outputs"))
+    result = observe(authored)
+    assert result["status"] == "unavailable"
+    assert result["evidence_stage"] == "owner_event_log"
+
+
+def test_readable_event_does_not_relax_binding_privacy(authored, monkeypatch):
+    (authored.directory / "portal-events.jsonl").chmod(0o644)
+    (authored.directory / "database-attempt-binding.json").chmod(0o644)
+    monkeypatch.setattr(observation, "_file", lambda *args: pytest.fail("nonprivate binding selected outputs"))
+    result = observe(authored)
+    assert result["status"] == "unavailable"
+    assert result["evidence_stage"] == "attempt_binding"
+
+
+def test_readable_event_requires_private_attempt_directory(authored, monkeypatch):
+    (authored.directory / "portal-events.jsonl").chmod(0o644)
+    authored.directory.chmod(0o755)
+    monkeypatch.setattr(observation, "_file", lambda *args: pytest.fail("nonprivate attempt selected outputs"))
+    result = observe(authored)
+    assert result["status"] == "unavailable"
+    assert result["evidence_stage"] == "attempt_directory"
+
+
+def test_binding_change_between_safe_read_and_native_verification_is_rejected(authored, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import DatabasePortalExecutionBridge
+
+    original = DatabasePortalExecutionBridge._strict_binding
+    def replaced(path):
+        changed = dict(authored.binding, lease_id="PRIVATE-FOREIGN-LEASE")
+        private_json(authored.directory / "database-attempt-binding.json", seal(changed))
+        return original(path)
+    monkeypatch.setattr(DatabasePortalExecutionBridge, "_strict_binding", replaced)
+    monkeypatch.setattr(observation, "_file", lambda *args: pytest.fail("changed binding selected outputs"))
+    result = observe(authored)
+    assert result["status"] == "unavailable"
+    assert result["evidence_stage"] == "attempt_binding"
+
+
+@pytest.mark.parametrize("replacement", ["file", "write_permissions"])
+def test_event_changes_during_read_are_rejected(authored, monkeypatch, replacement):
+    path = authored.directory / "portal-events.jsonl"
+    path.chmod(0o644)
+    inode = path.stat().st_ino
+    original = observation.os.read
+    changed = []
+    def replace(fd, size):
+        raw = original(fd, size)
+        if not changed and os.fstat(fd).st_ino == inode:
+            changed.append(True)
+            if replacement == "file":
+                path.rename(path.with_suffix(".old"))
+                private_json(path, authored.event)
+            else:
+                path.chmod(0o666)
+        return raw
+    monkeypatch.setattr(observation.os, "read", replace)
+    monkeypatch.setattr(observation, "_file", lambda *args: pytest.fail("changed event selected outputs"))
+    result = observe(authored)
+    assert changed
+    assert result["status"] == "unavailable"
+    assert result["evidence_stage"] == "owner_event_log"
+
+
 @pytest.mark.parametrize("kind", ["timeout", "failure", "malformed", "oversize"])
 def test_diagnostic_child_failure_never_changes_outcome(authored, monkeypatch, kind):
     before = deepcopy(authored.report)

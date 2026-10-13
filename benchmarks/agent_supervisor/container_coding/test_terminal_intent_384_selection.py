@@ -10,6 +10,7 @@ import pytest
 
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as preparation
 from benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation import original, _proposal_json  # noqa: F401
+from benchmarks.agent_supervisor.container_coding.test_terminal_intent_autoencoder import _original_prompt
 from ipfs_accelerate_py.agent_supervisor.runtime import intent_384_advisor as advisor
 from ipfs_accelerate_py.agent_supervisor.runtime import intent_advisor_selection as subject
 
@@ -34,14 +35,6 @@ def _plan(state, prepared, monkeypatch, *, should_qualify=True):
     else:
         assert not result["qualified"] and result["provider_calls"] == 0 and not prompts, result
     return result, prompts[0] if prompts else None
-
-
-def _original_prompt(prepared):
-    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import build_prompt_goal_provider_request
-    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import PromptWorkflowRequest, DirectoryScanReceipt
-    return build_prompt_goal_provider_request(PromptWorkflowRequest.from_dict(prepared["request"]),
-        DirectoryScanReceipt.from_dict(prepared["scan"]), config=preparation._config(Path(prepared["repository"])),
-        constraint_summaries=prepared["constraints"])
 
 
 class TransportOwner:

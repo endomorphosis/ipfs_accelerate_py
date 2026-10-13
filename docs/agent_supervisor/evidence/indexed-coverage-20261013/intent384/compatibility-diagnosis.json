@@ -1,0 +1,23 @@
+{
+  "artifact_modified": false,
+  "benchmark_grammar_supported": false,
+  "changed_pins": [
+    {
+      "after": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+      "before": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d",
+      "path": [
+        "shared_runtime",
+        "numerical",
+        "files",
+        "tree_pin.py"
+      ]
+    }
+  ],
+  "changes": 1,
+  "existing_security_compatibility_profile": "security-structured384-known-stderr-tree-pin/v1",
+  "inference_executed": false,
+  "intent_loader_currently_accepts_transition": false,
+  "remaining_implementation_pins_match": true,
+  "schema": "intent384-current-runtime-compatibility-diagnosis@1",
+  "training_steps": 0
+}

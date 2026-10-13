@@ -1,0 +1,2 @@
+# Preserve the byte-exact pytest transcript, including progress-line spaces.
+intent384/optional-tests-01.stdout -whitespace

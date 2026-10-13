@@ -1,0 +1,97 @@
+{
+  "blocking_findings": [],
+  "comparison_stage_followup_validation": {
+    "counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 105
+    },
+    "independent_code_review": true,
+    "independent_test_rerun": false,
+    "receipt_sha256": {
+      "command.json": "0c38e60ffe018adc06ed77c8fa78dad47d10223dbe2a7d794ffeee51206fa6ad",
+      "junit.xml": "33acd45f9c2c2134bb48c0635f8aa079dbdf300b7d5cb23fbcca3e86516ef930",
+      "result.json": "f697d658a85b97463eaf268e65518afacf5c15fa57608f08f8233319f2ba9a0e"
+    },
+    "source_sha256": {
+      "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "fba2883f6139b7f6e781d3cbb3858e2d3ec2bf695d51f6e4a9fbac49e2c25d9c",
+      "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py": "eee10df4461525743dc8d98d9d2369221e8f668ce398843d41a5ae2c8b7e15b1",
+      "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "cad9cf08bd419c20f0db039da59824f77e9a4406c6150ed13ff995f27aceddf2",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py": "735f508f9b7be7de0563ac4b8d3467285f599201a852ab3aec4900fd8214b4b1"
+    }
+  },
+  "contract_review": [
+    "The native event append path inherits umask; production-writer tests establish readable 0644/0640 event files inside owner-private attempt directories.",
+    "Only event-log reads switch from private to owner_controlled. Both require current effective-UID ownership; owner_controlled rejects group/world write bits. Native binding reads retain the stricter private file mode.",
+    "Private native-state and attempt directories are checked before any event read. All absolute directory components are opened without following symlinks.",
+    "File observation continues to enforce no-follow/nonblocking regular file, single link, byte/event/JSON bounds, stable inode/mode/owner/time/size and named-path identity.",
+    "The allocation still requires a unique owner finished event joined to closed task/attempt/claim/lease/fencing bindings, declared output scope, and coding router receipt.",
+    "No public source text, exception text, private path or event payload is newly exported. evidence_stage is assigned only from fixed literal stage labels.",
+    "No task authority, completion, writer identity, original allocation inode claim, patch application or reward is established by current output hashes.",
+    "Added tests cover native writer modes, bounded-child observations, unsafe writes/owner/links/FIFO, nonprivate directory/binding, changed binding, and event replacement/permission races."
+  ],
+  "docker_qualification_review": {
+    "attempt_directory_mode": "0700",
+    "authored_lifecycle_fixture": true,
+    "container_removed": true,
+    "declared_candidate_and_canonical_hashes_observed": true,
+    "event_mode": "0644",
+    "independent_docker_rerun": false,
+    "native_writers_used": true,
+    "official_verifier_executed": false,
+    "provider_calls": 0,
+    "receipt_sha256": {
+      "qualification.json": "7cfd35bdf226cd5ecb86455967f6c6e60adcde137b16665051ac28e956fa6d56",
+      "results/observation.json": "73ce44ab28fbaa2a9573aa9b9c083b32bcb9a5f2d139b136a3b539134c1dff13",
+      "results/preparation.json": "50aecc349f7c28d57df03e558e2cf8af8ae97ebdd7d8c73f0b1b4066d0ed78a4"
+    },
+    "supervisor_start_executed": false
+  },
+  "limitations": [
+    "This review did not rerun a full supervisor or native benchmark. It inspected the separate successful Docker qualification receipts, which explicitly use an authored lifecycle fixture.",
+    "Same-owner privileged tampering is not made impossible by mode checks; the observer remains diagnostic and makes no writer identity or historical inode claim."
+  ],
+  "nonblocking_followups": [],
+  "recommendation": "accept scoped permission compatibility fix",
+  "resolved_followups": [
+    {
+      "action": "If comparison-level diagnosis is needed, retain an allowlisted stage enum and test malformed/untrusted values. Direct supervisor report already preserves the stage.",
+      "finding": "Comparison export drops the new evidence_stage and replaces the reason with a generic observation label.",
+      "function": "_declared_output_observation",
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py",
+      "priority": "low",
+      "required_for_current_fix": false,
+      "resolution": "Comparison now exports exact closed-enum stage only for unavailable observations with the matching producer reason; malformed and legacy stages are omitted.",
+      "status": "resolved_and_reviewed"
+    }
+  ],
+  "reviewed_dependencies": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "fba2883f6139b7f6e781d3cbb3858e2d3ec2bf695d51f6e4a9fbac49e2c25d9c",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "72ba6d0b05986334660ba12e5e899dc436e37d0c9c3908868d47d223a1696856",
+    "ipfs_accelerate_py/agent_supervisor/runtime/event_log.py": "25c3f517ab96b5297d57a0b4744bb0f3b3d469be3086728a04ecba81d09e099b",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7"
+  },
+  "reviewer": "context_pair_design",
+  "schema": "terminal-output-observer-independent-review@1",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py": "eee10df4461525743dc8d98d9d2369221e8f668ce398843d41a5ae2c8b7e15b1",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py": "735f508f9b7be7de0563ac4b8d3467285f599201a852ab3aec4900fd8214b4b1"
+  },
+  "test_receipts_sha256": {
+    "command.json": "3d431a61f196763646807b1e37ee93f34beccc337588179e45564423c13c8392",
+    "junit.xml": "9ca0828dc3975819f5f66e77023706fae2d51e1cc662d0166c2c2e1c2ce591f8",
+    "result.json": "1f8c07f7bdbd75827e19ef05adfcf1d75a37ce533bc16a4a7a59d97d30b40bb4"
+  },
+  "validation": {
+    "independent_test_rerun": false,
+    "recorded_test_counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 269
+    },
+    "recorded_test_source_pins_match_current": true,
+    "validation_kind": "independent code review plus verification of existing source-bound focused test receipts"
+  }
+}
