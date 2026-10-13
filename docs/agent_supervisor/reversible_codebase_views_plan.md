@@ -1,10 +1,17 @@
 # Repository-wide compact views, source restoration and total tokens
 
-Status: reviewed improvement plan, 2026-10-12. The source audit starts from
+Status: reviewed improvement plan, 2026-10-13. The source audit starts from
 accelerator `1f6d998a92db4024f35b57bbdb183a6626a7fa31` and incorporates parallel
 work published through `f86f955eb4bb63613a2c3aaffa968e87382044f1`, plus the
 host-side compact-edit mapper and isolated application qualified below.
 The contracts and stages below are proposed unless explicitly marked current.
+
+The October 13 [reading-workflow audit](evidence/context-reading-audit-20261013/README.md)
+reconciles accelerator `cdca08b03c9ca015b7ba8799b9161de6ac20ce4d` and the parent
+datasets pin `b95938c2a816075466f8dc84f339cf622414030d`, including parallel
+compact-edit and LegalIR permission-retention publications. It distinguishes
+source already omitted during preparation from later reads, and identifies
+shared view policy, discovery transport and read tracing as the next gaps.
 
 The October 12 follow-up audit includes publications through
 `48f442b4ca468b8cf2e858bca72a676812344302`. Unchanged repository restoration
@@ -120,7 +127,14 @@ replacement of the original conversation content.
 
 There is a concrete additive cost in the current source-view treatment.
 [`_worker_payload`](../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py)
-retains required raw source in `raw_sources`.
+retains required raw source in `raw_sources`. Initial Terminal preparation also
+supplies `worker_query`, selecting a bounded capsule projection. In that path,
+program bodies outside the required set are generally represented by fetch
+identities rather than copied wholesale; nondeferred support source remains
+inline. Without that projection, the producer can include additional raw source.
+The baseline therefore must be inspected per task: it does not automatically
+contain the entire codebase. Minifying a body already absent from the prompt
+cannot reduce that initial disclosure.
 [`router_implementation_runner.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py)
 then appends source-reader guidance when a source-view profile is enabled; that
 option does not replace the required inline source. A model can pay for original
@@ -135,6 +149,13 @@ the actual worker's ability to resolve it. Preserve the public instruction and
 applicable constraints. Required facts remain inline when retrieval is unavailable
 or unqualified. Charge discovery and later expansions. This is a new opt-in
 disclosure policy, not an automatic consequence of selecting a codec.
+
+For source already deferred, the opportunity is smaller or fewer later tool
+results. Ordinary file, search and terminal tools still read the allocated exact
+checkout. Selecting the compact helper does not redirect those tools. A compact
+read followed by an ordinary read or exact expansion can add text; it can also
+help by avoiding other files. Native complete-run usage and matched task outcomes
+must decide which effect dominates.
 
 The worker-facing round trip still needs **compact edit to original-source
 patch** submission. The host-only mapper and isolated application now implement
@@ -168,6 +189,71 @@ while the operational source stays ordinary. Conversely, a reversible view can
 cost more through guidance, aliases, expansion and repair. The immediate
 experiment should isolate context displacement and retrieval behavior before
 adding a more aggressive source transform.
+
+## Make repository views one consistent reading workflow
+
+The current complete inventory and coding reader share a codec but do not share
+one representation resolver. The inventory transforms `.py` and `.pyi` and
+accepts an explicit protected-line policy. The coding reader and new mapped-edit
+adapter transform only `.py`, without that caller-supplied protected-line input.
+Source bytes and a profile name alone therefore do not identify the same view.
+Define an additive resolver contract binding admitted source generation, raw
+path, original blob, requested/effective profile, protected-line policy and codec
+identity. Have inventory, worker and mapper consume that same policy before
+exporting a complete view. Preserve existing versioned views and checkpoints;
+changing this contract does not silently reinterpret their hashes.
+
+[`WorkerSourceViews.discovery()`](../../ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py)
+already produces bounded host path/pin pages. The actual
+[worker client](../../ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py)
+requires `--path`, and its closed request/broker protocol does not expose that
+discovery operation. Expose it first within the existing admitted scope. Then
+join complete inventory metadata to bounded task-specific source admission,
+retaining excluded, unsupported and unresolved frontiers. Discovering a path
+does not authorize a new source read or expand the current 64-file limit.
+
+Present discovery, symbol/span selection, compact reads, exact expansion and
+candidate capsules as one model-facing workflow. Retain the distinct native
+source and semantic-reader admission rules behind it. An interface adapter must
+not turn a semantic identifier into native task custody. Keep mapping sidecars,
+full indexes and proof artifacts host-side; return readable code or selected
+facts and their bounded identities. Ordinary exact reads remain available and
+must be observed in the comparison rather than assumed to use the compact route.
+
+A complete read-only filesystem export is a possible later consumer of this
+same resolver. Test its population, paths, modes, source/view identities and
+exact inverse against the retained inventory. Such an export would make the
+compact repository inspectable with familiar tools. It would still not be an
+editable or executable minified workspace. Worker edit submission, repeated
+dirty-overlay edits and create/move/delete support retain the mapped-edit and
+native write lifecycle prerequisites described below.
+
+## Observe what enters the coding conversation
+
+The current usage receipts retain total native tokens and aggregate tool counts.
+The source broker separately records request/response identities and byte
+accounting. They do not yet provide a joined ledger of ordinary source reads,
+compact reads, search excerpts and exact expansions. A lower count of helper
+calls or fewer stored bytes cannot establish which model context was avoided.
+
+Propose an owner-local read observation joined to run, attempt, session and
+native tool call identity: route, request/result digest, actual displayed-text
+digest and bytes, source generation, representation and exact path/span when
+independently resolvable.
+Keep protocol wire bytes distinct from displayed client text. Record initial
+inline disclosure as well as subsequent tools. Classify arbitrary terminal
+output or missing provider detail as unknown; a command mentioning a path does
+not prove which source bytes were read or delivered. Publish bounded hashes,
+counts and coverage rather than raw private code or tool output.
+
+Use this ledger to diagnose repeated exposure and compare the same permitted
+read/expand/edit trace through exact and compact views. It cannot authenticate
+provider delivery by itself or observe a counterfactual avoided read. Those
+claims need the actual route and matched complete sessions. A host-side seen set
+also does not remove earlier source text from the provider's conversation.
+Any later history-compaction or session-checkpoint treatment needs its own
+supported handoff, retained task facts, source/proof dependencies and measurement.
+Do not assume DuckLake persistence performs that context replacement.
 
 ## What the audit found
 
@@ -242,6 +328,14 @@ does not establish total-token savings. Across its retained three attempts,
 | Semantic capsules | Summarize current dependency evidence and remaining work | Required task facts and needed source remain available |
 | Compact source views | Navigate many files without sending irrelevant bodies or repeated trivia | Readable code, original source locations and expansion/edit rules |
 | Existing autoencoders | Rank spans, dependencies and obligations | Candidates, with current-source checks before use |
+
+DuckLake snapshots can identify consistent database history and support queries
+at a retained version or timestamp, as documented in the upstream
+[snapshot](https://ducklake.select/docs/stable/duckdb/usage/snapshots) and
+[time-travel](https://ducklake.select/docs/stable/duckdb/usage/time_travel)
+interfaces. The supervisor still has to bind a database snapshot to admitted
+source generations and current proof dependencies. Database versioning alone
+does not provide source freshness, reasoning state or model-context compression.
 
 ## Route IRs to current code and disclose only useful results
 
@@ -394,6 +488,23 @@ minification should be tested as separate later treatments; the bounded host
 mapper is already qualified. The existing native bootstrap/context/
 actual-child and source-CAS integration prerequisites remain necessary for
 operational deployment; the allocation guard alone does not activate them.
+
+The immediate implementation order within those steps is:
+
+| Increment | Acceptance |
+| --- | --- |
+| Shared view policy | Inventory, worker and mapper agree for the same source, `.py`/`.pyi` classification, protected lines and codec; old versions retain their identities |
+| Reader discovery | Actual coding client pages admitted paths without bodies; repository metadata feeds explicit bounded admission rather than silently widening access |
+| Read observations | Initial disclosure, ordinary tools and indexed reads have joined call/result identities or explicit unknowns; byte counts stay separate from native tokens |
+| Fixed-trace census | Same task, disclosure and read trace through identity/compact modes; charge guidance, display wrappers, expansions and repairs |
+| Matched live comparison | Same route, provider/model and task controls; repeated official outcomes and complete all-attempt usage |
+| IR/proof reuse ablations | Add one relevant family or checked fact at a time, preserving source/model/dependency identity and cold versus reused setup costs |
+
+These are proposed increments. The retained compact-edit qualification now
+includes 729 passing combined regressions and 11 authored numerical fixture
+cases; neither is a new execution in this documentation audit or a live token
+measurement. No new training, decoder, embeddings or database owner are needed
+to establish the first four increments.
 
 ## Provide repository-wide views with explicit edit handling
 

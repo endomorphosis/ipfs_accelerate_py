@@ -1,0 +1,319 @@
+{
+  "accelerator_commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+  "datasets_commit": "b95938c2a816075466f8dc84f339cf622414030d",
+  "datasets_git_objects_used_without_checkout": true,
+  "datasets_preexisting_immutable_worktree_head": "f47161b757190380e9898aff155067c1ad609217",
+  "docker_run": false,
+  "existing_assets_modified": false,
+  "findings": [
+    {
+      "finding": "Exact unchanged source restoration is already retained-CAS byte custody plus deterministic view mapping. It is not an inverse supplied by a learned embedding. Whole admitted inventory remains distinct from bounded ordinary worker navigation.",
+      "id": "whole_repository_inverse",
+      "sources": [
+        "reversible_codebase_views_plan.md:75-119",
+        "repository_source_inventory.py:329-383",
+        "reversible_source_view.py:216-279"
+      ]
+    },
+    {
+      "finding": "Parallel host-only mapper authenticates original/view/map, restricts edits to unambiguous KEEP spans and exact preimages, checks reprojection, then applies one existing UTF-8 file in a fresh clean fenced candidate. Actual worker mutation and repeated dirty overlays remain open. No assets are replaced.",
+      "id": "parallel_compact_edit_preserved",
+      "sources": [
+        "source_view_edits.py:92-169",
+        "source_view_edit_candidate.py:83-169",
+        "reversible_codebase_views_plan.md:139-154"
+      ]
+    },
+    {
+      "finding": "Byte-identical to f471: normalized AST feature counts reconstructed by MSE, nomination ranking only. It is not legal/security contract inference, source text reconstruction, formula decoding or proof.",
+      "id": "legacy_ast_ranker",
+      "sources": [
+        "security/codebase_autoencoder.py:1-8,118-129,186-200"
+      ]
+    },
+    {
+      "finding": "Separate current native CodebaseIR 8D profile reconstructs structural compiler-artifact features, including projection path/atoms in a training vocabulary. It is not the legacy AST-count ranker, GTE text embedding or semantic formula decoder. The earlier claim must stay scoped to the legacy ranker.",
+      "id": "native_projection_feature_profile",
+      "sources": [
+        "codebase_feature_context.py:243,327-335",
+        "autoencoder_projection_features.py:1-6,67-78,174-184",
+        "codebase_ir_targets.py:38-44",
+        "codebase_source_training.py:1-5,696-699"
+      ]
+    },
+    {
+      "finding": "Current working candidate capsules and numerical formulas are deterministic scanner/native grammar outputs. Zero model inference/training/prover calls here. Cold scoped semantic reconstruction rescans captured source and matches root identities; it is not learned text-IR-text reconstruction quality.",
+      "id": "candidate_capsules",
+      "sources": [
+        "worker_candidate_artifacts.py:19-25,119-125,156-166",
+        "semantic_context_runtime.py:307-329"
+      ]
+    },
+    {
+      "finding": "DuckDB links metadata catalogs; Quack ownership/closed admitted operations mediate access; DuckLake history is observational. A mirrored proof catalog row, vector, generated formula or capsule is not a fresh native verdict or source/formula fidelity certificate.",
+      "id": "store_roles",
+      "sources": [
+        "supervisor_meta_index.py:1-8,586-610,1217-1236",
+        "external_quack_owner.py:1-12"
+      ]
+    },
+    {
+      "finding": "Shared published 384D hub has LegalIR/SecurityIR/IntentIR/UI-UX IR domains; CodebaseIR native feature profile is separate. Family/schema/task and dimension/window capability inventories must remain explicit. Registry/Hub publication or a configured dimension does not qualify all 5x3 learned decoder cells.",
+      "id": "family_checkpoint_matrix",
+      "sources": [
+        "checkpoint_hub.py:14-24,199-213",
+        "ir_decoder_profile_inventory.py:1-14,66-74",
+        "reversible_codebase_views_plan.md:246-298"
+      ]
+    },
+    {
+      "finding": "Latest parallel LegalIR evidence preserves all eight matched-curriculum checkpoints, reaches authored joint 52/72 from 12/72, but old panel 94/96 includes permission-to-obligation errors. Frozen-head comparison preserves 96/96 older outputs without newer-panel improvement. These are authored exposed/source-only experiments: configured384, latent conditioning disabled, encoder calls0; not statutory gold or real8/384/768 qualification.",
+      "id": "latest_training_preserved",
+      "sources": [
+        "docs/autoencoders/matched_temporal_curriculum_20261012.md",
+        "docs/autoencoders/permission_retention_training_20261012.md"
+      ]
+    },
+    {
+      "finding": "Need implemented task requirement-to-source/evidence coverage and actual-read ledger: retrieval source generation, required facts, capsule/proof claims, exact expansion triggers, unsupported and unresolved dependency frontier, what was actually sent/read, and whether raw source was displaced. Existing plan discusses these roles but current general IR/disclosure/provider-delivery join is not implemented.",
+      "id": "remaining_operational_gap",
+      "sources": [
+        "reversible_codebase_views_plan.md:121-137,278-298,308-315"
+      ]
+    }
+  ],
+  "limitations": [
+    "This receipt records conceptual source inspection, not executable qualification or measured token benefit.",
+    "Source hashes bind the inspected commits; later documentation-only edits require their own final documentation receipt.",
+    "The fixed feature learners are information bottlenecks: exact arbitrary source recovery requires retained source bytes/maps or a separately qualified lossless source codec."
+  ],
+  "parent_reported_integration_commit": "203f482ddb",
+  "product_files_modified": false,
+  "provider_or_model_inference_run": false,
+  "publication_performed": false,
+  "recorded_at_utc": "2026-10-13T00:23:10.169204+00:00",
+  "review_kind": "read_only_conceptual_source_audit",
+  "schema": "context-reading-ir-store-review@1",
+  "source_bindings": [
+    {
+      "bytes": 41920,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "af98066c50a343a581b80c3e764a58a1a7ec087b21c6b3a44ed4251622f40a32",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 53490,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 20699,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/external_quack_owner.py",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "7949695fa35831e612db7f2ba1c9bdab1546b609be50efd2ccf65e97af865380",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 46125,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 10847,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_artifacts.py",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "43fb1fa8944993008ffd6292467ec6207c4669965ae1d0c3265c73e3c6ae5d84",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 18872,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 13539,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 9068,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 10169,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "b5a6d6634272b8cc03f7ca6207fafaa9e27f1a9319d7ebf315284d5fbac0cec8",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 26038,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/codebase_feature_context.py",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "651df2ce0489987a18a104cca9d5aecccf3dc27f1fe34e5207e0d0dcddf9d034",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 83470,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "2fd9f10b07d778247d04889d9ca1f08bfddf5249aa2a800b689c80d454bcdbbd",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 57928,
+      "commit": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "read_method": "git_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "58dc1077e82e731b7fcddfa5eb73ae88fe5e292a456bc1cfc6528933ef5903e0",
+      "working_copy_matches_object": true
+    },
+    {
+      "bytes": 32609,
+      "commit": "b95938c2a816075466f8dc84f339cf622414030d",
+      "f471_sha256": "035ca389848a37344025a69c8788fd66179f60ac21207c24779faeeb936c6f8a",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/security/codebase_autoencoder.py",
+      "read_method": "git_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "035ca389848a37344025a69c8788fd66179f60ac21207c24779faeeb936c6f8a",
+      "unchanged_from_f471": true
+    },
+    {
+      "bytes": 17546,
+      "commit": "b95938c2a816075466f8dc84f339cf622414030d",
+      "f471_sha256": "be1bc90729bc811c8ca0b4d3f77ef10991e29b9df17670a479b955f569f81f3d",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/checkpoint_hub.py",
+      "read_method": "git_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "be1bc90729bc811c8ca0b4d3f77ef10991e29b9df17670a479b955f569f81f3d",
+      "unchanged_from_f471": true
+    },
+    {
+      "bytes": 20396,
+      "commit": "b95938c2a816075466f8dc84f339cf622414030d",
+      "f471_sha256": "bc8aab1ba3a53b91c0e39fc813983657e52e07118a14c0d65c3c4e2aa660face",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_profile_inventory.py",
+      "read_method": "git_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "bc8aab1ba3a53b91c0e39fc813983657e52e07118a14c0d65c3c4e2aa660face",
+      "unchanged_from_f471": true
+    },
+    {
+      "bytes": 28715,
+      "commit": "b95938c2a816075466f8dc84f339cf622414030d",
+      "f471_sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "read_method": "git_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4",
+      "unchanged_from_f471": true
+    },
+    {
+      "bytes": 29578,
+      "commit": "b95938c2a816075466f8dc84f339cf622414030d",
+      "f471_sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+      "read_method": "git_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf",
+      "unchanged_from_f471": true
+    },
+    {
+      "bytes": 47987,
+      "commit": "b95938c2a816075466f8dc84f339cf622414030d",
+      "f471_sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+      "read_method": "git_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0",
+      "unchanged_from_f471": true
+    },
+    {
+      "bytes": 32125,
+      "commit": "b95938c2a816075466f8dc84f339cf622414030d",
+      "f471_sha256": "0d93a2e56d0b46cff34f15c4792042bca33f47af00da80e21fa501ddf442de06",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_projection_features.py",
+      "read_method": "git_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "0d93a2e56d0b46cff34f15c4792042bca33f47af00da80e21fa501ddf442de06",
+      "unchanged_from_f471": true
+    },
+    {
+      "bytes": 5891,
+      "commit": "b95938c2a816075466f8dc84f339cf622414030d",
+      "path": "docs/autoencoders/matched_temporal_curriculum_20261012.md",
+      "read_method": "git_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "dcbaf0a4d5d2efd1912c578f1eae3ee470f764d5a484dadeaed6153b3e776597"
+    },
+    {
+      "bytes": 3239,
+      "commit": "b95938c2a816075466f8dc84f339cf622414030d",
+      "path": "docs/autoencoders/permission_retention_training_20261012.md",
+      "read_method": "git_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "20a2cb64063db570fa6defd22e3cde2c0cab9a8d57c40b518b543135123c1ade"
+    },
+    {
+      "bytes": 7575,
+      "commit": "b95938c2a816075466f8dc84f339cf622414030d",
+      "path": "docs/autoencoders/targeted_loss_curriculum_20261012.md",
+      "read_method": "git_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "88c803d749e4cb214f3cb0444df45d11dda1e238a62951bde6af47684f2c9336"
+    }
+  ],
+  "suggested_flow": [
+    "Task to explicit IntentIR requirements and optional applicable UI/Security/Legal constraints.",
+    "Query exact current admitted source inventory, structural CodebaseIR, lexical/vector/KG/dependency indexes; learned rankings nominate only.",
+    "Build a requirement-to-current-source/evidence coverage ledger, including unsupported dependencies and native proof assumptions/verdicts.",
+    "Select minimal readable decoded capsules and source spans under one shared disclosure policy; keep required facts inline if reliable expansion is absent.",
+    "Deliver and measure selected content; exact bounded expand from retained source before original-source editing, or use separately qualified host mapped-edit contract.",
+    "Refresh changed source generations, recompute affected structural candidates and invalidate stale proof/index references; accepted native publication remains separate.",
+    "Compare complete planning, reading, coding, repair and official verification sessions using actual provider usage and source-fidelity metrics."
+  ],
+  "suggested_metrics": [
+    "Byte-exact restoration and untouched-byte/edit-reprojection fidelity, explicit inventory population/frontiers and source-generation refusal.",
+    "Canonical IR reconstruction plus source-span alignment, modality/negation/scope fidelity, abstention and held-out reviewed semantic targets.",
+    "Actual encoder calls; source-only, latent-only, joint and zero/shuffled/mismatched-latent controls under matched budgets.",
+    "Requirement/source retrieval coverage and recall at a context budget, unresolved dependency rate, expansion and drift/invalidation behavior.",
+    "Native proof verdict/assurance and supported property coverage, separately from source-to-formula fidelity.",
+    "Delivered and repeated source/capsule/token counts, warm/cold index/model compute cost and complete official task success."
+  ],
+  "tests_run": false
+}

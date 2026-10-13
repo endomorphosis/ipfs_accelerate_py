@@ -1,0 +1,433 @@
+{
+  "accelerator_baseline_revision": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+  "conceptual_conclusion": "Whole-codebase reversible minification is neither necessary nor sufficient for token savings. Exact CAS restoration and the new bounded mapped-edit adapter preserve different fidelity contracts. The immediate missing token-efficiency mechanism is consistent indexed disclosure that replaces enough model-visible source and repeated reads to outweigh its own overhead.",
+  "executable_equivalence_established_here": false,
+  "findings": [
+    {
+      "detail": "Complete admitted historical inventory can cover up to 20000 entries/128 MiB, while semantic worker views are limited to 64 admitted files/1 MiB and native exact-source worker is limited to 32 paths. Stored whole-repository coverage does not expose whole-repository model navigation.",
+      "id": "whole_inventory_is_not_worker_population",
+      "source_references": [
+        {
+          "line": 77,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py"
+        },
+        {
+          "line": 29,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py"
+        },
+        {
+          "line": 177,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py"
+        }
+      ],
+      "status": "current_gap"
+    },
+    {
+      "detail": "WorkerSourceViews.discovery returns bounded metadata, but source request fields require a path/read query, CLI requires --path, and broker dispatch only reaches candidate context, working_page or page. Existing discovery is not a source-model operation.",
+      "id": "source_discovery_not_exposed_by_worker_transport",
+      "source_references": [
+        {
+          "line": 389,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py"
+        },
+        {
+          "line": 91,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+        },
+        {
+          "line": 296,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+        },
+        {
+          "line": 100,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py"
+        }
+      ],
+      "status": "current_gap"
+    },
+    {
+      "detail": "Historical inventory transforms regular .py/.pyi and binds caller protected_lines. Worker source views and edit application nominate only .py and rebuild without that caller policy. The same source/requested profile name is insufficient for common view identity; existing pin checks refuse mismatches rather than treating these views as equivalent.",
+      "id": "view_policy_identity_divergence",
+      "source_references": [
+        {
+          "line": 119,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py"
+        },
+        {
+          "line": 275,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py"
+        },
+        {
+          "line": 162,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py"
+        },
+        {
+          "line": 104,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py"
+        }
+      ],
+      "status": "current_gap"
+    },
+    {
+      "detail": "The unchanged inverse authenticates original/view/map and combines view KEEP bytes with original DELETE bytes. Retained source CAS makes this independent of the original checkout. Compact text and offset maps alone cannot recover deleted bytes, and arbitrary edited compact views refuse ordinary restoration.",
+      "id": "exact_restoration_depends_on_retained_originals",
+      "source_references": [
+        {
+          "line": 236,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py"
+        },
+        {
+          "line": 267,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py"
+        },
+        {
+          "line": 249,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py"
+        }
+      ],
+      "status": "implemented_with_explicit_scope"
+    },
+    {
+      "detail": "map_source_view_edit authenticates the unchanged view, requires exact preimage, maps one range wholly within a retained KEEP interval, refuses hidden/collapsed ambiguous anchors, preserves untouched original bytes and requires exact reprojection under unchanged profile/fallback/codec. This supersedes the earlier statement that source edit mapping was absent.",
+      "id": "mapped_edit_support_exists_in_latest_main",
+      "source_references": [
+        {
+          "line": 69,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py"
+        },
+        {
+          "line": 92,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py"
+        },
+        {
+          "line": 137,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py"
+        },
+        {
+          "line": 142,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py"
+        }
+      ],
+      "status": "implemented_host_only"
+    },
+    {
+      "detail": "apply_source_view_edit_candidate applies one modified text file through an existing fenced IsolatedWorktree and caller PatchScope, requiring a fresh clean candidate plus source/view/manifest/generation pins. It checks staged bytes and the entire admitted postimage and refreshes the working generation. Incremental dirty-overlay editing, creates/deletes/moves, binary/specially quoted paths, authenticated worker write submission, accepted proof/index publication and atomic external-writer exclusion remain outside this adapter.",
+      "id": "mapped_edit_application_limits",
+      "source_references": [
+        {
+          "line": 35,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py"
+        },
+        {
+          "line": 75,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py"
+        },
+        {
+          "line": 83,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py"
+        },
+        {
+          "line": 126,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py"
+        },
+        {
+          "line": 138,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py"
+        },
+        {
+          "line": 155,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py"
+        },
+        {
+          "line": 136,
+          "path": "docs/agent_supervisor/reversible_source_views.md"
+        }
+      ],
+      "status": "implemented_host_only_with_remaining_integration"
+    },
+    {
+      "detail": "Repository restoration returns historical records and reports filesystem_restored=false. No whole compact-checkout exporter, editable virtual filesystem or executable-minification profile is provided by these components. A read-only export can aid ordinary navigation tools but must share the same source/view policy and cannot supply arbitrary-write translation.",
+      "id": "filesystem_export_and_executable_minification_are_separate",
+      "source_references": [
+        {
+          "line": 55,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py"
+        },
+        {
+          "line": 297,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py"
+        },
+        {
+          "line": 156,
+          "path": "docs/agent_supervisor/reversible_codebase_views_plan.md"
+        }
+      ],
+      "status": "current_gap"
+    },
+    {
+      "detail": "Semantic worker preparation retains required raw source bodies. Selecting the source-view helper adds guidance and enables optional rereads; it does not replace required inline text or redirect ordinary filesystem reads. Compact navigation followed by exact expansion can cost additional model context.",
+      "id": "source_treatment_is_currently_additive",
+      "source_references": [
+        {
+          "line": 146,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py"
+        },
+        {
+          "line": 578,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+        },
+        {
+          "line": 268,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+        }
+      ],
+      "status": "current_gap"
+    },
+    {
+      "detail": "Default profile preserves all comments and strips safe trailing trivia; physical lines, identifiers and meaningful Python tokens remain. F-string and unsupported input profiles fall back to identity. Repository coverage is distinct from provider-token compression.",
+      "id": "conservative_transform_has_limited_compression",
+      "source_references": [
+        {
+          "line": 120,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py"
+        },
+        {
+          "line": 163,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py"
+        },
+        {
+          "line": 209,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py"
+        },
+        {
+          "line": 216,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py"
+        }
+      ],
+      "status": "current_boundary"
+    }
+  ],
+  "ir_role": "Separate IntentIR, target-trained CodebaseIR, UIUXIR, SecurityIR and LegalIR profiles may rank requirements/current evidence and nominate capsules behind the reader; a latent vector or reconstructed semantic IR is not an exact source inverse or that many provider tokens.",
+  "observed_utc": "2026-10-13T00:21:43.261708+00:00",
+  "only_created_artifact": "docs/agent_supervisor/evidence/context-reading-audit-20261013/representation-review.json",
+  "parallel_work_reconciliation": {
+    "host_fenced_application_present": true,
+    "initial_mapped_edit_regression_retained_junit": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 339
+    },
+    "integrated_regression_retained_junit": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 729
+    },
+    "model_facing_compact_write_tool_present": false,
+    "public_fixture_authored_numeric_comparison_count_reported_by_retained_readme": 11,
+    "public_fixture_official_benchmark_or_verifier_result": false,
+    "pure_compact_edit_mapper_present": true,
+    "source_edit_mapping_absent_claim_retracted_for_current_main": true,
+    "these_historical_results_executed_by_reviewer": false
+  },
+  "previous_reader_inventory_source_findings_rechecked": [
+    {
+      "byte_identical_to_previous_review": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py"
+    },
+    {
+      "byte_identical_to_previous_review": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py"
+    },
+    {
+      "byte_identical_to_previous_review": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py"
+    },
+    {
+      "byte_identical_to_previous_review": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py"
+    },
+    {
+      "byte_identical_to_previous_review": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+    },
+    {
+      "byte_identical_to_previous_review": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py"
+    },
+    {
+      "byte_identical_to_previous_review": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py"
+    },
+    {
+      "byte_identical_to_previous_review": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py"
+    },
+    {
+      "byte_identical_to_previous_review": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py"
+    },
+    {
+      "byte_identical_to_previous_review": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+    }
+  ],
+  "previous_review_revision": "f86f955eb4bb63613a2c3aaffa968e87382044f1",
+  "provider_execution_performed": false,
+  "provider_token_savings_established_here": false,
+  "publication_performed": false,
+  "recommended_priority": [
+    {
+      "action": "Centralize source/view policy resolution and identities across inventory, worker read and mapped-edit paths, preserving exact source custody and admitted population.",
+      "order": 1
+    },
+    {
+      "action": "Expose bounded source discovery through the real coding reader, then join complete admitted index discovery to bounded task-specific read admission without silently enlarging scope.",
+      "order": 2
+    },
+    {
+      "action": "Use one model-facing context-reading entry point for exact/compact source, symbol/span lookup and capsule selection while preserving distinct native admission, currentness and proof rules behind it.",
+      "order": 3
+    },
+    {
+      "action": "Compare exact and compact navigation through that same channel with identical metadata/capsule policy; count complete planning/coding/discovery/expansion/repair usage and original official task results.",
+      "order": 4
+    },
+    {
+      "action": "Integrate the existing host mapped-edit contract into an authenticated worker tool; qualify repeated edits and explicit population deltas separately.",
+      "order": 5
+    },
+    {
+      "action": "Treat full read-only shadow export as optional tooling derived from the same inventory/maps; editable virtual filesystems and executing minified source remain separate language/runtime profiles.",
+      "order": 6
+    }
+  ],
+  "review_method": "Read-only source, Git object, documentation and retained JUnit inspection; no tests or probes executed.",
+  "reviewed_sources": [
+    {
+      "bytes": 13539,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "ed19110901ea0e525f893671a186e65094b8a98b",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+      "sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011"
+    },
+    {
+      "bytes": 18872,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "3b4f803ac5d2a56126b6a9ecd80971b3dfa9a12a",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py",
+      "sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab"
+    },
+    {
+      "bytes": 15977,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "8a3ed3fce6e1fbff18c86d9e581c3193d525ab90",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py",
+      "sha256": "5bc6b1c38a376db73e840dac84c5db4ab95223ab834fd4d6d2eb9b6835626cc2"
+    },
+    {
+      "bytes": 24530,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "f90fd35046296f49bfb5fbb776bbe0d1cbed6000",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
+      "sha256": "18a0c6d95c27efeb7eceeb0d79fe92f3a007d67626bcad4271b98ef3e17e9e1b"
+    },
+    {
+      "bytes": 19774,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "c85aa5152eb039e215069d06b29a1a0558ddefea",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "sha256": "77f483a8bbff65ced9229233293c2b557164b5745d6d34b9faf90042c4c43647"
+    },
+    {
+      "bytes": 9050,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "15a7620cac111da0abe9a0f2e50cba6cfc4efed7",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "sha256": "faa0e1e4920c1d8cb386a3c86858befe0585f7ca44e6e09e65dd1a89c0d5ef8f"
+    },
+    {
+      "bytes": 31581,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "a0bfbe776b0be69c9d1853addd75f0c8ed4ba808",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "sha256": "9689548701f833b3c7acd8b91a17cd21cfc114c4d0e3588efb191c2c1488893f"
+    },
+    {
+      "bytes": 46125,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "3b1be07474cb5a133af04c94d3fe87e2c6fbe488",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "sha256": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829"
+    },
+    {
+      "bytes": 37823,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "08ecc7bb81f6c76799e6de2ff90c824b742bf8b8",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "f177adbddff6409960c2f5ce47b61c1f62560cbe334d61812e2ea4b221afb3d8"
+    },
+    {
+      "bytes": 66396,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "91c16a5fe01f1c3aa5460a364941d6c8d2b3f946",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e"
+    },
+    {
+      "bytes": 9068,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "80383e8516bb4c06fcb9e823d7c2b8fe9e80c527",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py",
+      "sha256": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0"
+    },
+    {
+      "bytes": 10169,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "e671ae85bc2b6f5d97251ca2930bd1e9b98a0dce",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py",
+      "sha256": "b5a6d6634272b8cc03f7ca6207fafaa9e27f1a9319d7ebf315284d5fbac0cec8"
+    },
+    {
+      "bytes": 41920,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "eae07386ba3f5b2056f4f3847bfd1d54ba132346",
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "af98066c50a343a581b80c3e764a58a1a7ec087b21c6b3a44ed4251622f40a32"
+    },
+    {
+      "bytes": 14741,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "a1d62a8215ef4f4fc42062d5a4540f112751649b",
+      "path": "docs/agent_supervisor/reversible_source_views.md",
+      "sha256": "d2a538c01d42fce40e9e55861c037ca5e90020bf2a2fb65f03113ec7dbc28b79"
+    },
+    {
+      "bytes": 4979,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "3c33d95ae0f29ec896475f5490afbfa55ac13bcc",
+      "path": "docs/agent_supervisor/evidence/compact-source-edit-20261012/README.md",
+      "sha256": "796c9f7d8940821d22ed6cb992720ab87eef44660497db91f943d66ec1fc8aff"
+    },
+    {
+      "bytes": 49129,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "3561f62b1447c5d356a41bde0d33776852b81268",
+      "path": "docs/agent_supervisor/evidence/compact-source-edit-20261012/final-01/junit.xml",
+      "sha256": "db4cbfd6a3b4aa62fd5bd5bed48c4106db950cae350187a14fdd94ee99685524"
+    },
+    {
+      "bytes": 128452,
+      "checkout_matches_baseline_git_blob": true,
+      "git_blob_oid": "78a30fd56a3eb0d25d68a4f781f94cafd05b775c",
+      "path": "docs/agent_supervisor/evidence/compact-source-edit-20261012/integrated-01/junit.xml",
+      "sha256": "daa2043cf128f4b9f38cd7a19e43af0d144b3547a4e1f59dfc32d3bd7a92d466"
+    }
+  ],
+  "reviewer": "/root/displacement_contract_audit",
+  "schema": "supervisor-context-reading-representation-review@1",
+  "source_mutations_performed": false,
+  "test_execution_performed": false,
+  "whole_repository_freshness_established_here": false
+}

@@ -1,0 +1,529 @@
+{
+  "authority_and_claims": {
+    "dispatch_authority": false,
+    "execution_authority": false,
+    "minification_causal_effect_verified": false,
+    "new_owner_created": false,
+    "new_token_counter_created": false,
+    "omission_authority": false,
+    "proof_authority": false,
+    "provider_input_delivery_verified": false,
+    "provider_token_savings_verified": false,
+    "publication_authority": false,
+    "whole_codebase_initially_duplicated_claimed": false
+  },
+  "conclusion": "The remaining gap is read-exposure provenance and a coverage-matched identity/compact experiment, alongside live owner-admitted compact-edit routing if later desired. Current initial projection already defers optional program bodies. Whole-filesystem minification is not a prerequisite for reducing model-visible disclosure, and existing mapper/application receipts or replay receipts are not token-saving evidence.",
+  "findings": [
+    {
+      "id": "initial-program-source-deferral-already-exists",
+      "references": [
+        {
+          "end_line": 170,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+          "start_line": 102
+        },
+        {
+          "end_line": 377,
+          "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+          "start_line": 369
+        },
+        {
+          "end_line": 547,
+          "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+          "start_line": 545
+        },
+        {
+          "end_line": 107,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py",
+          "start_line": 94
+        }
+      ],
+      "statement": "The standard initial-context producer supplies the public query to bounded worker projection. Program raw bodies are not all copied inline by default. The worker payload retains required raw paths and nondeferred support; optional program sources are identified for exact later fetch. Capsules do not claim equivalence to omitted source.",
+      "static_population": {
+        "bounded_worker_query_enabled": true,
+        "budget_limit_scope": "Worker semantic payload target; required/support data, outer semantic transport, instruction block, workspace advisory, tools and CLI scaffolding require separate accounting.",
+        "complete_initial_prompt_within_32768_bytes_guaranteed": false,
+        "default_max_capsules": 8,
+        "omission_authority_from_capsules": false,
+        "producer_worker_max_bytes": 32768,
+        "projection_deferred_sources_formula": "selected paths outside required_raw_paths that are program paths, deferred task data, or any optional path when no signed program partition is supplied",
+        "projection_raw_sources_formula": "required_raw_paths union (selected_paths minus program_paths minus deferred_task_data) when a signed program/support partition exists; otherwise required_raw_paths only",
+        "required_raw_paths": [
+          ".supervisor-instruction.md",
+          ".supervisor-public-smoke.py"
+        ],
+        "signed_partition": "Program paths derive from profile input_paths excluding data_inputs. Support includes instruction, task profile, structural smoke and validated task data. Defer-task-data handling is explicit.",
+        "unprojected_fallback": "When worker_query is absent, raw-source-required admissions and nonsymbol source files can add further raw source."
+      },
+      "status": "observed_source_contract"
+    },
+    {
+      "baseline_and_treatment_plans_identical": false,
+      "baseline_complete_coding_input_bytes": 66486,
+      "historical_exact_deferred_source_bytes": null,
+      "historical_exact_inline_source_bytes": null,
+      "id": "historical-initial-inline-population-not-retained-by-byte-observation",
+      "measured_runtime_accelerator_head": "c3d4f873acdb62fd5b124328b3e3f28accd8dbdb",
+      "public_eigen_and_eval_source_bytes_total": 2888,
+      "public_source_size_interpretation": "642 + 2246 input-file bytes. This is not a subtraction from prompt bytes and does not prove both files occupied the same historical source partition.",
+      "references": [
+        {
+          "end_line": 52,
+          "path": "docs/agent_supervisor/evidence/terminal-instruction-dedup-pair-20261012/README.md",
+          "start_line": 29
+        },
+        {
+          "end_line": 80,
+          "path": "docs/agent_supervisor/evidence/terminal-instruction-dedup-pair-20261012/README.md",
+          "start_line": 64
+        }
+      ],
+      "same_old_projection_call_inspected": true,
+      "statement": "Historical closed runtime observations retain complete input sizes and hashes, not a raw_sources path/body-size census. They do not independently establish exact inline-versus-deferred source byte totals. Current projection behavior must not be described as full-codebase raw-body duplication.",
+      "status": "bounded_evidence_limit",
+      "treatment_native_complete_coding_input_bytes": 66818,
+      "treatment_selected_complete_coding_input_bytes": 65850,
+      "treatment_within_input_byte_reduction": 968
+    },
+    {
+      "id": "large-semantic-envelopes-can-remain-without-program-bodies",
+      "prior_candidate_selection_observation": {
+        "catalog_artifact_bytes": 4595,
+        "catalog_response_json_bytes": 6331,
+        "coverage_identical_between_selected_and_full_artifacts": false,
+        "discovery_plus_two_subsets_response_json_bytes": 19858,
+        "full_capsule_parent_artifact_bytes": 48309,
+        "full_formal_parent_artifact_bytes": 476030,
+        "one_capsule_artifact_bytes": 5336,
+        "one_capsule_response_json_bytes": 7208,
+        "one_obligation_artifact_bytes": 4545,
+        "one_obligation_default_model_facing_printed_json_bytes": 5520,
+        "one_obligation_response_json_bytes": 6319,
+        "provider_tokens_measured": false,
+        "task_success_improvement_measured": false
+      },
+      "references": [
+        {
+          "end_line": 155,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+          "start_line": 119
+        },
+        {
+          "end_line": 614,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "start_line": 572
+        },
+        {
+          "end_line": 289,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+          "start_line": 266
+        },
+        {
+          "end_line": 46,
+          "path": "docs/agent_supervisor/evidence/candidate-context-selection-20261012/README.md",
+          "start_line": 27
+        }
+      ],
+      "statement": "A projected payload still contains capsule structures, admission receipts, manifest/source identities, selected-symbol and deferred-source metadata, context-pack bindings, and required/support source. The coding route adds wrappers, literal requirements and optional source-reader guidance. Omitting program bodies alone therefore does not bound the complete model context to the source body size.",
+      "status": "observed_structure_and_prior_measurement"
+    },
+    {
+      "global_original_source_omission_authorized": false,
+      "id": "literal-instruction-duplicate-has-existing-specific-remedy",
+      "references": [
+        {
+          "end_line": 603,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "start_line": 589
+        },
+        {
+          "end_line": 121,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+          "start_line": 94
+        }
+      ],
+      "statement": "The native coding route appends the authenticated literal instruction after semantic encoding, while the required instruction may also occupy raw_sources. Existing instruction-aware metadata projection references only that exact bound raw-source entry and retains the unchanged literal instruction block. This is a narrow existing deduplication path; other source and unknown fields stay preserved.",
+      "status": "observed_source_contract"
+    },
+    {
+      "declared_coding_tools": [
+        "read_file",
+        "search_replace",
+        "grep",
+        "list_dir",
+        "todo_write",
+        "run_terminal_cmd"
+      ],
+      "id": "ordinary-filesystem-tools-can-bypass-compact-reader",
+      "ordinary_read_bypass_observed_in_specific_historical_session": null,
+      "references": [
+        {
+          "end_line": 578,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "start_line": 572
+        },
+        {
+          "end_line": 837,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "start_line": 818
+        },
+        {
+          "end_line": 287,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+          "start_line": 268
+        }
+      ],
+      "source_reader_guidance_is_additive": true,
+      "statement": "Source-view enablement adds optional reader guidance and descriptor transport. It does not replace or intercept native workspace readers. Coding tool policy includes read_file, grep and run_terminal_cmd, so direct cat/sed/rg or program-driven reads can disclose original source without a worker-source request. The declared allowlist explicitly does not claim effective toolset verification. This review establishes exposure, not that every historical session took that bypass.",
+      "status": "observed_route_exposure_not_observed_tool_use",
+      "worker_source_socket_is_read_only": true
+    },
+    {
+      "id": "codex-native-tool-stream-locally-retains-more-than-exported-diagnostics",
+      "locally_recorded_arguments_and_outputs_parsed": true,
+      "per_native_read_provenance_in_exported_tool_diagnostics": false,
+      "references": [
+        {
+          "end_line": 83,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py",
+          "start_line": 29
+        },
+        {
+          "end_line": 180,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py",
+          "start_line": 131
+        }
+      ],
+      "statement": "Codex session JSONL is read as recorded response_item function/custom-tool calls and outputs. The exported receipt currently keeps only aggregate call/output counts and lexical path/error indicators, plus a digest of the full retained rollout. It does not export per-call identities, paths/spans, request/result hashes or byte counts. A local private read ledger can be derived while parsing retained records, but historical published aggregate diagnostics alone cannot reconstruct read exposure.",
+      "status": "observed_capture_limit"
+    },
+    {
+      "id": "grok-stream-currently-discards-read-detail",
+      "per_native_read_provenance_in_exported_stream_snapshot": false,
+      "references": [
+        {
+          "end_line": 268,
+          "path": "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+          "start_line": 259
+        }
+      ],
+      "statement": "Grok stream capture counts tool names and status changes. It does not retain arguments, result content hashes, per-call joins or path/span/source-generation bindings. Read-event provenance must be normalized before these event details are discarded; it cannot be recovered from the final count-only snapshot.",
+      "status": "observed_capture_limit"
+    },
+    {
+      "id": "worker-read-transport-hashes-are-not-provider-input-proof",
+      "native_tool_call_id_join_available": false,
+      "ordinary_native_reads_intercepted_by_broker": false,
+      "references": [
+        {
+          "end_line": 311,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
+          "start_line": 286
+        },
+        {
+          "end_line": 94,
+          "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+          "start_line": 65
+        }
+      ],
+      "statement": "The existing broker records ordinal, request/response hashes, prepared response bytes and whether delivery succeeded. Source-view observation aggregates prepared/delivered source and candidate-context bytes and unique hashes. Those observations do not join a source span to an actual native tool-output item or establish provider tokenization/delivery. Transport bytes must not be added to native cumulative input tokens a second time.",
+      "status": "observed_capture_limit"
+    },
+    {
+      "codex_cache_already_in_input": true,
+      "grok_cache_excluded_from_reported_input": true,
+      "id": "normalized-usage-ledger-good-for-native-totals-not-read-displacement",
+      "missing_usage_is_zero": false,
+      "reasoning_added_to_output_again": false,
+      "references": [
+        {
+          "end_line": 44,
+          "path": "benchmarks/agent_supervisor/container_coding/native_usage_accounting.py",
+          "start_line": 19
+        },
+        {
+          "end_line": 118,
+          "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+          "start_line": 59
+        },
+        {
+          "end_line": 534,
+          "path": "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py",
+          "start_line": 488
+        }
+      ],
+      "statement": "The normalized comparison deduplicates invocation identities and retains provider-scoped final native counts, input observation and progress. It is sufficient for stated native-session totals when completeness is established, but lacks per-read provenance needed to attribute savings to compact disclosure. Preserve existing provider-specific cache and completeness semantics instead of adding a new token counter or owner.",
+      "status": "observed_accounting_limit",
+      "tool_bytes_added_to_native_tokens_again": false
+    },
+    {
+      "existing_worktree_owner_reused": true,
+      "fresh_clean_candidate_required": true,
+      "host_mapper_and_adapter_available": true,
+      "id": "latest-edit-mapper-and-fenced-adapter-do-not-yet-route-live-model-edits",
+      "incremental_dirty_overlay_supported": false,
+      "live_model_compact_edit_dispatch_enabled": false,
+      "one_modified_file_supported": true,
+      "receipt_status": "applied_validation_pending",
+      "references": [
+        {
+          "end_line": 8,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py",
+          "start_line": 1
+        },
+        {
+          "end_line": 168,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py",
+          "start_line": 83
+        },
+        {
+          "end_line": 148,
+          "path": "docs/agent_supervisor/reversible_source_views.md",
+          "start_line": 122
+        }
+      ],
+      "source_fidelity_implies_semantic_correctness": false,
+      "source_obligations_discharged": 0,
+      "statement": "The pure mapper authenticates the original/view/map and requires the original-source candidate to project to the requested edited view. The host adapter now applies one modified text file in a clean fenced IsolatedWorktree through its existing lease, PatchScope and apply_patch owner, checks full admitted postimage, and refreshes working generation. The socket remains read-only, and no authenticated model compact-edit tool or live Terminal-Bench arm is enabled by this adapter.",
+      "status": "observed_new_host_contract"
+    }
+  ],
+  "historical_live_pair_limits": {
+    "baseline_cached_input_tokens_already_in_total": 236800,
+    "baseline_native_total_tokens": 311776,
+    "baseline_output_tokens_including_reasoning": 5835,
+    "baseline_uncached_input_tokens": 69141,
+    "billing_advantage_established": false,
+    "both_official_rewards": 1,
+    "independently_planned": true,
+    "instruction_dedup_cached_input_tokens_already_in_total": 234624,
+    "instruction_dedup_native_total_tokens": 309813,
+    "instruction_dedup_output_tokens_including_reasoning": 6080,
+    "instruction_dedup_uncached_input_tokens": 69109,
+    "intent_ir_runtime_status": "fail_open_no_checkpoint",
+    "minification_caused_prior_regression_established": false,
+    "minification_was_measured_treatment": false,
+    "observed_native_total_difference": 1963,
+    "repeatable_savings_established": false,
+    "single_sequential_pair": true,
+    "source_aligned_source384_candidates_observed": 0,
+    "source_correctness_proof_established": false
+  },
+  "method": {
+    "new_measurement_fixture_executed": false,
+    "provider_calls": 0,
+    "raw_source_or_tool_body_exported": false,
+    "source_modules_executed": 0,
+    "target_programs_executed": 0,
+    "test_runs": 0
+  },
+  "proposed_operations_not_implemented_by_this_review": [
+    {
+      "details": "Retain invocation identity, native session/rollout hash, source manifest/scope hash, task identity and current workspace generation. Do not create a second source owner or provider counter.",
+      "operation": "Bind exposure ledger to existing invocation and session owners",
+      "ordinal": 1
+    },
+    {
+      "details": "Join stable native call IDs to request and result hashes, serialized UTF-8 byte counts, completion/truncation status and an observed route label. Export bounded hashes/counts, not raw source, terminal output or credentials.",
+      "operation": "Normalize native tool request and result events privately",
+      "ordinal": 2
+    },
+    {
+      "details": "Relate worker request/response hashes to the CLI display projection and its native tool call. Keep prepared, delivered-to-client, printed and observed-in-native-stream states separate; never infer provider delivery from socket delivery.",
+      "operation": "Join recognized worker responses to actual printed native outputs",
+      "ordinal": 3
+    },
+    {
+      "details": "For qualified read_file/worker-reader formats, retain path identity, original/view identity, generation, byte or line-span coordinate type, page cursor and exact source/view hashes. An unqualified CLI command cannot claim exact span coverage.",
+      "operation": "Record exact recognized source disclosure coordinates",
+      "ordinal": 4
+    },
+    {
+      "details": "At the existing context compiler/router boundary, derive required/support raw paths and encoded bytes, deferred raw identities, capsules/admissions/pack/manifest bytes, literal instruction, source guidance, wrappers and selected complete-input digest. Report component sums only under a declared serialization accounting method; nested bytes are not independent addends.",
+      "operation": "Add initial prompt component census",
+      "ordinal": 5
+    },
+    {
+      "details": "Track known source spans shown compactly, later exact original expansions, repeated disclosures and generation invalidation. Count repeated tool output as repeated exposure; unioned source coverage is a separate metric.",
+      "operation": "Keep compact-read and raw-expansion coverage separate",
+      "ordinal": 6
+    },
+    {
+      "details": "Freeze one admitted task/context and tool request; use identity@1 and conservative compact profiles through the same reader/display envelope and guidance, with the same required facts. Compare complete rendered native outputs under one compatible tokenizer. This provider-free fixture would isolate display/codec overhead, not establish complete-session savings.",
+      "operation": "Evaluate same-channel identity versus compact disclosure",
+      "ordinal": 7
+    },
+    {
+      "details": "Match public source generation, provider/model/reasoning settings, checkpoint and IR profiles, tool schemas/guidance, planning mode, resource limits and acceptance. Keep existing capsule/metadata selection fixed when isolating source representation. Include exact-read-before-edit fallback in both arms; balance order and repeat tasks. Retain official success, failures/repair calls and final native usage once per invocation. Use a frozen plan for a mechanistic disclosure experiment and label independently planned full runs separately.",
+      "operation": "Run matched complete-session operational pairs only after admission gates",
+      "ordinal": 8
+    },
+    {
+      "details": "Preserve literal goal, scope, acceptance constraints and required source identities; explicitly mark unverified semantic facts. Optional program spans can remain deferred only with an available generation-bound resolver and coverage frontier. Learned IR, capsule selection, byte restoration and historical replay do not certify complete task coverage.",
+      "operation": "Define declared task-coverage obligations at the existing context owner",
+      "ordinal": 9
+    }
+  ],
+  "public_source_inputs": [
+    {
+      "bytes": 716,
+      "path": "largest-eigenval/instruction.md",
+      "scope": "public fixture source bytes, not a measured inline prompt population",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    {
+      "bytes": 642,
+      "path": "largest-eigenval/environment/src/eigen.py",
+      "scope": "public fixture source bytes, not a measured inline prompt population",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "bytes": 2246,
+      "path": "largest-eigenval/environment/src/eval.py",
+      "scope": "public fixture source bytes, not a measured inline prompt population",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "review_date_utc": "2026-10-13",
+  "reviewed_accelerator_head": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+  "reviewer": "displacement_integration_audit",
+  "schema": "supervisor-context-read-exposure-review@1",
+  "scope": "Read-only source and retained public-evidence review; this new JSON is the only artifact created by this review.",
+  "source_bindings": [
+    {
+      "bytes": 46125,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "sha256": "f7ddd5a5dae3b42a49db64319b69fd6bf55fd9aa54389d08ca1103812ea79829"
+    },
+    {
+      "bytes": 57928,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "58dc1077e82e731b7fcddfa5eb73ae88fe5e292a456bc1cfc6528933ef5903e0"
+    },
+    {
+      "bytes": 72739,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "2199289bd0088887d21115e65f518c2d62df230808112cfbe8b44a00eb2d49b8"
+    },
+    {
+      "bytes": 5797,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py",
+      "sha256": "f0ba7182af2db700459b62b2752bfcfdd562c2fc6b1ab7f9ee3d5832c4cb9940"
+    },
+    {
+      "bytes": 66396,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e"
+    },
+    {
+      "bytes": 13476,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+      "sha256": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4"
+    },
+    {
+      "bytes": 23539,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d"
+    },
+    {
+      "bytes": 19774,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "sha256": "77f483a8bbff65ced9229233293c2b557164b5745d6d34b9faf90042c4c43647"
+    },
+    {
+      "bytes": 8032,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py",
+      "sha256": "a6e9faff0e86bfff3bb5d17ad9b072c9324a3520487fd3c8a61287becf094949"
+    },
+    {
+      "bytes": 20262,
+      "path": "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+      "sha256": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421"
+    },
+    {
+      "bytes": 19087,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
+      "sha256": "7607cfae3eaec33b3a188f26a2ba3d87fc818b22ea529ceeaa40d0048ac46882"
+    },
+    {
+      "bytes": 9050,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "sha256": "faa0e1e4920c1d8cb386a3c86858befe0585f7ca44e6e09e65dd1a89c0d5ef8f"
+    },
+    {
+      "bytes": 10191,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+      "sha256": "202907e3ec8efbc012d8b4d76ea507aab72e2fa38b912edb6e14013ef08d7959"
+    },
+    {
+      "bytes": 2282,
+      "path": "benchmarks/agent_supervisor/container_coding/native_usage_accounting.py",
+      "sha256": "a21c831eed08c9c1692121f912000ebc03a7c7d04adf9a68fd0dcba0d61cc67e"
+    },
+    {
+      "bytes": 40684,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "915854e4b1a6f07dc13aeee831fa4ea7fe987de4129bf7eb03c0351b3be72cdf"
+    },
+    {
+      "bytes": 58931,
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py",
+      "sha256": "8e0107ec1ba9a6a9c0c437429719b1ebba01283cc884bb4a4d593b7891ef9e8b"
+    },
+    {
+      "bytes": 13539,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+      "sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011"
+    },
+    {
+      "bytes": 9068,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py",
+      "sha256": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0"
+    },
+    {
+      "bytes": 10169,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py",
+      "sha256": "b5a6d6634272b8cc03f7ca6207fafaa9e27f1a9319d7ebf315284d5fbac0cec8"
+    },
+    {
+      "bytes": 14741,
+      "path": "docs/agent_supervisor/reversible_source_views.md",
+      "sha256": "d2a538c01d42fce40e9e55861c037ca5e90020bf2a2fb65f03113ec7dbc28b79"
+    },
+    {
+      "bytes": 7199,
+      "path": "docs/agent_supervisor/evidence/terminal-instruction-dedup-pair-20261012/README.md",
+      "sha256": "9690885e64f4d6d922b2c848ab00162b4e75162e2901dc299dd945814d9a986c"
+    },
+    {
+      "bytes": 11360,
+      "path": "docs/agent_supervisor/evidence/terminal-instruction-dedup-pair-20261012/live/baseline-runtime-observation-v2.json",
+      "sha256": "8a700adcabf917eba29bdd56a0b8909649afb99875178bff38368e695bae0033"
+    },
+    {
+      "bytes": 12920,
+      "path": "docs/agent_supervisor/evidence/terminal-instruction-dedup-pair-20261012/live/instruction-dedup-runtime-observation-v2.json",
+      "sha256": "bff947b780758685b97f12a8f15a00f27eb7df1b588f7afe6182d53a0287f886"
+    },
+    {
+      "bytes": 5012,
+      "path": "docs/agent_supervisor/evidence/candidate-context-selection-20261012/README.md",
+      "sha256": "d73ca04ad011e220efb34444d645e2cd29ae3556460bda62c2d28a88f2a52210"
+    },
+    {
+      "bytes": 14928,
+      "path": "docs/agent_supervisor/evidence/terminal-metadata-census-20261007/actual-public-census-02.json",
+      "sha256": "b5809c4f2d854ba2acfb5573ff111949c3329957fa3c7b31031f05d7ce9a55f4"
+    }
+  ],
+  "unknown_handling": {
+    "arbitrary_terminal_commands": "Classify as unclassified_terminal_io unless a separately qualified exact command/output parser establishes the read. cat/rg text references alone do not prove path, complete source span, writes or causal savings. Shell pipelines, Python scripts, subprocesses, redirects and dynamic paths remain unknown rather than invented source reads.",
+    "component_bytes": "Measure actual selected wire serialization; do not sum nested source/capsule representations twice.",
+    "missing_or_duplicate_native_call_ids": "Do not infer a unique join; retain conflict/unknown status and deterministic request/result hashes without double-counting completed usage.",
+    "missing_provider_usage_or_counter_identity": "Retain unknown totals or counters; do not manufacture zeros or comparable token savings.",
+    "source_drift_or_missing_generation_pin": "Do not merge source coverage across generations or reuse stale source/proof applicability.",
+    "truncated_failed_or_malformed_output": "Preserve observed byte lower bounds and failure status; complete output exposure stays unknown.",
+    "unjoined_worker_request": "Retain prepared/delivered broker evidence but leave native-output exposure unverified.",
+    "unknown_tool_events": "Keep bounded unclassified event counts and mark exposure completeness false/unknown."
+  }
+}

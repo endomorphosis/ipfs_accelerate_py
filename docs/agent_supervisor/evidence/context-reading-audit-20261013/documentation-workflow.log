@@ -1,0 +1,108 @@
+Context reading audit: exact local Documentation Gates run blocks
+cwd: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011
+workflow: .github/workflows/documentation-gates.yml
+workflow_sha256: 0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763
+started_at_utc: 2026-10-13T00:30:45.549686+00:00
+
+STEP: Supervisor primary-doc vocabulary
+argv: ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", "python scripts/docs/check_agent_supervisor_docs.py\n"]
+exact workflow run body:
+python scripts/docs/check_agent_supervisor_docs.py
+stdout:
+OK: primary agent-supervisor docs are free of board-prefix ticket IDs
+stderr:
+exit_code: 0
+
+STEP: Maintained-surface relative links
+argv: ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", "python scripts/docs/check_current_docs_links.py\n"]
+exact workflow run body:
+python scripts/docs/check_current_docs_links.py
+stdout:
+OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)
+stderr:
+exit_code: 0
+
+STEP: Packaging version pin alignment
+argv: ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", "python - <<'PY'\nfrom __future__ import annotations\n\nimport re\nimport sys\nfrom pathlib import Path\n\nroot = Path(\".\")\n\n\ndef need(path: Path, pattern: str, label: str) -> str:\n    text = path.read_text(encoding=\"utf-8\")\n    match = re.search(pattern, text, flags=re.M)\n    if not match:\n        print(f\"FAIL: {label} not found in {path}\", file=sys.stderr)\n        raise SystemExit(1)\n    return match.group(1)\n\n\npyproject = need(\n    root / \"pyproject.toml\",\n    r'^version\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"pyproject version\",\n)\nsetup = need(\n    root / \"setup.py\",\n    r'^\\s*version\\s*=\\s*\"([^\"]+)\"\\s*,?\\s*$',\n    \"setup.py version\",\n)\npackaging = need(\n    root / \"ipfs_accelerate_py\" / \"__init__.py\",\n    r'^_PACKAGING_VERSION\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"_PACKAGING_VERSION\",\n)\ninit_text = (root / \"ipfs_accelerate_py\" / \"__init__.py\").read_text(\n    encoding=\"utf-8\"\n)\nif not re.search(\n    r'^__version__\\s*=\\s*_PACKAGING_VERSION\\s*$',\n    init_text,\n    flags=re.M,\n):\n    print(\n        \"FAIL: __version__ must be assigned from _PACKAGING_VERSION\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nif not (pyproject == setup == packaging):\n    print(\n        \"FAIL: version pins disagree: \"\n        f\"pyproject={pyproject!r} setup={setup!r} \"\n        f\"_PACKAGING_VERSION={packaging!r}\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nprint(f\"OK: packaging pins aligned at {pyproject}\")\nPY\n\n"]
+exact workflow run body:
+python - <<'PY'
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+root = Path(".")
+
+
+def need(path: Path, pattern: str, label: str) -> str:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(pattern, text, flags=re.M)
+    if not match:
+        print(f"FAIL: {label} not found in {path}", file=sys.stderr)
+        raise SystemExit(1)
+    return match.group(1)
+
+
+pyproject = need(
+    root / "pyproject.toml",
+    r'^version\s*=\s*"([^"]+)"\s*$',
+    "pyproject version",
+)
+setup = need(
+    root / "setup.py",
+    r'^\s*version\s*=\s*"([^"]+)"\s*,?\s*$',
+    "setup.py version",
+)
+packaging = need(
+    root / "ipfs_accelerate_py" / "__init__.py",
+    r'^_PACKAGING_VERSION\s*=\s*"([^"]+)"\s*$',
+    "_PACKAGING_VERSION",
+)
+init_text = (root / "ipfs_accelerate_py" / "__init__.py").read_text(
+    encoding="utf-8"
+)
+if not re.search(
+    r'^__version__\s*=\s*_PACKAGING_VERSION\s*$',
+    init_text,
+    flags=re.M,
+):
+    print(
+        "FAIL: __version__ must be assigned from _PACKAGING_VERSION",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+if not (pyproject == setup == packaging):
+    print(
+        "FAIL: version pins disagree: "
+        f"pyproject={pyproject!r} setup={setup!r} "
+        f"_PACKAGING_VERSION={packaging!r}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+print(f"OK: packaging pins aligned at {pyproject}")
+PY
+
+stdout:
+OK: packaging pins aligned at 0.0.45
+stderr:
+exit_code: 0
+
+STEP: Closeout navigation markers
+argv: ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"\n"]
+exact workflow run body:
+set -euo pipefail
+grep -q 'Documentation baseline' docs/INDEX.md
+grep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md
+test -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md
+echo "OK: closeout navigation markers present"
+stdout:
+OK: closeout navigation markers present
+stderr:
+exit_code: 0
+
+Manual plan and README link/anchor checks using existing checker API:
+{"bytes": 49550, "check_anchors": true, "checker_api": "check_file(path, check_anchors=True)", "errors": [], "external_link_count": 2, "markdown_link_count": 36, "path": "docs/agent_supervisor/reversible_codebase_views_plan.md", "relative_anchor_count": 4, "relative_link_count": 34, "sha256": "d05e1a86b4302f98e9a2f75e8105f684356fc1135bb202621411ae53122ea666", "status": "pass"}
+{"bytes": 4887, "check_anchors": true, "checker_api": "check_file(path, check_anchors=True)", "errors": [], "external_link_count": 0, "markdown_link_count": 6, "path": "docs/agent_supervisor/evidence/context-reading-audit-20261013/README.md", "relative_anchor_count": 0, "relative_link_count": 6, "sha256": "1f848e3342e147f981d13e207b18f1358b6f335bc0641ba41d5324aced72d486", "status": "pass"}
+Hosted GitHub CI was not executed or verified by this local gate run.
+No pytest, model/provider, training, solver or Docker run was performed.

@@ -1,0 +1,63 @@
+{
+  "base_revision": "cdca08b03c9ca015b7ba8799b9161de6ac20ce4d",
+  "datasets_parent_pin": "b95938c2a816075466f8dc84f339cf622414030d",
+  "entries": [
+    {
+      "bytes": 49550,
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "d05e1a86b4302f98e9a2f75e8105f684356fc1135bb202621411ae53122ea666"
+    },
+    {
+      "bytes": 4887,
+      "path": "docs/agent_supervisor/evidence/context-reading-audit-20261013/README.md",
+      "sha256": "1f848e3342e147f981d13e207b18f1358b6f335bc0641ba41d5324aced72d486"
+    },
+    {
+      "bytes": 56737,
+      "path": "docs/agent_supervisor/evidence/context-reading-audit-20261013/documentation-checks.json",
+      "sha256": "875c0319fa38a8d632f02a9b810a9d454570ff9f9117c7e1d310d7c9316408ec"
+    },
+    {
+      "bytes": 5834,
+      "path": "docs/agent_supervisor/evidence/context-reading-audit-20261013/documentation-workflow.log",
+      "sha256": "025b7f8a78c2c7ff8381f5479e0d0a4c8f3eda30696bb52fc851e8504c6b2884"
+    },
+    {
+      "bytes": 16749,
+      "path": "docs/agent_supervisor/evidence/context-reading-audit-20261013/ir-store-review.json",
+      "sha256": "b9d52482bca4ae99142c80c54934c20d853f2a8214e624f7d4142acb09653b36"
+    },
+    {
+      "bytes": 28611,
+      "path": "docs/agent_supervisor/evidence/context-reading-audit-20261013/read-exposure-review.json",
+      "sha256": "2cefc52cfbf41943aef9aa4bb687c533540727862ee902b6ae3d7a39bbef7965"
+    },
+    {
+      "bytes": 20017,
+      "path": "docs/agent_supervisor/evidence/context-reading-audit-20261013/representation-review.json",
+      "sha256": "7646887ed69e3059c901a4261afe0b36c7e61ed6d1f1f0c11e60f60ea8d408a3"
+    }
+  ],
+  "entry_count": 7,
+  "excludes_own_hash": true,
+  "historical_qualification_evidence_modified": false,
+  "hosted_ci_verified_here": false,
+  "implementation_files_modified": false,
+  "local_documentation_workflow_blocks_passed": 4,
+  "manual_plan_and_readme_links_and_anchors_passed": true,
+  "model_assets_modified": false,
+  "new_docker_or_solver_run": false,
+  "new_model_or_provider_calls": 0,
+  "new_tests_run": false,
+  "new_training_run": false,
+  "parent_base_revision": "203f482ddb691f2196a27c5c17b99a00c17bdeeb",
+  "provider_token_savings_established": false,
+  "public_fixture_input_bindings": 3,
+  "public_fixture_input_bindings_match": true,
+  "recorded_at_utc": "2026-10-13T00:32:06.188729+00:00",
+  "retained_result_scope": "Parallel compact-edit 729 combined regressions and 11 authored numerical cases are historical results, not re-executed here.",
+  "schema": "context-reading-publication-manifest@1",
+  "scope": "Documentation-only reconciliation and proposed repository-reading/token-efficiency improvements; source bindings are immutable reviewed baseline objects.",
+  "static_review_git_bindings_match": true,
+  "static_review_source_bindings": 64
+}
