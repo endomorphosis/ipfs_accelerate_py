@@ -15,6 +15,9 @@ from . import terminal_indexed_preparation as prep
 from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
 from ipfs_accelerate_py.agent_supervisor.runtime.code_retrieval_context import load_code_retrieval_context
 from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import load_semantic_worker_context
+from ipfs_accelerate_py.agent_supervisor.runtime.terminal_semantic_scope import (
+    replay_terminal_semantic_scope, validate_terminal_semantic_payload,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import (
     load_task_context_selection, write_task_context_bundle,
 )
@@ -57,6 +60,16 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
     metadata = dict(selected_context["metadata"])
     from .terminal_program_population import terminal_program_partition
     partition = terminal_program_partition(prepared)
+    signed_scope = replay_terminal_semantic_scope(prepared)
+    if signed_scope is not None:
+        if (partition is None or partition.get("terminal_semantic_scope") != signed_scope
+                or original.get("terminal_semantic_scope") != signed_scope):
+            raise ValueError("reused selected source scope differs from signed declaration")
+        if any(key in selected_context for key in (
+                "source384_context", "numerical_formalization", "numerical_selection_384")):
+            raise ValueError("selected source scope cannot reuse unsupported decoder contexts")
+    elif "terminal_semantic_scope" in original:
+        raise ValueError("reused selected source scope requires its signed profile")
 
     def source_contexts():
         semantic_text = load_semantic_worker_context(repository=root,
@@ -66,10 +79,12 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
             artifact=metadata["code retrieval artifact"],
             expected_sha256=metadata["code retrieval sha256"], task_id=task_spec.task_key)
         semantic, retrieval = json.loads(semantic_text), json.loads(retrieval_text)
+        if signed_scope is not None and validate_terminal_semantic_payload(prepared, semantic) != signed_scope:
+            raise ValueError("reused selected semantic scope changed during owner capture")
         if (retrieval["status"] != "current" or retrieval["query_text"] != prepared["query"]
                 or semantic["semantic_root_cid"] != original["semantic_root_cid"]
                 or retrieval["index_id"] != original["index_id"]
-                or set(semantic["manifest"]) != set(prepared["worker_inputs"])):
+                or set(semantic["manifest"]) != set(signed_scope["selected_paths"] if signed_scope is not None else prepared["worker_inputs"])):
             raise ValueError("reused indexes differ from current public input scope/query")
         if (partition is not None and semantic.get("schema") == "supervisor-semantic-worker-context@2"
                 and semantic.get("program_paths") != partition["program_paths"]):
@@ -84,6 +99,10 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
                 raise ValueError("reused empty observation differs from signed source population")
         elif retrieval["index_id"] is None or original.get("retrieval_schema") == "supervisor-empty-code-retrieval@1":
             raise ValueError("reused retrieval lane differs from original source population")
+        if signed_scope is not None and retrieval["source_sha256"] != {
+                name: signed_scope["selected_sources"][name]["sha256"]
+                for name in signed_scope["program_paths"]}:
+            raise ValueError("reused selected retrieval scope differs from signed program population")
         return semantic, retrieval
 
     semantic, retrieval = source_contexts()
@@ -153,6 +172,8 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
         "new_embedding_calls": 0, "text_generation_calls": 0,
         "execution_authority": False, "completion_authority": False,
         "canonical_task_mutated": False, "seconds": time.monotonic() - started}
+    if signed_scope is not None:
+        result["terminal_semantic_scope"] = signed_scope
     if retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1":
         result.update({key: retrieval[key] for key in (
             "retrieval_schema", "source_population_cid", "disposition", "embedding_calls", "support_hashes", "program_paths")})
@@ -180,6 +201,46 @@ def verify_worker_context_prompt(*, prompt: str, rebound: dict) -> dict:
     if semantic.get("schema") == "supervisor-semantic-worker-context@2":
         from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import _validate_program_payload
         _validate_program_payload(semantic)
+    if "terminal_semantic_scope" in rebound:
+        # Compare historical worker evidence to the source snapshot already
+        # authenticated by rebind. This does not reopen a current checkout or
+        # establish fresh native-owner, source, or execution authority.
+        scope = rebound["terminal_semantic_scope"]
+        if (type(scope) is not dict or scope.get("schema") != "terminal-signed-semantic-scope-replay@1"
+                or any(scope.get(key) is not False for key in (
+                    "proof_authority", "execution_authority", "completion_authority", "omission_authority"))
+                or any(type(scope.get(key)) is not list
+                    or any(type(name) is not str for name in scope[key])
+                    or scope[key] != sorted(set(scope[key]))
+                    for key in ("selected_paths", "required_raw_paths", "program_paths"))
+                or type(scope.get("selected_sources")) is not dict
+                or set(scope["selected_sources"]) != set(scope["selected_paths"])
+                or semantic.get("schema") != "supervisor-semantic-worker-context@2"
+                or type(semantic.get("manifest")) is not dict
+                or set(semantic["manifest"]) != set(scope["selected_paths"])
+                or semantic.get("required_raw_paths") != scope["required_raw_paths"]
+                or semantic.get("program_paths") != scope["program_paths"]
+                or type(semantic.get("raw_sources")) is not dict
+                or not set(scope["required_raw_paths"]) <= set(semantic["raw_sources"])
+                or not set(semantic["raw_sources"]) <= set(scope["selected_paths"])):
+            raise ValueError("worker selected semantic scope differs from historical rebind")
+        from ipfs_accelerate_py.mcp_server.mcplusplus.kubo_cid import cid_for_bytes
+        for name, row in scope["selected_sources"].items():
+            if (type(row) is not dict or type(row.get("source_bytes")) is not int
+                    or row["source_bytes"] < 0
+                    or row.get("role") != ("program" if name in scope["program_paths"] else "support")
+                    or row.get("required") is not (name in scope["required_raw_paths"])
+                    or semantic["manifest"][name] != {
+                        "sha256": row.get("sha256"), "source_cid": row.get("source_cid")}):
+                raise ValueError("worker selected source identity differs from historical rebind")
+            if name in semantic["raw_sources"]:
+                text = semantic["raw_sources"][name]
+                if type(text) is not str:
+                    raise ValueError("worker selected raw source must be exact UTF8 text")
+                raw = text.encode("utf-8")
+                if (len(raw) != row["source_bytes"] or hashlib.sha256(raw).hexdigest() != row["sha256"]
+                        or cid_for_bytes(raw) != row["source_cid"]):
+                    raise ValueError("worker selected raw source differs from historical rebind")
     empty = retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1"
     if empty:
         from ipfs_accelerate_py.agent_supervisor.runtime.empty_code_retrieval import validate_empty_worker_context

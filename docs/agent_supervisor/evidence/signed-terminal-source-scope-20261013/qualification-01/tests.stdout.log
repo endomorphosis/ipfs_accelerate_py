@@ -1,0 +1,122 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: /tmp/signed-terminal-source-scope-qualification-01-mxjibdgy/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011
+configfile: pytest.ini
+collecting ... collected 76 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_selected_context_retains_complete_inventory_task_scope_and_smoke PASSED [  1%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_compatibility_module_exports_the_same_producer_and_helpers PASSED [  2%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_profile_and_helper_results_do_not_alias_declarations PASSED [  3%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_complete_inputs_still_canonicalize_while_scope_order_is_exact PASSED [  5%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[unknown_top] PASSED [  6%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[data_inputs] PASSED [  7%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[tasks] PASSED [  9%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[nested_task] PASSED [ 10%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[missing_scope] PASSED [ 11%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[scope_not_object] PASSED [ 13%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[scope_unknown] PASSED [ 14%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[scope_schema] PASSED [ 15%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[scope_missing] PASSED [ 17%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[empty_selected] PASSED [ 18%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[empty_program] PASSED [ 19%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[selected_absent] PASSED [ 21%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[required_absent] PASSED [ 22%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[program_absent] PASSED [ 23%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[program_not_python] PASSED [ 25%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[modify_not_selected] PASSED [ 26%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[modify_not_required] PASSED [ 27%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[python_modify_not_program] PASSED [ 28%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[support_not_required] PASSED [ 30%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[instruction_digest] PASSED [ 31%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[inventory_cid] PASSED [ 32%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_profile_rejects_ambiguous_or_incomplete_context_contracts[source_hashes] PASSED [ 34%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[tuple-input_paths] PASSED [ 35%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[tuple-required_input_paths] PASSED [ 36%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[tuple-program_paths] PASSED [ 38%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[duplicate-input_paths] PASSED [ 39%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[duplicate-required_input_paths] PASSED [ 40%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[duplicate-program_paths] PASSED [ 42%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[unsorted-input_paths] PASSED [ 43%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[unsorted-required_input_paths] PASSED [ 44%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[unsorted-program_paths] PASSED [ 46%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[nonstring-input_paths] PASSED [ 47%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[nonstring-required_input_paths] PASSED [ 48%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[nonstring-program_paths] PASSED [ 50%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[reserved-input_paths] PASSED [ 51%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[reserved-required_input_paths] PASSED [ 52%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[reserved-program_paths] PASSED [ 53%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[alias-input_paths] PASSED [ 55%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[alias-required_input_paths] PASSED [ 56%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_lists_are_exact_without_silent_normalization[alias-program_paths] PASSED [ 57%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_generated_support_paths_cannot_be_nominated_as_ordinary_inputs[.supervisor-instruction.md] PASSED [ 59%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_generated_support_paths_cannot_be_nominated_as_ordinary_inputs[.supervisor-public-smoke.py] PASSED [ 60%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_generated_support_paths_cannot_be_nominated_as_ordinary_inputs[.supervisor-task-profile.json] PASSED [ 61%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_generated_support_paths_cannot_be_nominated_as_ordinary_inputs[sub/.supervisor-extra] PASSED [ 63%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_file_limit_counts_three_mandatory_supports[61-True] PASSED [ 64%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scope_file_limit_counts_three_mandatory_supports[62-False] PASSED [ 65%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_required_ordinary_inputs_can_be_empty_for_create_only_task PASSED [ 67%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_nonpython_modified_input_requires_raw_coverage_but_not_program_role PASSED [ 68%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_scoped_canonical_bytes_retain_existing_profile_byte_bound PASSED [ 69%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_legacy_context_helpers_fall_back_to_complete_inventory[terminal-public-task-profile@1] PASSED [ 71%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_legacy_context_helpers_fall_back_to_complete_inventory[terminal-public-task-profile@2] PASSED [ 72%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_version_one_published_golden_bytes_remain_exact[True-8c3a9518fb8ed888bb24fc1f23e48deaa8b79b13514819c9cdea2ff754bdec47-488e32462a4d2bf595b50bccc37cf74f1be351461b7ee2ab040f74527fdd8549-2df2f197bf9187bf708b12124a03bcb8ac3d18266e1029708fbcf38a2ebb55c9] PASSED [ 73%]
+benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py::test_version_one_published_golden_bytes_remain_exact[False-93a47f93d1aa4a4de018f403328196f75232080c1599acf238353ee2d394e42b-779b97b174ae07b680dbe08e3a9e2ca00ed8e52caf0ba3df742399d58aa71301-e9015b0824cd21ed1b82f04f4d2046fa7dd9822422ba0b7e0e7bb090a5f76f95] PASSED [ 75%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_large_complete_inventory_builds_cold_loads_and_reuses_exact_selected_indexes[False] PASSED [ 76%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_large_complete_inventory_builds_cold_loads_and_reuses_exact_selected_indexes[True] PASSED [ 77%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_fresh_admitted_context_without_initial_indexes_uses_the_same_signed_selection PASSED [ 78%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_complete_signed_custody_refuses_current_or_unsigned_scope_drift[selected] PASSED [ 80%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_complete_signed_custody_refuses_current_or_unsigned_scope_drift[omitted] PASSED [ 81%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_complete_signed_custody_refuses_current_or_unsigned_scope_drift[support] PASSED [ 82%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_complete_signed_custody_refuses_current_or_unsigned_scope_drift[profile] PASSED [ 84%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_complete_signed_custody_refuses_current_or_unsigned_scope_drift[missing_prepared_profile] PASSED [ 85%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_complete_signed_custody_refuses_current_or_unsigned_scope_drift[unsigned_population] PASSED [ 86%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_rehashed_unsigned_descriptor_cannot_substitute_a_different_selection PASSED [ 88%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_changed_omitted_source_during_final_empty_owner_capture_is_not_published PASSED [ 89%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_selected_original_byte_ceiling_counts_generated_support_exactly[0] PASSED [ 90%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_selected_original_byte_ceiling_counts_generated_support_exactly[1] PASSED [ 92%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_full_population_decoder_lanes_refuse_selection_before_context_outputs[training] PASSED [ 93%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_full_population_decoder_lanes_refuse_selection_before_context_outputs[security] PASSED [ 94%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_full_population_decoder_lanes_refuse_selection_before_context_outputs[source384] PASSED [ 96%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_full_population_decoder_lanes_refuse_selection_before_context_outputs[numerical] PASSED [ 97%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_independent_owner_cannot_sign_malformed_scoped_support PASSED [ 98%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_warm_native_owner_and_compiled_worker_keep_selected_scope_and_historical_audit FAILED [100%]
+
+=================================== FAILURES ===================================
+_ test_warm_native_owner_and_compiled_worker_keep_selected_scope_and_historical_audit _
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py:247: in test_warm_native_owner_and_compiled_worker_keep_selected_scope_and_historical_audit
+    finally: daemon.close()
+             ^^^^^^^^^^^^
+E   AttributeError: 'PortalImplementationDaemon' object has no attribute 'close'
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-596/test_warm_native_owner_and_com0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-596/test_warm_native_owner_and_com0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-596/test_warm_native_owner_and_com0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-596/test_warm_native_owner_and_com0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-596/test_warm_native_owner_and_com0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-596/test_warm_native_owner_and_com0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-596/test_warm_native_owner_and_com0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-596/test_warm_native_owner_and_com0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-596/test_warm_native_owner_and_com0/state/native-clone.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-596/test_warm_native_owner_and_com0/state/native-clone.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-596/test_warm_native_owner_and_com0/state/native-clone.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 control-plane schema migration complete before ready
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 state-owner ready server_id=server:9029e9d6-1c08-45df-8370-0c26650615ba listen_uri=quack:127.0.0.1:42683
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/signed-terminal-source-scope-qualification-01-mxjibdgy/orchestration/2c94ecf573dc4d24afb7/agent-merge-trains/master-2f29656e33336cdbd3d7/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/signed-terminal-source-scope-qualification-01-mxjibdgy/orchestration/2c94ecf573dc4d24afb7/agent-merge-trains/master-2f29656e33336cdbd3d7/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011/docs/agent_supervisor/evidence/signed-terminal-source-scope-20261013/qualification-01/junit.xml -
+============================= slowest 10 durations =============================
+8.04s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_warm_native_owner_and_compiled_worker_keep_selected_scope_and_historical_audit
+6.28s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_large_complete_inventory_builds_cold_loads_and_reuses_exact_selected_indexes[False]
+6.00s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_large_complete_inventory_builds_cold_loads_and_reuses_exact_selected_indexes[True]
+3.33s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_fresh_admitted_context_without_initial_indexes_uses_the_same_signed_selection
+2.55s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_complete_signed_custody_refuses_current_or_unsigned_scope_drift[unsigned_population]
+2.53s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_rehashed_unsigned_descriptor_cannot_substitute_a_different_selection
+2.48s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_complete_signed_custody_refuses_current_or_unsigned_scope_drift[omitted]
+2.45s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_complete_signed_custody_refuses_current_or_unsigned_scope_drift[support]
+2.44s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_complete_signed_custody_refuses_current_or_unsigned_scope_drift[selected]
+2.43s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_complete_signed_custody_refuses_current_or_unsigned_scope_drift[missing_prepared_profile]
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py::test_warm_native_owner_and_compiled_worker_keep_selected_scope_and_historical_audit
+=================== 1 failed, 75 passed in 89.79s (0:01:29) ====================
