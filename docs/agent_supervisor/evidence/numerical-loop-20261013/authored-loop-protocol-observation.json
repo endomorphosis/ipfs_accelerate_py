@@ -1,0 +1,252 @@
+{
+  "benchmark_source_executed": false,
+  "cases": [
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "expression:x",
+        "iter:x",
+        "next:x:0",
+        "else"
+      ],
+      "exception": null,
+      "name": "zero_iteration",
+      "passed": true,
+      "source": "for item in stream('x'):\n    mark('body')\nelse:\n    mark('else')\n",
+      "source_sha256": "66a81b28fa75c08223b592785d4f98cf06deef56e07b08608bbd80ddc9eacf3f"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "expression:x",
+        "iter:x",
+        "next:x:0",
+        "body",
+        "next:x:1",
+        "else"
+      ],
+      "exception": null,
+      "name": "normal_exhaustion",
+      "passed": true,
+      "source": "for item in stream('x', 1):\n    mark('body')\nelse:\n    mark('else')\n",
+      "source_sha256": "a3edefcc2df4c7dad01a5bba7da16d19eceaf8692920dcc5e5ca734d33f7fefa"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "expression:x",
+        "iter:x",
+        "next:x:0",
+        "body",
+        "next:x:1",
+        "else"
+      ],
+      "exception": null,
+      "name": "continue",
+      "passed": true,
+      "source": "for item in stream('x', 1):\n    mark('body'); continue\nelse:\n    mark('else')\n",
+      "source_sha256": "d0f7b59f5f536bbbdefcb3edac0bd9b8dd0bfdeddc0a4eb64982a09d7db6d72e"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "expression:x",
+        "iter:x",
+        "next:x:0",
+        "body"
+      ],
+      "exception": null,
+      "name": "break",
+      "passed": true,
+      "source": "for item in stream('x', 1, 2):\n    mark('body'); break\nelse:\n    mark('else')\n",
+      "source_sha256": "a082b4f6a2c4030cd2415eea045bd380524a97727e84b3bdce286d331accec85"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "expression:x",
+        "iter:x"
+      ],
+      "exception": "StopIteration",
+      "name": "iter_stop_iteration",
+      "passed": true,
+      "source": "for item in stream('x', 1):\n    mark('body')\nelse:\n    mark('else')\n",
+      "source_sha256": "a3edefcc2df4c7dad01a5bba7da16d19eceaf8692920dcc5e5ca734d33f7fefa"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "expression:x",
+        "iter:x",
+        "next:x:0"
+      ],
+      "exception": "RuntimeError",
+      "name": "next_other_exception",
+      "passed": true,
+      "source": "for item in stream('x', 1):\n    mark('body')\nelse:\n    mark('else')\n",
+      "source_sha256": "a3edefcc2df4c7dad01a5bba7da16d19eceaf8692920dcc5e5ca734d33f7fefa"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "expression:x",
+        "iter:x",
+        "next:x:0",
+        "body"
+      ],
+      "exception": "StopIteration",
+      "name": "body_stop_iteration",
+      "passed": true,
+      "source": "for item in stream('x', 1):\n    mark('body'); raise StopIteration\nelse:\n    mark('else')\n",
+      "source_sha256": "f16c1241f6acc2e5d0034803f14d2226fdcc997330fcfe16502e8a3c4230c622"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "expression:x",
+        "iter:x",
+        "next:x:0"
+      ],
+      "exception": "ValueError",
+      "name": "target_binding_exception",
+      "passed": true,
+      "source": "for left, right in stream('x', [1]):\n    mark('body')\nelse:\n    mark('else')\n",
+      "source_sha256": "5e610a10524166c559d2f38d49e26ae2fe2f3242b07a67ba1aa3c19b107557c7"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "expression:outer",
+        "iter:outer",
+        "next:outer:0",
+        "expression:inner",
+        "iter:inner",
+        "next:inner:0",
+        "inner_else",
+        "next:outer:1",
+        "expression:inner",
+        "iter:inner",
+        "next:inner:0",
+        "inner_else",
+        "next:outer:2",
+        "outer_else"
+      ],
+      "exception": null,
+      "name": "nested_activation",
+      "passed": true,
+      "source": "for outer in stream('outer', 1, 2):\n    for inner in stream('inner'):\n        mark('body')\n    else:\n        mark('inner_else')\nelse:\n    mark('outer_else')\n",
+      "source_sha256": "7503655f75b0ce31ef83d71ae89f0fd33b80ddad8e40496bb7ab95925f761b2f"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "expression:outer",
+        "iter:outer",
+        "next:outer:0",
+        "expression:inner",
+        "iter:inner",
+        "next:inner:0",
+        "inner_else"
+      ],
+      "exception": null,
+      "name": "inner_else_breaks_outer",
+      "passed": true,
+      "source": "for outer in stream('outer', 1, 2):\n    for inner in stream('inner'):\n        mark('body')\n    else:\n        mark('inner_else'); break\nelse:\n    mark('outer_else')\n",
+      "source_sha256": "2ea4ff288ea0cb69821cb2833bbd44b407b133e8742766a5f7291739ae1c07d4"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "expression:outer",
+        "iter:outer",
+        "next:outer:0",
+        "expression:inner",
+        "iter:inner",
+        "next:inner:0",
+        "inner_else",
+        "next:outer:1",
+        "outer_else"
+      ],
+      "exception": null,
+      "name": "inner_else_continues_outer",
+      "passed": true,
+      "source": "for outer in stream('outer', 1):\n    for inner in stream('inner'):\n        mark('body')\n    else:\n        mark('inner_else'); continue\n    mark('unreached')\nelse:\n    mark('outer_else')\n",
+      "source_sha256": "895922c1eab983ac49a04f0549007c75f1ae57aad54fa3f01e8b2984d7e01723"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "condition",
+        "truthiness",
+        "else"
+      ],
+      "exception": null,
+      "name": "while_zero",
+      "passed": true,
+      "source": "while condition():\n    mark('body')\nelse:\n    mark('else')\n",
+      "source_sha256": "7da6e2080a9b53cd87ed4cf85bca0a1560872009bbf78f2c9d58c52d11b32251"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "condition",
+        "truthiness",
+        "body",
+        "condition",
+        "truthiness",
+        "else"
+      ],
+      "exception": null,
+      "name": "while_continue",
+      "passed": true,
+      "source": "while condition():\n    mark('body'); continue\nelse:\n    mark('else')\n",
+      "source_sha256": "001f47a925383f329538fd63f01848bf5b6a6ef990a6855785afe2e63d06d416"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [
+        "condition",
+        "truthiness"
+      ],
+      "exception": "ValueError",
+      "name": "while_truthiness_exception",
+      "passed": true,
+      "source": "while condition():\n    mark('body')\nelse:\n    mark('else')\n",
+      "source_sha256": "7da6e2080a9b53cd87ed4cf85bca0a1560872009bbf78f2c9d58c52d11b32251"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [],
+      "exception": "SyntaxError",
+      "name": "for_else_invalid_break",
+      "passed": true,
+      "source": "for item in stream('x'):\n    pass\nelse:\n    break\n",
+      "source_sha256": "5a97b0bd0c8baeaeb2c489bd89f3d7f4618357692f78920b403b64ea946a8985"
+    },
+    {
+      "ast_parse_succeeded": true,
+      "events": [],
+      "exception": "SyntaxError",
+      "name": "while_else_invalid_continue",
+      "passed": true,
+      "source": "while condition():\n    pass\nelse:\n    continue\n",
+      "source_sha256": "0235588770f0e9d76aba8d0459cf3502ea0462d59aa810d6087b477fa78f1edc"
+    }
+  ],
+  "executed_authored_examples_only": true,
+  "implementation": "CPython",
+  "numerical_semantics_proven": false,
+  "passed": 16,
+  "probe_sha256": "6dc782ce0b99c5acb430f21a3874690892b30a8b748d6726ce9bb229a23b56fb",
+  "provider_calls": 0,
+  "python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+  "references": [
+    "https://docs.python.org/3.12/reference/compound_stmts.html#the-for-statement",
+    "https://docs.python.org/3.12/reference/simple_stmts.html#the-break-statement",
+    "https://docs.python.org/3.12/library/stdtypes.html#iterator-types"
+  ],
+  "schema": "authored-python-loop-protocol-observation@1",
+  "solver_calls": 0,
+  "source_obligations_discharged": 0,
+  "source_semantics_proven": false
+}

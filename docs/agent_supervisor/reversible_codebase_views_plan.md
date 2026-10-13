@@ -211,13 +211,13 @@ adding a more aggressive source transform.
 ## Make repository views one consistent reading workflow
 
 The [shared-policy qualification](evidence/shared-source-view-policy-20261013/README.md)
-now passes 798 selected regressions, including 52 new policy cases, without
+retains 798 passing selected regressions, including 52 new policy cases, without
 changing codec bytes or existing model assets. The subsequent
 [discovery and policy transport](evidence/source-view-discovery-transport-20261013/README.md)
-passes 1,603 selected tests, including 79 new transport cases, and adds an actual
+retains 1,603 passing selected tests, including 79 new transport cases, and adds an actual
 client operation for admitted paths carrying an owner-selected shared policy
-through the source socket. Benchmark-level shared-policy selection
-and repository-wide admission remain open.
+through the source socket. Shared-policy benchmark selection is implemented
+below; repository-wide admission remains a separate gap.
 
 The legacy complete inventory and coding reader share a codec but select views
 differently: inventory handles `.py`/`.pyi` and caller-protected lines, while
@@ -229,9 +229,12 @@ the admitted path/source generation; the mapper consumes the checked owner
 projection. Old defaults, codec manifests, roots and checkpoints retain their
 identities. Shared pages now use descriptor version 2 and request version 3;
 the owner fixes the policy, and the client selects that pinned protocol. Legacy
-requests refuse shared pages. The benchmark's existing profile flag still selects
-legacy defaults; adding a frozen shared-policy configuration remains separate
-from carrying an already admitted owner policy or exporting a filesystem.
+requests refuse shared pages. The benchmark can now freeze a shared policy
+recipe during preparation, retaining configuration and resolver/codec digests
+and joining actual descriptor pins during collection. Omitting the recipe keeps
+legacy defaults. See the [benchmark policy workflow](worker_source_views.md#freeze-a-shared-policy-in-a-benchmark-run)
+and its [separate qualification evidence](evidence/benchmark-shared-source-policy-20261013/README.md).
+A display policy does not admit paths or export a filesystem.
 
 [`WorkerSourceViews.discovery()`](../../ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py)
 produces bounded host path/pin pages. The actual
@@ -528,6 +531,7 @@ The immediate implementation order within those steps is:
 | --- | --- |
 | Shared view policy | Inventory, worker and mapper agree for the same source, `.py`/`.pyi` classification, protected lines and codec; old versions retain their identities |
 | Reader discovery | Actual coding client pages admitted paths without bodies; repository metadata feeds explicit bounded admission rather than silently widening access |
+| Frozen benchmark policy | Preparation pins one recipe and resolver/codec identity; coding owner and collected session match it; absent recipes retain legacy shapes |
 | Read observations | Initial disclosure, ordinary tools and indexed reads have joined call/result identities or explicit unknowns; byte counts stay separate from native tokens |
 | Fixed-trace census | Same task, disclosure and read trace through identity/compact modes; charge guidance, display wrappers, expansions and repairs |
 | Matched live comparison | Same route, provider/model and task controls; repeated official outcomes and complete all-attempt usage |
@@ -535,7 +539,9 @@ The immediate implementation order within those steps is:
 
 Shared owner policy is implemented. The discovery/transport increment adds
 client paging within the admitted population and carries an owner-selected
-policy; joining repository-wide metadata to new admission remains open. General
+policy. Benchmark preparation now freezes that policy through the coding owner
+and checks the collected session against it. Joining repository-wide metadata
+to new admission remains open. General
 read observations and subsequent comparisons remain proposed. The earlier
 compact-edit bundle retains its 729-test and 11 authored numerical-fixture
 results; this phase records its own selected regression run separately, without

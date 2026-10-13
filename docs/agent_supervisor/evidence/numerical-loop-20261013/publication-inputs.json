@@ -1,0 +1,20 @@
+{
+  "accelerator_base": "a9bcde965ac8341719069975dc828c54376961a6",
+  "changed_datasets_files": [
+    "ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py",
+    "ipfs_datasets_py/logic/software_verification/numerical_logic_v3.py",
+    "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
+    "ipfs_datasets_py/logic/software_verification/numerical_source_v3.py",
+    "tests/unit/logic/software_verification/test_numerical_logic_v3.py",
+    "tests/unit/logic/software_verification/test_numerical_source_v3.py"
+  ],
+  "datasets_commit": "6cfc5a640a4715dfc4da1a8f5d180719b4bc6fbe",
+  "historical_reports_unchanged": true,
+  "passed": true,
+  "preserved_datasets_upstream": "8f3856ee9967831f55a0d602a645eb143def5eea",
+  "qualified_runner_count": 3,
+  "qualified_source_and_public_input_count": 47,
+  "schema": "numerical-loop-publication-inputs@1",
+  "source_bindings_exact": true,
+  "structured_checkpoint_pins_unchanged": true
+}

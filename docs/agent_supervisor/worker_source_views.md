@@ -79,6 +79,51 @@ cached originals and deterministic projections before exporting their pins.
 Discovery rows are accounted separately from source slices and candidate
 artifacts, while complete response bytes still count against the session budget.
 
+## Freeze a shared policy in a benchmark run
+
+The preparation command accepts `--source-view-policy /absolute/policy.json`
+alongside the matching enabled `--source-view-profile` and `--arm full`.
+The policy file is strict JSON, bounded to 64 KiB. For example:
+
+```json
+{
+  "schema": "supervisor-source-view-policy@1",
+  "profile": "python-comments@1",
+  "protected_lines": {
+    "6d6f642e7079": [2],
+    "74797065732e707969": [2]
+  }
+}
+```
+
+The keys are exact raw-path bytes in lowercase hexadecimal (`mod.py` and
+`types.pyi` here); line numbers are sorted, unique, positive original-source
+lines. This recipe protects comments on those lines when the paths are already
+admitted. It does not admit either path or expand repository scope.
+
+Preparation detaches and freezes the complete recipe, its configuration digest
+and the resolver/codec binding. The benchmark controls include the recipe.
+Execute rechecks those identities and the frozen configuration before launching
+Harbor. Collect refuses changed custody or marks changed selections as incomplete. Select the
+file during preparation; execute and collect cannot supply a replacement file.
+The recipe's meaning is retained even if the original file is later changed.
+
+The agent passes one canonical JSON argument to the owner. The owner consumes
+it before launching the isolated worker, which receives only the matching shared
+source descriptor. The collector joins the frozen recipe's implementation
+binding to that actual descriptor and refuses a legacy downgrade or another
+policy. Discovery, baseline reads, working snapshots and exact expansion use
+the same selected policy. Existing numerical receipts or candidate caches whose
+producer pins change must be regenerated.
+
+Omitting the file preserves legacy defaults. Disabled profiles, the no-index
+arm, nonsemantic/candidate routes, malformed recipes and profile conflicts
+refuse. Combining this treatment with a finite proof-query signed invocation is
+unsupported and refused by the existing exact-command guard; no owner-to-worker
+rewrite of that signed invocation is qualified here. The runtime archive must
+be rebuilt against the current source capability hashes. This selection adds
+no new model, checkpoint, embedding, database owner or token-savings claim.
+
 ## Read working files after edits
 
 Add `--working` to an unpinned first-page request after editing an admitted file:
@@ -146,9 +191,10 @@ policy through baseline, working and exact expansion. Legacy request versions
 refuse. Candidate-context requests retain their existing generation binding.
 
 The sealed-prompt factory also accepts an owner-supplied `view_policy` whose
-profile must match the selected enabled profile. Standard benchmark preparation
-still selects only its existing profile and uses legacy policy defaults; a
-frozen benchmark-level shared-policy configuration remains a later increment.
+profile must match the selected enabled profile. Benchmark preparation can now
+freeze the same recipe through `--source-view-policy`, with configuration and
+resolver/codec digests joined to the owner descriptor. Omitting that option
+preserves legacy defaults.
 No worker request selects a new policy, widens scope or makes compact editing a
 model tool. The [transport qualification](evidence/source-view-discovery-transport-20261013/README.md)
 records the local evidence and its authored identity-boundary limits.

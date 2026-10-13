@@ -1,0 +1,164 @@
+"""Frozen owner policy selection, sealed prompt and generated launch wiring.
+
+Uses real semantic producers and source projections with an authored UID seam;
+no Docker, model, provider or official verifier is invoked.
+"""
+import fcntl
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+import pytest
+
+from benchmarks.agent_supervisor.container_coding.container_worker_deployment import OWNER_ENTRY, OWNER_MONITOR
+from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import implementation_argv
+from benchmarks.agent_supervisor.container_coding import terminal_source_view_policy as selection
+from ipfs_accelerate_py.agent_supervisor.runtime import source_formalization_context as guard
+from ipfs_accelerate_py.agent_supervisor.runtime import worker_source_broker as broker
+from ipfs_accelerate_py.agent_supervisor.runtime import worker_source_client as client
+from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy, SOURCE_VIEW_POLICY_FLAG
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import _validation_memfd_create
+from test.api.test_worker_source_discovery_transport import admitted, query  # noqa: F401
+
+
+def recipe(profile="python-comments@1"):
+    return SourceViewPolicy.from_mapping(profile=profile,
+        protected_lines={b"mod.py".hex(): [2], b"types.pyi".hex(): [2]})
+
+
+def invocation(policy):
+    return ["--purpose", "coding", "--semantic-repository", "/repository",
+        "--source-view-profile", policy.profile, SOURCE_VIEW_POLICY_FLAG, policy.to_json()]
+
+
+@pytest.mark.parametrize("equals", [False, True])
+def test_owner_configuration_is_removed_from_worker_argv_without_mutating_owner(equals):
+    policy = recipe()
+    argv = invocation(policy)
+    if equals:
+        argv[-2:] = [SOURCE_VIEW_POLICY_FLAG + "=" + policy.to_json()]
+    before = list(argv)
+    worker = broker.worker_source_argv(argv)
+    assert argv == before and worker == before[:6]
+    assert policy.to_json() not in worker
+    assert not any(value.startswith(SOURCE_VIEW_POLICY_FLAG) for value in worker)
+
+
+@pytest.mark.parametrize("change", ["missing", "duplicate", "mixed_duplicate", "bad_json", "unknown_schema", "oversized"])
+def test_ambiguous_or_invalid_owner_configuration_refuses_before_worker(change):
+    argv = invocation(recipe())
+    if change == "missing": argv.pop()
+    elif change == "duplicate": argv.extend(argv[-2:])
+    elif change == "mixed_duplicate": argv.append(SOURCE_VIEW_POLICY_FLAG + "=" + recipe().to_json())
+    elif change == "bad_json": argv[-1] = '{"schema":'
+    elif change == "unknown_schema": argv[-1] = '{"schema":"unknown","profile":"python-comments@1","protected_lines":{}}'
+    else: argv[-1] = " " * 65537
+    with pytest.raises(ValueError):
+        broker.worker_source_argv(argv)
+
+
+@pytest.mark.parametrize("change", ["disabled", "wrong_profile", "explicit_and_serialized", "duplicate_profile", "bad_schema"])
+def test_factory_policy_refusal_precedes_sealed_prompt_io(monkeypatch, change):
+    selected = recipe(); argv = invocation(selected); kwargs = {}
+    if change == "disabled": argv[5] = "disabled"
+    elif change == "wrong_profile": argv[5] = "identity@1"
+    elif change == "explicit_and_serialized": kwargs["view_policy"] = selected
+    elif change == "duplicate_profile": argv += ["--source-view-profile=python-comments@1"]
+    else: argv[-1] = '{}'
+    monkeypatch.setattr(os, "pread", lambda *a: pytest.fail("invalid selection reached sealed prompt"))
+    with pytest.raises(ValueError):
+        broker.prepare_worker_source_broker(argv=argv, boundary="/absent", workspace="/absent", input_fd=-1, **kwargs)
+
+
+@pytest.mark.parametrize("profile", ["identity@1", "python-whitespace@1", "python-comments@1"])
+def test_generated_owner_uses_frozen_policy_and_launches_descriptor_only(admitted, monkeypatch, profile):
+    selected = recipe(profile)
+    argv = invocation(selected)
+    argv[3] = str(admitted["root"])
+    monkeypatch.setattr(guard, "_owner_boundary", lambda path:
+        (dict(owner_uid=os.getuid(), worker_uid=os.getuid() + 1), "b" * 64))
+    monkeypatch.setattr(guard, "_protected_directory", lambda *a, **k: None)
+    fd = _validation_memfd_create("source-policy-test", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+    os.write(fd, admitted["prompt"].encode())
+    fcntl.fcntl(fd, fcntl.F_ADD_SEALS, fcntl.F_SEAL_SEAL | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_GROW | fcntl.F_SEAL_WRITE)
+    real_factory = broker.prepare_worker_source_broker
+    monkeypatch.setattr(broker, "prepare_worker_source_broker", lambda **kwargs:
+        real_factory(**dict(kwargs, input_fd=fd)))
+    from ipfs_accelerate_py.agent_supervisor.runtime import numerical_obligation_broker as numerical
+    real_numerical_factory = numerical.prepare_numerical_obligation_broker
+    monkeypatch.setattr(numerical, "prepare_numerical_obligation_broker", lambda **kwargs:
+        real_numerical_factory(**dict(kwargs, input_fd=fd)))
+    monkeypatch.setattr(sys, "argv", ["installed-owner", *argv])
+    with tempfile.TemporaryDirectory(prefix="policy-owner-") as directory:
+        root = Path(directory); (root / "worker-observations").mkdir(mode=0o750)
+        (root / "container-boundary.json").write_text("authored UID seam")
+        namespace = dict(root=root, cwd=admitted["workspace"], handoff={"argv": argv}, sys=sys)
+        start = OWNER_ENTRY.index("from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_broker import worker_source_argv")
+        stop = OWNER_ENTRY.index(OWNER_MONITOR)
+        service = None
+        try:
+            exec(compile(OWNER_ENTRY[start:stop], "<installed-owner-policy-selection>", "exec"), namespace)
+            service = namespace["worker_source_broker"]
+            assert service.descriptor["schema"] == client.DESCRIPTOR_SCHEMA_V2
+            expected = selection.source_view_observation(profile, selected.to_dict())
+            assert service.descriptor["view_policy_binding_sha256"] == expected["source_view_policy_binding_sha256"]
+            command = namespace["command"]
+            assert SOURCE_VIEW_POLICY_FLAG not in command and selected.to_json() not in command
+            assert command[-4:] == service.extra_argv
+            assert namespace["numerical_obligation_broker"] is None
+            monkeypatch.setattr(service, "_peer", lambda _: None)
+            discovery = service._answer(query(service), None)
+            assert discovery["ok"] and discovery["page"]["view_policy_binding_sha256"] == service.descriptor["view_policy_binding_sha256"]
+            page = service._answer(query(service, "read"), None)
+            assert page["ok"] and page["page"]["schema"] == "supervisor-worker-source-view-page@3"
+            if profile == "python-comments@1":
+                assert "# blue policy annotation" in page["page"]["content"]
+                assert "ordinary-body-marker" not in page["page"]["content"]
+        finally:
+            if service is not None: service.close()
+            os.close(fd)
+
+
+@pytest.mark.parametrize("route", [None, "doctor_candidate", "doctor_contract_candidate"])
+def test_shared_policy_refuses_nonsemantic_or_candidate_dispatch(route):
+    with pytest.raises(ValueError):
+        implementation_argv(router=Path("/router"), model="authored", reasoning="high", timeout=90,
+            semantic_repository=None if route is None else Path("/repository"),
+            doctor=None if route is None else dict(route=route),
+            source_view_profile="python-comments@1", source_view_policy=recipe().to_dict())
+
+
+def test_dispatch_forwards_exact_policy_once_to_owner():
+    selected = recipe()
+    argv = implementation_argv(router=Path("/router"), model="authored", reasoning="high", timeout=90,
+        semantic_repository=Path("/repository"), doctor=None,
+        source_view_profile=selected.profile, source_view_policy=selected.to_dict())
+    assert argv.count(SOURCE_VIEW_POLICY_FLAG) == 1
+    assert argv[argv.index(SOURCE_VIEW_POLICY_FLAG) + 1] == selected.to_json()
+    assert broker.worker_source_argv(argv) == [*argv[:argv.index(SOURCE_VIEW_POLICY_FLAG)], *argv[argv.index(SOURCE_VIEW_POLICY_FLAG) + 2:]]
+
+
+@pytest.mark.parametrize("profile,arm", [("disabled", "full"), ("identity@1", "full"), ("python-comments@1", "no-index")])
+def test_driver_refuses_policy_before_instruction_or_state_io(tmp_path, profile, arm):
+    from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
+    with pytest.raises(ValueError):
+        driver.run(instruction=tmp_path / "absent", state=tmp_path / "state", arm=arm,
+            source_view_profile=profile, source_view_policy=recipe().to_dict())
+    assert not (tmp_path / "state").exists()
+
+
+def test_driver_cli_decodes_owner_policy_without_changing_legacy_defaults(monkeypatch, tmp_path, capsys):
+    from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
+    selected = recipe(); calls = []
+    def run(**kwargs):
+        calls.append(kwargs)
+        return dict(task_completed=False, arm="full", seconds=0, provider_invocations=[])
+    monkeypatch.setattr(driver, "run", run)
+    monkeypatch.setattr(sys, "argv", ["driver", "--instruction", str(tmp_path / "instruction"),
+        "--state", str(tmp_path / "state"), "--arm", "full", "--source-view-profile", selected.profile,
+        SOURCE_VIEW_POLICY_FLAG, selected.to_json()])
+    assert driver.main() == 1
+    assert calls[0]["source_view_policy"] == selected.to_dict()
+    assert calls[0]["source_view_profile"] == selected.profile
+    capsys.readouterr()

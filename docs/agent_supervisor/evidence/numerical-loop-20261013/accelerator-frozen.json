@@ -1,0 +1,9 @@
+{
+  "status": "production_and_tests_frozen",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "33852987f9c3e3c69a40402f841dbe3725e1b4cd3d16fe64bbcb68ee63739edb",
+    "benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py": "698c4d474aaedcf7858829df4429e2fae576e8108f8d882957198f82b740d159",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py": "bff077f9738d7b2455f9c479ded5f52fa77455317f78a6e47dcb714dae3ccc4d",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py": "00397e2574a263154cff981a6cbb0728c5122bdf27c808b4dd48ddd92540afb6"
+  }
+}

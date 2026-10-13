@@ -1,0 +1,167 @@
+{
+  "files": [
+    {
+      "canonical_report_sha256": "a919f301e7707b4fe54c8574372c61717c45ea9419a14054dac6f296c9e34f11",
+      "lean_source_sha256": "3b15a14e1ec469d9f6c618766ec43edda88edfcc764c68dfbb964f3a302d4a32",
+      "path": "eigen.py",
+      "pending_obligations": 16,
+      "per_function": [
+        {
+          "function_id": "function:2",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        }
+      ],
+      "profile": "python-numerical-structure@1",
+      "report_sha256": "786b65b7ce4b9a8d3d6ad38431a81a17223d0141685efd26a3aab326360a5a3f",
+      "source_bytes": 642,
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "canonical_report_sha256": "31654d0037267c444436fc63e2379bd6c4502e5266a7c2a789a1e8f7f771cf89",
+      "lean_source_sha256": "3208073c5b6528cd75f035eab5002f8c670c418f5ae7aa30c4ed8293162079e1",
+      "path": "eval.py",
+      "pending_obligations": 29,
+      "per_function": [
+        {
+          "function_id": "function:6",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "ref_solution",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        },
+        {
+          "function_id": "function:81",
+          "name_truncated": false,
+          "pending_obligation_count": 13,
+          "qualified_name": "test_eigen_pair",
+          "status": "partial",
+          "structurally_complete": false,
+          "unsupported_construct_count": 1
+        },
+        {
+          "function_id": "function:243",
+          "name_truncated": false,
+          "pending_obligation_count": 0,
+          "qualified_name": "test_speedup",
+          "status": "partial",
+          "structurally_complete": false,
+          "unsupported_construct_count": 4
+        }
+      ],
+      "profile": "python-numerical-structure@1",
+      "report_sha256": "91f15fe1e7149b3ec190d81dc51154cef977147c4d248e8315ff5a58d26664d4",
+      "source_bytes": 2246,
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    {
+      "canonical_report_sha256": "f208a6245483f8b3fca576f1e3aefba0eb00b38f7dc998f649dae27122377dd3",
+      "lean_source_sha256": "db0c774bdd1be05c30d8673d47890dc9ce20c6d9f0d166a24cdd140361b926a6",
+      "path": "eigen.py",
+      "pending_obligations": 16,
+      "per_function": [
+        {
+          "function_id": "function:2",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        }
+      ],
+      "profile": "python-numerical-guarded-structure@2",
+      "report_sha256": "56e9a24e5a6b8f265f3132c49844dd6403ee907435d1be8a78e48bfef90a78bf",
+      "source_bytes": 642,
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "canonical_report_sha256": "7b026b3e5e920acced0c9a5a2b7038f86c68a0824c7cf5f26575ca8230588fde",
+      "lean_source_sha256": "92ca74244ba2fa2090b90576d498f977f835a1a9d446b651edbd9c86ff3eeb77",
+      "path": "eval.py",
+      "pending_obligations": 59,
+      "per_function": [
+        {
+          "function_id": "function:6",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "ref_solution",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        },
+        {
+          "function_id": "function:81",
+          "name_truncated": false,
+          "pending_obligation_count": 23,
+          "qualified_name": "test_eigen_pair",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        },
+        {
+          "function_id": "function:282",
+          "name_truncated": false,
+          "pending_obligation_count": 20,
+          "qualified_name": "test_speedup",
+          "status": "partial",
+          "structurally_complete": false,
+          "unsupported_construct_count": 1
+        }
+      ],
+      "profile": "python-numerical-guarded-structure@2",
+      "report_sha256": "3624d46189e0a6e93965fdbae2690398dbb7e2182c6b8ca7f63d6542c01281cd",
+      "source_bytes": 2246,
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "hidden_verifier_read": false,
+  "model_inference_calls": 0,
+  "original_source_executed": false,
+  "producer_sha256": {
+    "ipfs_datasets_py.logic.software_verification.numerical_logic": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "ipfs_datasets_py.logic.software_verification.numerical_logic_v2": "e335faff26b909c3da6d3496f1856eadabaa180d8ee939d499f7c44f0fbbc58d",
+    "ipfs_datasets_py.logic.software_verification.numerical_source": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "ipfs_datasets_py.logic.software_verification.numerical_source_v2": "1943dd506a31a4b2854de2c9decd2fc2ad6625ff8669f63aa6c6f129ca924e4b",
+    "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+  },
+  "provider_calls": 0,
+  "schema": "numerical-loop-baseline@1",
+  "structured_checkpoint_implementation": {
+    "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+    "shared_runtime": {
+      "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+      "native": {
+        "dependencies": {
+          "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+          "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+          "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+          "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+          "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+          "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+          "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+          "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+        },
+        "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+        "scope": "listed_numerical_and_native_validator_modules_only"
+      },
+      "numerical": {
+        "files": {
+          "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+          "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+          "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+          "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+          "tree_pin.py": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2"
+        },
+        "scope": "listed_latent_decoder_and_grammar_sources_only"
+      },
+      "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+    }
+  }
+}

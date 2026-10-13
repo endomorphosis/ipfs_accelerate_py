@@ -101,7 +101,8 @@ sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
 from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import prepare_container_source_formalization_dispatch
 handoff=prepare_container_source_formalization_dispatch(argv=list(sys.argv[1:]),boundary=root/'container-boundary.json',workspace=cwd)
 os.dup2(handoff['stdin_fd'],0,inheritable=True);os.close(handoff['stdin_fd'])
-command=['/usr/bin/sudo','-n','-u','benchmarkworker','--',str(root/'bin/worker-entry'),*handoff['argv']]
+from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_broker import worker_source_argv
+command=['/usr/bin/sudo','-n','-u','benchmarkworker','--',str(root/'bin/worker-entry'),*worker_source_argv(handoff['argv'])]
 proof_query_guard=None
 if any(part==flag or part.startswith(flag+'=') for part in sys.argv[1:] for flag in ('--finite-proof-query-context','--finite-proof-query-sha256','--finite-proof-query-context-cid')):
  sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]

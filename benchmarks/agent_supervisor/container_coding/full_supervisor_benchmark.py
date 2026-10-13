@@ -42,6 +42,7 @@ from .terminal_capsule_selection_policy import (
 from .terminal_source_view_policy import (
     DEFAULT_SOURCE_VIEW_PROFILE, SOURCE_VIEW_PROFILES, validate_source_view_profile,
     source_view_selection, source_view_observation, require_source_view_archive,
+    validate_source_view_policy,
 )
 from .terminal_numerical_policy import (
     PROFILES as NUMERICAL_PROFILES, validate_numerical_profile, numerical_selection,
@@ -53,6 +54,52 @@ INTENT_SOURCE_PATH = ".supervisor-instruction.md"
 MAX_INTENT_CONTRACT_BYTES = 4 * 1024 * 1024
 MAX_PUBLIC_INSTRUCTION_BYTES = 32768
 MAX_TASK_PROFILE_BYTES = 65536
+MAX_SOURCE_VIEW_POLICY_BYTES = 65536
+
+
+def _load_source_view_policy(path: Path | None) -> dict | None:
+    if path is None:
+        return None
+    from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy
+    path = Path(path).absolute()
+    if path.resolve(strict=True) != path or path.is_symlink() or not path.is_file():
+        raise ValueError("source view policy must be a regular canonical file")
+    with path.open("rb") as stream:
+        raw = stream.read(MAX_SOURCE_VIEW_POLICY_BYTES + 1)
+    if not raw or len(raw) > MAX_SOURCE_VIEW_POLICY_BYTES:
+        raise ValueError("source view policy exceeds its byte bound")
+    return SourceViewPolicy.from_json(raw.decode("utf-8")).to_dict()
+
+
+def _source_view_policy_state(prepared, config, *, source_view, configured_source_view,
+                              current_config_sha256):
+    """Recheck the recipe and implementation binding without backfilling history."""
+    kwargs = config["agents"][0].get("kwargs", {})
+    fields = {"source_view_policy", "source_view_policy_sha256", "source_view_policy_binding_sha256"}
+    present = bool(fields & set(prepared)) or "source_view_policy" in kwargs
+    declared_controls = prepared.get("comparison_controls")
+    controls_unchanged = declared_controls is None or benchmark_controls.observe_controls(
+        prepared, config, current_task_hashes=prepared.get("task_input_sha256"))[
+            "configuration_unchanged"] is True
+    if not present:
+        # A removed recipe cannot be inferred from the remaining config alone.
+        # Its existing frozen controls still detect that edited configuration;
+        # unchanged legacy records and records without controls keep their shape.
+        return None, controls_unchanged, not controls_unchanged
+    try:
+        selected = validate_source_view_policy(prepared.get("source_view_policy"),
+            profile=source_view, arm=prepared["arm"])
+        configured = validate_source_view_policy(kwargs.get("source_view_policy"),
+            profile=configured_source_view, arm=prepared["arm"])
+        if selected is None or configured is None:
+            return selected, False, True
+        observation = source_view_observation(source_view, selected)
+        same = (selected == configured and controls_unchanged
+            and current_config_sha256 == prepared.get("config_sha256")
+            and all(prepared.get(key) == observation[key] for key in fields))
+        return selected, same, True
+    except (KeyError, TypeError, ValueError):
+        return None, False, True
 
 
 def _transport_task_profile(profile: dict | None, *, instruction: str | None = None) -> dict | None:
@@ -185,11 +232,13 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
+               source_view_policy: dict | None = None,
                numerical_formalization_profile: str | None = None,
                model_revision: str = "") -> dict:
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
     validate_source_view_profile(source_view_profile, arm=arm)
+    source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
@@ -213,7 +262,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **numerical_selection(numerical_formalization_profile),
                    **semantic_metadata_selection(semantic_metadata_view),
                    **capsule_selection_options(capsule_selection),
-                   **source_view_selection(source_view_profile)},
+                   **source_view_selection(source_view_profile, source_view_policy)},
     }]
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
@@ -262,10 +311,12 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
             source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
+            source_view_policy: dict | None = None,
             numerical_formalization_profile: str | None = None) -> dict:
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
     validate_source_view_profile(source_view_profile, arm=arm)
+    source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
@@ -344,6 +395,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         semantic_metadata_view=semantic_metadata_view,
         capsule_selection=capsule_selection,
         source_view_profile=source_view_profile,
+        source_view_policy=source_view_policy,
         numerical_formalization_profile=numerical_formalization_profile,
         **({"provider_profile": provider_profile} if provider_profile is not None else {}))
     if (selected_source384 is not None or selected_numerical is not None) and arm == "full":
@@ -376,7 +428,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **coding_reply_selection(coding_reply_mode),
               **semantic_metadata_observation(semantic_metadata_view),
               **capsule_selection_observation(capsule_selection),
-              **source_view_observation(source_view_profile),
+              **source_view_observation(source_view_profile, source_view_policy),
               **numerical_observation(numerical_formalization_profile, arm),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
@@ -430,6 +482,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     configured_source_view = validate_source_view_profile(
         config["agents"][0].get("kwargs", {}).get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
         arm=prepared["arm"])
+    source_policy, source_policy_unchanged, source_policy_present = _source_view_policy_state(
+        prepared, config, source_view=source_view, configured_source_view=configured_source_view,
+        current_config_sha256=_hash(output / "config.json"))
     selection = {key: prepared.get(key, value) for key, value in _intent_selection(None).items()}
     configured_selection = _intent_selection(config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"))
     job = Path(config["jobs_dir"]) / config["job_name"]
@@ -457,7 +512,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **coding_reply_selection(reply_mode),
               **semantic_metadata_observation(metadata_view),
               **capsule_selection_observation(capsule_selection),
-              **source_view_observation(source_view),
+              **source_view_observation(source_view, source_policy),
+              **({"source_view_policy_config_unchanged": source_policy_unchanged}
+                 if source_policy_present else {}),
               **({"source_view_config_unchanged": configured_source_view == source_view}
                  if "source_view_profile" in prepared or "source_view_profile" in config["agents"][0].get("kwargs", {}) else {}),
               **({"capsule_selection_config_unchanged": configured_capsules == capsule_selection}
@@ -481,7 +538,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and configured_numerical == numerical_profile
                   and configured_metadata_view == metadata_view
                   and configured_capsules == capsule_selection
-                  and configured_source_view == source_view,
+                  and configured_source_view == source_view and source_policy_unchanged,
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
               "intent_action_384": prepared.get("intent_action_384"),
@@ -535,6 +592,11 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         arm=prepared["arm"])
     if source_view != configured_source_view:
         raise ValueError("prepared source view profile changed")
+    _, source_policy_unchanged, _ = _source_view_policy_state(prepared, config,
+        source_view=source_view, configured_source_view=configured_source_view,
+        current_config_sha256=_hash(output / "config.json"))
+    if not source_policy_unchanged:
+        raise ValueError("prepared source view policy changed")
     if _task_hashes(task) != prepared["task_input_sha256"]:
         raise ValueError("original task changed")
     if _hash(Path(prepared["archive"]) / "runtime.tar.gz") != prepared["archive_sha256"]:
@@ -592,6 +654,8 @@ def main():
         help="Experimental source-bound capsule ranking; requires an explicit public task profile and is frozen by preparation")
     parser.add_argument("--source-view-profile", choices=SOURCE_VIEW_PROFILES, default=DEFAULT_SOURCE_VIEW_PROFILE,
         help="Opt-in read-only coding source views; full indexed arm only and frozen by preparation")
+    parser.add_argument("--source-view-policy", type=Path,
+        help="Explicit shared source view recipe JSON file; frozen by preparation")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
     parser.add_argument("--numerical-formalization-profile", choices=NUMERICAL_PROFILES,
         help="Opt-in source-bound numerical obligations; frozen equally for both arms, consumed only by full")
@@ -616,6 +680,8 @@ def main():
         parser.error("capsule selection is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE:
         parser.error("source view profile is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.source_view_policy is not None:
+        parser.error("source view policy is frozen by preparation; collect/execute cannot select it")
     if args.operation == "prepare":
         if args.dataset is None or args.archive is None:
             parser.error("prepare requires --dataset and --archive")
@@ -631,6 +697,7 @@ def main():
                          semantic_metadata_view=args.semantic_metadata_view,
                          capsule_selection=args.capsule_selection,
                          source_view_profile=args.source_view_profile,
+                         source_view_policy=_load_source_view_policy(args.source_view_policy),
                          numerical_formalization_profile=args.numerical_formalization_profile)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)

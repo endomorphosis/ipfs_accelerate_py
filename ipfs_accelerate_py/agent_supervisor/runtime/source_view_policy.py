@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import json
 from pathlib import Path
 
 from .reversible_source_view import build_source_view, current_codec_binding
@@ -19,6 +20,8 @@ MAX_PATHS = 256
 MAX_LINES = 4096
 MAX_PATH_HEX_CHARS = 8192
 MAX_LINE = 1048576
+MAX_POLICY_JSON_BYTES = 65536
+SOURCE_VIEW_POLICY_FLAG = "--source-view-policy-json"
 
 
 def _need(condition, message):
@@ -114,11 +117,55 @@ class SourceViewPolicy:
             records.append((path, lines))
         return cls(profile=profile, protected_lines=tuple(sorted(records)))
 
+    @classmethod
+    def from_dict(cls, value):
+        """Read the closed versioned recipe, detaching caller-owned containers."""
+        _need(cls is SourceViewPolicy, "exact source-view policy class required")
+        _need(type(value) is dict and set(value) == {"schema", "profile", "protected_lines"}
+            and type(value["schema"]) is str and value["schema"] == SCHEMA,
+            "closed source-view policy recipe required")
+        _need(type(value["protected_lines"]) is dict, "protected source mapping required")
+        return cls.from_mapping(profile=value["profile"], protected_lines=value["protected_lines"])
+
+    @classmethod
+    def from_json(cls, value):
+        """Read bounded strict JSON; repeated keys and nonfinite values refuse."""
+        _need(cls is SourceViewPolicy, "exact source-view policy class required")
+        _need(type(value) is str, "exact source-view policy JSON text required")
+        try:
+            size = len(value.encode("utf-8"))
+        except UnicodeError as error:
+            raise ValueError("source-view policy JSON must be UTF-8") from error
+        _need(0 < size <= MAX_POLICY_JSON_BYTES, "source-view policy JSON exceeds bounds")
+
+        def unique(pairs):
+            result = {}
+            for key, item in pairs:
+                _need(key not in result, "duplicate source-view policy JSON key")
+                result[key] = item
+            return result
+
+        def refuse_constant(_):
+            raise ValueError("nonfinite source-view policy JSON value")
+
+        try:
+            return cls.from_dict(json.loads(value, object_pairs_hook=unique,
+                parse_constant=refuse_constant))
+        except (ValueError, RecursionError) as error:
+            raise ValueError("invalid source-view policy JSON") from error
+
     def to_dict(self):
         """Return a detached versioned policy, with no source or task authority."""
         self._validate()
         return dict(schema=SCHEMA, profile=self.profile,
             protected_lines={path: list(lines) for path, lines in self.protected_lines})
+
+    def to_json(self):
+        """Return one canonical, bounded representation for configuration/argv."""
+        result = json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"), allow_nan=False)
+        _need(len(result.encode("utf-8")) <= MAX_POLICY_JSON_BYTES,
+            "source-view policy JSON exceeds bounds")
+        return result
 
     def binding(self):
         """Bind caller configuration and local resolver/codec implementation bytes."""
@@ -155,4 +202,5 @@ class SourceViewPolicy:
         return result
 
 
-__all__ = ["SourceViewPolicy", "ResolvedSourceViewPolicy", "SCHEMA", "BINDING_SCHEMA"]
+__all__ = ["SourceViewPolicy", "ResolvedSourceViewPolicy", "SCHEMA", "BINDING_SCHEMA",
+           "MAX_POLICY_JSON_BYTES", "SOURCE_VIEW_POLICY_FLAG"]

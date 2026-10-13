@@ -1,0 +1,823 @@
+{
+  "schema": "focused-test-node-ledger@1",
+  "source_junit": "junit.xml",
+  "count": 203,
+  "unique_count": 203,
+  "status_counts": {
+    "passed": 203
+  },
+  "tests": [
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_earlier_profile_planning_summary_retains_prior_bytes[python-numerical-structure@1-46aa10055716290998b1bd3dc0b2b68d9f12b7f37ab40448e6e9e0dc145d4db8]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_earlier_profile_planning_summary_retains_prior_bytes[python-numerical-guarded-structure@2-8ccc62143c3194ac6bc3d32cc6a5f35b41cb0c8dbfbb1da405ca81f92147956e]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_replays_lakes_and_keeps_unresolved_loop_references",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_paging_retains_exact_cfg_occurrences_and_iteration_contexts",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_profile_cannot_reuse_earlier_tree_or_cursor[python-numerical-structure@1]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_profile_cannot_reuse_earlier_tree_or_cursor[python-numerical-guarded-structure@2]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_changed_profile_cannot_relabel_control_receipt[python-numerical-structure@1]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_changed_profile_cannot_relabel_control_receipt[python-numerical-guarded-structure@2]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_changed_profile_cannot_relabel_control_receipt[python-numerical-control-structure@4]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_changed_profile_cannot_relabel_control_receipt[True]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_changed_profile_cannot_relabel_control_receipt[None]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_source_v3.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_logic_v3.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_source_v2.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_logic_v2.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_source.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_context_pins_selected_and_reused_implementations[numerical_logic.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_summary_charges_omitted_rows_without_stripping_loop_scope",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_advice_reaches_planner_before_goals_then_admitted_indexes",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_function_unit_extractor_producers_are_bound_by_archive_and_consumer",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_default_preserves_historical_configuration_and_controls[full]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_default_preserves_historical_configuration_and_controls[no-index]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_new_controls_compare_selected_profile_across_arms[python-numerical-structure@1]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_new_controls_compare_selected_profile_across_arms[python-numerical-guarded-structure@2]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_new_controls_compare_selected_profile_across_arms[python-numerical-control-structure@3]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_new_control_record_rejects_edited_or_incomplete_experiment[missing]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_new_control_record_rejects_edited_or_incomplete_experiment[unknown]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_new_control_record_rejects_edited_or_incomplete_experiment[bool]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_new_control_record_rejects_edited_or_incomplete_experiment[digest]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_new_control_record_rejects_edited_or_incomplete_experiment[legacy_schema]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_unknown_selection_fails_before_input_reads[True]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_unknown_selection_fails_before_input_reads[value1]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_unknown_selection_fails_before_input_reads[1]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_unknown_selection_fails_before_input_reads[]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_unknown_selection_fails_before_input_reads[python-numerical-structure@2]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/terminal_numerical_observation.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/terminal_output_observation.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/terminal_native_preflight.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/terminal_native_start_preflight.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/native_usage_accounting.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/benchmark_controls.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/ipfs_accelerate_py/agent_supervisor/runtime/published_numerical.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/formalization/autoencoder/source_screening.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_corpus.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/software_verification/numerical_source.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/software_verification/numerical_logic.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/software_verification/__init__.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/software_verification/program.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/software_verification/source_adapters.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/software_verification/syntax_bridge.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/families/registry.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/syntax_core/ast.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/syntax_core/signatures.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_every_current_numerical_producer_is_joined_to_archive[datasets/ipfs_datasets_py/logic/backends/smt/compiler.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_archive_inventory_cannot_omit_duplicate_or_coerce_producer_metadata[missing]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_archive_inventory_cannot_omit_duplicate_or_coerce_producer_metadata[duplicate]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_archive_inventory_cannot_omit_duplicate_or_coerce_producer_metadata[bool_bytes]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_archive_inventory_cannot_omit_duplicate_or_coerce_producer_metadata[wrong_bytes]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_malformed_inventory_fails_closed[None]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_malformed_inventory_fails_closed[True]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_malformed_inventory_fails_closed[manifest2]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_malformed_inventory_fails_closed[manifest3]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_malformed_inventory_fails_closed[manifest4]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_exact_current_inventory_passes_as_compatibility_only",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_guarded_archive_adds_only_selected_modules_and_binds_reused_bases",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_guarded_profile_requires_exact_new_producers_but_v1_does_not[missing-ipfs_datasets_py/logic/software_verification/numerical_source_v2.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_guarded_profile_requires_exact_new_producers_but_v1_does_not[missing-ipfs_datasets_py/logic/software_verification/numerical_logic_v2.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_guarded_profile_requires_exact_new_producers_but_v1_does_not[changed-ipfs_datasets_py/logic/software_verification/numerical_source_v2.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_guarded_profile_requires_exact_new_producers_but_v1_does_not[changed-ipfs_datasets_py/logic/software_verification/numerical_logic_v2.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_profile_controls_are_distinct_even_with_identical_task_inputs[pair0]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_profile_controls_are_distinct_even_with_identical_task_inputs[pair1]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_profile_controls_are_distinct_even_with_identical_task_inputs[pair2]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_control_archive_adds_only_selected_modules_and_binds_reused_guarded_bases",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_control_profile_requires_exact_new_producers_but_earlier_profiles_do_not[missing-ipfs_datasets_py/logic/software_verification/numerical_source_v3.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_control_profile_requires_exact_new_producers_but_earlier_profiles_do_not[missing-ipfs_datasets_py/logic/software_verification/numerical_logic_v3.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_control_profile_requires_exact_new_producers_but_earlier_profiles_do_not[changed-ipfs_datasets_py/logic/software_verification/numerical_source_v3.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_control_profile_requires_exact_new_producers_but_earlier_profiles_do_not[changed-ipfs_datasets_py/logic/software_verification/numerical_logic_v3.py]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_prepare_freezes_same_selection_and_opposite_consumption[python-numerical-structure@1-full]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_prepare_freezes_same_selection_and_opposite_consumption[python-numerical-structure@1-no-index]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_prepare_freezes_same_selection_and_opposite_consumption[python-numerical-guarded-structure@2-full]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_prepare_freezes_same_selection_and_opposite_consumption[python-numerical-guarded-structure@2-no-index]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_prepare_freezes_same_selection_and_opposite_consumption[python-numerical-control-structure@3-full]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_prepare_freezes_same_selection_and_opposite_consumption[python-numerical-control-structure@3-no-index]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_adapter_rejects_old_bundle_before_setup_upload_or_run[full]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_adapter_rejects_old_bundle_before_setup_upload_or_run[no-index]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_harbor_passes_frozen_profile_and_records_no_index_disable[None-full]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_harbor_passes_frozen_profile_and_records_no_index_disable[None-no-index]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_harbor_passes_frozen_profile_and_records_no_index_disable[python-numerical-structure@1-full]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_harbor_passes_frozen_profile_and_records_no_index_disable[python-numerical-structure@1-no-index]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_harbor_passes_frozen_profile_and_records_no_index_disable[python-numerical-guarded-structure@2-full]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_harbor_passes_frozen_profile_and_records_no_index_disable[python-numerical-guarded-structure@2-no-index]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_harbor_passes_frozen_profile_and_records_no_index_disable[python-numerical-control-structure@3-full]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_harbor_passes_frozen_profile_and_records_no_index_disable[python-numerical-control-structure@3-no-index]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_collect_and_execute_refuse_numerical_selection_drift[python-numerical-structure@1]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_collect_and_execute_refuse_numerical_selection_drift[python-numerical-guarded-structure@2]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_collect_and_execute_refuse_numerical_selection_drift[python-numerical-control-structure@3]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_cli_selection_is_frozen_by_prepare[python-numerical-structure@1]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_cli_selection_is_frozen_by_prepare[python-numerical-guarded-structure@2]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py::test_cli_selection_is_frozen_by_prepare[python-numerical-control-structure@3]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_regenerates_exact_python_subset_and_reloads_native_ducklake[python-numerical-structure@1]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_regenerates_exact_python_subset_and_reloads_native_ducklake[python-numerical-guarded-structure@2]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_regenerates_exact_python_subset_and_reloads_native_ducklake[python-numerical-control-structure@3]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-structure@1-profile]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-structure@1-sources]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-structure@1-producer]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-structure@1-receipt]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-structure@1-helper]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-structure@1-authority]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-structure@1-output]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-guarded-structure@2-profile]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-guarded-structure@2-sources]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-guarded-structure@2-producer]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-guarded-structure@2-receipt]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-guarded-structure@2-helper]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-guarded-structure@2-authority]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-guarded-structure@2-output]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-control-structure@3-profile]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-control-structure@3-sources]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-control-structure@3-producer]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-control-structure@3-receipt]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-control-structure@3-helper]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-control-structure@3-authority]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-control-structure@3-output]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_binding_requires_signed_initial_source_subset[python-numerical-structure@1-baseline]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_binding_requires_signed_initial_source_subset[python-numerical-structure@1-source_population]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_binding_requires_signed_initial_source_subset[python-numerical-structure@1-source_digest]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_binding_requires_signed_initial_source_subset[python-numerical-guarded-structure@2-baseline]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_binding_requires_signed_initial_source_subset[python-numerical-guarded-structure@2-source_population]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_binding_requires_signed_initial_source_subset[python-numerical-guarded-structure@2-source_digest]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_binding_requires_signed_initial_source_subset[python-numerical-control-structure@3-baseline]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_binding_requires_signed_initial_source_subset[python-numerical-control-structure@3-source_population]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_binding_requires_signed_initial_source_subset[python-numerical-control-structure@3-source_digest]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-structure@1-baseline]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-structure@1-population]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-structure@1-digest]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-structure@1-excluded]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-structure@1-manifest_cid]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-guarded-structure@2-baseline]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-guarded-structure@2-population]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-guarded-structure@2-digest]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-guarded-structure@2-excluded]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-guarded-structure@2-manifest_cid]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-control-structure@3-baseline]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-control-structure@3-population]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-control-structure@3-digest]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-control-structure@3-excluded]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_historical_admission_join_cannot_be_forged_by_a_manifest_cid[python-numerical-control-structure@3-manifest_cid]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-structure@1-source]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-structure@1-lineage]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-structure@1-missing_family_path]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-structure@1-expanded_family_path]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-structure@1-owner]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-structure@1-artifact]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-guarded-structure@2-source]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-guarded-structure@2-lineage]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-guarded-structure@2-missing_family_path]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-guarded-structure@2-expanded_family_path]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-guarded-structure@2-owner]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-guarded-structure@2-artifact]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-control-structure@3-source]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-control-structure@3-lineage]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-control-structure@3-missing_family_path]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-control-structure@3-expanded_family_path]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-control-structure@3-owner]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_reload_refuses_stale_or_tampered_successor[python-numerical-control-structure@3-artifact]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-structure@1-not_completed]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-structure@1-foreign_head]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-structure@1-expired]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-structure@1-nonfinite]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-structure@1-source_symlink]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-structure@1-foreign_output]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-guarded-structure@2-not_completed]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-guarded-structure@2-foreign_head]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-guarded-structure@2-expired]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-guarded-structure@2-nonfinite]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-guarded-structure@2-source_symlink]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-guarded-structure@2-foreign_output]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-control-structure@3-not_completed]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-control-structure@3-foreign_head]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-control-structure@3-expired]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-control-structure@3-nonfinite]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-control-structure@3-source_symlink]",
+      "status": "passed"
+    },
+    {
+      "nodeid": "test/api/test_published_numerical.py::test_preparation_refuses_invalid_transition_or_resource_boundary[python-numerical-control-structure@3-foreign_output]",
+      "status": "passed"
+    }
+  ]
+}

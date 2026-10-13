@@ -687,6 +687,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
         source_view_profile: str = "disabled",
+        source_view_policy: dict | None = None,
         capsule_selection: str = "lexical-query-symbol-name@1",
         metadata_census_only: bool = False,
         coding_reply_mode: str = "legacy",
@@ -714,8 +715,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         DEFAULT_CAPSULE_SELECTION, validate_capsule_selection, capsule_selection_observation,
     )
     validate_capsule_selection(capsule_selection, arm=arm)
-    from .terminal_source_view_policy import validate_source_view_profile, source_view_observation
+    from .terminal_source_view_policy import (
+        validate_source_view_profile, validate_source_view_policy, source_view_observation,
+    )
     validate_source_view_profile(source_view_profile, arm=arm)
+    source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     if source_view_profile != "disabled" and metadata_census_only:
         raise ValueError("source view qualification requires the coding worker route")
     if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
@@ -798,7 +802,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "provider_profile": provider_selection,
               **semantic_transport_selection(semantic_transport_schema),
               **capsule_selection_observation(capsule_selection),
-              **source_view_observation(source_view_profile),
+              **source_view_observation(source_view_profile, source_view_policy),
               **coding_reply_selection(coding_reply_mode),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
@@ -1057,6 +1061,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             semantic_transport_schema=semantic_transport_schema,
             coding_reply_mode=coding_reply_mode,
             **({"source_view_profile": source_view_profile} if source_view_profile != "disabled" else {}),
+            **({"source_view_policy": source_view_policy} if source_view_policy is not None else {}),
             **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}))
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
             implementation += ["--provider", provider_selection["provider"]]
@@ -1330,6 +1335,9 @@ def main():
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
     from .terminal_source_view_policy import SOURCE_VIEW_PROFILES, DEFAULT_SOURCE_VIEW_PROFILE
     parser.add_argument("--source-view-profile", default=DEFAULT_SOURCE_VIEW_PROFILE, choices=SOURCE_VIEW_PROFILES)
+    from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy
+    parser.add_argument("--source-view-policy-json", dest="source_view_policy",
+        type=lambda value: SourceViewPolicy.from_json(value).to_dict())
     from .terminal_capsule_selection_policy import DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS
     parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
         help="Retrieval ranking requires an explicit public task profile with a signed program/support partition")

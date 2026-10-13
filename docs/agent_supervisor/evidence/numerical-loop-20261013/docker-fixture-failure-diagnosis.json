@@ -1,0 +1,285 @@
+{
+  "authority": {
+    "model_calls": 0,
+    "official_terminal_bench_score": null,
+    "official_verifier_executed": false,
+    "proof_authority": false,
+    "provider_calls": 0,
+    "source_obligations_discharged": 0,
+    "token_savings_measured": false
+  },
+  "complete": true,
+  "findings": [
+    {
+      "accepted_phase_counts": {
+        "additional_filter_pages": 3,
+        "cursor_refusals": 3,
+        "full_scan_pages": 56,
+        "peer_refusals": 2
+      },
+      "accepted_requests": 64,
+      "accounting_complete": true,
+      "byte_quota_exhausted": false,
+      "complete": false,
+      "container_removed": true,
+      "delivered_responses": 64,
+      "evidence": [
+        {
+          "bytes": 19324,
+          "filename": "retained-broker-audit.json",
+          "sha256": "f95ec6e3a1f540abadc0a9fd9c17232ca7fb8be9bb97357c64d052fa7a5d931b"
+        },
+        {
+          "bytes": 1727,
+          "filename": "qualification.json",
+          "sha256": "d70a0ea39caf88af409b367178ed1996908932b8a5f4511b212f35ec7047d127"
+        },
+        {
+          "bytes": 9028,
+          "filename": "worker_probe.py",
+          "sha256": "5b1e795539630b57a9a81f89ee9b78f052324914fe5986c1587050eb4e53d645"
+        },
+        {
+          "bytes": 13378,
+          "filename": "owner_probe.py",
+          "sha256": "9523abb61d61d70b84fa76db1857b3ad6c1b748b85c380cefe0378e01634d730"
+        },
+        {
+          "bytes": 5934,
+          "filename": "owner-entry.stdout",
+          "sha256": "8545d57a1a1806f42acc4d0d9ad711026216855d46d80a899652938fcec6ba94"
+        },
+        {
+          "bytes": 677,
+          "filename": "owner-entry.stderr",
+          "sha256": "2c53e89b1562c1fe84524dac57bf965fe87be3b894f7318af6bdb40f4cc68b68"
+        },
+        {
+          "bytes": 0,
+          "filename": "worker-result.json",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "evidence_filename_policy": "Private inputs are identified by generic basenames and hashes only; raw session identifiers and private paths are omitted.",
+      "explanation": "The broker delivered 64 responses and closed its listener at its unchanged request limit. Additional fixture queries exceed the session count; the fixture then parses empty client stdout as JSON before checking the failed transport result.",
+      "failed_query": {
+        "attempted_broker_ordinal": 65,
+        "directly_captured": false,
+        "kind": "third repeated full-function filter page",
+        "limitation": "No per-query progress receipt was retained. Empty stdout and transport failure are inferred from the quota, fixture order and client error handling; the router directly reports JSONDecodeError.",
+        "worker_query_ordinal": 63
+      },
+      "failure_reason": "fixture_request_count_exceeds_session_quota",
+      "first_full_scan": {
+        "broker_ordinals": [
+          3,
+          58
+        ],
+        "pages": 56,
+        "response_bytes": 377548,
+        "rows": 105,
+        "sources": [
+          {
+            "filename": "eigen.py",
+            "pages": 8,
+            "rows": 16
+          },
+          {
+            "filename": "eval.py",
+            "pages": 48,
+            "rows": 89
+          }
+        ]
+      },
+      "inflight_request": null,
+      "max_single_response_bytes": 8180,
+      "not_reached": [
+        "canonical-source stale refusal",
+        "allocated-source stale refusal",
+        "final restored-source recovery"
+      ],
+      "owner_probe_seconds": 78.72190590505488,
+      "owner_returncode": 1,
+      "planned_request_counts": {
+        "cursor_probes": 3,
+        "filter_pages": 12,
+        "full_scan_pages": 56,
+        "peer_probes": 2,
+        "recovery_page": 1,
+        "stale_source_probes": 2,
+        "total": 76
+      },
+      "remaining_response_bytes": 129000,
+      "response_bytes": 395288,
+      "response_status_counts": {
+        "ok": 59,
+        "peer_refused": 2,
+        "retrieval_refused": 3
+      },
+      "returned_row_instances": 110,
+      "run": "docker-01",
+      "runner_unchanged": true,
+      "service_stopped": true,
+      "session_expiry_indicated": false,
+      "session_limits": {
+        "lifetime_seconds": 300.0,
+        "max_requests": 64,
+        "max_total_response_bytes": 524288
+      },
+      "source_unchanged": true
+    },
+    {
+      "accepted_phase_counts": {
+        "additional_filter_pages": 3,
+        "cursor_refusals": 3,
+        "full_scan_pages": 56,
+        "peer_refusals": 2
+      },
+      "accepted_requests": 64,
+      "accounting_complete": true,
+      "byte_quota_exhausted": false,
+      "complete": false,
+      "container_removed": true,
+      "delivered_responses": 64,
+      "evidence": [
+        {
+          "bytes": 19324,
+          "filename": "retained-broker-audit.json",
+          "sha256": "43425102f3e6e2c97699dd0d0edbb2fb351027a5c08c609b18b1992092826d14"
+        },
+        {
+          "bytes": 1727,
+          "filename": "qualification.json",
+          "sha256": "c6994eb772355e4885e2b239acb10d96ef8346ec1dd0d635223ce9c437c7489b"
+        },
+        {
+          "bytes": 8774,
+          "filename": "worker_probe.py",
+          "sha256": "fb26504072871f4378734568d7cec59862b78505bb42350dcd6d9ebcde109430"
+        },
+        {
+          "bytes": 13378,
+          "filename": "owner_probe.py",
+          "sha256": "9523abb61d61d70b84fa76db1857b3ad6c1b748b85c380cefe0378e01634d730"
+        },
+        {
+          "bytes": 5934,
+          "filename": "owner-entry.stdout",
+          "sha256": "c3224ec4e6e8a4e95bfdc6968ea2f1772e0021a844d0bf58020379b6c552823e"
+        },
+        {
+          "bytes": 677,
+          "filename": "owner-entry.stderr",
+          "sha256": "35e229705464f44a29825d8bc385c2be815efcd6ff329dff9bdf85b2c96af9f4"
+        },
+        {
+          "bytes": 5462,
+          "filename": "worker-result.json",
+          "sha256": "39b314397cdc0a2e0650516c06c93b689320e8a9855638e8af9078334aa4ae9d"
+        }
+      ],
+      "evidence_filename_policy": "Private inputs are identified by generic basenames and hashes only; raw session identifiers and private paths are omitted.",
+      "explanation": "The broker delivered 64 responses and closed its listener at its unchanged request limit. Additional fixture queries exceed the session count; the fixture then parses empty client stdout as JSON before checking the failed transport result.",
+      "failed_query": {
+        "attempted_broker_ordinal": 65,
+        "directly_captured": true,
+        "kind": "combined function/kind filter on second source",
+        "returncode": 2,
+        "stderr_reason_code": "transport_error",
+        "stdout_bytes": 0,
+        "worker_query_ordinal": 63
+      },
+      "failure_reason": "fixture_request_count_exceeds_session_quota",
+      "first_full_scan": {
+        "broker_ordinals": [
+          3,
+          58
+        ],
+        "pages": 56,
+        "response_bytes": 377548,
+        "rows": 105,
+        "sources": [
+          {
+            "filename": "eigen.py",
+            "pages": 8,
+            "rows": 16
+          },
+          {
+            "filename": "eval.py",
+            "pages": 48,
+            "rows": 89
+          }
+        ]
+      },
+      "inflight_request": null,
+      "max_single_response_bytes": 8180,
+      "not_reached": [
+        "canonical-source stale refusal",
+        "allocated-source stale refusal",
+        "final restored-source recovery"
+      ],
+      "owner_probe_seconds": 76.28560378903057,
+      "owner_returncode": 1,
+      "planned_request_counts": {
+        "cursor_probes": 3,
+        "filter_pages": 4,
+        "full_scan_pages": 56,
+        "peer_probes": 2,
+        "recovery_page": 1,
+        "stale_source_probes": 2,
+        "total": 68
+      },
+      "remaining_response_bytes": 134289,
+      "response_bytes": 389999,
+      "response_status_counts": {
+        "ok": 59,
+        "peer_refused": 2,
+        "retrieval_refused": 3
+      },
+      "returned_row_instances": 108,
+      "run": "docker-02",
+      "runner_unchanged": true,
+      "service_stopped": true,
+      "session_expiry_indicated": false,
+      "session_limits": {
+        "lifetime_seconds": 300.0,
+        "max_requests": 64,
+        "max_total_response_bytes": 524288
+      },
+      "source_unchanged": true
+    }
+  ],
+  "production_code": [
+    {
+      "bytes": 19208,
+      "filename": "numerical_obligation_broker.py",
+      "sha256": "52dad9568206c2e1b0f2f1048d2fc88a901bf626f827a7c2f60c7394337b5004"
+    },
+    {
+      "bytes": 18893,
+      "filename": "numerical_obligation_client.py",
+      "sha256": "28cfa7637b0f94cd77dec3071600263a2289738ede4ffd696ef4e2de34ffeaf6"
+    }
+  ],
+  "production_limits_unchanged": true,
+  "recommended_fixture_correction": {
+    "check_client_result_before_json_parsing": true,
+    "full_scan_session_budget": {
+      "cursor_probes": 3,
+      "full_scan_pages": 56,
+      "peer_probes": 2,
+      "recovery_page": 1,
+      "spare_requests": 0,
+      "stale_source_probes": 2,
+      "total": 64
+    },
+    "keep_filter_coverage_in_separate_focused_tests_or_separate_session": true,
+    "limitation": "The planned corrected fixture exactly reaches the fixed request ceiling. New rows or larger projected metadata can increase pagination; future additional checks require a separate session or an explicit fixture budget adjustment, not a production limit increase.",
+    "preserve_production_limits": true,
+    "remove_repeated_filter_queries_from_full_scan_session": true,
+    "retain_content_free_query_failure_progress": true
+  },
+  "redaction": "No raw source, prompts, session descriptors, identifiers, credentials, private state, or full broker receipts are included.",
+  "schema": "numerical-control-docker-fixture-failure-diagnosis@1",
+  "scope": "Read-only local audit of two failed authored offline fixtures; no production changes, source execution, provider/model calls, or benchmark scoring."
+}
