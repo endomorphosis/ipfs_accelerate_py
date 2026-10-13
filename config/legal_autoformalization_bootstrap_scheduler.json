@@ -66,12 +66,12 @@
     "docs/architecture/legal_autoformalization_convergence/full_plan/validation.json"
   ],
   "runtime_paths": {
-    "root": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime",
-    "state": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/state",
-    "worktrees": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/worktrees",
-    "merge_queue": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/merge_queue",
-    "logs": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/logs",
-    "evidence": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/evidence"
+    "root": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02",
+    "state": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02/state",
+    "worktrees": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02/worktrees",
+    "merge_queue": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02/merge_queue",
+    "logs": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02/logs",
+    "evidence": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime/generation-02/evidence"
   },
   "lanes": [
     {
@@ -111,5 +111,21 @@
     "original_plan_sha256": "56917e387649c03a0d483b1d3a4592dc146edf37de892782431f991a47269fcb",
     "original_task_acceptance": "separate_partial_until_all_original_criteria_pass",
     "sharding_reason": "LAC-002 and LAC-003 have the same hash-home shard; native atomic claims with non-strict fallback permit three independent inventory tasks."
+  },
+  "execution_generation": {
+    "index": 2,
+    "execution_mode": "deterministic-only",
+    "prior_runtime_root": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime",
+    "prior_attempts_preserved": true,
+    "reason": "Explicit native deterministic inventory roles; new command identities require separate state generation. No model route or Docker isolation guard is bypassed."
+  },
+  "model_assisted_route_prerequisites": {
+    "status": "blocked",
+    "missing_images": [
+      "ubuntu:24.04",
+      "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6"
+    ],
+    "toolchain_archive_or_reproducible_recipe_available": false,
+    "audit": "docs/agent_supervisor/evidence/durable-stop-20261007/stop-path-and-image-audit.md"
   }
 }

@@ -174,6 +174,11 @@ def common_result(task, sources_path, sources):
         raise ValueError("Original authoring plan hash differs from launch pin")
     if sources.get("bootstrap_source_sha256") and result["bootstrap_source_sha256"] != sources["bootstrap_source_sha256"]:
         raise ValueError("Bootstrap script differs from launch pin")
+    for prior in sources.get("prior_supervisor_attempt_receipts", []):
+        need(isinstance(prior, dict) and isinstance(prior.get("path"), str)
+             and isinstance(prior.get("sha256"), str), "Invalid prior attempt receipt pin")
+        identity = add_input(result, prior["path"])
+        need(identity["sha256"] == prior["sha256"], "Prior supervisor attempt receipt pin differs")
     return result
 
 
@@ -391,7 +396,7 @@ def output_path(task, requested):
     return path
 
 
-def atomic_write(path, value):
+def atomic_write(path, value, *, replace_existing=True):
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent,
                                      prefix=".result-", suffix=".tmp", delete=False) as stream:
@@ -401,7 +406,12 @@ def atomic_write(path, value):
         stream.flush()
         os.fsync(stream.fileno())
     try:
-        os.replace(temp, path)
+        if replace_existing:
+            os.replace(temp, path)
+        else:
+            # Publish exclusively: a concurrent materializer cannot replace
+            # already-persisted evidence between the existence check and write.
+            os.link(temp, path)
     finally:
         temp.unlink(missing_ok=True)
 
@@ -412,6 +422,7 @@ def need(condition, message):
 
 
 def validate(result, task, sources_path, sources):
+    need(isinstance(result, dict), "Result must be a JSON object")
     need(result.get("schema") == SCHEMA, "Wrong result schema")
     need(result.get("task_id") == task, "Wrong task identity")
     need(result.get("campaign_id") == sources["campaign_id"], "Wrong campaign")
@@ -461,6 +472,10 @@ def validate(result, task, sources_path, sources):
     need(repository_inputs == expected_repository_inputs, "Required repository input omitted")
     required_plan = str((Path(sources["workspace_root"]) / "implementation_plan/legal_autoformalization_convergence_20261013/tasks.json").resolve())
     need(required_plan in inputs, f"Required primary input omitted: {required_plan}")
+    for prior in sources.get("prior_supervisor_attempt_receipts", []):
+        prior_path = str(Path(prior["path"]).resolve())
+        need(prior_path in inputs and inputs[prior_path]["sha256"] == prior["sha256"]
+             and inputs[prior_path]["role"] == "immutable", "Prior attempt history pin missing or changed")
     observations = result["observations"]
     if task == "LAC-001":
         rows = observations["repositories"]
@@ -545,9 +560,33 @@ def validate(result, task, sources_path, sources):
             "gap_count": len(result["gaps"]), "mutable_observation_warnings": warnings}
 
 
+def materialize_result(task, sources_path, sources, path):
+    """Create missing evidence once; existing evidence only receives validation."""
+    def existing_result():
+        before = file_identity(path)
+        checked = validate(load_json(path), task, sources_path, sources)
+        after = file_identity(path)
+        need(before["sha256"] == after["sha256"] and before["bytes"] == after["bytes"],
+             "Result changed during validation")
+        return {**checked, "materialized": False, "output": str(path), "sha256": after["sha256"]}
+
+    if path.exists():
+        return existing_result()
+    result = common_result(task, sources_path, sources)
+    {"LAC-001": collect_repositories, "LAC-002": collect_runs,
+     "LAC-003": collect_caches}[task](result, sources)
+    checked = validate(result, task, sources_path, sources)
+    try:
+        atomic_write(path, result, replace_existing=False)
+    except FileExistsError:
+        return existing_result()
+    return {**checked, "materialized": True, "output": str(path),
+            "sha256": file_identity(path)["sha256"]}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("collect", "validate"))
+    parser.add_argument("command", choices=("collect", "validate", "materialize"))
     parser.add_argument("--task", required=True, choices=TASKS)
     parser.add_argument("--sources", default="config/legal_autoformalization_bootstrap_sources.json")
     parser.add_argument("--output", help="Task-owned result path; defaults to data/.../<task>/result.json")
@@ -567,6 +606,8 @@ def main():
         print(json.dumps({"status": "evidence_collected", "task_id": args.task,
                           "output": str(path), "sha256": file_identity(path)["sha256"],
                           "gaps": len(result["gaps"]), "original_task_acceptance": "partial"}))
+    elif args.command == "materialize":
+        print(json.dumps(materialize_result(args.task, sources_path, sources, path), sort_keys=True))
     else:
         result = load_json(path)
         print(json.dumps(validate(result, args.task, sources_path, sources), sort_keys=True))

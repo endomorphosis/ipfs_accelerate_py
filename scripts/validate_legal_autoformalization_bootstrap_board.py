@@ -38,13 +38,15 @@ def main():
         errors.append('bootstrap goal hierarchy differs from the four expected records')
     for task in tasks:
         output = f'data/legal_autoformalization_convergence/{task.task_id}/result.json'
-        validation = f'python3 scripts/legal_autoformalization_bootstrap.py validate --task {task.task_id}'
+        validation = f'python3 scripts/legal_autoformalization_bootstrap.py materialize --task {task.task_id}'
         if task.depends_on:
             errors.append(f'{task.task_id}: inventory bootstrap must have no dependencies')
         if task.metadata.get('outputs') != output or task.metadata.get('predicted files') != output:
             errors.append(f'{task.task_id}: scope/output mismatch')
         if task.metadata.get('validation') != validation:
             errors.append(f'{task.task_id}: executable validation mismatch')
+        if task.metadata.get('provider role') != 'deterministic-only' or task.metadata.get('context budget tokens') != '0':
+            errors.append(f'{task.task_id}: inventory requires deterministic-only zero-provider context')
     full_plan = plan / 'full_plan/tasks.json'
     if hashlib.sha256(full_plan.read_bytes()).hexdigest() != sources['original_plan_sha256']:
         errors.append('original plan copy does not match its frozen identity')

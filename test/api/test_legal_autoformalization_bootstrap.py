@@ -109,3 +109,73 @@ def test_bootstrap_external_inputs_remain_strict_and_output_cannot_escape(tmp_pa
         second.validate(result, "LAC-002", config_b, sources)
     with pytest.raises(ValueError, match="Output must remain inside"):
         second.output_path("LAC-002", str(tmp_path / "escaped-result.json"))
+
+
+def test_bootstrap_materialize_creates_once_then_validates_without_rewrite(tmp_path, monkeypatch):
+    first, _, _, sources, _, _ = _captured_inventory(tmp_path)
+    config = first.ROOT / "config/legal_autoformalization_bootstrap_sources.json"
+    output = first.output_path("LAC-002", None)
+    created = first.materialize_result("LAC-002", config, sources, output)
+    assert created["valid"] is True and created["materialized"] is True
+    before_bytes, before_stat = output.read_bytes(), output.stat()
+
+    def unexpected_collect(*args):
+        raise AssertionError("Existing result must never be recollected")
+
+    monkeypatch.setattr(first, "collect_runs", unexpected_collect)
+    checked = first.materialize_result("LAC-002", config, sources, output)
+    assert checked["valid"] is True and checked["materialized"] is False
+    assert output.read_bytes() == before_bytes
+    assert output.stat().st_mtime_ns == before_stat.st_mtime_ns
+    assert output.stat().st_ino == before_stat.st_ino
+
+
+def test_bootstrap_materialize_rejects_bad_existing_output_without_repair(tmp_path):
+    first, _, _, sources, _, _ = _captured_inventory(tmp_path)
+    config = first.ROOT / "config/legal_autoformalization_bootstrap_sources.json"
+    output = first.output_path("LAC-002", None)
+    first.materialize_result("LAC-002", config, sources, output)
+    bad = json.loads(output.read_text())
+    bad["side_effects"]["training_updates"] = 1
+    output.write_text(json.dumps(bad), encoding="utf-8")
+    before = output.read_bytes()
+
+    with pytest.raises(ValueError, match="Unexpected declared side effects"):
+        first.materialize_result("LAC-002", config, sources, output)
+
+    assert output.read_bytes() == before
+
+
+def test_bootstrap_materialize_rejects_stale_input_without_rewriting_result(tmp_path):
+    first, _, _, sources, _, report = _captured_inventory(tmp_path)
+    config = first.ROOT / "config/legal_autoformalization_bootstrap_sources.json"
+    output = first.output_path("LAC-002", None)
+    first.materialize_result("LAC-002", config, sources, output)
+    before = output.read_bytes()
+    report.write_text('{"actual_new_updates": 999}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Immutable input digest mismatch"):
+        first.materialize_result("LAC-002", config, sources, output)
+
+    assert output.read_bytes() == before
+
+
+def test_bootstrap_prior_attempt_receipts_are_strict_immutable_inputs(tmp_path):
+    first, _, _, sources, _, _ = _captured_inventory(tmp_path)
+    config = first.ROOT / "config/legal_autoformalization_bootstrap_sources.json"
+    prior = Path(sources["workspace_root"]) / "prior-wrapper-receipt.json"
+    _json(prior, {"status": "ended", "native_stop_verified": True})
+    sources["prior_supervisor_attempt_receipts"] = [
+        {"path": str(prior), "sha256": first.file_identity(prior)["sha256"]}]
+    _json(config, sources)
+    result = first.common_result("LAC-002", config, sources)
+    first.collect_runs(result, sources)
+    assert first.validate(result, "LAC-002", config, sources)["valid"] is True
+    missing_history = copy.deepcopy(result)
+    missing_history["input_artifacts"] = [row for row in result["input_artifacts"]
+                                          if row["path"] != str(prior)]
+    with pytest.raises(ValueError, match="Prior attempt history pin missing or changed"):
+        first.validate(missing_history, "LAC-002", config, sources)
+    prior.write_text('{"status": "changed"}', encoding="utf-8")
+    with pytest.raises(ValueError, match="Prior supervisor attempt receipt pin differs"):
+        first.common_result("LAC-002", config, sources)
