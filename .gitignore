@@ -388,3 +388,9 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_foundations/
 !/data/legal_autoformalization_foundations/LAC-S2-*/
 !/data/legal_autoformalization_foundations/LAC-S2-*/result.json
+
+# Legal proposed graph contracts operational state and accepted evidence
+/data/agent_supervisor/legal_autoformalization_graphs/runtime/
+!/data/legal_autoformalization_graphs/
+!/data/legal_autoformalization_graphs/LAC-S3-*/
+!/data/legal_autoformalization_graphs/LAC-S3-*/result.json
