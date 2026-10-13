@@ -39,7 +39,7 @@ created, and no accepted graph view is enabled.
 
 The source-contract population is 26 index cases, 48 review cases, 35 span cases,
 seven existing Profile G cases and sixteen existing graph-adapter cases: 132
-tests, plus 14 qualification-driver checks. Native real-input scans compare
+tests, plus 17 qualification-driver checks. Native real-input scans compare
 separately pinned deterministic baselines; post-merge replay recomputes them.
 
 Full span-cache backfill, primary graph reconstruction, reviewed legal semantics,

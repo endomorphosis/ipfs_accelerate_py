@@ -127,6 +127,7 @@ def bindings(task, sources_path):
         plan = sources["original_plan"]
         need(identity(plan["path"])["sha256"] == plan["sha256"], "Original plan moved")
     for row in sources.get("external_evidence", []):
+        need(Path(row["path"]).stat().st_size == row["bytes"], "External evidence moved: byte count differs")
         need(identity(row["path"])["sha256"] == row["sha256"], "External evidence moved")
     interpreter = identity(job.get("python_executable", sys.executable))
     if job.get("python_executable_sha256"):
@@ -146,7 +147,7 @@ def command(job):
 
 def execution_environment_policy(datasets):
     """Nonsecret, recorded overrides binding imports and pytest invocation."""
-    return {"PYTHONPATH": str(Path(datasets).resolve(strict=True)), "PYTEST_ADDOPTS": "",
+    return {"PYTHONPATH": str(Path(datasets).resolve(strict=True)), "PYTEST_ADDOPTS": "", "PYTHONOPTIMIZE": "0",
             "PYTHONDONTWRITEBYTECODE": "1", "IPFS_AUTO_INSTALL": "false",
             "IPFS_DATASETS_AUTO_INSTALL": "false", "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
             "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0", "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
@@ -154,15 +155,29 @@ def execution_environment_policy(datasets):
             "CUDA_VISIBLE_DEVICES": ""}
 
 
-REAL_INPUT_SCRIPT = '''import hashlib,json,sys
+REAL_INPUT_SCRIPT = '''import hashlib,json,os,stat,sys
 from pathlib import Path
+def need(ok,message):
+    if not ok: raise ValueError(message)
 spec=json.loads(sys.argv[1])
 path=Path(spec["path"])
-assert path.resolve(strict=True)==path and path.is_file()
-h=hashlib.sha256()
-with path.open("rb") as stream:
-    for block in iter(lambda:stream.read(1048576),b""): h.update(block)
-assert h.hexdigest()==spec["file_sha256"]
+need(path.resolve(strict=True)==path,"Real-input alias refused")
+need(spec["kind"] in ("entity_index_census","span_cache_sample"),"Unknown real-input kind")
+cap=262144 if spec["kind"]=="span_cache_sample" else spec["options"].get("max_file_bytes",20971520)
+need(type(cap) is int and 0<cap<=20971520,"Invalid real-input byte cap")
+def snapshot():
+    descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    with os.fdopen(descriptor,"rb") as stream:
+        before=os.fstat(stream.fileno())
+        need(stat.S_ISREG(before.st_mode) and 0<before.st_size<=cap,"Real-input exceeds initial file byte bound")
+        h=hashlib.sha256(); count=0
+        for block in iter(lambda:stream.read(1048576),b""):
+            count+=len(block); need(count<=cap,"Real-input grew beyond byte bound"); h.update(block)
+        def marker(info):return(info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+        need(marker(before)==marker(os.fstat(stream.fileno()))==marker(path.lstat()),"Real-input changed during hashing")
+        need(h.hexdigest()==spec["file_sha256"],"Real-input file hash differs")
+        return marker(before)
+before=snapshot()
 if spec["kind"]=="entity_index_census":
     from ipfs_datasets_py.logic.autoformal.legal_entity_index_intake import census_parquet
     result=census_parquet(path,**spec["options"])
@@ -171,21 +186,20 @@ elif spec["kind"]=="span_cache_sample":
     import pyarrow.parquet as pq
     from ipfs_datasets_py.logic.autoformal import legal_span_cache_intake as intake
     pa.set_cpu_count(1); pa.set_io_thread_count(1)
-    assert path.stat().st_size<=262144 and 0<spec["expected_rows"]<=128
+    need(type(spec["expected_rows"]) is int and 0<spec["expected_rows"]<=128,"Invalid span sample population")
     table=pq.ParquetFile(path)
-    assert table.metadata.num_rows==spec["expected_rows"]
-    assert sum(table.metadata.row_group(i).total_byte_size for i in range(table.metadata.num_row_groups))<=4194304
+    need(table.metadata.num_rows==spec["expected_rows"],"Span sample population differs")
+    need(sum(table.metadata.row_group(i).total_byte_size for i in range(table.metadata.num_row_groups))<=4194304,"Span sample decoded bound exceeded")
     rows=[]
     for batch in table.iter_batches(batch_size=128,use_threads=False): rows.extend(batch.to_pylist())
-    assert len(rows)==spec["expected_rows"]
+    need(len(rows)==spec["expected_rows"],"Span sample decoded population differs")
     identity=spec["cache_identity"]
     result=intake.prepare_span_cache_intake(rows,cache_identity=identity,
         expected_row_sha256s=[intake.row_sha256(row) for row in rows],
         expected_record_sha256s=[intake.record_sha256(row,ordinal=i,cache_identity=identity) for i,row in enumerate(rows)],
         source_bindings={},expected_source_bindings_sha256=intake.source_bindings_sha256({}))
 else: raise ValueError("Unknown bounded real-input profile")
-with path.open("rb") as stream:
-    assert hashlib.sha256(stream.read(20971521)).hexdigest()==spec["file_sha256"]
+need(snapshot()==before,"Real-input identity changed during observation")
 print(json.dumps(result,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False))
 '''
 
@@ -219,6 +233,8 @@ def run_real_input(datasets, job):
 
 def expected_real_input(job):
     baseline = job["real_input"]["baseline"]
+    need(type(baseline["bytes"]) is int and 0 < baseline["bytes"] <= MAX_BYTES
+         and Path(baseline["path"]).stat().st_size == baseline["bytes"], "Real-input baseline moved or exceeds bound")
     need(identity(baseline["path"])["sha256"] == baseline["sha256"], "Real-input baseline moved")
     expected = read_json(baseline["path"])
     need(sha(wire(expected)) == baseline["canonical_json_sha256"], "Real-input baseline content differs")

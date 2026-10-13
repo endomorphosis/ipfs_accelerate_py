@@ -258,3 +258,27 @@ def test_real_input_executes_in_pinned_root_and_refuses_changed_outcome(frozen):
     owner.write_text("def census_parquet(path, **kwargs):\n    return {'fixture_rows': 2}\n")
     with pytest.raises(ValueError, match="independently pinned baseline"):
         driver.execute(datasets, job)
+
+
+@pytest.mark.parametrize("kind,cap", [("entity_index_census", 16), ("span_cache_sample", 262144)])
+def test_real_input_rejects_oversized_file_before_loading_backend(frozen, kind, cap):
+    datasets, _, _ = frozen
+    raw = datasets / "oversized.bin"
+    raw.write_bytes(b"x" * (cap + 1))
+    job = {"real_input": {"spec": {"kind": kind, "path": str(raw),
+        "file_sha256": driver.identity(raw)["sha256"], "options": {"max_file_bytes": cap}}}}
+    with pytest.raises(ValueError, match="initial file byte bound"):
+        driver.run_real_input(datasets, job)
+
+
+def test_real_input_hash_guard_survives_python_optimization(frozen):
+    datasets, _, _ = frozen
+    raw = datasets / "guarded.bin"
+    raw.write_bytes(b"guarded fixture")
+    job = {"real_input": {"spec": {"kind": "entity_index_census", "path": str(raw),
+        "file_sha256": "0" * 64, "options": {"max_file_bytes": 1024}}}}
+    cmd = driver.real_input_command(job)
+    run = subprocess.run([cmd[0], "-OO", *cmd[1:]], cwd=datasets,
+                         text=True, capture_output=True, timeout=30)
+    assert run.returncode != 0 and "Real-input file hash differs" in run.stderr
+    assert driver.execution_environment_policy(datasets)["PYTHONOPTIMIZE"] == "0"
