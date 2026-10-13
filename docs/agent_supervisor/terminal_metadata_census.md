@@ -5,6 +5,11 @@ spending on a new benchmark comparison. The census measures the complete coding
 input and its exactly restorable metadata view. General planning and
 `llm_router` remain part of the live benchmark.
 
+The separate [prepared-input displacement observer](representation_displacement.md)
+joins the ordinary opt-in metadata/instruction selection to exact transport and
+wrapper spans. It records a prepared replacement without changing this census's
+stop point or claiming provider delivery, source omission or total token savings.
+
 ## Current runner stop point
 
 [`router_implementation_runner.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py)

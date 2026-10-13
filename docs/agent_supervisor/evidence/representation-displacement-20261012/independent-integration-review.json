@@ -1,0 +1,213 @@
+{
+  "checks": [
+    {
+      "detail": "Observer is constructed only inside explicit metadata opt-in; legacy path has no new receipt.",
+      "id": "legacy_unchanged",
+      "result": "passed_by_inspection"
+    },
+    {
+      "detail": "Census branch bypasses the observer and preserves its existing output construction.",
+      "id": "census_unchanged",
+      "result": "passed_by_inspection"
+    },
+    {
+      "detail": "Normal @2 uses original selector once; observer receives recorded typed selection and does not construct or call a counter.",
+      "id": "counter_single_measurement",
+      "result": "passed_by_inspection"
+    },
+    {
+      "detail": "Both router and audit regenerate guidance from the admitted profile, and observer requires one identical retained suffix occurrence.",
+      "id": "source_guidance_unchanged",
+      "result": "passed_by_inspection"
+    },
+    {
+      "detail": "Historical @2 counter/selection verification remains false without the trusted callable; new representation check cannot upgrade it.",
+      "id": "historical_counter_limits_preserved",
+      "result": "passed_by_inspection"
+    },
+    {
+      "detail": "Parser retains optional observation and exact provider/model identities; child collector retains these fields.",
+      "id": "optional_receipt_transport",
+      "result": "passed_by_inspection"
+    },
+    {
+      "detail": "Closed parser checks selected input hash/bytes; independent historical projection rebuilds complete native/candidate arms and compares the observer output.",
+      "id": "selected_model_input_join",
+      "result": "passed_by_inspection"
+    },
+    {
+      "detail": "Metadata and shared worker source inventories pin the new module, with missing/stale/copied-feature controls.",
+      "id": "archive_binding",
+      "result": "passed_by_inspection"
+    },
+    {
+      "detail": "Historical source/block/bindings and fixed view are independently reconstructed using observed_instruction; displacement full-receipt digest now uses the retained original instruction receipt, preserving lineage without restoring currentness.",
+      "id": "instruction_historical_full_receipt_digest",
+      "result": "passed_after_root_correction_by_inspection"
+    }
+  ],
+  "final_review_observed_utc": "2026-10-12T23:38:24.775983+00:00",
+  "final_reviewed_sources": [
+    {
+      "bytes": 66396,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e"
+    },
+    {
+      "bytes": 59911,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "72ba6d0b05986334660ba12e5e899dc436e37d0c9c3908868d47d223a1696856"
+    },
+    {
+      "bytes": 6395,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "sha256": "3645ca1c9a4e438f3b1308ddb70d5cf27e9f008dc2b44ab8667f757d5fc2053c"
+    },
+    {
+      "bytes": 6108,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "sha256": "7f6edd5dc63cc1fd3e2dc7ae532cd7d544bb6e3b91cb5f66d5d1b99d7f4ae6c1"
+    },
+    {
+      "bytes": 16515,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "sha256": "faa7f22be028c6f515a266ac4a203688f9a67ab330da2edad0c3d782e1e61dd7"
+    },
+    {
+      "bytes": 25515,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+    },
+    {
+      "bytes": 23539,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d"
+    },
+    {
+      "bytes": 13476,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+      "sha256": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4"
+    },
+    {
+      "bytes": 27512,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py",
+      "sha256": "eb1423b0be436c19eb57ce96dd79667478daebba3923423a88d8fde7ed760f6b"
+    },
+    {
+      "bytes": 27336,
+      "path": "test/api/test_representation_displacement.py",
+      "sha256": "c2e31f35a25711203d2ec0276ce9b3384c9eb3ad3fbccd421bd1ff9dccc6ccd0"
+    },
+    {
+      "bytes": 7356,
+      "path": "docs/agent_supervisor/evidence/representation-displacement-20261012/qualification_runner.py",
+      "sha256": "df00512deef6106d04fd0d77c970b05bfb790adbb468ae8081ea6eec85418030"
+    }
+  ],
+  "findings": [
+    {
+      "cause": "require_current_source=False changes source_freshness_verified and historical_replay, so hashing observed_instruction cannot reproduce the invocation original instruction_receipt_sha256.",
+      "dependency_line_at_initial_review": 361,
+      "dependency_path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "id": "instruction_historical_receipt_digest",
+      "integration_line_at_initial_review": 593,
+      "integration_path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "recommended_correction": "After independent historical source/block/binding checks, pass retained original instruction receipt to observer for exact original full-receipt hash. Keep fixed view rebuilt from independently observed historical instruction bindings.",
+      "regression_cases": [
+        "test_signed_instruction_history_preserves_original_receipt_hash_without_currentness_upgrade[False]",
+        "test_signed_instruction_history_preserves_original_receipt_hash_without_currentness_upgrade[True]"
+      ],
+      "regression_cases_executed_by_this_review": false,
+      "regression_cases_reviewed_by_inspection": true,
+      "regression_implementation_path": "test/api/test_representation_displacement.py",
+      "regression_implementation_sha256": "c2e31f35a25711203d2ec0276ce9b3384c9eb3ad3fbccd421bd1ff9dccc6ccd0",
+      "regression_requested": "Actual signed instruction metadata opt-in followed by historical audit after source/worktree changes.",
+      "resolution": "Pass retained instruction to observer after existing independent historical binding checks; retain observed_instruction for independently reconstructed view.",
+      "resolution_line": 596,
+      "resolution_path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "resolution_sha256": "72ba6d0b05986334660ba12e5e899dc436e37d0c9c3908868d47d223a1696856",
+      "severity": "blocker",
+      "status": "resolved_by_root_correction"
+    }
+  ],
+  "initial_qualification_observation": {
+    "collected_distinct_tests": 551,
+    "commands_artifact": "first-commands.json",
+    "commands_sha256": "97c2a9d5da045f1e2d3c2afa4d5297406eb040a7e194cf34b4483d46eaecf967",
+    "corrected_qualification_result": "pending_at_final_review",
+    "junit": {
+      "errors": 0,
+      "failures": 1,
+      "skipped": 0,
+      "tests": 181
+    },
+    "qualification_executed_by_this_reviewer": false,
+    "source_before_after_equal": true
+  },
+  "initial_reviewed_sources": [
+    {
+      "bytes": 66396,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "3d02c30ce593e183c582ffa41a28b4a1fa7c38d25173139e7c9e5af7aeb54c1e"
+    },
+    {
+      "bytes": 59686,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "a32f7f161a5de0c0f09f31796df7d361655f9d4c0e33d5dea89fd1b79367f4a4"
+    },
+    {
+      "bytes": 6395,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "sha256": "3645ca1c9a4e438f3b1308ddb70d5cf27e9f008dc2b44ab8667f757d5fc2053c"
+    },
+    {
+      "bytes": 6108,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "sha256": "7f6edd5dc63cc1fd3e2dc7ae532cd7d544bb6e3b91cb5f66d5d1b99d7f4ae6c1"
+    },
+    {
+      "bytes": 16515,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "sha256": "faa7f22be028c6f515a266ac4a203688f9a67ab330da2edad0c3d782e1e61dd7"
+    },
+    {
+      "bytes": 25515,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+    },
+    {
+      "bytes": 23539,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d"
+    },
+    {
+      "bytes": 13476,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+      "sha256": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4"
+    },
+    {
+      "bytes": 27512,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py",
+      "sha256": "eb1423b0be436c19eb57ce96dd79667478daebba3923423a88d8fde7ed760f6b"
+    },
+    {
+      "bytes": 24070,
+      "path": "test/api/test_representation_displacement.py",
+      "sha256": "2825bb0699e4782bcf33666896be34cf361b2982a06fcf6c80c05e8f3ca25f80"
+    }
+  ],
+  "module_authored_by_this_reviewer": true,
+  "module_independently_reviewed_here": false,
+  "observed_utc": "2026-10-12T23:33:16.385856+00:00",
+  "proof_authority": false,
+  "provider_execution_performed": false,
+  "review_scope": "Root-authored router, historical audit and archive integration; source inspection only.",
+  "reviewer": "/root/displacement_contract_audit",
+  "root_correction_reviewed": true,
+  "schema": "supervisor-representation-displacement-independent-integration-review@1",
+  "source_freshness_authority": false,
+  "source_or_test_files_mutated_by_this_review": false,
+  "status": "no_additional_blocker_within_reviewed_integration_scope",
+  "test_execution_performed_by_this_review": false,
+  "total_token_savings_qualified": false
+}

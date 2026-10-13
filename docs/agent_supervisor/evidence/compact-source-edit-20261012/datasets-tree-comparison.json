@@ -1,0 +1,24 @@
+{
+  "schema": "compact-source-edit-datasets-tree-comparison@1",
+  "observed_utc": "2026-10-12T23:54:21.852590+00:00",
+  "qualification_revision": "f47161b757190380e9898aff155067c1ad609217",
+  "parent_pin_revision": "12b2de0f1c949b793772ce29edad84355978b9b7",
+  "trees": [
+    {
+      "path": "ipfs_datasets_py/logic/software_contracts",
+      "qualification_tree": "7fe1e1ff1deaaa90f7e3bba88d53b2d13635de96",
+      "parent_pin_tree": "7fe1e1ff1deaaa90f7e3bba88d53b2d13635de96",
+      "identical": true
+    },
+    {
+      "path": "ipfs_datasets_py/logic/software_verification",
+      "qualification_tree": "6d56480982ea9595c091433af292ef2424f5d8dd",
+      "parent_pin_tree": "6d56480982ea9595c091433af292ef2424f5d8dd",
+      "identical": true
+    }
+  ],
+  "tracked_qualification_paths_match": true,
+  "newer_revision_executed": false,
+  "whole_runtime_equivalence_claimed": false,
+  "scope": "Git trees and tracked checkout changes for the two named directories only; not the complete imported dependency closure."
+}

@@ -1,0 +1,231 @@
+{
+  "schema": "supervisor-compact-context-minification-plan-review@1",
+  "created_utc": "2026-10-12T23:12:38.076199+00:00",
+  "reviewer": "/root/minification_concept_audit",
+  "outcome": "passed_documentation_and_source_review",
+  "document": {
+    "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+    "sha256": "61e920acba6029076bcd02b95c7a8c9cd657cc7d89d632620f8c8f867dd8955a",
+    "bytes": 32097
+  },
+  "scope": {
+    "method": "Independent reading of the proposed documentation diff, retained guides/evidence and relevant runtime/test source. File hashing only; no product import or execution.",
+    "new_tests_run": 0,
+    "docker_runs": 0,
+    "provider_calls": 0,
+    "model_inference_calls": 0,
+    "training_steps": 0,
+    "prover_calls": 0,
+    "product_changes": false,
+    "other_documents_edited": false
+  },
+  "checks": [
+    {
+      "id": "unchanged_replay_exists",
+      "result": "pass",
+      "observation": "The plan correctly identifies complete admitted committed-source byte replay as implemented, backed by retained originals and deterministic KEEP/DELETE maps. This is distinct from filesystem export.",
+      "source_locations": [
+        "reversible_source_view.py:236-279",
+        "repository_code_view_inventory.py:178-255",
+        "test_repository_code_view_inventory.py:136-171"
+      ]
+    },
+    {
+      "id": "storage_and_worker_scope",
+      "result": "pass",
+      "observation": "The complete committed-source inventory is distinguished from the worker manifest population capped at 64 files and 1 MiB, with unsupported files passed through and Gitlink contents an explicit separate frontier.",
+      "source_locations": [
+        "repository_source_inventory.md:86-119",
+        "worker_source_views.py:29-30",
+        "worker_source_views.py:121-157"
+      ]
+    },
+    {
+      "id": "transform_boundaries",
+      "result": "pass",
+      "observation": "The current display transform preserves path identity, identifiers, imports, string contents, indentation and physical lines. Default comment preservation and opt-in comment removal are correctly distinguished from symbol/path/literal renaming.",
+      "source_locations": [
+        "reversible_source_view.py:145-233",
+        "repository_code_view_inventory.py:119-121",
+        "test_reversible_source_view.py:44-110"
+      ]
+    },
+    {
+      "id": "edit_contract",
+      "result": "pass",
+      "observation": "Unchanged replay is distinguished from edit propagation. Edited compact views refuse; proposed mapped-span edits require independent preimage and original/view identities and preserve untouched bytes.",
+      "source_locations": [
+        "reversible_source_view.py:236-277",
+        "test_reversible_source_view.py:166-173"
+      ]
+    },
+    {
+      "id": "runtime_contract",
+      "result": "pass",
+      "observation": "The plan does not claim an executable minified checkout. Import/reflection/tooling equivalence remains a separate qualification profile; original-source execution is retained.",
+      "source_locations": [
+        "reversible_source_views.md:11-18",
+        "doctor_contract_candidate_runner.py:158-160"
+      ]
+    },
+    {
+      "id": "candidate_population",
+      "result": "pass",
+      "observation": "Working refresh does not admit new paths or provide arbitrary move/delete support. Candidate artifacts remain session-local and do not publish accepted indexes or reuse proofs.",
+      "source_locations": [
+        "worker_source_views.md:68-95",
+        "worker_candidate_context.py:1-5",
+        "worker_candidate_artifacts.py:1-25"
+      ]
+    },
+    {
+      "id": "displacement_and_counterfactuals",
+      "result": "pass",
+      "observation": "A representation receipt is explicitly proposed. Additive tooling is not called displaced source. Delivered inputs can verify replaced spans; avoided future reads remain counterfactual and require matched complete runs.",
+      "source_locations": [
+        "reversible_codebase_views_plan.md:274-284"
+      ]
+    },
+    {
+      "id": "provider_count_gate",
+      "result": "pass",
+      "observation": "The plan counts the complete rendered representation with a compatible coding-provider counter and exact-source fallback, rather than substituting bytes, Python lexical tokens or GTE tokens for provider tokens.",
+      "source_locations": [
+        "reversible_codebase_views_plan.md:155-161",
+        "reversible_codebase_views_plan.md:286-293"
+      ]
+    },
+    {
+      "id": "complete_usage_without_double_count",
+      "result": "pass",
+      "observation": "Final native input plus output is aggregated across actual LLM sessions. Provider-included tool text, reasoning and cached-input subsets are not added again; local computation remains a separate ledger.",
+      "source_locations": [
+        "reversible_codebase_views_plan.md:295-300",
+        "reversible_codebase_views_plan.md:425-439"
+      ]
+    },
+    {
+      "id": "evidence_limits",
+      "result": "pass",
+      "observation": "The plan correctly distinguishes the older negative compact-transport result, the single instruction-deduplication pair, and provider-free selected formal retrieval. None is presented as repeatable compact-source token savings.",
+      "source_locations": [
+        "candidate-context-selection-20261012/README.md:27-46",
+        "terminal-instruction-dedup-pair-20261012/README.md:3-27"
+      ]
+    },
+    {
+      "id": "ir_roles_and_asset_reuse",
+      "result": "pass",
+      "observation": "IR routing roles are proposed supported subsets, with family/schema/task/dimension/window identities retained. Existing assets are reused where pinned profiles match, missing profiles remain explicit, and semantic training loss does not certify exact byte restoration.",
+      "source_locations": [
+        "reversible_codebase_views_plan.md:213-259"
+      ]
+    },
+    {
+      "id": "production_handoff_and_priority",
+      "result": "pass",
+      "observation": "The plan retains unfinished native bootstrap/context/actual-child and source-CAS integration prerequisites. Repository discovery and displacement measurement precede aggressive mapped/executable minification.",
+      "source_locations": [
+        "reversible_codebase_views_plan.md:302-308"
+      ]
+    }
+  ],
+  "resolved_wording_findings": [
+    {
+      "id": "candidate_refresh_vs_accepted_publication",
+      "previous_wording": "Mid-coding formal indexes still need a separate rebuild boundary.",
+      "resolution": "Accepted formal-index publication still needs its separate boundary.",
+      "status": "resolved_in_reviewed_document"
+    },
+    {
+      "id": "future_read_counterfactual",
+      "previous_wording": "A declared displacement is a proposal until the actually delivered input and native usage confirm it.",
+      "resolution": "The delivered input confirms replaced spans; avoided future reads remain counterfactual and require matched complete runs.",
+      "status": "resolved_in_reviewed_document"
+    }
+  ],
+  "unresolved_blockers": [],
+  "source_bindings": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+      "sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+      "bytes": 13539
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py",
+      "sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab",
+      "bytes": 18872
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py",
+      "sha256": "5bc6b1c38a376db73e840dac84c5db4ab95223ab834fd4d6d2eb9b6835626cc2",
+      "bytes": 15977
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
+      "sha256": "18a0c6d95c27efeb7eceeb0d79fe92f3a007d67626bcad4271b98ef3e17e9e1b",
+      "bytes": 24530
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py",
+      "sha256": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+      "bytes": 12194
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_artifacts.py",
+      "sha256": "43fb1fa8944993008ffd6292467ec6207c4669965ae1d0c3265c73e3c6ae5d84",
+      "bytes": 10847
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_candidate_runner.py",
+      "sha256": "f61314562aebe18bbb358b70ad9fe07eee6b7e04bb38165ae7f78381bce96c77",
+      "bytes": 14647
+    },
+    {
+      "path": "test/api/test_reversible_source_view.py",
+      "sha256": "7570ccf71539743ea92d42b9af6fd6c11f31d136d99d1bcb2023bf410c0e8722",
+      "bytes": 10307
+    },
+    {
+      "path": "test/api/test_repository_code_view_inventory.py",
+      "sha256": "247d2a0587b571139ef7538354b8330b8364fff9eddc1ab98af88f885cfc571a",
+      "bytes": 16073
+    },
+    {
+      "path": "docs/agent_supervisor/worker_source_views.md",
+      "sha256": "346c254bcc3aeb1f63784977ffc4961d367668885d17818134e4868e54dc4cfa",
+      "bytes": 9021
+    },
+    {
+      "path": "docs/agent_supervisor/repository_source_inventory.md",
+      "sha256": "c0567075cd7c01de71f5472e32384a8eb2645ab7946a82b172875680340c2532",
+      "bytes": 9501
+    },
+    {
+      "path": "docs/agent_supervisor/reversible_source_views.md",
+      "sha256": "9ff5e261ee5c1acdd676debce833f9b5bdd7b24fc60be347c5b1015c9e5a64d9",
+      "bytes": 9894
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/reversible-source-views-20261012/README.md",
+      "sha256": "6a6f26246c6bbd7acb41e3f85be337cc76aff2d34861544160d29952cec9cae9",
+      "bytes": 3567
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/candidate-context-selection-20261012/README.md",
+      "sha256": "d73ca04ad011e220efb34444d645e2cd29ae3556460bda62c2d28a88f2a52210",
+      "bytes": 5012
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/terminal-instruction-dedup-pair-20261012/README.md",
+      "sha256": "9690885e64f4d6d922b2c848ab00162b4e75162e2901dc299dd945814d9a986c",
+      "bytes": 7199
+    }
+  ],
+  "limits": [
+    "This is documentation/source inspection and readback of historical evidence, not a new runtime, exact-replay, model-quality, provider-token or task-success qualification.",
+    "Existing test and Docker results retain their original source and authored-worker scopes; this review did not rerun them.",
+    "The IR-routing review checks conceptual separation, preservation and proposed roles; current UI/UX checkpoint/publication evidence is covered by the separate family audit and was not re-executed here.",
+    "The source bindings cover the listed directly inspected files rather than a complete dependency closure."
+  ]
+}

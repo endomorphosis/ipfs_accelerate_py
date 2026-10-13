@@ -1,0 +1,403 @@
+{
+  "additional_docker_run": false,
+  "additional_four_workflow_blocks_run": false,
+  "additional_provider_run": false,
+  "additional_pytest_run": false,
+  "all_source_bindings_before_after_equal": true,
+  "all_source_bindings_match_integrated_current": true,
+  "checked_utc": "2026-10-12T22:59:56.354527+00:00",
+  "completion_authority": false,
+  "cwd": "/home/barberb/lift_coding/.worktrees/token-selector-accelerate-20261011",
+  "execution": "read-only-postmerge-guide-evidence-anchor-count-and-source-hash-validation",
+  "git_head": "d3855efe591332433b3e511feb448fb361fd8f32",
+  "guide_edits": false,
+  "log_bytes": 1878,
+  "log_path": "documentation-integrated-anchors.log",
+  "log_sha256": "4edd3bd20cf0d11dfacfcbb7552e3b68eed0287c4061cfc23d153ab1d47bbe35",
+  "manual_relative_link_checks": [
+    {
+      "check_anchors": true,
+      "errors": [],
+      "exit_status": 0,
+      "input_unchanged": true,
+      "path": "docs/agent_supervisor/current_source_worktree_allocation.md",
+      "sha256": "08ed9450d3033acfde7c4300c6ddd9da9394d75c8ac0e21d49a8c40a75a9d585"
+    },
+    {
+      "check_anchors": true,
+      "errors": [],
+      "exit_status": 0,
+      "input_unchanged": true,
+      "path": "docs/agent_supervisor/current_source_task_admission.md",
+      "sha256": "8afc5e00b7e45a8c77192a02d5bd57839bfaca1532dd0d0a21bd0bdb62895b90"
+    },
+    {
+      "check_anchors": true,
+      "errors": [],
+      "exit_status": 0,
+      "input_unchanged": true,
+      "path": "docs/agent_supervisor/source_lookup_worker.md",
+      "sha256": "65a89b43d6c22430b85fb450b5678bca6f358d5e914ec2612158174b31e7e388"
+    },
+    {
+      "check_anchors": true,
+      "errors": [],
+      "exit_status": 0,
+      "input_unchanged": true,
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "ed13e151998df4d01b467c0f9703a6b447117af9b1e9cf21f5bea8c6b99d5716"
+    },
+    {
+      "check_anchors": true,
+      "errors": [],
+      "exit_status": 0,
+      "input_unchanged": true,
+      "path": "docs/agent_supervisor/evidence/current-source-worktree-admission-20261012/README.md",
+      "sha256": "f86699c0dda638424aa3656884e7c88384186e2d37d5ebe974e1bc3e32b614b1"
+    }
+  ],
+  "model_calls": 0,
+  "parallel_publication": {
+    "changed_paths": 68,
+    "qualified_path_intersection": [],
+    "revision": "06a437cdba28e148912d998bf2cb85a805a3d4d9",
+    "source_equivalence_receipt_sha256": "24ab2eba8d8a44eccc702319cfcad4966ce749b5c8725de35c37988807b918d1"
+  },
+  "preserved_evidence_sha256": {
+    "documentation-checks.json": "68f5821941a09c572199262d0a95a95622af3ddc3694ba90be225f4bd01ae092",
+    "documentation-final-anchors.log": "877abafd01504285f582d4f75f9552dc98aeab427971b79d4ed474befcb214b4",
+    "documentation-final-checks.json": "69e7cb20152d8e18422428faa6750a0fff88635c21312a04e174c1c5b8e82e3c",
+    "documentation-workflow.log": "2856055b74d3b14ddc6b3b77b84270906b137e890719f5f08861f93c678109fc",
+    "final/collection.log": "be15b185639a99114761f73d977ddc173473c0f625ab0b8e051ece67d88432c8",
+    "final/commands.json": "206ae83b984698e3058cf655013f86b9b6336e4bdee6601d625410dc61f5661e",
+    "final/junit.xml": "16fb772a707be24ca12df2f4034c46a5fe08d71e807bb84ab406ea69a42512aa",
+    "final/nodeids.json": "43de890a86cff29eee9bd8ce50c1eb2afafd1b4aa0495166bdd8e5853a1397aa",
+    "final/tests.log": "82a7f8cc9e570e23a126f8212ca1e8109ea0ea73370ac2be5d97e07c5e2407bb",
+    "independent-review.json": "74c55aa212d82f5bfd3cd36748f97041522966e2b0ff2511abb3ca5679d53caf",
+    "integration-source-equivalence.json": "24ab2eba8d8a44eccc702319cfcad4966ce749b5c8725de35c37988807b918d1"
+  },
+  "preserved_evidence_unchanged": {
+    "documentation-checks.json": true,
+    "documentation-final-anchors.log": true,
+    "documentation-final-checks.json": true,
+    "documentation-workflow.log": true,
+    "final/collection.log": true,
+    "final/commands.json": true,
+    "final/junit.xml": true,
+    "final/nodeids.json": true,
+    "final/tests.log": true,
+    "independent-review.json": true,
+    "integration-source-equivalence.json": true
+  },
+  "prior_documentation_workflow_status": "pass",
+  "product_edits": false,
+  "product_review_hashes_match_integrated_current": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py": true
+  },
+  "product_review_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py": "bb9a242e92ec3057c927dec0be350dbe73eec2be1e7fd0c66234bb1d77fd19a7",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py": "9689548701f833b3c7acd8b91a17cd21cfc114c4d0e3588efb191c2c1488893f"
+  },
+  "proof_authority": false,
+  "publication_manifest_content_verified": false,
+  "publication_manifest_scope": "Link target exists; placeholder was deliberately not treated as a completed manifest. Root will fill it after this receipt.",
+  "qualification_prose_checks": {
+    "docs/agent_supervisor/current_source_worktree_allocation.md": {
+      "118_total": true,
+      "31_allocation": true,
+      "37_bindings": true,
+      "82_retained": true,
+      "five_lifecycle": true,
+      "pending_qualification_removed": true,
+      "zero_failures_errors_skips": true
+    },
+    "docs/agent_supervisor/evidence/current-source-worktree-admission-20261012/README.md": {
+      "118_total": true,
+      "31_allocation": true,
+      "37_bindings": true,
+      "82_retained": true,
+      "five_lifecycle": true,
+      "pending_qualification_removed": true,
+      "zero_failures_errors_skips": true
+    }
+  },
+  "recorded_direct_source_bindings": 37,
+  "retained_junit": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 118
+  },
+  "retained_qualification_counts": {
+    "allocation": 31,
+    "collected_entries": 118,
+    "distinct_total": 118,
+    "native_lifecycle": 5,
+    "retained": 82
+  },
+  "schema": "supervisor-native-source-worktree-allocation-integrated-documentation-checks@1",
+  "source_binding_checks": [
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+      "repository": "accelerator",
+      "sha256": "bb9a242e92ec3057c927dec0be350dbe73eec2be1e7fd0c66234bb1d77fd19a7"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+      "repository": "accelerator",
+      "sha256": "d0ea3bfd59690f3758d6458774e7c94eca2d963112ee2aeba38b047530e2713d"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py",
+      "repository": "accelerator",
+      "sha256": "8e0820ac71147059c76a81e1c0281e932e2c800838169f8392a89522c40ed87f"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "repository": "accelerator",
+      "sha256": "cfb424da40edc50559600f065198e1a25ab5f0ebc2bff0393b3baec6d55b3127"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "repository": "accelerator",
+      "sha256": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/test_current_source_worktree_allocation.py",
+      "repository": "accelerator",
+      "sha256": "2f2a3156eac4e0dfced4de7eafb1744585aec1755c982db3aedf5123a8293451"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/test_agent_supervisor_worktree_lifecycle.py",
+      "repository": "accelerator",
+      "sha256": "994294f79954e480b981f7b9d1a0f6798eeed63a1beceaefbeae35aac8fccfb7"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/test_agent_supervisor_database_portal_bridge.py",
+      "repository": "accelerator",
+      "sha256": "89b741bd9cd1c16dcd38bab6138aa66c27f8f0cd4adebd2308808513098d8b54"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+      "repository": "accelerator",
+      "sha256": "001c08a02cdef3dcb54e5778fe35a437f3c86cdce1fb6945e62fef450e0a7c5f"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "repository": "accelerator",
+      "sha256": "9689548701f833b3c7acd8b91a17cd21cfc114c4d0e3588efb191c2c1488893f"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_client.py",
+      "repository": "accelerator",
+      "sha256": "330ab86a0faad1fbdb87653be98403a6fdf39437c7828507e3bc24d7d5204a1e"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+      "repository": "accelerator",
+      "sha256": "195c2c3d5c7173702ab2252b7cbf522fd51bff072e677759f99f7aa15c2e2373"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup_cli.py",
+      "repository": "accelerator",
+      "sha256": "706c526fb4ff868ff89517c8a0581ed839071cf05471c6f7f9c4d9bb6ffc584d"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "repository": "accelerator",
+      "sha256": "31a03fd79b6e8a74644d73693322e5709961a2fa620f471997643dde7c534d78"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py",
+      "repository": "accelerator",
+      "sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+      "repository": "accelerator",
+      "sha256": "13386f3db7a3fee0103c5443416fe036d23c4f92953923e91cbd42f69582008c"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "repository": "accelerator",
+      "sha256": "90bdfdf7ab2303453a600b953e7728789c48cb08d2d71c5d195d3694b0f0c32b"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+      "repository": "accelerator",
+      "sha256": "1bfd5b1233a00511afeecc358e3a76e62ca9f8e9dab5d6c7a3380844d048b0be"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+      "repository": "accelerator",
+      "sha256": "ac1ea77073b7a8f8e009722e1c42dbe3e3ffe277cf01252413ca9a57ca724543"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "repository": "accelerator",
+      "sha256": "e199003a7a54d4f012e0c5dc5057d0ec9f23889d45b2e07e552758d4c459fcd8"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "repository": "accelerator",
+      "sha256": "dae2cae7e22d8bfc35dfbc53fd230d026cd575b587815bfd23ff34afe5f5d72f"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/test_current_source_task_admission.py",
+      "repository": "accelerator",
+      "sha256": "36e9d1a6d2377c857dd7649d290b3bc3ce14ac7bd42e7cb9ee137daf99555f29"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/test_source_lookup_worker_channel.py",
+      "repository": "accelerator",
+      "sha256": "32ff3f30be446a60672d1e2396f53d06dd7c22efd19c8c70556e342400eed90c"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/test_source_lookup_worker_router.py",
+      "repository": "accelerator",
+      "sha256": "cc0b711f905a02299171c2af92fe9ea80aff4c6618e098e38b50214d843dab3e"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/test_current_source_lookup.py",
+      "repository": "accelerator",
+      "sha256": "a6494c8df9c4ede4e692b740f320f3badac2a50262aec77ba161fd500e1856c6"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/test_current_source_lookup_cli.py",
+      "repository": "accelerator",
+      "sha256": "922313424c9ec3120a9ca538303e0b3114318060a2c7851333f46a74d34525ee"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/test_current_source_lookup_transport.py",
+      "repository": "accelerator",
+      "sha256": "da6f01ddd1bb7bab35431615b30c7f1dcfdc53ebd63d6b1ab71ab13c005c0862"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/test_repository_source_inventory.py",
+      "repository": "accelerator",
+      "sha256": "6ff5c4c8a0ce504d4197e3626a3b9026f655aa8f87aaf9d6ff5d1928fa0d7e3c"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/causal_federation/test_typed_state_owner.py",
+      "repository": "accelerator",
+      "sha256": "d185ebfa9072b6ba1b09f38e24a31b8422a38c7ff84dd0ece24e58d4ccd6222e"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "test/api/causal_federation/test_bootstrap_runtime.py",
+      "repository": "accelerator",
+      "sha256": "0eafa64dca155a15e85dd1cc514b95b52375d28d580dceab1c01757db597d307"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "docs/agent_supervisor/evidence/current-source-worktree-admission-20261012/qualification_runner.py",
+      "repository": "accelerator",
+      "sha256": "a3002062951392793587181d37956e938a491e844cc99b244f6fcb1dffcbe001"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+      "repository": "datasets",
+      "sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+      "repository": "datasets",
+      "sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py",
+      "repository": "datasets",
+      "sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py",
+      "repository": "datasets",
+      "sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py",
+      "repository": "datasets",
+      "sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68"
+    },
+    {
+      "current_matches_recorded_bytes": true,
+      "current_matches_recorded_sha256": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
+      "repository": "datasets",
+      "sha256": "a2c0d7bf3f24bde9287ee06d65fedcb6920e1c1d3d04b520f3949825e5497d8f"
+    }
+  ],
+  "status": "pass",
+  "token_savings_measured": false
+}

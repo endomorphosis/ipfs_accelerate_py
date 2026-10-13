@@ -2,8 +2,12 @@
   "schema": "compact-source-edit-evidence-manifest@1",
   "files": {
     "README.md": {
-      "sha256": "243eb0d6b89e0557217bbb540e59f0f8fcadbf51bc45cb7b30c5d742c7912f38",
-      "bytes": 4070
+      "sha256": "796c9f7d8940821d22ed6cb992720ab87eef44660497db91f943d66ec1fc8aff",
+      "bytes": 4979
+    },
+    "datasets-tree-comparison.json": {
+      "sha256": "037b690bbe893752779cc6d43a670f530545f8a92525adc7ded3fb0d2b155b46",
+      "bytes": 1016
     },
     "documentation-checks.json": {
       "sha256": "f64b3543fb1f91e05f525541a5c9d8336f05bd2e940d7d8bc820c89b01c97c3b",
@@ -28,6 +32,30 @@
     "independent-review.json": {
       "sha256": "d3f265515cfacf359ff477bebb20745b1e74cad3968659a6c193574f9a8dbd5f",
       "bytes": 3766
+    },
+    "integrated-01/command.json": {
+      "sha256": "7823f2da2de16600ccadd16fe212b3c5fe1c45d1043bde1517eca472487e301d",
+      "bytes": 11532
+    },
+    "integrated-01/junit.xml": {
+      "sha256": "daa2043cf128f4b9f38cd7a19e43af0d144b3547a4e1f59dfc32d3bd7a92d466",
+      "bytes": 128452
+    },
+    "integrated-01/pytest.log": {
+      "sha256": "46fa1c233b7cd286b3f937b159f37180eb983ad8516c81da423e08336881dcbb",
+      "bytes": 4597
+    },
+    "integrated-01/qualification.json": {
+      "sha256": "59ac3ff87a2288423dbb5353ba66ce2e8679ae68a2a6ea15e97308b582b94404",
+      "bytes": 8833
+    },
+    "integrated-documentation-checks.json": {
+      "sha256": "96e8f6596d645442de1293c92ef2a2705b03fac341469c7387bd090311fe0b7d",
+      "bytes": 1197
+    },
+    "integrated_test_runner.py": {
+      "sha256": "a190610376147734acdb5b11db579be936d9578ff132f756b701c0163efee7de",
+      "bytes": 2449
     },
     "public-fixture-01/qualification.json": {
       "sha256": "7977aebbdfdc3d27e3152a2ea272dd3c6988cd39118fc1add22581af2422c96e",

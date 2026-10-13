@@ -1,0 +1,21 @@
+{
+  "command": [
+    "python",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "exit_code": 0,
+  "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\nOK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\nOK: documentation-gates aligned at 0.0.45\n",
+  "stderr": "",
+  "additional_link_checks": {
+    "docs/agent_supervisor/repository_source_inventory.md": [],
+    "docs/agent_supervisor/reversible_codebase_views_plan.md": [],
+    "docs/agent_supervisor/reversible_source_views.md": [],
+    "docs/agent_supervisor/evidence/compact-source-edit-20261012/README.md": []
+  },
+  "document_sha256": {
+    "docs/agent_supervisor/repository_source_inventory.md": "c0bea75bb6a2eb2783cc402c073b2e71c23f5d7aa481efd9d1a3157f57012868",
+    "docs/agent_supervisor/reversible_codebase_views_plan.md": "af98066c50a343a581b80c3e764a58a1a7ec087b21c6b3a44ed4251622f40a32",
+    "docs/agent_supervisor/reversible_source_views.md": "d2a538c01d42fce40e9e55861c037ca5e90020bf2a2fb65f03113ec7dbc28b79",
+    "docs/agent_supervisor/evidence/compact-source-edit-20261012/README.md": "796c9f7d8940821d22ed6cb992720ab87eef44660497db91f943d66ec1fc8aff"
+  }
+}

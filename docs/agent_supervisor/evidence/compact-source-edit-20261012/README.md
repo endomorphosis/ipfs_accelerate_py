@@ -9,7 +9,7 @@ custody, patch scope and lifecycle ownership.
 
 - [API, preservation rules and limitations](../../reversible_source_views.md#map-an-explicit-compact-edit-to-original-bytes)
 - [Architecture audit and remaining stages](../../reversible_codebase_views_plan.md)
-- [Final regression receipt](final-01/qualification.json), [JUnit](final-01/junit.xml), [log](final-01/pytest.log), [exact command and source pins](final-01/command.json)
+- [Initial regression receipt](final-01/qualification.json), [JUnit](final-01/junit.xml), [log](final-01/pytest.log), [exact command and source pins](final-01/command.json)
 - [Public fixture receipt](public-fixture-01/qualification.json), [command](public-fixture-command.json), [execution/source pins](public-fixture-execution.json), [authored runner](public_fixture_probe.py)
 - [Independent implementation review](independent-review.json)
 - [Local documentation checks](documentation-checks.json)
@@ -17,7 +17,18 @@ custody, patch scope and lifecycle ownership.
 
 ## Results
 
-The final regression passed **339 tests**, with no failures, errors or skips.
+After merging concurrent accelerator allocation and prepared-input accounting
+work through `f86f955eb4bb63613a2c3aaffa968e87382044f1`, the expanded regression
+passed **729 distinct tests**, including the initial 339. There were no failures,
+errors or skips; all 39 recorded source/runner pins remained unchanged. This run
+completed on October 13. Its [receipt](integrated-01/qualification.json),
+[JUnit](integrated-01/junit.xml), [command](integrated-01/command.json) and
+[log](integrated-01/pytest.log) qualify the combined source tree. No production
+changes were needed to integrate the two branches; their shared plan was
+reconciled. The [final documentation checks](integrated-documentation-checks.json)
+cover the reconciled plan and retained evidence.
+
+The initial regression passed **339 tests**, with no failures, errors or skips.
 All recorded source pins were unchanged during execution. Cases cover mapper
 fidelity and refusals, native Git application, lease/fence/scope checks, staged
 bytes, CRLF and missing final newlines, aggregate source limits, intervening
@@ -52,8 +63,9 @@ require further integration.
 The regression ran accelerator code based on `06a437cdba28e148912d998bf2cb85a805a3d4d9`
 plus the recorded edits, datasets `f47161b757190380e9898aff155067c1ad609217`, and
 kit `8ac00bb1974b1378e12091d546d8425af34049e0`. The parent retains the newer datasets
-pin `e39fe996bd9e786a84f739fda9dde9a6c70546da`; this run does not qualify unrelated
-changes in that revision. The command receipt records the actual environment;
+pin `12b2de0f1c949b793772ce29edad84355978b9b7`. The [scoped tree comparison](datasets-tree-comparison.json)
+confirms identical software-contracts and software-verification Git trees. This
+is not execution at the newer revision or whole-runtime equivalence. The command receipt records the actual environment;
 the runner overrides the template's orchestration/seal paths per run. Retained
 scripts contain qualification-machine paths and require explicit adaptation for
 replay elsewhere. Private Git allocations, lifecycle stores and copied benchmark

@@ -1,0 +1,53 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/compact-source-edit-20261012/integrated-01/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 729 items
+
+test/api/test_source_view_edits.py ..................................... [  5%]
+...................                                                      [  7%]
+test/api/test_source_view_edit_adversarial.py ...................        [ 10%]
+test/api/test_source_view_edit_candidate.py ............................ [ 14%]
+.............                                                            [ 15%]
+test/api/test_source_view_edit_formal_refresh.py .                       [ 16%]
+test/api/test_reversible_source_view.py .....................            [ 18%]
+test/api/test_repository_code_view_inventory.py ...................      [ 21%]
+test/api/test_worker_source_views.py ................................... [ 26%]
+.............................                                            [ 30%]
+test/api/test_worker_source_working_views.py ...................         [ 32%]
+test/api/test_worker_candidate_context.py .............................. [ 37%]
+............................                                             [ 40%]
+test/api/semantic_state/test_worktree.py ...................             [ 43%]
+test/api/test_supervisor_staged_file_patching.py ......................  [ 46%]
+test/api/test_current_source_worktree_allocation.py .................... [ 49%]
+...........                                                              [ 50%]
+test/api/test_current_source_task_admission.py .................         [ 53%]
+test/api/test_source_lookup_worker_router.py ........                    [ 54%]
+test/api/test_source_lookup_worker_channel.py .............              [ 55%]
+test/api/test_representation_displacement.py ........................... [ 59%]
+........................                                                 [ 62%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py . [ 63%]
+.....................................................                    [ 70%]
+benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py . [ 70%]
+........................................................................ [ 80%]
+....                                                                     [ 80%]
+benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py . [ 81%]
+........................................................................ [ 90%]
+..................................                                       [ 95%]
+benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py . [ 95%]
+...............................                                          [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/compact-source-edit-20261012/integrated-01/junit.xml -
+============================= slowest 10 durations =============================
+8.23s call     test/api/test_reversible_source_view.py::test_unsupported_or_unbounded_transform_falls_back_to_exact_identity[token-limit]
+4.07s setup    test/api/test_current_source_worktree_allocation.py::test_self_consistent_foreign_lifecycle_tuple_refuses[repo_root]
+4.06s setup    test/api/test_current_source_worktree_allocation.py::test_exact_lifecycle_index_required_with_authentic_workspace_record
+4.03s setup    test/api/test_current_source_worktree_allocation.py::test_bound_allocation_cannot_be_omitted_or_replaced_before_proxy_grant[snapshot]
+4.02s setup    test/api/test_current_source_worktree_allocation.py::test_expired_lifecycle_lease_refuses_current_native_claim
+4.00s setup    test/api/test_current_source_worktree_allocation.py::test_self_consistent_foreign_lifecycle_tuple_refuses[state_dir]
+3.97s setup    test/api/test_current_source_worktree_allocation.py::test_self_consistent_foreign_lifecycle_tuple_refuses[branch]
+3.96s setup    test/api/test_current_source_worktree_allocation.py::test_actual_portal_allocation_joins_distinct_native_and_portal_identities
+3.94s setup    test/api/test_current_source_worktree_allocation.py::test_bound_allocation_cannot_be_omitted_or_replaced_before_proxy_grant[omitted]
+3.94s setup    test/api/test_current_source_worktree_allocation.py::test_nonactive_lifecycle_state_refuses[terminal]
+======================= 729 passed in 482.97s (0:08:02) ========================

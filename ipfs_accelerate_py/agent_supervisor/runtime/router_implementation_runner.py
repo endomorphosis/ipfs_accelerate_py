@@ -615,6 +615,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     metadata_receipt = None
     metadata_native_reply = None
     metadata_census = None
+    displacement_receipt = None
     if semantic_metadata_view != "legacy":
         failure_phase = "semantic_metadata_view"
         from .semantic_metadata_view import project_semantic_metadata_view, select_semantic_metadata_view
@@ -660,6 +661,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             selection = selector(view=view, native_complete_prompt=model_prompt,
                 candidate_complete_prompt=candidate_model, token_counter=semantic_metadata_token_counter,
                 **selection_options)
+            from .representation_displacement import observe_representation_displacement
+            displacement_receipt = observe_representation_displacement(
+                view=view, selection=selection, native_complete_prompt=model_prompt,
+                candidate_complete_prompt=candidate_model, provider=provider, model=model,
+                instruction_block=instruction if selection_options else None,
+                instruction_receipt=instruction_receipt if selection_options else None,
+                source_guidance=guidance(source_view_profile) if source_selected else None)
             model_prompt, metadata_receipt = selection.selected_prompt, selection.receipt
         if coding_reply_mode != "legacy" and model_prompt == candidate_model:
             coding_reply_receipt = candidate_reply
@@ -770,6 +778,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["coding_reply_contract"] = coding_reply_receipt
     if metadata_receipt is not None:
         receipt["semantic_metadata_view"] = metadata_receipt
+    if displacement_receipt is not None:
+        receipt["representation_displacement"] = displacement_receipt
     if metadata_native_reply is not None:
         receipt["semantic_metadata_native_coding_reply_contract"] = metadata_native_reply
     failure_phase = "provider_invocation"

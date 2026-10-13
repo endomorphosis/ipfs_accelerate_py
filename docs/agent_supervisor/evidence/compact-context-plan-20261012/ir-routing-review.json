@@ -1,0 +1,217 @@
+{
+  "accelerator_audit_commit": "48f442b4ca468b8cf2e858bca72a676812344302",
+  "authority": {
+    "completion_authority": false,
+    "execution_authority": false,
+    "model_readiness_qualified": false,
+    "proof_authority": false,
+    "semantic_correctness_verified": false,
+    "token_savings_qualified": false
+  },
+  "checks": [
+    {
+      "finding": "Plan includes UI/UX IR independently and preserves family/schema/decoder-task/dimension/token-profile separation; these are routing requirements, not a declaration of fifteen ready models.",
+      "id": "five_distinct_ir_families",
+      "result": "pass"
+    },
+    {
+      "finding": "Exact datasets pin includes deterministic UI semantic owners, UI 384D wrapper and domain-specific learned source-embedding candidate routes; structural-feature and source-decoder lineages remain distinct.",
+      "id": "existing_uiux_semantics_and_learned_candidate",
+      "result": "pass"
+    },
+    {
+      "finding": "Historical receipt records immutable UI source384 checkpoint publication and streamed-byte verification; plan correctly preserves existing weights without transferring runtime or source-fidelity qualification.",
+      "id": "existing_uiux_checkpoint_publication",
+      "result": "pass"
+    },
+    {
+      "finding": "Exact datasets pin routes four families at three dimensions; profile registry still requires twelve inventories and only original Intent/Security source384 fragment registrations. Plan requires additive versioned fifteen-cell work rather than rewriting historical receipts.",
+      "id": "twelve_cell_routing_limit",
+      "result": "pass"
+    },
+    {
+      "finding": "Accelerator persistent catalog accepts five families and exact lane/schema/task/profile/format/checkpoint selectors; declarations expose no invokable operations and do not establish model readiness.",
+      "id": "persistent_ir_catalog_scope",
+      "result": "pass"
+    },
+    {
+      "finding": "Plan describes codebase-specific adaptation as a proposal and explicitly distinguishes feature rankers from learned code-to-formula decoders. Existing Bottle experiment records structural-feature learning and marks learned formula decoding unexercised.",
+      "id": "codebase_feature_training_not_formula_decoder",
+      "result": "pass"
+    },
+    {
+      "finding": "Plan retains candidate/residual labels; bounded current matcher nominates reviewed Bottle conditional models and does not certify arbitrary software behavior or remove unresolved requirements.",
+      "id": "intent_current_code_matching_scope",
+      "result": "pass"
+    },
+    {
+      "finding": "Plan distinguishes metadata location/storage lineage, candidate formulas and accepted native proof evidence. Dependency drift invalidates proof reuse; retrieval or storage integrity cannot establish semantic satisfaction.",
+      "id": "retrieval_storage_proof_separation",
+      "result": "pass"
+    },
+    {
+      "finding": "Prior checkpoint/embedding reuse requires producer/source/profile compatibility. Plan reports local setup separately and charges any LLM labeling/repair to whole-session native usage; vectors are not equated with provider tokens.",
+      "id": "existing_assets_reuse_and_cost",
+      "result": "pass"
+    }
+  ],
+  "concrete_corrections_required": [],
+  "created_at_utc": "2026-10-12T23:11:54.766912+00:00",
+  "datasets_commit": "12b2de0f1c949b793772ce29edad84355978b9b7",
+  "historical_ui_publication_reference": {
+    "bytes": 7691,
+    "commit_oid": "19184ae03558d04698162d8c6b3a2b0be5790afd",
+    "created_at": "2026-10-04T18:01:00.915923+00:00",
+    "numerical_models_loaded_recorded": 0,
+    "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/ui-ux-ir-autoencoder-publication.json",
+    "qualified_recorded": false,
+    "remote_verification_completed_recorded": true,
+    "repo_id": "Publicus/ui-ux-ir-autoencoder",
+    "scope": "Historical ordinary receipt inspection only; no new remote verification, numerical loading, fitting or task-specific reconstruction evaluation.",
+    "sha256": "c4b434089bac97bf534220f1a2dcfaf9e41094ca8d7be71a30e5b59a02b22fae",
+    "source384_checkpoint": {
+      "bytes": 611168,
+      "git_blob_id": "93b0117731b096d865cec47968745af362866d47",
+      "path": "releases/20261004-autoformalization-lanes-v1/source384/checkpoint.json",
+      "sha256": "e4500483c685b46192ea7994a14d3237d42026f86dfe73723029da20d29b24aa",
+      "verification_method": "exact_commit_streamed_download_sha256"
+    },
+    "source_fidelity_established_recorded": false
+  },
+  "limits": [
+    "This review establishes bounded consistency between the revised plan and inspected source/receipt bytes, not correctness of all IR outputs or runtime handoff.",
+    "Uniform fifteen-cell readiness, learned general code-to-formula decoding, source semantic alignment, accepted proof publication and provider-token savings require their own evidence.",
+    "The historical UI publication receipt does not establish current remote HEAD or deployment readiness."
+  ],
+  "qualified_read_source_bindings": [
+    {
+      "bytes": 20422,
+      "commit": "12b2de0f1c949b793772ce29edad84355978b9b7",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/ir_cell_routing.py",
+      "read_method": "git_show_exact_commit_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "e5ad1d9ca5187abf39d66f18be7c4ec5a891a2da6d2e571ad4132edae8b7528a"
+    },
+    {
+      "bytes": 20396,
+      "commit": "12b2de0f1c949b793772ce29edad84355978b9b7",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_profile_inventory.py",
+      "read_method": "git_show_exact_commit_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "bc8aab1ba3a53b91c0e39fc813983657e52e07118a14c0d65c3c4e2aa660face"
+    },
+    {
+      "bytes": 17546,
+      "commit": "12b2de0f1c949b793772ce29edad84355978b9b7",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/checkpoint_hub.py",
+      "read_method": "git_show_exact_commit_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "be1bc90729bc811c8ca0b4d3f77ef10991e29b9df17670a479b955f569f81f3d"
+    },
+    {
+      "bytes": 1003,
+      "commit": "12b2de0f1c949b793772ce29edad84355978b9b7",
+      "path": "ipfs_datasets_py/logic/ui_ux_ir/autoencoder.py",
+      "read_method": "git_show_exact_commit_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "65820534575552f467727592b7f85a873c635ffee65f482f4dae750ea2d070ec"
+    },
+    {
+      "bytes": 25143,
+      "commit": "12b2de0f1c949b793772ce29edad84355978b9b7",
+      "path": "docs/autoencoders/ir_family_dimension_inventory_plan.json",
+      "read_method": "git_show_exact_commit_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "a2d7ff1bf5a0fc5907c18a8bd98f8ca282d6d83ea87ae475949a1fe3249719f2"
+    },
+    {
+      "bytes": 64337,
+      "commit": "12b2de0f1c949b793772ce29edad84355978b9b7",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+      "read_method": "git_show_exact_commit_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "33c249b72f374f51675cde95aafcf13370f59cb2e248246f72b92095668d1955"
+    },
+    {
+      "bytes": 20688,
+      "commit": "12b2de0f1c949b793772ce29edad84355978b9b7",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_modality_contracts.py",
+      "read_method": "git_show_exact_commit_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "5a6a88054e2b60dbe205625ffcb1d1c798c869ca5801a1ad1f4907467360de7f"
+    },
+    {
+      "bytes": 28288,
+      "commit": "12b2de0f1c949b793772ce29edad84355978b9b7",
+      "path": "docs/autoencoders/source384_fidelity_training_v2.md",
+      "read_method": "git_show_exact_commit_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "dee89442b9d8711be0c72c7bdbb1eb4ade9789bdff6438792a7ba1a1540da380"
+    },
+    {
+      "bytes": 24229,
+      "commit": "12b2de0f1c949b793772ce29edad84355978b9b7",
+      "path": "docs/autoencoders/complete_features_and_ui_fidelity.md",
+      "read_method": "git_show_exact_commit_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "f5d10ecc2a3ae860bc2840b08ba9612a10a86793233ca9627b92524abbc5a517"
+    },
+    {
+      "bytes": 55260,
+      "commit": "12b2de0f1c949b793772ce29edad84355978b9b7",
+      "path": "ipfs_datasets_py/logic/ui_ux_ir/source_adapters/intent_ir.py",
+      "read_method": "git_show_exact_commit_object",
+      "repository": "ipfs_datasets_py",
+      "sha256": "dba5e4279c9b77c35edf909b5c2edf03867c65a3ddce2ef259c2bb4db2281a0b"
+    },
+    {
+      "bytes": 19952,
+      "commit": "48f442b4ca468b8cf2e858bca72a676812344302",
+      "path": "ipfs_accelerate_py/model_catalog/sources/ir_persistent.py",
+      "read_method": "workspace_bytes_compared_to_exact_commit_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "2cfdb2ad61c9bb1f2fe1c64cf6c70ca45c932d0ec53ccdd08640600d5730beed"
+    },
+    {
+      "bytes": 33702,
+      "commit": "48f442b4ca468b8cf2e858bca72a676812344302",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/intent_codebase_matching.py",
+      "read_method": "workspace_bytes_compared_to_exact_commit_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "b47efed2d68931cdaa650ddcce2287e0b2f7be7a6aa6b05abfe9d09a2656a834"
+    },
+    {
+      "bytes": 33298,
+      "commit": "48f442b4ca468b8cf2e858bca72a676812344302",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_codebase_ir_experiment.py",
+      "read_method": "workspace_bytes_compared_to_exact_commit_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "9937054025df0a981a76b17d52841ba7f6c3b49613dfe6ca7481f4d4c712a4cd"
+    },
+    {
+      "bytes": 32204,
+      "commit": "48f442b4ca468b8cf2e858bca72a676812344302",
+      "path": "benchmarks/agent_supervisor/container_coding/codebase_ir_metadata.py",
+      "read_method": "workspace_bytes_compared_to_exact_commit_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "6de19b39635eef7c682a3171b9d5e3afe3e656e10767080023002188c39f62f5"
+    },
+    {
+      "bytes": 6383,
+      "commit": "48f442b4ca468b8cf2e858bca72a676812344302",
+      "path": "docs/agent_supervisor/worker_candidate_context.md",
+      "read_method": "workspace_bytes_compared_to_exact_commit_object",
+      "repository": "ipfs_accelerate_py",
+      "sha256": "664452c8c2d83257a7439ef7570b00e8311460f7e765444baf2510e8ac6235ee"
+    }
+  ],
+  "reviewed_document": {
+    "bytes": 32097,
+    "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+    "sha256": "61e920acba6029076bcd02b95c7a8c9cd657cc7d89d632620f8c8f867dd8955a"
+  },
+  "reviewer": "/root/ir_index_context_audit",
+  "schema": "compact-context-ir-routing-independent-review@1",
+  "scope": "Read-only source/document audit; one new review receipt written. No tests, inference, training, solver, provider, database or publication operations executed.",
+  "status": "passed_bounded_documentation_review"
+}

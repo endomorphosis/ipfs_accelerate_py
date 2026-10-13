@@ -2,9 +2,18 @@
 
 Status: reviewed improvement plan, 2026-10-12. The source audit starts from
 accelerator `1f6d998a92db4024f35b57bbdb183a6626a7fa31` and incorporates parallel
-work published through `06a437cdba28e148912d998bf2cb85a805a3d4d9`, plus the
+work published through `f86f955eb4bb63613a2c3aaffa968e87382044f1`, plus the
 host-side compact-edit mapper and isolated application qualified below.
 The contracts and stages below are proposed unless explicitly marked current.
+
+The October 12 follow-up audit includes publications through
+`48f442b4ca468b8cf2e858bca72a676812344302`. Unchanged repository restoration
+already works. The next token-efficiency priority is to identify which source
+reads and prompt content a representation actually replaces, then measure the
+complete session. Editable compact workspaces and uniform UI/UX IR model
+routing remain distinct proposed capabilities. The [follow-up audit and
+documentation checks](evidence/compact-context-plan-20261012/README.md) retain
+the source/research scope of this plan change.
 
 Stage 1 now has a [retained committed-source inventory API](repository_source_inventory.md).
 It reuses the datasets complete chunked producer and caller-owned CAS, then
@@ -49,6 +58,12 @@ activate the ordinary Terminal remote allocation, compiled-context or actual
 coding-child handoff. Native restart and working-overlay admission remain
 separate from the semantic candidate-refresh channel.
 
+The separate [native worktree allocation guard](current_source_worktree_allocation.md)
+joins that task handle to the sealed Portal execution projection, managed
+worktree lifecycle and Git registration. It advances the allocation prerequisite
+for stage 2. Runtime bootstrap, compiled context, remote coding-child admission
+and complete-session token measurements remain separate production handoffs.
+
 The proposed design maintains a compact view of an entire admitted repository
 while retaining exact original source in its existing content store. Deliver
 only the current task's relevant views, fetch exact source when needed, and
@@ -57,7 +72,7 @@ and reasoning in the model's conversation. It needs both source/edit fidelity
 and complete-run measurement; an inverse alone establishes neither token
 savings nor correct execution of transformed source.
 
-## Design correction after tracing the current worker
+## What moving the whole codebase to and from a compact state means
 
 The goal is less total model work at equal official task success. Keep three
 distinct representations of the same admitted source revision:
@@ -79,6 +94,29 @@ distinct representations of the same admitted source revision:
    checkpoint weights and proof artifacts in the existing host stores. Use
    qualified retrieval for expansion; an opaque reference alone does not give
    the model its referent's meaning.
+
+The [cold restoration qualification](evidence/reversible-source-views-20261012/README.md)
+restores bytes after the original checkout is deleted. Restoration uses the
+original blobs retained in CAS; compact text alone cannot recover discarded
+comments or formatting. The current transform preserves paths, identifiers,
+imports, strings, indentation and physical lines. Its default removes trailing
+trivia; additional comment removal is opt-in.
+
+The model-facing [worker reader](worker_source_views.md#select-and-freeze-the-treatment)
+has a different population: at most 64 admitted semantic-manifest files and
+1 MiB total. Required source remains inline, and the reader does not rewrite
+the executable checkout. Its working refresh covers that same population;
+new files remain unadmitted and renamed/deleted files refuse. Repository-wide
+storage therefore does not yet mean repository-wide worker navigation or
+replacement of the original conversation content.
+
+| Contract | Current capability | Next acceptance condition |
+| --- | --- | --- |
+| Restore an unchanged snapshot | Exact bytes from retained original blobs and deterministic view maps | Already qualified within the admitted inventory; retain explicit coverage frontiers |
+| Navigate a complete admitted repository | Complete stored inventory; smaller bounded coding-reader population | Page repository-wide path/symbol discovery into task-specific read scopes without sending every body or removing response bounds |
+| Preserve edits made while using compact views | Host-only preimage-bound mapping and one-file application in a clean fenced candidate; expanded-source editing and working refresh remain available | Qualify the actual worker write tool, repeated candidate edits and explicit population deltas for supported create/move/delete operations |
+| Execute a physically minified checkout | No such profile | Separate language/runtime/import/reflection/tooling validation and original-task acceptance |
+| Reduce total provider tokens | No qualified compact-source session benefit | Show displaced content and repeated reads, then compare complete native usage at equal official success |
 
 There is a concrete additive cost in the current source-view treatment.
 [`_worker_payload`](../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py)
@@ -105,23 +143,38 @@ LLM to recover deleted bytes. Ordinary restoration still refuses modified compac
 bytes. The mapper accepts edits wholly within a retained KEEP region, refuses
 ambiguous hidden boundaries, and rebuilds the resulting source view to reproduce
 the requested compact edit. The owner adapter applies the original patch through
-the existing fenced writer and captures a new source generation. Current source
+the existing fenced writer and captures a new source generation. Semantic source
 and candidate formal cursors refuse prior-generation reuse. Accepted proof/index
 publication remains separate. This first write adapter requires a clean candidate;
 it does not enable repeated edits to a dirty overlay or a model-facing write tool.
+Its isolated-worktree ownership checks are separate from the native task/Portal
+allocation guard above. Neither contract supplies an atomic filesystem writer
+lease; a failed post-application check can leave a candidate requiring cleanup.
 Repository-wide identifier renaming and execution of minified files require
 additional language-specific rules; neither is implemented by the current codec.
 
-An editable compact representation may avoid repeated expansion before edits.
-It is useful but not a prerequisite for testing selective read-only navigation,
-and exact round-trip fidelity alone does not establish a token benefit.
+A physical shadow checkout may be useful for familiar navigation tools, but it
+must be derived from the same inventory and mappings. A read-only export is a
+different deliverable from an editable virtual filesystem. Arbitrary shell,
+editor and build-tool writes cannot be translated merely by saving an old
+snapshot. Writes outside the qualified mapped-edit contract still require
+expanded originals and their normal edit lifecycle. Running tests against those
+originals also avoids assuming that a renamed/minified execution environment is
+equivalent.
+
+Whole-repository reversible minification is neither necessary nor sufficient
+for token savings. Selective exact reads can avoid irrelevant or repeated text
+while the operational source stays ordinary. Conversely, a reversible view can
+cost more through guidance, aliases, expansion and repair. The immediate
+experiment should isolate context displacement and retrieval behavior before
+adding a more aggressive source transform.
 
 ## What the audit found
 
 | Work | Current meaning | Remaining boundary |
 | --- | --- | --- |
 | [`semantic_context_runtime.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py) | Bounded source snapshots, source hashes, capsules and compact JSON | JSON restoration is not a whole-repository source rewrite |
-| [`semantic_metadata_view.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py) | Readable shared metadata with exact transport restoration | Edited transports fail retained identity checks; there is no source edit mapper |
+| [`semantic_metadata_view.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py) | Readable shared metadata with exact transport restoration | Edited transports fail retained identity checks; this transport codec does not map source edits |
 | [`semantic_instruction_view.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py) | Reference one exact duplicated instruction already present verbatim | Preserves required instruction text; does not minify executable code |
 | Historical `code_view_minification.py` | Read-only Python view removing ordinary comments and trailing trivia | Absent from this published runtime; sidecar has offsets/hashes, not removed bytes; no inverse or edit mapper |
 | [`doctor_contract_candidate_runner.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_candidate_runner.py) | Exact-byte candidate materialization with preimage checks and allocated-worktree controls | Reusable write boundary, without compact-view edit translation |
@@ -190,6 +243,8 @@ does not establish total-token savings. Across its retained three attempts,
 | Compact source views | Navigate many files without sending irrelevant bodies or repeated trivia | Readable code, original source locations and expansion/edit rules |
 | Existing autoencoders | Rank spans, dependencies and obligations | Candidates, with current-source checks before use |
 
+## Route IRs to current code and disclose only useful results
+
 The IR families should contribute different information to that shared source
 and dependency graph, rather than each appending a full representation of it:
 
@@ -212,6 +267,14 @@ makes the latter two profiles mutually exclusive. The current candidate capsule
 reader's numerical formulas come from deterministic datasets grammar, not a
 checkpoint call made by that reader.
 
+These are proposed routing roles, not a claim that each learned decoder is
+ready for arbitrary Terminal Bench tasks. UI/UX IR semantics, a shared
+autoencoder family wrapper, a 384D candidate decoder and checkpoint publication
+receipts already exist and must be reused. Uniform fifteen-cell routing and
+successful task-specific reconstruction still require their own inventory and
+evaluation evidence; publication or registration alone does not qualify a
+decoder. Do not generate every family for every file.
+
 The intended join key includes admitted repository/source revision, file/symbol,
 requirement identity, IR family/schema, checkpoint/decoder profile, projection
 family and assumptions. A proof-cache entry additionally binds its exact theorem,
@@ -225,10 +288,14 @@ agreement between learned formulas, user intent and original program behavior.
 Target-codebase adaptation belongs before or alongside this join as a local
 candidate-selection experiment. Reuse the shared datasets training/inference
 modules and a separately versioned target checkpoint; preserve the existing
-family weights. Freeze the adaptation recipe across paired benchmark arms, use
-only admitted public task inputs, and report training/index/inference time and
-resources separately from provider tokens. Measure held-out selection and task
-outcomes rather than treating training reconstruction as source correctness.
+family weights. Pin the repository revision, training split, encoder,
+dimension/window and decoder task. Freeze the adaptation recipe across paired
+benchmark arms and use only admitted public task inputs. Report cold-start and
+reused-index/model training, indexing and inference time/resources separately
+from provider tokens, and charge any LLM-generated labels or repairs to the
+native token ledger. Measure held-out requirement/source alignment, semantic
+reconstruction, selection and task outcomes rather than treating training
+reconstruction as source correctness.
 
 Metadata locators, historical rows, latent vectors and generated formulas are
 not proof receipts. Keep the native proved, disproved, inconclusive,
@@ -256,13 +323,77 @@ scope. A content hash associates bytes; owner admission and currentness remain
 separate checks. A missing blob or stale mapping requires expansion/rebuild or
 refusal, never an approximate inverse.
 
-LegalIR, SecurityIR, CodebaseIR, UI/UX IR and IntentIR keep their separate inventories,
+LegalIR, SecurityIR, CodebaseIR, IntentIR and UI/UX IR keep separate inventories,
 DuckDB/DuckLake namespaces and existing Hugging Face/checkpoint identities.
 Within each, retain family, schema/version, decoder task, 8D/384D/768D dimension
-and token profile. Reuse prior embeddings and checkpoints. Source-view fidelity
-is an exact-byte storage/codec responsibility; a semantic decoder's training
+and token profile. The existing four-family/twelve-cell inventory is not proof
+that all five families have three ready trained profiles. Extend routing and
+inventory versions additively for UI/UX IR, preserving previous manifests and
+explicitly declaring missing checkpoints or unsupported decoder tasks. Reuse
+prior embeddings and checkpoints when their producer, source and profile pins
+match. Source-view fidelity is an exact-byte storage/codec responsibility;
+a semantic decoder's training
 loss cannot certify original comments, formatting or arbitrary source edits.
 No new training is needed for the first source-view experiment.
+
+An 8D/384D/768D latent is an internal model representation, not that number of
+provider tokens. The coding model needs a supported decoded capsule or tool
+result; serializing a vector does not teach it the decoder. GTE window/tokenizer
+limits describe the encoder and cannot measure the coding provider's usage.
+
+Retrieve a small useful statement and its evidence reference rather than
+automatically printing a complete formal derivation. The selected-reader
+observation below illustrates why even a filtered obligation can exceed the
+source body it describes.
+
+## Require evidence of displaced context before claiming compression
+
+The [metadata displacement observer](representation_displacement.md) now joins
+the existing opt-in metadata/instruction projection and selection to one exact
+prepared input. It records UTF-8 transport spans, unchanged wrappers and the
+selected replacement or fallback. Actual delivery, source/capsule/IR decisions,
+required-fact coverage and avoided future reads remain separate qualification
+work; this bounded first step does not implement the general receipt below.
+Its default counter remains a byte proxy; declared upstream token counts are
+not independently authenticated by the observer. Source-only sessions without
+the metadata treatment do not yet receive this observation.
+
+Add a versioned representation-decision receipt at the existing context compiler
+and reader boundaries. For each proposed replacement, retain the task/source
+generation, IR family/schema/checkpoint if used, exact baseline and candidate
+rendered identities, required-fact coverage, provider/model/counter identity,
+and the original spans or repeated reads expected to be avoided. Keep restoration
+maps, full indexes and translation dictionaries host-side unless requested.
+Selecting a new tool while retaining all baseline text is an additive treatment;
+record that fact rather than claiming the text was displaced. A declared
+displacement remains a proposal until the delivered input confirms which spans
+were replaced. Avoided future reads are counterfactual; matched complete runs
+are needed to assess repeated-read behavior and net benefit.
+
+Use the existing complete-input counter/fallback pattern. Choose a replacement
+only when required coverage and the real coding-route expansion lifecycle are
+qualified, and the full rendered candidate is smaller with the same compatible
+counter. Counter failure, missing coverage, unsupported source or a larger
+candidate retains exact source. A smaller initial prompt does not guarantee a
+smaller run: separately measure tool-guidance overhead, discovery, expansions,
+generated output and repairs. Do not silently remove required source while the
+actual native coding-child handoff remains unfinished.
+
+The run total is the sum of final native input plus output over actual planning,
+coding and any additional LLM sessions. Tool text and reasoning already included
+by the provider are not added again; cached input is a subset, not an additional
+total. Non-provider database, codec, verifier and local-model work has its own
+time/compute ledger. Token benefit requires that avoided input and reasoning
+exceed added guidance, retrieval, expansion and repair across the complete run.
+
+Prioritize three independent steps: qualify repository-wide discovery feeding
+bounded task-specific scopes; extend the displacement receipt and complete
+input selection gate; then run the same-channel exact-versus-compact treatment
+with official verification. Optional mapped edits and aggressive executable
+minification should be tested as separate later treatments; the bounded host
+mapper is already qualified. The existing native bootstrap/context/
+actual-child and source-CAS integration prerequisites remain necessary for
+operational deployment; the allocation guard alone does not activate them.
 
 ## Provide repository-wide views with explicit edit handling
 
@@ -287,20 +418,26 @@ No new training is needed for the first source-view experiment.
    normal bounded reads and patches preserve the existing validation lifecycle.
    This tests whether navigation saves enough tokens to pay for exact-source
    expansion, without requiring arbitrary compact-text inversion.
-5. **Add a separately versioned mapped-edit profile.** Accept explicit span edits
-   with original/view identities, original preimage bytes and replacement bytes.
+5. **Expose the separately versioned mapped-edit profile to the worker.** The
+   qualified host mapper accepts explicit span edits with original/view/manifest
+   identities, compact-view preimage bytes and replacement bytes.
    Map only an unambiguous retained region. Preserve every untouched original
    byte. Expand source for edits spanning hidden trivia, stale or ambiguous
-   anchors, or symbol/import rewrites until those operations have their own
+   anchors, or cross-file symbol/import rewrites until those operations have their own
    reviewed mapping rules. File moves/deletes and symlink changes require their
    own supported native operations; exact-source expansion alone cannot enable
    them. Conflicting concurrent edits refuse.
    Arbitrary replacement of a minified file is not an accepted mapped edit.
+   The actual model-facing write tool and repeated dirty-overlay edits remain
+   unimplemented; the read socket provides no mutation capability.
 6. **Materialize and validate the proposal.** Construct `S'`, preflight all old
    file bytes and permitted paths, and use the existing exact-byte candidate
-   materializer in an allocated workspace. Its current regular-file modify/create
-   lane accepts at most eight outputs; moves, deletes and symlink edits remain
-   unsupported by this lane. Preserve admitted modes and file kinds.
+   materializer in an allocated workspace. The existing general regular-file
+   modify/create lane accepts at most eight outputs; the new mapped-edit owner
+   adapter is narrower: one existing UTF-8 file in a clean fenced candidate,
+   with exact staged bytes and whole-admitted-scope generation checks. Moves,
+   deletes and symlink edits remain unsupported by these lanes. Preserve
+   admitted modes and file kinds.
    Retain baseline, accepted patch and resulting bytes so reversal can restore
    the baseline while forward replay preserves the edit. Apply ordinary focused
    tests, native proof revalidation and official acceptance to `S'`.
@@ -330,10 +467,15 @@ The [working candidate context reader](worker_candidate_context.md) now rebuilds
 native capsules and pending numerical formulas for a pinned edited snapshot.
 It shares the isolated worker's read-only source session and accounts artifact
 bytes separately. This advances the mid-coding refresh portion of stages 2–3;
-accepted DuckLake/proof publication, mapped edits and complete-session token
-savings remain separate qualification work. Full formal artifacts can be much
+accepted DuckLake/proof publication, model-facing mapped edits and complete-session
+token savings remain separate qualification work. Full formal artifacts can be much
 larger than source, so the benchmark must charge summaries, expansions and
 refreshes actually requested by the worker.
+
+The [mapped-edit qualification](evidence/compact-source-edit-20261012/README.md)
+retains 339 passing regressions and a public-source fixture with 11 authored
+numerical cases. It exercises a prescribed local edit through the host adapter,
+not autonomous model editing, the official task verifier or a token comparison.
 
 The [selected-reader Docker probe](evidence/candidate-context-selection-20261012/README.md)
 completely retrieved one catalog, one capsule
@@ -362,8 +504,12 @@ restart and actual forward/inverse application. A diff containing expected hash
 strings is insufficient. Use meaningful byte/preimage assertions and ordinary
 runtime tests; keep AST checks distinct from correctness claims.
 
-First complete the already prepared lexical baseline versus instruction
-deduplication comparison and, separately, lexical versus ranked capsules. The
+The instruction-deduplication [live pair](evidence/terminal-instruction-dedup-pair-20261012/README.md)
+has now completed: 311,776 baseline versus 309,813 treatment native tokens,
+with both official rewards equal to one. Its 0.63% difference, mostly cached
+input, comes from one independently planned pair and establishes no repeatable
+or causal saving. Lexical versus ranked capsules and exact versus compact
+source remain distinct experiments. The
 [archive04 recipes](evidence/terminal-ranked-successor-20261012/archive-04/matched-comparison-recipes.json)
 are preparations, not new deployment or live results. Their admitted default
 Intent handling differs from the census's disabled Intent profile; preserve

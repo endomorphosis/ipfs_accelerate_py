@@ -13,6 +13,12 @@ remote coding launch or register a model process. Those handoffs remain separate
 work. A daemon or broader supervisor process cannot substitute for the actual
 coding child required by the existing source-worker direct-`Popen` rule.
 
+The separate [native worktree allocation guard](current_source_worktree_allocation.md)
+can additionally join this exact handle to the sealed Portal projection and
+managed-worktree lifecycle. Its optional allocation check does not change this
+task-only snapshot's `allocation_ownership_verified=False` observation or
+complete the remote context/process handoff.
+
 ## Host capture from existing native authority
 
 Before capture, the caller must provision existing authority files and parents

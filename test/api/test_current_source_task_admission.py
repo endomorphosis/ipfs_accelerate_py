@@ -92,12 +92,13 @@ class NativeCase:
 
 
 @contextmanager
-def _native_case(tmp_path, monkeypatch):
+def _native_case(tmp_path, monkeypatch, *, defer_source_binding=False):
     canonical = _repository(tmp_path, {b"module.py": SOURCE})
     retained = _retain(canonical, tmp_path,
         limits=sources.SourceInventoryLimits(frame_bytes=4096))
     workspace = tmp_path / "allocated"
-    _git(canonical, "worktree", "add", "--detach", "-q", str(workspace))
+    if not defer_source_binding:
+        _git(canonical, "worktree", "add", "--detach", "-q", str(workspace))
     task_cid = content_identity({"fixture_task": ALIAS, "tree": retained.request.expected_tree})
     goal_cid = content_identity({"fixture_goal": ALIAS})
     database = tmp_path / "control.duckdb"
@@ -188,10 +189,12 @@ def _native_case(tmp_path, monkeypatch):
             peer_identity=(grant.peer_pid, grant.peer_uid, grant.peer_start_time_ticks),
             client_id=client_id)
         handle = admission.capture_native_source_task_admission(**capture_kwargs)
-        binding = handle.bind_current_source_lookup(repository=workspace, cas=retained.cas,
-            expected_inventory_cid=retained.ref.inventory_cid, request=retained.request,
-            limits=retained.limits, context_cid=cid_for_structured({"host_context": task_cid}),
-            allowed_paths=(b"module.py".hex(),), max_response_bytes=4096, max_slice_bytes=512)
+        binding = None
+        if not defer_source_binding:
+            binding = handle.bind_current_source_lookup(repository=workspace, cas=retained.cas,
+                expected_inventory_cid=retained.ref.inventory_cid, request=retained.request,
+                limits=retained.limits, context_cid=cid_for_structured({"host_context": task_cid}),
+                allowed_paths=(b"module.py".hex(),), max_response_bytes=4096, max_slice_bytes=512)
         boundary = Path(control.name) / "container-boundary.json"
         boundary.write_bytes(b"authored host deployment metadata only\n")
         (boundary.parent / "worker-observations").mkdir(mode=0o750)
@@ -201,7 +204,8 @@ def _native_case(tmp_path, monkeypatch):
         monkeypatch.setattr(boundary_guard, "_protected_directory", lambda *args, **kwargs: None)
         factory = dict(server=server, canonical_repository=canonical, workspace=workspace,
             boundary=boundary, prompt=PROMPT, timeout_seconds=90, task_admission=handle)
-        session = broker.start_source_lookup_worker_broker(**factory)
+        if not defer_source_binding:
+            session = broker.start_source_lookup_worker_broker(**factory)
         # Credentials and private grant objects stay local and never enter Case.
         del token, credentials, grant
         yield NativeCase(canonical, workspace, retained, server, daemon, source,

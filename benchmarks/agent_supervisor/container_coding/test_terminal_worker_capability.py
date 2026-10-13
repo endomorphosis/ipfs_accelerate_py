@@ -59,6 +59,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py',
         'source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py',
@@ -84,7 +85,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
 
 @pytest.mark.parametrize('name', ['terminal_container_supervisor.py', 'terminal_output_observation.py',
     'llm_router.py', 'grok_stream_capture.py', 'cli_metadata.py', 'grok_native_usage.py',
-    'source_formalization_context.py', 'validation_runtime.py',
+    'source_formalization_context.py', 'validation_runtime.py', 'representation_displacement.py',
     'numerical_obligation_broker.py', 'numerical_obligation_client.py'])
 @pytest.mark.parametrize('kind', ['missing', 'stale', 'copied-feature'])
 def test_output_observation_requires_matching_owner_driver_and_collector(packaged, name, kind):

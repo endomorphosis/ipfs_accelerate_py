@@ -81,22 +81,34 @@ class SourceLookupWorkerBroker:
     """Trusted launcher opt-in; no database, owner or CAS is constructed."""
 
     def __init__(self, *, server, canonical_repository, workspace, boundary, prompt,
-                 timeout_seconds=90, task_admission=None):
+                 timeout_seconds=90, task_admission=None, worktree_admission=None):
         _need(type(self) is SourceLookupWorkerBroker and type(server) is QuackStateServer,
               "original native state owner required")
         _need(type(timeout_seconds) is int and 1 <= timeout_seconds <= MAX_SESSION_SECONDS,
               "bounded source worker session required")
         self._task_admission = self._original_task_admission = task_admission
+        self._worktree_admission = self._original_worktree_admission = worktree_admission
         if task_admission is not None:
             from .current_source_task_admission import NativeSourceTaskAdmission
             _need(type(task_admission) is NativeSourceTaskAdmission
                   and task_admission._server is server, "exact native source task admission required")
             task_admission.require_current()
+        if worktree_admission is not None:
+            from .current_source_worktree_allocation import NativeSourceWorktreeAllocation
+            _need(type(worktree_admission) is NativeSourceWorktreeAllocation
+                  and worktree_admission._server is server
+                  and worktree_admission._task_admission is task_admission,
+                  "exact native source worktree admission and task handle required")
+            worktree_admission.require_current()
         _need(type(prompt) in (str, bytes), "exact source worker prompt required")
         prompt_bytes = prompt.encode("utf-8") if type(prompt) is str else prompt
         prompt_bytes.decode("utf-8", "strict")
         _need(0 < len(prompt_bytes) <= 2 * 1024 * 1024, "source worker prompt exceeds bound")
         self.repository, self.workspace = guard._workspace(canonical_repository, workspace)
+        if worktree_admission is not None:
+            _need(self.repository == worktree_admission._canonical_repository
+                  and self.workspace == worktree_admission._workspace,
+                  "source worker roots differ from the native worktree admission")
         self.boundary = Path(boundary).absolute()
         boundary_value, boundary_sha = guard._owner_boundary(self.boundary)
         self.owner_uid, self.worker_uid = boundary_value["owner_uid"], boundary_value["worker_uid"]
@@ -142,6 +154,11 @@ class SourceLookupWorkerBroker:
                       "source worker must retain its native task admission")
                 if self._task_admission is not None:
                     self._task_admission.require_source_binding(server=server, service=self._service)
+                allocation = getattr(self._service, "_native_source_worktree_allocation", None)
+                _need(allocation is None or allocation is self._worktree_admission,
+                      "source worker must retain its native worktree admission")
+                if self._worktree_admission is not None:
+                    self._worktree_admission.require_source_binding(server=server, service=self._service)
                 gateway._assert_current_source_binding(self._service)
                 self._binding = self._service.binding(gateway.identity)
                 self._binding_bytes = canonical_json_bytes(self._binding)
@@ -247,6 +264,10 @@ class SourceLookupWorkerBroker:
               "source worker native task admission changed")
         if self._task_admission is not None:
             self._task_admission.require_source_binding(server=self._server, service=self._service)
+        _need(self._worktree_admission is self._original_worktree_admission,
+              "source worker native worktree admission changed")
+        if self._worktree_admission is not None:
+            self._worktree_admission.require_source_binding(server=self._server, service=self._service)
         gateway._assert_current_source_binding(self._service)
         _need(canonical_json_bytes(dict(gateway.identity)) == self._owner_bytes
               and canonical_json_bytes(self._service.binding(gateway.identity)) == self._binding_bytes
@@ -272,7 +293,11 @@ class SourceLookupWorkerBroker:
         """The native claim fence acquires COOR before SERVER, outside owner locks."""
         _need(self._task_admission is self._original_task_admission,
               "source worker native task admission changed")
-        if self._task_admission is not None:
+        _need(self._worktree_admission is self._original_worktree_admission,
+              "source worker native worktree admission changed")
+        if self._worktree_admission is not None:
+            self._worktree_admission.require_current()
+        elif self._task_admission is not None:
             self._task_admission.require_current()
 
     def _context_current(self):
@@ -495,7 +520,8 @@ class SourceLookupWorkerBroker:
 
 
 def start_source_lookup_worker_broker(*, server, canonical_repository, workspace, boundary,
-                                    prompt, timeout_seconds=90, task_admission=None):
+                                    prompt, timeout_seconds=90, task_admission=None,
+                                    worktree_admission=None):
     return SourceLookupWorkerBroker(server=server, canonical_repository=canonical_repository,
         workspace=workspace, boundary=boundary, prompt=prompt, timeout_seconds=timeout_seconds,
-        task_admission=task_admission)
+        task_admission=task_admission, worktree_admission=worktree_admission)
