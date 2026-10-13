@@ -412,3 +412,9 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_span_section/
 !/data/legal_autoformalization_span_section/LAC-S6-*/
 !/data/legal_autoformalization_span_section/LAC-S6-*/result.json
+
+# Official source custody operational state and qualification evidence
+/data/agent_supervisor/legal_autoformalization_source_custody/runtime/
+!/data/legal_autoformalization_source_custody/
+!/data/legal_autoformalization_source_custody/LAC-S7-*/
+!/data/legal_autoformalization_source_custody/LAC-S7-*/result.json
