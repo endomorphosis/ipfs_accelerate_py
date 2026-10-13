@@ -29,7 +29,7 @@ from .terminal_symbolic_capabilities import assess_terminal_symbolic_capabilitie
 
 def _installed_provers() -> tuple[Path, Path]:
     """Discover installed tools only; never download a toolchain during a task."""
-    z3 = Path(shutil.which("z3") or "/unavailable/z3")
+    z3 = Path(os.environ.get("DOCTOR_COMPOSITION_Z3") or shutil.which("z3") or "/unavailable/z3")
     nominated = os.environ.get("DOCTOR_COMPOSITION_LEAN", "")
     if nominated:
         return z3, Path(nominated)

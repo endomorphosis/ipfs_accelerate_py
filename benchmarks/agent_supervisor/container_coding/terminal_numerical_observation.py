@@ -75,6 +75,86 @@ def _all_numerical_summaries(payload):
     return found
 
 
+def _observe_declared_planning(*, state, report, profile, result):
+    """Observe an admitted administrative plan without inventing model delivery.
+
+    Numerical evidence remains available for coding. This mode does not use it
+    to select a numerical algorithm or discharge a source obligation.
+    """
+    from .terminal_indexed_preparation import _load_prepared
+    from ipfs_accelerate_py.agent_supervisor.runtime.declared_contract_planning import build_declared_contract_plan
+    from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
+    from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import _read
+
+    mode = "declared-contract@1"
+    prepared = _load_prepared(state)
+    planning = report.get("planning")
+    _require(type(planning) is dict and report.get("planning_mode") == mode
+             and prepared.get("planning_mode") == mode and planning.get("planning_mode") == mode
+             and planning.get("planning_strategy") == "declared_contract",
+             "declared_planning_selection_mismatch")
+    _require(planning.get("qualified") is True and type(planning.get("provider_calls")) is int
+             and planning["provider_calls"] == 0
+             and planning.get("execution_receipt") is None and planning.get("model_request_sha256") is None,
+             "declared_planning_provider_state_mismatch")
+    calls = report.get("provider_invocations")
+    _require(type(calls) is list and len(calls) <= 256
+             and all(type(row) is dict and row.get("phase") != "planning" for row in calls)
+             and report.get("unreceipted_provider_attempt") is None,
+             "declared_planning_provider_attempt_present")
+    for name in ("planner-provider-request.json", "provider-request.json", "provider-observation.json"):
+        path = state / name
+        _require(not path.exists() and not path.is_symlink(), "declared_planning_provider_artifact_present")
+    _require(_wire(_json(_read(state / "planning-result.json", 1_048_576))) == _wire(planning),
+             "declared_planning_result_mismatch")
+    rebuilt = build_declared_contract_plan(manifest=prepared["manifest"])
+    _require(_wire(planning.get("declared_contract_planning")) == _wire(rebuilt["receipt"])
+             and _wire(_json(_read(state / "declared-contract-planning-receipt.json", 1_048_576))) == _wire(rebuilt["receipt"]),
+             "declared_planning_replay_mismatch")
+    admission = verify_local_benchmark_admission(_json(_read(state / "admission.json", 4_194_304)), initial=True)
+    _require(admission["graph"].content_id == rebuilt["graph"].content_id
+             and planning.get("task_cids") == [task.task_cid for task in rebuilt["graph"].tasks],
+             "declared_planning_admission_mismatch")
+    initial = report.get("initial_context") or {}
+    _require(type(initial) is dict, "initial_context_shape")
+    numerical = initial.get("numerical_formalization")
+    numerical_path = state / "numerical-formalization" / "receipt.json"
+    selection_path = state / "numerical-formalization-selection.json"
+    if report["arm"] == "full":
+        _require(_wire(_json(_read(state / "initial-context-result.json", 1_048_576))) == _wire(initial),
+                 "declared_initial_context_mismatch")
+        indexed = planning.get("initial_indexed_context")
+        _require(type(indexed) is dict and indexed.get("supplied_to_router") is False
+                 and indexed.get("descriptor") == initial.get("descriptor"), "declared_initial_context_binding")
+        _require(type(numerical) is dict and type(numerical.get("summary")) is dict,
+                 "numerical_receipt_missing", unavailable=True)
+        summary = numerical["summary"]
+        _require(numerical.get("profile") == profile and summary.get("profile") == profile
+                 and summary.get("schema") == SUMMARY_SCHEMA and len(_wire(summary)) <= 8192,
+                 "numerical_summary_profile_mismatch")
+        _require(all(summary.get(key) is False for key in ("proof_authority", "completion_authority",
+                 "execution_authority", "source_semantics_verified", "whole_program_semantics_verified"))
+                 and type(summary.get("source_obligations_discharged")) is int
+                 and summary["source_obligations_discharged"] == 0, "numerical_summary_claims_authority")
+        raw = _read(numerical_path, 1_048_576)
+        _require(_digest(numerical.get("receipt_sha256")) and _sha(raw) == numerical["receipt_sha256"]
+                 and _wire(_json(raw)) == _wire({k: v for k, v in numerical.items() if k != "receipt_sha256"}),
+                 "numerical_receipt_file_mismatch")
+        _require(_json(_read(selection_path, 4096)) == {"profile": profile}, "numerical_selection_mismatch")
+        result.update(numerical_summary_count=1, numerical_summary_sha256=_sha(_wire(summary)),
+                      numerical_receipt_sha256=numerical["receipt_sha256"])
+    else:
+        _require(numerical is None and planning.get("initial_indexed_context") is None
+                 and not numerical_path.exists() and not numerical_path.is_symlink()
+                 and not selection_path.exists() and not selection_path.is_symlink()
+                 and not (state / "initial-context-result.json").exists(), "no_index_numerical_context_present")
+        result.update(numerical_summary_count=0, no_index_absence_verified=True)
+    result.update(status="verified", reason="declared_contract_without_model_planning", provider_free=True,
+        delivery_boundary="signed_declarations_to_local_plan_compiler",
+        administrative_plan_verified=True, numerical_context_used_for_plan_selection=False)
+    return result
+
+
 def observe_numerical_planning(*, state, report, profile):
     """Return verified, mismatch, or unavailable metadata, never provider text.
 
@@ -107,6 +187,10 @@ def observe_numerical_planning(*, state, report, profile):
         state = Path(state)
         _require(state.is_absolute() and state.resolve(strict=True) == state, "noncanonical_state")
         _require(arm in {"full", "no-index"}, "unsupported_arm")
+        if (report.get("planning_mode", "model") != "model"
+                or (type(report.get("planning")) is dict
+                    and report["planning"].get("planning_strategy") == "declared_contract")):
+            return _observe_declared_planning(state=state, report=report, profile=profile, result=result)
         raw = _read(state / "planner-provider-request.json", MAX_REQUEST_BYTES)
         payload = _json(raw)
         _require(type(payload) is dict, "planner_request_shape")
