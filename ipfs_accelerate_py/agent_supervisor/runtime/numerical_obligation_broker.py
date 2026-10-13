@@ -271,6 +271,9 @@ class NumericalObligationBroker:
         return dict(returned_rows=response["page"]["returned_count"]
             if response is not None and response["ok"] else 0)
 
+    def _response_finished(self, request, response, *, delivered):
+        """Optional session transition after the transport's send observation."""
+
     def _serve(self):
         accepted = 0
         while self._live() and accepted < MAX_REQUESTS:
@@ -289,6 +292,7 @@ class NumericalObligationBroker:
                 response_sha256=None, response_bytes=0, delivered=False, **self._record_details())
             with channel:
                 channel.settimeout(2.)
+                request = response = None
                 try:
                     request = self.protocol.validate_request(self.protocol.receive_frame(channel))
                     record["request_sha256"] = _sha(self.protocol.canonical_json(request))
@@ -309,6 +313,11 @@ class NumericalObligationBroker:
                 except (OSError, ValueError, RuntimeError, RecursionError):
                     pass
                 finally:
+                    try:
+                        self._response_finished(request, response, delivered=record["delivered"])
+                    except Exception:
+                        # A failed lifecycle transition cannot admit another request.
+                        self._stop.set()
                     record["elapsed_ns"] = time.monotonic_ns() - started
                     with self._accounting_lock:
                         self._records.append(record)

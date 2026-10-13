@@ -1351,7 +1351,8 @@ def main():
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
     from .terminal_source_view_policy import SOURCE_VIEW_PROFILES, DEFAULT_SOURCE_VIEW_PROFILE
     parser.add_argument("--source-view-profile", default=DEFAULT_SOURCE_VIEW_PROFILE, choices=SOURCE_VIEW_PROFILES)
-    parser.add_argument("--source-edit-mode", default="disabled", choices=("disabled", "mapped-span@1"))
+    from .terminal_source_edit_policy import SOURCE_EDIT_MODES
+    parser.add_argument("--source-edit-mode", default="disabled", choices=SOURCE_EDIT_MODES)
     from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy
     parser.add_argument("--source-view-policy-json", dest="source_view_policy",
         type=lambda value: SourceViewPolicy.from_json(value).to_dict())

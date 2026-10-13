@@ -197,7 +197,13 @@ reuses the pure mapper with the native coding lifecycle: the source owner
 prepares and confirms; the worker writes using its existing file permissions.
 It does not construct an `IsolatedWorktree` owner or borrow that adapter's lease.
 Local integration and an offline Docker probe with actual owner/worker UIDs
-qualify the bounded edit path. The provider response is authored; full runtime
+qualify the bounded edit path, including three successive edits with fresh
+generation pins. Select `mapped-span@2` for at most 16 successful preparations
+and one outstanding proposal; `mapped-span@1` keeps its single-edit contract.
+Matching confirmation failures observed by the owner block further mapped edits
+in version 2. A client reporting an uncertain write must stop and inspect the
+source, including when its failure occurs after the owner sends the response.
+The provider response is authored; full runtime
 deployment and live Terminal-Bench token savings remain unmeasured.
 
 ## Complete repository inventories in the same CAS
@@ -288,9 +294,11 @@ with generation-bound exact expansion and stale-continuation refusal. The
 [candidate context reader](worker_candidate_context.md) now rebuilds advisory
 capsules and numerical formulas for the captured working bytes. Accepted formal
 index publication remains a subsequent integration stage. The opt-in mapped
-worker edit now handles one supported span per source session without returning
-the original body to the model; ordinary editing remains available for other
-changes. Both routes modify exact original files.
+worker edit handles one supported span per preparation without returning the
+original body to the model. Version 2 permits bounded successive edits to the
+existing admitted files, with fresh working pins and candidate context after
+each confirmation. Ordinary editing remains available for unsupported changes.
+Both routes modify exact original files.
 
 The [qualification evidence](evidence/reversible-source-views-20261012/README.md)
 retains 40 passing cases, including a separate-process unchanged inverse without

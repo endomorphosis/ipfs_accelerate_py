@@ -8,7 +8,8 @@ from .terminal_source_view_policy import DEFAULT_SOURCE_VIEW_PROFILE, validate_s
 
 DEFAULT_SOURCE_EDIT_MODE = "disabled"
 MAPPED_SOURCE_EDIT_MODE = "mapped-span@1"
-SOURCE_EDIT_MODES = (DEFAULT_SOURCE_EDIT_MODE, MAPPED_SOURCE_EDIT_MODE)
+REPEATED_SOURCE_EDIT_MODE = "mapped-span@2"
+SOURCE_EDIT_MODES = (DEFAULT_SOURCE_EDIT_MODE, MAPPED_SOURCE_EDIT_MODE, REPEATED_SOURCE_EDIT_MODE)
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py",
     "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
@@ -24,6 +25,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",

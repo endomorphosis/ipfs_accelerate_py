@@ -30,6 +30,8 @@ def case(tmp_path, request):
         text = text.rstrip("\n")
     elif variant == "fallback":
         text = 'count = 1\nmessage = f"{count}"\n'
+    elif variant == "long":
+        text += "# ordinary explanation retained outside the compact view\n" * 100
     root, workspace = tmp_path / "canonical", tmp_path / "allocated"
     root.mkdir()
     sources = {"pkg/code.py": text.encode(), "other.py": b"OTHER = 2\n", "instruction.md": b"public instruction\n"}
@@ -323,3 +325,214 @@ def test_confirm_before_prepare_does_not_create_or_write_anything(case):
         invoke(case, dict(operation="confirm", proposal_sha256="0" * 64,
                          view_policy_binding_sha256=None, max_bytes=4096))
     assert_unwritten(case)
+
+
+def repeated_service(case):
+    case["service"] = module.WorkerSourceEditService(views=case["views"],
+        allowed_paths=("pkg/code.py", "other.py"), mode=module.REPEATED_MODE)
+
+
+def fresh_edit(case, *, path="pkg/code.py", preimage="1", replacement="23"):
+    page = case["views"].working_page(path=path)
+    projection = case["views"].working_projection(path=path,
+        expected_workspace_generation=page["workspace_generation"])
+    offset = projection.view.index(preimage.encode())
+    case["query"] = dict(case["query"], path=path,
+        expected_workspace_generation=page["workspace_generation"],
+        expected_source_sha256=page["source_sha256"], expected_view_sha256=page["view_sha256"],
+        expected_manifest_sha256=page["manifest_sha256"], view_start=offset,
+        view_end=offset + len(preimage.encode()), expected_view_preimage=preimage,
+        replacement=replacement)
+    return case["query"]
+
+
+def apply_and_confirm(case):
+    prepared = invoke(case)
+    candidate = simulate_existing_worker_write(case, prepared)
+    confirmed = invoke(case, confirm_query(case, prepared))
+    return prepared, candidate, confirmed
+
+
+@pytest.mark.parametrize("case", ["lf", "crlf", "no_final_lf", "shared", "fallback"], indirect=True)
+def test_repeated_edits_same_then_other_program_preserve_exact_population(case):
+    repeated_service(case)
+    before = dict(case["sources"])
+    generations = {case["first"]["workspace_generation"]}
+    first, candidate, confirmed = apply_and_confirm(case)
+    before["pkg/code.py"] = candidate
+    generations.add(confirmed["workspace_generation"])
+    first_fields, confirmed_fields = set(first), set(confirmed)
+    for path, preimage, replacement in (("pkg/code.py", "23", "345"), ("other.py", "2", "67")):
+        fresh_edit(case, path=path, preimage=preimage, replacement=replacement)
+        prepared, candidate, confirmed = apply_and_confirm(case)
+        assert set(prepared) == first_fields and set(confirmed) == confirmed_fields
+        assert prepared["source_generation"] in generations
+        assert confirmed["workspace_generation"] not in generations
+        generations.add(confirmed["workspace_generation"])
+        before[path] = candidate
+        assert case["views"].working_sources(expected_workspace_generation=confirmed["workspace_generation"]) == before
+        assert confirmed["source_population_sha256"] == sha(canonical_json({name: sha(raw) for name, raw in before.items()}))
+        assert confirmed["validation_pending"] and not confirmed["baseline_evidence_applicable"]
+        assert confirmed["source_obligations_discharged"] == 0
+    assert len(generations) == 4
+    assert before["pkg/code.py"] == case["sources"]["pkg/code.py"].replace(b"1", b"345", 1)
+    assert before["other.py"] == b"OTHER = 67\n"
+    assert all((case["root"] / path).read_bytes() == raw for path, raw in case["sources"].items())
+    assert (case["workspace"] / "instruction.md").read_bytes() == case["sources"]["instruction.md"]
+
+
+@pytest.mark.parametrize("mode", [None, True, [], {}, "mapped-span@3", ""])
+def test_invalid_modes_do_not_create_an_edit_service(case, mode):
+    with pytest.raises(module.WorkerSourceEditError, match="^edit_unavailable$"):
+        module.WorkerSourceEditService(views=case["views"], allowed_paths=("pkg/code.py",), mode=mode)
+    assert_unwritten(case)
+
+
+def test_repeated_mode_has_only_one_outstanding_proposal(case):
+    repeated_service(case)
+    prepared = invoke(case)
+    with pytest.raises(module.WorkerSourceEditError, match="^proposal_consumed$"):
+        invoke(case, dict(case["query"], replacement="34"))
+    assert_unwritten(case)
+    simulate_existing_worker_write(case, prepared)
+    invoke(case, confirm_query(case, prepared))
+    fresh_edit(case, preimage="23", replacement="45")
+    assert invoke(case)["status"] == "prepared_validation_pending"
+
+
+@pytest.mark.parametrize("mode", [module.MODE, module.REPEATED_MODE])
+@pytest.mark.parametrize("outcome", ["confirmed", "failed"])
+def test_pending_confirmation_matcher_is_read_only_and_never_revives_consumed_ticket(case, mode, outcome):
+    service = module.WorkerSourceEditService(views=case["views"],
+        allowed_paths=("pkg/code.py", "other.py"), mode=mode)
+    case["service"] = service
+    assert service.pending_confirmation_matches("0" * 64) is False
+    prepared = invoke(case)
+    snapshot = (service._proposal, service._confirmation_attempted,
+        service._successful_preparations, case["views"]._working, case["views"]._working_counter)
+    for ticket in (None, [], {}, True, 1, "", "A" * 64, "0" * 64):
+        assert service.pending_confirmation_matches(ticket) is False
+    assert service.pending_confirmation_matches(prepared["proposal_sha256"]) is (mode == module.REPEATED_MODE)
+    assert (service._proposal, service._confirmation_attempted,
+        service._successful_preparations, case["views"]._working, case["views"]._working_counter) == snapshot
+    assert_unwritten(case)
+    if outcome == "confirmed":
+        simulate_existing_worker_write(case, prepared)
+        invoke(case, confirm_query(case, prepared))
+    else:
+        with pytest.raises(module.WorkerSourceEditError, match="^confirmation_refused$"):
+            invoke(case, confirm_query(case, prepared))
+    assert service.pending_confirmation_matches(prepared["proposal_sha256"]) is False
+    if mode == module.REPEATED_MODE and outcome == "confirmed":
+        fresh_edit(case, preimage="23", replacement="45")
+        next_prepared = invoke(case)
+        assert service.pending_confirmation_matches(prepared["proposal_sha256"]) is False
+        assert service.pending_confirmation_matches(next_prepared["proposal_sha256"]) is True
+
+
+@pytest.mark.parametrize("stale", ["old", "foreign"])
+@pytest.mark.parametrize("written", [False, True])
+def test_repeated_mode_stale_confirmation_cannot_consume_new_active_proposal(case, stale, written):
+    repeated_service(case)
+    old, _, _ = apply_and_confirm(case)
+    fresh_edit(case, preimage="23", replacement="45")
+    active = invoke(case)
+    if written:
+        simulate_existing_worker_write(case, active)
+    snapshot = case["views"]._working
+    query = confirm_query(case, old)
+    if stale == "foreign":
+        query["proposal_sha256"] = "0" * 64
+    with pytest.raises(module.WorkerSourceEditError, match="^confirmation_refused$"):
+        invoke(case, query)
+    assert case["views"]._working is snapshot
+    if not written:
+        simulate_existing_worker_write(case, active)
+    assert invoke(case, confirm_query(case, active))["source_postimage_verified"]
+    fresh_edit(case, preimage="45", replacement="67")
+    assert invoke(case)["status"] == "prepared_validation_pending"
+
+
+@pytest.mark.parametrize("failure", ["no_write", "wrong_write", "sibling", "canonical", "policy", "response_budget"])
+def test_repeated_mode_matching_failed_confirmation_blocks_even_after_repair(case, failure, monkeypatch):
+    repeated_service(case)
+    prepared = invoke(case)
+    if failure != "no_write":
+        expected = simulate_existing_worker_write(case, prepared)
+    else:
+        expected = case["sources"]["pkg/code.py"].replace(b"1", b"23", 1)
+    query = confirm_query(case, prepared)
+    if failure == "wrong_write":
+        (case["workspace"] / "pkg/code.py").write_bytes(b"wrong source\n")
+    elif failure == "sibling":
+        (case["workspace"] / "other.py").write_bytes(b"OTHER = 999\n")
+    elif failure == "canonical":
+        (case["root"] / "other.py").write_bytes(b"OTHER = 999\n")
+    elif failure == "policy":
+        query["view_policy_binding_sha256"] = "0" * 64
+    elif failure == "response_budget":
+        monkeypatch.setattr(module, "RESPONSE_RESERVE_BYTES", 4000)
+    with pytest.raises(module.WorkerSourceEditError, match="^confirmation_refused$"):
+        invoke(case, query)
+    assert case["views"]._working is None
+    monkeypatch.setattr(module, "RESPONSE_RESERVE_BYTES", 1024)
+    (case["workspace"] / "pkg/code.py").write_bytes(expected)
+    for location in ("root", "workspace"):
+        (case[location] / "other.py").write_bytes(case["sources"]["other.py"])
+    # Repairing bytes and reading a fresh generation cannot retry an uncertain
+    # matching confirmation or reopen its consumed edit slot.
+    fresh_edit(case, preimage="23", replacement="45")
+    with pytest.raises(module.WorkerSourceEditError, match="^proposal_consumed$"):
+        invoke(case, confirm_query(case, prepared))
+    with pytest.raises(module.WorkerSourceEditError, match="^proposal_consumed$"):
+        invoke(case)
+
+
+def test_repeated_successful_preparations_are_bounded_at_sixteen(case):
+    repeated_service(case)
+    generations, proposals = {case["first"]["workspace_generation"]}, set()
+    value = "1"
+    assert module.MAX_PREPARATIONS == 16
+    for number in range(16):
+        next_value = str(number + 2)
+        fresh_edit(case, preimage=value, replacement=next_value)
+        # A rejected mapping neither writes nor consumes a successful slot.
+        with pytest.raises(module.WorkerSourceEditError, match="^mapping_refused$"):
+            invoke(case, dict(case["query"], expected_view_preimage="x" * len(value)))
+        prepared, _, confirmed = apply_and_confirm(case)
+        assert prepared["proposal_sha256"] not in proposals
+        assert confirmed["workspace_generation"] not in generations
+        proposals.add(prepared["proposal_sha256"]); generations.add(confirmed["workspace_generation"])
+        value = next_value
+    fresh_edit(case, preimage=value, replacement="18")
+    with pytest.raises(module.WorkerSourceEditError, match="^proposal_consumed$"):
+        invoke(case)
+    with pytest.raises(module.WorkerSourceEditError, match="^proposal_consumed$"):
+        invoke(case, confirm_query(case, prepared))
+    assert (case["workspace"] / "pkg/code.py").read_bytes() == case["sources"]["pkg/code.py"].replace(b"1", b"17", 1)
+    assert len(proposals) == 16 and len(generations) == 17
+
+
+@pytest.mark.parametrize("case", ["long"], indirect=True)
+def test_repeated_edit_then_revert_cannot_revive_old_generation_cursor_or_proposal(case):
+    repeated_service(case)
+    first_query = deepcopy(case["query"])
+    old_page = case["views"].working_page(path="pkg/code.py", view="original", max_bytes=2048)
+    assert old_page["next_cursor"] is not None
+    old, _, forward = apply_and_confirm(case)
+    fresh_edit(case, preimage="23", replacement="1")
+    _, reverted, backward = apply_and_confirm(case)
+    assert reverted == case["sources"]["pkg/code.py"]
+    assert len({old_page["workspace_generation"], forward["workspace_generation"], backward["workspace_generation"]}) == 3
+    with pytest.raises(ValueError):
+        case["views"].working_page(path="pkg/code.py", view="original", max_bytes=2048,
+            cursor=old_page["next_cursor"], expected_workspace_generation=old_page["workspace_generation"])
+    with pytest.raises(module.WorkerSourceEditError):
+        invoke(case, first_query)
+    fresh_edit(case, replacement="9")
+    active = invoke(case)
+    assert active["proposal_sha256"] != old["proposal_sha256"]
+    with pytest.raises(module.WorkerSourceEditError, match="^confirmation_refused$"):
+        invoke(case, confirm_query(case, old))
+    simulate_existing_worker_write(case, active)
+    assert invoke(case, confirm_query(case, active))["source_postimage_verified"]

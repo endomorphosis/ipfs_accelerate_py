@@ -32,9 +32,11 @@ class WorkerSourceBroker(NumericalObligationBroker):
                 or type(profile) is not str or profile != "python-whitespace@1"):
             raise ValueError("shared policy cannot be combined with legacy profile")
         selected_profile = profile if view_policy is None else view_policy.profile
-        if type(source_edit_mode) is not str or source_edit_mode not in {"disabled", "mapped-span@1"}:
+        if type(source_edit_mode) is not str or source_edit_mode not in ("disabled", *protocol.EDIT_MODES):
             raise ValueError("unsupported source edit mode")
         self.source_edit_mode = source_edit_mode
+        self._edit_confirmation_blocked = False
+        self._edit_confirmation_request = None
         if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= MAX_SESSION_SECONDS:
             raise ValueError("bounded source-view session required")
         self.repository, self.workspace = guard._workspace(repository, workspace)
@@ -80,7 +82,8 @@ class WorkerSourceBroker(NumericalObligationBroker):
             if type(payload.get("program_paths")) is not list or not payload["program_paths"]:
                 raise ValueError("source edits require an explicit verified program population")
             from .worker_source_edit import WorkerSourceEditService
-            self.source_edits = WorkerSourceEditService(views=self.views, allowed_paths=tuple(program_paths))
+            self.source_edits = WorkerSourceEditService(views=self.views, allowed_paths=tuple(program_paths),
+                **({"mode": source_edit_mode} if source_edit_mode != "mapped-span@1" else {}))
             self._session_binding.update(source_edit_mode=source_edit_mode,
                 source_scope_sha256=admission["scope_sha256"],
                 view_policy_binding_sha256=self._session_binding.get("view_policy_binding_sha256"))
@@ -177,6 +180,15 @@ class WorkerSourceBroker(NumericalObligationBroker):
         if (self.source_edits is None or self._descriptor_schema != protocol.DESCRIPTOR_SCHEMA_V3
                 or query["view_policy_binding_sha256"] != self._session_binding.get("view_policy_binding_sha256")):
             return self._response(request, reason="invalid_request")
+        if self.source_edit_mode == "mapped-span@2":
+            if self._edit_confirmation_blocked:
+                return self._response(request, reason="retrieval_refused")
+            if query["operation"] == "confirm" and self.source_edits.pending_confirmation_matches(
+                    query["proposal_sha256"]):
+                # The worker may already have written. Surrounding owner checks
+                # and response delivery must also succeed before another edit.
+                self._edit_confirmation_blocked = True
+                self._edit_confirmation_request = (request["request_id"], query["proposal_sha256"])
         try:
             self._current_context(working=True,
                 generation=query.get("expected_workspace_generation"))
@@ -194,6 +206,21 @@ class WorkerSourceBroker(NumericalObligationBroker):
         except (OSError, ValueError, RuntimeError):
             self.candidate_context.clear()
             return self._response(request, reason="retrieval_refused")
+
+    def _response_finished(self, request, response, *, delivered):
+        if self.source_edit_mode != "mapped-span@2" or self._edit_confirmation_request is None:
+            return
+        request_id, proposal = self._edit_confirmation_request
+        if request is None or request.get("request_id") != request_id:
+            return
+        self._edit_confirmation_request = None
+        page = response.get("page") if type(response) is dict and response.get("ok") is True else None
+        if (delivered is True and type(page) is dict
+                and page.get("schema") == "supervisor-worker-source-edit-confirmed@1"
+                and page.get("proposal_sha256") == proposal):
+            self._edit_confirmation_blocked = False
+        # A successful send is not a client acknowledgment. Client-side loss
+        # still requires inspection and must never trigger an automatic retry.
 
     def _record_details(self, response=None):
         page = response["page"] if response is not None and response["ok"] else None
@@ -247,7 +274,7 @@ def prepare_worker_source_broker(*, argv, boundary, workspace, input_fd=0, view_
 
     profile = _argument(argv, "--source-view-profile", "disabled")
     edit_mode = _argument(argv, "--source-edit-mode", "disabled")
-    if edit_mode not in {"disabled", "mapped-span@1"} or edit_mode != "disabled" and profile == "disabled":
+    if edit_mode not in ("disabled", *protocol.EDIT_MODES) or edit_mode != "disabled" and profile == "disabled":
         raise ValueError("source edits require an enabled source view profile")
     serialized_policy = _argument(argv, SOURCE_VIEW_POLICY_FLAG)
     if serialized_policy is not None:

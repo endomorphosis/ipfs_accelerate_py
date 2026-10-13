@@ -1,0 +1,142 @@
+{
+  "diagnoses": [
+    {
+      "cases": 2,
+      "cause": "Authored extra-program fixture supplied unsorted program_paths; sorted canonical subset and matching scope corrected.",
+      "production_failure": false,
+      "run": "root-tests-01"
+    },
+    {
+      "cases": 2,
+      "cause": "Common-bindings cross-mode tamper correctly raised ValueError; test expected returned checks instead. Expectation corrected for metadata projection; legacy check-result retained.",
+      "production_failure": false,
+      "run": "root-tests-01"
+    },
+    {
+      "cases": 2,
+      "cause": "Cross-mode refusal fixture omitted its required authored runtime archive manifest. Fixture corrected and file rerun.",
+      "production_failure": false,
+      "run": "outer-tests-01"
+    },
+    {
+      "cause": "Surrounding broker checks or failed send could follow core confirmation clearing. Production owner delivery fence and generic response callback were added, independently reviewed, and qualified in final root349 suite.",
+      "not_exposed_by_initial_test_failures": true,
+      "production_change": true,
+      "run": "independent source review"
+    }
+  ],
+  "notes": [
+    "Initial service96 and additive matcher4 each passed with owned files unchanged; aggregate harness noted unrelated concurrent edits. Final100-file suite now passed with all recorded source hashes unchanged.",
+    "Historical runs are not added to the714 distinct final current-file cases."
+  ],
+  "runs": [
+    {
+      "failed_or_error_nodes": [
+        {
+          "node": "test.api.test_worker_source_edit_broker::test_repeated_socket_edits_refresh_all_files_and_refuse_old_confirmation[case0]",
+          "status": "error"
+        },
+        {
+          "node": "test.api.test_worker_source_edit_broker::test_repeated_socket_edits_refresh_all_files_and_refuse_old_confirmation[case1]",
+          "status": "error"
+        },
+        {
+          "node": "benchmarks.agent_supervisor.container_coding.test_source_edit_worker_wiring::test_selected_mode_reaches_shared_router_then_real_socket_edit_and_closed_observer[case0-common-bindings@1]",
+          "status": "failure"
+        },
+        {
+          "node": "benchmarks.agent_supervisor.container_coding.test_source_edit_worker_wiring::test_selected_mode_reaches_shared_router_then_real_socket_edit_and_closed_observer[case1-common-bindings@1]",
+          "status": "failure"
+        }
+      ],
+      "junit_sha256": "2e68a67ef1173efb1bed346eefb38c141185ee7e47e640f01d17a123918b2c6c",
+      "original_raw_failure_text_published": false,
+      "result": {
+        "changed_sources": [],
+        "elapsed_seconds": 135.2547760430025,
+        "exit_code": 1,
+        "source_unchanged": true,
+        "timeout": false
+      },
+      "run": "root-tests-01",
+      "testcases": 318
+    },
+    {
+      "failed_or_error_nodes": [
+        {
+          "node": "benchmarks.agent_supervisor.container_coding.test_terminal_source_edit_policy::test_adapter_refuses_other_enabled_edit_version_before_environment_effects[mapped-span@1-mapped-span@2]",
+          "status": "failure"
+        },
+        {
+          "node": "benchmarks.agent_supervisor.container_coding.test_terminal_source_edit_policy::test_adapter_refuses_other_enabled_edit_version_before_environment_effects[mapped-span@2-mapped-span@1]",
+          "status": "failure"
+        }
+      ],
+      "junit_sha256": "c99b079c1cf04d9d6275c94b311b2220e85dff3e728ab29861bcb11525c3d9f7",
+      "original_raw_failure_text_published": false,
+      "result": {
+        "exit_code": 1,
+        "seconds": 17.85809941298794,
+        "source_after": {
+          "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "a9c2d4d851ba281793e979ab117639a0e7097d2c4c20be8ec827c86a628f9961",
+          "benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py": "6593c2d77e6d0b0b13a3c9b77f02c6f57a1e8ff72ae155a5ce9491cb009ad839"
+        },
+        "source_unchanged": true
+      },
+      "run": "outer-tests-01",
+      "testcases": 146
+    },
+    {
+      "failed_or_error_nodes": [],
+      "junit_sha256": "f0c4b64b71eb5d503aa916d8fc680c4b2ec6bdcf95c337af3532067a8ffbd35b",
+      "original_raw_failure_text_published": false,
+      "result": {
+        "exit_code": 0,
+        "seconds": 17.45756094297394,
+        "source_after": {
+          "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "a9c2d4d851ba281793e979ab117639a0e7097d2c4c20be8ec827c86a628f9961",
+          "benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py": "1a987caff3fba472885bdb4cde9a731686eff527a51193120cdeed9497206468"
+        },
+        "source_unchanged": true
+      },
+      "run": "outer-tests-02",
+      "testcases": 146
+    },
+    {
+      "failed_or_error_nodes": [],
+      "junit_sha256": "1dc8a26d4b38e10ec69de03a6452e8d7da02979db41e2dad269f89462eea497f",
+      "original_raw_failure_text_published": false,
+      "result": {
+        "changed_sources": [
+          "test/api/test_worker_source_edit_broker.py"
+        ],
+        "elapsed_seconds": 47.517047502915375,
+        "exit_code": 0,
+        "source_unchanged": false,
+        "timeout": false
+      },
+      "run": "service-tests-01",
+      "testcases": 96
+    },
+    {
+      "failed_or_error_nodes": [],
+      "junit_sha256": "6dd7cb3529590e2027088f59b2b14b6c20c38628151e81b54705cfca42754960",
+      "original_raw_failure_text_published": false,
+      "result": {
+        "changed_sources": [
+          "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py",
+          "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py",
+          "benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py",
+          "test/api/test_worker_source_edit_broker.py"
+        ],
+        "elapsed_seconds": 17.863742582965642,
+        "exit_code": 0,
+        "source_unchanged": false,
+        "timeout": false
+      },
+      "run": "service-matcher-tests-02",
+      "testcases": 4
+    }
+  ],
+  "schema": "repeated-compact-edit-retained-history@1"
+}

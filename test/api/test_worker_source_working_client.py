@@ -246,11 +246,12 @@ def test_cli_forwards_working_generation_and_preserves_candidate_labels(sample, 
     assert observed[0]["expected_workspace_generation"] == page["workspace_generation"]
 
 
-def test_cli_edit_ready_adds_only_manifest_pin_for_enabled_working_session(sample, monkeypatch, capsys):
+@pytest.mark.parametrize('mode', ['mapped-span@1', 'mapped-span@2'])
+def test_cli_edit_ready_adds_only_manifest_pin_for_enabled_working_session(sample, monkeypatch, capsys, mode):
     _, _, value, selected = sample
     page = value["page"]
     selected = client.validate_descriptor(selected | {
-        "schema": client.DESCRIPTOR_SCHEMA_V3, "source_edit_mode": "mapped-span@1",
+        "schema": client.DESCRIPTOR_SCHEMA_V3, "source_edit_mode": mode,
         "source_scope_sha256": page["scope_sha256"], "view_policy_binding_sha256": None})
     loaded, fetched = [], []
     def load(*args):

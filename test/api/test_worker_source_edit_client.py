@@ -235,6 +235,79 @@ def test_private_original_read_write_confirm_preserves_hidden_comment_and_mode(c
     assert not list(case["root"].glob(".compact-edit-*"))
 
 
+@pytest.mark.parametrize("mode", ["mapped-span@1", "mapped-span@2"])
+@pytest.mark.parametrize("policy", [None, "9" * 64])
+def test_descriptor_accepts_only_owner_selected_edit_modes_with_policy(case, mode, policy):
+    selected = case["descriptor"] | {"source_edit_mode": mode, "view_policy_binding_sha256": policy}
+    assert client.validate_descriptor(selected) is selected
+
+
+def test_repeated_mode_two_client_invocations_use_fresh_source_mapping(case, monkeypatch):
+    selected = case["descriptor"] | {"source_edit_mode": "mapped-span@2"}
+    monkeypatch.setattr(client.source, "load_descriptor", lambda *args, **kwargs: dict(selected))
+    state = {"generation": case["edit"]["expected_workspace_generation"], "proposal": None, "confirmed": 0}
+    calls, observed_prepares = [], []
+    def exchange(path, descriptor, query):
+        operation = query["query"]["operation"]
+        calls.append(operation)
+        if operation == "prepare":
+            assert state["proposal"] is None
+            edit = {key: query["query"][key] for key in client.EDIT_FIELDS}
+            raw = case["path"].read_bytes()
+            view = build_source_view(raw, profile=descriptor["profile"])
+            assert edit["expected_workspace_generation"] == state["generation"]
+            assert edit["expected_source_sha256"] == sha(raw)
+            assert edit["expected_view_sha256"] == sha(view.view)
+            assert edit["expected_manifest_sha256"] == view.manifest_sha256
+            mapped = map_source_view_edit(original=raw, view=view.view, manifest=view.manifest,
+                expected_manifest_sha256=view.manifest_sha256, view_start=edit["view_start"],
+                view_end=edit["view_end"], expected_view_preimage=edit["expected_view_preimage"].encode(),
+                replacement=edit["replacement"].encode())
+            page = prepared(edit, mapped, query)
+            page["proposal_sha256"] = sha(client.canonical_json(query))
+            state["proposal"] = (page, mapped.candidate)
+            observed_prepares.append(edit)
+        else:
+            assert operation == "confirm" and state["proposal"] is not None
+            page, candidate = state["proposal"]
+            assert query["query"]["proposal_sha256"] == page["proposal_sha256"]
+            assert case["path"].read_bytes() == candidate
+            state["confirmed"] += 1
+            state["generation"] = sha(str(state["confirmed"]).encode() + candidate)
+            page = confirmed(page) | {"workspace_generation": state["generation"],
+                "source_population_sha256": sha(client.canonical_json({"sample.py": sha(candidate)}))}
+            state["proposal"] = None
+        return client.validate_response(response(query, page), request=query, descriptor=descriptor)
+    monkeypatch.setattr(client, "_exchange", exchange)
+    first = client.edit_source("/routing", "f" * 64, edit=case["edit"])
+    assert first["ok"] and case["path"].read_bytes() == case["mapped"].candidate
+    # Simulate the fresh working read, retaining the real regenerated compact
+    # view/map. This test authors owner RPCs; socket lifecycle is tested separately.
+    raw = case["path"].read_bytes()
+    view = build_source_view(raw, profile=selected["profile"])
+    preimage, replacement = "'new λ'", "'final π'"
+    start = view.view.index(preimage.encode())
+    second_edit = dict(path="sample.py", expected_workspace_generation=first["workspace_generation"],
+        expected_source_sha256=sha(raw), expected_view_sha256=sha(view.view),
+        expected_manifest_sha256=view.manifest_sha256, view_start=start, view_end=start + len(preimage.encode()),
+        expected_view_preimage=preimage, replacement=replacement)
+    second = client.edit_source("/routing", "f" * 64, edit=second_edit)
+    assert first["ok"] and second["ok"] and calls == ["prepare", "confirm", "prepare", "confirm"]
+    assert state["confirmed"] == 2 and state["proposal"] is None
+    assert case["path"].read_bytes() == case["raw"].replace(b"'old'", replacement.encode())
+    assert stat.S_IMODE(case["path"].stat().st_mode) == 0o640
+    for key in ("expected_workspace_generation", "expected_source_sha256", "expected_view_sha256",
+                "expected_manifest_sha256"):
+        assert observed_prepares[0][key] != observed_prepares[1][key]
+    for result in (first, second):
+        assert result["status"] == "applied_validation_pending" and not result["automatic_retry_performed"]
+        assert not result["atomic_application_claimed"] and not result["completion_authority"]
+        assert b"ordinary note" not in client.canonical_json(result)
+        assert replacement.encode() not in client.canonical_json(result)
+    assert first["workspace_generation"] != second["workspace_generation"]
+    assert first["proposal_sha256"] != second["proposal_sha256"]
+
+
 def test_owner_inode_write_policy_preserves_original_inode(case, monkeypatch):
     calls = rpc(case, monkeypatch)
     inode = case["path"].stat().st_ino
@@ -269,8 +342,10 @@ def test_local_source_drift_or_unsupported_file_refuses_without_writing(case, mo
     assert outside.read_bytes() == case["raw"]
 
 
+@pytest.mark.parametrize("mode", ["mapped-span@1", "mapped-span@2"])
 @pytest.mark.parametrize("failure", ["transport", "refusal", "changed_map"])
-def test_confirmation_failure_after_write_is_unknown_and_never_retries(case, monkeypatch, failure):
+def test_confirmation_failure_after_write_is_unknown_and_never_retries(case, monkeypatch, failure, mode):
+    case["descriptor"]["source_edit_mode"] = mode
     calls = rpc(case, monkeypatch, confirm_failure=failure)
     output = client.edit_source("/routing", "f" * 64, edit=case["edit"])
     assert calls == ["prepare", "confirm"] and not output["ok"]
@@ -343,3 +418,30 @@ def test_guidance_exposes_native_commands_and_unknown_write_fallback():
     assert "One mapped compact span edit" in text and "never replay the old edit automatically" in text
     assert "Keep request JSON files outside the checkout" in text and "or use stdin" in text
     assert "Selected source profile: python-comments@1." in text
+
+
+@pytest.mark.parametrize("profile,expected_sha256", [
+    ("identity@1", "6b075852d57784a5520ac0226f6c0a9b12a8d27fe57cd305fb10edf0332e4fbd"),
+    ("python-comments@1", "1d5f979fcfa60c5d1fbab2f82987a5f014356474cd2c6449bf75eb0bdd69ea30"),
+    ("python-whitespace@1", "0496019305188ef136da6dbbfdd5287029503f8f2cc557e6e5476a7565316708"),
+])
+def test_default_and_explicit_v1_guidance_preserve_published_bytes(profile, expected_sha256):
+    assert sha(client.guidance(profile).encode()) == expected_sha256
+    assert client.guidance(profile, mode="mapped-span@1") == client.guidance(profile)
+
+
+def test_repeated_guidance_requires_fresh_pins_bounded_session_and_no_unknown_retry():
+    text = client.guidance("python-comments@1", mode="mapped-span@2")
+    assert "Sequential mapped compact span edits" in text and "one outstanding proposal" in text
+    assert "at most 16 successful preparations" in text and "Before each edit, read a fresh" in text
+    assert "--working --edit-ready" in text and "fresh generation/source/view/manifest pins" in text
+    assert "written_confirmation_unknown, mapped editing stops for this session" in text
+    assert "never replay the old edit automatically" in text and "ordinary original-source editing" in text
+    assert "Keep request JSON files outside the checkout" in text and "or use stdin" in text
+    assert "Selected source profile: python-comments@1." in text and "validation-pending" in text
+
+
+@pytest.mark.parametrize("mode", ["disabled", "mapped-span@3", None])
+def test_guidance_refuses_unsupported_edit_mode(mode):
+    with pytest.raises(ValueError):
+        client.guidance(mode=mode)

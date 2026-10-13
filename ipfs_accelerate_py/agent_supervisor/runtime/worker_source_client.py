@@ -31,6 +31,7 @@ DIGEST_ENV = "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR_SHA256"
 DESCRIPTOR_SCHEMA = "supervisor-worker-source-descriptor@1"
 DESCRIPTOR_SCHEMA_V2 = "supervisor-worker-source-descriptor@2"
 DESCRIPTOR_SCHEMA_V3 = "supervisor-worker-source-descriptor@3"
+EDIT_MODES = ("mapped-span@1", "mapped-span@2")
 REQUEST_SCHEMA = "supervisor-worker-source-request@1"
 REQUEST_SCHEMA_V2 = "supervisor-worker-source-request@2"
 REQUEST_SCHEMA_V3 = "supervisor-worker-source-request@3"
@@ -90,7 +91,7 @@ def validate_descriptor(value):
     _need(type(value["profile"]) is str and value["profile"] in PROFILES,
           "unsupported source view profile")
     if editing:
-        _need(value["source_edit_mode"] == "mapped-span@1"
+        _need(value["source_edit_mode"] in EDIT_MODES
               and (value["view_policy_binding_sha256"] is None or _hex(value["view_policy_binding_sha256"])),
               "invalid source edit selection")
     return value
@@ -435,7 +436,7 @@ def render_page_for_model(response, *, include_edit_pins=False):
 
 def guidance(profile, *, source_edit_mode="disabled"):
     _need(profile in PROFILES, "unsupported source view profile")
-    _need(source_edit_mode in {"disabled", "mapped-span@1"}, "unsupported source edit mode")
+    _need(source_edit_mode in ("disabled", *EDIT_MODES), "unsupported source edit mode")
     if source_edit_mode != "disabled":
         if __package__:
             from .worker_source_edit_client import guidance as edit_guidance
@@ -445,7 +446,7 @@ def guidance(profile, *, source_edit_mode="disabled"):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             edit_guidance = module.guidance
-        return edit_guidance(profile)
+        return edit_guidance(profile, **({"mode": source_edit_mode} if source_edit_mode != "mapped-span@1" else {}))
     return ("\nRead-only indexed source views are available for the paths in the semantic manifest. "
         "From the allocated workspace run: /opt/ipfs-supervisor/venv/bin/python -I "
         "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py "
@@ -497,7 +498,7 @@ def main(argv=None):
               "source descriptor required")
         if args.edit_ready:
             _need(args.working and not args.discover and load_descriptor(args.source_view_descriptor,
-                args.source_view_descriptor_sha256).get("source_edit_mode") == "mapped-span@1",
+                args.source_view_descriptor_sha256).get("source_edit_mode") in EDIT_MODES,
                 "edit-ready reads require an enabled working source session")
         cursor = strict_json_loads(args.cursor) if args.cursor else None
         if args.discover:

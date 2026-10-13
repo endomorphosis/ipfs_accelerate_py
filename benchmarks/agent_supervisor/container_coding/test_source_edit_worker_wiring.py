@@ -49,21 +49,26 @@ def _boundary(case, monkeypatch):
 
 
 @pytest.mark.parametrize("metadata_mode", ["legacy", "common-bindings@1"])
+@pytest.mark.parametrize('case', [('python-comments@1', False, MODE),
+    ('python-comments@1', False, 'mapped-span@2')], indirect=True)
 def test_selected_mode_reaches_shared_router_then_real_socket_edit_and_closed_observer(case, provider, monkeypatch, metadata_mode):
     _boundary(case, monkeypatch)
     state, calls = provider
     service = case['service']; edits = []
+    mode = case['mode']
+    edit_count = 2 if mode == 'mapped-span@2' else 1
     encoded = codec.encode_semantic_router_prompt(prompt=case['prompt'], repository=case['root'])
     def perform_edit():
-        response, edit = read_working(case)
-        assert response['page']['view'] == 'compact'
-        result = edit_client.edit_source(service.descriptor_path, service.descriptor_sha256, edit=edit)
-        assert result['ok'] is True
-        edits.append(result)
+        for ordinal in range(edit_count):
+            response, edit = read_working(case, before=str(ordinal+1), after=str(ordinal+2))
+            assert response['page']['view'] == 'compact'
+            result = edit_client.edit_source(service.descriptor_path, service.descriptor_sha256, edit=edit)
+            assert result['ok'] is True
+            edits.append(result)
     state['after_generate'] = perform_edit
-    output, receipt = _run_router(case, source_edit_mode=MODE, semantic_metadata_view=metadata_mode)
-    assert output == 'literal summary' and len(calls) == len(edits) == 1
-    expected_router = encoded.provider_prompt + source.guidance(case['profile'], source_edit_mode=MODE)
+    output, receipt = _run_router(case, source_edit_mode=mode, semantic_metadata_view=metadata_mode)
+    assert output == 'literal summary' and len(calls) == 1 and len(edits) == edit_count
+    expected_router = encoded.provider_prompt + source.guidance(case['profile'], source_edit_mode=mode)
     expected_model, _ = runner.render_model_prompt(prompt=expected_router, purpose='coding',
         workspace=case['workspace'], semantic_transport=True)
     if metadata_mode == 'legacy':
@@ -73,6 +78,16 @@ def test_selected_mode_reaches_shared_router_then_real_socket_edit_and_closed_ob
     rebuilt, _, checks = context_audit._model_projection(rendered=case['prompt'], receipt=receipt,
         repository=case['root'])
     assert rebuilt == calls[0][0] and all(checks.values()), checks
+    changed_mode = deepcopy(receipt)
+    changed_mode['source_view_retrieval']['source_edit_mode'] = 'mapped-span@2' if mode == MODE else MODE
+    if metadata_mode == 'legacy':
+        _, _, changed_checks = context_audit._model_projection(rendered=case['prompt'], receipt=changed_mode,
+            repository=case['root'])
+        assert not all(changed_checks.values())
+    else:
+        with pytest.raises(ValueError):
+            context_audit._model_projection(rendered=case['prompt'], receipt=changed_mode,
+                repository=case['root'])
     for mutation in ('missing_mode', 'disabled_mode', 'unknown_mode', 'wrong_schema'):
         edited = deepcopy(receipt)
         observed = edited['source_view_retrieval']
@@ -86,7 +101,7 @@ def test_selected_mode_reaches_shared_router_then_real_socket_edit_and_closed_ob
     assert 'worker_source_edit_client.py' in expected_model
     dispatch = receipt['source_view_retrieval']
     assert dispatch['schema'] == 'worker-source-dispatch-observation@3'
-    assert dispatch['source_edit_mode'] == MODE and dispatch['requests_observed'] is False
+    assert dispatch['source_edit_mode'] == mode and dispatch['requests_observed'] is False
     assert receipt['router_prompt_sha256'] == sha(expected_router.encode())
     assert receipt['model_prompt_sha256'] == sha(calls[0][0].encode())
     assert receipt['completion_authority'] is False
@@ -95,16 +110,16 @@ def test_selected_mode_reaches_shared_router_then_real_socket_edit_and_closed_ob
     audit = json.loads(service.audit_path.read_bytes())
     receipt['phase'] = 'coding'
     report = dict(arm='full', worker_cleanup_returncode=0, provider_invocations=[receipt],
-        source_view_profile=case['profile'], source_edit_mode=MODE)
+        source_view_profile=case['profile'], source_edit_mode=mode)
     with tempfile.TemporaryDirectory(prefix='mapped-observer-', dir=Path.home()) as name:
         parent = Path(name); parent.chmod(0o750)
         retained = parent / service.audit_path.name
         retained.write_bytes(source.canonical_json(audit)); retained.chmod(0o400)
         observed = observer.collect(parent=parent, scope={'task_alias': 'TASK-EDIT'}, report=report)
     assert observed['status'] == 'observed', observed
-    assert observed['source_edit_counts'] == dict(prepared_mapping_pages=1, delivered_mapping_pages=1,
-        prepared_confirmation_pages=1, delivered_confirmation_pages=1)
-    assert observed['counts']['accepted_requests'] == 3
+    assert observed['source_edit_counts'] == dict(prepared_mapping_pages=edit_count, delivered_mapping_pages=edit_count,
+        prepared_confirmation_pages=edit_count, delivered_confirmation_pages=edit_count)
+    assert observed['counts']['accepted_requests'] == 3 * edit_count
     assert observed['counts']['delivered_source_bytes'] < len(case['sources']['mod.py'])
     assert observed['owner_writes_performed'] is observed['task_validation_observed'] is False
     assert observed['provider_tokens'] is None and observed['total_token_savings_measured'] is False
@@ -114,7 +129,7 @@ def test_selected_mode_reaches_shared_router_then_real_socket_edit_and_closed_ob
         assert forbidden not in closed
 
 
-@pytest.mark.parametrize('failure', ['omitted_mode', 'unknown_mode', 'descriptor_mode'])
+@pytest.mark.parametrize('failure', ['omitted_mode', 'unknown_mode', 'descriptor_mode', 'other_mode'])
 def test_mismatched_edit_mode_refuses_before_shared_router_generation(case, provider, monkeypatch, failure):
     _boundary(case, monkeypatch)
     _, calls = provider
@@ -123,7 +138,7 @@ def test_mismatched_edit_mode_refuses_before_shared_router_generation(case, prov
         monkeypatch.setattr(source, 'load_descriptor', lambda *a, **k: descriptor)
     with pytest.raises(ValueError):
         _run_router(case, **({} if failure == 'omitted_mode' else
-            {'source_edit_mode': 'unknown' if failure == 'unknown_mode' else MODE}))
+            {'source_edit_mode': 'unknown' if failure == 'unknown_mode' else 'mapped-span@2' if failure == 'other_mode' else MODE}))
     assert calls == []
 
 
@@ -132,7 +147,7 @@ def _source_args():
         '--source-view-descriptor', '/owner/source.json', '--source-view-descriptor-sha256', 'a'*64]
 
 
-@pytest.mark.parametrize('mode', ['disabled', MODE])
+@pytest.mark.parametrize('mode', ['disabled', MODE, 'mapped-span@2'])
 def test_deployed_worker_parser_forwards_selection_to_router_without_losing_pins(tmp_path, mode):
     result = worker_run(tmp_path, [*_source_args(), '--source-edit-mode', mode])
     assert result.returncode == 0, result.stderr.decode()
@@ -140,8 +155,8 @@ def test_deployed_worker_parser_forwards_selection_to_router_without_losing_pins
     for flag in ('--source-view-profile', '--source-view-descriptor', '--source-view-descriptor-sha256'):
         assert argv.count(flag) == 1
         assert argv[argv.index(flag)+1] == _source_args()[_source_args().index(flag)+1]
-    if mode == MODE:
-        assert argv.count('--source-edit-mode') == 1 and argv[argv.index('--source-edit-mode')+1] == MODE
+    if mode != 'disabled':
+        assert argv.count('--source-edit-mode') == 1 and argv[argv.index('--source-edit-mode')+1] == mode
     else:
         assert '--source-edit-mode' not in argv
 
@@ -153,27 +168,29 @@ def test_deployed_worker_refuses_missing_or_non_coding_source_route(tmp_path, ex
     assert result.returncode != 0 and not result.stdout
 
 
-def test_signed_implementation_command_preserves_mode_and_default_bytes():
+@pytest.mark.parametrize('mode', [MODE, 'mapped-span@2'])
+def test_signed_implementation_command_preserves_mode_and_default_bytes(mode):
     options = dict(router=Path('/owner/router'), model='pinned', reasoning='high', timeout=60,
         semantic_repository=Path('/app'), source_view_profile='python-comments@1', doctor=None)
     old = implementation_argv(**options)
     disabled = implementation_argv(**options, source_edit_mode='disabled')
-    selected = implementation_argv(**options, source_edit_mode=MODE)
+    selected = implementation_argv(**options, source_edit_mode=mode)
     assert old == disabled and '--source-edit-mode' not in old
-    assert selected == old + ['--source-edit-mode', MODE]
+    assert selected == old + ['--source-edit-mode', mode]
     with pytest.raises(ValueError):
-        implementation_argv(**{**options, 'semantic_repository': None}, source_edit_mode=MODE)
+        implementation_argv(**{**options, 'semantic_repository': None}, source_edit_mode=mode)
 
 
-def test_driver_cli_forwards_literal_selection(monkeypatch, tmp_path, capsys):
+@pytest.mark.parametrize('mode', [MODE, 'mapped-span@2'])
+def test_driver_cli_forwards_literal_selection(monkeypatch, tmp_path, capsys, mode):
     calls = []
     monkeypatch.setattr(driver, 'run', lambda **kwargs: calls.append(kwargs) or
         dict(task_completed=False, arm='full', seconds=0, provider_invocations=[]))
     monkeypatch.setattr(sys, 'argv', ['driver', '--instruction', str(tmp_path/'instruction'),
         '--state', str(tmp_path/'state'), '--arm', 'full', '--source-view-profile', 'python-comments@1',
-        '--source-edit-mode', MODE])
+        '--source-edit-mode', mode])
     assert driver.main() == 1
-    assert calls[0]['source_edit_mode'] == MODE and calls[0]['source_view_profile'] == 'python-comments@1'
+    assert calls[0]['source_edit_mode'] == mode and calls[0]['source_view_profile'] == 'python-comments@1'
     capsys.readouterr()
 
 

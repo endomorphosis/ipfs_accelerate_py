@@ -438,7 +438,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
 
     failure_phase = "argument_validation"
     from .worker_source_client import PROFILES
-    if (type(source_edit_mode) is not str or source_edit_mode not in {"disabled", "mapped-span@1"}
+    if (type(source_edit_mode) is not str or source_edit_mode not in {"disabled", "mapped-span@1", "mapped-span@2"}
             or source_edit_mode != "disabled" and (source_view_profile == "disabled" or census_only)):
         raise ValueError("source editing requires an enabled coding source session")
     source_args = (source_view_descriptor, source_view_descriptor_sha256)
@@ -1043,7 +1043,7 @@ def main():
     parser.add_argument("--source-lookup-descriptor-sha256")
     parser.add_argument("--source-view-profile", default="disabled",
                         choices=("disabled", "identity@1", "python-whitespace@1", "python-comments@1"))
-    parser.add_argument("--source-edit-mode", default="disabled", choices=("disabled", "mapped-span@1"))
+    parser.add_argument("--source-edit-mode", default="disabled", choices=("disabled", "mapped-span@1", "mapped-span@2"))
     parser.add_argument("--source-view-descriptor", type=Path)
     parser.add_argument("--source-view-descriptor-sha256")
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",

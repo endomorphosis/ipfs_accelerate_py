@@ -463,10 +463,10 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
         # schema; a mode field cannot upgrade a historical observation.
         edit_options = {}
         if "source_edit_mode" in source_views or source_views.get("schema") == "worker-source-dispatch-observation@3":
-            from .terminal_source_edit_policy import MAPPED_SOURCE_EDIT_MODE, validate_source_edit_mode
+            from .terminal_source_edit_policy import DEFAULT_SOURCE_EDIT_MODE, validate_source_edit_mode
             mode = validate_source_edit_mode(source_views.get("source_edit_mode", "disabled"),
                 source_view_profile=source_views["profile"])
-            if source_views.get("schema") != "worker-source-dispatch-observation@3" or mode != MAPPED_SOURCE_EDIT_MODE:
+            if source_views.get("schema") != "worker-source-dispatch-observation@3" or mode == DEFAULT_SOURCE_EDIT_MODE:
                 raise ValueError("mapped source guidance requires its explicit dispatch schema and mode")
             edit_options["source_edit_mode"] = mode
         advice = guidance(source_views["profile"], **edit_options)

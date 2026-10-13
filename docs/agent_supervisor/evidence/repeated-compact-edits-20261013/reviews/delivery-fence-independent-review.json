@@ -1,0 +1,35 @@
+{
+  "checks": [
+    "Core matcher verifies repeated mode and active unconsumed exact ticket without filesystem/cache mutation.",
+    "Unrelated or old ticket cannot set, consume or clear a newer active proposal fence.",
+    "Only repeated mode changes broker state; default and mapped-span@1 callback paths return unchanged.",
+    "Transport resets request/response for each channel before parsing, invokes completion hook even on malformed/failed exchange, and stops session if hook itself raises.",
+    "Transport is single-threaded for requests: next accepted edit is processed after completion hook.",
+    "Read-only working source retrieval remains available for inspection after blocked edit outcome.",
+    "New transport owner is explicitly included in selected runtime source archive closure."
+  ],
+  "limits": [
+    "This is source inspection; owner is separately running core/client/socket and Docker qualification.",
+    "Successful kernel send is not proof of client receipt/decoding; unknown client outcome remains no-automatic-retry with inspection.",
+    "No provider call, live benchmark, Docker launch, new proof, or token-savings claim made by this review."
+  ],
+  "observed_at_utc": "2026-10-13T23:25:53.456544+00:00",
+  "production_edits_by_review": false,
+  "related_qualification": {
+    "passed": 149,
+    "path": "outer-qualification-02.json",
+    "sha256": "1c84e3fdb9f0adee05df8f9fb4234506da467a7fbbdefb86a756bbed7a108f2f"
+  },
+  "resolved_finding": {
+    "original": "Surrounding broker checks or send failures could occur after repeated core cleared the successful proposal.",
+    "resolution": "Owner authenticates request, recognizes active matching ticket without source reads, blocks edits before context, and clears only for same request and proposal when confirmed page send completes. Pre/post context or send failure remains blocked."
+  },
+  "schema": "repeated-edit-delivery-fence-independent-review@1",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "3828f1e7fad740459687ccf23f5c7c19fb7fe50a3a9b9241037724361c67d7b3",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "65485fd2c42ef7965c499df21900f8825c49b8cae66898e3d1082a7c729151ee",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "2feecb05abbe3077990e0efdc821f8e100c70f2a0ca915b012c53f1906e40d09",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py": "bcff050716454c625de8b7486489a6e0a33f3daf4a8989ec01059242efea6c81"
+  },
+  "status": "code_review_passed"
+}

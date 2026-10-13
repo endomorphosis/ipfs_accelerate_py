@@ -1,4 +1,4 @@
-"""Read-only mapping and postimage checks for one worker-owned compact edit.
+"""Read-only mapping and postimage checks for worker-owned compact edits.
 
 The broker supplies its exact source-view owner and independently verified
 program paths. This service never writes a file, constructs a worktree owner,
@@ -6,8 +6,10 @@ or grants a lease. The isolated worker may apply a prepared span using its
 existing workspace permissions. Confirmation observes that expected postimage;
 ordinary task validation and publication remain separate native boundaries.
 
-One successful preparation and one confirmation attempt are allowed. A failed
-confirmation can follow a real worker write and must never invite reapplication.
+The default mode allows one successful preparation and confirmation attempt.
+The explicit repeated mode permits up to sixteen successful preparations, each
+after the previous postimage is confirmed. A failed matching confirmation can
+follow a real worker write and blocks further edits in either mode.
 Checks are sequential observations, not exclusion of concurrent writers.
 """
 from __future__ import annotations
@@ -21,6 +23,8 @@ from .source_view_edits import map_source_view_edit
 from .worker_source_views import WorkerSourceViews, MAX_SOURCE_BYTES, canonical_json, _digest, _path
 
 MODE = "mapped-span@1"
+REPEATED_MODE = "mapped-span@2"
+MAX_PREPARATIONS = 16
 PREPARED_SCHEMA = "supervisor-worker-source-edit-prepared@1"
 CONFIRMED_SCHEMA = "supervisor-worker-source-edit-confirmed@1"
 MAX_EDIT_BYTES = 4096
@@ -96,7 +100,8 @@ def _query(value, operation):
 class WorkerSourceEditService:
     """A single broker session's pure mapping followed by a checked observation."""
 
-    def __init__(self, *, views, allowed_paths):
+    def __init__(self, *, views, allowed_paths, mode=MODE):
+        _need(type(mode) is str and mode in {MODE, REPEATED_MODE}, "edit_unavailable")
         _need(type(views) is WorkerSourceViews, "edit_unavailable")
         _need(type(allowed_paths) in (tuple, list) and 0 < len(allowed_paths) <= 64,
               "edit_unavailable")
@@ -114,12 +119,21 @@ class WorkerSourceEditService:
         policy = baseline.get("view_policy_binding")
         self._policy_sha256 = None if policy is None else _sha(canonical_json(policy))
         self._lock = threading.RLock()
+        self._mode = mode
+        self._successful_preparations = 0
         self._proposal = None
         self._confirmation_attempted = False
 
     def _current(self, query):
         _need(query["view_policy_binding_sha256"] == self._policy_sha256, "invalid_request")
         _need(canonical_json(self.views.baseline_admission()) == self._baseline, "edit_unavailable")
+
+    def pending_confirmation_matches(self, proposal_sha256):
+        """Identify the active repeated-edit ticket without consuming or reading source."""
+        with self._lock:
+            return (self._mode == REPEATED_MODE and self._proposal is not None
+                and not self._confirmation_attempted and _digest(proposal_sha256)
+                and json.loads(self._proposal[0])["proposal_sha256"] == proposal_sha256)
 
     @staticmethod
     def _response(value, maximum):
@@ -139,6 +153,8 @@ class WorkerSourceEditService:
         _need(_digest(request_sha256))
         with self._lock:
             _need(self._proposal is None, "proposal_consumed")
+            _need(self._mode != REPEATED_MODE or self._successful_preparations < MAX_PREPARATIONS,
+                  "proposal_consumed")
             try:
                 self._current(query)
                 path = query["path"]
@@ -179,6 +195,7 @@ class WorkerSourceEditService:
                 _need(self.views.working_sources(expected_workspace_generation=generation) == sources,
                       "mapping_refused")
                 self._proposal = (canonical_json(result), expected)
+                self._successful_preparations += 1
                 return result
             except WorkerSourceEditError:
                 raise
@@ -190,13 +207,18 @@ class WorkerSourceEditService:
         _need(_digest(request_sha256))
         with self._lock:
             _need(self._proposal is not None and not self._confirmation_attempted, "proposal_consumed")
+            prepared_raw, expected = self._proposal
+            prepared = json.loads(prepared_raw)
+            if self._mode == REPEATED_MODE:
+                # A delayed/foreign reply cannot consume the observation for a
+                # newer proposal. No view/cache state changes on this refusal.
+                _need(query["proposal_sha256"] == prepared["proposal_sha256"], "confirmation_refused")
             # Even a refused well-formed confirmation consumes this observation.
+            # In repeated mode this applies only to the matching proposal.
             # The caller may already have written. Never invite a retrying edit.
             self._confirmation_attempted = True
             try:
                 self._current(query)
-                prepared_raw, expected = self._proposal
-                prepared = json.loads(prepared_raw)
                 _need(query["proposal_sha256"] == prepared["proposal_sha256"], "confirmation_refused")
                 with self.views._lock:
                     _need(self.views._capture(self.views._workspace) == expected, "confirmation_refused")
@@ -215,6 +237,9 @@ class WorkerSourceEditService:
                 self._current(query)
                 _need(self.views.working_sources(expected_workspace_generation=generation) == expected,
                       "confirmation_refused")
+                if self._mode == REPEATED_MODE:
+                    self._proposal = None
+                    self._confirmation_attempted = False
                 return result
             except (OSError, ValueError, TypeError, UnicodeError, RuntimeError):
                 with self.views._lock:
@@ -222,6 +247,7 @@ class WorkerSourceEditService:
                 raise WorkerSourceEditError("confirmation_refused") from None
 
 
-__all__ = ["WorkerSourceEditService", "WorkerSourceEditError", "MODE", "PREPARED_SCHEMA",
+__all__ = ["WorkerSourceEditService", "WorkerSourceEditError", "MODE", "REPEATED_MODE",
+           "MAX_PREPARATIONS", "PREPARED_SCHEMA",
            "CONFIRMED_SCHEMA", "MAX_EDIT_BYTES", "MAX_REQUEST_BYTES", "MIN_RESPONSE_BYTES",
            "MAX_RESPONSE_BYTES", "RESPONSE_RESERVE_BYTES", "REASON_CODES"]

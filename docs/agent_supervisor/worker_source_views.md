@@ -203,7 +203,7 @@ records the local evidence and its authored identity-boundary limits.
 
 During benchmark preparation, select `--arm full`, an enabled source profile
 such as `--source-view-profile python-comments@1`, and
-`--source-edit-mode mapped-span@1`. Build a fresh runtime archive first.
+`--source-edit-mode mapped-span@2`. Build a fresh runtime archive first.
 Preparation freezes the selection and producer hashes; later stages refuse a
 changed selection. The default remains `disabled`. The mode requires explicit
 verified `program_paths`; support-file admission alone does not permit edits.
@@ -239,8 +239,21 @@ working generation and clears advisory candidate context. Hidden comments and
 all bytes outside the mapped original interval survive. Original file bodies
 and restoration maps are absent from the model-facing edit result.
 
-There is one successful preparation and one confirmation attempt per source
-session. Supported edits lie inside one retained codec interval; ambiguous
+The owner selects the session's edit mode:
+
+| Mode | Successful preparations | Continuation |
+| --- | --- | --- |
+| `disabled` | None | Ordinary workspace editing |
+| `mapped-span@1` | One | Existing single-edit behavior and guidance |
+| `mapped-span@2` | At most 16 | One outstanding proposal; confirmed edits permit another fresh working read and preparation |
+
+In version 2, reread with `--working --edit-ready` after every confirmed edit.
+The next edit can target the same file or another already admitted program file.
+Each confirmation checks the complete admitted population, advances the working
+generation and invalidates cached candidate context. Rebuilt advisory capsules
+and formulas must bind to that new generation. The existing connection, byte and
+lifetime limits still apply, so 16 preparations are a ceiling, not a capacity
+guarantee. Supported edits lie inside one retained codec interval; ambiguous
 removed boundaries, profile changes, invalid transformed Python and stale pins
 refuse. The client neither creates nor deletes files. Use ordinary source editing
 for unsupported changes. A successful result is `applied_validation_pending`:
@@ -248,8 +261,13 @@ ordinary task tests, formal checks and publication still have to run. This
 mechanism does not discharge a formal obligation.
 
 If a write may have occurred but confirmation fails, the result is
-`written_confirmation_unknown`. Reread the working file before deciding what
-to do; the client never automatically reapplies the edit. Owner-owned source
+`written_confirmation_unknown`. Stop mapped edits and inspect the working file;
+the client never automatically reapplies the edit. A matching confirmation that
+fails the owner's validation, context/peer checks or response send blocks further
+version-2 mapped edits in that session. Source reads remain available. A stale or
+foreign confirmation cannot consume a newer proposal. Successful kernel send is
+not client acknowledgment: later client-side loss is not observable by the owner,
+and still requires inspection without automatic retry. Owner-owned source
 inodes in the native sticky worktree are written in place, matching the existing
 worker writer. No atomic filesystem transaction or exclusion of other writers
 is claimed. Owner mapping and confirmation never write source files themselves.
@@ -262,7 +280,14 @@ tests exercise the real router, socket, mapper, worker write and refreshed read
 with an authored provider. An offline Docker probe also passes with real owner
 UID 1000 and worker UID 1001, preserved owner inode/mode, actual peer/ancestry
 checks, a separate validation process, and cleanup. Its authored `answer() == 2`
-smoke is not a formal proof or the official task verifier. Full supervisor START
+smoke is not a formal proof or the official task verifier. A subsequent
+[repeated-edit qualification](evidence/repeated-compact-edits-20261013/README.md)
+uses three edits and four working generations with the same actual UID boundary.
+It preserves comments, source inode/mode and support files, then validates the
+final result in a separate process. Its seven CLI outputs contain 6,199 bytes,
+including seven newlines. The ten private owner responses contain 20,269 framed
+bytes; these overlapping scopes must not be added or treated as provider tokens.
+Full supervisor START
 and live benchmark comparison of this treatment remain unmeasured.
 
 The retained [qualification record](evidence/compact-worker-edits-20261013/qualification.json)
@@ -332,7 +357,7 @@ zero model calls and supplies no token or official reward score.
 
 The optional mapped edit route above avoids original expansion for a supported
 edit, while retaining the original executable checkout. General capsule
-expansion, publication of rebuilt formal indexes, repeated mapped edits and
+expansion, publication of rebuilt formal indexes, file creation/moves/deletion and
 measured live-model savings remain separate work. Complete-session
 comparisons need fixed harness controls, all-attempt native usage and repeated
 official task verification.

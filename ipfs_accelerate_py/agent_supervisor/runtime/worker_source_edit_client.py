@@ -31,6 +31,8 @@ PREPARED_SCHEMA = "supervisor-worker-source-edit-prepared@1"
 CONFIRMED_SCHEMA = "supervisor-worker-source-edit-confirmed@1"
 DESCRIPTOR_SCHEMA = "supervisor-worker-source-descriptor@3"
 MODE = "mapped-span@1"
+REPEATED_MODE = "mapped-span@2"
+MODES = (MODE, REPEATED_MODE)
 MAX_FRAME_BYTES = source.MAX_FRAME_BYTES
 MAX_SOURCE_BYTES = 1024 * 1024
 MAX_EDIT_BYTES = 4096
@@ -113,7 +115,7 @@ def validate_request(value):
 
 def validate_descriptor(value):
     source.validate_descriptor(value)
-    _need(value["schema"] == DESCRIPTOR_SCHEMA and value.get("source_edit_mode") == MODE,
+    _need(value["schema"] == DESCRIPTOR_SCHEMA and value.get("source_edit_mode") in MODES,
         "source owner did not enable compact edits")
     return value
 
@@ -388,9 +390,22 @@ def edit_source(descriptor_path, descriptor_sha256, *, edit, workspace=None):
     return result | progress
 
 
-def guidance(profile="python-whitespace@1"):
+def guidance(profile="python-whitespace@1", *, mode=MODE):
     _need(profile in source.PROFILES, "unsupported compact edit profile")
-    return ("\nOne mapped compact span edit is available in this source session. Read a current candidate with "
+    _need(mode in MODES, "unsupported compact edit mode")
+    introduction = ("\nOne mapped compact span edit is available in this source session. Read a current candidate with "
+        if mode == MODE else
+        "\nSequential mapped compact span edits are available in this source session, with one outstanding proposal "
+        "and at most 16 successful preparations. Before each edit, read a fresh current candidate with ")
+    fallback = ("Unsupported spans, consumed edit slots or stale pins require a fresh read and ordinary original-source editing; "
+        if mode == MODE else
+        "After each confirmed edit, reread with --working --edit-ready and use the fresh generation/source/view/manifest pins "
+        "for the next edit. Unsupported spans, stale pins or the session preparation limit require a fresh read and ordinary original-source editing; ")
+    uncertainty = ("If status is written_confirmation_unknown, reread the working candidate before any further edit; "
+        if mode == MODE else
+        "If status is written_confirmation_unknown, mapped editing stops for this session; reread the working candidate "
+        "and inspect the result before ordinary source editing; ")
+    return (introduction +
         "/opt/ipfs-supervisor/venv/bin/python -I "
         "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py "
         "--path <path> --view compact --working --edit-ready (use --discover to list admitted paths). "
@@ -404,9 +419,9 @@ def guidance(profile="python-whitespace@1"):
         "The owner maps one retained span; the worker privately checks and edits original source "
         "without displaying it, then the owner verifies the complete admitted postimage. "
         "Each literal is at most 4096 UTF-8 bytes and the request at most 8192 bytes. "
-        "Unsupported spans, consumed edit slots or stale pins require a fresh read and ordinary original-source editing; "
+        + fallback +
         "the source reader accepts --view original --working with the current generation/source/view pins. "
-        "If status is written_confirmation_unknown, reread the working candidate before any further edit; "
+        + uncertainty +
         "never replay the old edit automatically. Successful edits remain validation-pending, "
         "invalidate baseline evidence, and establish no behavior, proof or completion. "
         "To rebuild advisory candidate context, run /opt/ipfs-supervisor/venv/bin/python -I "
