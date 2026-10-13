@@ -48,7 +48,7 @@ Exactly three native deterministic qualification tasks. These are preparatory sp
 
 ## LAC-S2-010 Qualify versioned statutory context obligations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
