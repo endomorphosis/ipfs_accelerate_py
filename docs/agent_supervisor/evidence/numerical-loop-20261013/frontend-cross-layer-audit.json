@@ -1,0 +1,232 @@
+{
+  "audited_authored_source_executed": false,
+  "authored_cpython_protocol_probe": {
+    "cases": 16,
+    "passed": 16,
+    "path": "authored-loop-protocol-observation.json",
+    "sha256": "7904668f94d5d7453eb608f5d25987b8952eb7798d3d28a7c4a028e981aefa4d"
+  },
+  "authored_structural_cases": [
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 1,
+      "name": "for_protocol",
+      "passed": true,
+      "pending_obligations": 11,
+      "source_sha256": "7d6595db996a69474ee3f40ed6a5f761e00412477816796abc4ae47f706fdd93",
+      "structural_status": "translated"
+    },
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 2,
+      "name": "nested_activation",
+      "passed": true,
+      "pending_obligations": 19,
+      "source_sha256": "1a0fae74bc1c9c9bc30f615ad66d7bbd3804db2a9ddbb9a4a975e7ed22bdb499",
+      "structural_status": "translated"
+    },
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 2,
+      "name": "inner_else_continue",
+      "passed": true,
+      "pending_obligations": 17,
+      "source_sha256": "fe3c41c72e0977cb7d52035db3e21a1bb67c5916689de176f0ab19b12721e33b",
+      "structural_status": "translated"
+    },
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 2,
+      "name": "inner_else_break",
+      "passed": true,
+      "pending_obligations": 17,
+      "source_sha256": "be51f9159b56d53965573b24c77ba2185ce7f93d8b7dcaea2e26ab5ccea7fa1e",
+      "structural_status": "translated"
+    },
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 2,
+      "name": "while_else_outer_continue",
+      "passed": true,
+      "pending_obligations": 16,
+      "source_sha256": "616778b0817d7cc5008ea775e386513a4f02600cfc00a7e0f83168af1864ca91",
+      "structural_status": "translated"
+    },
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 3,
+      "name": "loop_in_exhausted_else",
+      "passed": true,
+      "pending_obligations": 21,
+      "source_sha256": "15c8bd63d3a876a9d620f42a07a15e537f90c7c959f976e6934b0d8e3b07620e",
+      "structural_status": "translated"
+    },
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 1,
+      "name": "return_both_paths",
+      "passed": true,
+      "pending_obligations": 10,
+      "source_sha256": "2f119d553fc8d82c758358aa76d2388a28ba157efb13faa72e3cc162d1ff2cb4",
+      "structural_status": "translated"
+    },
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 1,
+      "name": "assertion_ifexp_format",
+      "passed": true,
+      "pending_obligations": 18,
+      "source_sha256": "9472e1e44a47fea7e837ee84cb92efd17344e1f6c23b7870fd92e03e1127dc7f",
+      "structural_status": "translated"
+    },
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 1,
+      "name": "test_ifexp",
+      "passed": true,
+      "pending_obligations": 10,
+      "source_sha256": "dd5ce79ff2ca6d739d9dbe6de022e9fe082605f4ce62d4e5b27b9749ee6497ef",
+      "structural_status": "translated"
+    },
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 0,
+      "name": "unsupported_try",
+      "passed": true,
+      "pending_obligations": 0,
+      "source_sha256": "bfe088fa9bc4f066a87a2ee8b1db5250f83bc2aed1c708958b50f971bc8806bf",
+      "structural_status": "partial"
+    },
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 0,
+      "name": "unsupported_target",
+      "passed": true,
+      "pending_obligations": 0,
+      "source_sha256": "06d326ace29343b77f29a315b898363813782bc560c54b2e9e12a80069ecd25a",
+      "structural_status": "partial"
+    },
+    {
+      "checks": [
+        "exact_source_and_logic_replay",
+        "iterator_protocol_phase_ownership",
+        "nearest_active_loop_transfers",
+        "no_implicit_close_or_definite_assignment",
+        "guarded_effects_and_loop_contexts_preserved",
+        "proof_scope_distinct_from_source_anchor",
+        "no_proof_or_runtime_authority"
+      ],
+      "control_regions": 1,
+      "name": "unsupported_guarded_rhs",
+      "passed": true,
+      "pending_obligations": 8,
+      "source_sha256": "02e569229a7945b024d1261955c69d74597ecbf6aa38e81abb9476d8eb4579e5",
+      "structural_status": "partial"
+    }
+  ],
+  "benchmark_source_executed": false,
+  "limitations": [
+    "Structural source replay is not Python/NumPy semantic equivalence or an induction/termination proof.",
+    "Only the separate retained CPython protocol probe executes its authored bounded fixtures.",
+    "Direct structural validators are supplemented by mandatory exact source replay at pager/link admission.",
+    "Try/finally, context managers, async and complex for targets remain explicit unsupported fences.",
+    "No state interpretation for temporal/TLA families is inferred from the CFG."
+  ],
+  "passed": true,
+  "producers": {
+    "numerical_logic_v3.py": "fb2cf7a2ae7050bb03e57db643b7617c94ee2b415750b279bfdbd175a276200b",
+    "numerical_source_v3.py": "49deaa1dd0c6692c0dd691219e7c1fdcf54b1cbbde9524013c9e962220c15b33"
+  },
+  "provider_calls": 0,
+  "schema": "numerical-loop-cross-layer-audit@1",
+  "script_sha256": "f09d246d99292c96b50038b45ec6becda20e884c94a058a510a29449a94ced65",
+  "solver_calls": 0
+}

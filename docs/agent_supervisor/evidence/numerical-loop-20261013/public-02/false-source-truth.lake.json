@@ -1,0 +1,22 @@
+{
+  "backend_executed": true,
+  "command": [
+    "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lake",
+    "build",
+    "NumericalObligations"
+  ],
+  "executable_sha256": "f80f50cbab5322e35bcb0bf88937e22e9d908b5e4e336e83ddfc30eb1506aacf",
+  "input_files_sha256": {
+    "NumericalObligations.lean": "42ab5caa83367d718394f06837a47230ced849552e6000626cde7d7ce1dca969",
+    "lakefile.toml": "4aaf7be5a06208a9829beec31a519b40c3035d8ad3ac786e630842652931ec81",
+    "lean-toolchain": "d5edba4e4b8faad9c1baeadb265716d20d03be4d1a2647dc5e35b0c0325bea7b"
+  },
+  "output_truncated": false,
+  "returncode": 1,
+  "status": "failed",
+  "stderr": "info: native_family_numericalobligations: no previous manifest, creating one from scratch\ninfo: toolchain not updated; already up-to-date\nerror: build failed\n",
+  "stdout": "\u2716 [2/3] Building NumericalObligations (296ms)\ntrace: .> LEAN_PATH=/tmp/logic-tool-g2ujjd8o/.lake/build/lib/lean /home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean /tmp/logic-tool-g2ujjd8o/NumericalObligations.lean -o /tmp/logic-tool-g2ujjd8o/.lake/build/lib/lean/NumericalObligations.olean -i /tmp/logic-tool-g2ujjd8o/.lake/build/lib/lean/NumericalObligations.ilean -c /tmp/logic-tool-g2ujjd8o/.lake/build/ir/NumericalObligations.c --setup /tmp/logic-tool-g2ujjd8o/.lake/build/ir/NumericalObligations.setup.json --json\nerror: NumericalObligations.lean:76:47: Tactic `assumption` failed\n\n\u22a2 False\nSome required targets logged failures:\n- NumericalObligations\n",
+  "timed_out": false,
+  "toolchain": "leanprover/lean4:v4.34.1",
+  "workspace_limit_exceeded": false
+}

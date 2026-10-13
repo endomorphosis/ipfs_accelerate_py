@@ -1,0 +1,11 @@
+{
+  "schema": "numerical-control-frontend-initial-smoke@1",
+  "historical": true,
+  "fixture": "authored For source with else",
+  "observed_exception": "ProgramValidationError: CFG cfg:2 raises undeclared exceptions ['StopIteration']",
+  "cause": "ProgramIR requires all named CFG exception edge types in declared_exceptions, including the locally caught iterator exhaustion type.",
+  "resolution": "v3 function declaration includes all exception edge type names; only the iterator-advance StopIteration edge enters else, all non-advance exceptions escape. No v1/v2/core change.",
+  "verification": "Final tests-02 checks exact protocol routing and symbolic chosen-outcome paths.",
+  "provider_calls": 0,
+  "source_executed": false
+}

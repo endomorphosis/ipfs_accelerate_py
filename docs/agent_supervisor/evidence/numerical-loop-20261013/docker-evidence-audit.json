@@ -1,0 +1,728 @@
+{
+  "benchmark_source_executed": false,
+  "checks": [
+    {
+      "name": "completed_owner_and_exact_probe",
+      "passed": true
+    },
+    {
+      "name": "release_manifest_digest",
+      "passed": true
+    },
+    {
+      "name": "release_source_and_runner_inventory",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "source_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "current_source_binding",
+      "passed": true
+    },
+    {
+      "name": "runner_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "runner_snapshot_binding",
+      "passed": true
+    },
+    {
+      "name": "runner_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "runner_snapshot_binding",
+      "passed": true
+    },
+    {
+      "name": "runner_binding_allowed",
+      "passed": true
+    },
+    {
+      "name": "runner_snapshot_binding",
+      "passed": true
+    },
+    {
+      "name": "router_private_public_match",
+      "passed": true
+    },
+    {
+      "name": "broker_private_public_match",
+      "passed": true
+    },
+    {
+      "name": "selected_control_profile",
+      "passed": true
+    },
+    {
+      "name": "exact_permitted_source_population",
+      "passed": true
+    },
+    {
+      "name": "canonical_report_locator_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "native_report_artifact_hash_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "final_public_report_join_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "public_source_binding_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "exact_source_replayed_rows_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "unique_obligation_ids_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "full_control_contexts_preserved_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "initial_metrics_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "canonical_report_locator_eval.py",
+      "passed": true
+    },
+    {
+      "name": "native_report_artifact_hash_eval.py",
+      "passed": true
+    },
+    {
+      "name": "final_public_report_join_eval.py",
+      "passed": true
+    },
+    {
+      "name": "public_source_binding_eval.py",
+      "passed": true
+    },
+    {
+      "name": "exact_source_replayed_rows_eval.py",
+      "passed": true
+    },
+    {
+      "name": "unique_obligation_ids_eval.py",
+      "passed": true
+    },
+    {
+      "name": "full_control_contexts_preserved_eval.py",
+      "passed": true
+    },
+    {
+      "name": "initial_metrics_eval.py",
+      "passed": true
+    },
+    {
+      "name": "filter_metrics",
+      "passed": true
+    },
+    {
+      "name": "bounded_complete_response_envelopes",
+      "passed": true
+    },
+    {
+      "name": "unique_owner_response_hashes",
+      "passed": true
+    },
+    {
+      "name": "retained_responses_match_owner_accounting",
+      "passed": true
+    },
+    {
+      "name": "seven_negative_cases",
+      "passed": true
+    },
+    {
+      "name": "worker_negative_subset",
+      "passed": true
+    },
+    {
+      "name": "complete_owner_accounting",
+      "passed": true
+    },
+    {
+      "name": "expected_session_statuses",
+      "passed": true
+    },
+    {
+      "name": "final_qualification_exact_request_quota",
+      "passed": true
+    },
+    {
+      "name": "refusals_contain_no_rows",
+      "passed": true
+    },
+    {
+      "name": "session_collection_matches_owner",
+      "passed": true
+    },
+    {
+      "name": "router_dispatch_bound_to_owner",
+      "passed": true
+    },
+    {
+      "name": "authored_dispatch_prompt_binding",
+      "passed": true
+    },
+    {
+      "name": "private_read_denials_and_worker_boundary",
+      "passed": true
+    },
+    {
+      "name": "private_parent_custody",
+      "passed": true
+    },
+    {
+      "name": "descriptor_and_socket_removed",
+      "passed": true
+    },
+    {
+      "name": "container_controls",
+      "passed": true
+    },
+    {
+      "name": "exact_mount_allowlist",
+      "passed": true
+    },
+    {
+      "name": "container_cleanup_rechecked",
+      "passed": true
+    },
+    {
+      "name": "provider_free_flags",
+      "passed": true
+    },
+    {
+      "name": "no_benchmark_or_token_claim",
+      "passed": true
+    },
+    {
+      "name": "source_and_runner_fence",
+      "passed": true
+    }
+  ],
+  "evidence_bindings": [
+    {
+      "path": "docker-03/qualification.json",
+      "sha256": "eba081979111829dbd7471aacfc6dccab98338e258abb9e079fabe114032dee0"
+    },
+    {
+      "path": "docker-03/results/probe-qualification.json",
+      "sha256": "18e005c3f4a62c32cbbb91b01b94b34edda9fe75189b0ccffc393831c779d2f8"
+    },
+    {
+      "path": "docker-03/command.json",
+      "sha256": "ee7259b4b9dc1cc5ce4e14bd9eda905cd82d984392f2903bc4244d950037133c"
+    },
+    {
+      "path": "docker-03/container-controls.json",
+      "sha256": "57d65b44e9d3ac6e5ed452de864e17770749ae827f5c21d82f2b4684c0c71bec"
+    },
+    {
+      "path": "docker-03/results/session-observation.json",
+      "sha256": "d689c09b5d19c66b7bcdbf8f008b7cc9e61b45d93704e512a888fdf621071f6d"
+    },
+    {
+      "path": "docker-03/results/router-observation.json",
+      "sha256": "a79082444d5736975c1644be8741fc44e7c6c7fef9e3c2cf9244f03bac208ddf"
+    },
+    {
+      "path": "docker-03/results/broker-audit.json",
+      "sha256": "82c59ee6a93ad49b6aee7ef05c1a2e69480fbb7b4d19231183ca6b0a6f263afd"
+    },
+    {
+      "path": "docker-03/private-fixture-ipc/worker-result.json",
+      "sha256": "ef46e403866e0afa8154a3bee6f3e9e15d9d53494e62bc746e61518c5a012596"
+    },
+    {
+      "path": "public-02/eigen.py.report.json",
+      "sha256": "0ad9bf55895377c1445719cb049e9334e85a549142aeda446916a71f702e95a5"
+    },
+    {
+      "path": "public-02/eval.py.report.json",
+      "sha256": "5d50219e9f30be2654f534b78938381c37fb2195049b45125e59ad30658353a0"
+    }
+  ],
+  "metrics": {
+    "complete_session_canonical_response_bytes": 385404,
+    "complete_session_requests": 64,
+    "configured_session_request_limit": 64,
+    "configured_session_response_limit_bytes": 524288,
+    "delivered_row_instances_including_repeated_filtered_reads": 107,
+    "docker_filter_selections": 0,
+    "docker_filtered_success_pages": 0,
+    "initial_canonical_response_bytes": 377548,
+    "initial_pages": 56,
+    "live_provider_calls": 0,
+    "max_initial_response_bytes": 8180,
+    "negative_cases": 7,
+    "private_read_denials": 5,
+    "provider_tokens": null,
+    "retained_full_success_response_count": 56,
+    "successful_session_pages": 57,
+    "unique_obligations": 105
+  },
+  "production_files_changed": false,
+  "profile": "python-numerical-control-structure@3",
+  "provider_calls": 0,
+  "publishable_subset": [
+    "docker-03/qualification.json",
+    "docker-03/results/probe-qualification.json",
+    "docker-03/results/session-observation.json",
+    "docker-03/container-controls.json",
+    "docker-03/command.json",
+    "docker-03/owner-command.json",
+    "docker-03/runner-snapshot/owner_probe.py",
+    "docker-03/runner-snapshot/worker_probe.py",
+    "docker-03/runner-snapshot/run_docker_qualification.py",
+    "docker-release-03.json",
+    "docker-evidence-audit.json"
+  ],
+  "qualifications": [
+    "Actual generated owner entry, UID1000/1001 boundary, router and numerical IPC; provider selection and generate_text remain authored hooks.",
+    "Full session counts include final recovery and any filtered repetitions explicitly counted in docker_filter_selections. Retained full response bodies exclude final recovery and seven refusals. Canonical bytes exclude four-byte frame headers.",
+    "The final Docker qualification devotes the 64-request limit to complete source paging and negative/recovery checks. Successful filtered retrieval is covered by separate unit/integration qualifications, not by this Docker audit.",
+    "Public source was parsed and replayed, never executed by this audit. Loop/guard/library semantics, invariants and termination remain unproved.",
+    "Five private read denials are bounded custody evidence. Fixture outputs were writable during the controlled run; this is not a general hostile-worker or rootless-container proof.",
+    "Container worktrees were removed. Source restoration and DuckLake hydration are retained owner observations; this audit does not independently reopen removed worktrees or publish catalog contents.",
+    "No live model, learned inference, native full supervisor START, official benchmark reward or paid token improvement is qualified."
+  ],
+  "retain_private_only": [
+    "private-state/**",
+    "private-fixture-ipc/**",
+    "private-worker-observations/**",
+    "results/broker-audit.json",
+    "results/router-observation.json",
+    "owner.stdout",
+    "owner.stderr"
+  ],
+  "schema": "numerical-worker-docker-independent-evidence-audit@2",
+  "source_obligations_discharged": 0,
+  "source_replayed_files": [
+    {
+      "control_context_row_count": 0,
+      "control_regions": 0,
+      "functions": 1,
+      "initial_pages": 8,
+      "initial_response_bytes": 54592,
+      "loop_context_row_count": 0,
+      "loop_regions": 0,
+      "max_response_bytes": 7377,
+      "path": "eigen.py",
+      "proof_phases": [],
+      "report_sha256": "63eaead5483e0813f42768765cc7ae76a31c10b8cca1cc3b8fcdadfc96c335bc",
+      "row_count": 16,
+      "source_anchor_proof_scope_count": 0,
+      "source_replay_exact": true,
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "structural_status": "translated",
+      "structurally_complete_functions": 1
+    },
+    {
+      "control_context_row_count": 30,
+      "control_regions": 2,
+      "functions": 3,
+      "initial_pages": 48,
+      "initial_response_bytes": 322956,
+      "loop_context_row_count": 30,
+      "loop_regions": 2,
+      "max_response_bytes": 8180,
+      "path": "eval.py",
+      "proof_phases": [
+        "activation_entry",
+        "exit_cause_and_post_state",
+        "normal_or_continue_backedge",
+        "whole_activation_progress"
+      ],
+      "report_sha256": "970bfce426ba57e85d68f2048d6f48d116c907830fb56a29bdfe6e2bfc6796c4",
+      "row_count": 89,
+      "source_anchor_proof_scope_count": 8,
+      "source_replay_exact": true,
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "structural_status": "partial",
+      "structurally_complete_functions": 3
+    }
+  ],
+  "status": "passed"
+}

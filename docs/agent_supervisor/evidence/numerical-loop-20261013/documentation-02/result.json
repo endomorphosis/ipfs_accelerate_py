@@ -1,0 +1,22 @@
+{
+  "schema": "numerical-loop-documentation-checks@1",
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "command": [
+    "/usr/bin/python3",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "gate_exit_code": 0,
+  "additional_files": [
+    "docs/agent_supervisor/numerical_loop_coverage.md",
+    "docs/agent_supervisor/evidence/numerical-loop-20261013/README.md"
+  ],
+  "explicit_link_errors": [],
+  "git_diff_check_exit_code": 0,
+  "git_diff_check_output": "",
+  "source_sha256": {
+    "docs/agent_supervisor/numerical_loop_coverage.md": "a36566466a17e4237b24ac2d1adf63f2bcc44d9d92aa28c5dd73c9dcec94af25",
+    "docs/agent_supervisor/evidence/numerical-loop-20261013/README.md": "96121203d2c1a2ac16fc4e057e55a4157e7dbf08791b0286b8b998ed635ec17d"
+  },
+  "helper_sha256": "1fe6bfdc878bd3e2b9d9ad36401fdeef6bda87594df138ab0e937583788e2485",
+  "passed": true
+}

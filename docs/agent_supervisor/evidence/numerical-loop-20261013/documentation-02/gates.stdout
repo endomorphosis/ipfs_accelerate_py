@@ -1,0 +1,3 @@
+OK: primary agent-supervisor docs are free of board-prefix ticket IDs
+OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)
+OK: documentation-gates aligned at 0.0.45

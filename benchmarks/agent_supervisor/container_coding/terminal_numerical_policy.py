@@ -6,7 +6,8 @@ from pathlib import Path
 
 PROFILE = "python-numerical-structure@1"
 GUARDED_PROFILE = "python-numerical-guarded-structure@2"
-PROFILES = (PROFILE, GUARDED_PROFILE)
+CONTROL_PROFILE = "python-numerical-control-structure@3"
+PROFILES = (PROFILE, GUARDED_PROFILE, CONTROL_PROFILE)
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py",
     "benchmarks/agent_supervisor/container_coding/terminal_numerical_observation.py",
@@ -54,6 +55,10 @@ GUARDED_DATASET_PATHS = (
     "ipfs_datasets_py/logic/software_verification/numerical_source_v2.py",
     "ipfs_datasets_py/logic/software_verification/numerical_logic_v2.py",
 )
+CONTROL_DATASET_PATHS = (
+    "ipfs_datasets_py/logic/software_verification/numerical_source_v3.py",
+    "ipfs_datasets_py/logic/software_verification/numerical_logic_v3.py",
+)
 
 
 def validate_numerical_profile(value):
@@ -79,7 +84,7 @@ def numerical_observation(value, arm):
 
 def _producer_paths(profile=PROFILE):
     # Resolve only explicitly selected producers. V1 does not require the new
-    # guarded modules; v2 also binds the v1 implementations it reuses.
+    # guarded/control modules; extensions bind the earlier implementations they reuse.
     if validate_numerical_profile(profile) is None:
         raise ValueError("explicit supported numerical formalization profile required")
     from ipfs_datasets_py.logic.software_verification import numerical_logic, numerical_source
@@ -90,13 +95,20 @@ def _producer_paths(profile=PROFILE):
     if Path(numerical_logic.__file__).resolve().parents[3] != datasets:
         raise ValueError("numerical datasets producer roots differ")
     selected = DATASET_PATHS
-    if profile == GUARDED_PROFILE:
+    if profile in (GUARDED_PROFILE, CONTROL_PROFILE):
         from ipfs_datasets_py.logic.software_verification import numerical_logic_v2, numerical_source_v2
-        if (numerical_logic_v2.PROFILE != profile or numerical_source_v2.PROFILE != profile
+        if (numerical_logic_v2.PROFILE != GUARDED_PROFILE or numerical_source_v2.PROFILE != GUARDED_PROFILE
                 or any(Path(module.__file__).resolve().parents[3] != datasets
                        for module in (numerical_source_v2, numerical_logic_v2))):
             raise ValueError("numerical datasets guarded producers differ from consumer selection")
         selected += GUARDED_DATASET_PATHS
+    if profile == CONTROL_PROFILE:
+        from ipfs_datasets_py.logic.software_verification import numerical_logic_v3, numerical_source_v3
+        if (numerical_logic_v3.PROFILE != profile or numerical_source_v3.PROFILE != profile
+                or any(Path(module.__file__).resolve().parents[3] != datasets
+                       for module in (numerical_source_v3, numerical_logic_v3))):
+            raise ValueError("numerical datasets control producers differ from consumer selection")
+        selected += CONTROL_DATASET_PATHS
     return {**{"source/" + name: source / name for name in SOURCE_PATHS},
             **{"datasets/" + name: datasets / name for name in selected}}
 

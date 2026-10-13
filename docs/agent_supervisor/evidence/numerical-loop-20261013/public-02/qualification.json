@@ -1,0 +1,148 @@
+{
+  "authored_control_build_passed": true,
+  "baseline_sha256": "5c5c21fe4c2fbbfb6af3544f754bd6c359c3e6a0f9aaf9fc5bdcd64b6e5690a7",
+  "complete": true,
+  "false_source_truth_build_rejected": true,
+  "files": [
+    {
+      "assertion_requirement_count": 0,
+      "canonical_report_sha256": "106cc79fc8438d9b9740d35d35bcb66f5b41d2e18422d66d1c9a45f23075cd7b",
+      "cfg_blocks": 7,
+      "cfg_edges": 8,
+      "compound_contract_count": 1,
+      "control_region_count": 0,
+      "control_region_kinds": {},
+      "lean_source_sha256": "d40804cbcbf576901256f4c1e5ed8169c6ab4eea9aa79d457a48de1fe0b6a086",
+      "obligation_kinds": {
+        "eigenpair_residual": 1,
+        "index_safety": 2,
+        "library_semantics_and_effects": 3,
+        "matrix_shape": 1,
+        "selected_eigenpair_approximate_residual": 1,
+        "selected_eigenpair_dimensions": 1,
+        "selected_eigenpair_finite": 1,
+        "selected_eigenpair_magnitude_selection": 1,
+        "selected_eigenpair_nonzero": 1,
+        "selected_eigenpair_runtime_interpretation": 1,
+        "selected_eigenpair_value_column": 1,
+        "selection": 1,
+        "slice_safety": 1
+      },
+      "path": "eigen.py",
+      "pending_obligations": 16,
+      "per_function": [
+        {
+          "function_id": "function:2",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        }
+      ],
+      "real_lake_status": "passed",
+      "source_obligations_discharged": 0,
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "tampered_context_refused": true
+    },
+    {
+      "assertion_requirement_count": 4,
+      "canonical_report_sha256": "b76794d82cbea33daa45b60ef145a12b6d829193ea4ef26d651ac7ff11481da0",
+      "cfg_blocks": 51,
+      "cfg_edges": 80,
+      "compound_contract_count": 1,
+      "control_region_count": 2,
+      "control_region_kinds": {
+        "for_statement": 2
+      },
+      "lean_source_sha256": "2a966f006e0ab6718fad96efb9b89a4f0f627b7bbff8fde559a1635c868c4622",
+      "obligation_kinds": {
+        "assertion_evaluation_semantics": 4,
+        "conditional_evaluation_semantics": 2,
+        "control_flow_semantics": 2,
+        "eigenpair_residual": 1,
+        "formatting_evaluation_semantics": 9,
+        "index_safety": 2,
+        "iterator_advance_semantics": 2,
+        "iterator_creation_semantics": 2,
+        "joined_string_evaluation_semantics": 7,
+        "library_semantics_and_effects": 34,
+        "loop_exit_reasoning": 2,
+        "loop_invariant_initialization": 2,
+        "loop_invariant_preservation": 2,
+        "loop_target_binding_semantics": 2,
+        "loop_termination": 2,
+        "matrix_shape": 1,
+        "selected_eigenpair_approximate_residual": 1,
+        "selected_eigenpair_dimensions": 1,
+        "selected_eigenpair_finite": 1,
+        "selected_eigenpair_magnitude_selection": 1,
+        "selected_eigenpair_nonzero": 1,
+        "selected_eigenpair_runtime_interpretation": 1,
+        "selected_eigenpair_value_column": 1,
+        "selection": 1,
+        "slice_safety": 1,
+        "source_assertion_predicate": 4
+      },
+      "path": "eval.py",
+      "pending_obligations": 89,
+      "per_function": [
+        {
+          "function_id": "function:6",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "ref_solution",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        },
+        {
+          "function_id": "function:102",
+          "name_truncated": false,
+          "pending_obligation_count": 23,
+          "qualified_name": "test_eigen_pair",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        },
+        {
+          "function_id": "function:344",
+          "name_truncated": false,
+          "pending_obligation_count": 50,
+          "qualified_name": "test_speedup",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        }
+      ],
+      "real_lake_status": "passed",
+      "source_obligations_discharged": 0,
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "tampered_context_refused": true
+    }
+  ],
+  "hidden_verifier_read": false,
+  "historical_reports_unchanged": true,
+  "model_inference_calls": 0,
+  "native_provider_tokens": null,
+  "official_terminal_bench_score": null,
+  "original_public_source_executed": false,
+  "producer_sha256": {
+    "ipfs_datasets_py.logic.software_verification.numerical_logic": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "ipfs_datasets_py.logic.software_verification.numerical_logic_v2": "e335faff26b909c3da6d3496f1856eadabaa180d8ee939d499f7c44f0fbbc58d",
+    "ipfs_datasets_py.logic.software_verification.numerical_logic_v3": "fb2cf7a2ae7050bb03e57db643b7617c94ee2b415750b279bfdbd175a276200b",
+    "ipfs_datasets_py.logic.software_verification.numerical_source": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "ipfs_datasets_py.logic.software_verification.numerical_source_v2": "1943dd506a31a4b2854de2c9decd2fc2ad6625ff8669f63aa6c6f129ca924e4b",
+    "ipfs_datasets_py.logic.software_verification.numerical_source_v3": "49deaa1dd0c6692c0dd691219e7c1fdcf54b1cbbde9524013c9e962220c15b33",
+    "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+  },
+  "profile": "python-numerical-control-structure@3",
+  "provider_calls": 0,
+  "real_lake_builds": 4,
+  "schema": "numerical-loop-public-source-qualification@1",
+  "seconds": 2.8827329840278253,
+  "source_obligations_discharged": 0,
+  "source_semantics_verified": false,
+  "structured_checkpoint_pins_unchanged": true
+}

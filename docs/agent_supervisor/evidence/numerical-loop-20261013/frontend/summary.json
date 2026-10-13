@@ -1,0 +1,115 @@
+{
+  "owned_files": {
+    "ipfs_datasets_py/logic/software_verification/numerical_source_v3.py": "49deaa1dd0c6692c0dd691219e7c1fdcf54b1cbbde9524013c9e962220c15b33",
+    "tests/unit/logic/software_verification/test_numerical_source_v3.py": "025911ab378bb639d31a6d341a369fd24ba6e27249942b646aca19b0f111fe6b"
+  },
+  "preserved_producer_pins": {
+    "ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "ipfs_datasets_py/logic/software_verification/numerical_source_v2.py": "1943dd506a31a4b2854de2c9decd2fc2ad6625ff8669f63aa6c6f129ca924e4b",
+    "ipfs_datasets_py/logic/software_verification/program.py": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+  },
+  "profile": "python-numerical-control-structure@3",
+  "proofs_discharged": 0,
+  "provider_calls": 0,
+  "public_source_replay": [
+    {
+      "bytes": 642,
+      "control_region_count": 0,
+      "functions": [
+        {
+          "function_id": "function:2",
+          "name": "find_dominant_eigenvalue_and_eigenvector",
+          "source_ref_ids": [
+            "source:eigen.py"
+          ],
+          "span_ids": [
+            "span:4"
+          ],
+          "structurally_complete": true,
+          "unsupported_constructs": []
+        }
+      ],
+      "guarded_region_count": 0,
+      "module_diagnostics": [],
+      "module_status": "translated",
+      "public_source_path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "bytes": 2246,
+      "control_region_count": 2,
+      "functions": [
+        {
+          "function_id": "function:6",
+          "name": "ref_solution",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:8"
+          ],
+          "structurally_complete": true,
+          "unsupported_constructs": []
+        },
+        {
+          "function_id": "function:102",
+          "name": "test_eigen_pair",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:104"
+          ],
+          "structurally_complete": true,
+          "unsupported_constructs": []
+        },
+        {
+          "function_id": "function:344",
+          "name": "test_speedup",
+          "source_ref_ids": [
+            "source:eval.py"
+          ],
+          "span_ids": [
+            "span:346"
+          ],
+          "structurally_complete": true,
+          "unsupported_constructs": []
+        }
+      ],
+      "guarded_region_count": 6,
+      "module_diagnostics": [
+        "python.module.Assign",
+        "python.module.Assign",
+        "python.module.If"
+      ],
+      "module_status": "partial",
+      "public_source_path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "remaining_gaps": [
+    "Module assignments and module conditional execution remain fences.",
+    "Try/with/async/complex For targets remain fences.",
+    "Invariants, termination, truthiness, effects, runtime iterator/library identity and definite assignment are unresolved."
+  ],
+  "repository_base": "9eb06b73658d8203628a697db6199f14ecf479e4",
+  "schema": "numerical-control-frontend-qualification@1",
+  "scope": "Real source-bound symbolic CFG plus guarded/control sidecars; no execution witness or numerical proof. For loop bodies are cycles, iterator/item slots preserve once-per-activation versus per-attempt operations.",
+  "solver_calls": 0,
+  "source_executed": false,
+  "structurally_complete_functions": 4,
+  "tests": {
+    "tests-01": {
+      "historical": true,
+      "passed": 137
+    },
+    "tests-02": {
+      "passed": 149,
+      "unchanged_v1_passed": 42,
+      "unchanged_v2_passed": 47,
+      "v3_passed": 60
+    }
+  },
+  "total_functions": 4,
+  "whole_module_complete": false
+}

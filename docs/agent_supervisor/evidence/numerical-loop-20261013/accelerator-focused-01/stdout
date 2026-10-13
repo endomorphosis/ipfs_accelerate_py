@@ -1,0 +1,28 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/numerical-loop-coverage-20261013/accelerator-focused-01/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011
+configfile: pytest.ini
+collected 203 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py . [  0%]
+..................                                                       [  9%]
+benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py . [  9%]
+........................................................................ [ 45%]
+...........................                                              [ 58%]
+test/api/test_published_numerical.py ................................... [ 75%]
+.................................................                        [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/numerical-loop-coverage-20261013/accelerator-focused-01/junit.xml -
+============================= slowest 10 durations =============================
+7.99s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_advice_reaches_planner_before_goals_then_admitted_indexes
+4.15s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_paging_retains_exact_cfg_occurrences_and_iteration_contexts
+1.16s call     test/api/test_published_numerical.py::test_regenerates_exact_python_subset_and_reloads_native_ducklake[python-numerical-control-structure@3]
+1.15s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_profile_cannot_reuse_earlier_tree_or_cursor[python-numerical-structure@1]
+1.15s call     benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py::test_control_profile_cannot_reuse_earlier_tree_or_cursor[python-numerical-guarded-structure@2]
+1.12s call     test/api/test_published_numerical.py::test_regenerates_exact_python_subset_and_reloads_native_ducklake[python-numerical-guarded-structure@2]
+1.04s setup    test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-structure@1-helper]
+1.03s setup    test/api/test_published_numerical.py::test_policy_drift_refuses_before_successor_writes[python-numerical-structure@1-receipt]
+1.02s call     test/api/test_published_numerical.py::test_regenerates_exact_python_subset_and_reloads_native_ducklake[python-numerical-structure@1]
+1.01s setup    test/api/test_published_numerical.py::test_regenerates_exact_python_subset_and_reloads_native_ducklake[python-numerical-control-structure@3]
+======================= 203 passed in 153.52s (0:02:33) ========================

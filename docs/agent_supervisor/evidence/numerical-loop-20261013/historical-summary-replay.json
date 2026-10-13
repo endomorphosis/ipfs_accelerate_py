@@ -1,0 +1,17 @@
+{
+  "baseline_commit": "a9bcde965ac8341719069975dc828c54376961a6",
+  "source": "import numpy as np\n\ndef choose(value):\n    assert np.isfinite(value), f'nonfinite: {value}'\n    return np.sqrt(value) if value > 0 else np.abs(value)\n",
+  "old_and_new_summary_bytes_identical": true,
+  "results": [
+    {
+      "profile": "python-numerical-structure@1",
+      "summary_sha256": "46aa10055716290998b1bd3dc0b2b68d9f12b7f37ab40448e6e9e0dc145d4db8",
+      "bytes": 2379
+    },
+    {
+      "profile": "python-numerical-guarded-structure@2",
+      "summary_sha256": "8ccc62143c3194ac6bc3d32cc6a5f35b41cb0c8dbfbb1da405ca81f92147956e",
+      "bytes": 7678
+    }
+  ]
+}

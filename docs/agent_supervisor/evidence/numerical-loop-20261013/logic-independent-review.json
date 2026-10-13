@@ -1,0 +1,1470 @@
+{
+  "authored_fixture_results": [
+    {
+      "control_regions": 1,
+      "fixture": "for_index",
+      "pending_obligations": 11,
+      "proof_phase_checks": 4,
+      "report_sha256": "62f78b1e4f7479e5ba86b33e87b3821d2b51fc490606a9852c0d0735c2017fd3",
+      "source_sha256": "fe32441039ed176ae2d5a804fb7571038d22f0fe97e76c7d33027d3596bf621b",
+      "structural_status": "translated"
+    },
+    {
+      "control_regions": 2,
+      "fixture": "nested_else_continue",
+      "pending_obligations": 17,
+      "proof_phase_checks": 8,
+      "report_sha256": "1fa45bed4d8f7f817c76d0d620d8e46addca83aad3ee1e6a4217b0291e5d2cd7",
+      "source_sha256": "3e3cef90f64f6c126ecde005a2e55be59603f9872ba3c8181230081386e80594",
+      "structural_status": "translated"
+    },
+    {
+      "control_regions": 2,
+      "fixture": "nested_else_break",
+      "pending_obligations": 17,
+      "proof_phase_checks": 8,
+      "report_sha256": "41cec7d9d62989a445c88d1293b6f70519ada4c3b01eedb2b694799b1c42ff1d",
+      "source_sha256": "e766f661684a114b8e844cba43d3a2536f461c39809ede8acee7cb20d346263b",
+      "structural_status": "translated"
+    },
+    {
+      "control_regions": 2,
+      "fixture": "nested_while_else_transfer",
+      "pending_obligations": 16,
+      "proof_phase_checks": 8,
+      "report_sha256": "3978c343df249990c622a7fb7b21b9fd5988e601fc1052ae41596727a6d42a6a",
+      "source_sha256": "6021e30fe58a569402ac8269f3a3c7b7c4481b0de57ea06603c40709e4fd75f2",
+      "structural_status": "translated"
+    },
+    {
+      "control_regions": 1,
+      "fixture": "for_body_and_else_return",
+      "pending_obligations": 10,
+      "proof_phase_checks": 4,
+      "report_sha256": "ce6a5c4e139080ff38305555d5157fc8fe8eae89f9bdec17a16b8c946395cb22",
+      "source_sha256": "fe97b64d949dd98932652f71e1d3a4cfaadc8b851532581a7e2a2bcf085abb42",
+      "structural_status": "translated"
+    },
+    {
+      "control_regions": 1,
+      "fixture": "while_body_and_else_return",
+      "pending_obligations": 9,
+      "proof_phase_checks": 4,
+      "report_sha256": "5527be65d0aaf5085823f8397dd135c1710891f88cf703c2d4c7107bf8b46e00",
+      "source_sha256": "02503e6c70d9a18629561fb9b00e2a997117d92cf0828b47e5c2c12a20e23535",
+      "structural_status": "translated"
+    },
+    {
+      "control_regions": 1,
+      "fixture": "guarded_message_in_repeated_body",
+      "pending_obligations": 18,
+      "proof_phase_checks": 4,
+      "report_sha256": "7ed578f9a31b4bdbe58892bc620ae1fcda61f38eab84b011ce489e2cb7e741bf",
+      "source_sha256": "58f871b86744fea2c51f62b2fd41f74f93a1035d94a1f244b73f68397524b088",
+      "structural_status": "translated"
+    },
+    {
+      "control_regions": 0,
+      "fixture": "try_cleanup_fence",
+      "pending_obligations": 0,
+      "proof_phase_checks": 0,
+      "report_sha256": "c94b10587d4d5d546c11f900d61fcfc55707834e1d4003075006c147133d39cd",
+      "source_sha256": "79fc20ebb6e3521589d419305ea54ad4a865b3d150eb2d0faab962423febf7a8",
+      "structural_status": "partial"
+    }
+  ],
+  "blockers": [],
+  "checks": [
+    {
+      "check": "for_index exact replay",
+      "passed": true
+    },
+    {
+      "check": "for_index no source or runtime authority",
+      "passed": true
+    },
+    {
+      "check": "for_index all obligation contexts source-bound pending",
+      "passed": true
+    },
+    {
+      "check": "for_index control-region:17 activation_entry independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "for_index loop_invariant_initialization source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "for_index control-region:17 normal_or_continue_backedge independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "for_index loop_invariant_preservation source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "for_index control-region:17 exit_cause_and_post_state independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "for_index loop_exit_reasoning source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "for_index control-region:17 whole_activation_progress independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "for_index loop_termination source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "for_index FOL typed metadata retains numerical-control:00d0ced75d0895ba2b1de0496b87ed67",
+      "passed": true
+    },
+    {
+      "check": "for_index FOL typed metadata retains numerical-control:9d0294b6f8ebeefdb0ca1dcaf4e74b4b",
+      "passed": true
+    },
+    {
+      "check": "for_index FOL typed metadata retains numerical-control:911e483cb3d05f81103fe4e579928857",
+      "passed": true
+    },
+    {
+      "check": "for_index FOL typed metadata retains numerical-control:9660ad660202469e4a4a84b2b4e8aa8a",
+      "passed": true
+    },
+    {
+      "check": "for_index FOL typed metadata retains numerical-control:9184c59cf30e1ed1f39ceacfffc3b059",
+      "passed": true
+    },
+    {
+      "check": "for_index FOL typed metadata retains numerical-control:d41b805da8366ff87be981c9f78c987a",
+      "passed": true
+    },
+    {
+      "check": "for_index FOL typed metadata retains numerical-control:5b608e1a930cafec17236d911b47a88c",
+      "passed": true
+    },
+    {
+      "check": "for_index FOL typed metadata retains numerical-control:eaa9010f7733d4bc51afeab122243907",
+      "passed": true
+    },
+    {
+      "check": "for_index FOL typed metadata retains numerical-control:a95f12dc91b7653d10b7db74e5da7e96",
+      "passed": true
+    },
+    {
+      "check": "for_index FOL typed metadata retains numerical-control:61f346553f7a062dbedd5cbcd725cc67",
+      "passed": true
+    },
+    {
+      "check": "for_index FOL typed metadata retains numerical-control:b5e6194b6d3fffc95dccb35d9280c681",
+      "passed": true
+    },
+    {
+      "check": "for_index SMT context retained numerical-control:00d0ced75d0895ba2b1de0496b87ed67",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean exact bytes and no holes",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean binding numerical-control:00d0ced75d0895ba2b1de0496b87ed67",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean binding numerical-control:9d0294b6f8ebeefdb0ca1dcaf4e74b4b",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean binding numerical-control:911e483cb3d05f81103fe4e579928857",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean binding numerical-control:9660ad660202469e4a4a84b2b4e8aa8a",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean binding numerical-control:9184c59cf30e1ed1f39ceacfffc3b059",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean binding numerical-control:d41b805da8366ff87be981c9f78c987a",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean binding numerical-control:5b608e1a930cafec17236d911b47a88c",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean binding numerical-control:eaa9010f7733d4bc51afeab122243907",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean binding numerical-control:a95f12dc91b7653d10b7db74e5da7e96",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean binding numerical-control:61f346553f7a062dbedd5cbcd725cc67",
+      "passed": true
+    },
+    {
+      "check": "for_index Lean binding numerical-control:b5e6194b6d3fffc95dccb35d9280c681",
+      "passed": true
+    },
+    {
+      "check": "retrieval preserves exact proof-phase row",
+      "passed": true
+    },
+    {
+      "check": "rehashing changed proof scope cannot pass source replay",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue exact replay",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue no source or runtime authority",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue all obligation contexts source-bound pending",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue control-region:19 activation_entry independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue loop_invariant_initialization source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue control-region:19 normal_or_continue_backedge independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue loop_invariant_preservation source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue control-region:19 exit_cause_and_post_state independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue loop_exit_reasoning source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue control-region:19 whole_activation_progress independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue loop_termination source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue control-region:61 activation_entry independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue loop_invariant_initialization source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue control-region:61 normal_or_continue_backedge independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue loop_invariant_preservation source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue control-region:61 exit_cause_and_post_state independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue loop_exit_reasoning source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue control-region:61 whole_activation_progress independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue loop_termination source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:f9edb1d5ea71211acd8875308c58e96e",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:a6f790f12f9fda0daafca84537498ad4",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:d1509243d818470a439d4704095e9c30",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:a2d4f01a74b39ec577a5976055aee7bf",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:3c1941594dc1c3f40f1422a3d28ffd3b",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:df6db7a8a693a72c472223e611fff8d4",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:03459ea7fb86c83622ad1f70d9fc1ee6",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:9717ea435821935a8278bcaf9e8b0f19",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:6638ecc0325695746b608ecfd6ace6ee",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:d87d2039f5d883d6df3edd44857fdc0b",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:e674171f885b96609414b0f8dbdb43be",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:c1adf1383dcc16009f059ea997485213",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:f60880dbb3698ff6f6212e6826947903",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:c998d5f3b7a1f227b51a523bc831a2fe",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:87a89d3b2ff38508fd8b3b27db530e7d",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:2b9e4f7239fa38032a08478caa28db3c",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue FOL typed metadata retains numerical-control:e00a40c8df99c072c01d24e91bc0e8f8",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean exact bytes and no holes",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:f9edb1d5ea71211acd8875308c58e96e",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:a6f790f12f9fda0daafca84537498ad4",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:d1509243d818470a439d4704095e9c30",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:a2d4f01a74b39ec577a5976055aee7bf",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:3c1941594dc1c3f40f1422a3d28ffd3b",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:df6db7a8a693a72c472223e611fff8d4",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:03459ea7fb86c83622ad1f70d9fc1ee6",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:9717ea435821935a8278bcaf9e8b0f19",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:6638ecc0325695746b608ecfd6ace6ee",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:d87d2039f5d883d6df3edd44857fdc0b",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:e674171f885b96609414b0f8dbdb43be",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:c1adf1383dcc16009f059ea997485213",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:f60880dbb3698ff6f6212e6826947903",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:c998d5f3b7a1f227b51a523bc831a2fe",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:87a89d3b2ff38508fd8b3b27db530e7d",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:2b9e4f7239fa38032a08478caa28db3c",
+      "passed": true
+    },
+    {
+      "check": "nested_else_continue Lean binding numerical-control:e00a40c8df99c072c01d24e91bc0e8f8",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break exact replay",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break no source or runtime authority",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break all obligation contexts source-bound pending",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break control-region:19 activation_entry independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break loop_invariant_initialization source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break control-region:19 normal_or_continue_backedge independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break loop_invariant_preservation source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break control-region:19 exit_cause_and_post_state independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break loop_exit_reasoning source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break control-region:19 whole_activation_progress independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break loop_termination source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break control-region:61 activation_entry independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break loop_invariant_initialization source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break control-region:61 normal_or_continue_backedge independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break loop_invariant_preservation source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break control-region:61 exit_cause_and_post_state independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break loop_exit_reasoning source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break control-region:61 whole_activation_progress independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break loop_termination source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:41cb83f9fd4f8a8523976ea0111944a1",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:747be3aab2861dc9bbca574995bd16a9",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:d48c5f7f16ffcf899ed4e133977ea134",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:b981109e73e06c2c9afd3c93b19a0bfb",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:1a05fc2c9e2fafbc216da0eedf120668",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:bced9b988d851cfdca1dddc03d8619b2",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:5d4eee1d9328d9973e727abacf9ebd3d",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:d273a1d11f647962f8bc87e34654a072",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:2d8c736a417e9a68fa736197cdcadd18",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:4f45fb2e8e70e52c5353fb6c24ad5ac5",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:fed6d14aa715246940397b34e662d7a3",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:c2dc4f4550a8a31d4750a71df718405d",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:8b4da431974d2e9a88164b5c5410b61d",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:f0eaed2146133b34b590d264543c4b41",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:b77f76285ad816f52a5907dae86d1b4a",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:6b72e4ad7054df3820d32662ea3550bd",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break FOL typed metadata retains numerical-control:3c0dd80e6757e68c5c0817b375cfb3e4",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean exact bytes and no holes",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:41cb83f9fd4f8a8523976ea0111944a1",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:747be3aab2861dc9bbca574995bd16a9",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:d48c5f7f16ffcf899ed4e133977ea134",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:b981109e73e06c2c9afd3c93b19a0bfb",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:1a05fc2c9e2fafbc216da0eedf120668",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:bced9b988d851cfdca1dddc03d8619b2",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:5d4eee1d9328d9973e727abacf9ebd3d",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:d273a1d11f647962f8bc87e34654a072",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:2d8c736a417e9a68fa736197cdcadd18",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:4f45fb2e8e70e52c5353fb6c24ad5ac5",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:fed6d14aa715246940397b34e662d7a3",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:c2dc4f4550a8a31d4750a71df718405d",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:8b4da431974d2e9a88164b5c5410b61d",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:f0eaed2146133b34b590d264543c4b41",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:b77f76285ad816f52a5907dae86d1b4a",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:6b72e4ad7054df3820d32662ea3550bd",
+      "passed": true
+    },
+    {
+      "check": "nested_else_break Lean binding numerical-control:3c0dd80e6757e68c5c0817b375cfb3e4",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer exact replay",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer no source or runtime authority",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer all obligation contexts source-bound pending",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer control-region:17 activation_entry independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer loop_invariant_initialization source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer control-region:17 normal_or_continue_backedge independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer loop_invariant_preservation source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer control-region:17 exit_cause_and_post_state independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer loop_exit_reasoning source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer control-region:17 whole_activation_progress independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer loop_termination source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer control-region:65 activation_entry independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer loop_invariant_initialization source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer control-region:65 normal_or_continue_backedge independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer loop_invariant_preservation source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer control-region:65 exit_cause_and_post_state independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer loop_exit_reasoning source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer control-region:65 whole_activation_progress independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer loop_termination source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:11e871b91e09527e6b7a8032694dad09",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:dc9929e8891110266ecf689456614ea7",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:41c3aeb9527c26e77939926408ff9cad",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:dc46e9243265bad85dd7c01b3b09a993",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:1142b70ac3ac00541ad3ae86e2dd1e05",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:6b33013d2503ae8611a920b4d01aa350",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:921adbbce33eed9ca542004c292d9c2a",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:318efd3bffa4b390d5cecee36c498b6f",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:3f0dc0a225fb6ea6264e8163f35ef82a",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:82e97d795d38b5110ed826186be2a45d",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:883ea27417d860418fc9cc22e4f67f6a",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:063a28a0f42015d6338dcb25436468b3",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:3158542e7a6eda9e642b0db9af4eab39",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:4003a2ffbaa34dc9dda6e9a6006d58bb",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:4dcc1dc3e1f867f19626aa50c0c29e86",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer FOL typed metadata retains numerical-control:69419557da7f24037660d2675b94243e",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean exact bytes and no holes",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:11e871b91e09527e6b7a8032694dad09",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:dc9929e8891110266ecf689456614ea7",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:41c3aeb9527c26e77939926408ff9cad",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:dc46e9243265bad85dd7c01b3b09a993",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:1142b70ac3ac00541ad3ae86e2dd1e05",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:6b33013d2503ae8611a920b4d01aa350",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:921adbbce33eed9ca542004c292d9c2a",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:318efd3bffa4b390d5cecee36c498b6f",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:3f0dc0a225fb6ea6264e8163f35ef82a",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:82e97d795d38b5110ed826186be2a45d",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:883ea27417d860418fc9cc22e4f67f6a",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:063a28a0f42015d6338dcb25436468b3",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:3158542e7a6eda9e642b0db9af4eab39",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:4003a2ffbaa34dc9dda6e9a6006d58bb",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:4dcc1dc3e1f867f19626aa50c0c29e86",
+      "passed": true
+    },
+    {
+      "check": "nested_while_else_transfer Lean binding numerical-control:69419557da7f24037660d2675b94243e",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return exact replay",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return no source or runtime authority",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return all obligation contexts source-bound pending",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return control-region:17 activation_entry independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return loop_invariant_initialization source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return control-region:17 normal_or_continue_backedge independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return loop_invariant_preservation source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return control-region:17 exit_cause_and_post_state independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return loop_exit_reasoning source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return control-region:17 whole_activation_progress independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return loop_termination source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return FOL typed metadata retains numerical-control:ae13ec8003587ce1502182ab504c4d10",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return FOL typed metadata retains numerical-control:6f43a2ff1d73ea7778531e69910bacf6",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return FOL typed metadata retains numerical-control:47fc3d8b759b58d4d7533e999eca934a",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return FOL typed metadata retains numerical-control:cd2928338fa1842cc0e44520d726d670",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return FOL typed metadata retains numerical-control:367e8aa21f1826364f61477cacd8b8af",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return FOL typed metadata retains numerical-control:52d46429dadab6132ac19a2936d9d5b1",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return FOL typed metadata retains numerical-control:f0b2b2c61013c444b7acceee567ae03e",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return FOL typed metadata retains numerical-control:75250cc39243b3a530a7a122424083b4",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return FOL typed metadata retains numerical-control:f278518b4d1229a7c16ef0e328edab54",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return FOL typed metadata retains numerical-control:8ca0ad9f772443f5a0606767077f8067",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return Lean exact bytes and no holes",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return Lean binding numerical-control:ae13ec8003587ce1502182ab504c4d10",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return Lean binding numerical-control:6f43a2ff1d73ea7778531e69910bacf6",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return Lean binding numerical-control:47fc3d8b759b58d4d7533e999eca934a",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return Lean binding numerical-control:cd2928338fa1842cc0e44520d726d670",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return Lean binding numerical-control:367e8aa21f1826364f61477cacd8b8af",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return Lean binding numerical-control:52d46429dadab6132ac19a2936d9d5b1",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return Lean binding numerical-control:f0b2b2c61013c444b7acceee567ae03e",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return Lean binding numerical-control:75250cc39243b3a530a7a122424083b4",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return Lean binding numerical-control:f278518b4d1229a7c16ef0e328edab54",
+      "passed": true
+    },
+    {
+      "check": "for_body_and_else_return Lean binding numerical-control:8ca0ad9f772443f5a0606767077f8067",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return exact replay",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return no source or runtime authority",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return all obligation contexts source-bound pending",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return control-region:17 activation_entry independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return loop_invariant_initialization source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return control-region:17 normal_or_continue_backedge independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return loop_invariant_preservation source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return control-region:17 exit_cause_and_post_state independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return loop_exit_reasoning source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return control-region:17 whole_activation_progress independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return loop_termination source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return FOL typed metadata retains numerical-control:1618ccbcfed6b85d9dc3ba82149544fe",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return FOL typed metadata retains numerical-control:5074bdc7d672726a5d8289907210b6e5",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return FOL typed metadata retains numerical-control:973def35b366fd0f792cab3f76566ba3",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return FOL typed metadata retains numerical-control:142141602a6ef5c2e47c93389913f0a5",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return FOL typed metadata retains numerical-control:6fd1ecbed6c537841b145df88234774d",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return FOL typed metadata retains numerical-control:3a576209af8a8bf10d8a66581f2f451e",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return FOL typed metadata retains numerical-control:118591dc66d807bf74b7c34cef25a5b0",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return FOL typed metadata retains numerical-control:9c7f6cd02a6998bb6a84dce1f3d405a5",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return FOL typed metadata retains numerical-control:c310a6a853751b288c2205807f0417b1",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return Lean exact bytes and no holes",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return Lean binding numerical-control:1618ccbcfed6b85d9dc3ba82149544fe",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return Lean binding numerical-control:5074bdc7d672726a5d8289907210b6e5",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return Lean binding numerical-control:973def35b366fd0f792cab3f76566ba3",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return Lean binding numerical-control:142141602a6ef5c2e47c93389913f0a5",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return Lean binding numerical-control:6fd1ecbed6c537841b145df88234774d",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return Lean binding numerical-control:3a576209af8a8bf10d8a66581f2f451e",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return Lean binding numerical-control:118591dc66d807bf74b7c34cef25a5b0",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return Lean binding numerical-control:9c7f6cd02a6998bb6a84dce1f3d405a5",
+      "passed": true
+    },
+    {
+      "check": "while_body_and_else_return Lean binding numerical-control:c310a6a853751b288c2205807f0417b1",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body exact replay",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body no source or runtime authority",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body all obligation contexts source-bound pending",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body control-region:23 activation_entry independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body loop_invariant_initialization source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body control-region:23 normal_or_continue_backedge independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body loop_invariant_preservation source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body control-region:23 exit_cause_and_post_state independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body loop_exit_reasoning source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body control-region:23 whole_activation_progress independently matches CFG/source span boundary",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body loop_termination source anchor is not proof applicability",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:7b3da09d203fb07e6f1ed5e9e5c7f39e",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:2fb849c4e8ac8897c97e3208aba16ae6",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:9581d1a3008d9c221fe6f294d8a48a83",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:a762712d3aa0fbe7f5a089ea445b3549",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:3afd1dbbedb885f749cf3e72a589ee67",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:72af71753977c8153a208ca584178bc9",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:0a8f79ba5ed99859b155cd82e9e05c37",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:3661a30bae6822797db76924fe7ba412",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:71aeabcc639130bfb858104d847854f5",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:4f93136ee0ac0eea2aea7f69ea5e4bdc",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:27d2f9dc7305a8b68919f17943e9fb1e",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:7b9d7ddc952109726853152ce6335f72",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:003e85a0ad733a323a13ea77d4abc27a",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:831ba6ad32e7ee23eaaea19a13f0f576",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:fb580e3062ed423629be6e2ecdd2eb76",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:b60b0c01feb97450a4293c1cd8a95078",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:2af6262e931404bd630b27dc811d095a",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body FOL typed metadata retains numerical-control:39f4f09cbcee2eea4229de32f00d9526",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body SMT context retained numerical-control:9581d1a3008d9c221fe6f294d8a48a83",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean exact bytes and no holes",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:7b3da09d203fb07e6f1ed5e9e5c7f39e",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:2fb849c4e8ac8897c97e3208aba16ae6",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:9581d1a3008d9c221fe6f294d8a48a83",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:a762712d3aa0fbe7f5a089ea445b3549",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:3afd1dbbedb885f749cf3e72a589ee67",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:72af71753977c8153a208ca584178bc9",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:0a8f79ba5ed99859b155cd82e9e05c37",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:3661a30bae6822797db76924fe7ba412",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:71aeabcc639130bfb858104d847854f5",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:4f93136ee0ac0eea2aea7f69ea5e4bdc",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:27d2f9dc7305a8b68919f17943e9fb1e",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:7b9d7ddc952109726853152ce6335f72",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:003e85a0ad733a323a13ea77d4abc27a",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:831ba6ad32e7ee23eaaea19a13f0f576",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:fb580e3062ed423629be6e2ecdd2eb76",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:b60b0c01feb97450a4293c1cd8a95078",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:2af6262e931404bd630b27dc811d095a",
+      "passed": true
+    },
+    {
+      "check": "guarded_message_in_repeated_body Lean binding numerical-control:39f4f09cbcee2eea4229de32f00d9526",
+      "passed": true
+    },
+    {
+      "check": "try_cleanup_fence exact replay",
+      "passed": true
+    },
+    {
+      "check": "try_cleanup_fence no source or runtime authority",
+      "passed": true
+    },
+    {
+      "check": "try_cleanup_fence all obligation contexts source-bound pending",
+      "passed": true
+    },
+    {
+      "check": "structured checkpoint implementation pins unchanged",
+      "passed": true
+    },
+    {
+      "check": "frozen old producer ipfs_datasets_py.logic.software_verification.numerical_logic",
+      "passed": true
+    },
+    {
+      "check": "frozen old producer ipfs_datasets_py.logic.software_verification.numerical_logic_v2",
+      "passed": true
+    },
+    {
+      "check": "frozen old producer ipfs_datasets_py.logic.software_verification.numerical_source",
+      "passed": true
+    },
+    {
+      "check": "frozen old producer ipfs_datasets_py.logic.software_verification.numerical_source_v2",
+      "passed": true
+    },
+    {
+      "check": "frozen old producer ipfs_datasets_py.logic.software_verification.program",
+      "passed": true
+    },
+    {
+      "check": "python-numerical-structure@1 eigen.py exact frozen canonical report",
+      "passed": true
+    },
+    {
+      "check": "python-numerical-structure@1 eval.py exact frozen canonical report",
+      "passed": true
+    },
+    {
+      "check": "python-numerical-guarded-structure@2 eigen.py exact frozen canonical report",
+      "passed": true
+    },
+    {
+      "check": "python-numerical-guarded-structure@2 eval.py exact frozen canonical report",
+      "passed": true
+    },
+    {
+      "check": "public four functions complete but eval module fenced",
+      "passed": true
+    },
+    {
+      "check": "public two existing compound patterns retained",
+      "passed": true
+    },
+    {
+      "check": "reviewed production and test source pins stable throughout",
+      "passed": true
+    }
+  ],
+  "checks_passed": 324,
+  "limitations": [
+    "No iteration count, reachability, invariant, termination, source-to-library interpretation or runtime truthiness was established.",
+    "SMT formulas and Lean declarations retain unresolved interpretations; compilation is not numerical proof discharge.",
+    "Temporal/transition-system/TLA+ semantics remain explicitly unsupported rather than inferred from CFG syntax.",
+    "Straight-line compound matcher sees only independently checked unique normal/return paths; native CFG and exception edges remain unchanged in reports.",
+    "Module assignments/conditional execution and unreviewed cleanup/async/complex For targets remain fences."
+  ],
+  "provider_calls": 0,
+  "public_source_replay": [
+    {
+      "compound_contracts": 1,
+      "functions": [
+        {
+          "function_id": "function:2",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        }
+      ],
+      "module_diagnostics": [],
+      "module_status": "translated",
+      "path": "eigen.py",
+      "pending_obligations": 16,
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "compound_contracts": 1,
+      "functions": [
+        {
+          "function_id": "function:6",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "ref_solution",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        },
+        {
+          "function_id": "function:102",
+          "name_truncated": false,
+          "pending_obligation_count": 23,
+          "qualified_name": "test_eigen_pair",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        },
+        {
+          "function_id": "function:344",
+          "name_truncated": false,
+          "pending_obligation_count": 50,
+          "qualified_name": "test_speedup",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        }
+      ],
+      "module_diagnostics": [
+        "python.module.Assign",
+        "python.module.Assign",
+        "python.module.If"
+      ],
+      "module_status": "partial",
+      "path": "eval.py",
+      "pending_obligations": 89,
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "qualified_scope": "No production edit, benchmark execution, training, model call or new Lake build. Eight authored Python strings were parsed as data; symbolic contexts and exact report replay were checked.",
+  "resolved_findings": [
+    {
+      "finding": "Inner-loop proof boundary could accidentally absorb an outer control target if derived by reachability.",
+      "resolution": "Frozen helper uses lexical region ownership; independent exact source-span/CFG derivation agrees for break/continue from inner else, body/else returns and repeated tests."
+    },
+    {
+      "finding": "Extracted TypedExpression metadata initially omitted the outer FOL control/proof sidecar.",
+      "resolution": "Frozen projection reconstructs the shared TypedExpression with complete source-anchor and proof-applicability metadata; independent round-trip checks passed."
+    }
+  ],
+  "reviewer_overlap": "Reviewer authored numerical_source_v3; reviewed numerical_logic_v3 and dispatch implementation were written by a separate agent.",
+  "schema": "numerical-control-logic-independent-review@1",
+  "solver_calls": 0,
+  "source_executed": false,
+  "source_obligations_discharged": 0,
+  "source_sha256": {
+    "ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "9f1158487e65dbb95ecb6edd27ebc001c510004e4fbf862caee0180d9753fa07",
+    "ipfs_datasets_py/logic/software_verification/numerical_logic_v3.py": "fb2cf7a2ae7050bb03e57db643b7617c94ee2b415750b279bfdbd175a276200b",
+    "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py": "7822e0878a75e44924bfb55522f6d2ad16e742d7e67ee4c985e4b358a683d9e0",
+    "ipfs_datasets_py/logic/software_verification/numerical_source_v3.py": "49deaa1dd0c6692c0dd691219e7c1fdcf54b1cbbde9524013c9e962220c15b33",
+    "tests/unit/logic/software_verification/test_numerical_logic_v3.py": "f3a316d4f2b47d0556ff91ebb0924c1fcf90c9036fb86ac098466b66149c945c"
+  },
+  "status": "passed"
+}
