@@ -86,8 +86,11 @@ calls, still require their own shared host integration.
 existing batch scheduler. The real endpoint `UsageCoordinator` is the quota owner;
 its CAS reservation, dispatch marker, and commit form one physical lifecycle.
 Reservation checks current capacity inside the coordinator's atomic transaction;
-admission does not use a separately sampled snapshot as authorization or a clock-
-sensitive precondition.
+admission does not use a timestamped observation as a clock-sensitive precondition.
+With `require_hard_limits=True`, it first checks configured finite hard request,
+input-token and output-token limits, then passes that view's stable admission
+revision into the reservation transaction. Concurrent changes refuse that attempt
+before dispatch; the queue retries through the existing bounded backoff.
 The three retained ASI167 tests now exercise this successor against a real ledger.
 
 Configure the adapter with a trusted provider-to-scope supplier, an aggregate token
@@ -131,6 +134,7 @@ admission = PhysicalBatchUsageAdmission(
     scope_supplier=trusted_scope_for_provider,
     max_batch_tokens=32_768,
     reservation_ttl_ms=120_000,
+    require_hard_limits=True,
     host_admission=host,
 )
 scheduler = ProviderBatchScheduler(dispatch_one_provider_batch, admission=admission)
@@ -138,8 +142,10 @@ scheduler = ProviderBatchScheduler(dispatch_one_provider_batch, admission=admiss
 
 The Leanstral router may dispatch multiple remote calls for one local batch, and
 the router can already have its own usage admission. Consequently the factory
-enables shared **host** admission but does not automatically install this aggregate
-usage adapter. Select exactly one usage owner at the actual physical call boundary.
+enables shared **host** admission and rejects this aggregate usage adapter. Its
+generic dispatcher is also marked as potentially making multiple calls, so a
+consumer binding cannot accidentally qualify it as one physical request. Select
+exactly one usage owner at the actual physical call boundary.
 Gateway migration retains the supplied gateway and replay state, invokes one owner,
 and requires an injected coordinator with acknowledged reservation operations for
 enforcement. Enforcement without an execution callback is refused before reserving
@@ -169,8 +175,9 @@ document identity, and the coordinator's partition configuration. It changes aft
 any committed mutation, including budget changes, completed usage, administrative
 changes, compaction, and other scopes' writes. Clock-only reads leave it unchanged.
 Whole-ledger invalidation is intentionally conservative and may require replanning
-after unrelated writes; the physical batch adapter continues to use current-state
-CAS admission without speculative pins.
+after unrelated writes. The physical batch adapter's hard-limit mode retries with
+a fresh checked configuration through its pre-dispatch queue backoff; already
+dispatched work is never retried by that mechanism.
 
 Pass the revision explicitly as `reserve(expected_admission_revision=...)`.
 The coordinator checks it inside every CAS attempt, then checks capacity against
@@ -283,10 +290,6 @@ child-process timeout grace in that check. A binding cannot be combined with an
 injected custom generator/router that would bypass its default execution path.
 Quota ownership also cannot be nested through router usage controls.
 
-Task proposals, rescue planning, and shared Leanstral goal-development batches
-retain their existing integration paths. A batch scheduler that already uses
-`PhysicalBatchUsageAdmission` remains the physical quota owner; wrapping each
-logical subscriber in this direct-call gateway would count shared calls twice.
 This binding adds quota admission, not host-resource reservation or kernel
 containment. Existing resource admission remains independently necessary.
 
@@ -303,6 +306,79 @@ failure was reproduced on the unchanged base commit. The benchmark completed
 12 authored calls (six prompt, six proof) in 3,067 ms, settled exactly 12 requests,
 318 estimated input tokens and 384 declared output tokens, refused the next call
 after quota exhaustion, and left zero usage holds.
+
+## Batch consumer attribution
+
+`runtime/batch_provider_usage.py` provides `BatchProviderUsageBinding` for task
+proposal routing, structured planning, rescue planning and shared Leanstral goal
+development. The physical scheduler remains the sole quota owner. Bound consumers
+submit directly to it and retain an observational reference to the settled charge;
+they do not reserve again through the direct-call gateway.
+
+```python
+binding = BatchProviderUsageBinding(
+    scheduler=scheduler, admission=admission, scope=endpoint_scope,
+    provider_id=provider, model=model, fence=writer_fence,
+    route="task-proposal-router", operation="task_implementation_proposal.v1",
+    single_physical_request=True,
+)
+config = dataclasses.replace(task_proposal_config, batch_usage_binding=binding)
+```
+
+Use the exact route and operation for each consumer and set the physical adapter's
+`require_hard_limits=True`. The single-request declaration is trusted deployment
+configuration: it cannot certify an arbitrary callback's internals. The callback
+must enforce its timeout, fixed provider/model, per-member output limits and single
+physical request contract. No retry, route fallback or second quota owner belongs
+inside that callback. A separately supplied scheduler must be the binding's owner;
+custom scalar generators or routers cannot bypass an explicit binding.
+Create the binding before that provider's first scheduler submission. It pins the
+provider's dispatch callback for the scheduler lifetime, preventing queued work
+from switching to a newly registered callback. Reusing the same pinned callback
+is allowed; other providers retain their independent registration.
+
+An explicit binding enforces quota even when the legacy environment mode is `off`.
+It requires an established scope and explicit fence. Input ceilings cover at least
+the prompt's UTF-8 bytes; these are accounting estimates, not tokenizer counts.
+Task/rescue timeouts include their child-process grace. Different output ceilings
+partition these consumers' batch keys, preventing a batch-wide larger output limit
+from widening a smaller member's reservation. Existing host admission still needs
+to be composed into the physical adapter.
+
+Validation first checks the result against the exact scheduler's bounded native
+receipt history, including immutable input, subscriber identity and output digest.
+It then checks the physical reference against one authoritative ledger read. Scope,
+fence, member, settlement or correction/refund drift refuses successful output.
+Late duplicate subscribers can reference the representative's charge even if the
+representative cancels. Cancellation or expiry before physical settlement can
+leave usage `not_observed`; it does not imply a refund. Valid native evidence whose
+owner or settlement can no longer be confirmed is retained as
+`reconciliation_required`, without counting it as confirmed usage.
+
+Retrieve an attribution with `binding.attribution_for(result.request_id)` (rescue
+also exposes `batch_usage_attribution`). `summarize_batch_usage(attributions)`
+deduplicates both logical replays and shared physical reservation identities.
+Its locally issued content identity rejects altered copies. Serialized projections
+are observational and cannot authorize execution or establish receipt issuance.
+Summaries describe validated historical observations, not current quota balances;
+later refunds/corrections require fresh validation. Attribution and native receipt
+histories are bounded, so eviction requires reconciliation. Completed groups are
+not a free result cache: submitting the same work later requires a new admission.
+
+Run the bounded qualification with
+`python -m benchmarks.agent_supervisor.batch_provider_consumers --requests 12 --output /tmp/batch-consumers.json`.
+It uses authored task-provider callbacks, an isolated durable ledger, two caller
+threads and one active physical batch. A live host preflight reserves the benchmark
+envelope before work. The report separates logical requests, physical calls and
+estimated units; it does not measure live provider billing or Terminal Bench success.
+
+The 2026-10-13 campaign passed 312 distinct relevant tests. Its final local run
+completed the bounded workload in 976 ms. Twelve logical
+requests shared six physical calls and 882 estimated total tokens. Replaying their
+attributions left those totals unchanged. A later completed-work resubmission
+created a seventh charge, bringing settlement to 917 input and 112 output tokens.
+Exhausted quota produced two reservation attempts and no further callback; no
+usage holds, batches or queued requests remained.
 
 The bounded usage benchmark runs with
 `python -m benchmarks.agent_supervisor.provider_batch_usage --requests 32 --output /tmp/provider-usage.json`.

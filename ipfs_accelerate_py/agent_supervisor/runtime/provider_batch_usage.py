@@ -12,6 +12,7 @@ subscriber deadlines alone do not terminate a callback or renew its reservation.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import threading
 import time
@@ -19,12 +20,16 @@ import uuid
 from collections import OrderedDict
 from typing import Any, Callable, Mapping, Sequence
 
+from ipfs_accelerate_py.endpoint_usage.admission import UsageAdmissionSnapshot
 from ipfs_accelerate_py.endpoint_usage.coordinator import SettlementResult, UsageCoordinator
 from ipfs_accelerate_py.endpoint_usage.identity import is_pseudonym
 from ipfs_accelerate_py.endpoint_usage.schema import (
+    LimitEnforcement,
     QuantityKind,
     ReservationState,
     UsageDimension,
+    UsageEvent,
+    UsageEventKind,
     UsageReservation,
     UsageVector,
 )
@@ -161,6 +166,7 @@ class _PhysicalReservation:
                 state="dispatched",
                 dispatched_member_count=len(selected),
                 dispatched_request_digests=[_digest(item.request_id) for item in selected],
+                dispatched_execution_fingerprints=[item.execution_fingerprint for item in selected],
             )
 
     def _settle(self, raw: Any, error: BaseException | None) -> None:
@@ -257,6 +263,11 @@ class PhysicalBatchUsageAdmission:
     prevents accidental unbounded requests; configured coordinator limits remain
     authoritative across schedulers sharing its store.
 
+    ``require_hard_limits`` requires finite configured hard request/input/output
+    limits. Their paired stored-state pin is checked inside reserve's CAS; an
+    intervening write defers admission before dispatch. The default preserves
+    the original coordinator policy for existing standalone integrations.
+
     ``usage_extractor`` is a trusted adapter returning complete finite input,
     output, and total token counts for the entire physical response, including
     shared overhead. Raw responses are never retained in usage receipts.
@@ -275,6 +286,7 @@ class PhysicalBatchUsageAdmission:
         host_admission: ProviderAdmission | None = None,
         shared_overhead_tokens: int = 0,
         usage_extractor: UsageExtractor | None = None,
+        require_hard_limits: bool = False,
         owner_id: str = "supervisor-physical-batch",
         retry_initial_ms: int = 100,
         retry_max_ms: int = 1_000,
@@ -287,6 +299,8 @@ class PhysicalBatchUsageAdmission:
             raise TypeError("scope_supplier must be trusted callable configuration")
         if usage_extractor is not None and not callable(usage_extractor):
             raise TypeError("usage_extractor must be callable")
+        if type(require_hard_limits) is not bool:
+            raise TypeError("require_hard_limits must be a boolean")
         if not isinstance(owner_id, str) or not owner_id.strip() or len(owner_id.encode("utf-8")) > 128:
             raise ValueError("owner_id must be bounded nonempty text")
         self.coordinator = coordinator
@@ -297,6 +311,7 @@ class PhysicalBatchUsageAdmission:
         self.shared_overhead_tokens = _integer(shared_overhead_tokens, "shared_overhead_tokens", minimum=0)
         self.host_admission = host_admission
         self.usage_extractor = usage_extractor
+        self.require_hard_limits = require_hard_limits
         self.owner_id = owner_id
         self.retry_initial_ms = _integer(retry_initial_ms, "retry_initial_ms")
         self.retry_max_ms = _integer(retry_max_ms, "retry_max_ms")
@@ -327,6 +342,154 @@ class PhysicalBatchUsageAdmission:
     def _clear_backoff(self, scope: str) -> None:
         with self._backoff_lock:
             self._backoff.pop(scope, None)
+
+    def validate_receipt(
+        self, receipt: Mapping[str, Any], *, request: ProviderBatchRequest,
+    ) -> dict[str, Any]:
+        """Check a physical reference against one authoritative ledger read.
+
+        This check alone cannot authenticate issued member fingerprints: the
+        ledger does not store those fingerprints. Callers must first validate
+        native result issuance through the exact scheduler whose ``admission``
+        is this owner. Provenance and serialized receipts cannot substitute.
+        Failure settlement can be referenced but never makes a failed member
+        successful. No reservation, settlement, or observation is written here.
+        """
+        try:
+            return self._validate_receipt(receipt, request=request)
+        except PhysicalBatchUsageError:
+            raise
+        except Exception as exc:
+            raise PhysicalBatchUsageError("physical receipt validation failed") from exc
+
+    def _validate_receipt(
+        self, receipt: Mapping[str, Any], *, request: ProviderBatchRequest,
+    ) -> dict[str, Any]:
+        if not isinstance(receipt, Mapping) or not isinstance(request, ProviderBatchRequest):
+            raise PhysicalBatchUsageError("physical receipt and batch request are required")
+        if not isinstance(request.payload, str):
+            raise PhysicalBatchUsageError("physical receipt validation requires immutable text input")
+        required = {
+            "requirement_id", "reservation_id", "scope_digest", "physical_call_id",
+            "state", "settlement_basis", "requested", "reserved_member_count",
+            "reserved_request_digests", "shared_overhead_tokens", "usage_revision",
+            "batch_key_digest", "reserved_execution_fingerprints", "dispatched_member_count",
+            "dispatched_request_digests", "dispatched_execution_fingerprints", "settled", "event_id",
+        }
+        if set(receipt) != required:
+            raise PhysicalBatchUsageError("physical receipt fields are missing or unknown")
+        result = copy.deepcopy(dict(receipt))
+        scope = self.scope_supplier(request.provider_id)
+        if (not isinstance(scope, str) or not is_pseudonym(scope)
+                or request.usage_scope_id != scope or result["scope_digest"] != _digest(scope)
+                or result["batch_key_digest"] != request.batch_key.digest
+                or result["requirement_id"] != self.requirement_id):
+            raise PhysicalBatchUsageError("physical receipt belongs to another scope or batch")
+        if result["state"] != ReservationState.COMMITTED.value or result["settlement_basis"] not in {
+            "estimated_ceiling", "provider_reported", "conservative_live_ceiling",
+            "conservative_reserved_ceiling",
+        }:
+            raise PhysicalBatchUsageError("physical receipt is not a confirmed settlement")
+        counts: dict[str, int] = {}
+        for name in ("reserved", "dispatched"):
+            count = _integer(result[f"{name}_member_count"], f"{name}_member_count")
+            counts[name] = count
+            for suffix in ("request_digests", "execution_fingerprints"):
+                values = result[f"{name}_{suffix}"]
+                if (not isinstance(values, list) or len(values) != count
+                        or any(not isinstance(value, str) or len(value) != 64
+                               or any(char not in "0123456789abcdef" for char in value) for value in values)
+                        or len(set(values)) != len(values)):
+                    raise PhysicalBatchUsageError("physical receipt has malformed member identities")
+        reserved_members = dict(zip(
+            result["reserved_execution_fingerprints"], result["reserved_request_digests"],
+        ))
+        if (any(reserved_members.get(fingerprint) != digest for fingerprint, digest in zip(
+                result["dispatched_execution_fingerprints"], result["dispatched_request_digests"]))
+                or request.execution_fingerprint not in result["dispatched_execution_fingerprints"]):
+            raise PhysicalBatchUsageError("logical work is not a dispatched physical member")
+        overhead = _integer(result["shared_overhead_tokens"], "shared_overhead_tokens", minimum=0)
+        if overhead != self.shared_overhead_tokens:
+            raise PhysicalBatchUsageError("physical overhead differs from configured owner")
+
+        def amounts(value: Any) -> dict[str, int]:
+            vector = UsageVector.from_dict(value)
+            if any(item.amount.kind is not QuantityKind.FINITE for item in vector.entries):
+                raise PhysicalBatchUsageError("physical receipt units must be finite")
+            return {item.dimension.value: int(item.amount) for item in vector.entries}
+
+        requested = amounts(result["requested"])
+        settled = amounts(result["settled"])
+        dimensions = {"requests", "batch_items", "input_tokens", "output_tokens", "total_tokens"}
+        if (set(requested) != dimensions | {"concurrent_requests"}
+                or set(settled) != dimensions or requested["requests"] != 1
+                or requested["concurrent_requests"] != 1 or settled["requests"] != 1
+                or requested["batch_items"] != counts["reserved"]
+                or settled["batch_items"] != counts["dispatched"]
+                or requested["total_tokens"] != requested["input_tokens"] + requested["output_tokens"]
+                or settled["total_tokens"] != settled["input_tokens"] + settled["output_tokens"]
+                or requested["input_tokens"] != request.context_limit * counts["reserved"] + overhead
+                or requested["output_tokens"] < request.token_budget):
+            raise PhysicalBatchUsageError("physical receipt quantities contradict its members")
+        if result["settlement_basis"] in {"estimated_ceiling", "conservative_live_ceiling"} and (
+            settled["input_tokens"] != request.context_limit * counts["dispatched"] + overhead
+            or not request.token_budget <= settled["output_tokens"] <= requested["output_tokens"]
+        ):
+            raise PhysicalBatchUsageError("physical estimated settlement differs from live ceilings")
+        reservation_id, event_id = result["reservation_id"], result["event_id"]
+        physical_id = result["physical_call_id"]
+        if (not isinstance(reservation_id, str) or not reservation_id
+                or not isinstance(event_id, str) or not event_id
+                or not isinstance(physical_id, str) or not physical_id):
+            raise PhysicalBatchUsageError("physical receipt has no settlement identities")
+        configured_fence = getattr(self.coordinator, "_fence", None)
+        if type(configured_fence) is not int or configured_fence < 1:
+            raise PhysicalBatchUsageError("physical receipt validation requires an explicitly fenced owner")
+        document = self.coordinator.store.read()
+        record = document.get("reservations", {}).get(reservation_id)
+        if (not isinstance(record, Mapping) or document.get("fence") != configured_fence
+                or record.get("fence") != configured_fence or record.get("owner_id") != self.owner_id
+                or record.get("scope_id") != scope or record.get("reservation_id") != reservation_id
+                or record.get("request_id") != physical_id or record.get("idempotency_key") != physical_id
+                or record.get("attempt_id") != "1" or record.get("dispatched") is not True
+                or record.get("state") != ReservationState.COMMITTED.value
+                or record.get("terminal_event_id") != event_id
+                or record.get("reserved_amounts") != requested
+                or record.get("charged_amounts") != settled
+                or record.get("committed_amounts") != settled
+                or record.get("reset_at") is not None):
+            raise PhysicalBatchUsageError("physical receipt contradicts its authoritative reservation")
+        reservation = UsageReservation.from_dict(record["reservation"])
+        if (reservation.reservation_id != reservation_id or reservation.scope_id != scope
+                or reservation.state is not ReservationState.COMMITTED
+                or amounts(reservation.reserved.to_dict()) != requested):
+            raise PhysicalBatchUsageError("physical reservation identity is inconsistent")
+        if event_id in (document.get("corrections") or {}):
+            raise PhysicalBatchUsageError("physical settlement has been corrected")
+        matching_events = []
+        for event in document.get("events") or []:
+            if (event.get("reservation_id") == reservation_id
+                    and event.get("kind") in {UsageEventKind.REFUND.value, UsageEventKind.CORRECTION.value}):
+                raise PhysicalBatchUsageError("physical settlement has a refund or correction")
+            if event.get("event_id") == event_id:
+                matching_events.append(event)
+        if matching_events:
+            if len(matching_events) != 1:
+                raise PhysicalBatchUsageError("physical terminal event is ambiguous")
+            event = UsageEvent.from_dict(matching_events[0])
+            if (event.kind is not UsageEventKind.COMMIT or event.scope_id != scope
+                    or event.reservation_id != reservation_id or amounts(event.units.to_dict()) != settled):
+                raise PhysicalBatchUsageError("physical terminal event contradicts settlement")
+        else:
+            # Compaction preserves terminal reservation material in its checkpoint.
+            checkpoint = document.get("checkpoint") or {}
+            checkpoint_record = (checkpoint.get("reservations") or {}).get(reservation_id)
+            if (not document.get("compacted_through") or not isinstance(checkpoint_record, Mapping)
+                    or checkpoint_record.get("terminal_event_id") != event_id
+                    or checkpoint_record.get("state") != ReservationState.COMMITTED.value
+                    or checkpoint_record.get("charged_amounts") != settled):
+                raise PhysicalBatchUsageError("physical terminal event is not retained or checkpointed")
+        return result
 
     def __call__(
         self,
@@ -369,10 +532,35 @@ class PhysicalBatchUsageAdmission:
         # deliberately remembers denied idempotency decisions as well as grants.
         physical_id = f"physical-batch-usage:{uuid.uuid4().hex}"
         try:
+            reserve_options: dict[str, Any] = {}
+            if self.require_hard_limits:
+                view = self.coordinator.admission_snapshot(scope)
+                configured_fence = getattr(self.coordinator, "_fence", None)
+                if (not isinstance(view, UsageAdmissionSnapshot) or view.scope_id != scope
+                        or type(configured_fence) is not int or configured_fence <= 0
+                        or view.fence != configured_fence):
+                    host.release_once()
+                    return ProviderBatchAdmissionGrant(
+                        False, reason="usage_admission_owner_mismatch", retryable=False,
+                    )
+                configured = {
+                    limit.dimension for limit in view.snapshot.limits
+                    if limit.scope_id == scope and limit.enforcement is LimitEnforcement.HARD
+                    and limit.ceiling.kind is QuantityKind.FINITE
+                }
+                if not {
+                    UsageDimension.REQUESTS, UsageDimension.INPUT_TOKENS, UsageDimension.OUTPUT_TOKENS,
+                }.issubset(configured):
+                    host.release_once()
+                    return ProviderBatchAdmissionGrant(
+                        False, reason="usage_hard_limits_required", retryable=False,
+                    )
+                reserve_options["expected_admission_revision"] = view.admission_revision
             # Snapshot identities include observation time. Comparing a prior
             # snapshot to one rebuilt at reserve time would reject every real
             # advancing clock. Reserve evaluates current limits inside its CAS;
-            # no externally observed snapshot authorizes this admission.
+            # the optional stable pin binds required limit configuration, never
+            # authorizes from an externally observed headroom value.
             decision = self.coordinator.reserve(
                 scope,
                 requested,
@@ -380,6 +568,7 @@ class PhysicalBatchUsageAdmission:
                 idempotency_key=physical_id,
                 owner_id=self.owner_id,
                 ttl_ms=self.reservation_ttl_ms,
+                **reserve_options,
             )
         except Exception:
             self._defer(scope)
@@ -406,6 +595,8 @@ class PhysicalBatchUsageAdmission:
             "requested": requested.to_dict(),
             "reserved_member_count": len(selected),
             "reserved_request_digests": [_digest(item.request_id) for item in selected],
+            "batch_key_digest": key.digest,
+            "reserved_execution_fingerprints": [item.execution_fingerprint for item in selected],
             "shared_overhead_tokens": self.shared_overhead_tokens,
             "usage_revision": decision.usage_revision,
         }

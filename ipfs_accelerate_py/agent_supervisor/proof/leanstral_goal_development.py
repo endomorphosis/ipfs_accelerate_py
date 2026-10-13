@@ -28,7 +28,10 @@ import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from ..runtime.batch_provider_usage import BatchProviderUsageBinding
 
 from .formal_verification_contracts import (
     AssuranceLevel,
@@ -1416,8 +1419,23 @@ class LeanstralGoalDevelopmentProvider:
         *,
         llm_generate: LLMGenerate | None = None,
         batch_scheduler: ProviderBatchScheduler | None = None,
+        batch_usage_binding: BatchProviderUsageBinding | None = None,
     ) -> None:
         self.config = config or LeanstralGoalDevelopmentProviderConfig()
+        if batch_usage_binding is not None:
+            from ..runtime.batch_provider_usage import BatchProviderUsageBinding
+
+            if not isinstance(batch_usage_binding, BatchProviderUsageBinding):
+                raise ContractValidationError("batch_usage_binding must be BatchProviderUsageBinding")
+            if llm_generate is not None:
+                raise ContractValidationError("batch_usage_binding cannot use a custom generator")
+            if batch_scheduler is not None and batch_scheduler is not batch_usage_binding.scheduler:
+                raise ContractValidationError("batch_usage_binding cannot use a different scheduler")
+            batch_scheduler = batch_usage_binding.scheduler
+            if (batch_usage_binding.provider_id != self.config.llm_provider
+                    or batch_usage_binding.model != self.config.model):
+                raise ContractValidationError("batch_usage_binding must match the configured provider and model")
+        self.batch_usage_binding = batch_usage_binding
         if llm_generate is not None and not callable(llm_generate):
             raise ContractValidationError("llm_generate must be callable")
         if batch_scheduler is not None and not isinstance(batch_scheduler, ProviderBatchScheduler):
@@ -1621,48 +1639,70 @@ class LeanstralGoalDevelopmentProvider:
         scheduler = self._batch_scheduler
         if scheduler is None:  # pragma: no cover - guarded by the caller
             raise RuntimeError("shared provider scheduler is not configured")
+        if self.batch_usage_binding is not None:
+            if scheduler is not self.batch_usage_binding.scheduler:
+                raise ContractValidationError("batch_usage_binding cannot use a different scheduler")
+            if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                    or not math.isfinite(float(timeout)) or timeout <= 0):
+                raise ContractValidationError("batch_usage_binding requires a positive finite timeout")
+            if type(token_budget) is not int or token_budget <= 0:
+                raise ContractValidationError("batch_usage_binding requires a positive output bound")
         member_id = f"leanstral-goal:{invocation.request.request_id}:{uuid.uuid4().hex}"
 
         def _execute() -> ProviderBatchResult:
-            return scheduler.execute(
-                ProviderBatchRequest(
-                    request_id=member_id,
-                    payload=prompt,
-                    provider_id=self.config.llm_provider,
-                    route=LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID,
-                    model=self.config.model,
-                    operation=LEANSTRAL_GOAL_DEVELOPMENT_OPERATION,
-                    context_limit=self.config.max_context_tokens,
-                    policy={
-                        "operation_schema": LEANSTRAL_GOAL_DEVELOPMENT_REQUEST_SCHEMA,
-                        "output_schema": LEANSTRAL_GOAL_DEVELOPMENT_OUTPUT_SCHEMA,
-                        "policy_digest": invocation.policy.policy_digest,
-                        "network_allowed": invocation.network_allowed,
-                        "network_access_required": (self.config.network_access_required),
-                        "provider_version": self.provider_version,
-                    },
-                    generation_settings={
-                        "allow_local_fallback": False,
-                        "disable_model_retry": True,
-                        "temperature": self.config.temperature,
-                        "mistral_vibe_agent": self.config.vibe_agent,
-                    },
-                    token_budget=token_budget,
-                    timeout_ms=max(1, int(math.ceil(timeout * 1_000))),
-                    provenance={
-                        "logical_request_id": invocation.request.request_id,
-                        "root_goal_id": invocation.request.root_goal_id,
-                        "repository_tree_id": (invocation.request.repository_tree_id),
-                        "policy_digest": invocation.policy.policy_digest,
-                        "resource_budget": invocation.resource_budget.to_dict(),
-                        "provider_id": self.provider_id,
-                        "provider_version": self.provider_version,
-                        "operation": self.operation,
-                    },
-                    cancellation_token=cancellation,
-                )
+            request = ProviderBatchRequest(
+                request_id=member_id,
+                payload=prompt,
+                provider_id=self.config.llm_provider,
+                route=LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID,
+                model=self.config.model,
+                operation=LEANSTRAL_GOAL_DEVELOPMENT_OPERATION,
+                context_limit=(
+                    max(self.config.max_context_tokens, len(prompt.encode("utf-8")))
+                    if self.batch_usage_binding is not None else self.config.max_context_tokens
+                ),
+                policy={
+                    "operation_schema": LEANSTRAL_GOAL_DEVELOPMENT_REQUEST_SCHEMA,
+                    "output_schema": LEANSTRAL_GOAL_DEVELOPMENT_OUTPUT_SCHEMA,
+                    "policy_digest": invocation.policy.policy_digest,
+                    "network_allowed": invocation.network_allowed,
+                    "network_access_required": (self.config.network_access_required),
+                    "provider_version": self.provider_version,
+                },
+                generation_settings={
+                    "allow_local_fallback": False,
+                    "disable_model_retry": True,
+                    "temperature": self.config.temperature,
+                    "mistral_vibe_agent": self.config.vibe_agent,
+                    **({
+                        "allow_cross_provider_fallback": False,
+                        "max_new_tokens": token_budget,
+                    } if self.batch_usage_binding is not None else {}),
+                },
+                token_budget=token_budget,
+                timeout_ms=max(1, int(math.ceil(timeout * 1_000))),
+                provenance={
+                    "logical_request_id": invocation.request.request_id,
+                    "root_goal_id": invocation.request.root_goal_id,
+                    "repository_tree_id": (invocation.request.repository_tree_id),
+                    "policy_digest": invocation.policy.policy_digest,
+                    "resource_budget": invocation.resource_budget.to_dict(),
+                    "provider_id": self.provider_id,
+                    "provider_version": self.provider_version,
+                    "operation": self.operation,
+                },
+                cancellation_token=cancellation,
             )
+            if self.batch_usage_binding is not None:
+                from ..runtime.provider_usage_migration import ConsumerId
 
+                return self.batch_usage_binding.execute(
+                    request, consumer_id=ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT,
+                )
+            return scheduler.execute(request)
+
+        if self.batch_usage_binding is not None:
+            return _execute()
         mode_raw = (
             str(os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")).strip().casefold()
         )
@@ -2189,6 +2229,9 @@ def build_leanstral_goal_development_batch_dispatch(
             )
         return tuple(generate(prompt, **kwargs) for prompt in prompts)
 
+    # This generic adapter can fan out into scalar router calls. A caller's
+    # physical-ownership declaration cannot turn that into one quota charge.
+    setattr(dispatch, "_provider_batch_may_fan_out", True)
     return dispatch
 
 
@@ -2213,6 +2256,13 @@ def create_leanstral_goal_development_batch_scheduler(
     """
 
     resolved = config or LeanstralGoalDevelopmentProviderConfig()
+    if admission is not None:
+        from ..runtime.provider_batch_usage import PhysicalBatchUsageAdmission
+
+        if isinstance(admission, PhysicalBatchUsageAdmission):
+            raise ContractValidationError(
+                "generic Leanstral batch dispatch may fan out and cannot use one physical usage reservation"
+            )
     router_max_workers = None
     if type(host_admission_enabled) is not bool:
         raise ContractValidationError("host_admission_enabled must be a boolean")
@@ -2247,11 +2297,13 @@ def create_leanstral_goal_development_provider(
     *,
     llm_generate: LLMGenerate | None = None,
     batch_scheduler: ProviderBatchScheduler | None = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
 ) -> LeanstralGoalDevelopmentProvider:
     return LeanstralGoalDevelopmentProvider(
         config,
         llm_generate=llm_generate,
         batch_scheduler=batch_scheduler,
+        batch_usage_binding=batch_usage_binding,
     )
 
 

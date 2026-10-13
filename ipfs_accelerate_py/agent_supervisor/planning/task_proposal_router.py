@@ -19,7 +19,10 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Sequence
+
+if TYPE_CHECKING:
+    from ..runtime.batch_provider_usage import BatchProviderUsageBinding
 
 from ..context.context_compiler import (
     ContextCompileResult,
@@ -218,6 +221,9 @@ class TaskProposalRouterConfig:
     repository_context: RepositoryPlanningContext | None = field(
         default=None, repr=False, compare=False,
     )
+    batch_usage_binding: BatchProviderUsageBinding | None = field(
+        default=None, repr=False, compare=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -296,6 +302,9 @@ class TaskProposalRouteSpec:
     default_model: str = "gpt-5.3-codex-spark"
     default_max_new_tokens: int = 2048
     default_timeout_seconds: int = 300
+    batch_usage_binding: BatchProviderUsageBinding | None = field(
+        default=None, repr=False, compare=False,
+    )
 
 
 def _repo_path(repo_root: Path, path: Path | str) -> Path:
@@ -455,6 +464,7 @@ def build_task_proposal_router_cli_config(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
     decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
@@ -485,6 +495,7 @@ def build_task_proposal_router_cli_config(
             provider_max_input_tokens=provider_max_input_tokens,
             context_tokenizer=context_tokenizer,
             provider_batch_scheduler=provider_batch_scheduler,
+            batch_usage_binding=batch_usage_binding,
             decision_runtime=decision_runtime,
         ),
         description=description,
@@ -526,6 +537,7 @@ def run_configured_task_proposal_router_cli(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -558,6 +570,7 @@ def run_configured_task_proposal_router_cli(
             provider_max_input_tokens=provider_max_input_tokens,
             context_tokenizer=context_tokenizer,
             provider_batch_scheduler=provider_batch_scheduler,
+            batch_usage_binding=batch_usage_binding,
             provider_env=provider_env,
             model_env=model_env,
             default_model=default_model,
@@ -604,6 +617,7 @@ def build_configured_task_proposal_router_runner(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
     decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
@@ -637,6 +651,7 @@ def build_configured_task_proposal_router_runner(
             provider_max_input_tokens=provider_max_input_tokens,
             context_tokenizer=context_tokenizer,
             provider_batch_scheduler=provider_batch_scheduler,
+            batch_usage_binding=batch_usage_binding,
             decision_runtime=decision_runtime,
             provider_env=provider_env,
             model_env=model_env,
@@ -675,6 +690,7 @@ def build_repo_task_proposal_router_runner(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
     decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
@@ -719,6 +735,7 @@ def build_repo_task_proposal_router_runner(
         provider_max_input_tokens=provider_max_input_tokens,
         context_tokenizer=context_tokenizer,
         provider_batch_scheduler=provider_batch_scheduler,
+        batch_usage_binding=batch_usage_binding,
         decision_runtime=decision_runtime,
         provider_env=provider_env,
         model_env=model_env,
@@ -764,6 +781,7 @@ def build_repo_task_proposal_route_runner(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
     decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
@@ -830,6 +848,7 @@ def build_repo_task_proposal_route_runner(
         provider_max_input_tokens=provider_max_input_tokens,
         context_tokenizer=context_tokenizer,
         provider_batch_scheduler=provider_batch_scheduler,
+        batch_usage_binding=batch_usage_binding,
         decision_runtime=decision_runtime,
         provider_env=provider_env,
         model_env=model_env,
@@ -882,6 +901,7 @@ def build_repo_task_proposal_route_runner_from_spec(
         provider_max_input_tokens=route_spec.provider_max_input_tokens,
         context_tokenizer=route_spec.context_tokenizer,
         provider_batch_scheduler=route_spec.provider_batch_scheduler,
+        batch_usage_binding=route_spec.batch_usage_binding,
         decision_runtime=route_spec.decision_runtime,
         provider_env=route_spec.provider_env,
         model_env=route_spec.model_env,
@@ -1395,6 +1415,19 @@ def build_task_implementation_proposal_contract(
     )
 
 
+def _bound_batch_scheduler(
+    binding: BatchProviderUsageBinding,
+    scheduler: ProviderBatchScheduler | None,
+) -> ProviderBatchScheduler:
+    from ..runtime.batch_provider_usage import BatchProviderUsageBinding
+
+    if not isinstance(binding, BatchProviderUsageBinding):
+        raise ValueError("batch_usage_binding must be BatchProviderUsageBinding")
+    if scheduler is not None and scheduler is not binding.scheduler:
+        raise ValueError("batch_usage_binding cannot use a different scheduler")
+    return binding.scheduler
+
+
 def _call_text_provider(
     prompt: str,
     invocation: Any,
@@ -1407,6 +1440,7 @@ def _call_text_provider(
     provenance: Mapping[str, Any] | None = None,
     usage_consumer_id: str = "task_proposal_router",
     usage_migrate: bool = True,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
 ) -> tuple[str, ProviderBatchResult | None]:
     """Dispatch text directly or through the shared admitted provider stream.
 
@@ -1421,40 +1455,82 @@ def _call_text_provider(
 
     provider_id = str(invocation.provider or "llm_router:auto")
     provenance_map = dict(provenance or {})
+    bound_consumer = None
+    if batch_usage_binding is not None:
+        from ..runtime.provider_usage_migration import ConsumerId
+
+        scheduler = _bound_batch_scheduler(batch_usage_binding, scheduler)
+        if (invocation.allow_local_fallback
+                or getattr(invocation, "allow_cross_provider_fallback", None) is True):
+            raise ValueError("batch_usage_binding requires provider fallback to be disabled")
+        bound_consumer = ConsumerId(str(
+            provenance_map.get("usage_consumer_id") or usage_consumer_id
+        ))
+        for name, value in (
+            ("context_limit", context_limit),
+            ("max_new_tokens", invocation.max_new_tokens),
+            ("timeout_seconds", invocation.timeout_seconds),
+        ):
+            if type(value) is not int or value <= 0:
+                raise ValueError(f"batch_usage_binding requires a positive integer {name}")
+        grace = getattr(invocation, "timeout_grace_seconds", 0)
+        if type(grace) is not int or grace < 0:
+            raise ValueError("batch_usage_binding requires a nonnegative timeout grace")
 
     def _legacy_dispatch() -> tuple[str, ProviderBatchResult | None]:
         if scheduler is None:
             return call_llm_router(prompt, invocation), None
         prompt_bytes = prompt.encode("utf-8", errors="surrogatepass")
-        result = scheduler.execute(
-            ProviderBatchRequest(
-                request_id=f"{route}:{uuid.uuid4().hex}",
-                payload=prompt,
-                provider_id=provider_id,
-                route=route,
-                model=str(invocation.model_name),
-                operation=operation,
-                context_limit=max(0, int(context_limit)),
-                policy={
-                    "allow_local_fallback": bool(invocation.allow_local_fallback),
-                    "reject_effective_provider_name": (invocation.reject_effective_provider_name),
-                    "required_effective_providers": tuple(invocation.required_effective_providers),
-                    "response_contract": response_contract,
-                },
-                generation_settings={
-                    "temperature": float(invocation.temperature),
-                    "backend": str(invocation.backend_default),
-                },
-                token_budget=max(0, int(invocation.max_new_tokens)),
-                timeout_ms=max(1, int(invocation.timeout_seconds) * 1_000),
-                provenance={
-                    **provenance_map,
-                    "route": route,
-                    "response_contract": response_contract,
-                    "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
-                    "prompt_bytes": len(prompt_bytes),
-                },
-            )
+        request = ProviderBatchRequest(
+            request_id=f"{route}:{uuid.uuid4().hex}",
+            payload=prompt,
+            provider_id=provider_id,
+            route=route,
+            model=str(invocation.model_name),
+            operation=operation,
+            # This conservative accounting ceiling does not relax the
+            # caller's independently checked prompt/context policy.
+            context_limit=(
+                max(int(context_limit), len(prompt_bytes))
+                if batch_usage_binding is not None else max(0, int(context_limit))
+            ),
+            policy={
+                "allow_local_fallback": bool(invocation.allow_local_fallback),
+                "reject_effective_provider_name": (invocation.reject_effective_provider_name),
+                "required_effective_providers": (
+                    (provider_id,) if batch_usage_binding is not None
+                    else tuple(invocation.required_effective_providers)
+                ),
+                "response_contract": response_contract,
+                **({"allow_cross_provider_fallback": False} if batch_usage_binding is not None else {}),
+            },
+            generation_settings={
+                "temperature": float(invocation.temperature),
+                "backend": str(invocation.backend_default),
+                **({
+                    "allow_local_fallback": False,
+                    "allow_cross_provider_fallback": False,
+                    "disable_model_retry": True,
+                    "max_new_tokens": int(invocation.max_new_tokens),
+                } if batch_usage_binding is not None else {}),
+            },
+            token_budget=max(0, int(invocation.max_new_tokens)),
+            timeout_ms=max(1, (
+                int(invocation.timeout_seconds)
+                + (int(getattr(invocation, "timeout_grace_seconds", 0))
+                   if batch_usage_binding is not None else 0)
+            ) * 1_000),
+            provenance={
+                **provenance_map,
+                "route": route,
+                "response_contract": response_contract,
+                "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
+                "prompt_bytes": len(prompt_bytes),
+            },
+        )
+        result = (
+            batch_usage_binding.execute(request, consumer_id=bound_consumer)
+            if batch_usage_binding is not None else scheduler.execute(request)
         )
         if not result.successful:
             raise TaskProposalRouterError(
@@ -1469,6 +1545,8 @@ def _call_text_provider(
             )
         return result.output, result
 
+    if batch_usage_binding is not None:
+        return _legacy_dispatch()
     mode_raw = (
         str(os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")).strip().casefold()
     )
@@ -1692,6 +1770,7 @@ def run_task_proposal_router(
                 prompt,
                 invocation,
                 scheduler=config.provider_batch_scheduler,
+                batch_usage_binding=config.batch_usage_binding,
                 route="task-proposal-router",
                 operation="task_implementation_proposal.v1",
                 context_limit=compiled_context.receipt.effective_input_limit,
@@ -1895,8 +1974,15 @@ class StructuredPlanRouterConfig:
     )
     decision_runtime: Any = field(default=None, repr=False, compare=False)
     cancellation: Any = field(default=None, repr=False, compare=False)
+    batch_usage_binding: BatchProviderUsageBinding | None = field(
+        default=None, repr=False, compare=False,
+    )
 
     def __post_init__(self) -> None:
+        if self.batch_usage_binding is not None:
+            _bound_batch_scheduler(self.batch_usage_binding, self.provider_batch_scheduler)
+            if self.allow_local_fallback:
+                raise ValueError("batch_usage_binding requires local fallback to be disabled")
         if int(self.branch_count) < 1:
             raise ValueError("branch_count must be at least 1")
         if int(self.max_new_tokens) < 1:
@@ -2570,6 +2656,7 @@ def _default_structured_router(
         prompt,
         invocation,
         scheduler=config.provider_batch_scheduler,
+        batch_usage_binding=config.batch_usage_binding,
         route=route,
         operation=operation,
         context_limit=min(context_limits),
@@ -2595,6 +2682,8 @@ def generate_structured_plan_branches(
     """Generate validated branches, falling back without blocking ready work."""
 
     resolved_config = config or StructuredPlanRouterConfig()
+    if resolved_config.batch_usage_binding is not None and router is not None:
+        raise ValueError("batch_usage_binding cannot be combined with a custom router")
     count = int(branch_count if branch_count is not None else resolved_config.branch_count)
     if count < 1:
         raise ValueError("branch_count must be at least 1")
@@ -2774,6 +2863,8 @@ def generate_analysis_proposals(
 
     limits = AnalysisEscalationPolicy.from_value(policy)
     resolved = config or StructuredPlanRouterConfig()
+    if resolved.batch_usage_binding is not None and router is not None:
+        raise ValueError("batch_usage_binding cannot be combined with a custom router")
     desired = min(resolved.branch_count, max(1, limits.max_novel_proposals))
     prompt = build_analysis_proposal_prompt(
         context,

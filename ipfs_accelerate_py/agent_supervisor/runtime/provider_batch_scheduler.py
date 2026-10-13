@@ -725,6 +725,7 @@ class ProviderBatchMemberEvidence:
     provenance_digest: str
     result_digest: str
     singleflight_shared: bool = False
+    execution_fingerprint: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -736,6 +737,7 @@ class ProviderBatchMemberEvidence:
             "provenance_digest": self.provenance_digest,
             "result_digest": self.result_digest,
             "singleflight_shared": self.singleflight_shared,
+            **({"execution_fingerprint": self.execution_fingerprint} if self.execution_fingerprint else {}),
         }
 
 
@@ -1193,6 +1195,7 @@ class ProviderBatchScheduler:
         self.config = config or ProviderBatchSchedulerConfig()
         self._default_dispatch = dispatch
         self._providers = dict(providers or {})
+        self._pinned_dispatches: dict[str, ProviderBatchDispatch] = {}
         self._capacity_supplier = capacity_supplier
         self._admission = admission
         self._fallback = fallback
@@ -1249,6 +1252,48 @@ class ProviderBatchScheduler:
     def __enter__(self) -> "ProviderBatchScheduler":
         return self
 
+    @property
+    def admission(self) -> ProviderAdmission | None:
+        """The configured owner; callers may inspect but cannot replace it."""
+        return self._admission
+
+    def dispatch_callback_for(self, provider_id: str) -> ProviderBatchDispatch:
+        """Return the currently configured callback for this exact provider.
+
+        This is an observational lookup; it neither registers a callback nor
+        promises that another thread cannot subsequently change registration.
+        """
+        with self._condition:
+            return self._resolve_dispatch(provider_id)
+
+    def pin_dispatch_callback(self, provider_id: str, dispatch: ProviderBatchDispatch) -> None:
+        """Permanently bind one provider to its configured callable before use.
+
+        Repeating the same pin is harmless. First pins refuse queued/running
+        subscribers or previous physical calls, so configuration cannot change
+        the execution contract of work already admitted by this scheduler.
+        Other providers and the default callback retain their existing policy.
+        """
+        provider = str(provider_id).strip()
+        if not provider or not callable(dispatch):
+            raise ValueError("provider id and callable dispatch are required")
+        with self._condition:
+            if self._closed:
+                raise RuntimeError("provider batch scheduler is closed")
+            if self._resolve_dispatch(provider) is not dispatch:
+                raise ValueError("provider dispatch differs from the callback being pinned")
+            pinned = self._pinned_dispatches.get(provider)
+            if pinned is not None:
+                if pinned is not dispatch:
+                    raise ValueError("provider dispatch is already pinned to another callback")
+                return
+            if (any(subscriber.request.provider_id == provider
+                    for subscriber in self._request_subscribers.values())
+                    or self._active_by_provider.get(provider, 0) > 0
+                    or self._provider_calls_by_id.get(provider, 0) > 0):
+                raise ValueError("provider dispatch must be pinned before queued or physical work")
+            self._pinned_dispatches[provider] = dispatch
+
     def __exit__(self, *_args: Any) -> None:
         self.shutdown(wait=True)
 
@@ -1259,6 +1304,9 @@ class ProviderBatchScheduler:
         with self._condition:
             if self._closed:
                 raise RuntimeError("provider batch scheduler is closed")
+            pinned = self._pinned_dispatches.get(provider)
+            if pinned is not None and pinned is not dispatch:
+                raise ValueError("provider dispatch is permanently pinned to another callback")
             self._providers[provider] = dispatch
 
     def submit(
@@ -1413,6 +1461,53 @@ class ProviderBatchScheduler:
     def evidence_receipts(self) -> tuple[ProviderBatchEvidenceReceipt, ...]:
         with self._condition:
             return tuple(self._receipts)
+
+    def validate_result_receipt(
+        self, request: ProviderBatchRequest, result: ProviderBatchResult,
+    ) -> ProviderBatchEvidenceReceipt:
+        """Validate a text result against this scheduler's native history.
+
+        Serialized receipts, provenance claims, and hashes supplied by the
+        caller do not establish issuance. History is bounded: evicted receipts
+        require reconciliation, never a fresh provider call. This method only
+        validates evidence; it neither authorizes work nor creates a charge.
+        """
+        if not isinstance(request, ProviderBatchRequest) or not isinstance(request.payload, str):
+            raise ValueError("receipt validation requires an immutable text batch request")
+        if not isinstance(result, ProviderBatchResult):
+            raise ValueError("receipt validation requires a native batch result")
+        with self._condition:
+            receipt = next((
+                item for item in self._receipts if item.evidence_id == result.receipt_id
+            ), None)
+            if (receipt is None or receipt._producer_seal is not _PROVIDER_BATCH_RECEIPT_SEAL
+                    or receipt.schema != PROVIDER_BATCH_RECEIPT_SCHEMA
+                    or receipt.content_digest != _digest(receipt._unsigned_dict())):
+                raise ValueError("result has no intact native receipt in this scheduler history")
+            if (result.request_id != request.request_id or result.provider_id != request.provider_id
+                    or receipt.provider_id != request.provider_id or receipt.batch_id != result.batch_id
+                    or receipt.compatibility_digest != request.batch_key.digest):
+                raise ValueError("result receipt belongs to another provider, batch, or request")
+            matches = tuple(item for item in receipt.members if item.request_id == request.request_id)
+            if len(matches) != 1:
+                raise ValueError("result receipt does not identify exactly one logical subscriber")
+            member = matches[0]
+            if (member.execution_fingerprint != request.execution_fingerprint
+                    or member.execution_id != result.execution_id or not member.execution_id
+                    or member.status is not result.status
+                    or type(result.token_budget) is not int or type(result.timeout_ms) is not int
+                    or member.token_budget != result.token_budget or result.token_budget != request.token_budget
+                    or member.timeout_ms != result.timeout_ms or result.timeout_ms != request.timeout_ms
+                    or type(result.singleflight_shared) is not bool
+                    or member.singleflight_shared != result.singleflight_shared
+                    or member.provenance_digest != _digest(request.provenance)
+                    or member.provenance_digest != _digest(result.provenance)
+                    or member.result_digest != _digest({
+                        "status": result.status.value, "output": result.output,
+                        "error": result.error, "physical_usage": _canonical(result.physical_usage),
+                    })):
+                raise ValueError("result or request differs from its issued logical member evidence")
+            return receipt
 
     def partial_cancellation_evidence(
         self,
@@ -1759,7 +1854,9 @@ class ProviderBatchScheduler:
         return False
 
     def _resolve_dispatch(self, provider_id: str) -> ProviderBatchDispatch:
-        dispatch = self._providers.get(provider_id, self._default_dispatch)
+        dispatch = self._pinned_dispatches.get(
+            provider_id, self._providers.get(provider_id, self._default_dispatch),
+        )
         if dispatch is None:
             raise RuntimeError(f"no dispatch registered for provider {provider_id}")
         return dispatch
@@ -1992,12 +2089,14 @@ class ProviderBatchScheduler:
                 )
         receipt = self._build_receipt(batch_id, key, result_entries, call_started, completed_at_ms)
         with self._condition:
+            # Inline Future callbacks may validate immediately on delivery.
+            # Publish the native receipt before completing any member Future.
+            self._receipts.append(receipt)
             for subscriber, result in result_entries:
                 self._set_member_result(subscriber, replace(result, receipt_id=receipt.evidence_id))
             for group in groups:
                 self._running_fingerprints.discard(group.fingerprint)
                 group.completed = True
-            self._receipts.append(receipt)
             self._record_overlap_receipt(
                 batch_id=batch_id,
                 provider_id=key.provider_id,
@@ -2071,6 +2170,7 @@ class ProviderBatchScheduler:
                     }
                 ),
                 singleflight_shared=result.singleflight_shared,
+                execution_fingerprint=subscriber.request.execution_fingerprint,
             )
             for subscriber, result in entries
         )
