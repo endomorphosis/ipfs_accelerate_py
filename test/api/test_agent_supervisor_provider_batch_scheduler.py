@@ -764,118 +764,88 @@ def test_structured_planning_route_uses_shared_singleflight_and_provenance(
 # ---------------------------------------------------------------------------
 
 
+def _atomic_usage_admission(*, overhead=0):
+    from ipfs_accelerate_py.endpoint_usage.coordinator import UsageCoordinator
+    from ipfs_accelerate_py.endpoint_usage.store import InMemoryUsageLedgerStore, FakeClock
+    from ipfs_accelerate_py.endpoint_usage.schema import (
+        UsageDimension, UsageLimit, Quantity, LimitWindow, WindowKind,
+        LimitEnforcement, Provenance, LimitSource,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.provider_batch_usage import PhysicalBatchUsageAdmission
+    owner = UsageCoordinator(InMemoryUsageLedgerStore(clock=FakeClock()))
+    scope = "scope_" + "a" * 64
+    limits = []
+    for name, amount in (("concurrent_requests", 1), ("requests", 100),
+                         ("batch_items", 100), ("input_tokens", 100_000),
+                         ("output_tokens", 100_000), ("total_tokens", 100_000)):
+        limits.append(UsageLimit(scope_id=scope, dimension=UsageDimension(name),
+            ceiling=Quantity.finite(amount), remaining=Quantity.finite(amount),
+            used=Quantity.finite(0), enforcement=LimitEnforcement.HARD,
+            window=LimitWindow(kind=WindowKind.CONCURRENT if name == "concurrent_requests" else WindowKind.LIFETIME),
+            provenance=Provenance(source=LimitSource.CONFIGURED)))
+    owner.configure_limits(scope, limits)
+    return owner, scope, PhysicalBatchUsageAdmission(owner,
+        scope_supplier=lambda _provider: scope, max_batch_tokens=100_000,
+        reservation_ttl_ms=60_000, shared_overhead_tokens=overhead)
+
+
 def test_asi167_batch_requirement_and_symbols_installed() -> None:
-    # The domain-layout cutover removed the old flat source file.  Exercise the
-    # same module/classes used by dispatch, rather than creating a second copy
-    # of the scheduler under a synthetic import name.
+    # Retired snapshot-only wrappers did not reserve quota. The successor uses
+    # the canonical batch queue and the actual atomic endpoint coordinator.
+    from ipfs_accelerate_py.agent_supervisor.runtime.provider_batch_usage import (
+        PhysicalBatchUsageAdmission, PHYSICAL_BATCH_USAGE_REQUIREMENT_ID,
+    )
     assert runtime_pbs.ProviderBatchScheduler is ProviderBatchScheduler
-    assert runtime_pbs.ENDPOINT_USAGE_BATCH_ADMISSION_REQUIREMENT_ID.startswith("requirement:")
-    assert runtime_pbs.PHYSICAL_BATCH_RESERVE_ONCE_REQUIREMENT_ID.startswith("requirement:")
-    assert hasattr(runtime_pbs, "reserve_physical_batch")
-    assert hasattr(runtime_pbs, "UsageAwareProviderBatchScheduler")
+    assert PhysicalBatchUsageAdmission.requirement_id == PHYSICAL_BATCH_USAGE_REQUIREMENT_ID
+    with pytest.raises(TypeError, match="real UsageCoordinator"):
+        PhysicalBatchUsageAdmission(None, scope_supplier=lambda _: "scope_batch_atomic",
+            max_batch_tokens=1000, reservation_ttl_ms=60_000)
 
 
 def test_asi167_physical_batch_member_cancel_does_not_charge_sibling() -> None:
-    mod = runtime_pbs
-    requests = [
-        _request("left", "a", token_budget=100),
-        _request("right", "b", token_budget=250),
-    ]
-    snapshot = {
-        "scope_id": "scope:batch",
-        "usage_revision": "rev",
-        "state": "available",
-        "headroom": [
-            {
-                "dimension": "total_tokens",
-                "available": {"kind": "finite", "value": 10_000},
-                "ceiling": {"kind": "finite", "value": 10_000},
-                "reserved": {"kind": "finite", "value": 0},
-                "state": "available",
-            },
-            {
-                "dimension": "concurrent_requests",
-                "available": {"kind": "finite", "value": 2},
-                "ceiling": {"kind": "finite", "value": 2},
-                "reserved": {"kind": "finite", "value": 0},
-                "state": "available",
-            },
-        ],
-        "reservations": [],
-        "reason_codes": [],
-    }
-    reservation, grant = mod.reserve_physical_batch(
-        requests,
-        provider_id="provider-a",
-        snapshot=snapshot,
-        mode=mod.UsageAdmissionMode.ENFORCE,
-        shared_overhead_tokens=40,
-        base_capacity=ProviderBatchCapacity(
-            provider_id="provider-a",
-            healthy=True,
-            max_batch_size=8,
-            max_concurrent_batches=2,
-            available_concurrent_batches=2,
-            token_budget_remaining=10_000,
-        ),
-    )
-    assert grant.admitted is True and reservation is not None
-    assert reservation.settle_shared_overhead_once() == 40
-    assert reservation.settle_shared_overhead_once() == 0
-    reservation.cancel_member("left")
-    assert reservation.member_attributions["left"].charged is False
-    assert reservation.member_attributions["right"].charged is True
-    assert reservation.total_charged_tokens() == 250 + 40
+    from ipfs_accelerate_py.endpoint_usage.schema import UsageVector, UsageDimension
+    from ipfs_accelerate_py.agent_supervisor.runtime.provider_batch_usage import PhysicalBatchUsageError
+    owner, scope, admission = _atomic_usage_admission(overhead=40)
+    left = _request("left", "a", context_limit=32, token_budget=100, usage_scope_id=scope)
+    right = _request("right", "b", context_limit=32, token_budget=250, usage_scope_id=scope)
+    grant = admission(left.batch_key, (left, right), ProviderBatchCapacity("provider-a"))
+    assert grant.admitted
+    # Cancellation pruning removes left BEFORE dispatch. Its reserved tokens
+    # are released; shared overhead is accounted once in the remaining call.
+    grant.before_dispatch((right,))
+    grant.after_dispatch((right,), ("ok",), None)
+    settled = UsageVector.from_dict(grant.usage_receipt["settled"])
+    assert int(settled.get(UsageDimension.INPUT_TOKENS).amount) == 32 + 40
+    assert int(settled.get(UsageDimension.OUTPUT_TOKENS).amount) == 250
+    assert int(settled.get(UsageDimension.TOTAL_TOKENS).amount) == 322
+    assert int(settled.get(UsageDimension.REQUESTS).amount) == 1
+    with pytest.raises(PhysicalBatchUsageError):
+        grant.after_dispatch((right,), ("ok",), None)
+    grant.release_once()
+    grant.release_once()
+    assert grant.usage_receipt["reserved_member_count"] == 2
+    assert grant.usage_receipt["dispatched_member_count"] == 1
 
 
 def test_asi167_usage_aware_batch_scheduler_enforce_capacity_supplier() -> None:
-    mod = runtime_pbs
-    calls: list[tuple[str, ...]] = []
-
-    def dispatch(requests: object) -> list[str]:
-        members = tuple(requests)  # type: ignore[arg-type]
-        calls.append(tuple(item.request_id for item in members))
-        return [f"ok:{item.request_id}" for item in members]
-
-    def snapshot_supplier(_provider_id: str) -> dict[str, object]:
-        return {
-            "scope_id": "scope:live",
-            "usage_revision": "rev",
-            "state": "available",
-            "headroom": [
-                {
-                    "dimension": "concurrent_requests",
-                    "available": {"kind": "finite", "value": 1},
-                    "ceiling": {"kind": "finite", "value": 1},
-                    "reserved": {"kind": "finite", "value": 0},
-                    "state": "available",
-                },
-                {
-                    "dimension": "total_tokens",
-                    "available": {"kind": "finite", "value": 50_000},
-                    "ceiling": {"kind": "finite", "value": 50_000},
-                    "reserved": {"kind": "finite", "value": 0},
-                    "state": "available",
-                },
-            ],
-            "reservations": [],
-            "reason_codes": [],
-        }
-
-    with mod.UsageAwareProviderBatchScheduler(
-        dispatch,
-        config=_config(batch_window_ms=10, max_parallel_batches=1),
-        usage_mode=mod.UsageAdmissionMode.ENFORCE,
-        usage_snapshot_supplier=snapshot_supplier,
-        shared_overhead_tokens=10,
-    ) as scheduler:
-        futures = [
-            scheduler.submit(_request("u1", "a", token_budget=100)),
-            scheduler.submit(_request("u2", "b", token_budget=100)),
-        ]
+    from ipfs_accelerate_py.endpoint_usage.schema import UsageVector, UsageDimension
+    _owner, scope, admission = _atomic_usage_admission(overhead=10)
+    calls = []
+    def dispatch(requests):
+        calls.append(tuple(item.request_id for item in requests))
+        return ["ok:" + item.request_id for item in requests]
+    with ProviderBatchScheduler(dispatch, admission=admission,
+            config=_config(batch_window_ms=20, max_parallel_batches=1)) as scheduler:
+        futures = [scheduler.submit(_request(identity, identity, token_budget=100, usage_scope_id=scope))
+                   for identity in ("u1", "u2")]
         results = [future.result(timeout=3) for future in futures]
     assert all(result.status is ProviderBatchStatus.SUCCEEDED for result in results)
-    assert calls  # at least one physical dispatch
+    assert calls == [("u1", "u2")]
+    assert len({result.physical_usage["reservation_id"] for result in results}) == 1
+    units = UsageVector.from_dict(results[0].physical_usage["settled"])
+    assert int(units.get(UsageDimension.REQUESTS).amount) == 1
+    assert int(units.get(UsageDimension.BATCH_ITEMS).amount) == 2
+    assert int(units.get(UsageDimension.TOTAL_TOKENS).amount) == 2 * (8192 + 100) + 10
 
 
 def test_provider_batch_rejects_unsealed_work_and_exposes_timeouts() -> None:

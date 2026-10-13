@@ -55,16 +55,129 @@ The stress phase injects pressure telemetry instead of placing artificial load o
 the machine. Its local preflight does not reserve capacity across independent
 processes.
 
-This repair qualifies the adapter when installed by a consumer. It does not enable
-the optional adapter in every provider consumer. Limits are admission estimates and
-child-limit contracts: runners must enforce those limits, and already-running work
-is not forcibly preempted when external pressure rises. In-process leases do not
-coordinate independent supervisors; account-wide admission remains a separate owner.
+## Default shared host admission
 
-Three retained ASI167 tests still reference removed usage-admission APIs. Their
-historical implementation inspected usage snapshots and maintained local bookkeeping;
-it could bypass usage checks when custom admission was supplied. Its successor must
-compose the existing `ProviderExecutionGateway` and usage coordinator with host
-admission, reserve once per physical dispatch, and preserve logical-member accounting
-through cancellation and fallback. Restoring a second scheduler would not close that
-gap. Default consumer adoption and shared usage accounting require that integration.
+`create_leanstral_goal_development_batch_scheduler` enables `ProviderHostAdmission`
+by default. It combines supervisor claim checks with the datasets
+`GlobalResourceScheduler`, the existing shared CPU/RAM/process owner. Each callback
+reserves a bounded envelope (by default one CPU slot, one process slot, and 256 MiB).
+A supplied native parent lease delegates its capacity instead of creating another
+root reservation. Missing native authority or disabled native safety refuses work.
+Sampled host pressure or exhausted capacity leaves work queued; acquisition is
+nonblocking so the queue can still cancel or expire subscribers.
+
+The native lease is checked again immediately before dispatch. Cancellation during
+the callback keeps the reservation until the callback returns. Custom admission is
+composed with host checks, including its lifecycle and release hooks. The default
+router's scalar fallback receives an explicit worker limit bounded by the admitted
+CPU/process envelope; an environment override cannot expand it. Custom callbacks
+must respect their declared envelopes. `host_admission_enabled=False` is an explicit
+rollback or authored-test opt-out. The CPU profile refuses GPU demands.
+
+These are admission estimates and child-limit contracts. Runners must enforce
+physical limits; admission does not impose kernel memory limits or forcibly preempt
+running callbacks when outside pressure rises. Native backend batch internals may
+need additional worker limits. Other provider consumers, including direct daemon
+calls, still require their own shared host integration.
+
+## Atomic physical batch usage
+
+`runtime/provider_batch_usage.py` supplies `PhysicalBatchUsageAdmission` to the
+existing batch scheduler. The real endpoint `UsageCoordinator` is the quota owner;
+its CAS reservation, dispatch marker, and commit form one physical lifecycle.
+Reservation checks current capacity inside the coordinator's atomic transaction;
+admission does not use a separately sampled snapshot as authorization or a clock-
+sensitive precondition.
+The three retained ASI167 tests now exercise this successor against a real ledger.
+
+Configure the adapter with a trusted provider-to-scope supplier, an aggregate token
+ceiling, a reservation TTL, and optionally host admission. Each request must name
+that exact `usage_scope_id`, positive input/output bounds, and a bounded timeout.
+Scope participates in batch compatibility and singleflight identity, preventing
+unrelated scopes from sharing a reservation. The coordinator's configured limits
+remain authoritative across all schedulers using its store.
+
+One aggregate reservation covers one callback that makes **one physical provider
+request**: one request/concurrency slot, the unique batch items, their input/output
+ceilings, and shared input overhead once. Duplicate subscribers share that charge.
+Members pruned before dispatch are removed from settlement; cancelling a subscriber
+after dispatch cannot refund work already sent. A trusted complete usage extractor
+can settle measured input/output/total tokens. Otherwise settlement is explicitly
+an estimated ceiling. Receipts contain identities, digests, and quantities, without
+prompts or raw responses, and repeat the same physical reservation across subscribers.
+Consumers must deduplicate that identity when aggregating physical usage.
+
+Missing dispatch acknowledgement prevents the callback. Unconfirmed settlement
+fails the result and retains the reservation for reconciliation. Callback failure
+charges the live member ceilings conservatively. Automatic scalar fallback is
+disabled for this adapter, because a second provider call needs its own reservation.
+Scope-local denial backoff starts at 100 ms and doubles to at most one second;
+intermediate queue retries do not acquire host capacity or write another denied
+reservation. Coordinator limits and upstream provider cooldown remain separate
+authorities.
+
+Reservation expiry is crash recovery, not physical cancellation. The configured TTL
+must exceed the actual bounded callback lifetime plus settlement time. Logical
+subscriber deadlines alone do not terminate a callback or renew its reservation.
+Deployment callbacks must enforce their physical timeouts to avoid a still-running
+call outliving its concurrency hold.
+
+For a callback with a genuine one-request batch contract, compose explicitly:
+
+```python
+host = ProviderHostAdmission(budget=ProviderHostBudget(max_parallel=2))
+admission = PhysicalBatchUsageAdmission(
+    coordinator,
+    scope_supplier=trusted_scope_for_provider,
+    max_batch_tokens=32_768,
+    reservation_ttl_ms=120_000,
+    host_admission=host,
+)
+scheduler = ProviderBatchScheduler(dispatch_one_provider_batch, admission=admission)
+```
+
+The Leanstral router may dispatch multiple remote calls for one local batch, and
+the router can already have its own usage admission. Consequently the factory
+enables shared **host** admission but does not automatically install this aggregate
+usage adapter. Select exactly one usage owner at the actual physical call boundary.
+Gateway migration retains the supplied gateway and replay state, invokes one owner,
+and requires an injected coordinator with acknowledged reservation operations for
+enforcement. Enforcement without an execution callback is refused before reserving
+or charging. Its trusted coordinator protocol remains injectable; the physical
+batch adapter specifically requires the concrete endpoint coordinator. Migrated
+text-only callbacks retain all declared token estimates in settlement and identify
+them as estimates. Usage migration defaults remain unchanged until real
+scope/revision/fence configuration is available.
+
+The router preserves explicitly supplied backend/candidate selection instead of
+replacing it through automatic model selection. Capacity and semantic failures
+propagate to the usage owner without an unaccounted retry under a default model.
+Default calls still support automatic selection, and generation traces identify
+the backend that actually executed.
+
+One existing gateway rollout blocker remains: `UsageSnapshot.usage_revision`
+includes `observed_at`, while a pinned reservation compares it with a newly sampled
+snapshot. An advancing real clock can therefore reject an unchanged ledger. The
+batch adapter uses current-state CAS admission, as the endpoint router already
+does. The gateway preserves its explicitly bound revision check and fails closed.
+Its next integration phase must separate a stable ledger/state revision from the
+timestamped observation identity, preserving stale-plan and replay protection;
+frozen-clock gateway tests do not qualify that live pinned path.
+
+Removing the timestamp from the hash alone is insufficient: the snapshot identity
+also omits numerical headroom, committed occupancy, and caller budgets. A stable
+admission generation must change for relevant ledger mutations. Qualification must
+cover unchanged state under an advancing clock, completed usage that leaves the
+availability state unchanged, budget/cooldown updates, expiry/window transitions,
+and competing CAS writes.
+
+The bounded usage benchmark runs with
+`python -m benchmarks.agent_supervisor.provider_batch_usage --requests 32 --output /tmp/provider-usage.json`.
+Its live local preflight requests four worker slots and 256 MiB before starting.
+The campaign uses two real queues sharing an isolated in-memory CAS usage ledger
+and local host owner, with authored callbacks and controlled pressure. It exercises
+quota denial/backoff, late duplicate subscribers, queued/running cancellation,
+conservative failure settlement, and zero remaining holds. The native shared host
+owner is covered separately by isolated factory tests. Neither this benchmark nor
+its local preflight qualifies cross-process usage storage, hard containment,
+provider-billed token savings, or live provider execution.

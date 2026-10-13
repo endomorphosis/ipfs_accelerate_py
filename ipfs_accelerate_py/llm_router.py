@@ -11344,7 +11344,7 @@ def _set_last_generation_trace(
         "effective_model_name": str(model_name or "").strip(),
     }
     if route_trace:
-        for key in _PINNED_SYMAI_TRACE_KEYS:
+        for key in _PINNED_SYMAI_TRACE_KEYS | {"effective_provider_name", "effective_model_name"}:
             value = route_trace.get(key)
             if isinstance(value, str) and value.strip():
                 payload[key] = value.strip()
@@ -12052,9 +12052,10 @@ def _llm_provider_display_name(
     requested: Optional[str] = None,
 ) -> str:
     if backend is not None:
-        name = getattr(backend, "router_provider_name", None)
-        if isinstance(name, str) and name.strip():
-            return _canonicalize_provider(name) or name.strip()
+        for attribute in ("router_provider_name", "name"):
+            name = getattr(backend, attribute, None)
+            if isinstance(name, str) and name.strip():
+                return _canonicalize_provider(name) or name.strip()
     if requested:
         return _canonicalize_provider(requested) or str(requested).strip()
     return ""
@@ -13035,6 +13036,15 @@ def _generate_with_provider_fallbacks(
             raise initial_error
         if side_effecting:
             raise initial_error
+        # Capacity/backoff and prompt semantics belong to the usage routing
+        # owner. A hidden retry with the backend's default model would bypass
+        # that decision and can consume another physical request unaccounted.
+        from .endpoint_usage.routing import ErrorSafetyClass
+
+        if _classify_llm_invoke_exception(initial_error) in {
+            ErrorSafetyClass.CAPACITY, ErrorSafetyClass.SEMANTIC,
+        }:
+            raise initial_error
         if model_name is not None and not disable_model_retry:
             try:
                 return backend.generate(prompt, model_name=None, **call_kwargs)
@@ -13192,7 +13202,8 @@ def generate_text(
         min_intelligence = 0.0
         kwargs.pop("min_intelligence", None)
     auto_model = str(model_name or "").strip().casefold() in {"", "auto", "efficient"}
-    if auto_model:
+    if (auto_model and provider_instance is None and usage_candidates is None
+            and usage_provider_by_binding is None):
         try:
             from .llm_allocation.intelligence_index import (
                 discover_available_providers,
@@ -13388,7 +13399,7 @@ def generate_text(
             if isinstance(candidate_trace, dict):
                 route_trace = candidate_trace
         _set_last_generation_trace(
-            provider_name=effective_provider_name,
+            provider_name=provider_used_name,
             model_name=model_name,
             route_trace=route_trace,
         )

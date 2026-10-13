@@ -2112,6 +2112,7 @@ def build_leanstral_goal_development_batch_dispatch(
     *,
     llm_generate: LLMGenerate | None = None,
     llm_generate_batch: LLMBatchGenerate | None = None,
+    router_max_workers: int | None = None,
 ) -> Callable[[Sequence[ProviderBatchRequest]], Sequence[str]]:
     """Build an admitted physical dispatch for a shared Leanstral scheduler.
 
@@ -2120,7 +2121,9 @@ def build_leanstral_goal_development_batch_dispatch(
     router resolves one backend instance for the whole prompt batch.  Custom
     deployments can inject a native batch callback; a scalar-only callback
     degrades safely to independent calls while single-flight still removes
-    exact duplicate work.
+    exact duplicate work. ``router_max_workers`` bounds the canonical router's
+    scalar fallback pool. Custom callbacks and backend-native batch internals
+    remain responsible for respecting their declared host envelope.
     """
 
     resolved = config or LeanstralGoalDevelopmentProviderConfig()
@@ -2128,6 +2131,10 @@ def build_leanstral_goal_development_batch_dispatch(
         raise ContractValidationError("llm_generate must be callable")
     if llm_generate_batch is not None and not callable(llm_generate_batch):
         raise ContractValidationError("llm_generate_batch must be callable")
+    if router_max_workers is not None and (
+        type(router_max_workers) is not int or not 1 <= router_max_workers <= 1024
+    ):
+        raise ContractValidationError("router_max_workers must be a bounded positive integer")
 
     def dispatch(requests: Sequence[ProviderBatchRequest]) -> Sequence[str]:
         members = tuple(requests)
@@ -2150,7 +2157,8 @@ def build_leanstral_goal_development_batch_dispatch(
             "mistral_vibe_agent": resolved.vibe_agent,
         }
         batch_generate = llm_generate_batch
-        if batch_generate is None and llm_generate is None:
+        uses_default_router = batch_generate is None and llm_generate is None
+        if uses_default_router:
             try:
                 router = importlib.import_module("ipfs_accelerate_py.llm_router")
                 batch_generate = getattr(router, "generate_text_batch", None)
@@ -2164,6 +2172,8 @@ def build_leanstral_goal_development_batch_dispatch(
             # per-generation timeout remains a backend kwarg.
             batch_kwargs = dict(kwargs)
             batch_kwargs["timeout_s"] = timeout
+            if uses_default_router and router_max_workers is not None:
+                batch_kwargs["max_workers"] = router_max_workers
             outputs = batch_generate(prompts, **batch_kwargs)
             if isinstance(outputs, (str, bytes)) or not isinstance(outputs, Sequence):
                 raise ProofProviderError(
@@ -2190,15 +2200,41 @@ def create_leanstral_goal_development_batch_scheduler(
     llm_generate_batch: LLMBatchGenerate | None = None,
     capacity_supplier: Callable[[str], Any] | None = None,
     admission: Callable[..., Any] | None = None,
+    host_admission_enabled: bool = True,
+    host_admission: Any = None,
 ) -> ProviderBatchScheduler:
-    """Create a shareable scheduler backed by native batch inference."""
+    """Create a shareable scheduler with shared host admission enabled.
+
+    Custom admission composes with host protection. Explicitly disable it only
+    for authored fixtures or a controlled rollback. The host grant covers the
+    whole callback and caps router scalar fallback workers to its CPU/process
+    slots. Scalar fallback can still make multiple remote calls, so
+    this factory does not claim one authoritative usage charge per batch.
+    """
 
     resolved = config or LeanstralGoalDevelopmentProviderConfig()
+    router_max_workers = None
+    if type(host_admission_enabled) is not bool:
+        raise ContractValidationError("host_admission_enabled must be a boolean")
+    if host_admission_enabled:
+        from ..runtime.provider_host_admission import ProviderHostAdmission, ProviderHostBudget
+
+        if host_admission is None:
+            host_admission = ProviderHostAdmission(budget=ProviderHostBudget(
+                max_parallel=(scheduler_config or ProviderBatchSchedulerConfig()).max_parallel_batches))
+        if type(host_admission) is not ProviderHostAdmission:
+            raise ContractValidationError("host_admission must be ProviderHostAdmission")
+        router_max_workers = min(host_admission.budget.cpu_slots,
+            host_admission.budget.process_slots)
+        admission = host_admission.compose(admission)
+    elif host_admission is not None:
+        raise ContractValidationError("disabled host admission cannot receive a host owner")
     return ProviderBatchScheduler(
         build_leanstral_goal_development_batch_dispatch(
             resolved,
             llm_generate=llm_generate,
             llm_generate_batch=llm_generate_batch,
+            router_max_workers=router_max_workers,
         ),
         config=scheduler_config,
         capacity_supplier=capacity_supplier,
