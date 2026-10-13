@@ -1,0 +1,22 @@
+{
+  "schema": "numerical-guarded-test-ledger@1",
+  "distinct_passing_tests": 947,
+  "datasets_passed": 338,
+  "accelerator_passed": 609,
+  "failed": [],
+  "skipped": [
+    {
+      "node_id": "accelerator:benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration::test_real_numerical_consumer_preserves_mismatch_abstention_and_cached_report",
+      "reason": "explicit numerical development checkpoint and cached GTE snapshot required"
+    },
+    {
+      "node_id": "accelerator:benchmarks.agent_supervisor.container_coding.test_terminal_numerical_selection_integration::test_cached_numerical_checkpoint_reaches_planning_worker_and_historical_audit",
+      "reason": "explicit numerical development checkpoint and cached GTE snapshot required"
+    }
+  ],
+  "final_junit_sha256": {
+    "datasets-final-01": "bf95f66ee67791abdfed277911950545822270e3ca763db188d886bc9fd2ef19",
+    "accelerator-final-01": "0b24797438f7b78c51c4f09c40dd1eff5a23059b1dbe73545dd060a8625d5ce8"
+  },
+  "historical_overlapping_runs_counted": false
+}

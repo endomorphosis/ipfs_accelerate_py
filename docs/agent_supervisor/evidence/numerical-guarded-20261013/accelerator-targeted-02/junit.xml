@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="5" time="24.220" timestamp="2026-10-13T05:32:55.061243" hostname="spark-b271"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_guarded_context" name="test_changed_profile_cannot_relabel_guarded_receipt[python-numerical-structure@1]" time="0.877" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_guarded_context" name="test_changed_profile_cannot_relabel_guarded_receipt[python-numerical-structure@2]" time="0.628" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_guarded_context" name="test_changed_profile_cannot_relabel_guarded_receipt[True]" time="0.608" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_guarded_context" name="test_changed_profile_cannot_relabel_guarded_receipt[None]" time="0.632" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_numerical_guarded_context" name="test_guarded_advice_reaches_planner_before_goals_with_deferred_semantics" time="5.917"><failure message="ValueError: numerical artifacts or producers changed">benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py:167: in test_guarded_advice_reaches_planner_before_goals_with_deferred_semantics
+    admitted = prep.context(state=state)
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:994: in context
+    hydrated = bind_admitted_context(state=state, prepared=prepared, admission=admission,
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:786: in bind_admitted_context
+    current = load_initial_context(state=state, prepared=prepared, require_empty_owner=False)
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:479: in load_initial_context
+    return _load_initial_context(state=state, prepared=prepared, require_empty_owner=require_empty_owner, result=result)
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:634: in _load_initial_context
+    validate_numerical_context(repository=root, expected_receipt=numerical)
+ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py:337: in validate_numerical_context
+    raise ValueError("numerical artifacts or producers changed")
+E   ValueError: numerical artifacts or producers changed</failure></testcase></testsuite></testsuites>

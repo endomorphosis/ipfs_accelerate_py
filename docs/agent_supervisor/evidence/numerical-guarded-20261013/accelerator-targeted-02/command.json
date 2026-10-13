@@ -1,0 +1,52 @@
+{
+  "command": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_changed_profile_cannot_relabel_guarded_receipt",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py::test_guarded_advice_reaches_planner_before_goals_with_deferred_semantics",
+    "--tb=short",
+    "-o",
+    "log_cli=false",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/numerical-guarded-coverage-20261013/accelerator-targeted-02/pytest-cache",
+    "--junitxml=/home/barberb/lift_coding/artifacts/numerical-guarded-coverage-20261013/accelerator-targeted-02/junit.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/home/barberb/lift_coding/artifacts/numerical-guarded-coverage-20261013/accelerator-targeted-02/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/numerical-guarded-coverage-20261013/accelerator-targeted-02/seal.duckdb",
+    "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1",
+    "DOCTOR_COMPOSITION_LEAN": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+    "ELAN_TOOLCHAIN": "leanprover/lean4:v4.34.1"
+  },
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py": "a9a27537723a6d3d014c7d06b47d2a371e658cc0822f6d76b0f0f85e4f388d92",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py": "6013460af75063c9688ef4437d0007ef3482b138eb3aff3d5c031c0d3038897b",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/test/api/test_published_numerical.py": "e90779ff9535b8d9b4f719fa848fd5ea1377ed7247d324ae80d32327b935635b",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "3ace20fa3069c3265979357450973facd66906505e7a3d1b0490a744849f4cbb",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/published_numerical.py": "81a56d1d8fece7b6284c9e55df70e31fc39c1ff7ec73041af886c139d468e18e",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py": "10065a4199558ba9290fb555e1c4966d0db9444e6d4eb3620515370d3b883510",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_verification/numerical_source_v2.py": "e3c1fd2de8a45be29b36cb0987a1bf8775996adc8b5ce187598f5a9779932d33",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_verification/numerical_logic_v2.py": "e335faff26b909c3da6d3496f1856eadabaa180d8ee939d499f7c44f0fbbc58d",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py": "50a713b0f6ef64c397a58012c6d8a670696db0294bb87f6bcdbdda691302e3c5",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+    "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013/ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py": "3274c21bb44ed6940912e74d46f2197c02a380e3beea8dd883d0708512394eee"
+  }
+}

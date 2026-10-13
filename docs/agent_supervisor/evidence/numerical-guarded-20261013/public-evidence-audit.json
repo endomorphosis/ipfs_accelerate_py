@@ -1,0 +1,355 @@
+{
+  "blockers": [],
+  "checked_artifacts_sha256": {
+    "baseline-v1.json": "893ce8c68b3a706e4b65cb3199c802b888728a50a8cdf286346d2029cd859412",
+    "public-01/authored-guard.lake.json": "9ea02f48164524540c2037006ec29ae62d11e1045582340e0f2076330e4cb3b2",
+    "public-01/authored-guard.report.json": "bee345cfb24888e6f4227b0d8e658c083b601bbe62b64bf4c8d6c8d061edf0ed",
+    "public-01/eigen.py.lake.json": "22fdc3fe55c5a11872a31de9de7e44bdbca7fc7daa37a49892d27b9f98fbb215",
+    "public-01/eigen.py.lean": "db0c774bdd1be05c30d8673d47890dc9ce20c6d9f0d166a24cdd140361b926a6",
+    "public-01/eigen.py.report.json": "1a2d57c81f20ed086c144a0e432d6100cec154912beb092c485fc0ee906d8f30",
+    "public-01/eval.py.lake.json": "dd8a8bd91c76fe39c2b69c0b0dd64fda758458174ec53192a3f09d3f835a4030",
+    "public-01/eval.py.lean": "92ca74244ba2fa2090b90576d498f977f835a1a9d446b651edbd9c86ff3eeb77",
+    "public-01/eval.py.report.json": "19addbf60d8b2ad4d10a079788a6fe37bad76a3a430793df1f9dc17271c4cf97",
+    "public-01/false-source-truth.lake.json": "39c8b1f4a641bf3f4ffddc44e2c2367e97fbde2f351735cad64ec203313cc323",
+    "public-01/qualification.json": "40072442564727c1322b0ba785938d886a4262df3f012b9163f322833e8a20df",
+    "qualify_public_source.py": "8d6ec91d332e49b1a49d80d59f4fdff0b4b1b8af9936aed5990189257871fbaf"
+  },
+  "checks": [
+    {
+      "check": "baseline digest bound",
+      "passed": true
+    },
+    {
+      "check": "original checkpoint implementation pins unchanged",
+      "passed": true
+    },
+    {
+      "check": "qualification producer pin ipfs_datasets_py.logic.software_verification.numerical_source",
+      "passed": true
+    },
+    {
+      "check": "qualification producer pin ipfs_datasets_py.logic.software_verification.numerical_logic",
+      "passed": true
+    },
+    {
+      "check": "qualification producer pin ipfs_datasets_py.logic.software_verification.numerical_source_v2",
+      "passed": true
+    },
+    {
+      "check": "qualification producer pin ipfs_datasets_py.logic.software_verification.numerical_logic_v2",
+      "passed": true
+    },
+    {
+      "check": "v1 producer unchanged ipfs_datasets_py.logic.software_verification.numerical_source",
+      "passed": true
+    },
+    {
+      "check": "v1 producer unchanged ipfs_datasets_py.logic.software_verification.numerical_logic",
+      "passed": true
+    },
+    {
+      "check": "eigen.py exact original input bytes",
+      "passed": true
+    },
+    {
+      "check": "eigen.py exact canonical v1 report unchanged",
+      "passed": true
+    },
+    {
+      "check": "eigen.py exact canonical v2 replay",
+      "passed": true
+    },
+    {
+      "check": "eigen.py existing compound matches preserved",
+      "passed": true
+    },
+    {
+      "check": "eigen.py all source obligations pending and guarded",
+      "passed": true
+    },
+    {
+      "check": "eigen.py pending count recomputed",
+      "passed": true
+    },
+    {
+      "check": "eigen.py source maps bound to exact UTF8 bytes",
+      "passed": true
+    },
+    {
+      "check": "eigen.py FOL and Lean each cover all pending rows",
+      "passed": true
+    },
+    {
+      "check": "eigen.py first_order retains guard contexts",
+      "passed": true
+    },
+    {
+      "check": "eigen.py smt retains guard contexts",
+      "passed": true
+    },
+    {
+      "check": "eigen.py lean retains guard contexts",
+      "passed": true
+    },
+    {
+      "check": "eigen.py no unsupported authority or discharge flags",
+      "passed": true
+    },
+    {
+      "check": "eigen.py archived Lean byte identity",
+      "passed": true
+    },
+    {
+      "check": "eigen.py no fabricated axioms or admitted holes",
+      "passed": true
+    },
+    {
+      "check": "eval.py exact original input bytes",
+      "passed": true
+    },
+    {
+      "check": "eval.py exact canonical v1 report unchanged",
+      "passed": true
+    },
+    {
+      "check": "eval.py exact canonical v2 replay",
+      "passed": true
+    },
+    {
+      "check": "eval.py existing compound matches preserved",
+      "passed": true
+    },
+    {
+      "check": "eval.py all source obligations pending and guarded",
+      "passed": true
+    },
+    {
+      "check": "eval.py pending count recomputed",
+      "passed": true
+    },
+    {
+      "check": "eval.py source maps bound to exact UTF8 bytes",
+      "passed": true
+    },
+    {
+      "check": "eval.py FOL and Lean each cover all pending rows",
+      "passed": true
+    },
+    {
+      "check": "eval.py first_order retains guard contexts",
+      "passed": true
+    },
+    {
+      "check": "eval.py smt retains guard contexts",
+      "passed": true
+    },
+    {
+      "check": "eval.py lean retains guard contexts",
+      "passed": true
+    },
+    {
+      "check": "eval.py no unsupported authority or discharge flags",
+      "passed": true
+    },
+    {
+      "check": "eval.py archived Lean byte identity",
+      "passed": true
+    },
+    {
+      "check": "eval.py no fabricated axioms or admitted holes",
+      "passed": true
+    },
+    {
+      "check": "three of four functions structurally complete",
+      "passed": true
+    },
+    {
+      "check": "75 pending obligations in 16/16/23/20 grouping",
+      "passed": true
+    },
+    {
+      "check": "two existing compound contracts",
+      "passed": true
+    },
+    {
+      "check": "remaining unsupported construct only For",
+      "passed": true
+    },
+    {
+      "check": "authored report exact source replay",
+      "passed": true
+    },
+    {
+      "check": "eigen.py Lake exact source input and executable hashes",
+      "passed": true
+    },
+    {
+      "check": "eigen.py Lake actual bounded native command",
+      "passed": true
+    },
+    {
+      "check": "eigen.py Lake expected exit",
+      "passed": true
+    },
+    {
+      "check": "eigen.py Lake bounded input metadata",
+      "passed": true
+    },
+    {
+      "check": "eval.py Lake exact source input and executable hashes",
+      "passed": true
+    },
+    {
+      "check": "eval.py Lake actual bounded native command",
+      "passed": true
+    },
+    {
+      "check": "eval.py Lake expected exit",
+      "passed": true
+    },
+    {
+      "check": "eval.py Lake bounded input metadata",
+      "passed": true
+    },
+    {
+      "check": "authored-guard Lake exact source input and executable hashes",
+      "passed": true
+    },
+    {
+      "check": "authored-guard Lake actual bounded native command",
+      "passed": true
+    },
+    {
+      "check": "authored-guard Lake expected exit",
+      "passed": true
+    },
+    {
+      "check": "authored-guard Lake bounded input metadata",
+      "passed": true
+    },
+    {
+      "check": "false-source-truth Lake exact source input and executable hashes",
+      "passed": true
+    },
+    {
+      "check": "false-source-truth Lake actual bounded native command",
+      "passed": true
+    },
+    {
+      "check": "false-source-truth Lake expected exit",
+      "passed": true
+    },
+    {
+      "check": "false-source-truth Lake bounded input metadata",
+      "passed": true
+    },
+    {
+      "check": "negative build failed on attempted False theorem",
+      "passed": true
+    },
+    {
+      "check": "qualification global counters match retained receipts",
+      "passed": true
+    }
+  ],
+  "counts": {
+    "existing_compound_contracts": 2,
+    "negative_lake_builds": 1,
+    "pending_obligations": 75,
+    "positive_lake_builds": 3,
+    "source_obligations_discharged": 0,
+    "structurally_complete_functions": 3,
+    "total_functions": 4
+  },
+  "functions": [
+    {
+      "name": "find_dominant_eigenvalue_and_eigenvector",
+      "path": "eigen.py",
+      "pending": 16,
+      "structurally_complete": true
+    },
+    {
+      "name": "ref_solution",
+      "path": "eval.py",
+      "pending": 16,
+      "structurally_complete": true
+    },
+    {
+      "name": "test_eigen_pair",
+      "path": "eval.py",
+      "pending": 23,
+      "structurally_complete": true
+    },
+    {
+      "name": "test_speedup",
+      "path": "eval.py",
+      "pending": 20,
+      "structurally_complete": false
+    }
+  ],
+  "helper_review": {
+    "actual_build_runner": "BoundedToolRunner using fresh temporary project and pinned native Lake; exact Lean and project inputs hashed in each receipt.",
+    "explicit_inputs_only": [
+      "eigen.py",
+      "eval.py",
+      "authored literal"
+    ],
+    "hidden_benchmark_inputs_read": false,
+    "model_inference_calls": 0,
+    "no_axioms_or_holes_in_generated_lean": true,
+    "provider_calls": 0,
+    "public_python_executed": false
+  },
+  "lake_receipts": [
+    {
+      "backend_executed": true,
+      "exact_source_input_sha256": "db0c774bdd1be05c30d8673d47890dc9ce20c6d9f0d166a24cdd140361b926a6",
+      "fixture": "eigen.py",
+      "returncode": 0,
+      "status": "passed"
+    },
+    {
+      "backend_executed": true,
+      "exact_source_input_sha256": "92ca74244ba2fa2090b90576d498f977f835a1a9d446b651edbd9c86ff3eeb77",
+      "fixture": "eval.py",
+      "returncode": 0,
+      "status": "passed"
+    },
+    {
+      "backend_executed": true,
+      "exact_source_input_sha256": "0e4f33da7c40bcb3fc3a1010f09f27cfaf89e5ea43895bccee62993d7c23b8fc",
+      "fixture": "authored-guard",
+      "returncode": 0,
+      "status": "passed"
+    },
+    {
+      "backend_executed": true,
+      "exact_source_input_sha256": "82c02b31558fc7cd7467ff47de323902d8ef30affea66837842f602cb1350b17",
+      "fixture": "false-source-truth",
+      "returncode": 1,
+      "status": "failed"
+    }
+  ],
+  "limits": [
+    "Lake accepts definitions, conditional lemmas, and uninstantiated guarded requirement aliases; it does not verify Python/NumPy behavior or discharge the 75 source obligations.",
+    "Guard meaning is preserved in report metadata and unresolved FOL/SMT/Lean interpretation parameters, not established execution witnesses.",
+    "Structured checkpoint implementation pins are unchanged; this qualification does not load, train, or prove checkpoint inference quality.",
+    "For-loop bodies remain diagnostic fences; the partial function is not fully translated.",
+    "No full supervisor START, official Terminal-Bench score, or live-model/token advantage is measured here."
+  ],
+  "review_run_history": [
+    {
+      "attempt": 1,
+      "cause": "Audit incorrectly requested SourceRef.sha256 instead of content_sha256; no production or qualification defect.",
+      "status": "audit-script-error"
+    },
+    {
+      "attempt": 2,
+      "status": "passed"
+    }
+  ],
+  "reviewer_implementation_overlap": "Reviewer authored numerical_source_v2; qualification helper, report logic, baseline capture and Lake runner/receipts were produced independently by root/other agent.",
+  "schema": "numerical-guarded-public-evidence-independent-audit@1",
+  "scope": "Read-only independent replay of public source reports, original v1 bytes/pins, guard mappings and retained actual Lake receipts; no new builds or source/provider execution.",
+  "status": "passed"
+}

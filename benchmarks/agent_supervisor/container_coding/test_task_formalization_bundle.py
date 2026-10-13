@@ -159,7 +159,7 @@ def test_numerical_bundle_rejects_currentness_drift_before_worker_delivery(conte
     options = _write(root, [_prepared(numerical_formalization=receipt)])
     output = Path(receipt["output"])
     if mutation == "producer":
-        monkeypatch.setattr(numerical, "_producers", lambda: {"different": "producer"})
+        monkeypatch.setattr(numerical, "_producers", lambda *args: {"different": "producer"})
     else:
         path = {"source": root / "sample.py", "report": output / "report-0000.json",
                 "unit_link": output / "unit-links-0000.json", "lake": output / "metadata-lake/metadata.ducklake",

@@ -16,6 +16,8 @@ from .supervisor_meta_index import SupervisorMetaIndex
 from .security_autoencoder_advisor import _bytes, _sha, _read, _write, _inventory, _hydrate_lakes
 
 PROFILE = "python-numerical-structure@1"
+GUARDED_PROFILE = "python-numerical-guarded-structure@2"
+PROFILES = (PROFILE, GUARDED_PROFILE)
 SCHEMA = "supervisor-numerical-formalization@1"
 OPERATION = "numerical_structure_observation"
 RETRIEVAL_SCHEMA = "supervisor-numerical-obligation-retrieval@1"
@@ -29,9 +31,32 @@ AUTHORITY = dict(proof_authority=False, completion_authority=False,
 
 
 def validate_profile(value):
-    if value is not None and value != PROFILE:
+    if value is not None and (type(value) is not str or value not in PROFILES):
         raise ValueError("unsupported numerical formalization profile")
     return value
+
+
+def _modules(profile=PROFILE):
+    if validate_profile(profile) is None:
+        raise ValueError("numerical context requires explicit profile")
+    if profile == GUARDED_PROFILE:
+        from ipfs_datasets_py.logic.software_verification import numerical_source_v2, numerical_logic_v2
+        source, logic = numerical_source_v2, numerical_logic_v2
+    else:
+        from ipfs_datasets_py.logic.software_verification import numerical_source, numerical_logic
+        source, logic = numerical_source, numerical_logic
+    if source.PROFILE != profile or logic.PROFILE != profile:
+        raise ValueError("numerical datasets profile differs from consumer selection")
+    return source, logic
+
+
+def _tree(source_hashes, profile=PROFILE):
+    if validate_profile(profile) is None:
+        raise ValueError("numerical context requires explicit profile")
+    identity = dict(schema=SCHEMA, sources=source_hashes)
+    if profile != PROFILE:
+        identity["profile"] = profile
+    return content_identity(identity)
 
 
 def _output(repository, output, *, fresh=False):
@@ -59,7 +84,7 @@ def _sources(repository, source_hashes):
     return sources
 
 
-def _producers():
+def _producers(profile=PROFILE):
     from ipfs_datasets_py.logic.software_verification import (
         numerical_logic, numerical_source, numerical_obligation_retrieval,
     )
@@ -68,16 +93,21 @@ def _producers():
     from ipfs_datasets_py.logic.formalization.autoencoder.security import (
         source_program_binding_384, security_formula_corpus, security_formalization_evaluation,
     )
-    return {name: _sha(_read(Path(path).resolve(), 2_000_000)) for name, path in (
-        ("consumer", __file__), ("grammar", numerical_source.__file__),
-        ("projections", numerical_logic.__file__),
+    source, logic = _modules(profile)
+    paths = [
+        ("consumer", __file__), ("grammar", source.__file__),
+        ("projections", logic.__file__),
         ("obligation_retrieval", numerical_obligation_retrieval.__file__),
         ("unit_links", source_unit_numerical_links.__file__),
         ("function_units", source_function_units.__file__),
         ("unit_span_validation", security_formula_corpus.__file__),
         ("unit_span_extraction", security_formalization_evaluation.__file__),
         ("unit_source_screening", source_screening.__file__),
-        ("scalar_source_guard", source_program_binding_384.__file__))}
+        ("scalar_source_guard", source_program_binding_384.__file__)]
+    if profile == GUARDED_PROFILE:
+        paths += [("base_grammar", numerical_source.__file__),
+                  ("base_projections", numerical_logic.__file__)]
+    return {name: _sha(_read(Path(path).resolve(), 2_000_000)) for name, path in paths}
 
 
 def _function_unit_links(sources, reports):
@@ -93,39 +123,51 @@ def _function_unit_links(sources, reports):
     return result
 
 
-def _planning_assertion(path, row):
+def _planning_assertion(path, row, *, profile=PROFILE):
     # The native planner has a six-level context nesting bound. Keep scalar
     # predicate metadata together, but flatten its operand lists and reference
     # full versioned definition rows by identity instead of nesting them here.
     predicate = row["predicate"]
+    excluded = {"predicate", "symbol_definitions"}
+    definitions = row["symbol_definitions"] if profile == PROFILE else row.get("symbol_definitions", [])
+    if profile == GUARDED_PROFILE:
+        # Retain the region references and verification flags. Full contexts
+        # stay in the source-replayed report and obligation retrieval rows.
+        excluded.add("evaluation_contexts")
     return dict(path=path, **{key: value for key, value in row.items()
-                if key not in {"predicate", "symbol_definitions"}},
+                if key not in excluded},
         predicate={key: value for key, value in predicate.items()
                    if key not in {"argument_expression_ids", "keyword_names"}},
         argument_expression_ids=list(predicate["argument_expression_ids"]),
         keyword_names=list(predicate["keyword_names"]),
-        symbol_definition_ids=[definition["definition_id"] for definition in row["symbol_definitions"]])
+        symbol_definition_ids=[definition["definition_id"] for definition in definitions])
 
 
-def _summary(reports, tree, unit_links=None):
+def _summary(reports, tree, unit_links=None, *, profile=PROFILE):
+    if validate_profile(profile) is None:
+        raise ValueError("numerical context requires explicit profile")
     rows, pending, contracts, assertions = [], [], [], []
     contract_count = assertion_count = 0
     for path, report in sorted(reports.items()):
         for row in report["summary"]["per_function"]:
             rows.append(dict(path=path, **row))
         for row in report["pending_obligations"]:
-            pending.append(dict(path=path, **{key: row[key] for key in (
-                "obligation_id", "kind", "expression_id", "function_ids", "status")}))
+            keys = ("obligation_id", "kind", "expression_id", "function_ids", "status")
+            if profile == GUARDED_PROFILE:
+                keys += ("guarded_region_ids", "evaluation_guard_interpretation",
+                         "evaluation_guard_verified", "runtime_truthiness_verified",
+                         "runtime_effects_verified", "standalone_program_evaluation_complete")
+            pending.append(dict(path=path, **{key: row[key] for key in keys}))
         contract_count += len(report.get("compound_contracts", []))
         for row in report["summary"].get("compound_contracts", []):
             contracts.append(dict(path=path, **row))
         assertion_count += len(report.get("assertion_requirements", []))
         for row in report["summary"].get("assertion_requirements", []):
-            assertions.append(_planning_assertion(path, row))
+            assertions.append(_planning_assertion(path, row, profile=profile))
     summaries = [r["summary"] for r in reports.values()]
     count = sum(r["functions"] for r in summaries)
     result = dict(schema="terminal-numerical-formalization-planning-summary@1",
-        profile=PROFILE, source_tree_id=tree, files=len(reports), functions=count,
+        profile=profile, source_tree_id=tree, files=len(reports), functions=count,
         structurally_complete_functions=sum(r["structurally_complete_functions"] for r in summaries),
         partial_or_unsupported_functions=sum(r["partial_or_unsupported_functions"] for r in summaries),
         families_with_artifacts=sorted({f for r in summaries for f in r["families_with_artifacts"]}),
@@ -152,6 +194,13 @@ def _summary(reports, tree, unit_links=None):
             "Assertions are local requirements if reached with assertions enabled, not callee postconditions. "
             "Read source before editing."),
         autoencoder_coverage_changed=False, **AUTHORITY)
+    if profile == GUARDED_PROFILE:
+        result["interpretation"] += (
+            " Obligations apply only in their source evaluation contexts. Conditional branches "
+            "are deferred until selected; assertion messages are deferred until assertion failure. "
+            "Guarded-region references retain this scope even when compact rows omit full contexts; "
+            "retrieve full pending rows before interpreting their guards. Guards, truthiness and "
+            "runtime effects are unverified; standalone ProgramIR is not complete evaluation semantics.")
     if unit_links is not None:
         linked = []
         for path, report in sorted(unit_links.items()):
@@ -211,24 +260,27 @@ def _hydrate(output, record):
         **_hydrate_lakes(output, record, world_cid))
 
 
-def _record(repository, source_hashes, producers, index, summary):
-    tree = content_identity(dict(schema=SCHEMA, sources=source_hashes))
-    return dict(task_id="numerical-observation:" + tree, board="numerical-structure",
+def _record(repository, source_hashes, producers, index, summary, *, profile=PROFILE):
+    tree = _tree(source_hashes, profile)
+    result = dict(task_id="numerical-observation:" + tree, board="numerical-structure",
         operation=OPERATION, repository=str(repository), source_tree_id=tree,
         source_hashes=source_hashes, producers=producers, reports_sha256=_sha(_bytes(index)),
         summary_sha256=_sha(_bytes(summary)), proposal_only=True, cas_completed=False,
         admitted=False, **AUTHORITY)
+    if profile != PROFILE:
+        result["profile"] = profile
+    return result
 
 
 def prepare_numerical_context(*, repository, source_hashes, output, profile):
     if validate_profile(profile) is None:
         raise ValueError("numerical context requires explicit profile")
-    from ipfs_datasets_py.logic.software_verification.numerical_logic import formalize_numerical_source
+    _, logic = _modules(profile)
     repository = Path(repository).resolve(strict=True)
     output = _output(repository, output, fresh=True)
     sources = _sources(repository, source_hashes)
-    producers = _producers()
-    reports = {name: formalize_numerical_source(text, path=name) for name, text in sources.items()}
+    producers = _producers(profile)
+    reports = {name: logic.formalize_numerical_source(text, path=name) for name, text in sources.items()}
     unit_links = _function_unit_links(sources, reports)
     output.mkdir(parents=True)
     index = {}
@@ -242,10 +294,10 @@ def prepare_numerical_context(*, repository, source_hashes, output, profile):
             unit_links_artifact=links_artifact,
             unit_links_sha256=_write(output / links_artifact, unit_links[name]))
     _write(output / "reports.json", index)
-    tree = content_identity(dict(schema=SCHEMA, sources=source_hashes))
-    summary = _summary(reports, tree, unit_links)
+    tree = _tree(source_hashes, profile)
+    summary = _summary(reports, tree, unit_links, profile=profile)
     _write(output / "planning-summary.json", summary)
-    record = _record(repository, source_hashes, producers, index, summary)
+    record = _record(repository, source_hashes, producers, index, summary, profile=profile)
     world = ProgramWorldDatabase(output / "world.duckdb", output / "world-lake")
     persisted = world.persist(record)
     meta = SupervisorMetaIndex(output / "metadata.duckdb", output / "metadata-lake")
@@ -261,25 +313,27 @@ def prepare_numerical_context(*, repository, source_hashes, output, profile):
         source_hashes=source_hashes, producers=producers, record=record, summary=summary,
         hydration=_hydrate(output, record), files=_inventory(output), **AUTHORITY)
     # Re-read after construction, before making these observations available.
-    if _sources(repository, source_hashes) != sources or _producers() != producers:
+    if _sources(repository, source_hashes) != sources or _producers(profile) != producers:
         raise ValueError("numerical source or producer changed during preparation")
     return {**receipt, "receipt_sha256": _write(output / "receipt.json", receipt)}
 
 
 def validate_numerical_context(*, repository, expected_receipt):
-    from ipfs_datasets_py.logic.software_verification.numerical_logic import validate_numerical_logic_report
     repository = Path(repository).resolve(strict=True)
     receipt = expected_receipt
     if (type(receipt) is not dict or receipt.get("schema") != SCHEMA
-            or receipt.get("profile") != PROFILE or receipt.get("repository") != str(repository)
+            or type(receipt.get("profile")) is not str or receipt["profile"] not in PROFILES
+            or receipt.get("repository") != str(repository)
             or any(type(receipt.get(k)) is not type(v) or receipt[k] != v for k, v in AUTHORITY.items())):
         raise ValueError("exact non-authoritative numerical receipt required")
+    profile = receipt["profile"]
+    _, logic = _modules(profile)
     output = _output(repository, receipt["output"])
     raw = _read(output / "receipt.json")
     if (_sha(raw) != receipt.get("receipt_sha256")
             or _bytes(json.loads(raw)) != _bytes({k: v for k, v in receipt.items() if k != "receipt_sha256"})):
         raise ValueError("numerical receipt changed")
-    if _bytes(_inventory(output)) != _bytes(receipt["files"]) or _producers() != receipt["producers"]:
+    if _bytes(_inventory(output)) != _bytes(receipt["files"]) or _producers(profile) != receipt["producers"]:
         raise ValueError("numerical artifacts or producers changed")
     sources = _sources(repository, receipt["source_hashes"])
     index = json.loads(_read(output / "reports.json"))
@@ -293,7 +347,7 @@ def validate_numerical_context(*, repository, expected_receipt):
         raw = _read(output / ref["artifact"])
         if _sha(raw) != ref.get("sha256"):
             raise ValueError("numerical report digest differs")
-        reports[name] = validate_numerical_logic_report(json.loads(raw), text, path=name)
+        reports[name] = logic.validate_numerical_logic_report(json.loads(raw), text, path=name)
     unit_links = _function_unit_links(sources, reports)
     for i, (name, links) in enumerate(unit_links.items()):
         ref = index[name]
@@ -303,16 +357,16 @@ def validate_numerical_context(*, repository, expected_receipt):
         raw = _read(output / ref["unit_links_artifact"])
         if _sha(raw) != ref.get("unit_links_sha256") or raw != _bytes(links):
             raise ValueError("numerical unit links differ from exact source replay")
-    tree = content_identity(dict(schema=SCHEMA, sources=receipt["source_hashes"]))
-    summary = _summary(reports, tree, unit_links)
-    record = _record(repository, receipt["source_hashes"], receipt["producers"], index, summary)
+    tree = _tree(receipt["source_hashes"], profile)
+    summary = _summary(reports, tree, unit_links, profile=profile)
+    record = _record(repository, receipt["source_hashes"], receipt["producers"], index, summary, profile=profile)
     if (_bytes(summary) != _bytes(receipt["summary"])
             or _bytes(json.loads(_read(output / "planning-summary.json"))) != _bytes(summary)
             or _bytes(record) != _bytes(receipt["record"])
             or _bytes(_hydrate(output, record)) != _bytes(receipt["hydration"])):
         raise ValueError("numerical planning/world evidence differs")
     if (_sources(repository, receipt["source_hashes"]) != sources
-            or _producers() != receipt["producers"] or _bytes(_inventory(output)) != _bytes(receipt["files"])
+            or _producers(profile) != receipt["producers"] or _bytes(_inventory(output)) != _bytes(receipt["files"])
             or _sha(_read(output / "receipt.json")) != receipt["receipt_sha256"]):
         raise ValueError("numerical evidence changed during replay")
     return receipt
@@ -384,7 +438,7 @@ def retrieve_numerical_obligations(*, repository, expected_receipt, path, cursor
     # Fence edits during projection without claiming that a historical receipt
     # remains current after source or producer changes.
     if (_sources(root, receipt["source_hashes"])[path] != source
-            or _producers() != receipt["producers"]
+            or _producers(receipt["profile"]) != receipt["producers"]
             or _bytes(_inventory(output)) != _bytes(receipt["files"])
             or _sha(_read(output / "receipt.json")) != owner):
         raise ValueError("numerical evidence changed during retrieval")

@@ -17,8 +17,8 @@ def git(root, *args):
     return subprocess.check_output(['git', '-C', str(root), *args], stderr=subprocess.PIPE).decode().strip()
 
 
-@pytest.fixture
-def authored(tmp_path):
+@pytest.fixture(params=native.PROFILES)
+def authored(tmp_path, request):
     root = tmp_path / 'repository'
     root.mkdir()
     (root / 'answer.py').write_text('def answer(value):\n    return value + 1\n')
@@ -31,7 +31,7 @@ def authored(tmp_path):
         sources={name: {'sha256': sha} for name, sha in hashes.items()},
         tasks=[{'outputs': [{'path': 'answer.py'}, {'path': 'new.py'}]}])
     previous = native.prepare_numerical_context(repository=root,
-        source_hashes={'answer.py': hashes['answer.py']}, output=tmp_path / 'previous', profile=native.PROFILE)
+        source_hashes={'answer.py': hashes['answer.py']}, output=tmp_path / 'previous', profile=request.param)
     output_root = tmp_path / 'successors'
     output_root.mkdir(mode=0o700)
     policy = successor.bind_policy(repository=root, receipt=previous, manifest=manifest, output_root=output_root)
@@ -65,6 +65,8 @@ def test_regenerates_exact_python_subset_and_reloads_native_ducklake(authored):
         native.validate_numerical_context(repository=case['root'], expected_receipt=case['previous'])
     result = prepare(case, binding)
     receipt, observation = result['numerical_formalization'], result['numerical_refresh']
+    assert receipt['profile'] == case['previous']['profile'] == case['policy']['profile']
+    assert receipt['summary']['profile'] == receipt['profile']
     assert set(receipt['source_hashes']) == {'answer.py'}
     assert receipt['source_hashes'] != case['previous']['source_hashes']
     assert receipt['producers'] == case['previous']['producers']

@@ -1,0 +1,313 @@
+{
+  "benchmark_source_executed": false,
+  "checks": [
+    {
+      "name": "qualification_embeds_exact_probe",
+      "passed": true
+    },
+    {
+      "name": "release_manifest_digest",
+      "passed": true
+    },
+    {
+      "count": 44,
+      "name": "current_source_bindings",
+      "passed": true
+    },
+    {
+      "count": 3,
+      "name": "runner_snapshot_bindings",
+      "passed": true
+    },
+    {
+      "name": "router_private_public_match",
+      "passed": true
+    },
+    {
+      "name": "broker_private_public_match",
+      "passed": true
+    },
+    {
+      "name": "native_artifact_hash_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "exact_retrieved_and_source_replayed_rows_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "unique_obligation_ids_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "full_guard_contexts_preserved_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "exact_initial_page_metrics_eigen.py",
+      "passed": true
+    },
+    {
+      "name": "exact_filter_eigen.py_None_eigenpair_residual",
+      "passed": true
+    },
+    {
+      "name": "exact_filter_eigen.py_function:2_None",
+      "passed": true
+    },
+    {
+      "name": "exact_filter_eigen.py_function:2_eigenpair_residual",
+      "passed": true
+    },
+    {
+      "name": "native_artifact_hash_eval.py",
+      "passed": true
+    },
+    {
+      "name": "exact_retrieved_and_source_replayed_rows_eval.py",
+      "passed": true
+    },
+    {
+      "name": "unique_obligation_ids_eval.py",
+      "passed": true
+    },
+    {
+      "name": "full_guard_contexts_preserved_eval.py",
+      "passed": true
+    },
+    {
+      "name": "exact_initial_page_metrics_eval.py",
+      "passed": true
+    },
+    {
+      "name": "exact_filter_eval.py_None_eigenpair_residual",
+      "passed": true
+    },
+    {
+      "name": "exact_filter_eval.py_function:282_None",
+      "passed": true
+    },
+    {
+      "name": "exact_filter_eval.py_function:6_None",
+      "passed": true
+    },
+    {
+      "name": "exact_filter_eval.py_function:81_None",
+      "passed": true
+    },
+    {
+      "name": "exact_filter_eval.py_function:81_eigenpair_residual",
+      "passed": true
+    },
+    {
+      "count": 47,
+      "name": "all_retained_responses_fit_canonical_envelope",
+      "passed": true
+    },
+    {
+      "name": "every_retained_response_matches_owner_audit_hash_and_bytes",
+      "passed": true
+    },
+    {
+      "name": "complete_owner_accounting",
+      "passed": true
+    },
+    {
+      "counts": {
+        "ok": 48,
+        "peer_refused": 2,
+        "retrieval_refused": 3,
+        "stale_context": 2
+      },
+      "name": "expected_session_statuses",
+      "passed": true
+    },
+    {
+      "name": "all_seven_negative_labels_and_outcomes",
+      "passed": true
+    },
+    {
+      "name": "worker_negative_results_match_probe",
+      "passed": true
+    },
+    {
+      "name": "no_rows_returned_for_refusals",
+      "passed": true
+    },
+    {
+      "name": "session_observation_matches_full_owner_accounting",
+      "passed": true
+    },
+    {
+      "name": "router_bound_to_owner_session",
+      "passed": true
+    },
+    {
+      "name": "dispatch_prompt_observation_bound",
+      "passed": true
+    },
+    {
+      "name": "private_read_denials_and_worker_boundary",
+      "passed": true
+    },
+    {
+      "modes": {
+        "docker-01": "0o700",
+        "private-fixture-ipc": "0o750",
+        "private-state": "0o700",
+        "private-worker-observations": "0o750"
+      },
+      "name": "retained_private_parent_custody",
+      "passed": true
+    },
+    {
+      "name": "descriptor_socket_removed_from_retained_owner_directory",
+      "passed": true
+    },
+    {
+      "name": "container_cleanup_rechecked",
+      "passed": true
+    },
+    {
+      "name": "expected_container_controls",
+      "passed": true
+    },
+    {
+      "name": "no_auth_or_target_test_mount",
+      "passed": true
+    },
+    {
+      "name": "provider_free_flags_consistent",
+      "passed": true
+    },
+    {
+      "name": "not_full_deployment_or_reward",
+      "passed": true
+    }
+  ],
+  "evidence_bindings": [
+    {
+      "path": "docker-01/qualification.json",
+      "sha256": "a577dce776b9eec769aa4adbae4a9a91e84191162f8fa31319bab324885d3628"
+    },
+    {
+      "path": "docker-01/results/probe-qualification.json",
+      "sha256": "b30afc58199ce51a8eeea7ea1ee880d03690d52a925cfbd9b3d5a337ed3e40a7"
+    },
+    {
+      "path": "docker-01/results/session-observation.json",
+      "sha256": "683fb96ed7ee21d27cfc83c88873eea4add32f518b52d58734e4d4ad2a6e5c28"
+    },
+    {
+      "path": "docker-01/results/router-observation.json",
+      "sha256": "c53fc3aa7bb94be4b30520a4046836d60e2c3f62a87390da2a77c99543363a54"
+    },
+    {
+      "path": "docker-01/results/broker-audit.json",
+      "sha256": "d0d1cb57ffaa1895469a0ad20e75683dd1dd9aa32f84ee202308cc55419596d4"
+    },
+    {
+      "path": "docker-01/private-fixture-ipc/worker-result.json",
+      "sha256": "93c7b6387a4327cb04d1da64537dbf0b828c0ec73ab429e68a98b58d5839b29d"
+    },
+    {
+      "path": "docker-01/container-controls.json",
+      "sha256": "bf11ad3359c56696a3b508b60c6361bb025c7f0b375385387381c1b61137fa8d"
+    },
+    {
+      "path": "docker-01/command.json",
+      "sha256": "056bf88319b8147031e6641a493d7c792770d3f7e9e979ea2f922328e6cd26a2"
+    }
+  ],
+  "metrics": {
+    "authored_generate_hook_invocations": 1,
+    "complete_session_canonical_response_bytes": 314709,
+    "complete_session_requests": 55,
+    "delivered_row_instances_including_repeated_filtered_reads": 157,
+    "initial_canonical_response_bytes": 147671,
+    "initial_pages": 21,
+    "live_provider_calls": 0,
+    "max_initial_response_bytes": 8006,
+    "negative_cases": 7,
+    "private_read_denials": 5,
+    "provider_tokens": null,
+    "retained_full_success_response_count": 47,
+    "successful_session_pages": 48,
+    "unique_obligations": 75
+  },
+  "production_files_changed": false,
+  "provider_calls": 0,
+  "publishable_subset": [
+    "docker-01/qualification.json",
+    "docker-01/results/probe-qualification.json",
+    "docker-01/results/session-observation.json",
+    "docker-01/container-controls.json",
+    "docker-01/command.json",
+    "docker-01/owner-command.json",
+    "docker-01/runner-snapshot/owner_probe.py",
+    "docker-01/runner-snapshot/worker_probe.py",
+    "docker-01/runner-snapshot/run_docker_qualification.py",
+    "docker-release-01.json",
+    "docker-evidence-audit.json"
+  ],
+  "qualifications": [
+    "Actual generated owner entry, real UID1000/1001 boundary, router implementation and numerical IPC were exercised; provider selection/discovery and generate_text were authored fixture hooks.",
+    "The codex_cli/provider_returned receipt records the authored route, not a native Codex model completion. The provider-free preflight graph is also authored.",
+    "75 obligations in21 initial pages differs from157 delivered row instances in48 successful session pages; filters and final restored-source recovery intentionally repeat rows.",
+    "Session bytes exclude four-byte IPC frame headers. Initial response total is a strict subset of full-session bytes.",
+    "47 successful response bodies are retained; final recovery response and7 refusals retain owner-accounting hashes/sizes/statuses plus authored assertions rather than full response bodies.",
+    "Public target source was parsed and replayed, not executed by this audit. Assertion/branch/format/library semantics remain pending; no obligations were discharged.",
+    "Five owner-private paths were denied to the worker. This is a bounded custody test, not a general hostile-worker security proof; fixture outputs and /results were writable during the controlled run.",
+    "Container base was writable and root setup supplied the existing sudo transition. Worker had no-new-privileges and zero effective/permitted/ambient capabilities; this is not a rootless-container qualification.",
+    "Owner harness verified source restoration before exit. Canonical/allocated worktrees themselves were not retained after container removal, so this audit independently checks original host source and records the restoration assertion rather than claiming a fresh post-container worktree check.",
+    "DuckLake hydration counts are producer-verified preparation observations with retained catalogs; this audit does not reopen or publish their contents.",
+    "No live model, learned Source384 inference, IntentIR inference, native supervisor START, official benchmark reward or paid token saving was qualified."
+  ],
+  "retain_private_only": [
+    "docker-01/private-state/** (including profile keys/signatures, DuckDB/DuckLake/parquet catalogs, prompts, source reports, provider request and image diffs)",
+    "docker-01/private-fixture-ipc/** (full page/guard dumps and private path inventory)",
+    "docker-01/private-worker-observations/**",
+    "docker-01/results/broker-audit.json (raw session descriptor and per-request capability identities)",
+    "docker-01/owner.stdout",
+    "docker-01/owner.stderr",
+    "docker-01/private-state/owner-entry.stdout",
+    "docker-01/private-state/owner-entry.stderr"
+  ],
+  "schema": "numerical-worker-docker-independent-evidence-audit@1",
+  "source_obligations_discharged": 0,
+  "source_replayed_files": [
+    {
+      "guard_kinds": [
+        "command_reached",
+        "normal_completion"
+      ],
+      "guarded_row_count": 0,
+      "initial_pages": 5,
+      "initial_response_bytes": 32497,
+      "max_response_bytes": 7007,
+      "path": "eigen.py",
+      "report_sha256": "1c0b0cf0471506b73dcf170da04e79f2fdc271133d427a99023d37e87209455f",
+      "row_count": 16,
+      "source_replay_exact": true,
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "guard_kinds": [
+        "assertions_enabled",
+        "command_reached",
+        "normal_completion",
+        "truthiness_result"
+      ],
+      "guarded_row_count": 24,
+      "initial_pages": 16,
+      "initial_response_bytes": 115174,
+      "max_response_bytes": 8006,
+      "path": "eval.py",
+      "report_sha256": "cbd6bfd5a889fa142cc0e02080489a911abbb3a29068624a6436b02bd0bbcf18",
+      "row_count": 59,
+      "source_replay_exact": true,
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "status": "passed"
+}

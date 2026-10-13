@@ -58,7 +58,8 @@ def _population(hashes):
 def _historical(repository, receipt):
     """Check retained bytes and producer pins, without testing old live source."""
     if (type(receipt) is not dict or receipt.get("schema") != native.SCHEMA
-            or receipt.get("profile") != native.PROFILE or receipt.get("repository") != str(repository)
+            or type(receipt.get("profile")) is not str or receipt["profile"] not in native.PROFILES
+            or receipt.get("repository") != str(repository)
             or any(not _equal(receipt.get(k), v) for k, v in native.AUTHORITY.items())):
         raise ValueError("exact retained numerical predecessor required")
     _population(receipt["source_hashes"])
@@ -67,7 +68,7 @@ def _historical(repository, receipt):
     body = {k: v for k, v in receipt.items() if k != "receipt_sha256"}
     if (_sha(raw) != receipt.get("receipt_sha256") or raw != _bytes(body)
             or not _equal(native._inventory(output), receipt["files"])
-            or not _equal(native._producers(), receipt["producers"])):
+            or not _equal(native._producers(receipt["profile"]), receipt["producers"])):
         raise ValueError("numerical predecessor artifacts or producer pins differ")
     return receipt
 
