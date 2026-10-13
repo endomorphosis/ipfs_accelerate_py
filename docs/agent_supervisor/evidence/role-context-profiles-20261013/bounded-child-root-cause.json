@@ -1,0 +1,45 @@
+{
+  "schema": "bounded-output-observer-root-cause@1",
+  "original_implementation_commit": "25dcb0a76260773fad3c6ab7a4e4bc038b021810",
+  "original_source_sha256": "eee10df4461525743dc8d98d9d2369221e8f668ce398843d41a5ae2c8b7e15b1",
+  "fixed_implementation_commit": "9ec435cdf586146f974f4f5c6744a7cf4ae67bbe",
+  "fixed_source_sha256": "6c2a62a62b6b0baabce78fc6eb61c776937026652a147ce412ac03661418330a",
+  "cause": "Generic benchmarks namespace shadowing in the child interpreter. Canonical datasets package path preserved.",
+  "before": {
+    "status": "unavailable",
+    "reason": "observation_process_unavailable",
+    "process_facts": [
+      {
+        "returncode": 1,
+        "stdout_bytes": 0,
+        "stderr_bytes": 207,
+        "seconds": 0.028742873924784362,
+        "stdout_lines": 0,
+        "stdout_starts_with_tree_pin": false
+      }
+    ]
+  },
+  "diagnostic_owner_priority_comparison": {
+    "status": "observed",
+    "reason": "current_declared_output_bytes_only",
+    "process_facts": [
+      {
+        "returncode": 0,
+        "stdout_bytes": 1849,
+        "stderr_bytes": 0,
+        "seconds": 0.5596526589943096,
+        "stdout_lines": 1,
+        "stdout_starts_with_tree_pin": false,
+        "last_line_is_schema_result": true
+      }
+    ]
+  },
+  "measurement_scope": "Read-only child output observation diagnostic; not legal inference or an official benchmark.",
+  "qualification": false,
+  "timeout_seconds": 5,
+  "canonical_datasets_tree_switched": false,
+  "raw_provider_data_exported": false,
+  "raw_child_stdout_stderr_exported": false,
+  "provider_calls": 0,
+  "lean_admits": 0
+}

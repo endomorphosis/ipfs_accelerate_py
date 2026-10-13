@@ -1,0 +1,49 @@
+{
+  "schema": "retained-nonqualifying-attempts@1",
+  "qualification": false,
+  "attempts": [
+    {
+      "run": "r1",
+      "status": "interrupted_without_final_receipt",
+      "qualified": false
+    },
+    {
+      "run": "r4",
+      "status": "failed",
+      "passed_calls": 71,
+      "failed_calls": 1,
+      "qualified": false,
+      "cause": "Child resolved the datasets benchmarks namespace instead of the loaded supervisor benchmark owner.",
+      "fixed_by": "9ec435cdf586146f974f4f5c6744a7cf4ae67bbe"
+    },
+    {
+      "run": "r5 partitions",
+      "status": "harness_failed_and_remaining_partition_stopped",
+      "qualified": false,
+      "cause": "Benchmark-only pytest roots do not declare datasets-only CLI options."
+    },
+    {
+      "run": "r6intent",
+      "status": "incomplete_optional_asset_configuration",
+      "passed_calls": 85,
+      "skipped_calls": 1,
+      "qualified": false,
+      "cause": "Existing released local checkpoint configuration was not selected. Complete rerun uses existing verified assets offline."
+    },
+    {
+      "run": "r8intent",
+      "status": "incompatible_local_third_party_versions",
+      "failed_calls": 1,
+      "qualified": false,
+      "cause": "The selected Harbor tokenizer version was incompatible with locally installed transformers; rerun selects the existing compatible local stack without modifying packages."
+    },
+    {
+      "run": "r6datasets",
+      "status": "harness_failed",
+      "qualified": false,
+      "cause": "Datasets test file outside the selected accelerate root had no native AST seal. Rerun rooted in canonical datasets."
+    }
+  ],
+  "raw_logs_retained_locally": true,
+  "raw_provider_data_exported": false
+}

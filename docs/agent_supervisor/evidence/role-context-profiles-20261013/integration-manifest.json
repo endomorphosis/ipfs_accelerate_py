@@ -1,0 +1,90 @@
+{
+  "schema": "role-context-integrated-publication@1",
+  "tested_implementation_commit": "9ec435cdf586146f974f4f5c6744a7cf4ae67bbe",
+  "integrated_accelerate_upstream": "a9bcde965ac8341719069975dc828c54376961a6",
+  "integrated_datasets_upstream": "9eb06b73658d8203628a697db6199f14ecf479e4",
+  "datasets_test_only_merge_commit": "8f3856ee9967831f55a0d602a645eb143def5eea",
+  "features": [
+    "Immutable host role context profiles with current-source replay.",
+    "Retry byte ceilings cover transmitted deltas and reconstructed full provider inputs.",
+    "Bounded observer children select their loaded benchmark package while preserving dependency-path order.",
+    "Intent compatibility unit fixtures cover authored diagnostic transitions and separate unpatched current-source strict loading."
+  ],
+  "separately_qualified_prior_runs": {
+    "r2": {
+      "calls": 136,
+      "qualification": "r2/qualification.json"
+    },
+    "r3": {
+      "calls": 93,
+      "qualification": "r3/qualification.json"
+    }
+  },
+  "post_integration_partitions": {
+    "r6output": {
+      "test_calls": 101,
+      "phases": 303,
+      "elapsed_seconds": 723.333061532001,
+      "partition": "output",
+      "qualification": "r6output/qualification.json",
+      "qualification_sha256": "d5116df1bca0a94778990574ce1d1db6756b9a7b8b87a3efa9f888e95c8945c8"
+    },
+    "r6comparison": {
+      "test_calls": 105,
+      "phases": 315,
+      "elapsed_seconds": 631.264173640986,
+      "partition": "comparison",
+      "qualification": "r6comparison/qualification.json",
+      "qualification_sha256": "0da235ebfcc12df32830c9b867fa99abad65a1159eb68da02cc564b0125f13e0"
+    },
+    "r9intent": {
+      "test_calls": 86,
+      "phases": 258,
+      "elapsed_seconds": 654.6373102300568,
+      "partition": "intent",
+      "qualification": "r9intent/qualification.json",
+      "qualification_sha256": "52665fe3c801f319e6f44601b93418ff4dd86fbcd0bb6ccab20f6fafe47540ae"
+    },
+    "r7datasets": {
+      "test_calls": 62,
+      "phases": 186,
+      "elapsed_seconds": 601.9484751700656,
+      "partition": "datasets",
+      "qualification": "r7datasets/qualification.json",
+      "qualification_sha256": "57c803044ce5c26bb1dd3830424c8da51618d48c854ef762d96133a27a0de571"
+    }
+  },
+  "actual_post_integration_calls": 354,
+  "actual_post_integration_phases": 1062,
+  "all_previous_r4_collected_cases_executed": true,
+  "new_regression_cases": [
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py::test_real_child_uses_loaded_benchmark_owner_before_foreign_namespace"
+  ],
+  "partition_node_ids_disjoint": true,
+  "native_ast_seals_nonempty": true,
+  "proof_reuse_mode": "fresh_write_only",
+  "reused_skipped_predicted_verified_deferred_degraded": 0,
+  "common_guarded_project_sources": 1635,
+  "source_guard_scope": "Explicit source inventory; not a complete imported dependency closure.",
+  "canonical_datasets_tree": "/home/barberb/lift_coding/external/ipfs_datasets",
+  "tree_switched": false,
+  "canonical_tree_pin_sha256": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d",
+  "authored_transition_fixtures_are_deployment_qualification": false,
+  "provider_calls": 0,
+  "weight_downloads": 0,
+  "lake_builds": 0,
+  "lean_admits": 0,
+  "real_published_intent_checkpoint_inference_executed": true,
+  "existing_local_embedding_assets_guarded": true,
+  "controlled_planner_fixture_used_for_real_checkpoint_transport_case": true,
+  "live_token_savings_established": false,
+  "teacher_fidelity_established": false,
+  "official_terminal_bench_success_established": false,
+  "constitution_formalized": false,
+  "source_model_checkpoints_modified": false,
+  "limitations": [
+    "Host role profiles do not add a provider route or change benchmark planning/coding artifact reuse.",
+    "Native unit/integration checks do not establish live token savings, training convergence or semantic completeness.",
+    "Existing peer largest-eigenval one-trial comparison reported total tokens 313979 vs313980; no token savings."
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "schema": "role-context-profiles-qualification@1",
+  "implementation_commit": "9ec435cdf586146f974f4f5c6744a7cf4ae67bbe",
+  "upstream_base": "a9bcde965ac8341719069975dc828c54376961a6",
+  "run_label": "r7datasets",
+  "validation_passed": true,
+  "validation_partition": "datasets",
+  "selected_test_files": [
+    "/home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py",
+    "/home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/formalization/autoencoder/test_intent_action_runtime_384.py",
+    "/home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/formalization/autoencoder/test_portable_source_pins.py"
+  ],
+  "test_scope": "Canonical datasets checkpoint-owner/runtime/portable-pin regressions; diagnostic transitions are authored unit fixtures",
+  "actual_test_calls": 62,
+  "actual_pytest_phases": 186,
+  "all_setup_call_teardown_passed_once": true,
+  "no_reused_skipped_predicted_verified_deferred_or_degraded": true,
+  "proof_metrics": {
+    "schema": "ipfs_accelerate_py/testing/proof-reuse-metrics@1",
+    "interface": "ProofReuseMetrics@1",
+    "counts": {
+      "predicted": 0,
+      "verified": 0,
+      "skipped": 0,
+      "executed": 62,
+      "deferred": 0,
+      "degraded": 0
+    },
+    "reasons": {},
+    "verify_latency_ms": 0.0,
+    "execution_latency_ms": 25891.11,
+    "bytes_read": 0,
+    "bytes_written": 0
+  },
+  "guarded_source_count": 1637,
+  "source_guard_scope": "explicit source inventory, not a complete imported dependency closure",
+  "guarded_sources_unchanged": true,
+  "elapsed_seconds": 601.9484751700656,
+  "source_freeze_sha256": "c1f2040e5b1ec32c3ba4be0a968df3d72473e980b488def02eaac65e06fba459",
+  "verification_sha256": "5cf995682051ca46bf0e143569b975daf050eba0c5ca1a6beb14d9d1bc7d633a",
+  "junit_sha256": "8234d67db058a33cc502c9ef64a239062133817e73acea3335e6657c030db9b3",
+  "driver_sha256": "bd3590472d6bc4f1be7d6b64459af6f6dc9052d4be95e9ae8f26cfbcab87b35c",
+  "supervisor_sha256": "37f0052796f609f41e9b6f959da32781c623e322ba49d0f6217d767c3ca08672",
+  "local_documentation_checks_sha256": "a512c594cc9670c1d3061a248c7e20b66e3dcb0cccf36da2b4be4686e95a29b6",
+  "local_documentation_checks_scope": "Local workflow commands; not GitHub Actions status or pytest counts",
+  "retained_local_verification": "/home/barberb/lift_coding/artifacts/role-context-profiles-20261013/r7datasets/verification.json",
+  "retained_local_log": "/home/barberb/lift_coding/artifacts/role-context-profiles-20261013/r7datasets/run.log",
+  "native_preparation_samples": [],
+  "sample_scope": "authored integration-test preparations, not live Terminal Bench",
+  "observation_helper_seconds_median": null,
+  "observation_helper_seconds_maximum": null,
+  "helper_timer_scope": "construction, encoding and reference hashes; excludes storage/catalog/DuckLake writes",
+  "features": [
+    "host-only immutable role profiles over existing lexical/verified-retrieval controls",
+    "separate native preparation outputs and expected-profile/source-current loader",
+    "owner-declared role metadata outside unchanged native worker wire",
+    "provider byte ceiling enforced on retry delta and reconstructed full input"
+  ],
+  "peer_reuse": {
+    "commit": "ce2cd1026f21e52384ddf29c50c4a459baef927e",
+    "slice": "ContextCompiler provider-byte ceiling fix and eight focused regression cases",
+    "historical_qualification_reused": false,
+    "repository_session_and_planning_consumer_imported": false
+  },
+  "provider_delivery_observed": false,
+  "role_specific_ranker_trained": false,
+  "decoder_fidelity_established": false,
+  "released_teacher_or_semantic_embedding_qualification": false,
+  "canonical_current_pin_loader_tested_with_authored_checkpoint": true,
+  "authored_diagnostic_pin_transition_fixtures_used": true,
+  "benchmark_role_routing_changed": false,
+  "review_provider_route_added": false,
+  "modality_coverage_expanded": false,
+  "new_database_owner": false,
+  "native_semantic_acceptance_gates_relaxed": false,
+  "retained_interrupted_attempts_not_qualified": [
+    {
+      "path": "/home/barberb/lift_coding/artifacts/role-context-profiles-20261013/r1/interrupted-attempt.json",
+      "sha256": "2e4cf58a4c81f0d76b5c385138411e6eb70726d42c025c04adc7afd4adae2604",
+      "qualification_granted": false
+    }
+  ],
+  "new_proof_execution_or_completion_authority_granted": false,
+  "provider_calls": 0,
+  "downloads": 0,
+  "lake_builds": 0,
+  "lean_admits": 0,
+  "token_savings_established": false,
+  "official_task_success_established": false
+}

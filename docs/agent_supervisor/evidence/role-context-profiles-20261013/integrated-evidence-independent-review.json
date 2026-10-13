@@ -1,0 +1,31 @@
+{
+  "schema": "integrated-evidence-independent-review@1",
+  "reviewer": "/root/publication_review",
+  "scope": "Read-only evidence validation; not native test execution or semantic qualification",
+  "qualified_partition_counts_reviewed": {
+    "r6output": {
+      "calls": 101,
+      "phases": 303
+    },
+    "r6comparison": {
+      "calls": 105,
+      "phases": 315
+    },
+    "r7datasets": {
+      "calls": 62,
+      "phases": 186
+    }
+  },
+  "pending_partition": "r9intent",
+  "expected_complete_calls": 354,
+  "expected_complete_phases": 1062,
+  "concrete_blockers": [],
+  "reviewed_guards": [
+    "Final manifest requires all86 Intent cases pass and fresh zero-reuse/zero-skip/zero-degradation metrics.",
+    "Disjoint node IDs and exact prior-collected-case census plus one new child regression.",
+    "Common current project source pins and canonical old tree-pin preservation.",
+    "Actual local model inference, authored compatibility fixtures and controlled planner delivery distinguished.",
+    "Failed attempts remain unqualified.",
+    "No live token savings, convergence, teacher fidelity or Lean admission claim."
+  ]
+}

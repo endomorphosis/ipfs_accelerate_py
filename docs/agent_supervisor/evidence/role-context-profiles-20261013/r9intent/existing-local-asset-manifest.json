@@ -1,0 +1,22 @@
+{
+  "schema": "existing-local-intent-assets@1",
+  "config_source": "/home/barberb/lift_coding/artifacts/supervisor-indexed-coverage-20261013/intent384/selected-config.json",
+  "config_sha256": "526126205a3577341b917d1afe1ff5115ca80f8b91aead9f850407b50be140f1",
+  "instruction": "the calculator must compute result; requires left > 0; ensures result = old(right) + old(left) and returned.",
+  "sha256_by_path": {
+    "/home/barberb/lift_coding/artifacts/intent-action-contracts-20261002/publication/5dd54fae01f9a5faa543195e5455b28a5c8cbdcf543cf024ae535aacabea3032/checkpoint.json": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/extracted-03/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/1_Pooling/config.json": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/extracted-03/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/config.json": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/extracted-03/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/extracted-03/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/modules.json": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/extracted-03/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/sentence_bert_config.json": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/extracted-03/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/special_tokens_map.json": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/extracted-03/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer.json": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/extracted-03/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer_config.json": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7",
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/extracted-03/models/intent-action-384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/vocab.txt": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+  },
+  "total_existing_asset_bytes": 68075177,
+  "downloads": 0,
+  "weights_modified": false,
+  "tree_switched": false
+}

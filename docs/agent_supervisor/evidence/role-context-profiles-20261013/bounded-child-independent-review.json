@@ -1,0 +1,16 @@
+{
+  "schema": "bounded-output-child-fix-review@1",
+  "implementation_commit": "9ec435cdf586146f974f4f5c6744a7cf4ae67bbe",
+  "reviewer": "/root/publication_review",
+  "scope": "Read-only review; no test or semantic qualification",
+  "concrete_blockers": [],
+  "reviewed_facts": [
+    "Observer repository root selected from the loaded module file, preserving the inherited dependency-path suffix.",
+    "Canonical regular ipfs_datasets_py package still wins over empty namespace directories in the accelerate repository.",
+    "Five-second child ceiling, -B/-P, request/result bounds and unavailable semantics unchanged.",
+    "Regression runs the actual child against a conflicting benchmarks namespace; native producer evidence is not mocked."
+  ],
+  "provider_calls": 0,
+  "downloads": 0,
+  "lean_admits": 0
+}

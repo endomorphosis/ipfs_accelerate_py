@@ -1,0 +1,34 @@
+{
+  "schema": "role-context-peer-merge-observation@1",
+  "accelerate_head": "25dcb0a76260773fad3c6ab7a4e4bc038b021810",
+  "accelerate_upstream_integrated": "a9bcde965ac8341719069975dc828c54376961a6",
+  "datasets_head": "8f3856ee9967831f55a0d602a645eb143def5eea",
+  "datasets_upstream_integrated": "9eb06b73658d8203628a697db6199f14ecf479e4",
+  "role_implementation_files": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/role_context_selection.py": {
+      "sha256": "2630b205192b687357e352a7deed1a766e4f8eadac861f53e6ffda356a44cca3",
+      "identical_to_qualified_r2": true
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py": {
+      "sha256": "e487cc4a2126397568324c016b43e1d9025db9ff95b256842781e7e566a5860e",
+      "identical_to_qualified_r2": true
+    },
+    "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py": {
+      "sha256": "a8928c0e227dcbb0f7b31f877713c0fdeeb37699d110404cfc638ac4a1995b90",
+      "identical_to_qualified_r2": true
+    },
+    "test/api/test_role_context_selection.py": {
+      "sha256": "addc14b5d7229d740b3e7779c4f96eda1293f3ed03cf487afe85563ac81a43bf",
+      "identical_to_qualified_r2": true
+    },
+    "test/api/test_agent_supervisor_context_delta_bytes.py": {
+      "sha256": "7c1d78941a29f27ac5af407b91a1b45d15acfd9a83a466ac03272531595ea9fb",
+      "identical_to_qualified_r2": true
+    }
+  },
+  "claims": {
+    "whole_current_tree_requalified": false,
+    "provider_calls": 0,
+    "token_savings_established": false
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "schema": "datasets-test-only-publication@1",
+  "observed_utc": "2026-10-13T07:08:13.108174+00:00",
+  "commit": "8f3856ee9967831f55a0d602a645eb143def5eea",
+  "remote_main_confirmed": "8f3856ee9967831f55a0d602a645eb143def5eea",
+  "test_only_file": "tests/unit/logic/formalization/autoencoder/test_intent_action_checkpoint_384.py",
+  "native_validation": "r7datasets/verification.json",
+  "qualified_canonical_calls": 62,
+  "check_runs": [
+    {
+      "name": "autofix-with-copilot-agent",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/endomorphosis/ipfs_datasets_py/actions/runs/38360600719/job/115173619556"
+    },
+    {
+      "name": "autofix-with-copilot-agent",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/endomorphosis/ipfs_datasets_py/actions/runs/38360599238/job/115173614002"
+    },
+    {
+      "name": "Build distribution \ud83d\udce6",
+      "status": "queued",
+      "conclusion": null,
+      "html_url": "https://github.com/endomorphosis/ipfs_datasets_py/actions/runs/38360594381/job/115173599931"
+    },
+    {
+      "name": "Analyze (rust)",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/endomorphosis/ipfs_datasets_py/actions/runs/38360577918/job/115173547009",
+      "account_billing_lock_annotation": true
+    },
+    {
+      "name": "Analyze (python)",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/endomorphosis/ipfs_datasets_py/actions/runs/38360577918/job/115173546991",
+      "account_billing_lock_annotation": true
+    },
+    {
+      "name": "Analyze (actions)",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/endomorphosis/ipfs_datasets_py/actions/runs/38360577918/job/115173546939",
+      "account_billing_lock_annotation": true
+    },
+    {
+      "name": "Analyze (javascript-typescript)",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/endomorphosis/ipfs_datasets_py/actions/runs/38360577918/job/115173546819",
+      "account_billing_lock_annotation": true
+    }
+  ],
+  "shared_dirty_checkout_reset": false,
+  "canonical_tree_pin_changed": false,
+  "lake_admit": false
+}
