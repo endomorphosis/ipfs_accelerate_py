@@ -1,9 +1,14 @@
 {
-  "bytes": 1107099,
+  "bytes": 1107223,
   "checkpoint_bytes_modified": false,
   "datasets_commit": "afadfbcf8d33a67568c133bb761c43d42a9a133c",
-  "file_count": 51,
+  "file_count": 52,
   "files": [
+    {
+      "bytes": 124,
+      "path": ".gitattributes",
+      "sha256": "24f540de67f40fe851df375080b5e7cb1737e37f02bd88953834003e91c40608"
+    },
     {
       "bytes": 4661,
       "path": "README.md",
