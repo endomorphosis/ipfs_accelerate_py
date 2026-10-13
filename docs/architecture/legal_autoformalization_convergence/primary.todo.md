@@ -48,7 +48,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S5-044 Qualify complete primary graph candidate reconstruction
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
