@@ -406,3 +406,9 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_primary/
 !/data/legal_autoformalization_primary/LAC-S5-*/
 !/data/legal_autoformalization_primary/LAC-S5-*/result.json
+
+# Span-to-section bridge operational state and qualification evidence
+/data/agent_supervisor/legal_autoformalization_span_section/runtime/
+!/data/legal_autoformalization_span_section/
+!/data/legal_autoformalization_span_section/LAC-S6-*/
+!/data/legal_autoformalization_span_section/LAC-S6-*/result.json
