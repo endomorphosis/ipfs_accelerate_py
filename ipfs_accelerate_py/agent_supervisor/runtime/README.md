@@ -355,6 +355,46 @@ The query path supplies structural evidence. Learned Codebase IR, Intent IR,
 Security IR, UI/UX IR and checked proof evidence still require explicit joined
 interfaces; this change does not claim a complete multi-IR planner.
 
+`session.context_adapter(compiler)` connects that same source owner to an
+existing `ContextCompiler`. Its `compile` method accepts the complete
+`required_evidence` population plus explicit `required_reference_ids` and
+`required_coverage_ids`, the normal objective/policy/core fields, and a
+generation, query and unresolved question. Every required reference must carry
+its full nonblank body. The adapter refuses missing IDs, missing coverage,
+conflicting duplicates, or insufficient budget. It preserves caller-authored
+goal, scope and acceptance; authority contains the unchanged caller authority
+under `task` and current native provenance under `repository_context`.
+Optional references retain the native capsule CID rather than receiving a new
+semantic identity. This does not infer the required population from retrieval
+or verify the truth of caller-authored domain claims.
+
+Call `expand_for_question(parent, EvidenceExpansionRequest(question, ids),
+generation=...)` to resolve selected native handles into a standard compiler
+delta. Capsule, admission, source hash and confidence must join the original
+handle. Both selected and compiler-omitted handles can be resolved, but omitted
+handles are supervisor-side: `render_context_capsule` does not transmit them.
+A model must receive and be charged for any discovery needed to name such a
+handle. Expansion never supplies mutation or proof authority.
+
+`retry(parent, generation=..., evidence=...)` uses the existing delta compiler,
+retains every original mandatory body and sends only changed or explicitly
+requested diagnostics. Unchanged unrequested evidence is not replayed. Both
+the transmitted delta and reconstructed provider input obey token and byte
+ceilings. Successful reconstructed capsules can become subsequent parents;
+foreign parents, edited sources and even same-source generation refreshes
+require a fresh base. Checks before and after compilation detect ordinary
+concurrent edits. Source-currentness does not establish intent satisfaction.
+
+The adapter admits at most 32 input references per call, 256 KiB of context and
+eight invocation-local parents, without eviction. `close()` forgets its parents
+and leaves the source session open. Compiler work uses a separate shared
+256 MiB reservation and a 30-second cooperative stage deadline; native fences
+retain their own limits and release their leases before compiler admission.
+These bounds do not provide hard Python RSS or CPU containment. The adapter
+suppresses incidental metadata mirroring and creates no second catalog. This
+is a host-side planning API; the existing MCP tools and live worker routing
+are unchanged.
+
 Opt-in container deployment requires an archive matching the current runtime
 and datasets owner sources. Preparation, execution and deployment verify the
 compressed archive digest, inspect the actual member inventory without

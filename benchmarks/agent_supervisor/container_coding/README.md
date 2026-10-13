@@ -189,6 +189,28 @@ the report does not infer provider-token savings or task success from either
 outcome. The public source experiment above keeps its existing matched
 original/compact workflow and performs zero context queries or expansions.
 
+The context-compiler experiment follows native retrieval through a planning
+input, a question-scoped expansion and a diagnostic retry:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_repository_context_experiment \
+  --output /path/to/new-context-evidence
+```
+
+It compares three native capsule bodies in the initial input with visible
+capsule references followed by one requested expansion. Both arms retain the
+same complete authored Intent, Security and UI constraints, including their
+unresolved statuses, and receive the same question and diagnostic. A fixed
+fixture rule must return the same source-bound inspection decision. The report
+counts each actual rendered initial input and transmitted delta, including
+question and retry costs. Host-only preparation, native rereads and compiler
+receipts are not model transmissions. `--tokenizer-cache` accepts the existing
+verified local tokenizer ranks; absent or failed counting leaves token totals
+unknown while preserving byte counts. Reports retain only checks, counts and
+hashes. This exercises the native owner and context compiler without a model,
+provider, container, solver, training job or target-code execution; it does not
+establish provider savings, official task success or learned multi-IR alignment.
+
 Use `--repository-source-policy repository-source-raw@1` or
 `--repository-source-policy repository-source-compact@1` when preparing a
 `full_supervisor_benchmark` trial, or on an otherwise configured coding router.

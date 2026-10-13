@@ -383,6 +383,13 @@ class RepositorySourceSession:
             max_bytes=max_bytes, semantic_root_cid=semantic_root_cid,
             stable_symbol_ids=stable_symbol_ids)
 
+    def context_adapter(self, compiler):
+        """Use this source owner with the existing bounded planning compiler."""
+        from .repository_context_compiler import RepositoryContextAdapter
+        with self._lock:
+            self._open()
+            return RepositoryContextAdapter(self, compiler)
+
     def refresh(self, *, generation: int) -> dict:
         with self._lock:
             self._generation(generation)
