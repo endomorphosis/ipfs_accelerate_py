@@ -26,7 +26,7 @@ Three native deterministic source-contract qualifications. Original full-plan ac
 
 ## LAC-S3-044 Qualify proposed graph ingestion through EntityCache
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
