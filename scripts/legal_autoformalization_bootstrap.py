@@ -11,7 +11,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 import sys
 import tempfile
@@ -127,6 +127,28 @@ def read_input(result, path, expected_sha256=None):
     return value
 
 
+def repository_input_path(relative):
+    """Resolve one repo-owned input without escaping through paths or links."""
+    need(isinstance(relative, str) and bool(relative), "Missing repository input path")
+    parsed = PurePosixPath(relative)
+    need(not parsed.is_absolute() and ".." not in parsed.parts
+         and parsed.as_posix() == relative and relative != "."
+         and "\\" not in relative, "Invalid repository input path")
+    path = (ROOT / relative).resolve(strict=True)
+    need(path.is_relative_to(ROOT.resolve()) and path.is_file(),
+         "Repository input escaped checkout or is not a file")
+    return path
+
+
+def add_repository_input(result, path):
+    path = Path(path).resolve(strict=True)
+    relative = path.relative_to(ROOT.resolve()).as_posix()
+    need(repository_input_path(relative) == path, "Repository input path differs")
+    identity = add_input(result, path, "repository_immutable")
+    identity.update(repo_relative_path=relative, captured_repository_root=str(ROOT.resolve()))
+    return identity
+
+
 def common_result(task, sources_path, sources):
     workspace = Path(sources["workspace_root"]).resolve()
     plan = workspace / "implementation_plan/legal_autoformalization_convergence_20261013/tasks.json"
@@ -145,8 +167,8 @@ def common_result(task, sources_path, sources):
         "side_effects": {"training_updates": 0, "model_inference": False,
                          "published": False, "source_mutations": [], "aliases_created": 0},
     }
-    result["source_manifest_sha256"] = add_input(result, sources_path)["sha256"]
-    result["bootstrap_source_sha256"] = add_input(result, __file__)["sha256"]
+    result["source_manifest_sha256"] = add_repository_input(result, sources_path)["sha256"]
+    result["bootstrap_source_sha256"] = add_repository_input(result, __file__)["sha256"]
     result["plan_sha256"] = add_input(result, plan)["sha256"]
     if result["plan_sha256"] != sources["original_plan_sha256"]:
         raise ValueError("Original authoring plan hash differs from launch pin")
@@ -404,11 +426,28 @@ def validate(result, task, sources_path, sources):
     need(result.get("bootstrap_source_sha256") == file_identity(__file__)["sha256"], "Collector code moved")
     inputs = {}
     warnings = []
+    expected_repository_inputs = {
+        Path(sources_path).resolve().relative_to(ROOT.resolve()).as_posix(),
+        Path(__file__).resolve().relative_to(ROOT.resolve()).as_posix(),
+    }
+    repository_inputs = set()
     for row in result["input_artifacts"]:
         need(row["path"] not in inputs, "Duplicate input identity")
         inputs[row["path"]] = row
+        verification_path = row["path"]
+        if row.get("role") == "repository_immutable":
+            relative = row.get("repo_relative_path")
+            need(relative in expected_repository_inputs, "Undeclared repo-owned input")
+            need(relative not in repository_inputs, "Duplicate repo-owned input")
+            repository_inputs.add(relative)
+            captured_root = row.get("captured_repository_root")
+            need(isinstance(captured_root, str) and Path(captured_root).is_absolute(),
+                 "Missing captured repository provenance")
+            need(Path(row["path"]) == Path(captured_root) / relative,
+                 "Captured repository input provenance differs")
+            verification_path = repository_input_path(relative)
         try:
-            actual = file_identity(row["path"])
+            actual = file_identity(verification_path)
             if actual["sha256"] != row["sha256"] or actual["bytes"] != row["bytes"]:
                 if row.get("role") == "mutable_observation":
                     warnings.append({"kind": "mutable_source_moved", "path": row["path"]})
@@ -419,9 +458,9 @@ def validate(result, task, sources_path, sources):
                 warnings.append({"kind": "mutable_source_unavailable", "path": row["path"]})
             else:
                 raise
-    for required in (str(Path(sources_path).resolve()), str(Path(__file__).resolve()),
-                     str((Path(sources["workspace_root"]) / "implementation_plan/legal_autoformalization_convergence_20261013/tasks.json").resolve())):
-        need(required in inputs, f"Required primary input omitted: {required}")
+    need(repository_inputs == expected_repository_inputs, "Required repository input omitted")
+    required_plan = str((Path(sources["workspace_root"]) / "implementation_plan/legal_autoformalization_convergence_20261013/tasks.json").resolve())
+    need(required_plan in inputs, f"Required primary input omitted: {required_plan}")
     observations = result["observations"]
     if task == "LAC-001":
         rows = observations["repositories"]

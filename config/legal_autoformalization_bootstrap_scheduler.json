@@ -55,7 +55,15 @@
     "docs/architecture/legal_autoformalization_convergence/bootstrap.objectives.md",
     "scripts/validate_legal_autoformalization_bootstrap_board.py",
     "scripts/legal_autoformalization_bootstrap.py",
-    "scripts/run_legal_autoformalization_supervisor.py"
+    "scripts/run_legal_autoformalization_supervisor.py",
+    "docs/architecture/legal_autoformalization_convergence/full_plan/campaign.json",
+    "docs/architecture/legal_autoformalization_convergence/full_plan/evidence_baseline.json",
+    "docs/architecture/legal_autoformalization_convergence/full_plan/goals.objectives.md",
+    "docs/architecture/legal_autoformalization_convergence/full_plan/plan.md",
+    "docs/architecture/legal_autoformalization_convergence/full_plan/tasks.json",
+    "docs/architecture/legal_autoformalization_convergence/full_plan/tasks.todo.md",
+    "docs/architecture/legal_autoformalization_convergence/full_plan/validate_plan.py",
+    "docs/architecture/legal_autoformalization_convergence/full_plan/validation.json"
   ],
   "runtime_paths": {
     "root": "data/agent_supervisor/legal_autoformalization_bootstrap/runtime",
