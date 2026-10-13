@@ -532,6 +532,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("implementation must start at its allocated Git worktree root")
     failure_phase = "semantic_context"
     encoded = None
+    semantic_component_census = None
     residual_receipt = None
     residual_advisory = ""
     router_prompt = prompt
@@ -554,6 +555,20 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,
                                                transport_schema=semantic_transport_schema)
         router_prompt = encoded.provider_prompt
+        # Retain size diagnostics outside the model input. This observes the
+        # verified transport before optional metadata projection and wrappers;
+        # the existing model_prompt fields bind the actual final input.
+        try:
+            from .semantic_router_translation import census_semantic_router_prompt
+            semantic_component_census = census_semantic_router_prompt(encoded=encoded)
+        except Exception:
+            # Diagnostic failure cannot change dispatch or expose source text
+            # through an exception. The encoder's validation above still rules.
+            semantic_component_census = {
+                "schema": "supervisor-semantic-prompt-component-census@1",
+                "status": "unavailable",
+                "raw_content_exported": False,
+            }
     failure_phase = "source_formalization_context"
     from .source_formalization_context import validate_source_formalization_context
     formalization_receipt = validate_source_formalization_context(
@@ -733,6 +748,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             receipt["source_lookup_retrieval"] = source_lookup_receipt
         if source_receipt is not None:
             receipt["source_view_retrieval"] = source_receipt
+        if semantic_component_census is not None:
+            receipt["semantic_prompt_components"] = semantic_component_census
         return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     failure_phase = "provider_discovery"
     available = discover_available_providers()
@@ -780,6 +797,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     }
     if coding_reply_receipt is not None:
         receipt["coding_reply_contract"] = coding_reply_receipt
+    if semantic_component_census is not None:
+        receipt["semantic_prompt_components"] = semantic_component_census
     if metadata_receipt is not None:
         receipt["semantic_metadata_view"] = metadata_receipt
     if displacement_receipt is not None:
