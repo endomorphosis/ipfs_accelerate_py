@@ -640,6 +640,11 @@ class ProviderExecutionRequest(_ExecutionContract):
                 "usage_revision stale relative to bridge scope",
                 reason_codes=("stale_usage_revision",),
             )
+        if bridge_scope.admission_revision != self.bridge.admission_revision:
+            _fail(
+                "admission_revision stale relative to bridge scope",
+                reason_codes=("stale_admission_revision",),
+            )
         if (
             bridge_scope.lease_id != self.bridge.lease_id
             or bridge_scope.fence_id != self.bridge.fence_id
@@ -730,6 +735,7 @@ class ProviderExecutionRequest(_ExecutionContract):
             "attempt_key": self.attempt_key,
             "catalog_revision": self.bridge.catalog_revision,
             "usage_revision": self.bridge.usage_revision,
+            **({"admission_revision": self.bridge.admission_revision} if self.bridge.admission_revision else {}),
             "endpoint_scope_id": self.bridge.endpoint_scope_id,
             "deadline_at": self.bridge.deadline_at,
             "lease_id": self.bridge.lease_id,
@@ -764,6 +770,7 @@ class ProviderExecutionRequest(_ExecutionContract):
             "attempt_key",
             "catalog_revision",
             "usage_revision",
+            "admission_revision",
             "endpoint_scope_id",
             "deadline_at",
             "lease_id",
@@ -802,6 +809,8 @@ class ProviderExecutionRequest(_ExecutionContract):
             estimate=payload.get("estimate"),
         )
         _claim(payload, result.content_id, "content_id", "request_content_id")
+        if "admission_revision" in payload and payload["admission_revision"] != result.bridge.admission_revision:
+            _fail("admission_revision differs from bridge", reason_codes=("stale_admission_revision",))
         return result
 
 
@@ -1065,6 +1074,7 @@ class UsageCoordinatorLike(Protocol):
         lease_id: Optional[str] = None,
         estimate: Any = None,
         expected_usage_revision: Optional[str] = None,
+        expected_admission_revision: Optional[str] = None,
         ttl_ms: int = 30_000,
         caller_budget: Any = None,
         fence: Optional[int] = None,
@@ -1258,6 +1268,21 @@ class ProviderExecutionGateway:
             CoordinationState.UNAVAILABLE,
         }:
             if mode is ProviderExecutionMode.ENFORCE:
+                if request.bridge.admission_revision:
+                    # A reviewed local fallback budget cannot satisfy or
+                    # replace a supplied endpoint stored-state precondition.
+                    return self._terminal(
+                        request,
+                        phase=ProviderExecutionPhase.DENIED,
+                        final_status=SupervisorUsageFinalStatus.CAPACITY_UNAVAILABLE,
+                        granted=False,
+                        reason_codes=(
+                            "coordination_fail_closed",
+                            "admission_revision_requires_coordination",
+                            coordination.value,
+                        ),
+                        coordination_state=coordination,
+                    )
                 if not request.degraded_budget_id:
                     return self._terminal(
                         request,
@@ -1626,6 +1651,14 @@ class ProviderExecutionGateway:
         except (TypeError, ValueError):
             fence_value = None
         try:
+            # A stable admission pin is an explicit new contract. Legacy
+            # callers keep their observational pin; never remove a supplied
+            # pin or retry without it when an owner lacks the new parameter.
+            revision_arguments = (
+                {"expected_admission_revision": request.bridge.admission_revision}
+                if request.bridge.admission_revision
+                else {"expected_usage_revision": request.bridge.usage_revision}
+            )
             decision = self._coordinator.reserve(
                 request.bridge.endpoint_scope_id,
                 estimate.requested,
@@ -1635,10 +1668,10 @@ class ProviderExecutionGateway:
                 owner_id=self._owner_id,
                 lease_id=request.bridge.lease_id or None,
                 estimate=estimate,
-                expected_usage_revision=request.bridge.usage_revision,
                 ttl_ms=self._reservation_ttl_ms,
                 caller_budget=caller_budget,
                 fence=fence_value,
+                **revision_arguments,
             )
         except Exception as exc:
             name = type(exc).__name__.casefold()

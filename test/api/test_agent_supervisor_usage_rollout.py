@@ -7,7 +7,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.supervisor_usage_rollout import (
+from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_usage_rollout import (
     DEFAULT_LIVE_BUDGET_MICROS,
     LIVE_BUDGET_ENV,
     LIVE_ENV,

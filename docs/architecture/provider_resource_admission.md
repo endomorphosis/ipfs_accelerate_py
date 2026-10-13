@@ -155,21 +155,84 @@ propagate to the usage owner without an unaccounted retry under a default model.
 Default calls still support automatic selection, and generation traces identify
 the backend that actually executed.
 
-One existing gateway rollout blocker remains: `UsageSnapshot.usage_revision`
-includes `observed_at`, while a pinned reservation compares it with a newly sampled
-snapshot. An advancing real clock can therefore reject an unchanged ledger. The
-batch adapter uses current-state CAS admission, as the endpoint router already
-does. The gateway preserves its explicitly bound revision check and fails closed.
-Its next integration phase must separate a stable ledger/state revision from the
-timestamped observation identity, preserving stale-plan and replay protection;
-frozen-clock gateway tests do not qualify that live pinned path.
+## Stable admission revisions
 
-Removing the timestamp from the hash alone is insufficient: the snapshot identity
-also omits numerical headroom, committed occupancy, and caller budgets. A stable
-admission generation must change for relevant ledger mutations. Qualification must
-cover unchanged state under an advancing clock, completed usage that leaves the
-availability state unchanged, budget/cooldown updates, expiry/window transitions,
-and competing CAS writes.
+`UsageSnapshot.usage_revision` remains a timestamped observation identity, with its
+existing serialization and hashes unchanged. It is unsuitable for a stable state
+precondition: time alone changes it, and its identity omits numerical headroom and
+caller budgets. `UsageCoordinator.admission_snapshot(scope_id)` instead returns a
+versioned `UsageAdmissionSnapshot` containing both a legacy snapshot and a separate
+`admission_revision`, captured from the same store read.
+
+The new revision binds scope, ledger generation, writer fence, the complete stored
+document identity, and the coordinator's partition configuration. It changes after
+any committed mutation, including budget changes, completed usage, administrative
+changes, compaction, and other scopes' writes. Clock-only reads leave it unchanged.
+Whole-ledger invalidation is intentionally conservative and may require replanning
+after unrelated writes; the physical batch adapter continues to use current-state
+CAS admission without speculative pins.
+
+Pass the revision explicitly as `reserve(expected_admission_revision=...)`.
+The coordinator checks it inside every CAS attempt, then checks capacity against
+the current clock. A matching pin does not freeze headroom, grant capacity, prevent
+window transitions, or bypass cooldown and reservation expiry. The old
+`expected_usage_revision` parameter retains its existing strict observational
+semantics. Supplying both preconditions is rejected.
+
+Supervisor scope, bridge, and consumer context accept an optional
+`admission_revision`. The pin is inherited through the budget hierarchy and must
+match between scope and bridge. Empty fields are omitted from serialized records,
+preserving legacy contract identities. New gateways pass the stable precondition
+when supplied and otherwise retain the legacy observational precondition. Owners
+without the new protocol refuse the request; the gateway never retries unpinned.
+An enforced request carrying a stable pin also refuses degraded local execution
+when coordination is stale, unknown, or unavailable, even if a local fallback
+budget was supplied. That budget cannot validate the endpoint state precondition.
+Usage receipts retain the original observation identity and include the admission
+pin in their nested scope.
+
+Obtain both identities together when building a migrated call:
+
+```python
+view = coordinator.admission_snapshot(endpoint_scope_id)
+context = build_consumer_call_context(
+    consumer_id="task_proposal_router",
+    provider_id=provider_id,
+    endpoint_scope_id=endpoint_scope_id,
+    usage_revision=view.snapshot.usage_revision,
+    admission_revision=view.admission_revision,
+    fence_id="1",  # Use the deployment's actual writer fence.
+)
+```
+
+Exact reservation replay may return the recorded decision after its own write has
+advanced the ledger generation. For the new protocol, the coordinator first checks
+a stored fingerprint of the full reservation contract, including the original
+pin, quantities, caller budget, estimate, owner, lease, fence, and TTL. A changed
+contract cannot reuse that idempotency entry. Gateway replay uses its existing
+terminal cache; a new gateway seeing a prior reservation refuses reinvocation and
+requires reconciliation. Replaying a ledger decision is not dispatch authority.
+
+The offline rollout harness uses the new paired view. Other consumers still need
+explicit migration from legacy revision pins; placeholder scope/fence identities
+do not become valid deployment configuration. Automatic refresh/replanning of
+stale pinned work remains a caller responsibility.
+
+The durable real-clock qualification runs with
+`python -m benchmarks.agent_supervisor.provider_admission_revision --requests 16 --output /tmp/provider-revisions.json`.
+It first checks live local admission for one worker and 256 MiB, then uses an
+isolated durable ledger and authored callbacks. It checks real-clock success,
+in-process replay, reconstruction of the gateway/store, stale mutation refusal,
+explicit refresh, quota exhaustion, and zero remaining holds. This measures local
+accounting behavior; it does not call providers or measure billed token savings.
+
+The 2026-10-13 local qualification passed 498 distinct relevant tests, with four
+skips. The 16-request benchmark completed in 8,531 ms: 17 authored callbacks
+(including one successful refresh), 16 cached replays, four reconstructed-gateway
+reinvocation refusals, and zero duplicate callbacks or remaining usage holds.
+These timings describe the isolated durable-ledger workload on this host, not
+provider throughput. Fresh/stale pin tests also cover refusal of degraded
+execution and changed-contract replay.
 
 The bounded usage benchmark runs with
 `python -m benchmarks.agent_supervisor.provider_batch_usage --requests 32 --output /tmp/provider-usage.json`.

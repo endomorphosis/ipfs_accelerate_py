@@ -14,6 +14,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
 
+from .admission import (
+    UsageAdmissionSnapshot,
+    admission_revision_for_document,
+    coordinator_partition_identity,
+    validate_admission_revision,
+)
 from .identity import stable_id
 from .ledger import (
     CapacityDenied,
@@ -47,6 +53,7 @@ from .store import (
     CompareAndSetConflict,
     UsageLedgerStore,
     datetime_to_ms,
+    document_cid,
     idempotency_index_key,
     migrate_document,
     read_only_recovery_view,
@@ -275,6 +282,27 @@ class UsageCoordinator:
             partition_scale=None,
         )
 
+    def admission_snapshot(self, scope_id: str) -> UsageAdmissionSnapshot:
+        """Pair a stable stored-state pin and observation from one ledger read.
+
+        The pin does not freeze clock-dependent headroom. Every reservation
+        still checks current limits and time inside its atomic transaction.
+        The actual configured partition is bound even if no write has yet
+        materialized it into the document's partition marker.
+        """
+        document = self._store.read()
+        observation = UsageLedger(document).build_snapshot(
+            scope_id, self.clock.now(), partition_scale=None,
+        )
+        return UsageAdmissionSnapshot(
+            scope_id=scope_id,
+            ledger_revision=document["revision"],
+            fence=document["fence"],
+            document_cid=document_cid(document),
+            usage_snapshot=observation,
+            coordinator_partition_id=coordinator_partition_identity(self._partition),
+        )
+
     # ------------------------------------------------------------------
     # Reserve
     # ------------------------------------------------------------------
@@ -291,6 +319,7 @@ class UsageCoordinator:
         lease_id: Optional[str] = None,
         estimate: Optional[UsageEstimate | Mapping[str, Any]] = None,
         expected_usage_revision: Optional[str] = None,
+        expected_admission_revision: Optional[str] = None,
         ttl_ms: int = DEFAULT_RESERVATION_TTL_MS,
         caller_budget: Optional[UsageVector | Mapping[str, Any]] = None,
         fence: Optional[int] = None,
@@ -301,8 +330,17 @@ class UsageCoordinator:
         revision/TTL/owner through the content-addressed
         :class:`UsageReservation` fields (request_id encodes attempt; TTL is
         bound via expires_at material and idempotency framing).
+
+        ``expected_admission_revision`` opts into the versioned stored-state
+        protocol. It is mutually exclusive with the legacy observation pin.
+        Exact opt-in replay returns its previous decision despite the write
+        made by its own first attempt; changed replay inputs fail closed.
         """
 
+        if expected_admission_revision is not None:
+            validate_admission_revision(expected_admission_revision)
+            if expected_usage_revision is not None:
+                raise ValueError("usage and admission revision pins are mutually exclusive")
         if ttl_ms <= 0:
             raise LedgerError(
                 "ttl_ms must be positive",
@@ -337,10 +375,47 @@ class UsageCoordinator:
             attempt_id=attempt_id,
             idempotency_key=idempotency_key,
         )
+        admission_metadata: Dict[str, Any] = {}
+        if expected_admission_revision is not None:
+            admission_metadata = {
+                "admission_contract_schema": "ipfs_accelerate_py.endpoint_usage.reservation_binding@1",
+                "admission_revision_at_decision": expected_admission_revision,
+                "admission_contract_id": stable_id("uadmreq", {
+                    "schema": "ipfs_accelerate_py.endpoint_usage.reservation_binding@1",
+                    "scope_id": scope_id,
+                    "request_id": request_id,
+                    "attempt_id": attempt_id,
+                    "idempotency_key": idempotency_key,
+                    "requested": vector.to_dict(),
+                    "estimate_id": estimate_obj.estimate_id if estimate_obj else None,
+                    "caller_budget": budget_amounts,
+                    "owner_id": owner_id,
+                    "lease_id": lease_id,
+                    "fence": effective_fence,
+                    "ttl_ms": ttl_ms,
+                    "admission_revision": expected_admission_revision,
+                    "coordinator_partition_id": coordinator_partition_identity(self._partition),
+                }),
+            }
 
         def mutate(ledger: UsageLedger):
             now = self.clock.now()
             snap = ledger.build_snapshot(scope_id, now)
+            prior = ledger.get_idempotency(idem_key)
+            if expected_admission_revision is not None:
+                if prior is not None:
+                    if any(prior.get(name) != value for name, value in admission_metadata.items()):
+                        raise LedgerError(
+                            "admission replay contract differs from the original attempt",
+                            code=UsageErrorCode.RESERVATION_CONFLICT.value,
+                            reason_codes=("admission_replay_contract_mismatch",),
+                        )
+                    return self._replay_decision(ledger, prior, scope_id, now), ledger
+                current_revision = admission_revision_for_document(
+                    ledger.document, scope_id, coordinator_partition=self._partition,
+                )
+                if current_revision != expected_admission_revision:
+                    raise StaleSnapshot("expected admission revision does not match stored ledger state")
             if (
                 expected_usage_revision is not None
                 and snap.usage_revision != expected_usage_revision
@@ -350,25 +425,30 @@ class UsageCoordinator:
                     % (expected_usage_revision, snap.usage_revision)
                 )
 
-            prior = ledger.get_idempotency(idem_key)
             if prior is not None:
+                if prior.get("admission_contract_id") is not None:
+                    raise LedgerError(
+                        "a pinned admission cannot replay through the legacy protocol",
+                        code=UsageErrorCode.RESERVATION_CONFLICT.value,
+                        reason_codes=("admission_replay_contract_mismatch",),
+                    )
                 return self._replay_decision(ledger, prior, scope_id, now), ledger
 
             # Build reservation with identity-binding fields.
             expires = now + timedelta(milliseconds=ttl_ms)
             estimate_id = estimate_obj.estimate_id if estimate_obj else None
             # Frame idempotency_key for reservation_id binding of estimate/rev/TTL.
-            framed_idem = stable_id(
-                "uresbind",
-                {
-                    "idempotency_key": idempotency_key,
-                    "attempt_id": attempt_id,
-                    "estimate_id": estimate_id,
-                    "usage_revision": snap.usage_revision,
-                    "ttl_ms": ttl_ms,
-                    "owner_id": owner_id,
-                },
-            )
+            binding_material = {
+                "idempotency_key": idempotency_key,
+                "attempt_id": attempt_id,
+                "estimate_id": estimate_id,
+                "usage_revision": snap.usage_revision,
+                "ttl_ms": ttl_ms,
+                "owner_id": owner_id,
+            }
+            if admission_metadata:
+                binding_material.update(admission_metadata)
+            framed_idem = stable_id("uresbind", binding_material)
             reservation = UsageReservation(
                 scope_id=scope_id,
                 reserved=vector,
@@ -430,6 +510,7 @@ class UsageCoordinator:
                     "error_code": exc.code,
                     "event_id": event.event_id,
                     "usage_revision_at_decision": snap.usage_revision,
+                    **admission_metadata,
                 }
                 ledger.put_idempotency(idem_key, decision)
                 new_snap = ledger.build_snapshot(scope_id, now)
@@ -467,6 +548,7 @@ class UsageCoordinator:
                 "expires_at": reservation.expires_at,
                 "dispatched": False,
                 "dispatched_at": None,
+                **admission_metadata,
             }
             ledger.put_reservation_record(record)
             event = ledger.append_event(
@@ -494,6 +576,7 @@ class UsageCoordinator:
                 "error_code": None,
                 "event_id": event.event_id,
                 "usage_revision_at_decision": snap.usage_revision,
+                **admission_metadata,
             }
             ledger.put_idempotency(idem_key, decision)
             new_snap = ledger.build_snapshot(scope_id, now)
@@ -1422,5 +1505,6 @@ __all__ = [
     "PROVIDER_CHARGEABLE_DEFAULT",
     "ReserveDecision",
     "SettlementResult",
+    "UsageAdmissionSnapshot",
     "UsageCoordinator",
 ]

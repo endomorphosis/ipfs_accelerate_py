@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Final, Iterable, Mapping, Optional, Sequence
 
 from ipfs_accelerate_py.endpoint_usage import UsageVector
+from ipfs_accelerate_py.endpoint_usage.admission import validate_admission_revision
 from ipfs_accelerate_py.endpoint_usage.schema import LimitWindow, WindowKind
 
 from .provider_execution import (
@@ -338,9 +339,21 @@ class ConsumerCallContext:
     estimated_input_tokens: int = 0
     estimated_output_tokens: int = 0
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    admission_revision: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "consumer_id", ConsumerId(self.consumer_id))
+        revision = self.admission_revision
+        try:
+            if not isinstance(revision, str):
+                raise ValueError("admission_revision must be text")
+            if revision:
+                validate_admission_revision(revision)
+        except (TypeError, ValueError):
+            raise ProviderUsageMigrationError(
+                "admission_revision must be a stable endpoint admission identity",
+                reason_codes=("invalid_admission_revision",),
+            ) from None
         for name in (
             "repository_id",
             "state_id",
@@ -537,6 +550,7 @@ def build_request_lineage_envelope(
         "policy_revision": context.policy_revision,
         "catalog_revision": context.catalog_revision,
         "usage_revision": context.usage_revision,
+        "admission_revision": context.admission_revision,
         "supervisor_run_id": "",
         "goal_id": "",
         "objective_id": "",
@@ -653,6 +667,7 @@ def build_bridge_request(
         endpoint_scope_id=scope.endpoint_scope_id,
         catalog_revision=scope.catalog_revision,
         usage_revision=scope.usage_revision,
+        admission_revision=scope.admission_revision,
         estimated=UsageVector.of(**estimated_kwargs),
         request_id=scope.request_id,
         attempt=scope.attempt,
@@ -815,6 +830,7 @@ def build_consumer_call_context(
     policy_revision: str = "policy:supervisor@1",
     catalog_revision: str = "catalog:rev-1",
     usage_revision: str = "usage:rev-1",
+    admission_revision: str = "",
     supervisor_run_id: str = "",
     goal_id: str = "",
     objective_id: str = "",
@@ -856,6 +872,7 @@ def build_consumer_call_context(
         policy_revision=policy_revision,
         catalog_revision=catalog_revision,
         usage_revision=usage_revision,
+        admission_revision=admission_revision,
         supervisor_run_id=run,
         goal_id=goal,
         objective_id=objective,
