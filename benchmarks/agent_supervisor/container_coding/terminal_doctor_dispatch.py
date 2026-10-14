@@ -243,7 +243,7 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
                         coding_reply_mode: str = "legacy", semantic_metadata_view: str = "legacy",
                         source_view_profile: str = "disabled", source_view_policy: dict | None = None,
-                        source_edit_mode: str = "disabled") -> list[str]:
+                        source_edit_mode: str = "disabled", semantic_working_set: str = "legacy") -> list[str]:
     """Closed choice that the admitted launch signs before any worker starts."""
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
     validate_semantic_transport_schema(semantic_transport_schema)
@@ -257,6 +257,9 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
     from .terminal_source_edit_policy import validate_source_edit_mode
     validate_source_edit_mode(source_edit_mode, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile)
+    from .terminal_semantic_working_set_policy import validate_semantic_working_set
+    validate_semantic_working_set(semantic_working_set, source_view_profile=source_view_profile,
+        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
     provider_free_candidate = doctor is not None and doctor.get("route") in {
         "doctor_candidate", "doctor_contract_candidate"}
     # These controls describe the model fallback, not the independently checked
@@ -303,6 +306,7 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
               if source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE else []),
             *source_view_policy_argv(source_view_policy, profile=source_view_profile),
             *(["--source-edit-mode", source_edit_mode] if source_edit_mode != "disabled" else []),
+            *(["--semantic-working-set", semantic_working_set] if semantic_working_set != "legacy" else []),
             *(["--doctor-residual-artifact", doctor["residual_context"]["artifact"],
                "--doctor-residual-sha256", doctor["residual_context"]["sha256"],
                "--doctor-residual-task-cid", doctor["residual_context"]["task_cid"]]

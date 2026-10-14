@@ -380,3 +380,34 @@ expansion, publication of rebuilt formal indexes, file creation/moves/deletion a
 measured live-model savings remain separate work. Complete-session
 comparisons need fixed harness controls, all-attempt native usage and repeated
 official task verification.
+
+## Exact selected baseline capsules
+
+The opt-in `capsule-references@1` working-set profile adds descriptor version 4
+with `semantic_evidence_mode="selected-capsules@1"`. The existing owner admits
+the endpoint from the sealed semantic input. It retains the selected native
+capsules, accepts only a capsule index, continuation and byte budget, and checks
+the source/producer/workspace bindings before and after each page. It accepts
+no arbitrary path or artifact locator. The stdlib
+`worker_semantic_evidence_client.py` prints bounded pages and accepts
+`--capsule-index`, `--cursor`, `--max-bytes`, and optional
+`--expected-capsule-sha256`; the normal descriptor environment remains in use.
+
+The selected population is limited to 16 capsules and 32,768 aggregate canonical
+bytes. The existing 64-request/524,288-response-byte session limits are shared
+with source discovery, reads, candidate analysis and edits. Expansion is not
+unlimited. Edits invalidate baseline access and continuations; regenerated
+candidate capsules are distinct evidence with their own identities.
+
+Session audit version 6 adds `semantic_evidence_page` and
+`returned_semantic_evidence_bytes`, with a separate `semantic_evidence`
+operation label. Those bytes are excluded from source/candidate byte counts.
+The collector joins the configured working-set treatment, actual router
+projection, descriptor session, and the delivered preflight response. Legacy
+sessions retain their previous schemas. These checks provide no proof,
+publication or additional write authority.
+
+See the [working-set qualification](evidence/semantic-working-set-20261014/qualification.json)
+and [token measurement plan](terminal_token_metadata_plan.md#october-14-exact-capsule-provenance-retrieval).
+Exact baseline world models, full unselected capsule indexes and learned
+formalization artifacts are outside this reader's scope.

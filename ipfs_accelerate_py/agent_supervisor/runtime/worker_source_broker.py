@@ -23,7 +23,8 @@ class WorkerSourceBroker(NumericalObligationBroker):
     file_prefix = "source-view"
 
     def __init__(self, *, repository, workspace, boundary, prompt, timeout_seconds,
-                 profile="python-whitespace@1", view_policy=None, source_edit_mode="disabled"):
+                 profile="python-whitespace@1", view_policy=None, source_edit_mode="disabled",
+                 semantic_evidence_mode="disabled"):
         from . import source_formalization_context as guard
         from .semantic_router_translation import encode_semantic_router_prompt
         from .worker_source_views import WorkerSourceViews
@@ -36,6 +37,11 @@ class WorkerSourceBroker(NumericalObligationBroker):
         if type(source_edit_mode) is not str or source_edit_mode not in ("disabled", *protocol.EDIT_MODES):
             raise ValueError("unsupported source edit mode")
         self.source_edit_mode = source_edit_mode
+        if type(semantic_evidence_mode) is not str or semantic_evidence_mode not in (
+                "disabled", "selected-capsules@1"):
+            raise ValueError("unsupported semantic evidence mode")
+        self.semantic_evidence_mode = semantic_evidence_mode
+        self.semantic_evidence = None
         self._edit_confirmation_blocked = False
         self._edit_confirmation_request = None
         if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= MAX_SESSION_SECONDS:
@@ -88,6 +94,15 @@ class WorkerSourceBroker(NumericalObligationBroker):
                 source_scope_sha256=admission["scope_sha256"],
                 view_policy_binding_sha256=self._session_binding.get("view_policy_binding_sha256"))
             self._descriptor_schema = protocol.DESCRIPTOR_SCHEMA_V3
+        if semantic_evidence_mode != "disabled":
+            from .worker_semantic_evidence import WorkerSemanticEvidence
+            self.semantic_evidence = WorkerSemanticEvidence(capsules=payload["capsules"], binding=self._binding)
+            self._session_binding.update(source_edit_mode=source_edit_mode,
+                source_scope_sha256=admission["scope_sha256"],
+                view_policy_binding_sha256=self._session_binding.get("view_policy_binding_sha256"),
+                semantic_evidence_mode=semantic_evidence_mode)
+            self._descriptor_schema = protocol.DESCRIPTOR_SCHEMA_V4
+            self.audit_schema = "supervisor-worker-source-session@6"
         self._start_session(identity=self._session_binding, boundary_sha=boundary_sha,
                             timeout_seconds=timeout_seconds, descriptor_schema=self._descriptor_schema)
 
@@ -124,6 +139,8 @@ class WorkerSourceBroker(NumericalObligationBroker):
             return self._response(request, reason="peer_refused")
         if request["schema"] == "supervisor-worker-source-edit-request@1":
             return self._answer_edit(request, channel)
+        if request["schema"] == "supervisor-worker-semantic-evidence-request@1":
+            return self._answer_semantic_evidence(request, channel)
         try:
             candidate = request["schema"] in {"supervisor-worker-candidate-context-request@1",
                                                "supervisor-worker-candidate-context-request@2"}
@@ -173,10 +190,39 @@ class WorkerSourceBroker(NumericalObligationBroker):
             return self._response(request, reason="retrieval_refused")
         return response
 
+    def _answer_semantic_evidence(self, request, channel):
+        if (self.semantic_evidence is None or self._descriptor_schema != protocol.DESCRIPTOR_SCHEMA_V4
+                or self._session_binding.get("semantic_evidence_mode") != "selected-capsules@1"):
+            return self._response(request, reason="invalid_request")
+        try:
+            self._current_context(working=False)
+        except (OSError, ValueError, RuntimeError):
+            self.semantic_evidence.clear()
+            return self._response(request, reason="stale_context")
+        overhead = len(protocol.canonical_json(self._response(request, page={}))) - 2
+        try:
+            page = self.semantic_evidence.page(**dict(request["query"],
+                max_bytes=request["query"]["max_bytes"] - overhead))
+        except (OSError, ValueError, RuntimeError):
+            self.semantic_evidence.clear()
+            return self._response(request, reason="retrieval_refused")
+        try:
+            self._current_context(working=False)
+            self._peer(channel)
+        except (OSError, ValueError, RuntimeError):
+            self.semantic_evidence.clear()
+            return self._response(request, reason="stale_context")
+        response = self._response(request, page=page)
+        if len(protocol.canonical_json(response)) > request["query"]["max_bytes"]:
+            self.semantic_evidence.clear()
+            return self._response(request, reason="retrieval_refused")
+        return response
+
     def _answer_edit(self, request, channel):
         """Prepare/confirm a mapping; all filesystem writes stay in the worker."""
         query = request["query"]
-        if (self.source_edits is None or self._descriptor_schema != protocol.DESCRIPTOR_SCHEMA_V3
+        if (self.source_edits is None or self._descriptor_schema not in (
+                protocol.DESCRIPTOR_SCHEMA_V3, protocol.DESCRIPTOR_SCHEMA_V4)
                 or query["view_policy_binding_sha256"] != self._session_binding.get("view_policy_binding_sha256")):
             return self._response(request, reason="invalid_request")
         if self.source_edit_mode == "mapped-span@2":
@@ -231,11 +277,15 @@ class WorkerSourceBroker(NumericalObligationBroker):
             "supervisor-worker-candidate-context-page@1", "supervisor-worker-candidate-context-page@2"}
         discovery = page is not None and page["schema"] in {
             "supervisor-worker-source-view-discovery@1", "supervisor-worker-source-view-discovery@2"}
+        semantic = page is not None and page["schema"] == "supervisor-worker-semantic-evidence-page@1"
         count = page["end_offset"] - page["offset"] if page is not None and not discovery and not edit else 0
-        result = dict(returned_source_bytes=0 if candidate or discovery or edit else count,
+        result = dict(returned_source_bytes=0 if candidate or discovery or edit or semantic else count,
             returned_candidate_context_bytes=count if candidate else 0,
             candidate_context_page=candidate, discovery_page=discovery,
             returned_discovery_rows=page["returned_count"] if discovery else 0)
+        if self.semantic_evidence_mode != "disabled":
+            result.update(semantic_evidence_page=semantic,
+                returned_semantic_evidence_bytes=count if semantic else 0)
         if self.source_edit_mode != "disabled":
             result.update(source_edit_page=edit,
                 source_edit_operation=("prepare" if page["schema"].endswith("prepared@1") else "confirm") if edit else None,
@@ -275,6 +325,11 @@ def prepare_worker_source_broker(*, argv, boundary, workspace, input_fd=0, view_
     from .source_view_policy import SOURCE_VIEW_POLICY_FLAG, SourceViewPolicy
 
     profile = _argument(argv, "--source-view-profile", "disabled")
+    working_set = _argument(argv, "--semantic-working-set", "legacy")
+    if working_set not in ("legacy", "capsule-references@1"):
+        raise ValueError("unsupported semantic working set")
+    if working_set != "legacy" and profile == "disabled":
+        raise ValueError("capsule references require an enabled source view profile")
     edit_mode = _argument(argv, "--source-edit-mode", "disabled")
     if edit_mode not in ("disabled", *protocol.EDIT_MODES) or edit_mode != "disabled" and profile == "disabled":
         raise ValueError("source edits require an enabled source view profile")
@@ -310,5 +365,6 @@ def prepare_worker_source_broker(*, argv, boundary, workspace, input_fd=0, view_
     prompt = os.pread(input_fd, size + 1, 0).decode("utf-8")
     return WorkerSourceBroker(repository=repository, workspace=workspace, boundary=boundary,
         prompt=prompt, timeout_seconds=int(_argument(argv, "--timeout", "90")),
+        **({"semantic_evidence_mode": "selected-capsules@1"} if working_set != "legacy" else {}),
         **({"source_edit_mode": edit_mode} if edit_mode != "disabled" else {}),
         **(dict(profile=profile) if view_policy is None else dict(view_policy=view_policy)))

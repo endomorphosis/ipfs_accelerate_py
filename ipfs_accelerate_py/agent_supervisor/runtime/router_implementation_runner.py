@@ -195,7 +195,7 @@ def _source_lookup_guidance(receipt):
         "after source edits. Required facts remain inline. Retrieval provides no proof, edit, omission or "
         "completion authority.\n")
 
-def _source_broker_observation(*, path, digest, workspace, encoded, boundary_sha256, profile, source_edit_mode="disabled"):
+def _source_broker_observation(*, path, digest, workspace, encoded, boundary_sha256, profile, source_edit_mode="disabled", semantic_working_set="legacy"):
     from .worker_source_client import load_descriptor, semantic_binding, guidance
 
     descriptor = load_descriptor(path, digest, workspace=workspace)
@@ -204,6 +204,9 @@ def _source_broker_observation(*, path, digest, workspace, encoded, boundary_sha
         raise ValueError("source descriptor differs from validated semantic evidence")
     if descriptor.get("source_edit_mode", "disabled") != source_edit_mode:
         raise ValueError("source edit mode differs from owner descriptor")
+    expected_evidence = "selected-capsules@1" if semantic_working_set == "capsule-references@1" else "disabled"
+    if descriptor.get("semantic_evidence_mode", "disabled") != expected_evidence:
+        raise ValueError("semantic working set differs from owner evidence service")
     advice = guidance(profile, **({"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {})).encode()
     observation = dict(schema="worker-source-dispatch-observation@1", descriptor_sha256=digest,
         session_id=descriptor["session_id"], **expected,
@@ -216,6 +219,10 @@ def _source_broker_observation(*, path, digest, workspace, encoded, boundary_sha
     if descriptor["schema"] == "supervisor-worker-source-descriptor@3":
         observation.update(schema="worker-source-dispatch-observation@3",
             **{key: descriptor[key] for key in ("source_edit_mode", "view_policy_binding_sha256", "source_scope_sha256")})
+    if descriptor["schema"] == "supervisor-worker-source-descriptor@4":
+        observation.update(schema="worker-source-dispatch-observation@4",
+            **{key: descriptor[key] for key in ("source_edit_mode", "view_policy_binding_sha256",
+                "source_scope_sha256", "semantic_evidence_mode")})
     return observation
 
 
@@ -252,7 +259,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "container_boundary", "workspace_identity", "semantic_context", "source_formalization_context",
     "numerical_obligation_descriptor", "source_lookup_descriptor", "source_view_descriptor",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
-    "semantic_metadata_view",
+    "semantic_metadata_view", "semantic_working_set",
     "semantic_metadata_census",
     "credential_isolation", "provider_discovery", "provider_allocation",
     "provider_initialization", "provider_invocation", "provider_result_validation",
@@ -270,7 +277,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "router_public_instruction.py", "local_planning_admission.py",
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
     "semantic_metadata_view.py", "semantic_instruction_view.py",
-    "semantic_metadata_census.py",
+    "semantic_metadata_census.py", "semantic_working_set.py",
     "source_formalization_context.py",
     "numerical_obligation_client.py", "source_lookup_worker_client.py", "worker_source_client.py",
 })
@@ -423,6 +430,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         source_view_descriptor_sha256: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
+        semantic_working_set: str = "legacy",
         semantic_metadata_token_counter: SemanticMetadataTokenCounter | None = None,
         census_only: bool = False,
         coding_reply_mode: str = "legacy",
@@ -501,6 +509,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             raise ValueError("metadata token counter must match the pinned provider and model")
     if type(census_only) is not bool:
         raise ValueError("explicit Boolean census selection required")
+    if type(semantic_working_set) is not str or semantic_working_set not in {"legacy", "capsule-references@1"}:
+        raise ValueError("unsupported semantic working set")
+    if semantic_working_set != "legacy" and (purpose != "coding" or not source_selected
+            or semantic_repository is None or semantic_transport_schema != "supervisor-semantic-router-input@1"
+            or semantic_metadata_view != "legacy" or census_only):
+        raise ValueError("semantic working set requires isolated original semantic coding with source retrieval")
     if census_only and semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}:
         raise ValueError("metadata census requires the explicit common-bindings coding view")
     if not prompt.strip() or len(prompt.encode()) > 256_000:
@@ -603,7 +617,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         failure_phase = "source_view_descriptor"
         source_receipt = _source_broker_observation(path=source_view_descriptor,
             digest=source_view_descriptor_sha256, workspace=root, encoded=encoded,
-            boundary_sha256=container_boundary_sha256, profile=source_view_profile, **source_edit_options)
+            boundary_sha256=container_boundary_sha256, profile=source_view_profile,
+            **({"semantic_working_set": semantic_working_set} if semantic_working_set != "legacy" else {}),
+            **source_edit_options)
         from .worker_source_client import guidance
         source_guidance = guidance(source_view_profile, **source_edit_options)
         router_prompt += source_guidance
@@ -701,6 +717,31 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 source_guidance=source_guidance)
             model_prompt, metadata_receipt = selection.selected_prompt, selection.receipt
         if coding_reply_mode != "legacy" and model_prompt == candidate_model:
+            coding_reply_receipt = candidate_reply
+    working_set_receipt = None
+    if semantic_working_set != "legacy":
+        failure_phase = "semantic_working_set"
+        from .semantic_working_set import project_semantic_working_set, select_working_set
+        from .worker_source_client import load_descriptor
+        descriptor = load_descriptor(source_view_descriptor, source_view_descriptor_sha256, workspace=root)
+        view = project_semantic_working_set(encoded, descriptor)
+        if not router_prompt.startswith(encoded.provider_prompt):
+            raise ValueError("working set differs from validated semantic transport")
+        candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
+        candidate_model, candidate_advisory = render_model_prompt(prompt=candidate_router,
+            purpose=purpose, workspace=root, semantic_transport=True)
+        if candidate_advisory != advisory:
+            raise ValueError("working set changed the workspace advisory")
+        candidate_reply = None
+        if coding_reply_mode != "legacy":
+            candidate_model, candidate_reply = apply_coding_reply_contract(model_prompt=candidate_model,
+                mode=coding_reply_mode, purpose=purpose, provider=provider)
+        selection = select_working_set(view, native_complete_prompt=model_prompt,
+            candidate_complete_prompt=candidate_model)
+        working_set_receipt = selection.receipt
+        model_prompt = selection.provider_prompt
+        if selection.selected_mode != "legacy":
+            router_prompt = candidate_router
             coding_reply_receipt = candidate_reply
     if len(model_prompt.encode()) > 256_000:
         raise ValueError("model prompt with workspace contract exceeds its byte bound")
@@ -803,7 +844,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         "doctor_residual_context": residual_receipt,
         "public_instruction": instruction_receipt,
         "timeout_seconds": timeout, "requested_output_tokens": max_output_tokens,
-        "provider_output_token_cap_enforced": False, "router_calls": 1,
+        "provider_output_token_cap_enforced": False, "router_calls": 0,
         "usage": None, "completion_authority": False,
         "external_container_boundary": boundary,
     }
@@ -813,6 +854,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["semantic_prompt_components"] = semantic_component_census
     if metadata_receipt is not None:
         receipt["semantic_metadata_view"] = metadata_receipt
+    if working_set_receipt is not None:
+        receipt["semantic_working_set"] = working_set_receipt
     if displacement_receipt is not None:
         receipt["representation_displacement"] = displacement_receipt
     if metadata_native_reply is not None:
@@ -893,7 +936,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             failure_phase = "source_view_descriptor"
             current = _source_broker_observation(path=source_view_descriptor,
                 digest=source_view_descriptor_sha256, workspace=root, encoded=encoded,
-                boundary_sha256=container_boundary_sha256, profile=source_view_profile, **source_edit_options)
+                boundary_sha256=container_boundary_sha256, profile=source_view_profile,
+                **({"semantic_working_set": semantic_working_set} if semantic_working_set != "legacy" else {}),
+                **source_edit_options)
             if current != source_receipt:
                 raise ValueError("source descriptor changed before provider dispatch")
         if numerical_receipt is not None:
@@ -910,12 +955,33 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
             if current != source_lookup_receipt:
                 raise ValueError("source descriptor changed before provider dispatch")
+        if working_set_receipt is not None and working_set_receipt["selected_mode"] != "legacy":
+            failure_phase = "semantic_working_set"
+            from .worker_semantic_evidence_client import request_page
+            references = json.loads(view.provider_prompt)["working_set"]["capsule_references"]
+            if not references:
+                raise ValueError("selected working set has no retrievable capsule")
+            reference = references[0]
+            probe = request_page(source_view_descriptor, source_view_descriptor_sha256,
+                capsule_index=reference["capsule_index"], max_bytes=4096, workspace=root)
+            if (probe.get("ok") is not True
+                    or probe["page"]["artifact_sha256"] != reference["capsule_sha256"]):
+                raise ValueError("selected working set evidence is unavailable")
+            from .worker_semantic_evidence_client import canonical_json as evidence_json
+            probe_bytes = evidence_json(probe)
+            receipt["semantic_working_set_preflight"] = dict(
+                schema="supervisor-semantic-working-set-preflight@1", requests=1,
+                session_id=source_receipt["session_id"], capsule_index=reference["capsule_index"],
+                capsule_sha256=reference["capsule_sha256"],
+                response_bytes=len(probe_bytes), response_sha256=hashlib.sha256(probe_bytes).hexdigest(),
+                provider_input_bytes=0, source_freshness_checked=True, proof_authority=False)
         failure_phase = "provider_invocation"
         with _numerical_descriptor_environment(numerical_obligation_descriptor,
                                                numerical_obligation_descriptor_sha256), \
                 _source_descriptor_environment(source_view_descriptor, source_view_descriptor_sha256), \
                 _source_lookup_descriptor_environment(source_lookup_descriptor,
                                                       source_lookup_descriptor_sha256):
+            receipt["router_calls"] = 1
             output = generate_text(
                 model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
                 allow_local_fallback=False, allow_cross_provider_fallback=False,
@@ -1049,6 +1115,7 @@ def main():
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
+    parser.add_argument("--semantic-working-set", default="legacy", choices=["legacy", "capsule-references@1"])
     parser.add_argument("--semantic-metadata-census-only", action="store_true",
                         help="Check the complete metadata view and emit only census metadata before provider dispatch")
     parser.add_argument("--coding-reply-mode", default="legacy",
@@ -1081,6 +1148,7 @@ def main():
                         source_view_descriptor_sha256=args.source_view_descriptor_sha256,
                         semantic_transport_schema=args.semantic_transport_schema,
                         semantic_metadata_view=args.semantic_metadata_view,
+                        semantic_working_set=args.semantic_working_set,
                         census_only=args.semantic_metadata_census_only,
                         coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,

@@ -35,7 +35,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement", "semantic_working_set", "semantic_working_set_preflight")
 
 
 def _sha(raw: bytes) -> str:
@@ -342,6 +342,41 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                     _identity(requirement_id)
     reply = result.get("coding_reply_contract")
     metadata = result.get("semantic_metadata_view")
+    working_set = result.get("semantic_working_set")
+    preflight = result.get("semantic_working_set_preflight")
+    if preflight is not None and working_set is None:
+        raise ValueError("working set preflight requires its projection")
+    if working_set is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_working_set import validate_working_set_selection_receipt
+        validate_working_set_selection_receipt(working_set)
+        if (not translated or metadata is not None or result.get("source_view_retrieval", {}).get("schema")
+                != "worker-source-dispatch-observation@4"
+                or working_set["selected_complete_bytes"] != result["model_prompt_bytes"]
+                or working_set["selected_complete_sha256"] != result["model_prompt_sha256"]):
+            raise ValueError("working set requires its exact semantic retrieval and provider input")
+        binding = working_set["view_receipt"]["binding"]
+        source = result["source_view_retrieval"]
+        if (binding["descriptor_sha256"] != source.get("descriptor_sha256")
+                or binding["descriptor_session_id"] != source.get("session_id")
+                or binding["semantic_evidence_mode"] != source.get("semantic_evidence_mode")
+                or any(value != source.get(key) for key, value in binding["semantic_binding"].items())):
+            raise ValueError("working set differs from its source session")
+        if working_set["selected_mode"] != "legacy":
+            if (type(preflight) is not dict or set(preflight) != {"schema", "requests", "session_id",
+                    "capsule_index", "capsule_sha256", "response_bytes", "response_sha256",
+                    "provider_input_bytes", "source_freshness_checked", "proof_authority"}
+                    or preflight["schema"] != "supervisor-semantic-working-set-preflight@1"
+                    or type(preflight["requests"]) is not int or preflight["requests"] != 1
+                    or type(preflight["capsule_index"]) is not int or preflight["capsule_index"] != 0
+                    or preflight["session_id"] != source["session_id"]
+                    or type(preflight["response_bytes"]) is not int or not 1 <= preflight["response_bytes"] <= 4096
+                    or type(preflight["provider_input_bytes"]) is not int or preflight["provider_input_bytes"] != 0
+                    or preflight["source_freshness_checked"] is not True or preflight["proof_authority"] is not False):
+                raise ValueError("selected working set lacks its bounded endpoint preflight")
+            _digest(preflight["capsule_sha256"])
+            _digest(preflight["response_sha256"])
+        elif preflight is not None:
+            raise ValueError("unchanged prompt has an unexpected working set preflight")
     if metadata is not None:
         if (not translated or result["semantic_translation"]["schema"] != "supervisor-semantic-router-encoding@1"
                 or type(metadata) is not dict
@@ -466,9 +501,11 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             from .terminal_source_edit_policy import DEFAULT_SOURCE_EDIT_MODE, validate_source_edit_mode
             mode = validate_source_edit_mode(source_views.get("source_edit_mode", "disabled"),
                 source_view_profile=source_views["profile"])
-            if source_views.get("schema") != "worker-source-dispatch-observation@3" or mode == DEFAULT_SOURCE_EDIT_MODE:
+            if (source_views.get("schema") not in {"worker-source-dispatch-observation@3", "worker-source-dispatch-observation@4"}
+                    or source_views.get("schema") == "worker-source-dispatch-observation@3" and mode == DEFAULT_SOURCE_EDIT_MODE):
                 raise ValueError("mapped source guidance requires its explicit dispatch schema and mode")
-            edit_options["source_edit_mode"] = mode
+            if mode != DEFAULT_SOURCE_EDIT_MODE:
+                edit_options["source_edit_mode"] = mode
         advice = guidance(source_views["profile"], **edit_options)
         source_guidance = advice
         checks["source_view_semantic_binding"] = all(source_views.get(key) == value for key, value in expected.items())
@@ -502,7 +539,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             checks["public_instruction_" + field] = observed[field] == instruction[field]
         if instruction["schema"] == "supervisor-public-instruction-inclusion@2":
             checks["public_instruction_intent_requirements"] = observed.get("intent_requirements") == instruction["intent_requirements"]
-    if translated or instruction is not None:
+    if (translated or instruction is not None) and receipt.get("semantic_working_set") is None:
         checks.update(router_prompt_sha256=_sha(router_prompt.encode()) == receipt["router_prompt_sha256"],
             router_prompt_bytes=len(router_prompt.encode()) == receipt["router_prompt_bytes"])
     model, advisory = render_model_prompt(prompt=router_prompt, purpose="coding",
@@ -513,7 +550,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
         model, expected = apply_coding_reply_contract(model_prompt=model, mode=reply["mode"],
             purpose="coding", provider="codex_cli")
         baseline_reply = expected
-        if receipt.get("semantic_metadata_view") is None:
+        if receipt.get("semantic_metadata_view") is None and receipt.get("semantic_working_set") is None:
             for field in expected:
                 if field != "response_validated":
                     checks["coding_reply_" + field] = reply[field] == expected[field]
@@ -613,6 +650,41 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             for field in selected_reply:
                 if field != "response_validated":
                     checks["metadata_selected_coding_reply_" + field] = reply[field] == selected_reply[field]
+    working_set = receipt.get("semantic_working_set")
+    if working_set is not None:
+        if not translated or metadata is not None or source_views is None:
+            raise ValueError("working set audit requires its original semantic source route")
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_working_set import (
+            replay_semantic_working_set_for_audit, select_working_set,
+        )
+        view = replay_semantic_working_set_for_audit(encoded, working_set["view_receipt"])
+        if working_set["selected_mode"] != "legacy":
+            reference = json.loads(view.provider_prompt)["working_set"]["capsule_references"][0]
+            checks["semantic_working_set_preflight_capsule"] = all(
+                receipt["semantic_working_set_preflight"][key] == reference[key]
+                for key in ("capsule_index", "capsule_sha256"))
+        if not router_prompt.startswith(encoded.provider_prompt):
+            raise ValueError("working set audit differs from reconstructed transport")
+        candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
+        candidate, candidate_advisory = render_model_prompt(prompt=candidate_router, purpose="coding",
+            workspace=Path(receipt["workspace"]), semantic_transport=True)
+        if candidate_advisory != advisory:
+            raise ValueError("working set audit changed workspace advisory")
+        if reply is not None:
+            candidate, candidate_reply = apply_coding_reply_contract(model_prompt=candidate,
+                mode=reply["mode"], purpose="coding", provider="codex_cli")
+        selection = select_working_set(view, native_complete_prompt=model, candidate_complete_prompt=candidate)
+        checks["semantic_working_set_selection_receipt"] = _same_json(working_set, selection.receipt)
+        model = selection.provider_prompt
+        if selection.selected_mode != "legacy":
+            router_prompt = candidate_router
+        checks.update(router_prompt_sha256=_sha(router_prompt.encode()) == receipt["router_prompt_sha256"],
+            router_prompt_bytes=len(router_prompt.encode()) == receipt["router_prompt_bytes"])
+        if reply is not None:
+            selected_reply = candidate_reply if selection.selected_mode != "legacy" else baseline_reply
+            for field in selected_reply:
+                if field != "response_validated":
+                    checks["working_set_coding_reply_" + field] = reply[field] == selected_reply[field]
     checks.update(model_prompt_sha256=_sha(model.encode()) == receipt["model_prompt_sha256"],
         model_prompt_bytes=len(model.encode()) == receipt["model_prompt_bytes"],
         workspace_advisory_sha256=_sha(advisory.encode()) == receipt["workspace_advisory_sha256"],

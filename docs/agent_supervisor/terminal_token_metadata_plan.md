@@ -431,3 +431,72 @@ representation and integration checks. The October 12 instruction pair above
 records a small observed native-token difference; repeatable savings remain
 unestablished. Reversible source-view input and complete-run benefits are still
 unmeasured.
+
+## October 14: exact capsule provenance retrieval
+
+The opt-in `semantic_working_set="capsule-references@1"` now connects an
+exact baseline capsule reader to the actual coding router. It requires the
+full indexed arm, enabled source views, semantic transport `@1`, and the
+legacy metadata view. Select it with `--semantic-working-set
+capsule-references@1` in the full-supervisor benchmark preparation command;
+retain the same source-view profile in both comparison arms. The frozen
+configuration, installed worker arguments and declared controls bind the
+selection. Provider-free Doctor routes continue through their existing path.
+
+This first profile defers a closed set of capsule provenance fields, including
+producer versions and dependency version/fact/link identifiers. It preserves
+behavioral and unknown capsule fields, contracts, effects, exceptions, proof
+obligation references, raw source, the native task core, world/formalization
+evidence, public requirements and the existing Doctor advisory. The original
+semantic transport remains available to the owner and response decoder.
+Every deferred row has an index and hash for its exact native capsule bytes;
+candidate regeneration cannot substitute for this retrieval.
+
+The distinction from existing Doctor integration matters:
+`prepare_doctor_residual_context` already compiles a PlannerDoctor capsule
+from actual admitted tasks and residuals. Its router advisory is appended to
+the full native context. The new profile reduces selected provenance overhead;
+it does not replace the complete task with that capsule or invent accepted
+proofs. Required-core identifiers alone do not establish that constraint text
+has reached the model.
+
+Before model generation, the router performs one bounded request through the
+existing source socket. The exact capsule hash and current canonical/allocated
+source checks must pass. This probe consumes the existing retrieval budget,
+appears in session accounting and adds no content to model input. A missing,
+foreign, stale or closed endpoint refuses generation. After edits, baseline
+retrieval refuses; current candidate analysis is a different operation.
+
+Selection compares complete UTF-8 input bytes, including workspace, source
+guidance, public/Doctor/reply wrappers and expansion instructions. A larger
+candidate retains the original prompt. The receipt separately binds the
+original and selected inputs, broker session and preflight response. Historical
+audit reconstructs the delivered representation without claiming current
+freshness. Evidence response bytes are counted separately from source bytes
+and candidate-analysis bytes. Provider token counters remain unknown here.
+
+The offline qualification and source pins are recorded in
+[qualification.json](evidence/semantic-working-set-20261014/qualification.json).
+It uses authored software, the real semantic producer, Git worktrees, a
+registered child and socket, and a capturing `llm_router` provider. Container
+UID admission is authored; this is not a new Docker or Terminal-Bench reward
+run. Both literal and structured coding replies are checked, along with the
+Grok route, generated worker/driver wiring, stale-source refusal, exact inverse,
+accounting and audit reconstruction.
+
+The final consolidated run passed 199 tests with unchanged source pins.
+The authored fixture's complete initial router input fell from 34,580 to
+32,977 bytes (4.64%); with the structured reply wrapper it fell from 35,086 to
+33,482 bytes (4.57%). Expansion responses are additional traffic. These
+measurements establish initial byte reduction and exact restoration, not net
+token, latency, cost or benchmark-score improvements. The linked receipt also
+records separate regression runs; their test populations overlap.
+
+The remaining large cost is still native conversation history: Grok coding can
+run up to 128 turns inside one router invocation. This profile does not control
+or truncate that history. A subsequent integration must persist unresolved
+work at supervisor decision boundaries, rebuild the required current context,
+and measure every call, tool expansion and retry. World/formalization payloads
+need their own exact readers and coverage checks before further deferral. A
+live matched comparison remains necessary; the preceding live treatment was
+authentication-blocked and supplies no token-savings result for this profile.

@@ -1,0 +1,97 @@
+{
+  "actual_container_uid_admission_tested": false,
+  "additional_regressions": [
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/semantic-working-set-20261014/dispatch-audit-02.xml",
+      "seconds": 106.268,
+      "sha256": "0a320bd32e9551ff0c47ac55b5e4f3d84c10cf93456c402538f071b0767ee18f",
+      "skipped": 0,
+      "tests": 211
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/semantic-working-set-20261014/inner-policy-02.xml",
+      "seconds": 49.057,
+      "sha256": "8f4db39939e36fb6007dea026e7e072c0ab5cc2c86cb1ea1aff10e3f02f243d1",
+      "skipped": 0,
+      "tests": 332
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/residual-context-20261014/semantic-evidence-tests-02.xml",
+      "seconds": 77.457,
+      "sha256": "e8e57472cd6c42e88c987c7fed798e84b17664436107bd9afceeb71a7fdfdead",
+      "skipped": 0,
+      "tests": 262
+    }
+  ],
+  "base_commit": "d3433613f8af5636567406f0b9daf20824fde8f0",
+  "datasets_commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+  "full_symbolic_working_set_substitution_implemented": false,
+  "kit_commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+  "limitations": [
+    "Provenance fields only: raw source and required behavior/constraints remain inline.",
+    "Expansion responses are additional bytes and must be included in a live token comparison.",
+    "No change to the native CLI multi-turn conversation lifecycle.",
+    "No baseline world/formalization/unselected-capsule reader is added.",
+    "The preceding live treatment was authentication-blocked; no new paid model run was attempted."
+  ],
+  "live_provider_calls": 0,
+  "measurement_scope": "complete captured router task input; excludes native CLI system/history and subsequent retrieval responses",
+  "measurements": [
+    {
+      "bytes_reduced": 1603,
+      "complete_run_token_savings": null,
+      "native_complete_utf8_bytes": 34580,
+      "provider_tokens": null,
+      "reduction_percent": 4.6356,
+      "selected_complete_utf8_bytes": 32977,
+      "test": "test_complete_router_input_retains_constraints_and_expands_exact_native_capsule[legacy]"
+    },
+    {
+      "bytes_reduced": 1604,
+      "complete_run_token_savings": null,
+      "native_complete_utf8_bytes": 35086,
+      "provider_tokens": null,
+      "reduction_percent": 4.5716,
+      "selected_complete_utf8_bytes": 33482,
+      "test": "test_complete_router_input_retains_constraints_and_expands_exact_native_capsule[ordinary-completion@1]"
+    }
+  ],
+  "native_syntax_and_source_roundtrip_tested": true,
+  "official_benchmark_reward": null,
+  "profile": "capsule-references@1",
+  "program_correctness_proved": false,
+  "qualification": {
+    "artifact": "/home/barberb/lift_coding/artifacts/semantic-working-set-20261014/qualification.xml",
+    "seconds": 188.942,
+    "sha256": "be98929a7cc8e4df3a9f6bdd298e696afdb9db0a90f5588708c9ec9f9f6b71c2",
+    "skipped": 0,
+    "tests": 199
+  },
+  "schema": "supervisor-semantic-working-set-offline-qualification@1",
+  "source_pins_unchanged": true,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "1adf34db2dec01eb990a0eadacdb42a6fcc1f14e169304097295dec6c08c7369",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "5b75fb6d03f118fbd0914630fb01af448448a5fadd0901dd2610726d496ebf96",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "66e0d0dcc3fcb6b9f467e80e47f77a003f83523297c7894394fc6129b09d14cc",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "0f58e996149a007d12f2dc162c840f5644b88ecaf08366ebf139232255f629c4",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "4be238a15e9e33b5af903e2b17d35d934678a8993cd8c404d2f634a9244424ef",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "ed7b6bddfea660c82b63aa9e55377096fd1c46e43839dc0c4c66eaf6b6268e75",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "9e4fbd8616ac5c8a84d904e369f22383f3f8ca3e734556b0f2c24e5c870d4dd3",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py": "446e6818fb201e5cd92a989e1621b44153981a5a880ef739f81e797303aed606",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "ad713e95694d5afddcd5b6632912e6f0ce469e562e9cd58c900df02ab7bf0f5d",
+    "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_worker_wiring.py": "66b765c70a18bb806431fe7eabb032527d00e7660441430bd5b2f45929debc86",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py": "6ac3e3aca2d48974eca90927ef5a4416cd6cb39d5405aa370ce01c97ae530a0b",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "9f5e602aaf84d5a6370a6168ff4b203d6860330ac676e708cecd9c6bb296a6a5",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py": "28e386246430a6ee46152d3ef3b2bb755fcccc6ce6653b7fb91aab8de6354c29",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence.py": "ab3367e0f974a6a7e7fa5de5b76815896e3ee00cc898d4a9fba5da4d5665917b",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence_client.py": "e4714fd9bffa8275cb6570039139d7cc7aa8399681ce18ef76be9243c59cb736",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "877a156e7d4d8eb0b06d437b09d0e7bee956d71ed69c30cb41775bfd2a4f6115",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "ad2e47300e8f0738a19b821cf14dcc1717b7a36bc0a3b74b33df52df9c6dac2b",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py": "ab87e3af26bdefcf67cb6c215192d40716367ec5556d366156bca9359b00d164",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py": "d932343cd28a6b2d67d26aec1cf35985a9c7fd01ff4ac86baf8aece09798b48a",
+    "test/api/test_semantic_working_set.py": "9ecdfae9908a7c639a34c0e46087111efe0b96433c62f56d83ac509beea47fd8",
+    "test/api/test_semantic_working_set_dispatch.py": "427248e229ddcbc3635159be9834feae91fb1ecd5ac7c451acb6c114ace49c6a",
+    "test/api/test_worker_semantic_evidence.py": "78769d45eef8628597626560c8bbbc1068f87a30889fc7eb6fd99975a8e32f4e"
+  },
+  "test_groups_overlap": true
+}
