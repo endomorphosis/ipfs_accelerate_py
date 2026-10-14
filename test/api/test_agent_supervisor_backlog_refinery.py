@@ -4223,11 +4223,6 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
         "are bounded diagnostic and repair scope" not in todo_text
     )
     assert (
-        "- Outputs: wallet_interface/ui/src/WorldIdPanel.tsx, "
-        "data/agent_supervisor/discovery, "
-        "wallet_interface/ui/tests/world-id-ux.spec.ts" in todo_text
-    )
-    assert (
         "- Validation: npm --prefix wallet_interface/ui test -- "
         "--runInBand tests/world-id-ux.spec.ts" in todo_text
     )
@@ -4241,7 +4236,12 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
     assert retry_budget_repair_validation_paths(repair_task) == (
         "wallet_interface/ui/tests/world-id-ux.spec.ts",
     )
-    assert repair_task.outputs[-1] == ("wallet_interface/ui/tests/world-id-ux.spec.ts")
+    # A runnable validation command needs only source and exact failed-test scope;
+    # the diagnostic discovery directory is not itself a repair output.
+    assert list(repair_task.outputs) == [
+        "wallet_interface/ui/src/WorldIdPanel.tsx",
+        "wallet_interface/ui/tests/world-id-ux.spec.ts",
+    ]
     discovery_text = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
     assert "- Failed test paths: wallet_interface/ui/tests/world-id-ux.spec.ts" in discovery_text
 
@@ -4307,7 +4307,12 @@ def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):
     )
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "Resolve validation retry-budget failure for AUTO-001" in todo_text
-    assert "- Validation: test -f " in todo_text
+    repair_task = parse_task_file(todo_path, "## AUTO-")[1]
+    # Pre-dispatch labels are diagnostics, so retain the source task's real
+    # validation obligation instead of downgrading it to discovery-file existence.
+    assert list(repair_task.validation) == ["pytest tests/test_runtime.py"]
+    assert list(repair_task.outputs) == ["src/runtime.py"]
+    assert "- Validation: test -f " not in todo_text
     discovery_text = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
     assert "Validation attempted: `False`" in discovery_text
     assert "no_required_validation_declared" in discovery_text
