@@ -46,9 +46,11 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     value = capability.require_worker_capability(packaged[1], CODING600_SOURCE384_PROFILE)
     assert value['max_timeout_seconds'] == MAX_IMPLEMENTATION_TIMEOUT_SECONDS == 600
     assert value['worker_entry_sha256'] == hashlib.sha256(WORKER_ENTRY.encode()).hexdigest()
-    assert value['schema'] == 'terminal-router-worker-capability@3'
+    assert value['schema'] == 'terminal-router-worker-capability@4'
     assert value['budget_profile_max_timeout_seconds'] == {FORMALIZATION_SOURCE384_PROFILE: 1800}
     assert value['worker_child_custody_schema'] == 'terminal-worker-child-custody@1'
+    assert value['terminal_task_profile_schema'] == 'terminal-public-task-profile@4'
+    assert value['terminal_semantic_scope_schema'] == 'terminal-public-task-semantic-scope@1'
     assert set(value['source_sha256']) == {
         'source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_output_observation.py',
@@ -81,6 +83,20 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/ipfs_accelerate_py/cli_runtime/cli_metadata.py',
         'source/ipfs_accelerate_py/cli_runtime/grok_native_usage.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/terminal_semantic_scope.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_task_profile.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_program_population.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py',
+        'source/ipfs_accelerate_py/agent_supervisor/context/context_compiler.py',
+        'source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py',
         'source/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py',
     }
 

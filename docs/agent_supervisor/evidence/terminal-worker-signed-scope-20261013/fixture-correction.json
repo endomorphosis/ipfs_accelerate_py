@@ -1,0 +1,32 @@
+{
+  "failed_attempt": "qualification-01",
+  "failed_outcome": {
+    "errors": 31,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 511
+  },
+  "failed_outputs_or_snapshots_overwritten": false,
+  "files": [
+    {
+      "after_sha256": "756fe6bb90a21f0cf623fa01f276446404d5bec7c9b61c5e59eb5c02bf407201",
+      "before_sha256": "66d1cefd811f57bc7ed31ccaf3008f5d2f8fe5aec6d2469f35d476fac81479d0",
+      "new": "    prep.initial_context(state=case.state)\n    # Match public worker storage: remove inherited group-write permissions.\n    case.root.chmod(0o755)\n    (case.root / \".runtime\").chmod(0o755)\n",
+      "old": "    prep.initial_context(state=case.state)\n",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_signed_scope.py"
+    },
+    {
+      "after_sha256": "53008eac216453649a33238ac34efcb1051d44ed84cdbf5a7ba491c3c46410bf",
+      "before_sha256": "c51b51fcd180aacce757e0a60764378663169309896c2c0e259bb91afb481269",
+      "new": "    initial = prep.initial_context(state=case.state)\n    # Match public worker storage: remove inherited group-write permissions.\n    case.root.chmod(0o755)\n    (case.root / \".runtime\").chmod(0o755)\n",
+      "old": "    initial = prep.initial_context(state=case.state)\n",
+      "path": "test/api/test_router_signed_terminal_scope.py"
+    }
+  ],
+  "next_attempt": "qualification-02",
+  "production_sources_changed": false,
+  "qualification_runner_changed": false,
+  "reason": "New shared make_case fixtures inherit umask0002 and0775 .runtime. Public instruction storage correctly requires owner-controlled, worker-readable directories without group/world write. Explicit0755 removes only group-write in these test directories.",
+  "recorded_at_utc": "2026-10-13T23:43:28.815443+00:00",
+  "schema": "terminal-worker-signed-scope-fixture-correction@1"
+}

@@ -148,7 +148,11 @@ The consumer paths perform complementary checks:
   artifacts derives the same selected population.
 - Warm owner rebinding rechecks complete signed source custody and the selected
   payload around native world capture. Worker context compilation retains the
-  selected semantic, retrieval, and world evidence.
+  selected semantic, retrieval, and world evidence. The
+  [public coding-router handoff](terminal_worker_signed_scope.md) independently
+  joins that compiled selection to its embedded signed manifest and repeats
+  complete source replay immediately before generation. Native claim/allocation
+  and coding-child source capabilities remain separate.
 - Historical capsule audit checks retained declaration and evidence identities
   without requiring a surviving checkout. It does not independently re-read
   every selected source length, verify a live source state, or establish fresh

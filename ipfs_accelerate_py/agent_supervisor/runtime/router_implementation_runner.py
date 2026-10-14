@@ -247,6 +247,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "container_boundary", "workspace_identity", "semantic_context", "source_formalization_context",
     "numerical_obligation_descriptor", "source_lookup_descriptor", "source_view_descriptor",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
+    "terminal_semantic_scope_currentness",
     "semantic_metadata_view",
     "semantic_metadata_census",
     "credential_isolation", "provider_discovery", "provider_allocation",
@@ -602,6 +603,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             artifact=public_instruction_artifact, expected_sha256=public_instruction_sha256,
             task_cid=public_instruction_task_cid, prompt=prompt, workspace=root,
             repository=semantic_repository)
+        if (instruction_receipt.get("schema") == "supervisor-public-instruction-inclusion@5"
+                and encoded is None):
+            raise ValueError("signed Terminal scope requires the verified semantic coding route")
         # Preserve the literal requirements after semantic encoding. Native
         # capsule identity remains the stdin identity, not this projection.
         router_prompt += instruction
@@ -857,6 +861,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 "response_schema_validated": False,
                 "plan_admitted": False,
             }
+    scoped_instruction = (instruction_receipt is not None
+        and instruction_receipt.get("schema") == "supervisor-public-instruction-inclusion@5")
+    if scoped_instruction:
+        receipt["terminal_semantic_scope_dispatch_rechecked"] = False
     try:
         if source_receipt is not None:
             failure_phase = "source_view_descriptor"
@@ -879,6 +887,18 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
             if current != source_lookup_receipt:
                 raise ValueError("source descriptor changed before provider dispatch")
+        if scoped_instruction:
+            # Provider initialization and earlier descriptor checks may run
+            # caller code. Rejoin the compiled selection and complete signed
+            # originals immediately before dispatch, without native owner keys.
+            failure_phase = "terminal_semantic_scope_currentness"
+            current_instruction, current_receipt = load_public_instruction(
+                artifact=public_instruction_artifact, expected_sha256=public_instruction_sha256,
+                task_cid=public_instruction_task_cid, prompt=prompt, workspace=root,
+                repository=semantic_repository)
+            if current_instruction != instruction or current_receipt != instruction_receipt:
+                raise ValueError("signed Terminal scope changed before provider dispatch")
+            receipt["terminal_semantic_scope_dispatch_rechecked"] = True
         failure_phase = "provider_invocation"
         with _numerical_descriptor_environment(numerical_obligation_descriptor,
                                                numerical_obligation_descriptor_sha256), \

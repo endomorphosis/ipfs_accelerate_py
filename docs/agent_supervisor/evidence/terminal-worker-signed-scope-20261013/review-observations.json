@@ -1,0 +1,98 @@
+{
+  "authored_by": "root",
+  "diagnostic_qualification_distinction": "Two retained read-only replays from authoredfixture are separate frompytest executions and use their own historicalsource hashes; no actualmodel/UIDchildqualified.",
+  "documentation_review_corrections": [
+    "Qualify compactbranch publication status as absence from queried main/matchingremote at survey; no claim of absence underallGitHubrefs."
+  ],
+  "embedding_inventories_modified": false,
+  "execution_pending_when_written": true,
+  "external_provider_calls": 0,
+  "foreign_worktrees_modified": false,
+  "limits": [
+    "Public signature and original-source replay do not authenticate a live native task claim, managed allocation or coding-child process.",
+    "Complete original hashes replay in both checkouts; selected source-view scope does not sandbox ordinary provider file tools.",
+    "Historical summary replays baseline Git originals and producer artifacts; it is not fresh dispatch.",
+    "Archive tests use hermetic extension placeholders; only standalone extracted profile producer executes, not fullinstalledworker.",
+    "Provider/UID descriptor seams authored; actualmodelchild, socketbroker, Docker and officialverifier notexercised.",
+    "Native IPC coordinator/claim derivation, allocation permission handoff and 32versus64path bounds remain distinct integration work."
+  ],
+  "model_assets_modified": false,
+  "postqualification_fixture_review": [
+    "Qualification01 preserved storageguard refusal with0775 fixture directories; correction removes groupwrite in only two newtestfixtures.",
+    "Qualification02 preserved database-authority refusal from realownerfixture environment; correction scopes production-named credential scrub around same-process worker and restoresowner env, guard remainsunmocked.",
+    "Read-only collaborator review confirms scrub restoresowner credentials onreturn and exception; source-drift controls stillrequire providerinitialization once and zero generation."
+  ],
+  "prequalification_corrections": [
+    "New terminal_semantic_scope_currentness failure phase included in closed diagnostic vocabulary.",
+    "Closing drift tests assert retained failure phase and false closing-check observation, in addition to zero authored generation.",
+    "Instruction-view codec admits version5 while preserving its exact inverse and existing authority binding.",
+    "Public loader uses actual signed PROFILE for downgrade detection, regardless of optional prompt metadata."
+  ],
+  "recorded_at_utc": "2026-10-13T23:32:56.352105+00:00",
+  "review_outcome": "No remaining material blockers identified before qualification.",
+  "reviewer_authored_execution_receipt": false,
+  "reviewer_product_imports_or_tests": false,
+  "reviewers": [
+    {
+      "agent": "signed_scope_architecture",
+      "scope": "public signature/compiled semantic join, baseline/current/historical modes, independent native owner process/allocation boundary survey; read-only integration review"
+    },
+    {
+      "agent": "signed_profile_contract",
+      "scope": "archive exact feature/source pins and hermetic package tests; read-only root closing/audit and integration API review"
+    },
+    {
+      "agent": "scope_context_consumers",
+      "scope": "real preparation/native world/compiled router/source-view integration with authored provider and UID seams; fresh parallel work survey"
+    }
+  ],
+  "schema": "terminal-worker-signed-scope-review-observations@1",
+  "source_bindings": [
+    {
+      "bytes": 65465,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "404d38b45d3bc5fb682d7c06d19b81bcfb06066ff9ec1902e6e86dfe06f09178"
+    },
+    {
+      "bytes": 7867,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "sha256": "54a37b3d3aab47951baa2baa92f1d3c1d292efcf5808d6eabc565e2550701d17"
+    },
+    {
+      "bytes": 9823,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_scope_worker_capability.py",
+      "sha256": "3e125aaffcf81113a1a7781c82d9cb6e34e59bb80162ba1a009821b5f346db8a"
+    },
+    {
+      "bytes": 18193,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "sha256": "a63de0f8ea200ac4e9237fbd20b6285bcce3784887a1b14f76fb4a3911083170"
+    },
+    {
+      "bytes": 14073,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_signed_scope.py",
+      "sha256": "66d1cefd811f57bc7ed31ccaf3008f5d2f8fe5aec6d2469f35d476fac81479d0"
+    },
+    {
+      "bytes": 68089,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "caad76537226a5a245c45c25b1472b8e7707498857d1fc7e93e39a8d4a757598"
+    },
+    {
+      "bytes": 35515,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "c8ef9c0285e8dbaa99e0f3b6b0ac4b3131e4c10b0bea9d912632ca64062d28b2"
+    },
+    {
+      "bytes": 13476,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+      "sha256": "2fe2df19aa0dcc96681a2356a7e4894104ace8cb1d2f2074b7b93b6b95ad6eb5"
+    },
+    {
+      "bytes": 11207,
+      "path": "test/api/test_router_signed_terminal_scope.py",
+      "sha256": "c51b51fcd180aacce757e0a60764378663169309896c2c0e259bb91afb481269"
+    }
+  ],
+  "token_savings_established": false
+}
