@@ -345,6 +345,19 @@ class SourceLookupWorkerBroker:
         _need(canonical_json_bytes(before) == canonical_json_bytes(after),
               "source worker native launch state changed during retained replay")
         self._context_current()
+        self._close_source_replay()
+        return canonical_json_bytes(dict(native=after,
+            descriptor_sha256=_sha(self._descriptor_bytes), source_binding_sha256=_sha(self._binding_bytes),
+            canonical_binding_sha256=_sha(self._canonical_binding_bytes),
+            source_refs_sha256=_sha(self._source_refs_bytes)))
+
+    def _close_source_replay(self, selected=None):
+        """Close detached CAS/native callbacks with original custody and bytes.
+
+        The caller finishes its native claim fence outside SERVER first. This
+        closing section performs no retained-CAS replay or coordinator fence.
+        It remains a sequence of checks, not a filesystem writer lease.
+        """
         with self._owner_lock:
             self._current_owner()
             self._spawn_policy_current()
@@ -380,12 +393,11 @@ class SourceLookupWorkerBroker:
                   "source worker original selected refs changed")
             self._canonical._check_source()
             self._service._check_source()
+            if selected is not None:
+                self._canonical._working_file(selected.entry, selected.data)
+                self._service._working_file(selected.entry, selected.data)
             self._current_owner()
             self._spawn_policy_current()
-        return canonical_json_bytes(dict(native=after,
-            descriptor_sha256=_sha(self._descriptor_bytes), source_binding_sha256=_sha(self._binding_bytes),
-            canonical_binding_sha256=_sha(self._canonical_binding_bytes),
-            source_refs_sha256=_sha(self._source_refs_bytes)))
 
     def require_before_spawn(self):
         """Prepare this live session once; return no serialized launch authority.
@@ -531,7 +543,13 @@ class SourceLookupWorkerBroker:
         self._context_current()
         with self._owner_lock:
             self._current_owner()
-            self._selected(payload)
+        # Retained CAS may enter COOR through a caller callback. Replay without
+        # SERVER, then close native custody, endpoints and both source roots
+        # before incurring the backend call.
+        selected = self._selected(payload)
+        self._task_current()
+        self._context_current()
+        self._close_source_replay(selected)
         response = self._client.source_get(payload)
         response = native.validate_source_response(response, payload=payload,
             owner_identity=self._client.identity, grant=self._client.grant)
@@ -544,17 +562,12 @@ class SourceLookupWorkerBroker:
         self._task_current()
         with self._owner_lock:
             self._current_owner()
-            selected = self._selected(payload)
+        selected = self._selected(payload)
         # The coordinator clock may observe host state. Complete the final
         # claim fence after CAS replay, before closing exact source bytes.
         self._task_current()
-        with self._owner_lock:
-            self._current_owner()
-            self._canonical._check_source()
-            self._service._check_source()
-            self._canonical._working_file(selected.entry, selected.data)
-            self._service._working_file(selected.entry, selected.data)
         self._context_current()
+        self._close_source_replay(selected)
         result = {key: response["result"][key] for key in _PUBLIC_FIELDS}
         # Hash the complete native JSON body; its LF/wire counters are distinct.
         result.update(schema=protocol.RESULT_SCHEMA, request_cid=response["result"]["request_cid"],

@@ -1,0 +1,369 @@
+{
+  "accelerator_base": "09ad10bd0e6694db7b0570614ab289184a0713c5",
+  "actual_datasets_execution_and_parent_pin": "4b50ae4aac65da9166bd3b24608f32ba7e9fb23d",
+  "changed_listed_sources": [],
+  "child_embedded_datasets_pin": "904f885c180eb9dfcdef80199f708125428d3859",
+  "entire_repository_equivalence_claimed": false,
+  "listed_count": 51,
+  "listed_sources": [
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9",
+      "embedded_source_sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/__init__.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+      "embedded_source_sha256": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/autoformal/tree_pin.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+      "embedded_source_sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/backends/smt/compiler.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+      "embedded_source_sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/families/registry.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "467b5e00df9e6960618a36064255d2680f2b369e3f27bf1901b6260a132b5eab",
+      "embedded_source_sha256": "467b5e00df9e6960618a36064255d2680f2b369e3f27bf1901b6260a132b5eab",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/intent_action_checkpoint_384.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7",
+      "embedded_source_sha256": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_384.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4",
+      "embedded_source_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_training_v2.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+      "embedded_source_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/structured_source_384.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+      "embedded_source_sha256": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/intent_ir/decoder.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "694e490c8f62bf8abed4cea0f60f161888436ee5886b1e814784ff77da811cc7",
+      "embedded_source_sha256": "694e490c8f62bf8abed4cea0f60f161888436ee5886b1e814784ff77da811cc7",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/intent_ir/formalize/action_contracts.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+      "embedded_source_sha256": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/intent_ir/formalize/rich_grammar.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+      "embedded_source_sha256": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/intent_ir/schema.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+      "embedded_source_sha256": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/ir_core/canonical.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "1b214ea190a41c6a451377a03bc71ea84f6703314293ef78c5f269082eee4fbe",
+      "embedded_source_sha256": "1b214ea190a41c6a451377a03bc71ea84f6703314293ef78c5f269082eee4fbe",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/ir_core/schema_registry.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+      "embedded_source_sha256": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/legal_ir/canonical_contracts.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+      "embedded_source_sha256": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/security_ir/model.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+      "embedded_source_sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/cache.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+      "embedded_source_sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+      "embedded_source_sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/python_frontend.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d",
+      "embedded_source_sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15",
+      "embedded_source_sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102",
+      "embedded_source_sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75",
+      "embedded_source_sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68",
+      "embedded_source_sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "15e71419ec045f18b73db32ca4516586bc882da85d608d44955d6dff7551959c",
+      "embedded_source_sha256": "15e71419ec045f18b73db32ca4516586bc882da85d608d44955d6dff7551959c",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/pytest_analysis.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "d17a56003b525949ae60ed778e1f6f52e07991be1997aeb872d4e30a1f592856",
+      "embedded_source_sha256": "d17a56003b525949ae60ed778e1f6f52e07991be1997aeb872d4e30a1f592856",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "c95fd8ec9a2a6491ef74bc8b9fc76f56a13f9870f8a2c5d32da27eecbbb7ba2d",
+      "embedded_source_sha256": "c95fd8ec9a2a6491ef74bc8b9fc76f56a13f9870f8a2c5d32da27eecbbb7ba2d",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "9345418a30c50dacc605e43b1ee9cb37e7666c73b5d8d271c160c70a770c6167",
+      "embedded_source_sha256": "9345418a30c50dacc605e43b1ee9cb37e7666c73b5d8d271c160c70a770c6167",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "f4efdbf995e8cb60e73cbc515bdb8927934eeecdd51233e5e5df68dee645d089",
+      "embedded_source_sha256": "f4efdbf995e8cb60e73cbc515bdb8927934eeecdd51233e5e5df68dee645d089",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51",
+      "embedded_source_sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc",
+      "embedded_source_sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/bindings.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d",
+      "embedded_source_sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0",
+      "embedded_source_sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/merkle.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "777542d71f3c586f4e060926bd679ed7254e7c7fc8d93cdd3364af997ee91c9a",
+      "embedded_source_sha256": "777542d71f3c586f4e060926bd679ed7254e7c7fc8d93cdd3364af997ee91c9a",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "embedded_source_sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "8a044dae64a12cccee904929d60b8a7c0aec51d0266592394e237ca4bbe90e85",
+      "embedded_source_sha256": "8a044dae64a12cccee904929d60b8a7c0aec51d0266592394e237ca4bbe90e85",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "embedded_source_sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_source.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+      "embedded_source_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_verification/program.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003",
+      "embedded_source_sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_verification/source_adapters.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+      "embedded_source_sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/software_verification/syntax_bridge.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+      "embedded_source_sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/syntax_core/ast.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf",
+      "embedded_source_sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/syntax_core/signatures.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+      "embedded_source_sha256": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/ui_ux_ir/decoder.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+      "embedded_source_sha256": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/logic/ui_ux_ir/schema.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "735ca0597186e094d736ef58435c82956c4ab805a68fc7a6adbfc0ee21ee889f",
+      "embedded_source_sha256": "735ca0597186e094d736ef58435c82956c4ab805a68fc7a6adbfc0ee21ee889f",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_production.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "ce80ed6294009e04580051e6eb06a817d74a8a56f04814ad0a698e3d27dd0d41",
+      "embedded_source_sha256": "ce80ed6294009e04580051e6eb06a817d74a8a56f04814ad0a698e3d27dd0d41",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+      "embedded_source_sha256": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+      "embedded_source_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_formula_codec.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "3b6cd3a6fade78fed275a478f010329e5d030a250b914c4b46ab0f0d77b9d5ab",
+      "embedded_source_sha256": "3b6cd3a6fade78fed275a478f010329e5d030a250b914c4b46ab0f0d77b9d5ab",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_family_evaluator.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+      "embedded_source_sha256": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py"
+    },
+    {
+      "actual_checkout_matches_immutable_revision": true,
+      "actual_execution_source_sha256": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+      "embedded_source_sha256": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+      "identical_git_bytes": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_latent_formula.py"
+    }
+  ],
+  "schema": "source-worker-delivery-datasets-compatibility@1",
+  "tests_or_models_invoked": false
+}

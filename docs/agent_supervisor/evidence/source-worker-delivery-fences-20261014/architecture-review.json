@@ -1,0 +1,31 @@
+{
+  "broker_pre_and_post_backend_selected_replays_outside_server": true,
+  "closing_native_task_allocation_nomination_and_both_source_population_checks": true,
+  "completion_authority": false,
+  "concrete_blockers_found": false,
+  "execution_authority": false,
+  "new_cases": 22,
+  "new_mutation_cases": 20,
+  "new_success_cases": 2,
+  "proof_authority": false,
+  "remaining_gaps": [
+    "constructor_and_native_source_get_gateway_retained_CAS_transaction_scope",
+    "sealed_worker_writable_permission_delegation",
+    "authenticated_cross_process_native_attempt_wrapper_and_child_birth",
+    "deployed_worker_UID_and_signed_compiled_context_adoption"
+  ],
+  "review_method": "read_only_source_and_diff_review",
+  "reviewer": "signed_scope_architecture",
+  "schema": "source-worker-delivery-independent-code-review@1",
+  "selected_original_bytes_checked_in_both_roots": true,
+  "source_changes_by_reviewer": 0,
+  "source_sha256": {
+    "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification_runner.py": "5d9d4d73aec6bf2ef16da944e64959b98f0146f073545d1ed75a4ab1a34c77ed",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py": "2694487172dcd41f780061077486f5349faf2031cea915fc854d3d96cc9a73b4",
+    "test/api/test_native_source_worker_delivery.py": "d2be792b337c622285aacd4ef0b9c43ecbf4237201412e2f568d854b3b7fe44f"
+  },
+  "spawn_closing_order_preserved": true,
+  "tests_executed_by_reviewer": 0,
+  "universal_cas_callback_safety": false,
+  "validated_backend_costs_preserved_before_post_reply_refusal": true
+}

@@ -1196,3 +1196,22 @@ coding, lookup, expansion, edit, refresh, verification, retry and failed attempt
 Compare total input/output tokens and latency at matched official success.
 Reversible source restoration, learned semantic reconstruction, proof status
 and complete-session savings remain separate measurements.
+
+## Broker source-delivery replay, 2026-10-14
+
+The [delivery boundary](source_lookup_worker.md#close-source-delivery-after-broker-replay)
+now releases SERVER for both broker-owned selected-source CAS replays. Each
+replay is followed by native task/allocation fencing and detached original
+custody, endpoint and complete canonical/allocated source checks. The same
+closing section preserves the existing launch check order. Before-backend
+refusal avoids the source RPC; after-backend refusal retains validated bytes
+already incurred. The [new regression phase](evidence/source-worker-delivery-fences-20261014/README.md)
+keeps its unpatched control and failed setup attempt separate from qualification.
+
+This owner-side increment admits no worker peer, permission transition or
+cross-process native claim. Constructor and privileged native gateway CAS
+transactions remain separate callback boundaries. Preserve the reviewed
+candidate-launcher and reporting work while implementing the explicit native
+delegation and wrapper/child handoff; their separate worker broker cannot be
+substituted for retained native task/allocation handles. Qualify those joins and
+actual signed compiled-context adoption before measuring a deployed token trial.

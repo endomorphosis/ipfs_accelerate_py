@@ -119,6 +119,30 @@ adoption. The deployment wrapper has a distinct parent process, and its
 group-writable candidate permission transition changes the retained allocation
 witnesses. Both need their own explicit admission.
 
+## Close source delivery after broker replay
+
+Each broker-owned selected-source replay runs outside SERVER, so a retained-CAS
+callback can enter the native coordinator without reversing the claim lock
+order. The broker repeats the current task/allocation fence after that replay,
+then checks its protected endpoints and original custody. The final locked
+section performs detached native, allocation and nomination checks, checks the
+complete source population in both checkouts, and verifies the selected original
+bytes in both roots. It invokes no retained-CAS replay or coordinator fence.
+
+This closing section is shared with the existing launch checks. It runs before
+the backend call and again before projecting a validated reply for delivery.
+A pre-backend refusal incurs no source RPC. A post-backend refusal preserves the
+validated native response/wire byte charge even though no success is returned.
+Neither result supplies proof, execution, completion, edit or omission authority.
+
+The [delivery regression evidence](evidence/source-worker-delivery-fences-20261014/README.md)
+keeps the unpatched lock-order control and new callback/refusal cases separate.
+These are owner-side reads; they do not authenticate a worker peer or activate
+the deployed coding handoff. Constructor replay and the privileged native
+`source.get` gateway still have their separate lock/transaction contracts. This
+increment does not establish universal callback safety. The source checks remain
+sequential and provide no filesystem writer lease.
+
 ## Nominated scope and managed allocation
 
 An owner can bind an exact historical nomination through the
