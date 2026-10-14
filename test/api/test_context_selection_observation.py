@@ -187,6 +187,56 @@ def test_round_trip_binds_exact_payload_role_and_producer_references(payload, ro
     assert verify(result, payload, role=role) == result
 
 
+def test_indexed_selection_retains_snapshot_identity_without_authority(payload):
+    projection = payload["worker_projection"]
+    projection.update(selector="duckdb-query-symbol-name@1",
+        candidate_snapshot_cid="literal-indexed-candidate-snapshot")
+    before = deepcopy(payload)
+    result = build(payload)
+    assert result["selection"]["selector"] == projection["selector"]
+    assert result["selection"]["candidate_snapshot_cid"] == projection["candidate_snapshot_cid"]
+    assert result["selection"]["ranked_symbol_ids"] == []
+    assert result["selection"]["retrieval_sha256"] is None
+    assert all(value is False for value in result["authority"].values())
+    assert verify(result, payload) == result
+    assert payload == before
+    # Rehashing an observation cannot replace the producer's candidate scope.
+    result["selection"]["candidate_snapshot_cid"] = "literal-foreign-candidates"
+    with pytest.raises(ValueError, match="native selection replay"):
+        verify(result, payload)
+
+
+@pytest.mark.parametrize("damage", [
+    "missing_snapshot", "empty_snapshot", "nonstring_snapshot", "lexical_snapshot",
+    "retrieval_snapshot", "implicit_program_scope", "extra_field",
+])
+def test_indexed_observation_requires_closed_snapshot_and_program_scope(payload, damage):
+    projection = payload["worker_projection"]
+    projection.update(selector="duckdb-query-symbol-name@1",
+        candidate_snapshot_cid="literal-indexed-candidate-snapshot")
+    if damage == "missing_snapshot":
+        del projection["candidate_snapshot_cid"]
+    elif damage == "empty_snapshot":
+        projection["candidate_snapshot_cid"] = ""
+    elif damage == "nonstring_snapshot":
+        projection["candidate_snapshot_cid"] = True
+    elif damage == "lexical_snapshot":
+        projection["selector"] = "lexical-query-symbol-name@1"
+    elif damage == "retrieval_snapshot":
+        projection.update(schema="supervisor-semantic-worker-projection@2",
+            selector="verified-retrieval-symbol-rank@1", ranked_symbol_ids=[],
+            retrieval={"artifact": "selection.json", "sha256": "1" * 64},
+            unranked_policy="lexical-query-symbol-name@1")
+    elif damage == "implicit_program_scope":
+        payload["schema"] = "supervisor-semantic-worker-context@1"
+        del payload["program_paths"]
+        payload["reconstruction"]["schema"] = "supervisor-scoped-semantic-reconstruction@1"
+    else:
+        projection["sql_rank_authorizes_omission"] = True
+    with pytest.raises(ValueError):
+        build(payload)
+
+
 def test_native_reference_metadata_tuples_preserve_the_exact_json_array_wire(payload):
     # ContextPack's reference metadata can retain immutable coverage_ids from
     # ContextReference.to_dict(). JSON renders that tuple as an ordinary array.

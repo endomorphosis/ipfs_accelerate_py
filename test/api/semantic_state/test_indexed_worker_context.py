@@ -38,6 +38,17 @@ def test_current_source_replays_without_mutable_metadata(prepared):
     assert "code.py" in payload["worker_projection"]["raw_source_fetch_required"]
     snapshot = payload["worker_projection"]["candidate_snapshot_cid"]
     assert (root / "context/blocks" / snapshot).is_file()
+    from ipfs_accelerate_py.agent_supervisor.runtime.context_selection_observation import (
+        verify_context_selection_observation,
+    )
+    observation_ref = result["context_selection_observation"]
+    sidecar = (root / "context" / observation_ref["artifact"]).read_bytes()
+    observation = verify_context_selection_observation(raw=sidecar,
+        expected_sha256=observation_ref["sha256"], payload=payload,
+        payload_bytes=original.encode())
+    assert observation["selection"]["candidate_snapshot_cid"] == snapshot
+    assert observation["selection"]["selector"] == INDEXED_SELECTOR
+    assert all(value is False for value in observation["authority"].values())
     # Live source and immutable producer bytes are replay authority, not SQL history.
     (root / "context/metadata.duckdb").unlink()
     assert load_semantic_worker_context(**args) == original
