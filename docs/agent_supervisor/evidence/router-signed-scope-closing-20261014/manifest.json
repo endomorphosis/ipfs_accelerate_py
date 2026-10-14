@@ -15,9 +15,9 @@
       "sha256": "4bc3895a7326d5ef9fa7ac841ae1ffa2e8a4c2bbc3d45dd53df90d24fe46e8ae"
     },
     {
-      "bytes": 5404,
+      "bytes": 5972,
       "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/README.md",
-      "sha256": "59e328f9f572f3ab6e9681371d30d4ec51d78912c2806c838baefee7a5e694c2"
+      "sha256": "4e674efef0262d49d919cf7bc8579cb55d65f7fa463451a7d6783f7464f58a72"
     },
     {
       "bytes": 190780,
@@ -57,7 +57,7 @@
     {
       "bytes": 16744,
       "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/doc_qualification_runner.py",
-      "sha256": "a8b18f49dcc77f4ca3d59f13f22cc4ec9c8f25d50ccddff7f2f50c5283d6b305"
+      "sha256": "efefd2fd4764cfe460adbf167a4cf30b2c739f7e064e0d2f3209a1fdce1fce68"
     },
     {
       "bytes": 215414,
@@ -65,9 +65,39 @@
       "sha256": "3c656fdf6ba0dfeb238ec44b4cae5e147f2d40c366a366fdfb2c61fed9af085f"
     },
     {
+      "bytes": 229165,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/documentation-checks-02.json",
+      "sha256": "4dfcb83666ce917f9bb1c2027714c89b83fdff5cd2dae243139254ddae7f8882"
+    },
+    {
       "bytes": 2753,
       "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/documentation-workflow-01.log",
       "sha256": "96ac6a6a376bae15b0ba4ed99676e16403a45a5ea6bb1881377000187c1837ed"
+    },
+    {
+      "bytes": 2753,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/documentation-workflow-02.log",
+      "sha256": "96ac6a6a376bae15b0ba4ed99676e16403a45a5ea6bb1881377000187c1837ed"
+    },
+    {
+      "bytes": 16744,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/first-doc_qualification_runner.py.snapshot.txt",
+      "sha256": "a8b18f49dcc77f4ca3d59f13f22cc4ec9c8f25d50ccddff7f2f50c5283d6b305"
+    },
+    {
+      "bytes": 1341,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/first-qualification-summary.json",
+      "sha256": "bd23a4acf03cd5c95d7be2257cb6c247ae2da3ea31a1f960b0fa40a27810fb4b"
+    },
+    {
+      "bytes": 7736,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/first-qualified-manifest.json",
+      "sha256": "a5a3f3a53d7b02636befee1ccbfdcc8069be05a8adf99f318590df15177e5f4e"
+    },
+    {
+      "bytes": 1404,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/incoming-world-replay-review.json",
+      "sha256": "4bb873ed886335c2da5a5c75b97b0d3fe0a8a8c35e793847c8e4f5cc7f0209a6"
     },
     {
       "bytes": 1932,
@@ -110,19 +140,89 @@
       "sha256": "4dcb0896364474a35c1fbba6686c974752ad483771825611d3501936fb882db0"
     },
     {
+      "bytes": 198066,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/commands.json",
+      "sha256": "99c6a71e459f76bb5d688ee419b6e3f630dd5167d97315ad7b1de94859670519"
+    },
+    {
+      "bytes": 26482,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/junit.xml",
+      "sha256": "cae239e5b558eb46b6b2a9ec7f0c00eeca6db93046742209ef2f86c380c5ec65"
+    },
+    {
+      "bytes": 12462,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_signed_working_set_closing.py.snapshot.txt",
+      "sha256": "4bc3895a7326d5ef9fa7ac841ae1ffa2e8a4c2bbc3d45dd53df90d24fe46e8ae"
+    },
+    {
+      "bytes": 16744,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/doc_qualification_runner.py.snapshot.txt",
+      "sha256": "efefd2fd4764cfe460adbf167a4cf30b2c739f7e064e0d2f3209a1fdce1fce68"
+    },
+    {
+      "bytes": 11839,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification_runner.py.snapshot.txt",
+      "sha256": "ccb806f7f12642cea2ad335fae2903aacf0c0fe8dcd23622103095583ca306d1"
+    },
+    {
+      "bytes": 16679,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_invocation_replay.py.snapshot.txt",
+      "sha256": "d5a8ccde7b66767266007f7f067563511f06b6eee15ba3ebcfcfe84a50b9e384"
+    },
+    {
+      "bytes": 22332,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py.snapshot.txt",
+      "sha256": "fa04715b8afaca63c7fc1ab1cb6bd80db519774755f3eee5ffb9232b68a8ee24"
+    },
+    {
+      "bytes": 14494,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet_replay.py.snapshot.txt",
+      "sha256": "95b70fa45b50e034af54d48b581a13d993ca806306d9f63a69be13ec70875245"
+    },
+    {
+      "bytes": 110247,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py.snapshot.txt",
+      "sha256": "1c15319f0c0b42378a01e91f854265b2dbd59556c767aa3e8514fd4a1bb65a4d"
+    },
+    {
+      "bytes": 12106,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/source-snapshot/test/api/test_repository_world_invocation_replay.py.snapshot.txt",
+      "sha256": "b85f363dc376f3f4c2cb548322276b1aedcd125e85e0df9923464c66fe9402ae"
+    },
+    {
+      "bytes": 11571,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/source-snapshot/test/api/test_repository_world_invocation_replay_cycle.py.snapshot.txt",
+      "sha256": "6bd700476db45808e5579e8dce3c88e50155e8a283d941166af56d9cd3df32b6"
+    },
+    {
+      "bytes": 13390,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/source-snapshot/test/api/test_repository_world_packet_replay.py.snapshot.txt",
+      "sha256": "4ca2fa6f34d2864a1e3a8e8dfb9e5e4d7689aaf8dc3b41998d0f07e8a91c9411"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 24889,
+      "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-02/tests.stdout.log",
+      "sha256": "5c264c80db5ade76b12735bc3ac59f07dc0e9f1cfb911a2d82a0d42821a58b0c"
+    },
+    {
       "bytes": 1341,
       "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification-summary.json",
-      "sha256": "bd23a4acf03cd5c95d7be2257cb6c247ae2da3ea31a1f960b0fa40a27810fb4b"
+      "sha256": "2be73d854ffafcb5964453295a64b366107ea02da5d880ab0cc05c63e7f79df5"
     },
     {
-      "bytes": 11721,
+      "bytes": 11839,
       "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/qualification_runner.py",
-      "sha256": "da440fbc93dde65a2dba0afed4025f4dec22ff258c1d3718e74af98f23777aae"
+      "sha256": "ccb806f7f12642cea2ad335fae2903aacf0c0fe8dcd23622103095583ca306d1"
     },
     {
-      "bytes": 32621,
+      "bytes": 33020,
       "path": "docs/agent_supervisor/evidence/router-signed-scope-closing-20261014/source-inventory.json",
-      "sha256": "63b65fb2a25494394d2f6eee1c4b1d724705caf2023c82007b4ecccd231c072a"
+      "sha256": "7e2a1ed539ffa9825991e197c85ea7408ff02ac1a99ccda4a35688ca472ec578"
     },
     {
       "bytes": 523,
@@ -154,10 +254,10 @@
   "proof_authority": false,
   "provider_calls": 0,
   "schema": "router-signed-scope-closing-manifest@1",
-  "selected_documentation": "documentation-checks-01.json",
-  "selected_qualification": "qualification-01",
+  "selected_documentation": "documentation-checks-02.json",
+  "selected_qualification": "qualification-02",
   "selected_tests": 145,
-  "source_bindings": 265,
+  "source_bindings": 268,
   "suites": 8,
   "total_session_token_savings_established": false,
   "training_steps": 0

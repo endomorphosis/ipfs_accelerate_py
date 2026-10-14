@@ -159,8 +159,8 @@ def guard(*, excluded_outputs):
     expected=[(row['repository'],row['path']) for row in inventory]
     need(len(set(identities))==len(identities) and len(set(expected))==len(expected)
          and set(identities)==set(expected), 'qualification source inventory differs')
-    need(len(checked)==265,'listed dependency population differs')
-    need(sum(row['repository']=='accelerator' for row in checked)==214, 'accelerator binding population differs')
+    need(len(checked)==268,'listed dependency population differs')
+    need(sum(row['repository']=='accelerator' for row in checked)==217, 'accelerator binding population differs')
     need(sum(row['repository']!='accelerator' for row in checked)==51, 'datasets binding population differs')
     # Preserve every prior evidence object from the published parent source.
     # The new closing qualification is a separate capsule.

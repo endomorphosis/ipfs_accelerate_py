@@ -19,7 +19,7 @@ is preserved in [JUnit](baseline-01/junit.xml), [stdout](baseline-01/tests.stdou
 and [stderr](baseline-01/tests.stderr.log), with original source snapshots.
 This is a controlled host regression, not a demonstrated deployed exploit.
 
-The [patched qualification](qualification-01/commands.json) passed 145 cases
+The [first patched qualification](qualification-01/commands.json) passed 145 cases
 across [eight complete suites](targets.json), including 18 new cases, with zero
 failures, errors or skips. All source bindings stayed unchanged. Elapsed time
 was 538.257 seconds; this is authored-test runtime, not production latency. The positive combined path expands the exact native capsules and
@@ -31,7 +31,7 @@ cases mutate state during descriptor-context entry. Every refusal must occur
 before the capturing provider is called, with the dispatch flag false and
 `router_calls=0`.
 
-All 265 [listed bindings](source-inventory.json) are explicit: 214 accelerator
+The merged qualification has 268 [listed bindings](source-inventory.json) are explicit: 217 accelerator
 files and 51 datasets files. Actual datasets execution remains
 `a0f60d42f836571a0023515e92dfb0e5724f0d79`; kit execution remains
 `40c98c71b95be750509ffdb21e7e5494d91b4e79`. This inventory does not attest a
@@ -39,6 +39,14 @@ complete import, binary or toolchain closure. The [qualification runner](qualifi
 retains exact arguments, interpreter/library versions, bounded private runtime
 paths, source hashes and raw outputs. Historical results and the deliberately
 failed baseline control are not added to the patched run's count.
+
+The [incoming world-replay review](incoming-world-replay-review.json) preserves
+seven parallel paths and expands the source inventory to include three world
+modules. [Qualification-02](qualification-02/commands.json) passed the same 145 cases in
+eight complete suites at the merged source in 587.803 seconds, with zero failures,
+errors or skips and all 268 bindings unchanged. The earlier pass and its
+[original manifest](first-qualified-manifest.json) remain separate. Incoming
+world-replay suites outside this roster are not counted.
 
 ## Real mechanisms and authored seams
 
@@ -77,8 +85,8 @@ before distillation. Measure complete planning/coding/retrieval/expansion/edit/
 verification/retry session input and output tokens at matched official success;
 fixture byte reduction and authored usage figures do not establish token saving.
 
-The [local documentation receipt](documentation-checks-01.json) and
-[workflow log](documentation-workflow-01.log) bind the final source qualification,
+The [local documentation receipt](documentation-checks-02.json) and
+[workflow log](documentation-workflow-02.log) bind the final source qualification,
 baseline control and documents while executing all four exact workflow blocks.
 Hosted CI is recorded separately by exact publication SHA; local success does
 not imply hosted success. The final `manifest.json` is created after these

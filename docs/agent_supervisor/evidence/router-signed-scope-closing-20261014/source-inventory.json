@@ -413,6 +413,18 @@
   },
   {
     "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_invocation_replay.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet_replay.py"
+  },
+  {
+    "repository": "accelerator",
     "path": "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py"
   },
   {

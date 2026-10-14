@@ -1,0 +1,20 @@
+{
+  "added_source_binding_paths": [
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet_replay.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_invocation_replay.py"
+  ],
+  "additional_world_replay_test_suites_selected": false,
+  "all_prior_evidence_unchanged": true,
+  "causally_used_unlisted_world_packet_module_changed": true,
+  "closing_production_and_new_tests_unchanged": true,
+  "current_source_bindings": 268,
+  "first_qualified_leaf": "5d7d479f8bcb039b3b559e146b6d1ea2e09763f8",
+  "incoming_paths": 7,
+  "incoming_revision": "9763f00bc176073729b432783b312e77e6c3e704",
+  "integration_head": "264b59d8fbfe8d7a5d886ceb1fabbba00813a224",
+  "previous_listed_bindings_changed": 0,
+  "qualification_required": "qualification-02: eight complete suites at merged source; prior pass remains separate",
+  "review": "Live preparation still verifies original compiler/source/intent owner before pure rendering, rechecks original source afterward and seals the new bounded historical material. Dispatch uses the original invocation-local issuance and native owner fences. Historical artifacts do not restore live ownership. The world lane excludes public instructions, so the closing @5 fix stays independent.",
+  "schema": "router-signed-scope-closing-incoming-world-replay-review@1"
+}

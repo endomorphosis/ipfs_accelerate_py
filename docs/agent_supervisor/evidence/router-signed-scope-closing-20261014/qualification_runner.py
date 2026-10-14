@@ -60,7 +60,8 @@ def main():
     baseline = sys.argv[1].startswith('baseline-')
     EXECUTION_ROOT = BASELINE if baseline else ROOT
     targets = (str(ROOT / TARGETS[0])+'::test_post_page_drift_refuses_signed_dispatch[canonical-omitted-bytes]',) if baseline else TARGETS
-    assert git(EXECUTION_ROOT,'rev-parse','HEAD').decode().strip()==BASE
+    if baseline: assert git(EXECUTION_ROOT,'rev-parse','HEAD').decode().strip()==BASE
+    else: subprocess.run(['git','merge-base','--is-ancestor',BASE,'HEAD'],cwd=EXECUTION_ROOT,check=True)
     assert git(DATASETS,'rev-parse','HEAD').decode().strip()==DATASETS_REVISION
     assert git(KIT,'rev-parse','HEAD').decode().strip()==KIT_REVISION
     subprocess.run(['git','merge-base','--is-ancestor',BASE,'HEAD'],cwd=ROOT,check=True)
