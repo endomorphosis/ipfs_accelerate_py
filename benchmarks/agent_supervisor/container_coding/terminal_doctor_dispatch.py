@@ -29,7 +29,7 @@ from .terminal_symbolic_capabilities import assess_terminal_symbolic_capabilitie
 
 def _installed_provers() -> tuple[Path, Path]:
     """Discover installed tools only; never download a toolchain during a task."""
-    z3 = Path(shutil.which("z3") or "/unavailable/z3")
+    z3 = Path(os.environ.get("DOCTOR_COMPOSITION_Z3") or shutil.which("z3") or "/unavailable/z3")
     nominated = os.environ.get("DOCTOR_COMPOSITION_LEAN", "")
     if nominated:
         return z3, Path(nominated)
@@ -242,7 +242,8 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                         semantic_repository: Path | None, doctor: dict | None,
                         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
                         coding_reply_mode: str = "legacy", semantic_metadata_view: str = "legacy",
-                        source_view_profile: str = "disabled", source_view_policy: dict | None = None) -> list[str]:
+                        source_view_profile: str = "disabled", source_view_policy: dict | None = None,
+                        source_edit_mode: str = "disabled") -> list[str]:
     """Closed choice that the admitted launch signs before any worker starts."""
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
     validate_semantic_transport_schema(semantic_transport_schema)
@@ -253,6 +254,8 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
         validate_source_view_policy, source_view_policy_argv,
     )
     validate_source_view_profile(source_view_profile)
+    from .terminal_source_edit_policy import validate_source_edit_mode
+    validate_source_edit_mode(source_edit_mode, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile)
     if source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE and (semantic_repository is None
             or doctor is not None and doctor.get("route") != "model_router"):
@@ -293,6 +296,7 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
             *(["--source-view-profile", source_view_profile]
               if source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE else []),
             *source_view_policy_argv(source_view_policy, profile=source_view_profile),
+            *(["--source-edit-mode", source_edit_mode] if source_edit_mode != "disabled" else []),
             *(["--doctor-residual-artifact", doctor["residual_context"]["artifact"],
                "--doctor-residual-sha256", doctor["residual_context"]["sha256"],
                "--doctor-residual-task-cid", doctor["residual_context"]["task_cid"]]

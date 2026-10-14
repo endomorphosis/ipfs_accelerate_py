@@ -1,0 +1,77 @@
+{
+  "checks": [
+    "Separate release and execution lock bind preparation/configuration, original pair lock, completed comments baseline, environment, recipe, runner and runtime manifest identities.",
+    "Original pair is read through its frozen reader and unchanged registry; exact full config delta is restricted to metadata view and jobs directory.",
+    "Actual model prompt hash/byte count joins production displacement validator; selected and displacement fields must agree. Historical arithmetic validation is explicitly distinct from replay of unavailable prompt bodies.",
+    "Native Grok/Codex accounting reuses the corrected frozen reader; missing completeness or unreceipted marker leaves totals unknown. No new cross-treatment token total or billing estimate is fabricated.",
+    "Source helpers retain dispatch/owner observation joins; absent observation and ordinary tool use stay unknown.",
+    "Control integrity now requires observed control status and all three selected source/edit/metadata unchanged flags, avoiding vacuous success when evidence is absent.",
+    "Observed model/provider/reasoning route matches preparation; invocation identities are unique across original pair and treatment.",
+    "Output is closed retained metadata and bounded tags/counts/hashes; no transcript, source query/body, hidden verifier or model reasoning is read or exported."
+  ],
+  "evidence_bindings": {
+    "metadata-treatment-finalized-checks-01.json": {
+      "bytes": 1072,
+      "filename": "metadata-treatment-finalized-checks-01.json",
+      "sha256": "7395910512c07102c1fc00252de08dd25f748c3422aecc38f397f65ad2fdc9f4"
+    },
+    "metadata-treatment-reader-checks-01.json": {
+      "bytes": 723,
+      "filename": "metadata-treatment-reader-checks-01.json",
+      "sha256": "befd14accf636f6e56342d16e93e4d3fa939675b5e26cffa5839a6d19bb2d4a6"
+    },
+    "metadata-treatment-release-03.json": {
+      "bytes": 78217,
+      "filename": "metadata-treatment-release-03.json",
+      "sha256": "ed430e96262f21f252e9f440ccfb6c91e202c5597c53b12c3f873eba336d14af"
+    }
+  },
+  "hidden_verifier_or_solution_contents_read": false,
+  "limitations": [
+    "Sequential third treatment is outside the original identity/comments pair and is not randomized.",
+    "Reported byte reduction is not verified provider token savings, task causality or billing completeness.",
+    "External launch lock owns execution custody; this reader verifies retained identities.",
+    "Fixture checks exercise real pure codec and metadata contracts, not a model or benchmark execution."
+  ],
+  "production_files_changed": false,
+  "provider_calls": 0,
+  "raw_transcripts_read": false,
+  "release_blockers": [],
+  "resolved_findings": [
+    {
+      "id": "missing_control_evidence",
+      "resolution": "Added explicit observed status, three mandatory unchanged flags and observed reasoning-effort join before final review."
+    }
+  ],
+  "schema": "compact-metadata-treatment-reader-independent-review@1",
+  "source_bindings": {
+    "check_metadata_treatment_finalized_03.py": {
+      "bytes": 7480,
+      "filename": "check_metadata_treatment_finalized_03.py",
+      "sha256": "45fadc019df0941165fce92338205cd791baac59d2f7471eaae59177b914068b"
+    },
+    "collect_live_readout.py": {
+      "bytes": 30486,
+      "filename": "collect_live_readout.py",
+      "sha256": "79c0edcc6eda284ac13f2f0eb3d3341a84125523d377530b4f4dbb5cabb19a10"
+    },
+    "collect_metadata_treatment_03.py": {
+      "bytes": 13227,
+      "filename": "collect_metadata_treatment_03.py",
+      "sha256": "0af7025ed58a89e14db28ff14e97249c04db89b295dc48cedf9d3c2a5bc18e4e"
+    },
+    "collect_native_shape.py": {
+      "bytes": 5978,
+      "filename": "collect_native_shape.py",
+      "sha256": "5911e857dbf0d8e4a397e80b4152a093cb4e5f270dfcf183a5c0fe1addb86c32"
+    }
+  },
+  "status": "passed",
+  "validation_scope": {
+    "actual_executed_treatment_qualified_here": false,
+    "finalized_authored_checks_on_final_reader": 11,
+    "initial_fixture_failure": "Authored temporary jobs directory changed the preparation control digest; fixture corrected to rebuild controls. Not a production failure.",
+    "initial_prelaunch_authored_checks": 9,
+    "rerun_by_reviewer": false
+  }
+}

@@ -1,0 +1,13 @@
+[
+  "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+  "-m",
+  "pytest",
+  "-q",
+  "--color=no",
+  "-o",
+  "log_cli=false",
+  "--junitxml=/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/refusal-observation/focused-01/junit.xml",
+  "test/api/test_worker_source_request_observation.py",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_source_request_observation.py",
+  "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py"
+]

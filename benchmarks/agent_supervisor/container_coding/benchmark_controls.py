@@ -13,6 +13,8 @@ import re
 
 SCHEMA = "terminal-benchmark-declared-controls@1"
 NUMERICAL_SCHEMA = "terminal-benchmark-declared-controls@2"
+PLANNING_SCHEMA = "terminal-benchmark-declared-controls@3"
+SOURCE_EDIT_SCHEMA = "terminal-benchmark-declared-controls@4"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 JOB_KEYS = ("n_attempts", "n_concurrent_trials", "retry", "timeout_multiplier",
             "agent_timeout_multiplier", "agent_setup_timeout_multiplier",
@@ -91,8 +93,17 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "source_view_profile", "source_view_policy"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
+        if "source_edit_mode" in kwargs:
+            from .terminal_source_edit_policy import validate_source_edit_mode
+            validate_source_edit_mode(kwargs["source_edit_mode"], arm=kwargs.get("arm"),
+                source_view_profile=kwargs.get("source_view_profile", "disabled"))
+        if "planning_mode" in kwargs:
+            from .terminal_planning_policy import validate_planning_mode
+            validate_planning_mode(kwargs["planning_mode"],
+                intent_requirement_contract=kwargs.get("intent_requirement_contract"),
+                task_profile=kwargs.get("task_profile"))
         if "source_view_profile" in kwargs:
             from .terminal_source_view_policy import validate_source_view_profile
             validate_source_view_profile(kwargs["source_view_profile"], arm=kwargs.get("arm"))
@@ -176,6 +187,20 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
         validate_numerical_profile(numerical)
         controls["schema"] = NUMERICAL_SCHEMA
         controls["experimental_controls_sha256"] = {"numerical_formalization_profile": _digest(numerical)}
+    from .terminal_planning_policy import DEFAULT_PLANNING_MODE, validate_planning_mode
+    planning = validate_planning_mode(agent.get("kwargs", {}).get("planning_mode", DEFAULT_PLANNING_MODE),
+        intent_requirement_contract=agent.get("kwargs", {}).get("intent_requirement_contract"),
+        task_profile=agent.get("kwargs", {}).get("task_profile"))
+    if planning != DEFAULT_PLANNING_MODE:
+        controls["schema"] = PLANNING_SCHEMA
+        controls.setdefault("experimental_controls_sha256", {})["planning_mode"] = _digest(planning)
+    from .terminal_source_edit_policy import DEFAULT_SOURCE_EDIT_MODE, validate_source_edit_mode
+    source_edit = validate_source_edit_mode(agent.get("kwargs", {}).get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+        arm=agent.get("kwargs", {}).get("arm"),
+        source_view_profile=agent.get("kwargs", {}).get("source_view_profile", "disabled"))
+    if source_edit != DEFAULT_SOURCE_EDIT_MODE:
+        controls["schema"] = SOURCE_EDIT_SCHEMA
+        controls.setdefault("experimental_controls_sha256", {})["source_edit_mode"] = _digest(source_edit)
     controls["sha256"] = _digest(controls)
     return controls
 
@@ -186,7 +211,21 @@ def validate_controls(value):
             "agent_controls_sha256", "sha256"}
     if not isinstance(value, dict):
         return False
-    if value.get("schema") == NUMERICAL_SCHEMA:
+    if value.get("schema") == SOURCE_EDIT_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict or "source_edit_mode" not in experiment
+                or set(experiment) - {"source_edit_mode", "planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())):
+            return False
+    elif value.get("schema") == PLANNING_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict or "planning_mode" not in experiment
+                or set(experiment) - {"planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())):
+            return False
+    elif value.get("schema") == NUMERICAL_SCHEMA:
         keys.add("experimental_controls_sha256")
         experiment = value.get("experimental_controls_sha256")
         if (type(experiment) is not dict or set(experiment) != {"numerical_formalization_profile"}

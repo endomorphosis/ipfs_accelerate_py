@@ -1,0 +1,67 @@
+{
+  "automatically_merged_tree": "f201e9d691094dcaf65270a2e6d901a76ed0076b",
+  "branch_cleanup_performed": false,
+  "causal_token_benefit_established": false,
+  "common_base": "4ea2271709bf697f175a198d3df02ac1e1a38205",
+  "complete_provider_usage_established": false,
+  "foreign_head_observed": "480effcfbb43c74d331a33974f464133a842348b",
+  "foreign_status_observed": [
+    " M docs/agent_supervisor/compact_worker_benchmark.md"
+  ],
+  "foreign_worktree": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+  "foreign_worktree_modified_by_this_increment": false,
+  "new_model_or_benchmark_calls": 0,
+  "original_parallel_files_modified": false,
+  "overlap_paths": [
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+    "docs/agent_supervisor/reversible_codebase_views_plan.md",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+  ],
+  "parallel_commits": [
+    "59c1eb176fdd2095f184f27d6576ffaa92be2246 Record full supervisor source and metadata compaction measurements",
+    "e60dc768cf0d01115b4db6441a2103f42a7df0e2 Record bounded source request operation telemetry in owner audits",
+    "3f08cc43cbd96c9f8a5114091f65566a5962dbbc Support repeated compact worker edits with confirmation delivery checks",
+    "b606929cdc0ba00902c027994795239a34e50433 feat(supervisor): apply compact worker edits to original source",
+    "02de4f388a00fdfd85680b44b7ad9d3f0aff490c Avoid redundant model planning for declared supervisor tasks",
+    "db4cac8f52ecd2dc73610a7af91abae65beee989 Diagnose supervisor token growth and preserve bounded usage telemetry"
+  ],
+  "parallel_revision": "59c1eb176fdd2095f184f27d6576ffaa92be2246",
+  "prior_live_observations": [
+    {
+      "metadata": "legacy",
+      "official_reward": 1.0,
+      "reported_tokens": 1310764,
+      "source": "identity@1"
+    },
+    {
+      "metadata": "legacy",
+      "official_reward": 1.0,
+      "reported_tokens": 1621661,
+      "source": "python-comments@1"
+    },
+    {
+      "metadata": "common-bindings-instruction@1",
+      "official_reward": 1.0,
+      "reported_tokens": 2452634,
+      "source": "python-comments@1"
+    }
+  ],
+  "prior_live_runtime_revision": "3f08cc43cbd96c9f8a5114091f65566a5962dbbc",
+  "prior_owned_execution_tree_modified": false,
+  "published_base": "6eebad97a1b958bb0882df97c3bc4ea22ffdb861",
+  "remote_query": [
+    "git",
+    "ls-remote",
+    "origin",
+    "refs/heads/main",
+    "refs/heads/codex/supervisor-token-growth-20261013"
+  ],
+  "remote_query_result": [
+    "6eebad97a1b958bb0882df97c3bc4ea22ffdb861\trefs/heads/main"
+  ],
+  "remote_scope": "queried main and matching branch only; not exhaustive GitHub ref search",
+  "schema": "signed-compact-parallel-reconciliation@1"
+}

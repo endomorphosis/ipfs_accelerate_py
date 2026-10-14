@@ -195,14 +195,16 @@ def _source_lookup_guidance(receipt):
         "after source edits. Required facts remain inline. Retrieval provides no proof, edit, omission or "
         "completion authority.\n")
 
-def _source_broker_observation(*, path, digest, workspace, encoded, boundary_sha256, profile):
+def _source_broker_observation(*, path, digest, workspace, encoded, boundary_sha256, profile, source_edit_mode="disabled"):
     from .worker_source_client import load_descriptor, semantic_binding, guidance
 
     descriptor = load_descriptor(path, digest, workspace=workspace)
     expected = dict(**semantic_binding(encoded, profile), boundary_manifest_sha256=boundary_sha256)
     if any(descriptor.get(key) != value for key, value in expected.items()):
         raise ValueError("source descriptor differs from validated semantic evidence")
-    advice = guidance(profile).encode()
+    if descriptor.get("source_edit_mode", "disabled") != source_edit_mode:
+        raise ValueError("source edit mode differs from owner descriptor")
+    advice = guidance(profile, **({"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {})).encode()
     observation = dict(schema="worker-source-dispatch-observation@1", descriptor_sha256=digest,
         session_id=descriptor["session_id"], **expected,
         guidance_sha256=hashlib.sha256(advice).hexdigest(), guidance_bytes=len(advice),
@@ -211,6 +213,9 @@ def _source_broker_observation(*, path, digest, workspace, encoded, boundary_sha
     if descriptor["schema"] == "supervisor-worker-source-descriptor@2":
         observation.update(schema="worker-source-dispatch-observation@2",
             **{key: descriptor[key] for key in ("view_policy_binding_sha256", "source_scope_sha256")})
+    if descriptor["schema"] == "supervisor-worker-source-descriptor@3":
+        observation.update(schema="worker-source-dispatch-observation@3",
+            **{key: descriptor[key] for key in ("source_edit_mode", "view_policy_binding_sha256", "source_scope_sha256")})
     return observation
 
 
@@ -414,6 +419,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         source_lookup_descriptor: Path | None = None,
         source_lookup_descriptor_sha256: str | None = None,
         source_view_profile: str = "disabled",
+        source_edit_mode: str = "disabled",
         source_view_descriptor: Path | None = None,
         source_view_descriptor_sha256: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
@@ -433,6 +439,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
 
     failure_phase = "argument_validation"
     from .worker_source_client import PROFILES
+    if (type(source_edit_mode) is not str or source_edit_mode not in {"disabled", "mapped-span@1", "mapped-span@2"}
+            or source_edit_mode != "disabled" and (source_view_profile == "disabled" or census_only)):
+        raise ValueError("source editing requires an enabled coding source session")
     source_args = (source_view_descriptor, source_view_descriptor_sha256)
     source_selected = any(value is not None for value in source_args)
     if type(source_view_profile) is not str or source_view_profile not in ("disabled", *PROFILES):
@@ -533,6 +542,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("implementation must start at its allocated Git worktree root")
     failure_phase = "semantic_context"
     encoded = None
+    semantic_component_census = None
     residual_receipt = None
     residual_advisory = ""
     router_prompt = prompt
@@ -555,6 +565,20 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,
                                                transport_schema=semantic_transport_schema)
         router_prompt = encoded.provider_prompt
+        # Retain size diagnostics outside the model input. This observes the
+        # verified transport before optional metadata projection and wrappers;
+        # the existing model_prompt fields bind the actual final input.
+        try:
+            from .semantic_router_translation import census_semantic_router_prompt
+            semantic_component_census = census_semantic_router_prompt(encoded=encoded)
+        except Exception:
+            # Diagnostic failure cannot change dispatch or expose source text
+            # through an exception. The encoder's validation above still rules.
+            semantic_component_census = {
+                "schema": "supervisor-semantic-prompt-component-census@1",
+                "status": "unavailable",
+                "raw_content_exported": False,
+            }
     failure_phase = "source_formalization_context"
     from .source_formalization_context import validate_source_formalization_context
     formalization_receipt = validate_source_formalization_context(
@@ -574,13 +598,16 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             digest=source_lookup_descriptor_sha256, workspace=root, prompt=prompt,
             boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
     source_receipt = None
+    source_guidance = None
+    source_edit_options = {"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {}
     if source_selected:
         failure_phase = "source_view_descriptor"
         source_receipt = _source_broker_observation(path=source_view_descriptor,
             digest=source_view_descriptor_sha256, workspace=root, encoded=encoded,
-            boundary_sha256=container_boundary_sha256, profile=source_view_profile)
+            boundary_sha256=container_boundary_sha256, profile=source_view_profile, **source_edit_options)
         from .worker_source_client import guidance
-        router_prompt += guidance(source_view_profile)
+        source_guidance = guidance(source_view_profile, **source_edit_options)
+        router_prompt += source_guidance
     failure_phase = "doctor_residual"
     residual_args = (doctor_residual_artifact, doctor_residual_sha256, doctor_residual_task_cid)
     if any(residual_args):
@@ -675,7 +702,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 candidate_complete_prompt=candidate_model, provider=provider, model=model,
                 instruction_block=instruction if selection_options else None,
                 instruction_receipt=instruction_receipt if selection_options else None,
-                source_guidance=guidance(source_view_profile) if source_selected else None)
+                source_guidance=source_guidance)
             model_prompt, metadata_receipt = selection.selected_prompt, selection.receipt
         if coding_reply_mode != "legacy" and model_prompt == candidate_model:
             coding_reply_receipt = candidate_reply
@@ -737,6 +764,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             receipt["source_lookup_retrieval"] = source_lookup_receipt
         if source_receipt is not None:
             receipt["source_view_retrieval"] = source_receipt
+        if semantic_component_census is not None:
+            receipt["semantic_prompt_components"] = semantic_component_census
         return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     failure_phase = "provider_discovery"
     available = discover_available_providers()
@@ -784,6 +813,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     }
     if coding_reply_receipt is not None:
         receipt["coding_reply_contract"] = coding_reply_receipt
+    if semantic_component_census is not None:
+        receipt["semantic_prompt_components"] = semantic_component_census
     if metadata_receipt is not None:
         receipt["semantic_metadata_view"] = metadata_receipt
     if displacement_receipt is not None:
@@ -870,7 +901,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             failure_phase = "source_view_descriptor"
             current = _source_broker_observation(path=source_view_descriptor,
                 digest=source_view_descriptor_sha256, workspace=root, encoded=encoded,
-                boundary_sha256=container_boundary_sha256, profile=source_view_profile)
+                boundary_sha256=container_boundary_sha256, profile=source_view_profile, **source_edit_options)
             if current != source_receipt:
                 raise ValueError("source descriptor changed before provider dispatch")
         if numerical_receipt is not None:
@@ -1032,6 +1063,7 @@ def main():
     parser.add_argument("--source-lookup-descriptor-sha256")
     parser.add_argument("--source-view-profile", default="disabled",
                         choices=("disabled", "identity@1", "python-whitespace@1", "python-comments@1"))
+    parser.add_argument("--source-edit-mode", default="disabled", choices=("disabled", "mapped-span@1", "mapped-span@2"))
     parser.add_argument("--source-view-descriptor", type=Path)
     parser.add_argument("--source-view-descriptor-sha256")
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
@@ -1064,6 +1096,7 @@ def main():
                         source_lookup_descriptor=args.source_lookup_descriptor,
                         source_lookup_descriptor_sha256=args.source_lookup_descriptor_sha256,
                         source_view_profile=args.source_view_profile,
+                        source_edit_mode=args.source_edit_mode,
                         source_view_descriptor=args.source_view_descriptor,
                         source_view_descriptor_sha256=args.source_view_descriptor_sha256,
                         semantic_transport_schema=args.semantic_transport_schema,

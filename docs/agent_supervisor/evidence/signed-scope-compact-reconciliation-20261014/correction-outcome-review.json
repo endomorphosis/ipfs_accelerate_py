@@ -1,0 +1,25 @@
+{
+  "corrected_only_paths": [
+    "benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_signed_declared_planning.py",
+    "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification_runner.py"
+  ],
+  "final_source_custody_unchanged": true,
+  "final_status": "pass",
+  "final_suites": 47,
+  "final_tests": 1722,
+  "focused_cases": 11,
+  "focused_status": "pass",
+  "historical_or_focused_results_added_to_final_count": false,
+  "initial_failures": 11,
+  "initial_passes": 1711,
+  "initial_tests": 1722,
+  "local_symbolic_proof_and_authored_python_validation_exercised": true,
+  "new_cases": 159,
+  "original_runner_snapshot_sha256": "3ee076133d566170f543cbff314aeecd8cf0dc622c5ba05a43b44da1f51c414e",
+  "production_sources_unchanged_across_corrections": true,
+  "schema": "signed-compact-correction-outcome-review@1",
+  "selected_provers_unchanged": true,
+  "solver_calls_count_unknown": true
+}

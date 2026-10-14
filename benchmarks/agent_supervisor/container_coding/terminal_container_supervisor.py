@@ -684,9 +684,11 @@ def _security_runtime_inputs(*, security_checkpoint, security_checkpoint_manifes
 
 def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         provider_profile: str | None = None,
+        planning_mode: str = "model",
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
         source_view_profile: str = "disabled",
+        source_edit_mode: str = "disabled",
         source_view_policy: dict | None = None,
         capsule_selection: str = "lexical-query-symbol-name@1",
         metadata_census_only: bool = False,
@@ -709,6 +711,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         intent_requirement_contract: Path | None = None,
         task_profile: Path | None = None) -> dict:
     from .benchmark_provider_profile import resolve_provider_profile
+    from .terminal_planning_policy import validate_planning_mode, planning_selection
+    validate_planning_mode(planning_mode)
+    if planning_mode != "model" and intent_requirement_contract is not None:
+        raise ValueError("declared contract planning cannot replace an Intent requirement contract")
     from .terminal_semantic_transport_policy import validate_semantic_transport_schema, semantic_transport_selection
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     from .terminal_capsule_selection_policy import (
@@ -719,6 +725,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         validate_source_view_profile, validate_source_view_policy, source_view_observation,
     )
     validate_source_view_profile(source_view_profile, arm=arm)
+    from .terminal_source_edit_policy import validate_source_edit_mode, source_edit_observation
+    validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     if source_view_profile != "disabled" and metadata_census_only:
         raise ValueError("source view qualification requires the coding worker route")
@@ -730,6 +738,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     provider_selection = resolve_provider_profile(provider_profile)
     if type(metadata_census_only) is not bool:
         raise ValueError("explicit Boolean metadata census selection required")
+    if metadata_census_only and planning_mode != "model":
+        raise ValueError("live metadata census requires model planning provenance")
     if metadata_census_only and (arm != "full" or semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}
             or coding_reply_mode != "ordinary-completion@1" or source384_config is None
             or provider_selection["provider"] != "codex_cli"):
@@ -800,9 +810,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "task_completed": False, "official_reward": None,
               "start_cleanup": _empty_start_cleanup_observation("runtime_not_created"),
               "provider_profile": provider_selection,
+              **planning_selection(planning_mode),
               **semantic_transport_selection(semantic_transport_schema),
               **capsule_selection_observation(capsule_selection),
               **source_view_observation(source_view_profile, source_view_policy),
+              **source_edit_observation(source_edit_mode),
               **coding_reply_selection(coding_reply_mode),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
@@ -925,6 +937,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 disable_intent_autoencoder=disable_intent_autoencoder,
                 intent_requirement_contract=intent_requirement_contract,
                 **({"provider_profile": provider_profile} if provider_profile is not None else {}),
+                **({"planning_mode": planning_mode} if planning_mode != "model" else {}),
                 **({"task_profile": generic_profile} if generic_profile is not None else {}),
                 **({"resource_profile": resource_profile} if resource_profile is not None else {}))
             report["intent_preplanning"] = prepared["intent_preplanning"]
@@ -1061,6 +1074,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             semantic_transport_schema=semantic_transport_schema,
             coding_reply_mode=coding_reply_mode,
             **({"source_view_profile": source_view_profile} if source_view_profile != "disabled" else {}),
+            **({"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {}),
             **({"source_view_policy": source_view_policy} if source_view_policy is not None else {}),
             **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}))
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
@@ -1329,12 +1343,16 @@ def main():
     parser.add_argument("--timeout-seconds", type=int)
     from .benchmark_provider_profile import PROVIDER_PROFILES
     parser.add_argument("--provider-profile", choices=PROVIDER_PROFILES)
+    from .terminal_planning_policy import PLANNING_MODES, DEFAULT_PLANNING_MODE
+    parser.add_argument("--planning-mode", choices=PLANNING_MODES, default=DEFAULT_PLANNING_MODE)
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, SEMANTIC_TRANSPORT_SCHEMAS
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA)
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
     from .terminal_source_view_policy import SOURCE_VIEW_PROFILES, DEFAULT_SOURCE_VIEW_PROFILE
     parser.add_argument("--source-view-profile", default=DEFAULT_SOURCE_VIEW_PROFILE, choices=SOURCE_VIEW_PROFILES)
+    from .terminal_source_edit_policy import SOURCE_EDIT_MODES
+    parser.add_argument("--source-edit-mode", default="disabled", choices=SOURCE_EDIT_MODES)
     from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy
     parser.add_argument("--source-view-policy-json", dest="source_view_policy",
         type=lambda value: SourceViewPolicy.from_json(value).to_dict())

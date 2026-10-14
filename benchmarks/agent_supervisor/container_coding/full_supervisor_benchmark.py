@@ -39,6 +39,14 @@ from .terminal_capsule_selection_policy import (
     DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS, validate_capsule_selection,
     capsule_selection_options, capsule_selection_observation, require_capsule_selection_archive,
 )
+from .terminal_planning_policy import (
+    DEFAULT_PLANNING_MODE, PLANNING_MODES, validate_planning_mode,
+    planning_selection, planning_observation, require_planning_archive,
+)
+from .terminal_source_edit_policy import (
+    DEFAULT_SOURCE_EDIT_MODE, SOURCE_EDIT_MODES, validate_source_edit_mode,
+    source_edit_selection, source_edit_observation, require_source_edit_archive,
+)
 from .terminal_source_view_policy import (
     DEFAULT_SOURCE_VIEW_PROFILE, SOURCE_VIEW_PROFILES, validate_source_view_profile,
     source_view_selection, source_view_observation, require_source_view_archive,
@@ -207,9 +215,12 @@ def load_intent_requirements_for_instruction(path: Path | None, instruction: Pat
     return _transport_intent_contract(contract)
 
 
-def _intent_selection(contract: dict | None) -> dict:
+def _intent_selection(contract: dict | None, *, planning_mode=DEFAULT_PLANNING_MODE) -> dict:
+    validate_planning_mode(planning_mode, intent_requirement_contract=contract)
     strategy = ("intent_symbolic" if contract is not None and contract.get("schema") in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3", "intent-plan-requirement-contract@4", "intent-plan-requirement-contract@5"}
                 else "intent_coverage" if contract is not None else "direct")
+    if planning_mode != DEFAULT_PLANNING_MODE:
+        strategy = "declared_contract"
     result = {"planning_strategy": strategy,
               "intent_requirement_contract_cid": None, "intent_requirement_contract_sha256": None}
     if contract is not None:
@@ -233,11 +244,16 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
                source_view_policy: dict | None = None,
+               source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
                numerical_formalization_profile: str | None = None,
+               planning_mode: str = DEFAULT_PLANNING_MODE,
                model_revision: str = "") -> dict:
+    validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract,
+        task_profile=task_profile)
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
     validate_source_view_profile(source_view_profile, arm=arm)
+    validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
@@ -260,9 +276,11 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **semantic_transport_selection(semantic_transport_schema),
                    **coding_reply_selection(coding_reply_mode),
                    **numerical_selection(numerical_formalization_profile),
+                   **planning_selection(planning_mode),
                    **semantic_metadata_selection(semantic_metadata_view),
                    **capsule_selection_options(capsule_selection),
-                   **source_view_selection(source_view_profile, source_view_policy)},
+                   **source_view_selection(source_view_profile, source_view_policy),
+                   **source_edit_selection(source_edit_mode)},
     }]
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
@@ -312,10 +330,14 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
             source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
             source_view_policy: dict | None = None,
-            numerical_formalization_profile: str | None = None) -> dict:
+               source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
+            numerical_formalization_profile: str | None = None,
+            planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
+    validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract)
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
     validate_source_view_profile(source_view_profile, arm=arm)
+    validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
@@ -326,6 +348,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     dataset = dataset.resolve(strict=True)
     task = _task_path(dataset, task_name)
     selected_task_profile = _load_task_profile(task_profile, task=task)
+    validate_planning_mode(planning_mode, task_profile=selected_task_profile)
     archive = archive.resolve(strict=True)
     output = output.absolute()
     if output.exists() or output.resolve() != output:
@@ -342,7 +365,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
     require_capsule_selection_archive(manifest, capsule_selection)
     require_source_view_archive(manifest, source_view_profile, resource_profile)
+    require_source_edit_archive(manifest, source_edit_mode)
     require_numerical_archive(manifest, numerical_formalization_profile)
+    require_planning_archive(manifest, planning_mode)
     if selected_provider["provider"] == "grok_cli":
         from .terminal_grok_deployment import verify_grok_archive
         verify_grok_archive(archive / "runtime.tar.gz", manifest)
@@ -395,8 +420,10 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         semantic_metadata_view=semantic_metadata_view,
         capsule_selection=capsule_selection,
         source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode,
         source_view_policy=source_view_policy,
         numerical_formalization_profile=numerical_formalization_profile,
+        planning_mode=planning_mode,
         **({"provider_profile": provider_profile} if provider_profile is not None else {}))
     if (selected_source384 is not None or selected_numerical is not None) and arm == "full":
         validate_resource_profile(declared_config, resource_profile)
@@ -429,10 +456,12 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **semantic_metadata_observation(semantic_metadata_view),
               **capsule_selection_observation(capsule_selection),
               **source_view_observation(source_view_profile, source_view_policy),
+              **source_edit_observation(source_edit_mode),
               **numerical_observation(numerical_formalization_profile, arm),
+              **planning_observation(planning_mode),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
-              "benchmark_advantage_claimed": False, **_intent_selection(requirements),
+              "benchmark_advantage_claimed": False, **_intent_selection(requirements, planning_mode=planning_mode),
               "intent_action_384": selected_intent, "source384": selected_source384,
               "intent_action_384_readiness": intent_readiness,
               "source384_enabled": selected_source384 is not None and arm == "full",
@@ -453,6 +482,13 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     profile = prepared_provider_identity(prepared, config)
+    planning_mode = validate_planning_mode(prepared.get("planning_mode", DEFAULT_PLANNING_MODE),
+        intent_requirement_contract=config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"),
+        task_profile=config["agents"][0].get("kwargs", {}).get("task_profile"))
+    configured_planning = validate_planning_mode(
+        config["agents"][0].get("kwargs", {}).get("planning_mode", DEFAULT_PLANNING_MODE),
+        intent_requirement_contract=config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"),
+        task_profile=config["agents"][0].get("kwargs", {}).get("task_profile"))
     numerical_profile = validate_numerical_profile(prepared.get("numerical_formalization_profile"))
     configured_numerical = validate_numerical_profile(
         config["agents"][0].get("kwargs", {}).get("numerical_formalization_profile"))
@@ -482,11 +518,17 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     configured_source_view = validate_source_view_profile(
         config["agents"][0].get("kwargs", {}).get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
         arm=prepared["arm"])
+    source_edit = validate_source_edit_mode(prepared.get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+        arm=prepared["arm"], source_view_profile=source_view)
+    configured_source_edit = validate_source_edit_mode(
+        config["agents"][0].get("kwargs", {}).get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+        arm=prepared["arm"], source_view_profile=configured_source_view)
     source_policy, source_policy_unchanged, source_policy_present = _source_view_policy_state(
         prepared, config, source_view=source_view, configured_source_view=configured_source_view,
         current_config_sha256=_hash(output / "config.json"))
     selection = {key: prepared.get(key, value) for key, value in _intent_selection(None).items()}
-    configured_selection = _intent_selection(config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"))
+    configured_selection = _intent_selection(config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"),
+        planning_mode=configured_planning)
     job = Path(config["jobs_dir"]) / config["job_name"]
     trials = []
     for path in sorted(job.glob("*/result.json")):
@@ -513,6 +555,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **semantic_metadata_observation(metadata_view),
               **capsule_selection_observation(capsule_selection),
               **source_view_observation(source_view, source_policy),
+              **source_edit_observation(source_edit),
+              **({"source_edit_config_unchanged": configured_source_edit == source_edit}
+                 if "source_edit_mode" in prepared or "source_edit_mode" in config["agents"][0].get("kwargs", {}) else {}),
               **({"source_view_policy_config_unchanged": source_policy_unchanged}
                  if source_policy_present else {}),
               **({"source_view_config_unchanged": configured_source_view == source_view}
@@ -520,6 +565,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **({"capsule_selection_config_unchanged": configured_capsules == capsule_selection}
                  if "capsule_selection" in prepared or "capsule_selection" in config["agents"][0].get("kwargs", {}) else {}),
               **numerical_observation(numerical_profile, prepared["arm"]),
+              **planning_observation(planning_mode),
+              **({"planning_mode_config_unchanged": configured_planning == planning_mode}
+                 if "planning_mode" in prepared or "planning_mode" in config["agents"][0].get("kwargs", {}) else {}),
               **({"numerical_formalization_config_unchanged": configured_numerical == numerical_profile}
                  if numerical_profile is not None or configured_numerical is not None else {}),
               **({"semantic_metadata_config_unchanged": configured_metadata_view == metadata_view}
@@ -535,10 +583,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               "complete_single_trial_receipt": unchanged and len(trials) == 1
                   and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file()
                   and configured_transport == transport and configured_reply_mode == reply_mode
-                  and configured_numerical == numerical_profile
+                  and configured_numerical == numerical_profile and configured_planning == planning_mode
                   and configured_metadata_view == metadata_view
                   and configured_capsules == capsule_selection
-                  and configured_source_view == source_view and source_policy_unchanged,
+                  and configured_source_view == source_view and source_policy_unchanged
+                  and configured_source_edit == source_edit,
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
               "intent_action_384": prepared.get("intent_action_384"),
@@ -557,6 +606,15 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
                           task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
         raise ValueError("prepared configuration changed")
+    planning_mode = validate_planning_mode(prepared.get("planning_mode", DEFAULT_PLANNING_MODE),
+        intent_requirement_contract=config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"),
+        task_profile=config["agents"][0].get("kwargs", {}).get("task_profile"))
+    configured_planning = validate_planning_mode(
+        config["agents"][0].get("kwargs", {}).get("planning_mode", DEFAULT_PLANNING_MODE),
+        intent_requirement_contract=config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"),
+        task_profile=config["agents"][0].get("kwargs", {}).get("task_profile"))
+    if planning_mode != configured_planning:
+        raise ValueError("prepared planning mode changed")
     numerical_profile = validate_numerical_profile(prepared.get("numerical_formalization_profile"))
     configured_numerical = validate_numerical_profile(
         config["agents"][0].get("kwargs", {}).get("numerical_formalization_profile"))
@@ -590,6 +648,13 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     configured_source_view = validate_source_view_profile(
         config["agents"][0].get("kwargs", {}).get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
         arm=prepared["arm"])
+    source_edit = validate_source_edit_mode(prepared.get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+        arm=prepared["arm"], source_view_profile=source_view)
+    configured_source_edit = validate_source_edit_mode(
+        config["agents"][0].get("kwargs", {}).get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+        arm=prepared["arm"], source_view_profile=configured_source_view)
+    if source_edit != configured_source_edit:
+        raise ValueError("prepared source edit mode changed")
     if source_view != configured_source_view:
         raise ValueError("prepared source view profile changed")
     _, source_policy_unchanged, _ = _source_view_policy_state(prepared, config,
@@ -610,6 +675,8 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     require_source_view_archive(current_manifest, source_view,
         config["agents"][0].get("kwargs", {}).get("resource_profile"))
     require_numerical_archive(current_manifest, numerical_profile)
+    require_planning_archive(current_manifest, planning_mode)
+    require_source_edit_archive(current_manifest, source_edit)
     from .terminal_numerical_selection_deployment import require_numerical_selection_archive
     require_numerical_selection_archive(current_manifest)
     require_retrieval_revision(current_manifest, prepared["arm"],
@@ -643,6 +710,8 @@ def main():
     parser.add_argument("--archive", type=Path)
     parser.add_argument("--arm", choices=("full", "no-index"), default="full")
     parser.add_argument("--provider-profile", choices=PROVIDER_PROFILES, help="Explicit immutable router route; no cross-provider fallback")
+    parser.add_argument("--planning-mode", choices=PLANNING_MODES, default=DEFAULT_PLANNING_MODE,
+        help="Explicit signed single-task planning route; frozen by preparation")
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, help="Explicit coding-context transport; planning remains unchanged")
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
@@ -654,6 +723,8 @@ def main():
         help="Experimental source-bound capsule ranking; requires an explicit public task profile and is frozen by preparation")
     parser.add_argument("--source-view-profile", choices=SOURCE_VIEW_PROFILES, default=DEFAULT_SOURCE_VIEW_PROFILE,
         help="Opt-in read-only coding source views; full indexed arm only and frozen by preparation")
+    parser.add_argument("--source-edit-mode", choices=SOURCE_EDIT_MODES, default=DEFAULT_SOURCE_EDIT_MODE,
+        help="Opt-in mapped source edit proposals; requires full arm and source views; frozen by preparation")
     parser.add_argument("--source-view-policy", type=Path,
         help="Explicit shared source view recipe JSON file; frozen by preparation")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
@@ -668,6 +739,8 @@ def main():
     parser.add_argument("--intent-requirement-contract", type=Path,
         help="Use source-bound @1 provider coverage or @2 reviewed symbolic operations before admission")
     args = parser.parse_args()
+    if args.operation != "prepare" and args.planning_mode != DEFAULT_PLANNING_MODE:
+        parser.error("planning mode is frozen during prepare; collect/execute cannot select it")
     if args.operation != "prepare" and args.numerical_formalization_profile is not None:
         parser.error("numerical formalization is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
@@ -680,6 +753,8 @@ def main():
         parser.error("capsule selection is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE:
         parser.error("source view profile is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.source_edit_mode != DEFAULT_SOURCE_EDIT_MODE:
+        parser.error("source edit mode is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.source_view_policy is not None:
         parser.error("source view policy is frozen by preparation; collect/execute cannot select it")
     if args.operation == "prepare":
@@ -697,8 +772,10 @@ def main():
                          semantic_metadata_view=args.semantic_metadata_view,
                          capsule_selection=args.capsule_selection,
                          source_view_profile=args.source_view_profile,
+                         source_edit_mode=args.source_edit_mode,
                          source_view_policy=_load_source_view_policy(args.source_view_policy),
-                         numerical_formalization_profile=args.numerical_formalization_profile)
+                         numerical_formalization_profile=args.numerical_formalization_profile,
+                         planning_mode=args.planning_mode)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)
     print(json.dumps(result, sort_keys=True, indent=2))

@@ -1,0 +1,21 @@
+{
+  "attempts": [
+    {
+      "config_sha256": "15dc5f7ca1dad49a67bdc856b3dd5fd54ac44d539f2956eea786d649f567b036",
+      "directory": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-identity-02",
+      "label": "identity",
+      "preparation_sha256": "a9d1c80d6992f3d1119877403fad48cdeee5fe657ae433df244900737ad386b8"
+    },
+    {
+      "config_sha256": "8c4f6a784dbf0b9fefa8fec3c0682af6f45bad240ff74f20f63824d8442cd52f",
+      "directory": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02",
+      "label": "comments",
+      "preparation_sha256": "42844db121a819307c4f3894f345c04e245fe9fc012c7638eb51d2567f464a5d"
+    }
+  ],
+  "pair_lock": {
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/pair-lock.json",
+    "sha256": "295b12b3f4464bbab8422ce8fdfe0414949fd3295948a54426a95ce48e015fa5"
+  },
+  "schema": "compact-source-live-readout-input@1"
+}

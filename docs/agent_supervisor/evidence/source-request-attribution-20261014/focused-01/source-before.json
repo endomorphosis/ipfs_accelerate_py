@@ -1,0 +1,13 @@
+{
+  "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "3c6f96e0ce3c3c3de9efd96c873d0eae58dbea561ea674923cb5a016f3c53fa9",
+  "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "e78c18422e06f1417cb7e5c19ba7df0de7bea2d5b35606aa4cdb8220d499d99e",
+  "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "d6dfd1df366123b6d00be2705de40244b766ac5a8ac026ff8e00e948f61f10c5",
+  "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py": "273ed9b95447197f7c3049cf5a068d24e892a4646cefc41a503190ef2676f8ec",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_source_request_observation.py": "bfde491b172d2c8a54231f916a816cd99132dbbd80d602832f6bb383a81e6f51",
+  "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "3909c94a0e79540cc8a401eed4935dcccaaf037766b913d6e60812d296153a87",
+  "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "ebd1c861469bac02360bfa31b2cb2b1c3592ef9a50e445f043afb9518f5d4808",
+  "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py": "fe97b2b2b89c9095a4e9ef61fc89e32e24560b9f07108fed478d8e2ecb21abe6",
+  "test/api/test_worker_candidate_context_broker.py": "4cdc0fe20c51f6532529afc902166b9e7beb3b1fbb3a57ed5e0cae6f7323cf59",
+  "test/api/test_worker_source_broker.py": "e8d53fe0d857d6f5ab5dcc67c6a71c0b4ef83e12099f987d38e737040c8ea55a",
+  "test/api/test_worker_source_request_observation.py": "296e86ebe4e0ce491e1ff5082d6f7c814c37c250d1fb58190a7576bf015ff751"
+}

@@ -1,0 +1,56 @@
+{
+  "corrected_sources": [
+    {
+      "after_sha256": "7767775319161d898a2f306633b999c5c9bb4739bb0019d6ebdf11ae3003257c",
+      "before_sha256": "439c5a66eb9d489caf547e36bbf6fbfe2f63b1070e543be47d2a3811e432ecf8",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py"
+    },
+    {
+      "after_sha256": "eb645fbf250ed5816e86ef9be2c7402eb25cd0163168b7bc6ea6a6747cc7829d",
+      "before_sha256": "85e4081a4db224c453b0e8d0b3a125052b3b53d5537245e936e59f894a7f6e92",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py"
+    },
+    {
+      "after_sha256": "8e8397f38c05e88dc43607e4af0dec922e3be7f0c5bcc77c05528a7ae214f198",
+      "before_sha256": "7c4d2a448e6056ddd672d4f06815e8e2f3aadfcf2c1bc6f9e3c79bb6744b3a22",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_signed_declared_planning.py"
+    },
+    {
+      "after_sha256": "5ec5ac39f19d22473a55964b83a86db2d130ed37a970b895cd73cea2a7c6affb",
+      "before_sha256": "3ee076133d566170f543cbff314aeecd8cf0dc622c5ba05a43b44da1f51c414e",
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification_runner.py"
+    }
+  ],
+  "corrections": [
+    "fixture uses actual semantic_transport=True wrapper",
+    "mode-tamper accepts stronger RepresentationDisplacementError for compact metadata",
+    "context authority assertions use existing nested observations",
+    "pin installed Lean and Z3 in isolated qualification environment; fail-closed production code unchanged"
+  ],
+  "failed_test_families": {
+    "fixture_expectations": 7,
+    "required_local_prover_discovery": 4
+  },
+  "metadata_correction": {
+    "local_symbolic_solver_and_authored_python_validation_may_run": true,
+    "new_solver_calls": null,
+    "original_record_overwritten": false,
+    "original_solver_calls_zero_field_inaccurately_inherited": true
+  },
+  "original_prior_evidence_modified": false,
+  "original_raw_failure_logs_modified": false,
+  "production_runtime_sources_changed": false,
+  "prover_diagnosis": {
+    "default_discovery_failure_nonzero_vs_timeout_unknown": true,
+    "operator_recognition_succeeded": true,
+    "proof_transaction_not_reached_in_four_controls": true,
+    "reason_code": "required_local_prover_unavailable",
+    "suppressed_elan_discovery_stderr_unavailable": true
+  },
+  "retained_attempt": "qualification-01",
+  "retained_failures": 11,
+  "retained_passes": 1711,
+  "retained_runner_snapshot": "qualification-01/qualification-runner.snapshot.txt",
+  "retained_tests": 1722,
+  "schema": "signed-compact-qualification-corrections@1"
+}

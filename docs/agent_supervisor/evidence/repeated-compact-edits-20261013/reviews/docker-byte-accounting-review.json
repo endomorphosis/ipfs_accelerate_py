@@ -1,0 +1,89 @@
+{
+  "actual_worker_uid": 1001,
+  "bindings": {
+    "docker_result": {
+      "bytes": 3552,
+      "sha256": "dfa5200078119733f3b857465b2478fcbdccac28f10de9143cc090e697e19975"
+    },
+    "framing_source": {
+      "bytes": 20382,
+      "sha256": "c0df1ff3034024d2fff37dc51ef1947946964f2a7ebfce30c53e1e95741a1ea7"
+    },
+    "private_audit": {
+      "bytes": 6664,
+      "sha256": "4799320201dd6a1bca5acf9086a203e8723b021e0239c6d8ad37d9c58279aec0"
+    },
+    "private_worker_metadata": {
+      "bytes": 8478,
+      "sha256": "0a01e0fd2c32f69f72bf9c296c674b28f218a79ad13a2f4bc746d8985e6e9825"
+    },
+    "probe_result": {
+      "bytes": 2032,
+      "sha256": "622612b80e9593e9e0985e5cec9d94a74007a881cb25e0a1baf8201cd0b57ee7"
+    },
+    "release": {
+      "bytes": 4856,
+      "sha256": "615caf0142a93e1effa6eb3df278baa8b5705c63ba2eab01c4d930bd8be7b53d"
+    },
+    "review_helper": {
+      "bytes": 10049,
+      "sha256": "333e35a57add5c4b75a8053e2b6e2db1c1c5cf5bd386e1628a6c67378c24378a"
+    },
+    "session_observation": {
+      "bytes": 2808,
+      "sha256": "cccc624a569832a7ca4de6349545f233d570ccc1b2e4b105415e7195d67d3a24"
+    }
+  },
+  "comparison_baseline_present": false,
+  "complete_session_savings_measured": false,
+  "confirmed_edits": 3,
+  "distinct_working_generations": 4,
+  "excluded_from_cli_observation": [
+    "CLI command arguments and edit JSON stdin",
+    "initial model prompt and edit guidance",
+    "provider tool framing and conversation history",
+    "subsequent model turns",
+    "separate authored smoke command/output"
+  ],
+  "external_model_calls": 0,
+  "fresh_source_view_manifest_pins_each_edit": true,
+  "full_exchange_bytes": null,
+  "full_supervisor_start_qualified": false,
+  "model_visible_cli_output_observation": {
+    "authored_cli_calls": 7,
+    "canonical_json_bytes_excluding_cli_newlines": 6192,
+    "edit_invocations": 3,
+    "edit_result_rendered_bytes_and_hashes_replayed_exactly": true,
+    "edit_result_stdout_bytes_including_newlines": 3114,
+    "scope": "Actual captured subprocess stdout in an authored provider hook; these are not provider token measurements.",
+    "source_read_stdout_bytes_including_newlines": 3085,
+    "source_reads": 4,
+    "stderr_bytes": 0,
+    "stdout_bytes_including_actual_cli_newlines": 6199,
+    "stdout_newline_bytes": 7
+  },
+  "non_additive_scopes": "CLI results and private owner responses are two representations of overlapping operations; do not add them as model exposure.",
+  "official_benchmark_reward": null,
+  "original_source_expansion_requests": 0,
+  "owner_private_read_denied": true,
+  "private_owner_response_transport": {
+    "canonical_json_response_body_bytes": 20229,
+    "confirmation_pages": 3,
+    "delivered_source_slice_bytes_including_repeated_reads": 341,
+    "derived_frame_prefix_bytes": 40,
+    "derived_framed_response_bytes": 20269,
+    "prepare_pages": 3,
+    "scope": "Owner-to-client responses only; ten four-byte prefixes follow the pinned framing implementation. Prepare/confirm owner frames stay private to the client.",
+    "source_pages": 4,
+    "successful_delivered_responses": 10
+  },
+  "provider_tokens": null,
+  "same_actual_owner_uid_and_inode_retained": true,
+  "schema": "repeated-compact-edit-byte-accounting-review@1",
+  "separate_authored_validation_returncode": 0,
+  "source_obligations_discharged": 0,
+  "status": "passed",
+  "unmeasured_transport": [
+    "Request body byte counts are not retained by the session audit; total bidirectional wire bytes are unknown."
+  ]
+}

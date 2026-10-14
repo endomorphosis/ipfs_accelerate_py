@@ -1,0 +1,59 @@
+{
+  "schema": "source-request-attribution-unchanged-interface-review@1",
+  "base_commit": "3f08cc43cbd96c9f8a5114091f65566a5962dbbc",
+  "checks": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "sha256": "90711d0d9ea05c4d091acfb74b61362bc79105a320aab3ef283364cd8d0b687c",
+      "unchanged": true
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py",
+      "sha256": "0b6082ae6a15001d4e3e0b633c57a2a6557862fe253f4117805998bb2a56bb28",
+      "unchanged": true
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py",
+      "sha256": "bcff050716454c625de8b7486489a6e0a33f3daf4a8989ec01059242efea6c81",
+      "unchanged": true
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
+      "sha256": "08cd587a17ba5b94fc46b096f9522e9d2ce833f38d3780ec350212682cd4857d",
+      "unchanged": true
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context_client.py",
+      "sha256": "4542ebbd5914a5b7675173b784bd7b91a5dba4d25d6170547a2e2f8fb9655ee0",
+      "unchanged": true
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py",
+      "sha256": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+      "unchanged": true
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py",
+      "sha256": "4995b7dc62749d23942bed99bb475c500b8ab81eb1b4e43442590e9fede4763d",
+      "unchanged": true
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+      "sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+      "unchanged": true
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
+      "sha256": "3545f7db90c225b9eed1969170d5f91c0196afb24e49f7149b3650ad6fb68043",
+      "unchanged": true
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "0727e5bd80e698241ea73e482237ddeae63bc1158758259e30f7e4e48685ac12",
+      "unchanged": true
+    }
+  ],
+  "all_unchanged": true,
+  "scope": "unchanged source bytes for client descriptors/requests/responses, guidance, mapper, permissions-related view checks and router prompts; owner audit version intentionally changed",
+  "deployed_to_retained_live_trials": false
+}

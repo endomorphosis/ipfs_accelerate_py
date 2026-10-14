@@ -1,0 +1,15 @@
+{
+  "returncode": 0,
+  "seconds": 3.333,
+  "source_after": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "90711d0d9ea05c4d091acfb74b61362bc79105a320aab3ef283364cd8d0b687c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py": "0b6082ae6a15001d4e3e0b633c57a2a6557862fe253f4117805998bb2a56bb28",
+    "test/api/test_worker_source_edit_client.py": "3be8230a3770fd380bd932ed107951fb0c0dc57da2de5deccc2d879c2762889d"
+  },
+  "source_before": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "90711d0d9ea05c4d091acfb74b61362bc79105a320aab3ef283364cd8d0b687c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py": "0b6082ae6a15001d4e3e0b633c57a2a6557862fe253f4117805998bb2a56bb28",
+    "test/api/test_worker_source_edit_client.py": "3be8230a3770fd380bd932ed107951fb0c0dc57da2de5deccc2d879c2762889d"
+  },
+  "source_unchanged": true
+}

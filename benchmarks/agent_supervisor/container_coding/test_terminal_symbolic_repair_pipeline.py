@@ -39,7 +39,7 @@ def _git(root, *args):
     return subprocess.check_output(['git', '-C', str(root), *args], text=True).strip()
 
 
-def prepared_pipeline(tmp_path, *, symbolic=True, alias=False):
+def prepared_pipeline(tmp_path, *, symbolic=True, alias=False, planning_mode=None):
     root = tmp_path / 'repository'
     root.mkdir()
     (root / 'bottle.py').write_text(ALIAS_SOURCE if alias else SOURCE)
@@ -69,7 +69,8 @@ def prepared_pipeline(tmp_path, *, symbolic=True, alias=False):
     state = tmp_path / 'state'
     prepared = prep.prepare(repository=root, instruction=instruction, state=state,
         task_profile=profile, intent_requirement_contract=artifact if symbolic else None,
-        disable_intent_autoencoder=True)
+        disable_intent_autoencoder=True,
+        **({"planning_mode": planning_mode} if planning_mode is not None else {}))
     return root, state, prepared
 
 

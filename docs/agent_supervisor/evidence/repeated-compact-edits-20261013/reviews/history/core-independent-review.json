@@ -1,0 +1,21 @@
+{
+  "files": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "9740b8beb85cc21f3e3d2001c4a84bc67d3e31a13eaa2e214dd5788647b3f2ea",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py": "07f7c97ab3e5b2c1d4c1464ebb8a6ee20c85406757ae63d2c42d8e4fbe5912f6"
+  },
+  "integration_point": "Broker pre-context and post-core context/peer checks can refuse a matching confirmation outside core consumption; root has been asked to fence these or narrow the terminal-failure claim. Lost response after owner confirmation remains client written_confirmation_unknown with no automatic retry.",
+  "limits": [
+    "Read-only code review, no additional tests or actual model/transport calls.",
+    "Review does not assert broker changes currently in progress are final."
+  ],
+  "observed_at_utc": "2026-10-13T23:20:55.553326+00:00",
+  "reviewed": [
+    "Optional core mode defaults to unchanged mapped-span@1 behavior; new branches only select @2.",
+    "Hard sixteen successful preparations, one outstanding proposal, next allowed only after exact whole-postimage core confirmation.",
+    "Wrong or old proposal rejects before consuming active confirmation or cache mutation in @2.",
+    "Matching confirmation failure inside core remains terminal after source/policy restoration.",
+    "Response schema, retained codec mapping, exact source pins and authority flags unchanged."
+  ],
+  "schema": "repeated-edit-core-independent-review@1",
+  "status": "core_no_blocker_broker_failure_scope_review_requested"
+}

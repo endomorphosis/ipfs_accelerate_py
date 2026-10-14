@@ -1,0 +1,53 @@
+{
+  "all_current_python_bindings_match": true,
+  "all_latest_run_recorded_sources_unchanged": true,
+  "complete": true,
+  "default_mode_unchanged": "disabled",
+  "distinct_passed_tests": 714,
+  "docker": {
+    "authored_router_hook": true,
+    "complete": true,
+    "confirmed_edits": 3,
+    "container_removed": true,
+    "distinct_working_generations": 4,
+    "network": "none",
+    "owner_uid": 1000,
+    "worker_uid": 1001
+  },
+  "evidence_files": {
+    "byte_accounting": "reviews/docker-byte-accounting-review.json",
+    "final_integration_review": "reviews/integration-review.json",
+    "history": "retained-failures.json",
+    "sources": "source-bindings.json",
+    "tests": "test-ledger.json"
+  },
+  "exclusions": [
+    "private-state",
+    "private-fixture-ipc",
+    "private-worker-observations",
+    "raw prompts and transcripts",
+    "authentication files and values",
+    "DuckDB databases",
+    "large runtime archives and binaries",
+    "live-preparation and live-trial artifacts"
+  ],
+  "legacy_byte_comparison_cases_separate": 32,
+  "maximum_successful_preparations_per_session": 16,
+  "mode": "mapped-span@2",
+  "one_outstanding_proposal": true,
+  "prior_mapped_mode_preserved": "mapped-span@1",
+  "schema": "repeated-compact-edit-offline-qualification@1",
+  "scope": {
+    "external_model_calls": 0,
+    "formal_obligations_discharged": 0,
+    "full_supervisor_start_qualified": false,
+    "live_token_savings_measured": false,
+    "official_benchmark_verifier_executed": false
+  },
+  "test_breakdown": {
+    "client": 116,
+    "core": 100,
+    "outer": 149,
+    "root": 349
+  }
+}

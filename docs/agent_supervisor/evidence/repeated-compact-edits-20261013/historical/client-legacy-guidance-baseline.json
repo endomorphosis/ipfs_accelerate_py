@@ -1,0 +1,17 @@
+{
+  "guidance": {
+    "identity@1": {
+      "bytes": 1902,
+      "sha256": "6b075852d57784a5520ac0226f6c0a9b12a8d27fe57cd305fb10edf0332e4fbd"
+    },
+    "python-comments@1": {
+      "bytes": 1909,
+      "sha256": "1d5f979fcfa60c5d1fbab2f82987a5f014356474cd2c6449bf75eb0bdd69ea30"
+    },
+    "python-whitespace@1": {
+      "bytes": 1911,
+      "sha256": "0496019305188ef136da6dbbfdd5287029503f8f2cc557e6e5476a7565316708"
+    }
+  },
+  "source_sha256": "4a8f2eff7d5031f3dfb86988a6ef69b17694c88e9a041dd943c0ff5aea3fd6f1"
+}
