@@ -1612,10 +1612,17 @@ class ControlPlaneBackup:
         """Restore from a verified backup; optionally rotate generation.
 
         When ``rehearsal`` is True the live database is not replaced; restore
-        is applied to a temporary destination and verified.
+        is applied to a temporary destination and verified. The existing source
+        database is required to retain maintenance authority. An absent source
+        database cannot be restored from a caller-supplied lease record, even
+        when the lease requirement is disabled or another destination is used.
         """
 
         ownership = self.assert_direct_file_maintenance_admitted()
+        if not self.database_path.is_file():
+            raise ControlPlaneBackupOwnershipError(
+                "restore requires an existing authoritative maintenance-lease database"
+            )
         if require_maintenance_lease:
             self._require_active_maintenance_lease(maintenance_lease)
 
@@ -2227,39 +2234,42 @@ class ControlPlaneBackup:
                 f"maintenance lease scope mismatch: {record.scope!r} != "
                 f"{self.maintenance_scope!r}"
             )
-        # Confirm lease row still active when the database is present.
-        if self.database_path.is_file():
-            with open_duckdb_connection(self.database_path) as connection:
-                row = connection.execute(
-                    """
-                    SELECT lease_id, state, fencing_token, scope
-                    FROM maintenance_leases
-                    WHERE lease_id = ?
-                    LIMIT 1
-                    """,
-                    [record.lease_id],
-                ).fetchone()
-                if row is None:
-                    raise ControlPlaneBackupOwnershipError(
-                        "maintenance lease not found in database"
-                    )
-                state = str(_row_value(row, "state", _row_value(row, 1, "")))
-                token = int(
-                    _row_value(row, "fencing_token", _row_value(row, 2, 0)) or 0
+        # A supplied historical record cannot authenticate missing authority.
+        if not self.database_path.is_file():
+            raise ControlPlaneBackupOwnershipError(
+                "maintenance lease authority database is missing"
+            )
+        with open_duckdb_connection(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT lease_id, state, fencing_token, scope
+                FROM maintenance_leases
+                WHERE lease_id = ?
+                LIMIT 1
+                """,
+                [record.lease_id],
+            ).fetchone()
+            if row is None:
+                raise ControlPlaneBackupOwnershipError(
+                    "maintenance lease not found in database"
                 )
-                scope = str(_row_value(row, "scope", _row_value(row, 3, "")))
-                if state != MAINTENANCE_LEASE_ACTIVE:
-                    raise ControlPlaneBackupOwnershipError(
-                        "maintenance lease is not active in the store"
-                    )
-                if token != int(record.fencing_token):
-                    raise ControlPlaneBackupOwnershipError(
-                        "maintenance lease fencing_token mismatch"
-                    )
-                if scope != self.maintenance_scope:
-                    raise ControlPlaneBackupOwnershipError(
-                        "maintenance lease scope mismatch in store"
-                    )
+            state = str(_row_value(row, "state", _row_value(row, 1, "")))
+            token = int(
+                _row_value(row, "fencing_token", _row_value(row, 2, 0)) or 0
+            )
+            scope = str(_row_value(row, "scope", _row_value(row, 3, "")))
+            if state != MAINTENANCE_LEASE_ACTIVE:
+                raise ControlPlaneBackupOwnershipError(
+                    "maintenance lease is not active in the store"
+                )
+            if token != int(record.fencing_token):
+                raise ControlPlaneBackupOwnershipError(
+                    "maintenance lease fencing_token mismatch"
+                )
+            if scope != self.maintenance_scope:
+                raise ControlPlaneBackupOwnershipError(
+                    "maintenance lease scope mismatch in store"
+                )
         return record
 
     def _coerce_snapshot(
