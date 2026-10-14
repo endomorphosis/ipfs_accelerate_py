@@ -398,6 +398,9 @@ def _token_selection_receipt(metadata: dict, item: dict) -> None:
 def _receipt(item: dict, workspace_root: Path) -> dict:
     if not isinstance(item, dict) or item.get("schema") != "router-implementation-invocation@1":
         raise ValueError("invalid router receipt")
+    if "world_task_packet" in item or "world_packet_artifacts" in item:
+        from .terminal_world_packet_audit import validate_world_packet_audit_receipt
+        return validate_world_packet_audit_receipt(item, workspace_root=workspace_root)
     if item.get("phase") != "coding" or item.get("purpose") != "coding":
         raise ValueError("non-coding router receipt")
     result = {key: item[key] for key in RECEIPT_FIELDS}
@@ -618,8 +621,25 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
 
 
 def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
-                      formalization: dict | None = None, token_counter=None):
+                      formalization: dict | None = None, token_counter=None,
+                      world_packet_artifact_root: Path | None = None, workspace_root: Path | None = None):
     """Reconstruct historical provider bytes without granting freshness."""
+    if "world_task_packet" in receipt or "world_packet_artifacts" in receipt:
+        if world_packet_artifact_root is None or workspace_root is None or formalization is not None:
+            raise ValueError("world packet requires its independently selected retained artifact root")
+        if (type(rendered) is not str or _sha(rendered.encode()) != receipt["prompt_sha256"]
+                or len(rendered.encode()) != receipt["prompt_bytes"]):
+            raise ValueError("world packet differs from the independently supplied original task input")
+        from .terminal_world_packet_audit import replay_retained_world_packet_input
+        replayed = replay_retained_world_packet_input(receipt,
+            artifact_root=world_packet_artifact_root, workspace_root=workspace_root)
+        checks = {"world_packet_historical_input_reconstruction": True,
+            "world_packet_original_invocation_join": True,
+            "model_prompt_sha256": _sha(replayed.model_prompt.encode()) == receipt["model_prompt_sha256"],
+            "model_prompt_bytes": len(replayed.model_prompt.encode()) == receipt["model_prompt_bytes"],
+            "workspace_advisory_sha256": _sha(replayed.workspace_advisory.encode()) == receipt["workspace_advisory_sha256"],
+            "workspace_advisory_bytes": len(replayed.workspace_advisory.encode()) == receipt["workspace_advisory_bytes"]}
+        return replayed.model_prompt, replayed.workspace_advisory, checks
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
     translated = receipt.get("semantic_translation") is not None
     router_prompt, checks = rendered, {}
@@ -1110,7 +1130,8 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
     return result, rendered, dispatch
 
 
-def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path) -> dict:
+def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path,
+                          world_packet_artifact_root: Path | None = None) -> dict:
     """Read historical evidence and compare exact native and model input bytes."""
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
 
@@ -1138,47 +1159,85 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
         **({"semantic_prompt_components": row["semantic_prompt_components"],
             "semantic_prompt_components_verified": None}
             if "semantic_prompt_components" in row else {})} for row in parsed]
-    root_fd = _open_directory(state)
-    try:
-        expected_raw = _read_at(root_fd, "context-result.json")
-        prepared_raw = _read_at(root_fd, "prepared.json")
-        expected, prepared = _json(expected_raw), _json(prepared_raw)
-        result.update(context_result_sha256=_sha(expected_raw), prepared_state_sha256=_sha(prepared_raw))
-        paths = _capsule_paths(root_fd)
-        if not paths:
-            result["reason"] = "native_capsule_unavailable"
-            return result
-        for relative in paths:
-            try:
-                observed, rendered, formalization = _capsule(_read_at(root_fd, relative), expected=expected, prepared=prepared)
-                result["capsules"].append(observed)
-                if not observed["all_context_checks_passed"]:
-                    continue
-                for receipt in parsed:
-                    if (observed["native_prompt_sha256"] != receipt["native_prompt_sha256"]
-                            or observed["native_prompt_bytes"] != receipt["native_prompt_bytes"]):
+    world_rows = [row for row in parsed if "world_task_packet" in row]
+    legacy_rows = [row for row in parsed if "world_task_packet" not in row]
+    for receipt in world_rows:
+        try:
+            from .terminal_world_packet_audit import (
+                replay_retained_world_packet_input, world_packet_artifact_root as select_artifact_root,
+            )
+            artifact_root = select_artifact_root(state=state, explicit_root=world_packet_artifact_root,
+                workspace=receipt["workspace"])
+            replayed = replay_retained_world_packet_input(receipt, artifact_root=artifact_root,
+                workspace_root=workspace_root)
+            diagnostic = replayed.receipt()
+            model, advisory = replayed.model_prompt, replayed.workspace_advisory
+            checks = {"world_packet_historical_input_reconstruction": True,
+                "world_packet_original_invocation_join": True,
+                "model_prompt_sha256": _sha(model.encode()) == receipt["model_prompt_sha256"],
+                "model_prompt_bytes": len(model.encode()) == receipt["model_prompt_bytes"],
+                "workspace_advisory_sha256": _sha(advisory.encode()) == receipt["workspace_advisory_sha256"],
+                "workspace_advisory_bytes": len(advisory.encode()) == receipt["workspace_advisory_bytes"]}
+            result["matches"].append({"capsule_id": receipt["world_task_packet"]["context_cid"],
+                "invocation_id": receipt["invocation_id"],
+                "workspace_sha256": _sha(receipt["workspace"].encode()),
+                "native_prompt_sha256": receipt["native_prompt_sha256"],
+                "native_prompt_bytes": receipt["native_prompt_bytes"],
+                "model_prompt_sha256": _sha(model.encode()), "model_prompt_bytes": len(model.encode()),
+                "workspace_advisory_sha256": _sha(advisory.encode()), "workspace_advisory_bytes": len(advisory.encode()),
+                "model_input_checks": checks, "model_input_verified": all(checks.values()),
+                "verification_scope": "historical_world_packet_input_reconstruction",
+                "world_packet_replay": diagnostic})
+        except Exception as error:
+            result["read_errors"].append({"kind": "world_packet", "error_type": type(error).__name__})
+    if legacy_rows:
+        root_fd = None
+        try:
+            root_fd = _open_directory(state)
+            expected_raw = _read_at(root_fd, "context-result.json")
+            prepared_raw = _read_at(root_fd, "prepared.json")
+            expected, prepared = _json(expected_raw), _json(prepared_raw)
+            result.update(context_result_sha256=_sha(expected_raw), prepared_state_sha256=_sha(prepared_raw))
+            paths = _capsule_paths(root_fd)
+            if not paths and not world_rows:
+                result["reason"] = "native_capsule_unavailable"
+                return result
+            for relative in paths:
+                try:
+                    observed, rendered, formalization = _capsule(_read_at(root_fd, relative), expected=expected, prepared=prepared)
+                    result["capsules"].append(observed)
+                    if not observed["all_context_checks_passed"]:
                         continue
-                    model, advisory, checks = _model_projection(rendered=rendered, receipt=receipt,
-                        repository=Path(prepared["repository"]) if prepared.get("repository") else None,
-                        formalization=formalization)
-                    match = {"capsule_id": observed["capsule_id"],
-                        "invocation_id": receipt["invocation_id"],
-                        "workspace_sha256": _sha(receipt["workspace"].encode()),
-                        "native_prompt_sha256": observed["native_prompt_sha256"],
-                        "native_prompt_bytes": observed["native_prompt_bytes"],
-                        "model_prompt_sha256": _sha(model.encode()), "model_prompt_bytes": len(model.encode()),
-                        "workspace_advisory_sha256": _sha(advisory.encode()),
-                        "workspace_advisory_bytes": len(advisory.encode()),
-                        "model_input_checks": checks, "model_input_verified": all(checks.values())}
-                    if match["model_input_verified"] and receipt.get("source_input_view") is not None:
-                        match["source_input_audit_binding_sha256"] = source_input_audit_binding_sha256(receipt)
-                    if match["model_input_verified"] and receipt.get("query_reference_view") is not None:
-                        match["query_reference_audit_binding_sha256"] = query_reference_audit_binding_sha256(receipt)
-                    result["matches"].append(match)
-            except Exception as error:
-                result["read_errors"].append({"kind": "capsule", "error_type": type(error).__name__})
-    finally:
-        os.close(root_fd)
+                    for receipt in legacy_rows:
+                        if (observed["native_prompt_sha256"] != receipt["native_prompt_sha256"]
+                                or observed["native_prompt_bytes"] != receipt["native_prompt_bytes"]):
+                            continue
+                        model, advisory, checks = _model_projection(rendered=rendered, receipt=receipt,
+                            repository=Path(prepared["repository"]) if prepared.get("repository") else None,
+                            formalization=formalization)
+                        match = {"capsule_id": observed["capsule_id"],
+                            "invocation_id": receipt["invocation_id"],
+                            "workspace_sha256": _sha(receipt["workspace"].encode()),
+                            "native_prompt_sha256": observed["native_prompt_sha256"],
+                            "native_prompt_bytes": observed["native_prompt_bytes"],
+                            "model_prompt_sha256": _sha(model.encode()), "model_prompt_bytes": len(model.encode()),
+                            "workspace_advisory_sha256": _sha(advisory.encode()),
+                            "workspace_advisory_bytes": len(advisory.encode()),
+                            "model_input_checks": checks, "model_input_verified": all(checks.values())}
+                        if match["model_input_verified"] and receipt.get("source_input_view") is not None:
+                            match["source_input_audit_binding_sha256"] = source_input_audit_binding_sha256(receipt)
+                        if match["model_input_verified"] and receipt.get("query_reference_view") is not None:
+                            match["query_reference_audit_binding_sha256"] = query_reference_audit_binding_sha256(receipt)
+                        result["matches"].append(match)
+                except Exception as error:
+                    result["read_errors"].append({"kind": "capsule", "error_type": type(error).__name__})
+        except Exception as error:
+            if not world_rows:
+                raise
+            result["read_errors"].append({"kind": "capture", "error_type": type(error).__name__})
+        finally:
+            if root_fd is not None:
+                os.close(root_fd)
     for invocation in result["invocations"]:
         matching = [row for row in result["matches"] if row["invocation_id"] == invocation["invocation_id"]]
         if "semantic_prompt_components" in invocation:
@@ -1192,6 +1251,12 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
             else "verified_native_input_only" if matching else "unverified")
         invocation["reason"] = ("exact_context_and_input_digests_match" if invocation["model_input_verified"]
             else "model_projection_mismatch" if matching else "no_exact_stored_capsule_match")
+        world_match = next((row for row in matching if "world_packet_replay" in row), None)
+        if world_match is not None:
+            invocation["verification_scope"] = world_match["verification_scope"]
+            invocation["world_packet_replay"] = world_match["world_packet_replay"]
+        elif any(row["invocation_id"] == invocation["invocation_id"] for row in world_rows):
+            invocation["reason"] = "retained_world_packet_input_unavailable"
     result["any_native_input_verified"] = any(row["native_input_verified"] for row in result["invocations"])
     result["any_model_input_verified"] = any(row["model_input_verified"] for row in result["invocations"])
     result["all_observed_coding_inputs_verified"] = (len(parsed) == len(receipts)
@@ -1204,7 +1269,8 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
 
 
 def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
-        workspace_root: Path, timeout_seconds: float = MAX_AUDIT_SECONDS) -> dict:
+        workspace_root: Path, timeout_seconds: float = MAX_AUDIT_SECONDS,
+        world_packet_artifact_root: Path | None = None) -> dict:
     """Run in a bounded child, with the caller's remaining cleanup allowance.
 
     The default is a ceiling rather than a reserved allocation. Owners with an
@@ -1223,6 +1289,15 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
             if not isinstance(row, dict) or row.get("phase") != "coding":
                 continue
             fields = (*RECEIPT_FIELDS, *TRANSLATION_FIELDS)
+            if "world_task_packet" in row or "world_packet_artifacts" in row:
+                from ipfs_accelerate_py.agent_supervisor.runtime.repository_world_invocation_replay import (
+                    _REQUIRED, _OPTIONAL, _INCOMPATIBLE,
+                )
+                from .terminal_world_packet_audit import _EXCLUDED
+                # Preserve unsupported fields for refusal, rather than silently
+                # auditing a different legacy or stripped packet input.
+                fields += tuple(_REQUIRED | _OPTIONAL | _INCOMPATIBLE | _EXCLUDED | {
+                    "world_packet_artifacts", "source_input_policy", "query_reference_policy"})
             # The child must verify ordinary completion against the recorded
             # provider. Never infer a missing provider from the selected mode.
             if (row.get("coding_reply_contract") is not None or row.get("tool_output_policy") is not None
@@ -1248,7 +1323,9 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
         # The owner may still have the task checkout as cwd. Never prepend
         # that worker-controlled directory to the trusted module search path.
         process = subprocess.run([sys.executable, "-B", "-P", "-m", __name__, "--state", str(state),
-            "--workspace-root", str(workspace_root)], input=request, capture_output=True,
+            "--workspace-root", str(workspace_root),
+            *(["--world-packet-artifact-root", str(world_packet_artifact_root)]
+                if world_packet_artifact_root is not None else [])], input=request, capture_output=True,
             timeout=min(MAX_AUDIT_SECONDS, timeout_seconds), check=False,
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
         if process.returncode or len(process.stdout) > MAX_RESULT_BYTES:
@@ -1270,6 +1347,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", required=True, type=Path)
     parser.add_argument("--workspace-root", required=True, type=Path)
+    parser.add_argument("--world-packet-artifact-root", type=Path)
     args = parser.parse_args()
     try:
         raw = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
@@ -1278,7 +1356,8 @@ def main():
         receipts = _json(raw)
         if not isinstance(receipts, list):
             raise ValueError("audit receipts must be a list")
-        result = audit_terminal_context(state=args.state, receipts=receipts, workspace_root=args.workspace_root)
+        result = audit_terminal_context(state=args.state, receipts=receipts, workspace_root=args.workspace_root,
+            world_packet_artifact_root=args.world_packet_artifact_root)
     except Exception as error:
         result = _base(reason="audit_unavailable")
         result["error_type"] = type(error).__name__
