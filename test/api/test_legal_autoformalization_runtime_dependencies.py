@@ -138,7 +138,55 @@ def test_fresh_probe_ignores_unpinned_preexisting_bytecode(local_runtime, monkey
     driver = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(driver)
     monkeypatch.setenv("PYTHONPYCACHEPREFIX", "/unrelated/ambient/cache")
-    observed = driver.validate_runtime_dependencies(source, {"runtime_dependencies": manifest})
-    assert observed["modules"][0]["module_version"] == "1.0"
-    assert observed["bytecode_cache_policy"] == "empty temporary prefix with writes disabled"
+    full_manifest = source / "dependency-manifest.json"
+    full_manifest.write_bytes(driver.wire(manifest))
+    binding = driver.validate_runtime_dependencies(source, {"runtime_dependencies": manifest,
+        "runtime_dependencies_reference": driver.identity(full_manifest)})
+    assert binding["canonical_observation_sha256"] == driver.sha(driver.wire(manifest["observation"]))
+    assert binding["bytecode_cache_policy"] == "empty temporary prefix with writes disabled"
     assert cache.read_bytes() == poisoned
+
+
+def test_large_complete_manifest_has_compact_content_address_binding(tmp_path):
+    driver_path = HELPER.with_name("legal_autoformalization_source_views.py")
+    spec = importlib.util.spec_from_file_location("large_dependency_binding_test", driver_path)
+    driver = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(driver)
+    observed = {"distributions": [{"metadata": "complete retained observation" * 4000}],
+        "modules": [{"module": "fixture"}], "file_count": 3130, "file_bytes": 265827038,
+        "no_user_site": 1, "bytecode_cache_policy": "empty temporary prefix with writes disabled"}
+    manifest = {"schema": dependencies.SCHEMA, "roots": [str(tmp_path)], "observation": observed}
+    path = tmp_path / "complete-runtime-manifest.json"
+    path.write_bytes(driver.wire(manifest))
+    job = {"runtime_dependencies": manifest, "runtime_dependencies_reference": driver.identity(path)}
+    binding = driver.runtime_dependency_binding(job)
+    assert len(driver.wire(manifest)) > 100000
+    assert len(driver.wire(binding)) < 2048
+    # Preserve the prior large full-report result budget without lifting caps
+    # or removing a byte from the independently retained observation.
+    result = {"complete_real_report": "x" * 855973, "bindings": binding, "execution": binding}
+    assert len(driver.wire(result)) + 1 < driver.MAX_RESULT_BYTES
+    assert driver.read_json(path) == manifest
+    assert binding["canonical_manifest_sha256"] == driver.sha(driver.wire(manifest))
+
+
+def test_tampered_full_manifest_reference_cannot_be_resealed(tmp_path):
+    driver_path = HELPER.with_name("legal_autoformalization_source_views.py")
+    spec = importlib.util.spec_from_file_location("tampered_dependency_binding_test", driver_path)
+    driver = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(driver)
+    manifest = {"observation": {"distributions": [], "modules": [], "file_count": 0,
+        "file_bytes": 0, "no_user_site": 1, "bytecode_cache_policy": "fixture"}, "roots": []}
+    path = tmp_path / "complete-runtime-manifest.json"
+    path.write_bytes(driver.wire(manifest))
+    job = {"runtime_dependencies": manifest, "runtime_dependencies_reference": driver.identity(path)}
+    altered = copy.deepcopy(job)
+    altered["runtime_dependencies_reference"]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="file identity differs"):
+        driver.runtime_dependency_binding(altered)
+    unrelated = copy.deepcopy(manifest)
+    unrelated["observation"]["file_count"] = 99
+    path.write_bytes(driver.wire(unrelated))
+    altered["runtime_dependencies_reference"] = driver.identity(path)
+    with pytest.raises(ValueError, match="content differs"):
+        driver.runtime_dependency_binding(altered)

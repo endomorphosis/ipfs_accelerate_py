@@ -164,7 +164,7 @@ def bindings(task, sources_path):
         "datasets_tree": git(datasets, "rev-parse", "HEAD^{tree}"), "inputs": rows,
         "prior_source_custody_completion_sha256": prior["sha256"], "accelerator_inputs": accelerator_rows,
         "external_evidence": sources.get("external_evidence", []), "interpreter": interpreter,
-        "runtime_dependencies": job.get("runtime_dependencies")}
+        "runtime_dependencies": runtime_dependency_binding(job)}
 
 
 def command(job):
@@ -197,11 +197,46 @@ def isolated_child_environment(datasets, job, temporary):
             "PYTHONPYCACHEPREFIX": str(prefix)}
 
 
+def runtime_dependency_binding(job):
+    """Reference the complete independently pinned manifest without duplicating it.
+
+    The source manifest and referenced external artifact retain every original
+    metadata/module/file-closure observation. Qualification receipts bind their
+    exact file identity and complete canonical content, keeping the existing
+    native result cap available for the complete real-input evidence.
+    """
+    manifest = job.get("runtime_dependencies")
+    if manifest is None:
+        return None
+    reference = job.get("runtime_dependencies_reference")
+    need(type(reference) is dict and set(reference) == {"path", "bytes", "sha256"},
+         "Closed full runtime dependency manifest reference required")
+    need(type(reference["path"]) is str and type(reference["sha256"]) is str
+         and len(reference["sha256"]) == 64 and type(reference["bytes"]) is int
+         and 0 < reference["bytes"] <= MAX_BYTES
+         and Path(reference["path"]).stat().st_size == reference["bytes"],
+         "Full runtime dependency manifest reference exceeds bound or differs")
+    need(identity(reference["path"]) == reference,
+         "Full runtime dependency manifest file identity differs")
+    need(read_json(reference["path"]) == manifest,
+         "Referenced full runtime dependency manifest content differs")
+    observed = manifest["observation"]
+    return {"schema": "legal-autoformalization-runtime-dependency-binding/v1",
+        "manifest_reference": reference,
+        "canonical_manifest_sha256": sha(wire(manifest)),
+        "canonical_observation_sha256": sha(wire(observed)),
+        "roots": manifest["roots"], "distribution_count": len(observed["distributions"]),
+        "module_count": len(observed["modules"]), "file_count": observed["file_count"],
+        "file_bytes": observed["file_bytes"], "no_user_site": observed["no_user_site"],
+        "bytecode_cache_policy": observed["bytecode_cache_policy"]}
+
+
 def validate_runtime_dependencies(datasets, job):
     """Verify curated existing dependencies in the exact qualification child environment."""
     manifest = job.get("runtime_dependencies")
     if manifest is None:
         return None  # Legacy source-contract fixtures declare no external closure.
+    binding = runtime_dependency_binding(job)
     helper = Path(__file__).with_name("legal_autoformalization_runtime_dependencies.py")
     cmd = [job.get("python_executable", sys.executable), "-B", str(helper),
            wire({"manifest": manifest, "datasets": str(Path(datasets).resolve(strict=True))}).decode("utf-8")]
@@ -214,7 +249,7 @@ def validate_runtime_dependencies(datasets, job):
         need(run.returncode == 0, "Runtime dependency verification failed: " + _failure_tail(err_path))
         observed = read_json(out_path)
     need(observed == manifest["observation"], "Runtime dependency observation differs")
-    return observed
+    return binding
 
 
 REAL_INPUT_SCRIPT = '''import hashlib,json,os,stat,sys

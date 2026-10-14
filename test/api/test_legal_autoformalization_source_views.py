@@ -758,10 +758,13 @@ def test_producer_lineage_receives_regenerated_complete_ordered_provenance(froze
             capture_output=True, text=True, check=True, timeout=60)
     runtime_dependencies = {"schema": driver.dependencies.SCHEMA, "roots": [dependency_root],
                             "observation": json.loads(observed.stdout)}
+    dependency_manifest = datasets / "runtime-dependencies.json"
+    dependency_manifest.write_bytes(driver.wire(runtime_dependencies))
     def job():
         master.write_bytes(driver.wire(body))
         pin = driver.identity(master)
         return {"runtime_dependencies": runtime_dependencies,
+                "runtime_dependencies_reference": driver.identity(dependency_manifest),
                 "real_input":{"spec":{"kind":"producer_lineage","path":pin["path"],
             "file_bytes":pin["bytes"],"file_sha256":pin["sha256"]}}}
     result = driver.run_real_input(datasets, job())

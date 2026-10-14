@@ -52,6 +52,14 @@ empty temporary bytecode-cache prefix with writes disabled. No package or model
 weights are downloaded. Host-managed execution preserves native STOP fencing and
 resource release; operational liveness does not establish semantic acceptance.
 
+Runtime dependency observations remain complete in the source configuration and
+an independently pinned external JSON manifest. Results retain a closed content
+reference to that full manifest, its exact file identity, canonical manifest and
+observation digests, roots and counts. Validation checks the referenced complete
+bytes and recomputes the actual full dependency closure before comparing this
+compact binding. This avoids repeating the same metadata in both result bindings
+and test evidence; it does not discard observations or raise the result cap.
+
 Complete real-input reports are retained losslessly in bounded zlib/base64
 envelopes so each native result stays below the unchanged proposal file limit.
 Validation bounds decoded allocation, checks the entire canonical report and

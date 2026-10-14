@@ -279,8 +279,8 @@
     {
       "repository": "accelerator",
       "path": "scripts/legal_autoformalization_source_views.py",
-      "sha256": "6495201614707d6faef1013179b242e7af74ae37c3cd3c01a72dea5823b47dd9",
-      "bytes": 42840
+      "sha256": "1f267c383951135ce1878e9843b9a3180a1b0abd7fce065a5b0a819a542f9ccc",
+      "bytes": 44842
     },
     {
       "repository": "accelerator",
@@ -339,14 +339,14 @@
     {
       "repository": "accelerator",
       "path": "test/api/test_legal_autoformalization_source_views.py",
-      "sha256": "533a51cd891c237cf01447e49b554f4cae249fef561c4d6871ac50ade8bb27fc",
-      "bytes": 41675
+      "sha256": "0cddaa602ccf02121664e09f7c049489ef83e54b658fad6aab0d39b96ff2ef10",
+      "bytes": 41899
     },
     {
       "repository": "accelerator",
       "path": "test/api/test_legal_autoformalization_runtime_dependencies.py",
-      "sha256": "1deb75a3dfeddda0e0351ee65b2d01d8efe90b8272e8e7ca2daa54a329afa281",
-      "bytes": 6907
+      "sha256": "cf659e4384b9d856daf2b0077ff9b6d7e5982c5f7380a18f34ca69e38106df4e",
+      "bytes": 9884
     },
     {
       "repository": "datasets",
@@ -2060,7 +2060,12 @@
           "schema": "legal-autoformalization-runtime-dependencies/v1"
         }
       },
-      "pytest_config": "pytest.ini"
+      "pytest_config": "pytest.ini",
+      "runtime_dependencies_reference": {
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-proposal/runtime-dependencies-v2.json",
+        "bytes": 76687,
+        "sha256": "658d9b4b6f9244733eed9efaa536b7d416b3f2137b10c2414b8c193dc337ed1b"
+      }
     },
     "LAC-S8-024": {
       "code_paths": [
@@ -3765,7 +3770,12 @@
           "schema": "legal-autoformalization-runtime-dependencies/v1"
         }
       },
-      "pytest_config": "pytest.ini"
+      "pytest_config": "pytest.ini",
+      "runtime_dependencies_reference": {
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-proposal/runtime-dependencies-v2.json",
+        "bytes": 76687,
+        "sha256": "658d9b4b6f9244733eed9efaa536b7d416b3f2137b10c2414b8c193dc337ed1b"
+      }
     },
     "LAC-S8-044": {
       "code_paths": [
@@ -5471,7 +5481,12 @@
           "schema": "legal-autoformalization-runtime-dependencies/v1"
         }
       },
-      "pytest_config": "pytest.ini"
+      "pytest_config": "pytest.ini",
+      "runtime_dependencies_reference": {
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-proposal/runtime-dependencies-v2.json",
+        "bytes": 76687,
+        "sha256": "658d9b4b6f9244733eed9efaa536b7d416b3f2137b10c2414b8c193dc337ed1b"
+      }
     }
   },
   "external_evidence": [
@@ -5999,6 +6014,16 @@
       "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-controller-v3.junit.xml",
       "bytes": 12101,
       "sha256": "dc47e2a5041bae17a8bb9f1eb373fa0db4a3f65108fe5c2729662112fbb3f54c"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-controller-v6.lease.json",
+      "bytes": 798,
+      "sha256": "74d3a08b1bd525a75bffcb0bfbfeb882891d53d72d67aa268abff59c493190cb"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-controller-v6.junit.xml",
+      "bytes": 12429,
+      "sha256": "2a47944c3b3bf1ab8a4c0229db25bb473e5f0ef1b85efda85dc8c94770db9a71"
     }
   ],
   "acceptance": {
@@ -6039,16 +6064,16 @@
     "sha256": "d606654f587b7d015da94d52dd3b21d094fe3b4fcc2fc8386d42beaa0e3d47b3"
   },
   "controller_qualification": {
-    "case_count": 71,
+    "case_count": 73,
     "lease": {
-      "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-controller-v3.lease.json",
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-controller-v6.lease.json",
       "bytes": 798,
-      "sha256": "19d88a715eb2e22802964415804a8fc56d2dc088f56e00e91fe276032a7d17fb"
+      "sha256": "74d3a08b1bd525a75bffcb0bfbfeb882891d53d72d67aa268abff59c493190cb"
     },
     "JUnit": {
-      "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-controller-v3.junit.xml",
-      "bytes": 12101,
-      "sha256": "dc47e2a5041bae17a8bb9f1eb373fa0db4a3f65108fe5c2729662112fbb3f54c"
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-controller-v6.junit.xml",
+      "bytes": 12429,
+      "sha256": "2a47944c3b3bf1ab8a4c0229db25bb473e5f0ef1b85efda85dc8c94770db9a71"
     }
   },
   "dependency_repair_revision": {
@@ -6079,6 +6104,29 @@
     "resource_policy_changed": false,
     "temperature_changed": false,
     "encoder_context_changed": false,
-    "weights_downloaded": false
+    "weights_downloaded": false,
+    "compact_reference_revision": {
+      "schema": "legal-source-views-runtime-dependency-compact-reference/v1",
+      "prior_source_manifest_sha256": "4f908ebdd3d5a2d1f6f4687f7842ea89643d49c50900386d5b8aeea001fd86fa",
+      "prior_controller_qualification": {
+        "case_count": 71,
+        "lease": {
+          "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-controller-v3.lease.json",
+          "bytes": 798,
+          "sha256": "19d88a715eb2e22802964415804a8fc56d2dc088f56e00e91fe276032a7d17fb"
+        },
+        "JUnit": {
+          "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261014/dependency-repair-controller-v3.junit.xml",
+          "bytes": 12101,
+          "sha256": "dc47e2a5041bae17a8bb9f1eb373fa0db4a3f65108fe5c2729662112fbb3f54c"
+        }
+      },
+      "result_binding_schema": "legal-autoformalization-runtime-dependency-binding/v1",
+      "full_manifest_preserved": true,
+      "full_observation_recomputed": true,
+      "native_result_cap_changed": false,
+      "real_input_report_truncated": false,
+      "test_reuse_catalog": "Fresh native AST-seal catalog; seal plugin enabled; existing catalogs preserved"
+    }
   }
 }
