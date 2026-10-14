@@ -454,3 +454,13 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_source_views/
 !/data/legal_autoformalization_source_views/LAC-S8-*/
 !/data/legal_autoformalization_source_views/LAC-S8-*/result.json
+
+# Owned span-reconstruction recovery runtime; exact three declared results.
+/data/agent_supervisor/legal_autoformalization_span_reconstruction_recovery/
+!/data/legal_autoformalization_span_reconstruction_recovery/
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-011/
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-011/result.json
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-024/
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-024/result.json
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-044/
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-044/result.json
