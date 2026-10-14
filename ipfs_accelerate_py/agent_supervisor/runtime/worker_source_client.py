@@ -31,6 +31,7 @@ DIGEST_ENV = "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR_SHA256"
 DESCRIPTOR_SCHEMA = "supervisor-worker-source-descriptor@1"
 DESCRIPTOR_SCHEMA_V2 = "supervisor-worker-source-descriptor@2"
 DESCRIPTOR_SCHEMA_V3 = "supervisor-worker-source-descriptor@3"
+DESCRIPTOR_SCHEMA_V4 = "supervisor-worker-source-descriptor@4"
 EDIT_MODES = ("mapped-span@1", "mapped-span@2")
 REQUEST_SCHEMA = "supervisor-worker-source-request@1"
 REQUEST_SCHEMA_V2 = "supervisor-worker-source-request@2"
@@ -56,6 +57,7 @@ _DESCRIPTOR_FIELDS = (transport._DESCRIPTOR_FIELDS - {
     "source_manifest_sha256", "profile"}
 _DESCRIPTOR_FIELDS_V2 = _DESCRIPTOR_FIELDS | {"view_policy_binding_sha256", "source_scope_sha256"}
 _DESCRIPTOR_FIELDS_V3 = _DESCRIPTOR_FIELDS_V2 | {"source_edit_mode"}
+_DESCRIPTOR_FIELDS_V4 = _DESCRIPTOR_FIELDS_V3 | {"semantic_evidence_mode"}
 BINDING_FIELDS = ("task_id", "scope_cid", "semantic_root_cid", "semantic_sha256",
                   "native_prompt_sha256", "source_manifest_sha256", "profile")
 _READ_QUERY_FIELDS = {"path", "view", "cursor", "max_bytes", "expected_source_sha256",
@@ -77,23 +79,28 @@ def semantic_binding(encoded, profile):
 def validate_descriptor(value):
     shared = type(value) is dict and value.get("schema") == DESCRIPTOR_SCHEMA_V2
     editing = type(value) is dict and value.get("schema") == DESCRIPTOR_SCHEMA_V3
+    semantic = type(value) is dict and value.get("schema") == DESCRIPTOR_SCHEMA_V4
     digests = ("semantic_sha256", "native_prompt_sha256", "source_manifest_sha256",
                "boundary_manifest_sha256")
     if shared:
         digests += ("view_policy_binding_sha256", "source_scope_sha256")
-    if editing:
+    if editing or semantic:
         digests += ("source_scope_sha256",)
     transport._validate_descriptor(value,
-        schema=DESCRIPTOR_SCHEMA_V3 if editing else DESCRIPTOR_SCHEMA_V2 if shared else DESCRIPTOR_SCHEMA,
-        fields=_DESCRIPTOR_FIELDS_V3 if editing else _DESCRIPTOR_FIELDS_V2 if shared else _DESCRIPTOR_FIELDS,
+        schema=DESCRIPTOR_SCHEMA_V4 if semantic else DESCRIPTOR_SCHEMA_V3 if editing else DESCRIPTOR_SCHEMA_V2 if shared else DESCRIPTOR_SCHEMA,
+        fields=_DESCRIPTOR_FIELDS_V4 if semantic else _DESCRIPTOR_FIELDS_V3 if editing else _DESCRIPTOR_FIELDS_V2 if shared else _DESCRIPTOR_FIELDS,
         digest_fields=digests,
         identity_fields=("task_id", "scope_cid", "semantic_root_cid"))
     _need(type(value["profile"]) is str and value["profile"] in PROFILES,
           "unsupported source view profile")
-    if editing:
-        _need(value["source_edit_mode"] in EDIT_MODES
+    if editing or semantic:
+        _need(type(value["source_edit_mode"]) is str
+              and value["source_edit_mode"] in (("disabled", *EDIT_MODES) if semantic else EDIT_MODES)
               and (value["view_policy_binding_sha256"] is None or _hex(value["view_policy_binding_sha256"])),
               "invalid source edit selection")
+    if semantic:
+        _need(value["semantic_evidence_mode"] == "selected-capsules@1",
+              "invalid semantic evidence capability")
     return value
 
 
@@ -102,6 +109,9 @@ def load_descriptor(path, digest, *, workspace=None):
 
 
 def validate_request(value):
+    if type(value) is dict and value.get("schema") == "supervisor-worker-semantic-evidence-request@1":
+        from .worker_semantic_evidence_client import validate_request as validate_semantic_request
+        return validate_semantic_request(value)
     if type(value) is dict and value.get("schema") == "supervisor-worker-source-edit-request@1":
         from .worker_source_edit_client import validate_request as validate_edit_request
         return validate_edit_request(value)
@@ -184,6 +194,9 @@ def _validate_cursor(cursor):
 
 
 def validate_response(value, *, request, descriptor=None):
+    if type(request) is dict and request.get("schema") == "supervisor-worker-semantic-evidence-request@1":
+        from .worker_semantic_evidence_client import validate_response as validate_semantic_response
+        return validate_semantic_response(value, request=request, descriptor=descriptor)
     if type(request) is dict and request.get("schema") == "supervisor-worker-source-edit-request@1":
         from .worker_source_edit_client import validate_response as validate_edit_response
         return validate_edit_response(value, request=request, descriptor=descriptor)

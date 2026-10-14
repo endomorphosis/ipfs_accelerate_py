@@ -196,6 +196,7 @@ parser.add_argument('--purpose',choices=['planning','coding'],default='coding')
 parser.add_argument('--semantic-repository',type=pathlib.Path)
 parser.add_argument('--semantic-transport-schema',choices=['supervisor-semantic-router-input@1','supervisor-semantic-router-input@2'],default='supervisor-semantic-router-input@1')
 parser.add_argument('--semantic-metadata-view',choices=['legacy','common-bindings@1','common-bindings-instruction@1'],default='legacy')
+parser.add_argument('--semantic-working-set',choices=['legacy','capsule-references@1'],default='legacy')
 parser.add_argument('--semantic-metadata-census-only',action='store_true')
 parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion@1'],default='legacy')
 parser.add_argument('--tool-output-policy',choices=['legacy','artifact-preview@1','artifact-preview@2'],default='legacy')
@@ -252,6 +253,7 @@ if args.source_view_profile!='disabled' or any(value is not None for value in so
 if any(value is not None for value in numerical_obligation_values) and (not all(numerical_obligation_values) or not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact numerical obligation descriptor requires owner formalization coding')
 if any(formalization_values) and (not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact owner formalization handoff requires semantic router coding')
 if args.semantic_metadata_view!='legacy' and (args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('metadata view requires original semantic router coding')
+if args.semantic_working_set!='legacy' and (args.source_view_profile=='disabled' or args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.semantic_metadata_view!='legacy' or args.semantic_metadata_census_only or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('working set requires original semantic router coding with source retrieval')
 if args.semantic_metadata_census_only and args.semantic_metadata_view not in ('common-bindings@1','common-bindings-instruction@1'):raise SystemExit('metadata census requires common bindings')
 if args.semantic_transport_schema!='supervisor-semantic-router-input@1' and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('controller dictionary transport requires semantic router coding')
 if args.tool_output_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('tool output policy requires semantic Codex router coding')
@@ -323,6 +325,7 @@ else:
  if args.semantic_repository is not None:sys.argv+=['--semantic-repository',str(args.semantic_repository)]
  if args.semantic_transport_schema!='supervisor-semantic-router-input@1':sys.argv+=['--semantic-transport-schema',args.semantic_transport_schema]
  if args.semantic_metadata_view!='legacy':sys.argv+=['--semantic-metadata-view',args.semantic_metadata_view]
+ if args.semantic_working_set!='legacy':sys.argv+=['--semantic-working-set',args.semantic_working_set]
  if args.semantic_metadata_census_only:sys.argv+=['--semantic-metadata-census-only']
  if args.coding_reply_mode!='legacy':sys.argv+=['--coding-reply-mode',args.coding_reply_mode]
  if args.tool_output_policy!='legacy':sys.argv+=['--tool-output-policy',args.tool_output_policy]

@@ -246,7 +246,8 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                         source_edit_mode: str = "disabled",
                         tool_output_policy: str = "legacy", source_view_advisory_policy: str = "legacy",
                         repository_source_policy: str = "legacy",
-                        source_input_policy: str = "legacy", query_reference_policy: str = "legacy") -> list[str]:
+                        source_input_policy: str = "legacy", query_reference_policy: str = "legacy",
+                        semantic_working_set: str = "legacy") -> list[str]:
     """Closed choice that the admitted launch signs before any worker starts."""
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
     validate_semantic_transport_schema(semantic_transport_schema)
@@ -264,6 +265,9 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
     validate_source_context_combination(source_view_profile=source_view_profile,
         source_view_advisory_policy=source_view_advisory_policy, repository_source_policy=repository_source_policy,
         source_input_policy=source_input_policy, query_reference_policy=query_reference_policy)
+    from .terminal_semantic_working_set_policy import validate_semantic_working_set
+    validate_semantic_working_set(semantic_working_set, source_view_profile=source_view_profile,
+        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
     provider_free_candidate = doctor is not None and doctor.get("route") in {
         "doctor_candidate", "doctor_contract_candidate"}
     # These controls describe the model fallback, not the independently checked
@@ -340,6 +344,7 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
               if source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE else []),
             *source_view_policy_argv(source_view_policy, profile=source_view_profile),
             *(["--source-edit-mode", source_edit_mode] if source_edit_mode != "disabled" else []),
+            *(["--semantic-working-set", semantic_working_set] if semantic_working_set != "legacy" else []),
             *(["--doctor-residual-artifact", doctor["residual_context"]["artifact"],
                "--doctor-residual-sha256", doctor["residual_context"]["sha256"],
                "--doctor-residual-task-cid", doctor["residual_context"]["task_cid"]]

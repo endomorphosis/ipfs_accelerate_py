@@ -66,6 +66,10 @@ from .terminal_planning_policy import (
     DEFAULT_PLANNING_MODE, PLANNING_MODES, validate_planning_mode,
     planning_selection, planning_observation, require_planning_archive,
 )
+from .terminal_semantic_working_set_policy import (
+    DEFAULT_SEMANTIC_WORKING_SET, SEMANTIC_WORKING_SETS, validate_semantic_working_set,
+    semantic_working_set_selection, semantic_working_set_observation, require_semantic_working_set_archive,
+)
 from .terminal_source_edit_policy import (
     DEFAULT_SOURCE_EDIT_MODE, SOURCE_EDIT_MODES, validate_source_edit_mode,
     source_edit_selection, source_edit_observation, require_source_edit_archive,
@@ -273,6 +277,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+               semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -294,6 +299,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
             raise ValueError("bounded capsules support one independent signed task")
     validate_source_view_profile(source_view_profile, arm=arm)
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
+    validate_semantic_working_set(semantic_working_set, arm=arm, source_view_profile=source_view_profile,
+        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     from .terminal_source_view_policy import validate_source_context_combination
     validate_source_context_combination(source_view_profile=source_view_profile,
@@ -336,6 +343,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **numerical_selection(numerical_formalization_profile),
                    **planning_selection(planning_mode),
                    **semantic_metadata_selection(semantic_metadata_view),
+                   **semantic_working_set_selection(semantic_working_set),
                    **capsule_selection_options(capsule_selection),
                    **capsule_budget_options(capsule_budget),
                    **source_view_selection(source_view_profile, source_view_policy),
@@ -392,6 +400,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
             coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+            semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
             capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
             source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -407,6 +416,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     validate_capsule_budget(capsule_budget, arm=arm)
     validate_source_view_profile(source_view_profile, arm=arm)
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
+    validate_semantic_working_set(semantic_working_set, arm=arm, source_view_profile=source_view_profile,
+        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     from .terminal_source_view_policy import validate_source_context_combination
     validate_source_context_combination(source_view_profile=source_view_profile,
@@ -454,6 +465,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_source_input_archive(manifest, source_input_policy)
     require_query_reference_archive(manifest, query_reference_policy)
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
+    require_semantic_working_set_archive(manifest, semantic_working_set)
     require_capsule_selection_archive(manifest, capsule_selection)
     require_capsule_budget_archive(manifest, capsule_budget)
     require_source_view_archive(manifest, source_view_profile, resource_profile)
@@ -516,6 +528,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         source_input_policy=source_input_policy,
         query_reference_policy=query_reference_policy,
         semantic_metadata_view=semantic_metadata_view,
+        **semantic_working_set_selection(semantic_working_set),
         capsule_selection=capsule_selection,
         capsule_budget=capsule_budget,
         source_view_profile=source_view_profile,
@@ -559,6 +572,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **source_input_selection(source_input_policy),
               **query_reference_selection(query_reference_policy),
               **semantic_metadata_observation(semantic_metadata_view),
+              **semantic_working_set_observation(semantic_working_set),
               **capsule_selection_observation(capsule_selection),
               **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view_profile, source_view_policy),
@@ -793,6 +807,14 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
         validate_source_context_combination(source_view_profile=signed_profile,
             source_view_advisory_policy=advisory, repository_source_policy=repository_policy,
             source_input_policy=input_policy, query_reference_policy=reference_policy)
+    working_set = validate_semantic_working_set(
+        prepared.get("semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET), arm=prepared["arm"],
+        source_view_profile=source_view, transport_schema=transport, metadata_view=metadata_view)
+    configured_working_set = validate_semantic_working_set(
+        config["agents"][0].get("kwargs", {}).get("semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET),
+        arm=prepared["arm"], source_view_profile=configured_source_view,
+        transport_schema=config["agents"][0].get("kwargs", {}).get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+        metadata_view=configured_metadata_view)
     source_edit = validate_source_edit_mode(prepared.get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
         arm=prepared["arm"], source_view_profile=source_view)
     configured_source_edit = validate_source_edit_mode(
@@ -854,6 +876,15 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                 all(type(report.get(key)) is type(value) and report.get(key) == value
                     for key, value in expected_budget.items())
                 for report in reported_budgets)
+    working_set_runtime_matches = None
+    if working_set != DEFAULT_SEMANTIC_WORKING_SET and trials:
+        expected_working_set = semantic_working_set_observation(working_set)
+        reported_working_sets = [trial["supervisor"] for trial in trials]
+        if all(type(report) is dict for report in reported_working_sets):
+            working_set_runtime_matches = all(
+                all(type(report.get(key)) is type(value) and report.get(key) == value
+                    for key, value in expected_working_set.items())
+                for report in reported_working_sets)
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
               "task": task.name, **profile,
               **({"provider_profile": prepared["provider_profile"]} if "provider_profile" in prepared else {}),
@@ -875,6 +906,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **({"tool_output_config_unchanged": configured_tool_output == tool_output}
                  if "tool_output_policy" in prepared or "tool_output_policy" in config["agents"][0].get("kwargs", {}) else {}),
               **semantic_metadata_observation(metadata_view),
+              **semantic_working_set_observation(working_set),
+              **({"semantic_working_set_config_unchanged": configured_working_set == working_set}
+                 if "semantic_working_set" in prepared or "semantic_working_set" in config["agents"][0].get("kwargs", {}) else {}),
+              **({"semantic_working_set_runtime_declared_matches": working_set_runtime_matches}
+                 if working_set != DEFAULT_SEMANTIC_WORKING_SET else {}),
               **capsule_selection_observation(capsule_selection),
               **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view, source_policy),
@@ -915,6 +951,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and configured_transport == transport and configured_reply_mode == reply_mode
                   and configured_numerical == numerical_profile and configured_planning == planning_mode
                   and configured_metadata_view == metadata_view
+                  and configured_working_set == working_set
+                  and (working_set == DEFAULT_SEMANTIC_WORKING_SET or working_set_runtime_matches is True)
                   and configured_capsules == capsule_selection
                   and configured_capsule_budget == capsule_budget
                   and (capsule_budget == DEFAULT_CAPSULE_BUDGET or budget_runtime_matches is True)
@@ -1063,11 +1101,21 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
         validate_source_context_combination(source_view_profile=signed_profile,
             source_view_advisory_policy=advisory, repository_source_policy=repository_policy,
             source_input_policy=input_policy, query_reference_policy=reference_policy)
+    working_set = validate_semantic_working_set(
+        prepared.get("semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET), arm=prepared["arm"],
+        source_view_profile=source_view, transport_schema=transport, metadata_view=metadata_view)
+    configured_working_set = validate_semantic_working_set(
+        config["agents"][0].get("kwargs", {}).get("semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET),
+        arm=prepared["arm"], source_view_profile=configured_source_view,
+        transport_schema=config["agents"][0].get("kwargs", {}).get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+        metadata_view=configured_metadata_view)
     source_edit = validate_source_edit_mode(prepared.get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
         arm=prepared["arm"], source_view_profile=source_view)
     configured_source_edit = validate_source_edit_mode(
         config["agents"][0].get("kwargs", {}).get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
         arm=prepared["arm"], source_view_profile=configured_source_view)
+    if working_set != configured_working_set:
+        raise ValueError("prepared semantic working set changed")
     if source_edit != configured_source_edit:
         raise ValueError("prepared source edit mode changed")
     if source_view != configured_source_view:
@@ -1099,6 +1147,7 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     require_source_input_archive(current_manifest, source_input)
     require_query_reference_archive(current_manifest, query_reference)
     require_semantic_metadata_archive(current_manifest, metadata_view)
+    require_semantic_working_set_archive(current_manifest, working_set)
     require_capsule_selection_archive(current_manifest, capsule_selection)
     require_capsule_budget_archive(current_manifest, capsule_budget)
     require_source_view_archive(current_manifest, source_view,
@@ -1241,6 +1290,8 @@ def main():
     parser.add_argument("--semantic-metadata-view", choices=SEMANTIC_METADATA_VIEWS,
         default=DEFAULT_SEMANTIC_METADATA_VIEW,
         help="Experimental readable coding metadata view; planning unchanged and selection frozen by preparation")
+    parser.add_argument("--semantic-working-set", choices=SEMANTIC_WORKING_SETS,
+        default=DEFAULT_SEMANTIC_WORKING_SET, help="Opt-in capsule references with live exact expansion; frozen by preparation")
     parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
         help="Experimental source-bound capsule ranking; requires an explicit public task profile and is frozen by preparation")
     parser.add_argument("--capsule-budget", choices=CAPSULE_BUDGETS, default=DEFAULT_CAPSULE_BUDGET,
@@ -1288,6 +1339,8 @@ def main():
         parser.error("coding reply mode is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
         parser.error("semantic metadata view is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.semantic_working_set != DEFAULT_SEMANTIC_WORKING_SET:
+        parser.error("semantic working set is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_selection != DEFAULT_CAPSULE_SELECTION:
         parser.error("capsule selection is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_budget != DEFAULT_CAPSULE_BUDGET:
@@ -1319,6 +1372,7 @@ def main():
                          query_reference_policy=args.query_reference_policy,
                          semantic_metadata_view=args.semantic_metadata_view,
                          semantic_context_profile=args.semantic_context_profile,
+                         **semantic_working_set_selection(args.semantic_working_set),
                          capsule_selection=args.capsule_selection,
                          capsule_budget=args.capsule_budget,
                          source_view_profile=args.source_view_profile,

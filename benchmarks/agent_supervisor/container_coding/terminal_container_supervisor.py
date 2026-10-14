@@ -695,6 +695,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         planning_mode: str = "model",
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
+        semantic_working_set: str = "legacy",
         source_view_profile: str = "disabled",
         source_edit_mode: str = "disabled",
         source_view_policy: dict | None = None,
@@ -744,6 +745,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     validate_source_view_profile(source_view_profile, arm=arm)
     from .terminal_source_edit_policy import validate_source_edit_mode, source_edit_observation
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
+    from .terminal_semantic_working_set_policy import (
+        validate_semantic_working_set, semantic_working_set_observation, semantic_working_set_selection,
+    )
+    validate_semantic_working_set(semantic_working_set, arm=arm, source_view_profile=source_view_profile,
+        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     from .terminal_source_view_policy import validate_source_context_combination
     validate_source_context_combination(source_view_profile=source_view_profile,
@@ -868,6 +874,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               **source_view_observation(source_view_profile, source_view_policy),
               **source_edit_observation(source_edit_mode),
               **semantic_context_selection(semantic_context_profile),
+              **semantic_working_set_observation(semantic_working_set),
               **coding_reply_selection(coding_reply_mode),
               **tool_output_selection(tool_output_policy),
               **source_view_advisory_selection(source_view_advisory_policy),
@@ -1136,6 +1143,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor,
             semantic_transport_schema=semantic_transport_schema,
             coding_reply_mode=coding_reply_mode,
+            **semantic_working_set_selection(semantic_working_set),
             **({"source_view_profile": source_view_profile} if source_view_profile != "disabled" else {}),
             **({"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {}),
             **({"source_view_policy": source_view_policy} if source_view_policy is not None else {}),
@@ -1157,6 +1165,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     "coding_reply_mode": coding_reply_mode,
                     "source_view_profile": source_view_profile,
                     "source_edit_mode": source_edit_mode,
+                    **semantic_working_set_selection(semantic_working_set),
                     "source_view_policy": source_view_policy},
                 "model_coding_dispatched": False,
                 "token_savings_established": False,
@@ -1455,6 +1464,8 @@ def main():
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
     from .terminal_source_view_policy import SOURCE_VIEW_PROFILES, DEFAULT_SOURCE_VIEW_PROFILE
     parser.add_argument("--source-view-profile", default=DEFAULT_SOURCE_VIEW_PROFILE, choices=SOURCE_VIEW_PROFILES)
+    from .terminal_semantic_working_set_policy import SEMANTIC_WORKING_SETS, DEFAULT_SEMANTIC_WORKING_SET
+    parser.add_argument("--semantic-working-set", choices=SEMANTIC_WORKING_SETS, default=DEFAULT_SEMANTIC_WORKING_SET)
     from .terminal_source_edit_policy import SOURCE_EDIT_MODES
     parser.add_argument("--source-edit-mode", default="disabled", choices=SOURCE_EDIT_MODES)
     from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy
