@@ -55,8 +55,11 @@ def _base(status="unavailable", reason="evidence_unavailable"):
 
 def _dispatch_binding(row, descriptor):
     observation = row["candidate_round_dispatch"]
-    _need(type(observation) is dict and set(observation) == OBSERVATION_FIELDS
-        and observation["schema"] == dispatch.OBSERVATION_SCHEMA
+    _need(type(observation) is dict)
+    doctor = observation.get("schema") == dispatch.DOCTOR_OBSERVATION_SCHEMA
+    fields = OBSERVATION_FIELDS | ({"doctor_candidate_dispatch"} if doctor else set())
+    _need(set(observation) == fields
+        and observation["schema"] == (dispatch.DOCTOR_OBSERVATION_SCHEMA if doctor else dispatch.OBSERVATION_SCHEMA)
         and all(type(observation[key]) is type(value) and observation[key] == value
             for key, value in dispatch.FLAGS.items())
         and all(observation[key] == descriptor[key] for key in JOIN_FIELDS)
@@ -65,6 +68,9 @@ def _dispatch_binding(row, descriptor):
             "producer_validation_inherited", "canonical_source_current", "workspace_source_current"))
         and all(observation[key] is False for key in ("neural_inference_replayed",
             "owner_private_state_replayed_here")))
+    if doctor:
+        from ipfs_accelerate_py.agent_supervisor.runtime.candidate_doctor_dispatch import validate_doctor_dispatch_observation
+        validate_doctor_dispatch_observation(observation["doctor_candidate_dispatch"])
     for key in ("descriptor_sha256", "handoff_sha256", "provider_input_sha256", "producer_binding_sha256"):
         _need(_digest(observation[key]))
     _need(type(observation["round_number"]) is int and observation["round_number"] == 2

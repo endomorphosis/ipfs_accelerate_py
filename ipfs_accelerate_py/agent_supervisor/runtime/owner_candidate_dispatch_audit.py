@@ -23,6 +23,8 @@ from .worker_source_views import canonical_json
 
 SCHEMA = "supervisor-owner-candidate-dispatch-audit@1"
 OBSERVATION_SCHEMA = "owner-candidate-dispatch-audit-observation@1"
+DOCTOR_SCHEMA = "supervisor-owner-candidate-dispatch-audit@2"
+DOCTOR_OBSERVATION_SCHEMA = "owner-candidate-dispatch-audit-observation@2"
 MAX_MANIFEST_BYTES = 256 * 1024
 MAX_RETAINED_BYTES = 24 * 1024 * 1024
 MAX_SOURCE_BYTES = 1024 * 1024
@@ -35,6 +37,13 @@ ARTIFACT_FILENAMES = MappingProxyType(dict(
     prompt_observation="prompt-observation.json", handoff="handoff.json", descriptor="descriptor.json",
     admission="admission.json", baseline_translation_table="baseline-translation-table.json"))
 FILENAMES = ARTIFACT_FILENAMES
+DOCTOR_FILENAMES = MappingProxyType({**ARTIFACT_FILENAMES,
+    "doctor_context": "doctor-context.json",
+    "original_doctor_artifact": "original-doctor-artifact.json",
+    "original_doctor_advisory": "original-doctor-advisory.txt",
+    "original_doctor_receipt": "original-doctor-receipt.json"})
+DOCTOR_BINDING_FIELDS = ("doctor_coding_policy", "doctor_context_sha256",
+    "doctor_advisory_sha256", "doctor_advisory_bytes")
 FLAGS = dict(audit_only=True, owner_private=True, worker_readable=False,
     retained_before_child_registration=True, candidate_input_retained=True,
     original_requirements_retained=True, dispatch_reload_allowed=False,
@@ -154,7 +163,25 @@ def persist_candidate_dispatch_audit(*, snapshot, prompt, source_broker, admissi
         public_sources=requirements._public_sources_bytes,
         prompt_observation=prompt.metadata_bytes, handoff=handoff_raw, descriptor=descriptor_raw,
         admission=canonical_json(admitted), baseline_translation_table=snapshot._source_broker._table_bytes)
-    _need(set(payloads) == set(ARTIFACT_FILENAMES)
+    filenames, schema, observation_schema = ARTIFACT_FILENAMES, SCHEMA, OBSERVATION_SCHEMA
+    doctor_context = getattr(prompt, "_doctor_context", None)
+    if doctor_context is not None:
+        from .doctor_candidate_context import DoctorCandidateContext, OriginalDoctorRequirements
+        doctor = requirements._doctor_requirements
+        _need(type(doctor_context) is DoctorCandidateContext and type(doctor) is OriginalDoctorRequirements
+            and doctor_context._snapshot is snapshot and doctor_context._requirements is requirements
+            and doctor_context.revalidate() == doctor_context.metadata
+            and doctor_context.advisory_bytes == doctor.advisory_bytes,
+            "candidate audit requires exact captured Doctor constraints")
+        payloads.update(doctor_context=doctor_context.metadata_bytes,
+            original_doctor_artifact=doctor.artifact_bytes,
+            original_doctor_advisory=doctor.advisory_bytes,
+            original_doctor_receipt=doctor._receipt_bytes)
+        filenames, schema, observation_schema = DOCTOR_FILENAMES, DOCTOR_SCHEMA, DOCTOR_OBSERVATION_SCHEMA
+    else:
+        _need(requirements._doctor_requirements is None,
+            "candidate audit cannot omit captured Doctor constraints")
+    _need(set(payloads) == set(filenames)
         and all(type(raw) is bytes for raw in payloads.values())
         and sum(map(len, payloads.values())) + sum(map(len, sources.values())) <= MAX_RETAINED_BYTES,
         "candidate audit payload exceeds retained byte bound")
@@ -165,6 +192,12 @@ def persist_candidate_dispatch_audit(*, snapshot, prompt, source_broker, admissi
         candidate_input_sha256=_sha(prompt.provider_prompt), handoff_sha256=handoff.sha256,
         original_requirements_sha256=_sha(requirements.metadata_bytes),
         public_instruction_block_sha256=_sha(requirements.public_instruction_block))
+    if doctor_context is not None:
+        binding.update({key: admitted[key] for key in DOCTOR_BINDING_FIELDS})
+        _need(binding["doctor_context_sha256"] == _sha(payloads["doctor_context"])
+            and binding["doctor_advisory_sha256"] == _sha(payloads["original_doctor_advisory"])
+            and binding["doctor_advisory_bytes"] == len(payloads["original_doctor_advisory"]),
+            "candidate audit Doctor admission differs from retained constraints")
     directory = parent / audit_directory_name(binding["session_id"])
     manifest_path = parent / audit_manifest_name(binding["session_id"])
     parent_identity = storage._identity(parent)
@@ -180,7 +213,7 @@ def persist_candidate_dispatch_audit(*, snapshot, prompt, source_broker, admissi
         artifacts, retained_sources = {}, {}
         for key, raw in sorted(payloads.items()):
             current_deadline()
-            path = directory / ARTIFACT_FILENAMES[key]
+            path = directory / filenames[key]
             storage._write(path, raw, created)
             expected_files[path] = raw
             artifacts[key] = dict(path=path.relative_to(parent).as_posix(), sha256=_sha(raw), bytes=len(raw))
@@ -202,10 +235,10 @@ def persist_candidate_dispatch_audit(*, snapshot, prompt, source_broker, admissi
             and storage._identity(directory) == directory_identity,
             "candidate audit directory changed before manifest publication")
         current_deadline()
-        observation = dict(schema=OBSERVATION_SCHEMA, status="retained", **binding,
+        observation = dict(schema=observation_schema, status="retained", **binding,
             retained_files=len(artifacts) + len(retained_sources),
             retained_bytes=sum(map(len, payloads.values())) + sum(map(len, sources.values())), **FLAGS)
-        manifest = dict(schema=SCHEMA, binding=binding, artifacts=artifacts,
+        manifest = dict(schema=schema, binding=binding, artifacts=artifacts,
             candidate_sources=retained_sources, observation=observation, **FLAGS)
         raw = canonical_json(manifest)
         _need(len(raw) <= MAX_MANIFEST_BYTES, "candidate audit manifest exceeds byte bound")
@@ -244,4 +277,5 @@ def persist_candidate_dispatch_audit(*, snapshot, prompt, source_broker, admissi
 
 
 __all__ = ["CandidateDispatchAudit", "persist_candidate_dispatch_audit", "audit_directory_name",
-           "audit_manifest_name", "ARTIFACT_FILENAMES", "FILENAMES", "SCHEMA", "OBSERVATION_SCHEMA", "FLAGS"]
+           "audit_manifest_name", "ARTIFACT_FILENAMES", "FILENAMES", "SCHEMA", "OBSERVATION_SCHEMA", "FLAGS",
+           "DOCTOR_FILENAMES", "DOCTOR_SCHEMA", "DOCTOR_OBSERVATION_SCHEMA", "DOCTOR_BINDING_FIELDS"]

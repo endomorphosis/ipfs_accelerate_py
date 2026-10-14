@@ -60,6 +60,9 @@ from .terminal_semantic_working_set_policy import (
     DEFAULT_SEMANTIC_WORKING_SET, SEMANTIC_WORKING_SETS, validate_semantic_working_set,
     semantic_working_set_selection, semantic_working_set_observation, require_semantic_working_set_archive,
 )
+from .terminal_doctor_coding_policy import (
+    doctor_coding_observation, require_doctor_coding_archive, doctor_coding_runtime_declared_matches,
+)
 from .terminal_source_edit_policy import (
     DEFAULT_SOURCE_EDIT_MODE, SOURCE_EDIT_MODES, validate_source_edit_mode,
     source_edit_selection, source_edit_observation, require_source_edit_archive,
@@ -338,6 +341,7 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
                  grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
                  candidate_rounds: int = 1,
+                 doctor_coding_policy: str | None = None,
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                  capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                  source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -347,9 +351,12 @@ class FullSupervisorAgent(BaseAgent):
                  planning_mode: str = DEFAULT_PLANNING_MODE,
                  metadata_census_only: bool = False, **kwargs):
         from .benchmark_controls import validate_full_supervisor_candidate_rounds
-        selected_rounds = validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm)
+        selected_rounds = validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+            doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+            source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile)
         super().__init__(*args, **kwargs)
         self.candidate_rounds = self._frozen_candidate_rounds = selected_rounds
+        self.doctor_coding_policy = self._frozen_doctor_coding_policy = doctor_coding_policy
         selected_provider = resolve_provider_profile(provider_profile)
         if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
@@ -500,13 +507,19 @@ class FullSupervisorAgent(BaseAgent):
 
     def _checked_candidate_rounds(self):
         from .benchmark_controls import validate_full_supervisor_candidate_rounds
-        selected = validate_full_supervisor_candidate_rounds(getattr(self, "candidate_rounds", 1), arm=self.arm)
-        if selected != getattr(self, "_frozen_candidate_rounds", 1):
+        selected = validate_full_supervisor_candidate_rounds(getattr(self, "candidate_rounds", 1), arm=self.arm,
+            doctor_coding_policy=getattr(self, "doctor_coding_policy", None),
+            source_view_profile=getattr(self, "source_view_profile", "disabled"),
+            source_edit_mode=getattr(self, "source_edit_mode", "disabled"),
+            numerical_formalization_profile=getattr(self, "numerical_formalization_profile", None))
+        if (selected != getattr(self, "_frozen_candidate_rounds", 1)
+                or getattr(self, "doctor_coding_policy", None) != getattr(self, "_frozen_doctor_coding_policy", None)):
             raise ValueError("prepared candidate rounds changed")
         return selected
 
     async def setup(self, environment):
-        self._checked_candidate_rounds()
+        candidate_rounds = self._checked_candidate_rounds()
+        doctor_coding_policy = getattr(self, "doctor_coding_policy", None)
         from .terminal_setup_cache_advice import (
             validate_setup_cache_selection, validate_setup_cache_prerequisites, apply_setup_cache_advice,
         )
@@ -534,6 +547,7 @@ class FullSupervisorAgent(BaseAgent):
         require_semantic_working_set_archive(manifest, working_set)
         grok_turns = self._checked_grok_coding_max_turns()
         require_grok_coding_archive(manifest, grok_turns)
+        require_doctor_coding_archive(manifest, candidate_rounds, doctor_coding_policy)
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
         require_capsule_selection_archive(manifest, capsule_selection)
@@ -587,7 +601,8 @@ class FullSupervisorAgent(BaseAgent):
                 resource_profile=getattr(self, "resource_profile", None))
 
     async def run(self, instruction: str, environment, context: AgentContext):
-        self._checked_candidate_rounds()
+        candidate_rounds = self._checked_candidate_rounds()
+        doctor_coding_policy = getattr(self, "doctor_coding_policy", None)
         from .terminal_setup_cache_advice import validate_setup_cache_selection
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
             getattr(self, "setup_cache_selection", None))
@@ -610,6 +625,7 @@ class FullSupervisorAgent(BaseAgent):
         require_semantic_working_set_archive(manifest, working_set)
         grok_turns = self._checked_grok_coding_max_turns()
         require_grok_coding_archive(manifest, grok_turns)
+        require_doctor_coding_archive(manifest, candidate_rounds, doctor_coding_policy)
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
         require_capsule_selection_archive(manifest, capsule_selection)
@@ -651,6 +667,8 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--source-edit-mode", source_edit]
         if working_set != DEFAULT_SEMANTIC_WORKING_SET:
             argv += ["--semantic-working-set", working_set]
+        if candidate_rounds == 2:
+            argv += ["--candidate-rounds", "2", "--doctor-coding-policy", doctor_coding_policy]
         if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
             argv += ["--grok-coding-max-turns", str(grok_turns)]
         if planning_mode != DEFAULT_PLANNING_MODE:
@@ -712,6 +730,7 @@ class FullSupervisorAgent(BaseAgent):
                             **source_edit_observation(source_edit),
                             **semantic_working_set_observation(working_set),
                             **grok_coding_selection(grok_turns),
+                            **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
                             **numerical_observation(numerical_profile, self.arm),
                             **planning_observation(planning_mode),
                             **_intent_selection(requirement_contract, planning_mode=planning_mode),
@@ -768,6 +787,9 @@ class FullSupervisorAgent(BaseAgent):
                     context.metadata["grok_coding_runtime_policy_matches"] = grok_coding_runtime_matches(report, grok_turns)
                     context.metadata["grok_coding_not_applicable_provider_free"] = (
                         grok_coding_not_applicable_provider_free(report, grok_turns))
+                if candidate_rounds == 2:
+                    context.metadata["doctor_coding_runtime_declared_matches"] = doctor_coding_runtime_declared_matches(
+                        report, candidate_rounds, doctor_coding_policy)
                 usage = measured_usage(report)
                 populate_harbor_usage(context, usage)
                 context.metadata.update(task_completed=report["task_completed"], usage=usage,

@@ -1044,3 +1044,63 @@ paths, historical input reconstruction, metadata census and benchmark reporting
 are covered. [Qualification evidence](evidence/doctor-continuation-20261014/qualification.json)
 also retains the corrected developmental fixture failures. Provider calls use
 test doubles; this is not a live Terminal Bench campaign or a token score.
+
+## October 14: admit and retain two Doctor coding attempts
+
+The explicit `doctor-coding-two-attempts@1` policy now connects Doctor capture,
+candidate generation, owner dispatch, worker validation and benchmark reporting.
+It replaces the full-arm two-round rejection described in the preceding section
+when the policy is explicitly selected. The one-attempt default is unchanged.
+
+Select the treatment during benchmark preparation with
+`--candidate-rounds 2 --doctor-coding-policy doctor-coding-two-attempts@1`, together
+with `--arm full`, an enabled source view such as `--source-view-profile identity@1`,
+and `--source-edit-mode disabled`. Preparation freezes the pair in configuration
+and comparison controls, and requires a new runtime archive containing the
+qualified implementation. Execution forwards the frozen selection into the signed
+implementation command; collection reads that same selection. No-index, mapped-edit
+and separate numerical-obligation broker continuations require their own supported
+runtime contracts and remain
+refused before setup. Keep `--numerical-formalization-profile` unset for this
+two-attempt treatment; one-attempt numerical profiles remain supported.
+Provider-free Doctor repairs still use their deterministic materialization route.
+
+The policy reserves at most two owner child attempts and two outer coding-router
+invocations against the original absolute deadline. Reservation precedes process
+creation, so an interrupted or unreceipted launch cannot reclaim its attempt.
+The second dispatch requires the actual failed child's wait and cleanup, a fresh
+candidate generation, and the original Doctor artifact, advice, obligations and
+proposal budget. It provides no third-attempt or serialized admission reload API.
+Tokens, cost and CLI-internal calls remain observations; the unchanged
+`ResidualLlmBudget(1, 4096, 1, 1)` continues to describe residual-proposal admission.
+
+The model receives the exact Doctor advisory and a compact hash/length reference
+to the candidate context. Full Doctor metadata and source inventories remain in
+the protected owner handoff and archive. In the native fixture the full metadata
+is 3,606 UTF-8 bytes and its reference is 147 bytes: 3,459 metadata bytes are
+omitted from the candidate prompt while the advisory is preserved. This is an
+input-byte observation, not a measured reduction in total provider tokens.
+Before a provider call, the worker checks
+the canonical baseline and the entire Doctor inventory in its workspace, including
+files outside the indexed candidate and their executable modes. A new source hash
+is a generation binding, not a proof that the original obligation was discharged.
+
+The immutable archive retains the original Doctor artifact, advice, native receipt
+and candidate context before the second child can launch. Historical input replay
+joins those bytes to the independently dispatched handoff after runtime cleanup or
+later source edits. Attempt accounting joins both child sessions to distinct router
+receipts; missing usage remains unknown. A selected two-attempt treatment is marked
+inapplicable to coding only when an observed provider-free materialization and the
+absence of private coding-attempt evidence support that conclusion.
+
+Final frozen qualification passed all 1,407 tests across 40 modules: 489 runtime
+tests and 918 benchmark tests, with no failures or skips. All 60 Python source
+pins, the datasets/kit commits and import origins, and the installed dependency
+metadata remained unchanged. The two suites ran independently in parallel;
+runtime qualification took 1,769.16 seconds and benchmark qualification took
+282.72 seconds. Pytest reported one XML-format warning for `record_property`;
+the metadata-byte measurements were present in the XML and verified when
+recording the evidence. [Qualification evidence](evidence/doctor-dispatch-20261014/qualification.json)
+retains source and report hashes, dependency installation provenance, and the
+developmental failures that were corrected. Provider responses use test doubles;
+this establishes neither a live Terminal Bench score nor provider token savings.

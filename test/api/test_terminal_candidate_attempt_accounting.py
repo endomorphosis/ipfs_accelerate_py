@@ -249,3 +249,32 @@ def test_archive_cannot_be_ignored_by_first_round_only_lifecycle(evidence):
     report = dict(provider_invocations=evidence.report["provider_invocations"][:1])
     value = accounting.apply(report, parent=evidence.parent)
     assert value["status"] == "unavailable" and measured_usage(report)["total_tokens"] is None
+
+
+@pytest.mark.parametrize("route", ["doctor_candidate", "doctor_contract_candidate"])
+@pytest.mark.parametrize("conflict", [None, "archive", "missing_materialization", "coding_receipt"])
+def test_selected_policy_is_inapplicable_only_for_observed_provider_free_materialization(evidence, route, conflict):
+    from benchmarks.agent_supervisor.container_coding.test_terminal_source_view_observation import _provider_free_report
+    from benchmarks.agent_supervisor.container_coding.terminal_doctor_coding_policy import (
+        DOCTOR_CODING_POLICY, doctor_coding_selection, doctor_coding_observation)
+    evidence.path.unlink()
+    report = _provider_free_report(route)
+    report.update(doctor_coding_observation(2, DOCTOR_CODING_POLICY), source_edit_mode="disabled")
+    report["coding_control_application"]["requested"].update(
+        doctor_coding_selection(2, DOCTOR_CODING_POLICY), source_edit_mode="disabled")
+    if conflict == "archive":
+        candidate_archive(evidence.parent, "2" * 32)
+    elif conflict == "missing_materialization":
+        report.pop("doctor_invocations")
+    elif conflict == "coding_receipt":
+        report["provider_invocations"] = [receipt(evidence.retained, 1)]
+    result = accounting.apply(report, parent=evidence.parent)
+    if conflict is None:
+        assert result["status"] == "not_applicable"
+        assert result["reason"] == "provider_free_doctor_materialization_observed"
+        assert result["potential_unreceipted_attempt"] is False
+        assert "unreceipted_provider_attempt" not in report
+    else:
+        assert result["status"] == "unavailable"
+        assert result["potential_unreceipted_attempt"] is True
+        assert report["unreceipted_provider_attempt"]["usage"] is None

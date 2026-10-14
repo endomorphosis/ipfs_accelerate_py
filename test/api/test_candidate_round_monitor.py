@@ -48,7 +48,7 @@ def _run(monkeypatch, *, first=7, second=0, failure=None):
         remaining_seconds = 3
         def revalidate(self):
             events.append(("validated", 1))
-        def validate_first_command(self, value):
+        def reserve_first_attempt(self, value):
             assert value == command
             if failure == "command":
                 raise ValueError("authored command failure")
@@ -200,7 +200,7 @@ def test_installed_worker_refuses_mixed_candidate_context(monkeypatch, extra):
 def test_owner_selection_is_removed_before_original_handoff_and_captured_before_monitor():
     compile(OWNER_ENTRY, "<installed-owner-entry>", "exec")
     compile(WORKER_ENTRY, "<installed-worker-entry>", "exec")
-    assert OWNER_ENTRY.index("split_owner_candidate_rounds(list(sys.argv[1:]))") < OWNER_ENTRY.index("handoff=prepare_container_source_formalization_dispatch")
+    assert OWNER_ENTRY.index("split_owner_coding_controls(list(sys.argv[1:]))") < OWNER_ENTRY.index("handoff=prepare_container_source_formalization_dispatch")
     assert "argv=owner_initial_argv" in OWNER_ENTRY
     assert OWNER_ENTRY.index("owner_candidate_launch=capture_original_coding_launch") < OWNER_ENTRY.index("raise SystemExit(run_candidate_coding_rounds")
 

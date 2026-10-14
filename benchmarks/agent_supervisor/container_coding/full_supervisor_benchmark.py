@@ -55,6 +55,10 @@ from .terminal_semantic_working_set_policy import (
     DEFAULT_SEMANTIC_WORKING_SET, SEMANTIC_WORKING_SETS, validate_semantic_working_set,
     semantic_working_set_selection, semantic_working_set_observation, require_semantic_working_set_archive,
 )
+from .terminal_doctor_coding_policy import (
+    DOCTOR_CODING_POLICY, doctor_coding_selection, doctor_coding_observation, require_doctor_coding_archive,
+    doctor_coding_runtime_declared_matches,
+)
 from .terminal_source_edit_policy import (
     DEFAULT_SOURCE_EDIT_MODE, SOURCE_EDIT_MODES, validate_source_edit_mode,
     source_edit_selection, source_edit_observation, require_source_edit_archive,
@@ -256,6 +260,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
                grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
                candidate_rounds: int = 1,
+               doctor_coding_policy: str | None = None,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -264,7 +269,9 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                numerical_formalization_profile: str | None = None,
                planning_mode: str = DEFAULT_PLANNING_MODE,
                model_revision: str = "") -> dict:
-    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm)
+    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract,
         task_profile=task_profile)
     validate_numerical_profile(numerical_formalization_profile)
@@ -305,6 +312,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **semantic_metadata_selection(semantic_metadata_view),
                    **semantic_working_set_selection(semantic_working_set),
                    **grok_coding_selection(grok_coding_max_turns),
+                   **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
                    **capsule_selection_options(capsule_selection),
                    **capsule_budget_options(capsule_budget),
                    **source_view_selection(source_view_profile, source_view_policy),
@@ -358,6 +366,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
             grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
             candidate_rounds: int = 1,
+            doctor_coding_policy: str | None = None,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
             capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
             source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -365,7 +374,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
             numerical_formalization_profile: str | None = None,
             planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
-    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm)
+    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract)
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
@@ -406,6 +417,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
     require_semantic_working_set_archive(manifest, semantic_working_set)
     require_grok_coding_archive(manifest, grok_coding_max_turns)
+    require_doctor_coding_archive(manifest, candidate_rounds, doctor_coding_policy)
     require_capsule_selection_archive(manifest, capsule_selection)
     require_capsule_budget_archive(manifest, capsule_budget)
     require_source_view_archive(manifest, source_view_profile, resource_profile)
@@ -464,6 +476,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         semantic_metadata_view=semantic_metadata_view,
         **semantic_working_set_selection(semantic_working_set),
         **grok_coding_selection(grok_coding_max_turns),
+        **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
         capsule_selection=capsule_selection,
         capsule_budget=capsule_budget,
         source_view_profile=source_view_profile,
@@ -503,6 +516,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **semantic_metadata_observation(semantic_metadata_view),
               **semantic_working_set_observation(semantic_working_set),
               **grok_coding_selection(grok_coding_max_turns),
+              **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
               **capsule_selection_observation(capsule_selection),
               **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view_profile, source_view_policy),
@@ -529,7 +543,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
-    benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
+    candidate_rounds = benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
+    doctor_coding_policy = prepared.get("doctor_coding_policy")
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     profile = prepared_provider_identity(prepared, config)
@@ -646,6 +661,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                 all(type(report.get(key)) is type(value) and report.get(key) == value
                     for key, value in expected_working_set.items())
                 for report in reported_working_sets)
+    doctor_runtime_matches = (None if candidate_rounds == 1 else bool(trials) and all(
+        doctor_coding_runtime_declared_matches(trial.get("supervisor"), candidate_rounds,
+            doctor_coding_policy) for trial in trials))
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
               "task": task.name, **profile,
               **({"provider_profile": prepared["provider_profile"]} if "provider_profile" in prepared else {}),
@@ -654,6 +672,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **semantic_metadata_observation(metadata_view),
               **semantic_working_set_observation(working_set),
               **grok_coding_selection(grok_turns),
+              **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
+              **({"doctor_coding_runtime_declared_matches": doctor_runtime_matches} if candidate_rounds == 2 else {}),
               **({"grok_coding_config_unchanged": configured_grok_turns == grok_turns}
                  if "grok_coding_max_turns" in prepared or "grok_coding_max_turns" in config["agents"][0].get("kwargs", {}) else {}),
               **({"grok_coding_runtime_declared_matches": grok_turns_runtime_matches,
@@ -702,6 +722,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and configured_numerical == numerical_profile and configured_planning == planning_mode
                   and configured_metadata_view == metadata_view
                   and configured_grok_turns == grok_turns
+                  and (candidate_rounds == 1 or doctor_runtime_matches is True)
                   and (grok_turns == DEFAULT_GROK_CODING_MAX_TURNS or
                        grok_turns_runtime_matches is True and
                        (grok_turns_policy_matches is True or grok_turns_not_applicable is True))
@@ -726,7 +747,8 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
-    benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
+    candidate_rounds = benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
+    doctor_coding_policy = prepared.get("doctor_coding_policy")
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
@@ -822,6 +844,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     require_semantic_metadata_archive(current_manifest, metadata_view)
     require_semantic_working_set_archive(current_manifest, working_set)
     require_grok_coding_archive(current_manifest, grok_turns)
+    require_doctor_coding_archive(current_manifest, candidate_rounds, doctor_coding_policy)
     require_capsule_selection_archive(current_manifest, capsule_selection)
     require_capsule_budget_archive(current_manifest, capsule_budget)
     require_source_view_archive(current_manifest, source_view,
@@ -896,8 +919,12 @@ def main():
         help="Use source-bound @1 provider coverage or @2 reviewed symbolic operations before admission")
     parser.add_argument("--grok-coding-max-turns", type=int, default=DEFAULT_GROK_CODING_MAX_TURNS)
     parser.add_argument("--candidate-rounds", type=int, choices=(1, 2), default=1,
-        help="Owner coding rounds; two rounds currently refuse full-supervisor preparation pending Doctor admission")
+        help="Owner coding attempts; two requires the explicit Doctor coding policy and indexed source views")
+    parser.add_argument("--doctor-coding-policy", choices=(DOCTOR_CODING_POLICY,),
+        help="Explicit two-attempt Doctor coding policy; tokens and cost remain observations")
     args = parser.parse_args()
+    if args.operation != "prepare" and args.doctor_coding_policy is not None:
+        parser.error("Doctor coding policy is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.candidate_rounds != 1:
         parser.error("candidate rounds are frozen by preparation; collect/execute cannot select them")
     if args.operation != "prepare" and args.grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS:
@@ -940,6 +967,7 @@ def main():
                          **semantic_working_set_selection(args.semantic_working_set),
                          **grok_coding_selection(args.grok_coding_max_turns),
                          candidate_rounds=args.candidate_rounds,
+                         doctor_coding_policy=args.doctor_coding_policy,
                          capsule_selection=args.capsule_selection,
                          capsule_budget=args.capsule_budget,
                          source_view_profile=args.source_view_profile,

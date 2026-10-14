@@ -129,10 +129,11 @@ sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
 # The fixed lease includes allocation checks, ownership setup and formalization.
 from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import _argument,MAX_SESSION_SECONDS
 owner_candidate_rounds=1
+owner_doctor_coding_policy=None
 owner_initial_argv=list(sys.argv[1:])
-if any(arg=='--candidate-rounds' or arg.startswith('--candidate-rounds=') for arg in owner_initial_argv):
- from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import split_owner_candidate_rounds
- owner_candidate_rounds,owner_initial_argv=split_owner_candidate_rounds(list(sys.argv[1:]))
+if any(arg==flag or arg.startswith(flag+'=') for arg in owner_initial_argv for flag in ('--candidate-rounds','--doctor-coding-policy')):
+ from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import split_owner_coding_controls
+ owner_candidate_rounds,owner_doctor_coding_policy,owner_initial_argv=split_owner_coding_controls(list(sys.argv[1:]))
 owner_candidate_round_deadline=None
 try:
  owner_candidate_round_timeout=int(_argument(list(sys.argv[1:]),'--timeout','90'))
@@ -162,7 +163,7 @@ try:
  if owner_candidate_rounds==2:
   if numerical_obligation_broker is not None or proof_query_guard is not None:raise ValueError('candidate rounds require ordinary coding')
   from ipfs_accelerate_py.agent_supervisor.runtime.owner_candidate_dispatch import capture_original_coding_launch
-  owner_candidate_launch=capture_original_coding_launch(source_broker=worker_source_broker,argv=handoff['argv'],absolute_deadline=owner_candidate_round_deadline,max_rounds=owner_candidate_rounds)
+  owner_candidate_launch=capture_original_coding_launch(source_broker=worker_source_broker,argv=handoff['argv'],absolute_deadline=owner_candidate_round_deadline,max_rounds=owner_candidate_rounds,doctor_coding_policy=owner_doctor_coding_policy)
 except BaseException:
  try:
   if proof_query_guard is not None:proof_query_guard.abort()

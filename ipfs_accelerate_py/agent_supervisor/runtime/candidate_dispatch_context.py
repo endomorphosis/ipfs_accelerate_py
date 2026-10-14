@@ -23,6 +23,8 @@ from .worker_source_views import canonical_json
 
 SCHEMA = "supervisor-candidate-dispatch-owner-handoff@1"
 OBSERVATION_SCHEMA = "supervisor-candidate-dispatch-observation@1"
+DOCTOR_SCHEMA = "supervisor-candidate-dispatch-owner-handoff@2"
+DOCTOR_OBSERVATION_SCHEMA = "supervisor-candidate-dispatch-observation@2"
 HANDOFF_FLAGS = ("--candidate-dispatch-handoff", "--candidate-dispatch-handoff-sha256")
 MAX_HANDOFF_BYTES = 256 * 1024
 MAX_LIFETIME_NS = 90 * 1_000_000_000
@@ -167,6 +169,10 @@ def prepare_candidate_dispatch_handoff(*, snapshot, prompt, source_broker, admis
         producer_binding_sha256=metadata["producer_binding_sha256"], admission=admitted,
         prompt_observation=prompt_metadata, issued_monotonic_ns=issued, expires_monotonic_ns=expires,
         **FLAGS)
+    if admitted["schema"] == "supervisor-owner-candidate-dispatch-admission@2":
+        from .candidate_doctor_dispatch import prepare_doctor_dispatch_projection
+        body.update(schema=DOCTOR_SCHEMA,
+            doctor=prepare_doctor_dispatch_projection(prompt=prompt, admission=admitted))
     raw = canonical_json(body)
     _need(len(raw) <= MAX_HANDOFF_BYTES, "candidate dispatch handoff exceeds bound")
     path = parent / ("candidate-dispatch-" + uuid.uuid4().hex + ".json")
@@ -238,7 +244,9 @@ def validate_candidate_dispatch_context(*, prompt, repository, workspace, bounda
         "public_source_manifest", "source_hashes", "program_paths", "candidate_artifacts",
         "producer_binding_sha256", "admission", "prompt_observation", "issued_monotonic_ns",
         "expires_monotonic_ns", *FLAGS}
-    _need(set(value) == fields and value["schema"] == SCHEMA
+    doctor_selected = value.get("schema") == DOCTOR_SCHEMA
+    _need(set(value) == fields | ({"doctor"} if doctor_selected else set())
+        and value["schema"] in (SCHEMA, DOCTOR_SCHEMA)
         and all(type(value[key]) is type(expected) and value[key] == expected for key, expected in FLAGS.items())
         and value["repository"] == str(root) and value["workspace"] == str(allocated)
         and value["boundary_sha256"] == boundary_sha256
@@ -249,7 +257,8 @@ def validate_candidate_dispatch_context(*, prompt, repository, workspace, bounda
         "candidate handoff differs from exact worker invocation")
     issued, expires = value["issued_monotonic_ns"], value["expires_monotonic_ns"]
     admitted = value["admission"]
-    _need(type(admitted) is dict and admitted.get("schema") == "supervisor-owner-candidate-dispatch-admission@1"
+    admission_schema = "supervisor-owner-candidate-dispatch-admission@2" if doctor_selected else "supervisor-owner-candidate-dispatch-admission@1"
+    _need(type(admitted) is dict and admitted.get("schema") == admission_schema
         and type(launch_settings) is dict and type(admitted.get("launch_settings")) is dict
         and admitted["launch_settings"] == launch_settings
         and all(type(launch_settings[key]) is type(expected)
@@ -270,7 +279,8 @@ def validate_candidate_dispatch_context(*, prompt, repository, workspace, bounda
         "candidate round binding differs from admitted descriptor")
     wire = _parse(prompt.encode())
     candidate = wire.get("candidate_binding", {})
-    _need(wire.get("schema") == "supervisor-owner-candidate-router-input@1"
+    prompt_schema = "supervisor-owner-candidate-router-input@2" if doctor_selected else "supervisor-owner-candidate-router-input@1"
+    _need(wire.get("schema") == prompt_schema
         and type(wire.get("native_prompt")) is str
         and _sha(wire["native_prompt"].encode()) == value["native_prompt_sha256"] == current["native_prompt_sha256"]
         and len(wire["native_prompt"].encode()) == value["native_prompt_bytes"]
@@ -281,6 +291,9 @@ def validate_candidate_dispatch_context(*, prompt, repository, workspace, bounda
         and candidate.get("candidate_scope_cid") == current["candidate_scope_cid"]
         and candidate.get("semantic_root_cid") == current["candidate_semantic_root_cid"],
         "candidate prompt source or symbolic artifact binding differs")
+    _need(doctor_selected or not any(key.startswith("doctor_") for key in wire)
+        and not any(key.startswith("doctor_") for key in admitted),
+        "ordinary candidate dispatch cannot acquire Doctor context or policy")
     baseline = _source_population(value["baseline_source_hashes"])
     sources = _source_population(value["source_hashes"])
     _need(type(value["baseline_source_manifest"]) is dict
@@ -295,6 +308,11 @@ def validate_candidate_dispatch_context(*, prompt, repository, workspace, bounda
     from .router_public_instruction import _current_sources as public_sources
     public_sources(root, value["public_source_manifest"])
     guard._current_sources(allocated, sources)
+    doctor_observation = None
+    if doctor_selected:
+        from .candidate_doctor_dispatch import validate_doctor_dispatch_projection
+        doctor_observation = validate_doctor_dispatch_projection(projection=value["doctor"], wire=wire,
+            handoff=value, descriptor=current, repository=root, workspace=allocated)
     final_info = path.lstat()
     _need(guard._read(path, MAX_HANDOFF_BYTES) == raw
         and final_info.st_uid == final_info.st_gid == owner
@@ -302,7 +320,8 @@ def validate_candidate_dispatch_context(*, prompt, repository, workspace, bounda
         and protocol.load_descriptor(Path(descriptor_path), descriptor_sha256, workspace=allocated) == current
         and time.monotonic_ns() < expires,
           "candidate handoff changed or expired during source validation")
-    return dict(schema=OBSERVATION_SCHEMA, **{key: current[key] for key in (
+    result = dict(schema=DOCTOR_OBSERVATION_SCHEMA if doctor_selected else OBSERVATION_SCHEMA,
+        **{key: current[key] for key in (
         "task_id", "native_prompt_sha256", "session_id", "prior_session_id", "prior_descriptor_sha256",
         "workspace_generation", "round_context_sha256", "round_number", "candidate_scope_cid",
         "candidate_semantic_root_cid")}, descriptor_sha256=descriptor_sha256,
@@ -317,6 +336,9 @@ def validate_candidate_dispatch_context(*, prompt, repository, workspace, bounda
         producer_validation_inherited=True, neural_inference_replayed=False,
         owner_private_state_replayed_here=False, canonical_source_current=True,
         workspace_source_current=True, **FLAGS)
+    if doctor_observation is not None:
+        result["doctor_candidate_dispatch"] = doctor_observation
+    return result
 
 
 __all__ = ["CandidateDispatchHandoff", "prepare_candidate_dispatch_handoff",

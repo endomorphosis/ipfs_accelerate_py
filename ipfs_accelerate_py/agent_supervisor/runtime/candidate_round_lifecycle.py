@@ -12,6 +12,7 @@ import subprocess
 from .worker_source_views import canonical_json
 
 SCHEMA = "owner-candidate-rounds-retention@1"
+DOCTOR_SCHEMA = "owner-candidate-rounds-retention@2"
 MAX_BYTES = 65536
 FLAGS = dict(audit_only=True, dispatch_reload_allowed=False, proof_authority=False,
     execution_authority=False, completion_authority=False)
@@ -71,7 +72,10 @@ def validate_retention(value):
     keys = {"schema", "prior_session_id", "prior_descriptor_sha256", "task_id", "native_prompt_sha256",
         "workspace_sha256", "owner_pid", "owner_start_time_ticks", "boundary_manifest_sha256",
         "observation", *FLAGS}
-    _need(type(value) is dict and set(value) == keys and value["schema"] == SCHEMA
+    doctor = type(value) is dict and value.get("schema") == DOCTOR_SCHEMA
+    if doctor:
+        keys.update(("doctor_coding_policy", "doctor_attempts_reserved"))
+    _need(type(value) is dict and set(value) == keys and value["schema"] in (SCHEMA, DOCTOR_SCHEMA)
           and all(type(value[k]) is type(v) and value[k] == v for k, v in FLAGS.items()))
     lifecycle_name(value["prior_session_id"])
     _need(all(_digest(value[k]) for k in ("prior_descriptor_sha256", "native_prompt_sha256",
@@ -82,6 +86,16 @@ def validate_retention(value):
     first = observation["rounds"][0]
     _need(first["session_id"] == value["prior_session_id"]
           and first["descriptor_sha256"] == value["prior_descriptor_sha256"])
+    if doctor:
+        from .candidate_round_policy import validate_doctor_coding_policy_shape
+        policy = validate_doctor_coding_policy_shape(value["doctor_coding_policy"])
+        _need(all(policy[key] == value[key] for key in ("prior_session_id", "prior_descriptor_sha256",
+            "task_id", "native_prompt_sha256")))
+        reservations = value["doctor_attempts_reserved"]
+        _need(type(reservations) is list and all(type(number) is int for number in reservations)
+            and reservations in ([], [1], [1, 2]))
+        for row in observation["rounds"]:
+            _need(row["process_started"] is not True or row["round_number"] in reservations)
     return value
 
 
@@ -176,6 +190,14 @@ def persist(*, source_broker, observation):
         workspace_sha256=hashlib.sha256(str(source_broker.workspace).encode()).hexdigest(),
         owner_pid=descriptor["owner_pid"], owner_start_time_ticks=descriptor["owner_start_time_ticks"],
         boundary_manifest_sha256=boundary_sha, observation=normalized, **FLAGS)
+    if launch.doctor_coding_policy is not None:
+        from .candidate_round_policy import validate_doctor_coding_policy_binding
+        policy = validate_doctor_coding_policy_binding(launch.doctor_coding_policy,
+            doctor_requirements=launch._original_requirements._doctor_requirements.metadata,
+            original_requirements_sha256=hashlib.sha256(launch._original_requirements.metadata_bytes).hexdigest(),
+            deadline_monotonic_ns=int(launch.absolute_deadline*1_000_000_000))
+        payload.update(schema=DOCTOR_SCHEMA, doctor_coding_policy=policy,
+            doctor_attempts_reserved=sorted(launch._state.reserved_attempts))
     validate_retention(payload)
     raw = canonical_json(payload)
     _need(len(raw) <= MAX_BYTES)

@@ -72,13 +72,57 @@ def provider_free_coding_application_observed(report):
                 "model_coding_dispatched", "token_savings_established", "completion_authority"))):
         return False
     metadata = report.get("semantic_metadata_view", {})
-    if type(metadata) is not dict or type(application["requested"]) is not dict or application["requested"] != {
+    if type(metadata) is not dict or type(application["requested"]) is not dict:
+        return False
+    attempt_selection = {}
+    if "candidate_rounds" in report or "doctor_coding_policy" in report:
+        from .terminal_doctor_coding_policy import (
+            validate_doctor_coding_selection, doctor_coding_selection, doctor_coding_runtime_declared_matches,
+        )
+        try:
+            rounds, policy = report.get("candidate_rounds", 1), report.get("doctor_coding_policy")
+            validate_doctor_coding_selection(rounds, policy, arm=report["arm"],
+                source_view_profile=report.get("source_view_profile", "disabled"),
+                source_edit_mode=report.get("source_edit_mode", "disabled"))
+            attempt_selection = doctor_coding_selection(rounds, policy)
+            if rounds == 2 and not doctor_coding_runtime_declared_matches(report, rounds, policy):
+                return False
+        except (TypeError, ValueError):
+            return False
+    optional_selection = {}
+    try:
+        if "semantic_working_set" in report:
+            from .terminal_semantic_working_set_policy import (
+                validate_semantic_working_set, semantic_working_set_selection, semantic_working_set_observation,
+            )
+            working_set = validate_semantic_working_set(report["semantic_working_set"], arm=report["arm"],
+                source_view_profile=report.get("source_view_profile", "disabled"),
+                transport_schema=report.get("semantic_transport_schema", "supervisor-semantic-router-input@1"),
+                metadata_view=metadata.get("requested_mode", "legacy"))
+            if any(type(report.get(key)) is not type(value) or report.get(key) != value
+                    for key, value in semantic_working_set_observation(working_set).items()):
+                return False
+            optional_selection.update(semantic_working_set_selection(working_set))
+        if "grok_coding_max_turns" in report:
+            from .benchmark_provider_profile import resolve_provider_profile
+            from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
+                validate_grok_coding_max_turns, grok_coding_selection,
+            )
+            provider = report.get("provider_profile")
+            if type(provider) is not dict or provider != resolve_provider_profile(provider.get("id")):
+                return False
+            turns = validate_grok_coding_max_turns(report["grok_coding_max_turns"], provider=provider["provider"])
+            optional_selection.update(grok_coding_selection(turns))
+        expected_requested = {
             "semantic_transport_schema": report.get("semantic_transport_schema", "supervisor-semantic-router-input@1"),
             "semantic_metadata_view": metadata.get("requested_mode", "legacy"),
             "coding_reply_mode": report.get("coding_reply_mode", "legacy"),
             "source_view_profile": report.get("source_view_profile", "disabled"),
             "source_edit_mode": report.get("source_edit_mode", "disabled"),
-            "source_view_policy": report.get("source_view_policy")}:
+            "source_view_policy": report.get("source_view_policy"), **attempt_selection, **optional_selection}
+        if protocol.canonical_json(application["requested"]) != protocol.canonical_json(expected_requested):
+            return False
+    except (TypeError, ValueError):
         return False
     rows = report.get("provider_invocations")
     doctor = report.get("doctor_dispatch")

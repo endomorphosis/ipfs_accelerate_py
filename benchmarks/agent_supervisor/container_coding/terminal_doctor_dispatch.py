@@ -245,13 +245,23 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                         source_view_profile: str = "disabled", source_view_policy: dict | None = None,
                         source_edit_mode: str = "disabled", semantic_working_set: str = "legacy",
                         grok_coding_max_turns: int = 128, provider: str = "codex_cli",
-                        candidate_rounds: int = 1) -> list[str]:
+                        candidate_rounds: int = 1,
+                        doctor_coding_policy: str | None = None) -> list[str]:
     """Closed choice that the admitted launch signs before any worker starts."""
-    from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import validate_candidate_rounds
+    from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import (
+        validate_candidate_rounds, validate_doctor_coding_policy,
+    )
     validate_candidate_rounds(candidate_rounds)
-    if candidate_rounds == 2 and (semantic_repository is None or source_view_profile == "disabled"
-            or doctor is not None):
+    validate_doctor_coding_policy(doctor_coding_policy, candidate_rounds=candidate_rounds)
+    provider_free_candidate = doctor is not None and doctor.get("route") in {
+        "doctor_candidate", "doctor_contract_candidate"}
+    if candidate_rounds == 2 and (doctor is not None and doctor_coding_policy is None
+            or not provider_free_candidate and (semantic_repository is None or source_view_profile == "disabled")):
         raise ValueError("candidate continuation requires ordinary semantic source coding")
+    if doctor_coding_policy is not None and doctor is None:
+        raise ValueError("explicit Doctor coding policy requires Doctor dispatch constraints")
+    if doctor_coding_policy is not None and source_edit_mode != "disabled":
+        raise ValueError("Doctor coding continuation does not admit mapped source edits")
     from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import validate_grok_coding_max_turns
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider)
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
@@ -269,8 +279,6 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
     from .terminal_semantic_working_set_policy import validate_semantic_working_set
     validate_semantic_working_set(semantic_working_set, source_view_profile=source_view_profile,
         transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
-    provider_free_candidate = doctor is not None and doctor.get("route") in {
-        "doctor_candidate", "doctor_contract_candidate"}
     # These controls describe the model fallback, not the independently checked
     # Doctor candidate. Validate their combinations, but do not let them veto a
     # provider-free route. The driver records that they were not applied.
@@ -302,9 +310,13 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                 "--doctor-candidate-sha256", doctor["sha256"], "--doctor-task-cid", doctor["task_cid"]]
     if doctor is not None and (doctor.get("route") != "model_router" or doctor.get("status") != "residual"):
         raise ValueError("Doctor dispatch is neither a candidate nor a residual fallback")
+    if doctor_coding_policy is not None and (type(doctor.get("residual_context")) is not dict
+            or not all(doctor["residual_context"].get(key) for key in ("artifact", "sha256", "task_cid"))):
+        raise ValueError("Doctor continuation requires the exact residual context binding")
     return [str(router), "--model", model, "--reasoning-effort", reasoning,
             "--timeout", str(timeout), "--max-output-tokens", "4096",
             *(["--candidate-rounds", "2"] if candidate_rounds == 2 else []),
+            *(["--doctor-coding-policy", doctor_coding_policy] if doctor_coding_policy is not None else []),
             *(["--grok-coding-max-turns", str(grok_coding_max_turns)] if grok_coding_max_turns != 128 else []),
             *(["--semantic-repository", str(semantic_repository)] if semantic_repository is not None else []),
             *(["--semantic-transport-schema", semantic_transport_schema]

@@ -304,6 +304,7 @@ RUNNER_FAILURE_TYPES = frozenset({
 RUNNER_FAILURE_FILES = frozenset({
     "router_implementation_runner.py", "container_worker_boundary.py",
     "semantic_router_translation.py", "doctor_residual_context.py", "doctor_residual_budget.py",
+    "candidate_doctor_dispatch.py", "candidate_round_policy.py",
     "router_public_instruction.py", "local_planning_admission.py",
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
     "semantic_metadata_view.py", "semantic_instruction_view.py",
@@ -1192,6 +1193,24 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 capsule_sha256=reference["capsule_sha256"],
                 response_bytes=len(probe_bytes), response_sha256=hashlib.sha256(probe_bytes).hexdigest(),
                 provider_input_bytes=0, source_freshness_checked=True, proof_authority=False)
+        if candidate_receipt is not None and candidate_receipt.get("schema") == "supervisor-candidate-dispatch-observation@2":
+            failure_phase = "candidate_dispatch_context"
+            # Candidate summary retrieval covers only the indexed inventory.
+            # Doctor can depend on additional files: recheck its full inventory
+            # after that exchange and immediately before the outer router call.
+            current = _candidate_dispatch_observation(prompt=prompt,
+                repository=semantic_repository, workspace=root, boundary=container_boundary,
+                boundary_sha256=container_boundary_sha256, handoff=candidate_dispatch_handoff,
+                handoff_sha256=candidate_dispatch_handoff_sha256, descriptor_path=candidate_round_descriptor,
+                descriptor_sha256=candidate_round_descriptor_sha256, launch_settings=candidate_settings)
+            if ({key: value for key, value in current.items() if key != "remaining_timeout_seconds"}
+                    != {key: value for key, value in candidate_receipt.items() if key != "remaining_timeout_seconds"}):
+                raise ValueError("Doctor candidate context changed after retrieval preflight")
+            timeout = min(timeout, current["remaining_timeout_seconds"])
+            if type(timeout) is not int or timeout < 1:
+                raise ValueError("Doctor candidate has no remaining original coding time")
+            receipt["timeout_seconds"] = timeout
+            receipt["candidate_round_dispatch"] = current
         if residual_receipt is not None:
             failure_phase = "doctor_residual"
             # Provider discovery and source preflight can take time. Doctor's

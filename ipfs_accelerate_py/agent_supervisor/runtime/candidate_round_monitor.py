@@ -84,7 +84,7 @@ def run_candidate_coding_rounds(*, launch, command):
         process = None
         try:
             launch.revalidate()
-            launch.validate_first_command(command)
+            launch.reserve_first_attempt(command)
             process = subprocess.Popen(command)
             launch.source_broker.note_spawned(process)
         except BaseException:

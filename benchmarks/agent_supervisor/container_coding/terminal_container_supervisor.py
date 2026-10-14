@@ -703,6 +703,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         semantic_working_set: str = "legacy",
         grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
         candidate_rounds: int = 1,
+        doctor_coding_policy: str | None = None,
         source_view_profile: str = "disabled",
         source_edit_mode: str = "disabled",
         source_view_policy: dict | None = None,
@@ -728,7 +729,12 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         intent_requirement_contract: Path | None = None,
         task_profile: Path | None = None) -> dict:
     from .benchmark_controls import validate_full_supervisor_candidate_rounds
-    validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm)
+    validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile)
+    from .terminal_doctor_coding_policy import doctor_coding_selection, doctor_coding_observation
+    if candidate_rounds == 2 and metadata_census_only:
+        raise ValueError("Doctor coding continuation requires actual coding, not metadata census")
     from .benchmark_provider_profile import resolve_provider_profile
     from .terminal_planning_policy import validate_planning_mode, planning_selection
     validate_planning_mode(planning_mode)
@@ -851,6 +857,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               **source_edit_observation(source_edit_mode),
               **semantic_working_set_observation(semantic_working_set),
               **grok_coding_selection(grok_coding_max_turns),
+              **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
               **coding_reply_selection(coding_reply_mode),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
@@ -1116,6 +1123,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             coding_reply_mode=coding_reply_mode,
             **semantic_working_set_selection(semantic_working_set),
             **grok_coding_selection(grok_coding_max_turns),
+            **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
             **({"source_view_profile": source_view_profile} if source_view_profile != "disabled" else {}),
             **({"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {}),
             **({"source_view_policy": source_view_policy} if source_view_policy is not None else {}),
@@ -1134,6 +1142,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     "source_edit_mode": source_edit_mode,
                     **semantic_working_set_selection(semantic_working_set),
                     **grok_coding_selection(grok_coding_max_turns),
+                    **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
                     "source_view_policy": source_view_policy},
                 "model_coding_dispatched": False,
                 "token_savings_established": False,
@@ -1450,8 +1459,10 @@ def main():
     parser.add_argument("--semantic-working-set", choices=SEMANTIC_WORKING_SETS, default=DEFAULT_SEMANTIC_WORKING_SET)
     parser.add_argument("--grok-coding-max-turns", type=int, default=DEFAULT_GROK_CODING_MAX_TURNS)
     parser.add_argument("--candidate-rounds", type=int, choices=(1, 2), default=1,
-        help="Two-round ordinary-owner qualification is not admitted for full-supervisor Doctor routes")
+        help="Two coding attempts share one original deadline and require --doctor-coding-policy")
     from .terminal_source_edit_policy import SOURCE_EDIT_MODES
+    from .terminal_doctor_coding_policy import DOCTOR_CODING_POLICY
+    parser.add_argument("--doctor-coding-policy", choices=(DOCTOR_CODING_POLICY,))
     parser.add_argument("--source-edit-mode", default="disabled", choices=SOURCE_EDIT_MODES)
     from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy
     parser.add_argument("--source-view-policy-json", dest="source_view_policy",

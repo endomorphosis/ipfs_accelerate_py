@@ -93,7 +93,7 @@ def collect(*, parent: Path, report: dict):
         _need(type(report) is dict)
         rows = report.get("provider_invocations", [])
         markers = report.get("owner_candidate_rounds", [])
-        selected = report.get("candidate_rounds") == 2 or bool(markers)
+        selected = report.get("candidate_rounds") == 2 or report.get("doctor_coding_policy") is not None or bool(markers)
         _need(type(rows) is list and len(rows) <= 128 and all(type(row) is dict for row in rows))
         candidates = [row for row in rows if "candidate_round_dispatch" in row]
         selected = selected or bool(candidates)
@@ -105,11 +105,29 @@ def collect(*, parent: Path, report: dict):
             return result
         if private is None:
             if selected:
+                from .terminal_source_view_observation import provider_free_coding_application_observed
+                if not markers and not candidates and provider_free_coding_application_observed(report):
+                    result.update(status="not_applicable", reason="provider_free_doctor_materialization_observed")
+                    return result
                 _unavailable(result)
             return result
         selected = True
         _unavailable(result)
         raw, retained = private
+        policy = retained.get("doctor_coding_policy")
+        if policy is not None:
+            from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import validate_doctor_coding_policy_shape
+            policy = validate_doctor_coding_policy_shape(policy)
+            _need(report.get("doctor_coding_policy") in (None, policy["policy_id"]))
+            _need(set(retained["doctor_attempts_reserved"]) <= {
+                row["round_number"] for row in retained["observation"]["rounds"]})
+            result.update(doctor_coding_policy=policy["policy_id"],
+                doctor_coding_policy_sha256=hashlib.sha256(canonical_json(policy)).hexdigest(),
+                doctor_attempts_reserved=retained["doctor_attempts_reserved"],
+                total_tokens_bounded=False, total_cost_bounded=False,
+                provider_internal_calls_bounded=False)
+        else:
+            _need(report.get("doctor_coding_policy") is None)
         _need(len(canonical_json(rows)) <= 2*1024*1024)
         identities = [_identity(row["invocation_id"]) for row in rows]
         _need(len(identities) == len(set(identities)))
@@ -141,12 +159,35 @@ def collect(*, parent: Path, report: dict):
                     _need(binding.get("schema") in {"worker-source-dispatch-observation@1",
                         "worker-source-dispatch-observation@2", "worker-source-dispatch-observation@3",
                         "worker-source-dispatch-observation@4"} and "candidate_round_dispatch" not in row)
+                    if policy is not None:
+                        residual = row.get("doctor_residual_context")
+                        _need(type(residual) is dict and residual.get("schema") in (
+                            "doctor-residual-router-context@1", "doctor-residual-router-context@2")
+                            and residual.get("artifact_sha256") == policy["doctor_artifact_sha256"]
+                            and residual.get("advisory_sha256") == policy["doctor_advisory_sha256"]
+                            and residual.get("task_cid") == policy["task_cid"]
+                            and residual.get("context_cid") == policy["doctor_context_cid"]
+                            and residual.get("native_capsule_id") == policy["native_capsule_id"])
+                        if residual["schema"] == "doctor-residual-router-context@2":
+                            _need(canonical_json(residual.get("residual_budget")) == canonical_json(policy["proposal_budget"]))
                 else:
-                    _need(binding.get("schema") == "supervisor-candidate-dispatch-observation@1"
+                    _need(binding.get("schema") == ("supervisor-candidate-dispatch-observation@2" if policy is not None
+                            else "supervisor-candidate-dispatch-observation@1")
                         and binding.get("prior_session_id") == prior
                         and binding.get("prior_descriptor_sha256") == retained["prior_descriptor_sha256"]
                         and type(binding.get("round_number")) is int and binding["round_number"] == 2
                         and "source_view_retrieval" not in row)
+                    if policy is not None:
+                        from ipfs_accelerate_py.agent_supervisor.runtime.candidate_doctor_dispatch import validate_doctor_dispatch_observation
+                        doctor = validate_doctor_dispatch_observation(binding.get("doctor_candidate_dispatch"))
+                        _need(doctor["coding_policy_sha256"] == result["doctor_coding_policy_sha256"]
+                            and all(doctor[k] == policy[k] for k in ("doctor_artifact_sha256", "doctor_advisory_sha256",
+                                "proposal_budget_sha256", "task_cid", "native_capsule_id", "original_requirements_sha256"))
+                            and doctor["context_cid"] == policy["doctor_context_cid"]
+                            and canonical_json(doctor["proposal_budget"]) == canonical_json(policy["proposal_budget"])
+                            and binding["dispatch_deadline_monotonic_ns"] <= policy["deadline_monotonic_ns"])
+                    else:
+                        _need("doctor_candidate_dispatch" not in binding)
                 matches.append(row)
             _need(len(matches) <= 1 and (not matches or attempt["process_started"] is True))
             if matches:

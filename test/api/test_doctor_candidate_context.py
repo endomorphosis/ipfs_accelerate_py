@@ -112,7 +112,7 @@ def test_native_capture_carries_exact_obligations_to_new_generation_without_admi
     assert all(metadata[key] == expected for key, expected in doctor.FLAGS.items())
     assert text.encode() not in prepared.metadata_bytes
     assert captured.artifact_bytes not in prepared.advisory_bytes
-    with pytest.raises(ValueError, match="independent residual budget"):
+    with pytest.raises(ValueError, match="generation-bound advisory"):
         prompts.prepare_candidate_round_prompt(snapshot=snapshot, requirements=original)
     with pytest.raises(FrozenInstanceError):
         prepared.advisory_bytes = b"replace constraints"
@@ -198,7 +198,7 @@ def test_sealed_owner_broker_factory_captures_native_doctor_selection(doctor_ser
                 prompts.capture_native_only_requirements(source_broker=captured, doctor_request=nomination)
         # Omitting the residual CLI flags cannot admit even the first child of
         # an unsupported two-round launch carrying captured Doctor constraints.
-        with pytest.raises(ValueError, match="independent residual budget"):
+        with pytest.raises(ValueError, match="independent coding attempt admission"):
             dispatch.capture_original_coding_launch(source_broker=captured,
                 argv=["--semantic-repository", str(captured.repository),
                     "--source-view-profile", "python-comments@1", "--timeout", "90"],
@@ -207,7 +207,7 @@ def test_sealed_owner_broker_factory_captures_native_doctor_selection(doctor_ser
         snapshot = candidate(captured)
         projection = doctor.prepare_doctor_candidate_context(snapshot=snapshot, requirements=original)
         assert projection.revalidate()["full_doctor_source_inventory_current"] is True
-        with pytest.raises(ValueError, match="independent residual budget"):
+        with pytest.raises(ValueError, match="generation-bound advisory"):
             prompts.prepare_candidate_round_prompt(snapshot=snapshot)
     finally:
         captured.close()

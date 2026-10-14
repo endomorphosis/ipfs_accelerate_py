@@ -17,6 +17,7 @@ from .worker_source_views import canonical_json
 
 REQUIREMENTS_SCHEMA = "supervisor-owner-original-requirements@1"
 PROMPT_SCHEMA = "supervisor-owner-candidate-router-input@1"
+DOCTOR_PROMPT_SCHEMA = "supervisor-owner-candidate-router-input@2"
 OBSERVATION_SCHEMA = "supervisor-owner-candidate-prompt-observation@1"
 MAX_PROMPT_BYTES = 256_000
 MAX_SUMMARY_BYTES = 65_536
@@ -242,10 +243,18 @@ def capture_native_only_requirements(*, source_broker, doctor_request=None) -> O
     return _capture(source_broker=source_broker, doctor_request=doctor_request)
 
 
-def _render(snapshot, requirements, max_prompt_bytes):
+def _render(snapshot, requirements, max_prompt_bytes, doctor_context=None):
     _need(type(max_prompt_bytes) is int and 1 <= max_prompt_bytes <= MAX_PROMPT_BYTES,
         "bounded candidate prompt byte budget required")
     original = requirements.revalidate(snapshot=snapshot)
+    if requirements._doctor_requirements is not None:
+        from .doctor_candidate_context import DoctorCandidateContext
+        _need(type(doctor_context) is DoctorCandidateContext
+            and doctor_context._snapshot is snapshot and doctor_context._requirements is requirements,
+            "Doctor candidate prompt requires explicit generation-bound advisory preparation")
+        doctor_context.revalidate()
+    else:
+        _need(doctor_context is None, "Doctor advisory requires captured native constraints")
     context = snapshot.metadata
     summary = json.loads(snapshot.artifacts["summary"])
     formal = json.loads(snapshot.artifacts["formal"])
@@ -269,6 +278,11 @@ def _render(snapshot, requirements, max_prompt_bytes):
         prior_failure=dict(prior_session_id=context["prior_session_id"],
             descriptor_sha256=context["descriptor_sha256"], prior_returncode=context["prior_returncode"]),
         **FLAGS)
+    if doctor_context is not None:
+        payload.update(schema=DOCTOR_PROMPT_SCHEMA, doctor_context=dict(
+            schema="supervisor-doctor-candidate-context-binding@1",
+            sha256=_sha(doctor_context.metadata_bytes), bytes=len(doctor_context.metadata_bytes)),
+            doctor_advisory=doctor_context.advisory_bytes.decode("utf-8"))
     body = canonical_json(payload)
     _need(len(body) <= max_prompt_bytes, "complete candidate prompt exceeds byte bound; requirements cannot be truncated")
     metadata = dict(schema=OBSERVATION_SCHEMA, status="prepared",
@@ -284,6 +298,11 @@ def _render(snapshot, requirements, max_prompt_bytes):
         provider_prompt_sha256=_sha(body), provider_prompt_bytes=len(body),
         required_text_truncated=False, native_prompt_preserved=True, original_public_block_preserved=True,
         raw_prompt_exported=False, **FLAGS)
+    if doctor_context is not None:
+        metadata.update(schema="supervisor-owner-candidate-prompt-observation@2",
+            doctor_context_sha256=_sha(doctor_context.metadata_bytes),
+            doctor_advisory_sha256=_sha(doctor_context.advisory_bytes),
+            doctor_advisory_bytes=len(doctor_context.advisory_bytes))
     requirements.revalidate(snapshot=snapshot)
     return body, canonical_json(metadata)
 
@@ -296,11 +315,14 @@ class OwnerCandidateRoundPrompt:
     _snapshot: object = field(repr=False, compare=False)
     _requirements: OriginalRequirements = field(repr=False, compare=False)
     _max_prompt_bytes: int = field(repr=False)
+    _doctor_context: object = field(repr=False, compare=False)
 
-    def __init__(self, *, _owner_token, provider_prompt, metadata_bytes, snapshot, requirements, max_prompt_bytes):
+    def __init__(self, *, _owner_token, provider_prompt, metadata_bytes, snapshot, requirements, max_prompt_bytes,
+                 doctor_context=None):
         _need(_owner_token is _OWNER_TOKEN, "owner candidate prompt factory required")
         for name, value in (("provider_prompt", provider_prompt), ("metadata_bytes", metadata_bytes),
-                ("_snapshot", snapshot), ("_requirements", requirements), ("_max_prompt_bytes", max_prompt_bytes)):
+                ("_snapshot", snapshot), ("_requirements", requirements), ("_max_prompt_bytes", max_prompt_bytes),
+                ("_doctor_context", doctor_context)):
             object.__setattr__(self, name, value)
 
     @property
@@ -312,25 +334,24 @@ class OwnerCandidateRoundPrompt:
         return False
 
     def revalidate(self):
-        body, metadata = _render(self._snapshot, self._requirements, self._max_prompt_bytes)
+        body, metadata = _render(self._snapshot, self._requirements, self._max_prompt_bytes, self._doctor_context)
         _need(body == self.provider_prompt and metadata == self.metadata_bytes,
             "candidate prompt or original requirement binding changed")
         return self.metadata
 
 
 def prepare_candidate_round_prompt(*, snapshot, requirements=None,
-                                   max_prompt_bytes=MAX_PROMPT_BYTES) -> OwnerCandidateRoundPrompt:
+                                   max_prompt_bytes=MAX_PROMPT_BYTES, doctor_context=None) -> OwnerCandidateRoundPrompt:
     """Prepare complete original requirements plus a bounded advisory summary."""
     from .owner_candidate_round_context import OwnerCandidateRoundContext
     _need(type(snapshot) is OwnerCandidateRoundContext, "exact owner candidate snapshot required")
     if requirements is None:
         requirements = getattr(snapshot._source_broker, "original_requirements", None)
     _need(type(requirements) is OriginalRequirements, "typed owner original requirements capture required")
-    _need(requirements._doctor_requirements is None,
-        "Doctor candidate dispatch requires independent residual budget enforcement; use advisory preparation")
-    body, metadata = _render(snapshot, requirements, max_prompt_bytes)
+    body, metadata = _render(snapshot, requirements, max_prompt_bytes, doctor_context)
     return OwnerCandidateRoundPrompt(_owner_token=_OWNER_TOKEN, provider_prompt=body,
-        metadata_bytes=metadata, snapshot=snapshot, requirements=requirements, max_prompt_bytes=max_prompt_bytes)
+        metadata_bytes=metadata, snapshot=snapshot, requirements=requirements, max_prompt_bytes=max_prompt_bytes,
+        doctor_context=doctor_context)
 
 
 __all__ = ["OriginalRequirements", "OwnerCandidateRoundPrompt", "capture_public_requirements",

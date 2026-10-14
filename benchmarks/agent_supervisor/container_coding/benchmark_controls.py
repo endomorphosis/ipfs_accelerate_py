@@ -22,6 +22,7 @@ SOURCE_EDIT_SCHEMA = "terminal-benchmark-declared-controls@4"
 CAPSULE_BUDGET_SCHEMA = "terminal-benchmark-declared-controls@5"
 SEMANTIC_WORKING_SET_SCHEMA = "terminal-benchmark-declared-controls@6"
 GROK_CODING_SCHEMA = "terminal-benchmark-declared-controls@7"
+DOCTOR_CODING_SCHEMA = "terminal-benchmark-declared-controls@8"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 JOB_KEYS = ("n_attempts", "n_concurrent_trials", "retry", "timeout_multiplier",
             "agent_timeout_multiplier", "agent_setup_timeout_multiplier",
@@ -33,34 +34,30 @@ AGENT_KEYS = ("override_timeout_sec", "max_timeout_sec", "override_setup_timeout
               "extra_allowed_hosts", "load_trajectory", "resume_trajectory")
 
 
-def validate_full_supervisor_candidate_rounds(value=1, *, arm=None):
-    """Keep benchmark admission separate from the ordinary-owner qualification.
-
-    Every full-arm task currently enters Doctor, whose residual obligations and
-    one-call budget are not captured by the ordinary candidate continuation.
-    The no-index arm lacks its required semantic source broker. Neither route
-    can safely select two rounds. Refuse during preparation instead of removing
-    Doctor constraints or spending setup/planning work on an unusable trial.
-    An omitted/default selection preserves historical configs and signatures.
-    """
-    from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import validate_candidate_rounds
-    selected = validate_candidate_rounds(value)
-    if selected == 2:
-        if arm == "no-index":
-            raise ValueError("candidate rounds=2 requires an admitted semantic source broker; no-index is unsupported")
-        raise ValueError("candidate rounds=2 is not admitted for full-supervisor Doctor constraints: "
-            "explicit continuation budget admission is unavailable; native CLI hard token caps are not enforced")
-    return selected
+def validate_full_supervisor_candidate_rounds(value=1, *, arm=None,
+        doctor_coding_policy=None, source_view_profile="disabled", source_edit_mode="disabled",
+        numerical_formalization_profile=None):
+    """Admit the exact optional coding-attempt policy before setup work."""
+    from .terminal_doctor_coding_policy import validate_doctor_coding_selection
+    return validate_doctor_coding_selection(value, doctor_coding_policy,
+        arm=arm, source_view_profile=source_view_profile, source_edit_mode=source_edit_mode,
+        numerical_formalization_profile=numerical_formalization_profile)
 
 
 def validate_frozen_candidate_rounds(prepared, config):
     """Reject a changed or unsupported selection before execute/collect work."""
     kwargs = config["agents"][0].get("kwargs", {})
     chosen = validate_full_supervisor_candidate_rounds(prepared.get("candidate_rounds", 1),
-        arm=prepared.get("arm"))
+        arm=prepared.get("arm"), doctor_coding_policy=prepared.get("doctor_coding_policy"),
+        source_view_profile=prepared.get("source_view_profile", "disabled"),
+        source_edit_mode=prepared.get("source_edit_mode", "disabled"),
+        numerical_formalization_profile=prepared.get("numerical_formalization_profile"))
     configured = validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1),
-        arm=kwargs.get("arm"))
-    if chosen != configured:
+        arm=kwargs.get("arm"), doctor_coding_policy=kwargs.get("doctor_coding_policy"),
+        source_view_profile=kwargs.get("source_view_profile", "disabled"),
+        source_edit_mode=kwargs.get("source_edit_mode", "disabled"),
+        numerical_formalization_profile=kwargs.get("numerical_formalization_profile"))
+    if chosen != configured or prepared.get("doctor_coding_policy") != kwargs.get("doctor_coding_policy"):
         raise ValueError("prepared candidate rounds changed")
     return chosen
 
@@ -132,8 +129,12 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1), arm=kwargs.get("arm"))
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "capsule_budget", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode", "semantic_working_set", "grok_coding_max_turns", "candidate_rounds"}:
+        validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1), arm=kwargs.get("arm"),
+            doctor_coding_policy=kwargs.get("doctor_coding_policy"),
+            source_view_profile=kwargs.get("source_view_profile", "disabled"),
+            source_edit_mode=kwargs.get("source_edit_mode", "disabled"),
+            numerical_formalization_profile=kwargs.get("numerical_formalization_profile"))
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "capsule_budget", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode", "semantic_working_set", "grok_coding_max_turns", "candidate_rounds", "doctor_coding_policy"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         validate_grok_coding_max_turns(kwargs.get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
             provider=selected["provider"])
@@ -222,7 +223,11 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
     if agent.get("import_path") == (
             "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"):
         kwargs = agent.get("kwargs", {})
-        validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1), arm=kwargs.get("arm"))
+        validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1), arm=kwargs.get("arm"),
+            doctor_coding_policy=kwargs.get("doctor_coding_policy"),
+            source_view_profile=kwargs.get("source_view_profile", "disabled"),
+            source_edit_mode=kwargs.get("source_edit_mode", "disabled"),
+            numerical_formalization_profile=kwargs.get("numerical_formalization_profile"))
     if agent.get("model_name") != model:
         raise ValueError("frozen model differs from configuration")
     if agent.get("name") == "codex" and not agent.get("import_path"):
@@ -280,6 +285,11 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
     if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
         controls["schema"] = GROK_CODING_SCHEMA
         controls.setdefault("experimental_controls_sha256", {})["grok_coding_max_turns"] = _digest(grok_turns)
+    if kwargs.get("candidate_rounds", 1) == 2:
+        controls["schema"] = DOCTOR_CODING_SCHEMA
+        controls.setdefault("experimental_controls_sha256", {}).update(
+            candidate_rounds=_digest(kwargs["candidate_rounds"]),
+            doctor_coding_policy=_digest(kwargs["doctor_coding_policy"]))
     controls["sha256"] = _digest(controls)
     return controls
 
@@ -290,7 +300,15 @@ def validate_controls(value):
             "agent_controls_sha256", "sha256"}
     if not isinstance(value, dict):
         return False
-    if value.get("schema") == GROK_CODING_SCHEMA:
+    if value.get("schema") == DOCTOR_CODING_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict or not {"candidate_rounds", "doctor_coding_policy"} <= set(experiment)
+                or set(experiment) - {"candidate_rounds", "doctor_coding_policy", "grok_coding_max_turns",
+                    "semantic_working_set", "capsule_budget", "source_edit_mode", "planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())):
+            return False
+    elif value.get("schema") == GROK_CODING_SCHEMA:
         keys.add("experimental_controls_sha256")
         experiment = value.get("experimental_controls_sha256")
         if (type(experiment) is not dict or "grok_coding_max_turns" not in experiment
