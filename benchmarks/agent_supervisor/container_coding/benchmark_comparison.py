@@ -101,14 +101,14 @@ def _semantic_metadata_observation(value):
         return unavailable
     if (value.get("token_proxy") != "utf8-bytes-ceil-div4@1"
             or type(value.get("selected_mode")) is not str
-            or value["selected_mode"] not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}):
+            or value["selected_mode"] not in {"legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}):
         return unavailable
     requested = value.get("requested_mode")
     if "requested_mode" in value and (type(requested) is not str
-            or requested not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}
+            or requested not in {"legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}
             or value["selected_mode"] not in {"legacy", requested}):
         return unavailable
-    if value["selected_mode"] == "common-bindings-instruction@1" and requested != value["selected_mode"]:
+    if value["selected_mode"] in {"common-bindings-instruction@1", "capsule-columns@1"} and requested != value["selected_mode"]:
         return unavailable
     result = {**unavailable, "status": "reported", "schema": schema,
         "selected_mode": value["selected_mode"], "token_proxy": value["token_proxy"],

@@ -9,7 +9,9 @@ from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEM
 DEFAULT_SEMANTIC_METADATA_VIEW = "legacy"
 COMMON_BINDINGS_METADATA_VIEW = "common-bindings@1"
 INSTRUCTION_METADATA_VIEW = "common-bindings-instruction@1"
-SEMANTIC_METADATA_VIEWS = (DEFAULT_SEMANTIC_METADATA_VIEW, COMMON_BINDINGS_METADATA_VIEW, INSTRUCTION_METADATA_VIEW)
+CAPSULE_COLUMNS_METADATA_VIEW = "capsule-columns@1"
+SEMANTIC_METADATA_VIEWS = (DEFAULT_SEMANTIC_METADATA_VIEW, COMMON_BINDINGS_METADATA_VIEW,
+                           INSTRUCTION_METADATA_VIEW, CAPSULE_COLUMNS_METADATA_VIEW)
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
     "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
@@ -25,8 +27,10 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
     "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
     "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_input_policy.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_columns.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
@@ -50,6 +54,9 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/codex_interaction_telemetry.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/native_context_delivery.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/context_delivery_accounting.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_delivery_observation.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
     "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",

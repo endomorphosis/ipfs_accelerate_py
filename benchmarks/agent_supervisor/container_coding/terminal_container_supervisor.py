@@ -754,7 +754,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         raise ValueError("source view qualification requires the coding worker route")
     from .terminal_semantic_context_policy import validate_semantic_context_profile, semantic_context_selection
     validate_semantic_context_profile(semantic_context_profile, arm=arm)
-    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (arm != "full"
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
@@ -1452,7 +1452,7 @@ def main():
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, SEMANTIC_TRANSPORT_SCHEMAS
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA)
-    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
+    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"])
     from .terminal_source_view_policy import SOURCE_VIEW_PROFILES, DEFAULT_SOURCE_VIEW_PROFILE
     parser.add_argument("--source-view-profile", default=DEFAULT_SOURCE_VIEW_PROFILE, choices=SOURCE_VIEW_PROFILES)
     from .terminal_source_edit_policy import SOURCE_EDIT_MODES

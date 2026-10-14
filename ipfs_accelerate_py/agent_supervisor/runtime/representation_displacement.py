@@ -14,7 +14,7 @@ from . import semantic_metadata_view as metadata
 
 SCHEMA = "supervisor-representation-displacement@1"
 MAX_RECEIPT_BYTES = 16_384
-_MODES = {"common-bindings@1", "common-bindings-instruction@1"}
+_MODES = {"common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}
 _ARMS = ("native", "candidate", "selected")
 _COMPLETE_FIELDS = {arm + "_complete_" + name for arm in _ARMS
                     for name in ("sha256", "bytes", "proxy_tokens")}
@@ -148,6 +148,10 @@ def _selection(view, selection, prompts, *, requested, provider, model, instruct
             from .semantic_instruction_view import select_instruction_view
             replay = select_instruction_view(view=view, native_complete_prompt=prompts["native"],
                 candidate_complete_prompt=prompts["candidate"], instruction_block=instruction_block)
+        elif requested == "capsule-columns@1":
+            from .semantic_capsule_columns import select_capsule_columns
+            replay = select_capsule_columns(view=view, native_complete_prompt=prompts["native"],
+                candidate_complete_prompt=prompts["candidate"], provider=provider, model=model)
         else:
             replay = metadata.select_semantic_metadata_view(view=view,
                 native_complete_prompt=prompts["native"], candidate_complete_prompt=prompts["candidate"])
@@ -200,7 +204,9 @@ def observe_representation_displacement(*, view: metadata.SemanticMetadataView,
               "typed displacement view and selection required")
         _text(provider)
         _text(model)
-        requested = ("common-bindings-instruction@1" if instruction_block is not None
+        from .semantic_capsule_columns import MODE, RECEIPT_SCHEMA, project_capsule_columns, restore_capsule_columns
+        requested = (MODE if view.receipt.get("schema") == RECEIPT_SCHEMA else
+                     "common-bindings-instruction@1" if instruction_block is not None
                      or instruction_receipt is not None else "common-bindings@1")
         if requested == "common-bindings-instruction@1":
             from .semantic_instruction_view import project_instruction_view, restore_instruction_view
@@ -208,6 +214,11 @@ def observe_representation_displacement(*, view: metadata.SemanticMetadataView,
                                                 instruction_receipt=instruction_receipt)
             restored = restore_instruction_view(provider_prompt=view.provider_prompt,
                 receipt=view.receipt, instruction_block=instruction_block)
+        elif requested == MODE:
+            _need(instruction_block is None and instruction_receipt is None,
+                  "capsule columns do not replace public instruction bodies")
+            rebuilt = project_capsule_columns(view.native_prompt)
+            restored = restore_capsule_columns(provider_prompt=view.provider_prompt, receipt=view.receipt)
         else:
             rebuilt = metadata.project_semantic_metadata_view(view.native_prompt)
             restored = metadata.restore_semantic_metadata_view(provider_prompt=view.provider_prompt, receipt=view.receipt)
@@ -233,7 +244,7 @@ def observe_representation_displacement(*, view: metadata.SemanticMetadataView,
         candidate_sources = candidate_wire["translated_semantic"].get("raw_sources")
         _need(type(sources) is dict and all(type(value) is str for value in sources.values()),
               "displacement native source bodies must remain inline")
-        if requested == "common-bindings@1":
+        if requested != "common-bindings-instruction@1":
             _need(metadata._json(sources) == metadata._json(candidate_sources),
                   "displacement source bodies differ")
         instruction = {name: None for name in _INSTRUCTION_FIELDS}

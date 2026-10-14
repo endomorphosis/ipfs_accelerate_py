@@ -586,8 +586,9 @@ def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
     """Join retained selection receipts to the separate exact-input audit.
 
     This read-only observation does not rerun the source audit or measure usage.
-    A valid legacy fallback remains a completed requested-arm attempt; only
-    verified common-bindings inputs count as an effective metadata treatment.
+    A valid legacy fallback remains a completed requested-arm attempt.
+    Exactly reconstructed inputs in the declared representation count as an
+    observed metadata treatment; this does not establish token savings.
     """
     validate_semantic_metadata_view(requested_mode)
     report = report if type(report) is dict else {}
@@ -634,8 +635,14 @@ def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
         selection = row.get("semantic_metadata_view")
         selection = selection if type(selection) is dict else {}
         mode, fallback = selection.get("selected_mode"), selection.get("fallback_reason")
-        valid_selection = (selection.get("schema") == "supervisor-semantic-metadata-selection@1"
-            and type(mode) is str and mode in {"legacy", "common-bindings@1"}
+        selection_schema = selection.get("schema")
+        selected_modes = {"legacy", requested_mode}
+        selection_requested = selection.get("requested_mode", "common-bindings@1")
+        valid_selection = (type(selection_schema) is str
+            and selection_schema in {"supervisor-semantic-metadata-selection@1",
+                                               "supervisor-semantic-metadata-selection@2"}
+            and selection_requested == requested_mode
+            and type(mode) is str and mode in selected_modes
             and selection.get("candidate_only") is True
             and selection.get("token_proxy") == "utf8-bytes-ceil-div4@1"
             and all(selection.get(key) is False for key in (
@@ -649,11 +656,23 @@ def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
                 and selection[prefix + "_complete_proxy_tokens"] == (selection[prefix + "_complete_bytes"] + 3) // 4
                 for prefix in ("native", "candidate", "selected")))
         if valid_selection:
-            smaller = selection["candidate_complete_bytes"] < selection["native_complete_bytes"] and (
-                (selection["candidate_complete_bytes"] + 3) // 4 < (selection["native_complete_bytes"] + 3) // 4)
-            prefix = "candidate" if mode == "common-bindings@1" else "native"
-            valid_selection = (smaller == (mode == "common-bindings@1")
-                and fallback == (None if smaller else "complete_input_not_smaller_under_bytes_and_proxy")
+            prefix = "candidate" if mode != "legacy" else "native"
+            byte_smaller = selection["candidate_complete_bytes"] < selection["native_complete_bytes"]
+            if selection_schema == "supervisor-semantic-metadata-selection@1":
+                smaller = byte_smaller and (
+                    selection["candidate_complete_proxy_tokens"] < selection["native_complete_proxy_tokens"])
+                expected_fallback = None if smaller else "complete_input_not_smaller_under_bytes_and_proxy"
+            else:
+                from .benchmark_comparison import _semantic_metadata_observation
+                projected = _semantic_metadata_observation(selection)
+                valid_selection = projected.get("status") == "reported"
+                status = selection.get("token_counter_status")
+                smaller = (valid_selection and status == "counted" and byte_smaller
+                    and selection["candidate_complete_tokens"] < selection["native_complete_tokens"])
+                expected_fallback = (None if smaller else "complete_input_not_smaller_under_bytes_and_token_counter"
+                    if status == "counted" else "complete_input_token_counter_" + str(status))
+            valid_selection = (valid_selection and smaller == (mode != "legacy")
+                and fallback == expected_fallback
                 and selection["selected_complete_sha256"] == selection[prefix + "_complete_sha256"]
                 and selection["selected_complete_bytes"] == selection[prefix + "_complete_bytes"])
         bound = (valid_selection and valid_hash(row.get("model_prompt_sha256"))
@@ -679,15 +698,17 @@ def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
         elif not bound: row_problems.append("selected_input_binding_mismatch")
         if not verified: row_problems.append("retained_exact_input_audit_not_correlated")
         observations.append({"invocation_id": identity if valid_id(identity) else None,
-            "selected_mode": mode if type(mode) is str and mode in {"legacy", "common-bindings@1"} else None,
-            "fallback_reason": fallback if fallback in (None, "complete_input_not_smaller_under_bytes_and_proxy") else "unrecognized",
+            "selected_mode": mode if type(mode) is str and mode in selected_modes else None,
+            "fallback_reason": fallback if fallback in (None, "complete_input_not_smaller_under_bytes_and_proxy",
+                "complete_input_not_smaller_under_bytes_and_token_counter", "complete_input_token_counter_failed",
+                "complete_input_token_counter_invalid") else "unrecognized",
             "selection_receipt_matches_model_input": bool(bound),
             "retained_exact_input_audit_verified": bool(verified), "problems": row_problems})
     modes = sorted({row["selected_mode"] for row in observations if row["selected_mode"] is not None})
     bound = bool(observations) and all(row["selection_receipt_matches_model_input"] for row in observations)
     verified = (not problems and bound
         and all(row["retained_exact_input_audit_verified"] for row in observations))
-    status = ("verified_treatment" if modes == ["common-bindings@1"] else
+    status = ("verified_treatment" if requested_mode != "legacy" and modes == [requested_mode] else
               "verified_fallback" if modes == ["legacy"] else "verified_mixed_selection") if verified else "unverified"
     return {"schema": "terminal-semantic-metadata-dispatch-observation@1", "requested_mode": requested_mode,
         "requested_mode_matches_report": declared_matches, "coding_receipts_seen": len(coding),
@@ -695,7 +716,7 @@ def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
         "fallback_reasons": sorted({row["fallback_reason"] for row in observations if row["fallback_reason"] is not None}),
         "all_selection_receipts_bound_to_model_inputs": bound,
         "all_coding_inputs_verified_by_retained_audit": verified,
-        "effective_treatment_observed": verified and modes == ["common-bindings@1"],
+        "effective_treatment_observed": verified and requested_mode != "legacy" and modes == [requested_mode],
         "status": status, "problems": problems, "source_audit_rerun": False,
         "provider_usage_modified": False, "token_savings_established": False}
 

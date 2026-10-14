@@ -389,7 +389,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "semantic_router_translation.py", "doctor_residual_context.py",
     "router_public_instruction.py", "local_planning_admission.py",
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
-    "semantic_metadata_view.py", "semantic_instruction_view.py",
+    "semantic_metadata_view.py", "semantic_instruction_view.py", "semantic_capsule_columns.py",
     "semantic_metadata_census.py",
     "source_formalization_context.py",
     "numerical_obligation_client.py", "source_lookup_worker_client.py", "worker_source_client.py",
@@ -636,6 +636,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if source_view_profile != "disabled" and any(policy != "legacy" for policy in (
             source_view_advisory_policy, repository_source_policy, source_input_policy, query_reference_policy)):
         raise ValueError("signed source views require independently qualified projection policies")
+    if semantic_metadata_view == "capsule-columns@1" and (
+            source_input_policy != "legacy" or query_reference_policy != "legacy"):
+        raise ValueError("capsule columns require unchanged inline source and query inputs")
     from .coding_reply_contract import validate_coding_reply_mode
     validate_coding_reply_mode(mode=coding_reply_mode, purpose=purpose, provider=provider)
     from .tool_output_policy import validate_policy
@@ -664,14 +667,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if (semantic_transport_schema != "supervisor-semantic-router-input@1"
             and (purpose != "coding" or semantic_repository is None)):
         raise ValueError("compact semantic transport requires a semantic coding route")
-    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (purpose != "coding" or semantic_repository is None
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
         raise ValueError("metadata view requires the original semantic coding transport")
     if semantic_metadata_token_counter is not None:
         from .semantic_metadata_view import SemanticMetadataTokenCounter
-        if semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}:
+        if semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}:
             raise ValueError("metadata token counter requires the explicit metadata view")
         if (type(semantic_metadata_token_counter) is not SemanticMetadataTokenCounter
                 or semantic_metadata_token_counter.provider != provider
@@ -895,6 +898,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         failure_phase = "semantic_metadata_view"
         from .semantic_metadata_view import project_semantic_metadata_view, select_semantic_metadata_view
         selection_options = {}
+        selector_route_options = {}
         selector = select_semantic_metadata_view
         if semantic_metadata_view == "common-bindings-instruction@1":
             if instruction is None or instruction_receipt is None:
@@ -904,6 +908,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 instruction_block=instruction, instruction_receipt=instruction_receipt)
             selector = select_instruction_view
             selection_options["instruction_block"] = instruction
+        elif semantic_metadata_view == "capsule-columns@1":
+            from .semantic_capsule_columns import project_capsule_columns, select_capsule_columns
+            view = project_capsule_columns(encoded.provider_prompt)
+            selector = select_capsule_columns
+            selector_route_options = {"provider": provider, "model": model}
         else:
             view = project_semantic_metadata_view(encoded.provider_prompt)
         if not router_prompt.startswith(encoded.provider_prompt):
@@ -937,7 +946,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         else:
             selection = selector(view=view, native_complete_prompt=model_prompt,
                 candidate_complete_prompt=candidate_model, token_counter=semantic_metadata_token_counter,
-                **selection_options)
+                **selection_options, **selector_route_options)
             from .representation_displacement import observe_representation_displacement
             displacement_receipt = observe_representation_displacement(
                 view=view, selection=selection, native_complete_prompt=model_prompt,
@@ -967,7 +976,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             output_schema, _, _ = native_schema_projection(
                 response_format["json_schema"]["schema"], task_contract=task_contract)
         representation = ("semantic_metadata" if metadata_receipt is not None
-                          and metadata_receipt["selected_mode"] in {"common-bindings@1", "common-bindings-instruction@1"} else "semantic")
+                          and metadata_receipt["selected_mode"] in {"common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"} else "semantic")
         model_prompt, prompt_selection = select_model_prompt(
             native_complete_prompt=native_model_prompt,
             candidate_complete_prompt=model_prompt if encoded is not None else None,
@@ -1476,7 +1485,7 @@ def main():
     parser.add_argument("--source-view-descriptor-sha256")
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
-    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
+    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"])
     from .tool_output_policy import POLICIES as TOOL_OUTPUT_POLICIES
     parser.add_argument("--tool-output-policy", default="legacy", choices=TOOL_OUTPUT_POLICIES)
     from .source_view_policy import POLICIES as SOURCE_VIEW_POLICIES

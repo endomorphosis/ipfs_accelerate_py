@@ -331,7 +331,7 @@ def _token_selection_receipt(metadata: dict, item: dict) -> None:
     if "requested_mode" in metadata:
         base_fields.add("requested_mode")
     requested = metadata.get("requested_mode", "common-bindings@1")
-    if type(requested) is not str or requested not in {"common-bindings@1", "common-bindings-instruction@1"}:
+    if type(requested) is not str or requested not in {"common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}:
         raise ValueError("invalid requested metadata representation")
     if (set(metadata) != base_fields | token_fields
             or metadata["selection_basis"] != "token_counter"
@@ -545,14 +545,14 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                 or metadata.get("schema") not in {"supervisor-semantic-metadata-selection@1",
                                                    "supervisor-semantic-metadata-selection@2"}
                 or type(metadata.get("selected_mode")) is not str
-                or metadata.get("selected_mode") not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}
+                or metadata.get("selected_mode") not in {"legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}
                 or metadata.get("candidate_only") is not True
                 or any(metadata.get(key) is not False for key in (
                     "source_freshness_verified", "program_semantics_proved", "omission_authority",
                     "proof_authority", "execution_authority", "completion_authority", "publication_authority"))):
             raise ValueError("metadata coding view requires a verified original semantic transport")
         requested = metadata.get("requested_mode", "common-bindings@1")
-        if (type(requested) is not str or requested not in {"common-bindings@1", "common-bindings-instruction@1"}
+        if (type(requested) is not str or requested not in {"common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}
                 or metadata["selected_mode"] not in {"legacy", requested}
                 or (requested == "common-bindings-instruction@1" and instruction is None)):
             raise ValueError("metadata selection differs from requested representation")
@@ -782,6 +782,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             project_semantic_metadata_view, select_semantic_metadata_view,
         )
         selection_options = {}
+        selector_route_options = {}
         selector = select_semantic_metadata_view
         requested = metadata.get("requested_mode", "common-bindings@1")
         if requested == "common-bindings-instruction@1":
@@ -794,6 +795,13 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
                 instruction_block=block, instruction_receipt=observed_instruction)
             selector = select_instruction_view
             selection_options["instruction_block"] = block
+        elif requested == "capsule-columns@1":
+            from ipfs_accelerate_py.agent_supervisor.runtime.semantic_capsule_columns import (
+                project_capsule_columns, select_capsule_columns,
+            )
+            view = project_capsule_columns(encoded.provider_prompt)
+            selector = select_capsule_columns
+            selector_route_options = {"provider": receipt.get("provider"), "model": receipt.get("model")}
         else:
             view = project_semantic_metadata_view(encoded.provider_prompt)
         if not router_prompt.startswith(encoded.provider_prompt):
@@ -832,7 +840,8 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
                     and token_counter.model == receipt["model"])
                 if caller_matches:
                     selection = selector(view=view, native_complete_prompt=native,
-                        candidate_complete_prompt=candidate, token_counter=token_counter, **selection_options)
+                        candidate_complete_prompt=candidate, token_counter=token_counter,
+                        **selection_options, **selector_route_options)
                     matched = _same_json(metadata, selection.receipt)
                     checks["semantic_metadata_selection_receipt"] = matched
                     checks["semantic_metadata_token_counter_verified"] = (
@@ -840,7 +849,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             model = chosen
         else:
             selection = selector(view=view, native_complete_prompt=model,
-                candidate_complete_prompt=candidate, **selection_options)
+                candidate_complete_prompt=candidate, **selection_options, **selector_route_options)
             checks["semantic_metadata_selection_receipt"] = _same_json(metadata, selection.receipt)
             model = selection.selected_prompt
         if "representation_displacement" in receipt:

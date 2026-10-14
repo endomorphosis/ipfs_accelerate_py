@@ -297,12 +297,14 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
     if tool_output_policy != "legacy" and not provider_free_candidate and (semantic_repository is None
             or doctor is not None and doctor.get("route") != "model_router"):
         raise ValueError("tool output policy requires a semantic model-router coding route")
-    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (semantic_repository is None
             or semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA
             or doctor is not None and doctor.get("route") != "model_router" and not provider_free_candidate):
         raise ValueError("metadata view requires the original semantic model-router coding route")
+    if semantic_metadata_view == "capsule-columns@1" and provider_free_candidate:
+        raise ValueError("capsule columns require a signed semantic model-router coding route")
     if coding_reply_mode != DEFAULT_CODING_REPLY_MODE and (semantic_repository is None
             or doctor is not None and doctor.get("route") != "model_router" and not provider_free_candidate):
         raise ValueError("ordinary completion requires a semantic model-router coding route")

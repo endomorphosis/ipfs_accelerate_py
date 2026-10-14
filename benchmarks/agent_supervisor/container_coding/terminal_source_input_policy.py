@@ -38,6 +38,8 @@ def validate_source_input_policy(value: str, *, arm: str | None = None,
                                 semantic_metadata_view: str = "legacy") -> str:
     if type(value) is not str or value not in SOURCE_INPUT_POLICIES:
         raise ValueError("explicit supported source input policy required")
+    if semantic_metadata_view == "capsule-columns@1" and value != DEFAULT_SOURCE_INPUT_POLICY:
+        raise ValueError("capsule columns require unchanged inline source inputs")
     if value != DEFAULT_SOURCE_INPUT_POLICY:
         if arm is not None and arm != "full":
             raise ValueError("source input policy requires the full indexed arm")
