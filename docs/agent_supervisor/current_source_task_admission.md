@@ -188,13 +188,16 @@ The nomination's own historical/currentness flags are never promoted in place.
 The nomination ceiling is 64 files/1,000,000 original per-path bytes; the existing
 coding-child source broker independently caps its selected reader scope at 32.
 
-Full signed Terminal subset selection remains separate. Current preparation,
-vector qualification, semantic loaders, partitions, task-data deferral and rebind
-expect the complete signed profile/worker population. A later reviewed semantic
-scope must preserve those complete `input_paths` and explicitly include required
-supports. Embedding a postcommit inventory CID in its own indexed task profile
-would create a content cycle: keep the signed selection declarative and bind the
-profile hash, inventory and nomination identities in a later checked receipt.
+The opt-in [signed Terminal context selection](signed_terminal_source_scope.md)
+now uses `terminal-public-task-profile@4` for single Python-code tasks. Preparation,
+vector/semantic context, cold loading, admitted reuse and warm owner rebind consume
+its selected subset while retaining the complete signed `input_paths` and worker
+population. Three generated supports are mandatory and count toward the bounds.
+Data and multitask selection still need separate qualification. This declaration
+does not automatically join the native nomination reader or admit its coding
+child. Keep the selection declarative: embedding a postcommit inventory CID in
+its own indexed task profile creates a content cycle. A later independently
+checked join must bind inventory/nomination identities to the signed profile.
 
 An unselected frontier entry remains unreadable through this bound reader.
 The current owner profile is bind-once for one admitted attempt; discovery cannot

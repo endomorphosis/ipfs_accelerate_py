@@ -1,0 +1,25 @@
+{
+  "arm": "full",
+  "complete_single_trial_receipt": true,
+  "configuration_unchanged": true,
+  "execution_lock_sha256": "e515dd821ff4df9ff0e778f3ccd9941f89630952412d931d8bd3e252baf4dac7",
+  "exit_code": 0,
+  "host_source_unchanged": true,
+  "label": "comments-metadata",
+  "metadata_release_sha256": "ed430e96262f21f252e9f440ccfb6c91e202c5597c53b12c3f873eba336d14af",
+  "preparation_unchanged": true,
+  "receipt_sha256": "300d2c1b075b8c01429d547afd688875b4f1fe44da776318fa227fb79bab76b7",
+  "results": [
+    {
+      "exception_type": null,
+      "reward": {
+        "reward": 1.0
+      }
+    }
+  ],
+  "schema": "repeated-compact-live-launch-result@1",
+  "seconds": 1275.250869503012,
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_sha256": "300d2c1b075b8c01429d547afd688875b4f1fe44da776318fa227fb79bab76b7",
+  "trial_count": 1
+}

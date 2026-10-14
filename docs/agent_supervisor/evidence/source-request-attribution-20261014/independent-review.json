@@ -1,0 +1,30 @@
+{
+  "findings": [
+    "Request tags use a closed nine-tuple vocabulary and exclude path, literal edits, source, model and credential values.",
+    "Tags are derived only after native protocol validation and before peer/context admission; malformed frames stay unknown with no request hash.",
+    "Native admission and source effects remain in existing answer path; request attribution confers no authority.",
+    "Collector validates request-hash presence and successful page-kind consistency before stripping tags into existing bounded accounting.",
+    "The existing closed status/count/byte/session validators remain authoritative; aggregate vocabulary and request cardinality stay bounded.",
+    "Historical session schemas1-4 retain their prior accounting path and gain no fabricated operation attribution; mixed coverage is explicit.",
+    "New schema5 requires complete attribution and discovery fields.",
+    "Numerical broker hook is no-op by default; model-facing descriptor/request/response/guidance were not changed by this patch."
+  ],
+  "limitations": [
+    "This is an independent source review, not a new Docker or live provider qualification.",
+    "Schema5 attribution is not present in the three frozen live trials; their historical refused-operation types remain unknown.",
+    "Aggregate accepted_requests counts accepted socket frames, not admitted source operations."
+  ],
+  "new_tests_executed_by_reviewer": 0,
+  "observed_at_utc": "2026-10-14T00:36:24.622717+00:00",
+  "review_type": "read_only_source_and_authored_test_review",
+  "schema": "source-request-attribution-independent-review@1",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "e78c18422e06f1417cb7e5c19ba7df0de7bea2d5b35606aa4cdb8220d499d99e",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_request_observation.py": "bfde491b172d2c8a54231f916a816cd99132dbbd80d602832f6bb383a81e6f51",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "3909c94a0e79540cc8a401eed4935dcccaaf037766b913d6e60812d296153a87",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "ebd1c861469bac02360bfa31b2cb2b1c3592ef9a50e445f043afb9518f5d4808",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py": "fe97b2b2b89c9095a4e9ef61fc89e32e24560b9f07108fed478d8e2ecb21abe6",
+    "test/api/test_worker_source_request_observation.py": "7737a3d091dd867b0c1ddfba5662708a3e6e9175b8e96724576ab917f1f2fcae"
+  },
+  "status": "passed"
+}

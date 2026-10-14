@@ -1,0 +1,685 @@
+{
+  "bundle_files": {
+    "README.md": {
+      "bytes": 3351,
+      "sha256": "57b947e575604d2850b17f0634ad8fa8e9808f1883cebd1e8935d65e3a3c6a40"
+    },
+    "copy-list.json": {
+      "bytes": 8849,
+      "sha256": "d77f1f8d784fc1289a922d70f68786eea6bcea6917372c5d9f75f2340f0ebd76"
+    },
+    "curate_evidence.py": {
+      "bytes": 10752,
+      "sha256": "a478b79504d509f56c2b102be5c7f72bf4ddb2dcd3ea13729ce81e2fd95886bd"
+    },
+    "docker/command.json": {
+      "bytes": 7505,
+      "sha256": "fae02e7e51e595edb7c14ba847b43440e7154f5292185c05454af09443619e5c"
+    },
+    "docker/container-controls.json": {
+      "bytes": 1567,
+      "sha256": "4063ec00d7150a46b06035ecd85ccc338ce9e4bc92aac42af5b5728824c70dc7"
+    },
+    "docker/owner_probe.py": {
+      "bytes": 8639,
+      "sha256": "b538543025f7a371f0d654ad4ddf057a1fcd54b3d537596eb8b38aa73c795b0d"
+    },
+    "docker/probe-qualification.json": {
+      "bytes": 2032,
+      "sha256": "622612b80e9593e9e0985e5cec9d94a74007a881cb25e0a1baf8201cd0b57ee7"
+    },
+    "docker/qualification.json": {
+      "bytes": 3552,
+      "sha256": "dfa5200078119733f3b857465b2478fcbdccac28f10de9143cc090e697e19975"
+    },
+    "docker/release.json": {
+      "bytes": 4856,
+      "sha256": "615caf0142a93e1effa6eb3df278baa8b5705c63ba2eab01c4d930bd8be7b53d"
+    },
+    "docker/run_docker_qualification.py": {
+      "bytes": 11687,
+      "sha256": "87a663d9ccb9d528920e3bc059405897ea998329d7fa4f795860656b77e0d4b3"
+    },
+    "docker/session-observation.json": {
+      "bytes": 2808,
+      "sha256": "cccc624a569832a7ca4de6349545f233d570ccc1b2e4b105415e7195d67d3a24"
+    },
+    "docker/worker_probe.py": {
+      "bytes": 6538,
+      "sha256": "881976eb301f8e5a2143a00853103fbd8768925a68d47a507b54b7327550454b"
+    },
+    "historical/check_legacy_outer_edit.py": {
+      "bytes": 3410,
+      "sha256": "af9f988bbc30253d22341e50bd3b21b3805e566d097eb62165cced2b6f05641c"
+    },
+    "historical/client-legacy-guidance-baseline.json": {
+      "bytes": 519,
+      "sha256": "2e05da134ca6252c030a4244a30e2df9afd805688e0000fe6e37c76e107bfd4e"
+    },
+    "historical/legacy-outer-wire-replay.json": {
+      "bytes": 14980,
+      "sha256": "c2585557ad6067ea264f581c6e0b6efc03fe550d23f72d2ecf07fd1fe86508cb"
+    },
+    "qualification.json": {
+      "bytes": 1601,
+      "sha256": "f0c76ff36e6d880fe457f686b472da06d8991c98ad5ad57f4c89fd853727ca48"
+    },
+    "qualifications/client.json": {
+      "bytes": 16604,
+      "sha256": "e715ec8aefc8e5033ee29e5bef85d01e7eb656bdd5d1367da00ff9d667939d47"
+    },
+    "qualifications/core.json": {
+      "bytes": 702,
+      "sha256": "c390f777686aca2dde3ac61201c4ca2e904dc8d282954e493af6bf00a92db3ed"
+    },
+    "qualifications/outer.json": {
+      "bytes": 29457,
+      "sha256": "1c84e3fdb9f0adee05df8f9fb4234506da467a7fbbdefb86a756bbed7a108f2f"
+    },
+    "retained-failures.json": {
+      "bytes": 6105,
+      "sha256": "86f5b19f3ee729f73c20ade92edab4501e4d621815ba944541db6671315d0e3a"
+    },
+    "reviews/delivery-fence-independent-review.json": {
+      "bytes": 2586,
+      "sha256": "d6441323203a9956727e28218b52d7b863a8f6326d228d1bc63f92603689b98f"
+    },
+    "reviews/docker-byte-accounting-review.json": {
+      "bytes": 3501,
+      "sha256": "49ff41aa3f66848dab44edc0ddb7895d7aec165f1181ad54621d689666acb279"
+    },
+    "reviews/history/core-independent-review.json": {
+      "bytes": 1537,
+      "sha256": "ebab9a017abc20fbe5322be0e64e88ae2cb21c3348ef59daaa66db5d8ce28485"
+    },
+    "reviews/history/integration-review-01.json": {
+      "bytes": 5208,
+      "sha256": "952b1838b640f7067106305478bebd31c461bce01a8a2494a2fc75ce7741aadc"
+    },
+    "reviews/integration-review.json": {
+      "bytes": 2828,
+      "sha256": "0e6e0392d52dae5364510a7d4dc64081e67ba6c315c0e6684ed6148e8ede408c"
+    },
+    "reviews/review_docker_byte_accounting.py": {
+      "bytes": 10049,
+      "sha256": "333e35a57add5c4b75a8053e2b6e2db1c1c5cf5bd386e1628a6c67378c24378a"
+    },
+    "source-bindings.json": {
+      "bytes": 3368,
+      "sha256": "e47878440336a3068c65057be6695b6969ece5dc92434600574eab1cda6d25a6"
+    },
+    "test-ledger.json": {
+      "bytes": 118163,
+      "sha256": "3c0260bd642d5379b484506b8e36b293ba9c1fd19b68734c7c1fe64ddb0dfee5"
+    },
+    "tests/client/command.json": {
+      "bytes": 1798,
+      "sha256": "d6515747deafede4d17b94b24ec3447c391ded5af49cb2591c025be661a5b7d5"
+    },
+    "tests/client/junit.xml": {
+      "bytes": 17935,
+      "sha256": "8fe7306d8532d20b8196d13d8cf182ab5b8a5395b70d252d5511d4d01c94b744"
+    },
+    "tests/client/result.json": {
+      "bytes": 937,
+      "sha256": "aeaf83d3d9a9b20a69a308e44e100b544aeff0508ee8ef2f9524808f98462ee5"
+    },
+    "tests/core/command.json": {
+      "bytes": 303,
+      "sha256": "5ffff5b450d8de2a266c4d57ff381c8ade953b5b7de76768f0155819b7e5f279"
+    },
+    "tests/core/exit.json": {
+      "bytes": 135,
+      "sha256": "e2d28bcdf9b2a80b174a56bf763a6dc5952dfa7b20e60556ea43d08889d037ad"
+    },
+    "tests/core/junit.xml": {
+      "bytes": 27100,
+      "sha256": "1e072a0c10588202841a6ddf814040091163aa049e5fde16ced2b79280b970b9"
+    },
+    "tests/core/source-after.json": {
+      "bytes": 2226,
+      "sha256": "f896f8d9d4f3a4d485e4419bc11a084f4fdf93b094ef12609005dcbb5540c296"
+    },
+    "tests/core/source-before.json": {
+      "bytes": 2226,
+      "sha256": "f896f8d9d4f3a4d485e4419bc11a084f4fdf93b094ef12609005dcbb5540c296"
+    },
+    "tests/environment.json": {
+      "bytes": 1431,
+      "sha256": "3c1f931c69002911373000e7d84589bc5aff94fe34dc3aaff4615fecd9d0398d"
+    },
+    "tests/outer/command.json": {
+      "bytes": 2116,
+      "sha256": "55b2464d2e16c5a58a0007047474d181f53a9bbbaafae36e2e215ebc550e7c57"
+    },
+    "tests/outer/junit.xml": {
+      "bytes": 31664,
+      "sha256": "45d4e021aa53c316503e5722b4fe7a8f6858ce423be563566f40908b8520af91"
+    },
+    "tests/outer/result.json": {
+      "bytes": 412,
+      "sha256": "6aff7d38b488729343be9047a964a3fd0113805c76efcd9c754a92f99cb81893"
+    },
+    "tests/qualify.py": {
+      "bytes": 1886,
+      "sha256": "18736ca60b4320fb50cce37a56e14423b61e363cd21c8fda86499f64aa658f20"
+    },
+    "tests/root/command.json": {
+      "bytes": 935,
+      "sha256": "0fac467e524a42773926f88bee4f89f33e19041ef05cd656cbcf1c06b918139b"
+    },
+    "tests/root/exit.json": {
+      "bytes": 134,
+      "sha256": "bf131e51b7ae8cb935eef75c16087cea0441ea19a33966ab58d52ae61adfc76b"
+    },
+    "tests/root/junit.xml": {
+      "bytes": 64987,
+      "sha256": "bde0216a0613dbcbadfe0fe1d7bcb29622e34a6b3521af393e3f9f399343b465"
+    },
+    "tests/root/source-after.json": {
+      "bytes": 3201,
+      "sha256": "da859b58bf106c5941772e9efce4f45189a60a97029d42eff828f3caa501a4ff"
+    },
+    "tests/root/source-before.json": {
+      "bytes": 3201,
+      "sha256": "da859b58bf106c5941772e9efce4f45189a60a97029d42eff828f3caa501a4ff"
+    }
+  },
+  "check_count": 180,
+  "checks": [
+    "all23qualified_source_hashes_match_current",
+    "root_exact_count_and_all_pass",
+    "root_ledger_exact",
+    "root_no_overlap",
+    "root_no_raw_junit_text",
+    "outer_exact_count_and_all_pass",
+    "outer_ledger_exact",
+    "outer_no_overlap",
+    "outer_no_raw_junit_text",
+    "client_exact_count_and_all_pass",
+    "client_ledger_exact",
+    "client_no_overlap",
+    "client_no_raw_junit_text",
+    "core_exact_count_and_all_pass",
+    "core_ledger_exact",
+    "core_no_overlap",
+    "core_no_raw_junit_text",
+    "714distinct_and_no_skips",
+    "32historical_separate_bytecomparisons",
+    "copy_sha:tests/root/command.json",
+    "copy_sha:tests/root/exit.json",
+    "copy_sha:tests/root/junit.xml",
+    "copy_sha:tests/root/source-before.json",
+    "copy_sha:tests/root/source-after.json",
+    "copy_sha:tests/outer/command.json",
+    "copy_sha:tests/outer/result.json",
+    "copy_sha:tests/outer/junit.xml",
+    "copy_sha:tests/client/command.json",
+    "copy_sha:tests/client/result.json",
+    "copy_sha:tests/client/junit.xml",
+    "copy_sha:tests/core/command.json",
+    "copy_sha:tests/core/exit.json",
+    "copy_sha:tests/core/junit.xml",
+    "copy_sha:tests/core/source-before.json",
+    "copy_sha:tests/core/source-after.json",
+    "copy_sha:qualifications/client.json",
+    "copy_sha:qualifications/outer.json",
+    "copy_sha:historical/client-legacy-guidance-baseline.json",
+    "copy_sha:historical/legacy-outer-wire-replay.json",
+    "copy_sha:historical/check_legacy_outer_edit.py",
+    "copy_sha:reviews/history/integration-review-01.json",
+    "copy_sha:reviews/history/core-independent-review.json",
+    "copy_sha:reviews/delivery-fence-independent-review.json",
+    "copy_sha:reviews/docker-byte-accounting-review.json",
+    "copy_sha:reviews/review_docker_byte_accounting.py",
+    "copy_sha:docker/release.json",
+    "copy_sha:docker/run_docker_qualification.py",
+    "copy_sha:docker/owner_probe.py",
+    "copy_sha:docker/worker_probe.py",
+    "copy_sha:docker/qualification.json",
+    "copy_sha:docker/probe-qualification.json",
+    "copy_sha:docker/session-observation.json",
+    "copy_sha:docker/container-controls.json",
+    "copy_sha:docker/command.json",
+    "copy_sha:tests/environment.json",
+    "copy_sha:tests/qualify.py",
+    "copy_sha:reviews/integration-review.json",
+    "copy_sha:curate_evidence.py",
+    "docker_actual_uids_three_edits",
+    "docker_retained_inode_canonical_support_validation_cleanup",
+    "exact_cli_stdout_byte_accounting",
+    "response_only_framing_separate",
+    "offline_scope_no_provider_proof_start_reward",
+    "regular_public_file:README.md",
+    "regular_public_file:copy-list.json",
+    "regular_public_file:curate_evidence.py",
+    "regular_public_file:docker/command.json",
+    "regular_public_file:docker/container-controls.json",
+    "regular_public_file:docker/owner_probe.py",
+    "regular_public_file:docker/probe-qualification.json",
+    "regular_public_file:docker/qualification.json",
+    "regular_public_file:docker/release.json",
+    "regular_public_file:docker/run_docker_qualification.py",
+    "regular_public_file:docker/session-observation.json",
+    "regular_public_file:docker/worker_probe.py",
+    "regular_public_file:historical/check_legacy_outer_edit.py",
+    "regular_public_file:historical/client-legacy-guidance-baseline.json",
+    "regular_public_file:historical/legacy-outer-wire-replay.json",
+    "regular_public_file:qualification.json",
+    "regular_public_file:qualifications/client.json",
+    "regular_public_file:qualifications/core.json",
+    "regular_public_file:qualifications/outer.json",
+    "regular_public_file:retained-failures.json",
+    "regular_public_file:reviews/delivery-fence-independent-review.json",
+    "regular_public_file:reviews/docker-byte-accounting-review.json",
+    "regular_public_file:reviews/history/core-independent-review.json",
+    "regular_public_file:reviews/history/integration-review-01.json",
+    "regular_public_file:reviews/integration-review.json",
+    "regular_public_file:reviews/review_docker_byte_accounting.py",
+    "regular_public_file:source-bindings.json",
+    "regular_public_file:test-ledger.json",
+    "regular_public_file:tests/client/command.json",
+    "regular_public_file:tests/client/junit.xml",
+    "regular_public_file:tests/client/result.json",
+    "regular_public_file:tests/core/command.json",
+    "regular_public_file:tests/core/exit.json",
+    "regular_public_file:tests/core/junit.xml",
+    "regular_public_file:tests/core/source-after.json",
+    "regular_public_file:tests/core/source-before.json",
+    "regular_public_file:tests/environment.json",
+    "regular_public_file:tests/outer/command.json",
+    "regular_public_file:tests/outer/junit.xml",
+    "regular_public_file:tests/outer/result.json",
+    "regular_public_file:tests/qualify.py",
+    "regular_public_file:tests/root/command.json",
+    "regular_public_file:tests/root/exit.json",
+    "regular_public_file:tests/root/junit.xml",
+    "regular_public_file:tests/root/source-after.json",
+    "regular_public_file:tests/root/source-before.json",
+    "no_literal_secret_patterns",
+    "no_raw_payload_or_auth_objects",
+    "doc_link:docs/agent_supervisor/evidence/repeated-compact-edits-20261013/README.md:qualification.json",
+    "doc_link:docs/agent_supervisor/worker_source_views.md:worker_candidate_context.md",
+    "doc_link:docs/agent_supervisor/worker_source_views.md:reversible_source_views.md#share-an-explicit-policy-across-owner-apis",
+    "doc_link:docs/agent_supervisor/worker_source_views.md:evidence/source-view-discovery-transport-20261013/README.md",
+    "doc_link:docs/agent_supervisor/worker_source_views.md:evidence/repeated-compact-edits-20261013/README.md",
+    "doc_link:docs/agent_supervisor/worker_source_views.md:evidence/compact-worker-edits-20261013/qualification.json",
+    "doc_link:docs/agent_supervisor/worker_source_views.md:current_source_lookup.md",
+    "doc_link:docs/agent_supervisor/worker_source_views.md:evidence/source-view-worker-20261012/README.md",
+    "doc_link:docs/agent_supervisor/worker_source_views.md:evidence/working-source-refresh-20261012/README.md",
+    "doc_link:docs/agent_supervisor/worker_source_views.md:source_view_read_edit_pair.md",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:../../ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:../../ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:repository_source_inventory.md",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:worker_source_views.md",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:../../ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:evidence/shared-source-view-policy-20261013/README.md",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:evidence/source-view-discovery-transport-20261013/README.md",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:worker_source_views.md#freeze-a-shared-policy-in-a-benchmark-run",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:../../ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:../../ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:worker_source_views.md#edit-a-compact-span-through-the-coding-worker",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:current_source_lookup.md",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:worker_source_views.md",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:worker_candidate_context.md",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:evidence/reversible-source-views-20261012/README.md",
+    "doc_link:docs/agent_supervisor/reversible_source_views.md:evidence/compact-source-edit-20261012/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/context-reading-audit-20261013/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:source_view_read_edit_pair.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:context_projection_pair.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/compact-context-plan-20261012/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:repository_source_inventory.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:reversible_source_views.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:reversible_source_views.md#apply-through-the-existing-isolated-worktree-owner",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:worker_source_views.md#edit-a-compact-span-through-the-coding-worker",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:worker_source_views.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:current_source_lookup.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:worker_candidate_context.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:current_source_task_admission.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:current_source_worktree_allocation.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/reversible-source-views-20261012/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:worker_source_views.md#select-and-freeze-the-treatment",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:../../ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/shared-source-view-policy-20261013/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/source-view-discovery-transport-20261013/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:reversible_source_views.md#share-an-explicit-policy-across-owner-apis",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:worker_source_views.md#freeze-a-shared-policy-in-a-benchmark-run",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/benchmark-shared-source-policy-20261013/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:../../ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:../../ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:repository_source_scope.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:../../ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_candidate_runner.py",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:../../ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/reversible-codebase-views-20261012/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/terminal-reply-contract-pair-20261007/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/terminal-ranked-successor-20261012/README.md#current-measurements",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:../../ipfs_accelerate_py/agent_supervisor/planning/codebase_feature_context.py",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:../../benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:header_proof_inventory.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:representation_displacement.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:worker_source_views.md#read-working-files-after-edits",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:worker_candidate_context.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/compact-source-edit-20261012/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/candidate-context-selection-20261012/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/terminal-instruction-dedup-pair-20261012/README.md",
+    "doc_link:docs/agent_supervisor/reversible_codebase_views_plan.md:evidence/terminal-ranked-successor-20261012/archive-04/matched-comparison-recipes.json"
+  ],
+  "distinct_passed": 714,
+  "document_sha256": {
+    "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/README.md": "57b947e575604d2850b17f0634ad8fa8e9808f1883cebd1e8935d65e3a3c6a40",
+    "docs/agent_supervisor/reversible_codebase_views_plan.md": "551bd75eb492f6b7d06eb63ccddfe3a9263d29cc259c4b2dba0286f9eaa9cc5c",
+    "docs/agent_supervisor/reversible_source_views.md": "3b03192b392beea7685ff38472cd5df929baf51f0f15dfd8c0e4a9dd0efc01e4",
+    "docs/agent_supervisor/worker_source_views.md": "426fffd44005b94d3e7306e77a316753d0db9cca4770d7f1b8fe5514966e37be"
+  },
+  "historical_byte_cases_separate": 32,
+  "issues": [],
+  "privacy_scan": {
+    "payload_hits": [],
+    "private_artifact_directories": 0,
+    "secret_hits": [],
+    "symlinks": 0
+  },
+  "production_or_docs_edited_by_review": false,
+  "public_files": 46,
+  "public_total_bytes": 455381,
+  "qualified_source_bindings": 23,
+  "relative_links_checked": [
+    {
+      "document": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/README.md",
+      "target": "qualification.json"
+    },
+    {
+      "document": "docs/agent_supervisor/worker_source_views.md",
+      "target": "worker_candidate_context.md"
+    },
+    {
+      "document": "docs/agent_supervisor/worker_source_views.md",
+      "target": "reversible_source_views.md#share-an-explicit-policy-across-owner-apis"
+    },
+    {
+      "document": "docs/agent_supervisor/worker_source_views.md",
+      "target": "evidence/source-view-discovery-transport-20261013/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/worker_source_views.md",
+      "target": "evidence/repeated-compact-edits-20261013/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/worker_source_views.md",
+      "target": "evidence/compact-worker-edits-20261013/qualification.json"
+    },
+    {
+      "document": "docs/agent_supervisor/worker_source_views.md",
+      "target": "current_source_lookup.md"
+    },
+    {
+      "document": "docs/agent_supervisor/worker_source_views.md",
+      "target": "evidence/source-view-worker-20261012/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/worker_source_views.md",
+      "target": "evidence/working-source-refresh-20261012/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/worker_source_views.md",
+      "target": "source_view_read_edit_pair.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "repository_source_inventory.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "worker_source_views.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "evidence/shared-source-view-policy-20261013/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "evidence/source-view-discovery-transport-20261013/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "worker_source_views.md#freeze-a-shared-policy-in-a-benchmark-run"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "worker_source_views.md#edit-a-compact-span-through-the-coding-worker"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "current_source_lookup.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "worker_source_views.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "worker_candidate_context.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "evidence/reversible-source-views-20261012/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_source_views.md",
+      "target": "evidence/compact-source-edit-20261012/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/context-reading-audit-20261013/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "source_view_read_edit_pair.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "context_projection_pair.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/compact-context-plan-20261012/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "repository_source_inventory.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "reversible_source_views.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "reversible_source_views.md#apply-through-the-existing-isolated-worktree-owner"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "worker_source_views.md#edit-a-compact-span-through-the-coding-worker"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "worker_source_views.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "current_source_lookup.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "worker_candidate_context.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "current_source_task_admission.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "current_source_worktree_allocation.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/reversible-source-views-20261012/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "worker_source_views.md#select-and-freeze-the-treatment"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/shared-source-view-policy-20261013/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/source-view-discovery-transport-20261013/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "reversible_source_views.md#share-an-explicit-policy-across-owner-apis"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "worker_source_views.md#freeze-a-shared-policy-in-a-benchmark-run"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/benchmark-shared-source-policy-20261013/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "repository_source_scope.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_candidate_runner.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/reversible-codebase-views-20261012/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/terminal-reply-contract-pair-20261007/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/terminal-ranked-successor-20261012/README.md#current-measurements"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/planning/codebase_feature_context.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "../../benchmarks/agent_supervisor/container_coding/terminal_initial_context.py"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "header_proof_inventory.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "representation_displacement.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "worker_source_views.md#read-working-files-after-edits"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "worker_candidate_context.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/compact-source-edit-20261012/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/candidate-context-selection-20261012/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/terminal-instruction-dedup-pair-20261012/README.md"
+    },
+    {
+      "document": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "target": "evidence/terminal-ranked-successor-20261012/archive-04/matched-comparison-recipes.json"
+    }
+  ],
+  "schema": "repeated-compact-edit-final-evidence-review@1",
+  "scope_notes": [
+    "README and guides distinguish candidate-only structural/formal artifacts from accepted formal-index publication and proof discharge. Native candidate builder verifies numerical report source hashes; repeated socket tests assert each rebuilt summary population hash and cache invalidation.",
+    "All714 cases come from latest complete qualification of their respective final files; historical32 bytecomparisons are separate.",
+    "Successful owner send is not client acknowledgment; docs retain inspection/no-auto-retry after unknown client outcomes.",
+    "Docker evidence uses an authored provider hook and separate authored smoke; no full START, official reward, model generation or token-saving outcome is inferred.",
+    "Privacy review includes exact copied payloads and reproduction scripts. Script literals reference private artifact paths and credential variable names for denial checks, but no real private artifacts or credential values are present.",
+    "No manifest exists yet; source copy hashes verified. Parent will seal after review."
+  ],
+  "status": "passed",
+  "test_breakdown": {
+    "client": 116,
+    "core": 100,
+    "outer": 149,
+    "root": 349
+  },
+  "tests_rerun_by_review": false
+}

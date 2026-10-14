@@ -1,0 +1,26 @@
+{
+  "failed_attempt": "qualification-02",
+  "failed_outcome": {
+    "errors": 0,
+    "failures": 10,
+    "skipped": 0,
+    "tests": 511
+  },
+  "failed_outputs_or_snapshots_overwritten": false,
+  "files": [
+    {
+      "after_sha256": "b20196250a2e139513080305eedb2c9950c587ae8c7e5a90bf9054f6468d13b8",
+      "before_sha256": "756fe6bb90a21f0cf623fa01f276446404d5bec7c9b61c5e59eb5c02bf407201",
+      "new": "def invoke(worker, **options):\n    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (\n        DATABASE_PROGRAM_ENV_NAMES, STATE_CREDENTIAL_ENV_NAMES,\n    )\n    # The host fixture keeps its live owner; emulate only the deployed worker's\n    # credential scrub around this same-process authored provider invocation.\n    with pytest.MonkeyPatch.context() as isolated_worker:\n        for name in (*DATABASE_PROGRAM_ENV_NAMES, *STATE_CREDENTIAL_ENV_NAMES,\n                     \"IPFS_ACCELERATE_AGENT_STATE_OWNER_TOKEN\"):\n            isolated_worker.delenv(name, raising=False)\n        return runner.run(prompt=worker.prompt, provider=\"codex_cli\", model=\"pinned\", timeout=1,\n            max_output_tokens=128, semantic_repository=worker.case.root,\n            public_instruction_artifact=worker.request[\"artifact\"],\n            public_instruction_sha256=worker.request[\"expected_sha256\"],\n            public_instruction_task_cid=worker.task.task_cid, **options)\n",
+      "old": "def invoke(worker, **options):\n    return runner.run(prompt=worker.prompt, provider=\"codex_cli\", model=\"pinned\", timeout=1,\n        max_output_tokens=128, semantic_repository=worker.case.root,\n        public_instruction_artifact=worker.request[\"artifact\"],\n        public_instruction_sha256=worker.request[\"expected_sha256\"],\n        public_instruction_task_cid=worker.task.task_cid, **options)\n",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_signed_scope.py"
+    }
+  ],
+  "guard_bypassed": false,
+  "next_attempt": "qualification-03",
+  "production_sources_changed": false,
+  "qualification_runner_changed": false,
+  "reason": "Same-process integration fixture retained live owner environment credentials. Production router correctly refuses inherited databaseauthority; fixture now uses deployed worker credential names to scrub only invocation scope and restore owner environment afterward.",
+  "recorded_at_utc": "2026-10-13T23:55:40.216997+00:00",
+  "schema": "terminal-worker-signed-scope-fixture-correction@2"
+}

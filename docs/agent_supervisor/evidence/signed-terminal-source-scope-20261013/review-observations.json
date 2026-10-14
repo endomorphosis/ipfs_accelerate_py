@@ -1,0 +1,103 @@
+{
+  "authored_by": "root",
+  "documentation_review_corrections": [
+    "Bounded coverage projection omits full source metadata/frontier rows; complete signed task path declarations still appear in planning constraints and typed contract."
+  ],
+  "embeddings_modified": false,
+  "failed_execution_retained": "qualification-01",
+  "fixture_correction": "fixture-correction.json",
+  "foreign_worktrees_modified": false,
+  "full_execution_pending_when_review_record_written": true,
+  "model_assets_modified": false,
+  "prequalification_corrections": [
+    "Persist compiled context receipt explicitly before capsule-file audit; prompt compilation alone does not persist it.",
+    "Reject unsigned prepared-profile deletion whenever signed manifest contains PROFILE.",
+    "Replay complete signed scope after final empty-owner capture before initial publication/cold return.",
+    "Describe selected coverage in bounded planning summary without full source/frontier maps."
+  ],
+  "qualified_behavior_limits": [
+    "Complete signed inventory/currentness retained, including omitted originals; bounded selection is not lazy acquisition.",
+    "Compiled worker prompt and actual native owner capture are exercised; no launched provider coding child.",
+    "Historical selected lengths are retained metadata, not independently derived from signed SHA256; available raw lengths are checked and all-selected-lengths flag is false.",
+    "No automatic CAS nomination/native reader/allocation/child join, and broker remains independently limited to32 paths.",
+    "Data/multitask selected scopes and decoder/training population contracts are not enabled; complete Doctor repair abstains.",
+    "Checks are sequential currentness observations, not an atomic filesystem writer lease."
+  ],
+  "recorded_at_utc": "2026-10-13T22:45:54.280182+00:00",
+  "reviewed_sources": [
+    {
+      "bytes": 62203,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "6334608aabb7e9961091ec59f8c706e6df144cb2c75318189ce99aa868e4514a"
+    },
+    {
+      "bytes": 22574,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py",
+      "sha256": "ac67fd448856c82b6831ecb46975a212772e20043581704e77ba479a22b004b3"
+    },
+    {
+      "bytes": 75572,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "90ebc892f9c00aa6b79491bab2a50c0fd59121fb3ce0b29afef88dd58bc4ed38"
+    },
+    {
+      "bytes": 61872,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "1da16709509a29f95ec479fb1adb637513c053b8ac4167da7ed8d44d55480c39"
+    },
+    {
+      "bytes": 6125,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_program_population.py",
+      "sha256": "6bd7d4917539cfa48540ce40efdd4d4cc1df8d50c371eb88ae3679a1948ee1af"
+    },
+    {
+      "bytes": 850,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py",
+      "sha256": "18a7453846c451739c81971fb0eec2fd944fb9782b6de5d8631a76bd330c3441"
+    },
+    {
+      "bytes": 12423,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py",
+      "sha256": "bd6e03d2c6f21c167122a776f347733b502ffe24aa6e6e9b6ca460072795cf06"
+    },
+    {
+      "bytes": 15511,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py",
+      "sha256": "a6ab7203e283a6065087f1adf3fa967106166b40652704cbf693ece67aa9e543"
+    },
+    {
+      "bytes": 101476,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "225b2ae29438a9fa13b9578ff0e05b8e15ac473bb6a038ec7457f97b45af202d"
+    },
+    {
+      "bytes": 12111,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_semantic_scope.py",
+      "sha256": "d5ef1435776d8aee797d5399f462502c31f8ec57b1199c37d909fdf00dc65fcf"
+    },
+    {
+      "bytes": 26518,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+      "sha256": "8ffd274c62e66449c2864256879e478315252e379df724c05767961975fa17aa"
+    }
+  ],
+  "reviewer_authored_execution_receipt": false,
+  "reviewer_imports_or_tests_run": false,
+  "reviewers": [
+    {
+      "agent": "signed_profile_contract",
+      "scope": "strict flat v4 profile, compatibility exports, contract tests and read-only integration fixture review"
+    },
+    {
+      "agent": "signed_scope_architecture",
+      "remaining_material_blockers": [],
+      "scope": "pure historical observation, current signed replay, native-owner contract and final read-only integration review"
+    },
+    {
+      "agent": "scope_context_consumers",
+      "scope": "program partition, initial context/cold load, warm owner rebind; read-only docs and native measurement gap review"
+    }
+  ],
+  "schema": "signed-terminal-source-scope-review-observations@1",
+  "total_session_token_savings_established": false
+}

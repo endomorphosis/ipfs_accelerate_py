@@ -33,6 +33,7 @@ _DECLARATION_AUTHORITY = {
     IRFamily.INTENT: NormalizedResultAuthority.DESCRIPTIVE_INPUT,
     IRFamily.LEGAL: NormalizedResultAuthority.CONSTRAINT_INPUT,
     IRFamily.SECURITY: NormalizedResultAuthority.POLICY_INPUT,
+    IRFamily.UI: NormalizedResultAuthority.CONTEXT_ONLY,
 }
 
 

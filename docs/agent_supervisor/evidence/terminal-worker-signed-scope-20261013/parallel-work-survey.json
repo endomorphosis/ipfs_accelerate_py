@@ -1,0 +1,95 @@
+{
+  "accelerator_base": "f100a21ecb2edc7c827989bf0144478f3911d4d2",
+  "compact_branch_related_commits": [
+    "db4cac8f52",
+    "02de4f388a",
+    "b606929cdc0ba00902c027994795239a34e50433"
+  ],
+  "foreign_worktrees_modified": false,
+  "latest_planning_transport_incoming": [
+    {
+      "bytes": 2764,
+      "path": "docs/agent_supervisor/evidence/legal-plan-transport-20261013/qualification.json",
+      "sha256": "04321d128a9f40844471f571ec92baf1c68515ffc079011049a619a7f6adaa1d"
+    },
+    {
+      "bytes": 116093,
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "78ea93c0d204b9029b6397457b5f49f33ec1ccb60e42571e668fcb05ba3b407b"
+    },
+    {
+      "bytes": 45685,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py",
+      "sha256": "4d26183081e8ed0397da4c19f23e4905a29d2b58afc1e9b4445120071f661fb3"
+    },
+    {
+      "bytes": 559090,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "bf4e1c669260309d76aee11c7c99ab5310a66911654c34bef6f12d18c377e45e"
+    },
+    {
+      "bytes": 5151,
+      "path": "test/api/test_agent_supervisor_prompt_goal_codex_transport.py",
+      "sha256": "f0f8bc4b7e9123df7a0e335404b60ec1bcb8076139357b7d5dcbe192b4f6b3d1"
+    },
+    {
+      "bytes": 17751,
+      "path": "test/api/test_agent_supervisor_todo_llm.py",
+      "sha256": "8a4a435391966eb360925c747b12d0234fb4d7fcd82ac155983f54e6feaa8624"
+    },
+    {
+      "bytes": 14742,
+      "path": "test/api/test_codex_cli_output_schema.py",
+      "sha256": "28c1b9b9315e8827421545ebd18df31ab6fa50eb84f4054cd8ae9c444dec1463"
+    }
+  ],
+  "notes": [
+    "Published Codex formal-JSON planning transport preserved in execution base; its retained qualification is separate from this new execution.",
+    "Parallel compact-edit/usage-growth/declared-contract planning work is not duplicated or silently published. Its cross-UID authored Docker result does not qualify native Quack task/source custody.",
+    "Native owner/coordinator and managed daemon differ inprocess; actual task claim must come from authenticated existing attempt, not runlease.",
+    "Native allocation pins no-group-write controls while existing isolated OWNER_ENTRY makes candidate group-writable; deliberate handoff requires separate qualification.",
+    "Native broker32paths and semantic64files remain independent. Providerordinary filetools canread fullallocated checkout outside the selectedsource-view channel.",
+    "Existing repository policy module/schema collision remains separate explicit reconciliation work."
+  ],
+  "observed_at_utc": "2026-10-13T23:24:27.335067+00:00",
+  "other_agents_results_relabelled": false,
+  "parallel_worktrees": [
+    {
+      "branch": "codex/supervisor-token-growth-20261013",
+      "contained_in_accelerator_base": false,
+      "exact_matching_remote_ref_rows": [],
+      "head": "b606929cdc0ba00902c027994795239a34e50433",
+      "label": "compact_worker_edits",
+      "matching_ref_absence_is_not_all_ref_commit_absence": true,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "status_porcelain": " M benchmarks/agent_supervisor/container_coding/container_worker_deployment.py\n M benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py\n M benchmarks/agent_supervisor/container_coding/terminal_context_audit.py\n M benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py\n M benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py\n M benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py\n M ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py\n M ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py\n M ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py\n M ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py\n M ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py\n M ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py\n M test/api/test_worker_source_edit.py\n M test/api/test_worker_source_edit_broker.py\n M test/api/test_worker_source_edit_client.py\n M test/api/test_worker_source_working_client.py\n"
+    },
+    {
+      "branch": "codex/repository-planning-consumer-20261013",
+      "contained_in_accelerator_base": false,
+      "exact_matching_remote_ref_rows": [],
+      "head": "24bafa1179d4d754b58d7d77080d811424404cca",
+      "label": "repository_planning",
+      "matching_ref_absence_is_not_all_ref_commit_absence": true,
+      "path": "/home/barberb/lift_coding_worktrees/repository-planning-consumer-20261013",
+      "status_porcelain": ""
+    },
+    {
+      "branch": "codex/repository-context-compiler-20261013",
+      "contained_in_accelerator_base": false,
+      "exact_matching_remote_ref_rows": [],
+      "head": "ce2cd1026f21e52384ddf29c50c4a459baef927e",
+      "label": "repository_compiler",
+      "matching_ref_absence_is_not_all_ref_commit_absence": true,
+      "path": "/home/barberb/lift_coding_worktrees/repository-context-compiler-20261013",
+      "status_porcelain": ""
+    }
+  ],
+  "parent_base": "6ba624b9e1f40acdf11ed2cf69853d77bd66ede8",
+  "preserved_parent_gitlinks": [
+    "160000 commit fe8c314449b0da7fbcfa4b8a4341f9bc3b9f9d9f\texternal/ipfs_accelerate",
+    "160000 commit 59561dd2979e49fd26aa3fcfed6a5edbca1f718f\texternal/ipfs_datasets",
+    "160000 commit 8ac00bb1974b1378e12091d546d8425af34049e0\texternal/ipfs_kit"
+  ],
+  "schema": "terminal-worker-signed-scope-parallel-survey@1"
+}

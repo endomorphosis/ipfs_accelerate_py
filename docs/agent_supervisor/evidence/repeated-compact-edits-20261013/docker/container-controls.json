@@ -1,0 +1,54 @@
+{
+  "controls": {
+    "Memory": 12884901888,
+    "NanoCpus": 5000000000,
+    "NetworkMode": "none",
+    "PidsLimit": 128,
+    "Privileged": false,
+    "ReadonlyRootfs": false
+  },
+  "mounts": [
+    {
+      "Destination": "/opt/ipfs-supervisor/datasets",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/opt/ipfs-supervisor/kit",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/extensions",
+      "RW": false,
+      "Source": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/qualification/owner_probe.py",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/docker/owner_probe.py",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/qualification/worker_probe.py",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/docker/worker_probe.py",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/results",
+      "RW": true,
+      "Source": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/docker/run-01/results",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/opt/ipfs-supervisor/source",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "Type": "bind"
+    }
+  ]
+}

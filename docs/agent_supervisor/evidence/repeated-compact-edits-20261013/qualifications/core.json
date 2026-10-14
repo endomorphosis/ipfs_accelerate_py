@@ -1,0 +1,16 @@
+{
+  "complete": true,
+  "errors": 0,
+  "failed": 0,
+  "junit_sha256": "1e072a0c10588202841a6ddf814040091163aa049e5fde16ced2b79280b970b9",
+  "run": "service-final-tests-03",
+  "schema": "repeated-source-edit-final-core-qualification@1",
+  "scope": "Complete final current-file core suite; supersedes staged96+4 for final-file coverage, preserves historical runs.",
+  "skipped": 0,
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py": "bcff050716454c625de8b7486489a6e0a33f3daf4a8989ec01059242efea6c81",
+    "test/api/test_worker_source_edit.py": "cb69932e631c0f6f3069eb4e48e21766c69f1307278188fd7d590ce225510621"
+  },
+  "source_unchanged": true,
+  "tests": 100
+}

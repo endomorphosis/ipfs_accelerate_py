@@ -83,6 +83,37 @@ public descriptor or protected endpoint refuses reuse. This version supports
 one existing source binding per gateway lifetime; it does not discover another
 owner or silently rebind a task.
 
+## Nominated scope and managed allocation
+
+An owner can bind an exact historical nomination through the
+[managed allocation guard](current_source_worktree_allocation.md#bind-a-pinned-historical-nomination)
+before starting this broker. The allocation supplies its retained workspace;
+the task binder independently replays the caller's original CAS, complete
+inventory and pinned request, limits and selection. The resulting reader retains
+both live task and allocation markers, so this broker requires both exact
+handles. A serialized `allocation_cid` or scope observation supplies no grant.
+
+The allocation's nominated observer joins current task/lifecycle custody,
+source binding and selected frontier to the actual allocation. It checks complete
+allocated originals, including unselected source. This broker independently
+replays the same complete source inventory against the canonical and allocated
+checkouts before issuing its proxy grant and around reads. Allocation ownership
+alone does not attest canonical working-source bytes or the coding child's birth.
+
+Nomination accepts up to 64 selected files and 1,000,000 total original bytes,
+counted per selected path;
+selected required supports count toward both limits. This broker still accepts
+at most 32 selected paths within its descriptor bound. Oversized populations
+refuse without truncation or a new proxy grant; a valid larger nomination does
+not mean this channel can expose it. Unselected frontier entries remain outside
+the reader. The existing trusted launcher must still register its actual direct
+coding child and perform cleanup. No proof, execution, completion or omission
+authority follows from either detached observation.
+
+The [nominated allocation evidence](evidence/nominated-source-allocation-20261014/README.md)
+records this additional host join separately from the earlier channel exercise.
+It does not establish automatic Terminal worker adoption or a new token result.
+
 ## Public descriptor and shell usage
 
 Deployment installs a root-owned `0555` helper at

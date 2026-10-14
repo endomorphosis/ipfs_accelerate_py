@@ -1,0 +1,257 @@
+{
+  "base_revision": "2ceac1afc3d66b54204656ee8d7f758780231ff1",
+  "changed_path_count": 4,
+  "changed_paths_in_current_qualification_bindings": [],
+  "changes": [
+    {
+      "base_blob": {
+        "bytes": 4493,
+        "git_blob_oid": "9f4e2f978c8e07b0892e9a999854e604d6d97752",
+        "sha256": "f0b057b524d8b2c452b644f8b7583534ad2d1d21123a88b637c58ddd1ca15937"
+      },
+      "incoming_blob": {
+        "bytes": 5773,
+        "git_blob_oid": "c615fce38dbc1d4428d7c95d3267bec9846140c6",
+        "sha256": "f0550387f5a5150fdbe10691872cb6cc2ec59c177cceb3de96f6cd8ce516c45d"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/README.md",
+      "status": "M"
+    },
+    {
+      "base_blob": {
+        "bytes": 38681,
+        "git_blob_oid": "ed8bb5189f9afabb60e7e1ea2856d519b2705575",
+        "sha256": "792437b5cb1f4728bc517bd4dff47d78d991dacf563c49613979ea7fe6f28623"
+      },
+      "incoming_blob": {
+        "bytes": 43914,
+        "git_blob_oid": "8cdf4efc34135866efaf02a7ade71f4d388f47d1",
+        "sha256": "fd5c458a4170583dd2aca8584f12314e7a80bcf1c91fe240809bac31f1b326b3"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/ir_adapters.py",
+      "status": "M"
+    },
+    {
+      "base_blob": {
+        "bytes": 13803,
+        "git_blob_oid": "6128353a185392d5c2badd201bfe268d89a0d6c9",
+        "sha256": "cbeba349c2509bbeda4d61bee9a1dd904c8cc60217b17aa0333258585fb90cc9"
+      },
+      "incoming_blob": {
+        "bytes": 13860,
+        "git_blob_oid": "b622cf775a51ad1328a6a39ec7e8e43f5986d8d4",
+        "sha256": "82805759fb424308e426ed9c611552fd84941d0ea69ade5a0b8f0866e7885a6d"
+      },
+      "path": "test/api/test_agent_supervisor_ir_adapters.py",
+      "status": "M"
+    },
+    {
+      "base_blob": null,
+      "incoming_blob": {
+        "bytes": 18489,
+        "git_blob_oid": "c7e80a225e5d3c028552a6f732e7cf14dfcd75dc",
+        "sha256": "caffd9d58188439bedd5654c208c58a120f7bcd54566402d86974e6959c9ac98"
+      },
+      "path": "test/api/test_agent_supervisor_ir_native_layout_guard.py",
+      "status": "A"
+    }
+  ],
+  "checkpoints_embeddings_model_registrations_or_inventories_modified_by_incoming_diff": false,
+  "completion_authority": false,
+  "current_accelerator_binding_count": 164,
+  "current_owned_execution_head": "2ceac1afc3d66b54204656ee8d7f758780231ff1",
+  "current_qualification_binding_count": 215,
+  "diff_comparison": "exact net diff base revision to incoming revision; not foreign worktree state",
+  "docker_or_native_child_launched": false,
+  "execution_authority": false,
+  "fetches_or_ref_changes_performed": false,
+  "foreign_worktrees_modified": false,
+  "incoming_change_commit": "3d0d3753ed",
+  "incoming_changes_qualified_by_current_allocation_suites": false,
+  "incoming_revision": "04baaef0f89c2391ae3dfda2087fd67996a45e34",
+  "incoming_suites_executed_for_this_review": false,
+  "limitations": [
+    "Static source and Git-object review only; no incoming test pass or behavioral equivalence result is claimed.",
+    "Unchanged listed reader and launcher files do not establish a complete transitive import closure.",
+    "Incoming normalization behavior is separate from the tested allocation binder and its native claim/lifecycle boundary.",
+    "Later merged publication must distinguish its exact revision from the allocation qualification execution revision."
+  ],
+  "models_called": false,
+  "native_reader_task_allocation_and_terminal_paths_unchanged": [
+    {
+      "base_and_incoming_blob": {
+        "bytes": 23485,
+        "git_blob_oid": "60abed7e659269136a1bbaa62f87bb7d003b2de7",
+        "sha256": "bb9a242e92ec3057c927dec0be350dbe73eec2be1e7fd0c66234bb1d77fd19a7"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py"
+    },
+    {
+      "base_and_incoming_blob": {
+        "bytes": 25857,
+        "git_blob_oid": "5fd963f94a3273afffd5f24ac28c42f314efcef0",
+        "sha256": "eece603dcd9f72d28d9aa572934fd23785f87602ecb36d8c0c2e2d97e0712df5"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py"
+    },
+    {
+      "base_and_incoming_blob": {
+        "bytes": 31581,
+        "git_blob_oid": "a0bfbe776b0be69c9d1853addd75f0c8ed4ba808",
+        "sha256": "9689548701f833b3c7acd8b91a17cd21cfc114c4d0e3588efb191c2c1488893f"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py"
+    },
+    {
+      "base_and_incoming_blob": {
+        "bytes": 27415,
+        "git_blob_oid": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+        "sha256": "195c2c3d5c7173702ab2252b7cbf522fd51bff072e677759f99f7aa15c2e2373"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py"
+    },
+    {
+      "base_and_incoming_blob": {
+        "bytes": 18119,
+        "git_blob_oid": "99b656fad03c8fa817a06df3c5938ef83f935b69",
+        "sha256": "522f0c96d4b0542ee4f7d88ea2a78a635568c7dae503ecf701266bf1215a0e9f"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_scope.py"
+    },
+    {
+      "base_and_incoming_blob": {
+        "bytes": 12111,
+        "git_blob_oid": "ec4cf689cef0ab15a154f00a1194e27ca4dcb483",
+        "sha256": "d5ef1435776d8aee797d5399f462502c31f8ec57b1199c37d909fdf00dc65fcf"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_semantic_scope.py"
+    },
+    {
+      "base_and_incoming_blob": {
+        "bytes": 35515,
+        "git_blob_oid": "b95c1fabcfe6891b6d72710b24457ebe009e0afe",
+        "sha256": "c8ef9c0285e8dbaa99e0f3b6b0ac4b3131e4c10b0bea9d912632ca64062d28b2"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py"
+    },
+    {
+      "base_and_incoming_blob": {
+        "bytes": 70458,
+        "git_blob_oid": "d7977c6dd9a3865da0d80c093852d16245310fb4",
+        "sha256": "e710477b1beb3be347c878096013c56a4aba9db50d9e94368d5204d0a709d078"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+    },
+    {
+      "base_and_incoming_blob": {
+        "bytes": 82610,
+        "git_blob_oid": "d6d80ca09e6af693218905ea4bbbb018c126addf",
+        "sha256": "735ded8254f43aaf696a3273032b70654b87ecb4db3fddbee58e3be659955345"
+      },
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py"
+    },
+    {
+      "base_and_incoming_blob": {
+        "bytes": 7955,
+        "git_blob_oid": "76cc37414a975183212c552a6044a281cae90e93",
+        "sha256": "454a8b9d35add916655175d7ecdee640e9222c63bc4cb6e7e14c5e61f91a82c4"
+      },
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py"
+    }
+  ],
+  "new_test_function_inventory": [
+    {
+      "line": 97,
+      "name": "test_nonempty_native_collection_is_not_silently_discarded"
+    },
+    {
+      "line": 116,
+      "name": "test_genuinely_empty_shared_fixture_remains_valid"
+    },
+    {
+      "line": 125,
+      "name": "test_empty_native_collections_and_arbitrary_metadata_do_not_block_shared_envelopes"
+    },
+    {
+      "line": 156,
+      "name": "test_native_formalization_sections_fail_even_beside_supported_sections"
+    },
+    {
+      "line": 181,
+      "name": "test_native_prompt_intent_is_refused_without_inventing_execution_effects"
+    },
+    {
+      "line": 199,
+      "name": "test_native_security_policy_and_state_machine_cannot_be_mistaken_for_empty_policy"
+    },
+    {
+      "line": 234,
+      "name": "test_legacy_legal_semantics_are_not_lost"
+    },
+    {
+      "line": 250,
+      "name": "test_one_selected_alias_remains_supported"
+    },
+    {
+      "line": 270,
+      "name": "test_nonempty_shadowed_alias_is_refused_including_identical_records"
+    },
+    {
+      "line": 285,
+      "name": "test_first_empty_alias_cannot_hide_a_second_nonempty_alias"
+    },
+    {
+      "line": 295,
+      "name": "test_optional_native_input_retains_typed_refusal_without_claiming_completion"
+    },
+    {
+      "line": 305,
+      "name": "test_guard_is_family_specific_not_an_arbitrary_field_denylist"
+    },
+    {
+      "line": 326,
+      "name": "test_falsy_scalar_native_collection_cannot_masquerade_as_empty"
+    },
+    {
+      "line": 346,
+      "name": "test_falsy_scalar_nested_native_parent_cannot_masquerade_as_empty"
+    },
+    {
+      "line": 363,
+      "name": "test_falsy_scalar_nested_native_collection_cannot_masquerade_as_empty"
+    },
+    {
+      "line": 381,
+      "name": "test_falsy_scalar_shadowed_alias_cannot_be_discarded"
+    },
+    {
+      "line": 393,
+      "name": "test_actual_empty_native_fields_remain_ignorable"
+    },
+    {
+      "line": 405,
+      "name": "test_selected_malformed_alias_still_reaches_existing_section_validation"
+    }
+  ],
+  "new_test_inventory_is_static_not_collection_or_execution": true,
+  "observed_at_utc": "2026-10-14T03:45:20.537260+00:00",
+  "packaging_change_required_for_host_allocation_increment": false,
+  "packaging_reason": "No changed incoming path is a listed current worker capability, mapped-edit or declared-planning source owner; runtime Python packaging remains recursive. This is not full import-closure verification.",
+  "product_imports_performed": false,
+  "production_route_or_launcher_import_wiring_modified": false,
+  "proof_adapter_top_level_import_statements_unchanged": true,
+  "proof_authority": false,
+  "qualified_allocation_leaf_to_be_retained_separately": true,
+  "review_kind": "root-delegated read-only Git-object source review",
+  "reviewed_behavior": [
+    "Shared IR normalization refuses known populated family-native semantic fields it cannot translate.",
+    "Failure details retain sorted unconsumed field paths and preserve original verified artifact identity.",
+    "Shadowed populated or malformed falsy section aliases refuse rather than silently discarding their semantics.",
+    "Actual absence and empty collections remain ignorable; unknown producer metadata remains metadata.",
+    "New guard supplies no family-specific semantic mapping, independent review, native grant or proof.",
+    "Existing test fixture adds UI context-only authority expectation; new tests author shared registry envelopes rather than real producer export or owner admission."
+  ],
+  "schema": "nominated-source-allocation-incoming-native-normalization-review@1",
+  "tests_executed": false,
+  "training_performed": false
+}

@@ -9,6 +9,8 @@ import re
 SCHEMA = "terminal-public-task-profile@1"
 DATA_SCHEMA = "terminal-public-task-profile@2"
 MULTITASK_SCHEMA = "terminal-public-task-profile@3"
+SCOPED_SCHEMA = "terminal-public-task-profile@4"
+SEMANTIC_SCOPE_SCHEMA = "terminal-public-task-semantic-scope@1"
 MAX_TASKS = 16
 PROFILE = ".supervisor-task-profile.json"
 INSTRUCTION = ".supervisor-instruction.md"
@@ -193,6 +195,47 @@ def _identifier(value, noun: str) -> str:
 
 def validate_task_profile(profile: dict, *, instruction: str | None = None) -> dict:
     """Canonicalize a closed declaration without granting execution authority."""
+    if type(profile) is dict and profile.get("schema") == SCOPED_SCHEMA:
+        if set(profile) != {"schema", "instruction_sha256", "input_paths", "outputs", "semantic_scope"}:
+            raise ValueError("unsupported scoped public task profile")
+        base = _validate_single_task_profile(
+            {name: SCHEMA if name == "schema" else profile[name]
+             for name in ("schema", "instruction_sha256", "input_paths", "outputs")},
+            instruction=instruction,
+        )
+        scope = profile["semantic_scope"]
+        if (type(scope) is not dict or set(scope) != {
+                "schema", "input_paths", "required_input_paths", "program_paths"}
+                or scope.get("schema") != SEMANTIC_SCOPE_SCHEMA):
+            raise ValueError("closed public task semantic scope required")
+        checked = {"schema": SEMANTIC_SCOPE_SCHEMA}
+        for name in ("input_paths", "required_input_paths", "program_paths"):
+            paths = scope[name]
+            if (type(paths) is not list or len(paths) > 61
+                    or any(type(path) is not str for path in paths)):
+                raise ValueError("semantic scope requires at most 61 exact ordinary input paths")
+            paths = [_path(path) for path in paths]
+            if paths != sorted(set(paths)):
+                raise ValueError("semantic scope paths must be sorted and unique")
+            checked[name] = paths
+        selected = set(checked["input_paths"])
+        required = set(checked["required_input_paths"])
+        program = set(checked["program_paths"])
+        if (not selected or not program or not selected <= set(base["input_paths"])
+                or not required <= selected or not program <= selected
+                or any(not path.endswith(".py") for path in program)):
+            raise ValueError("semantic scope requires selected inputs and nonempty selected Python program paths")
+        if not selected - program <= required:
+            raise ValueError("selected nonprogram semantic inputs must be required raw inputs")
+        modified = {item["path"] for item in base["outputs"] if item["effect"] == "modify"}
+        if not modified <= selected & required:
+            raise ValueError("modified outputs must be selected required semantic inputs")
+        if not {path for path in modified if path.endswith(".py")} <= program:
+            raise ValueError("modified Python outputs must be semantic program inputs")
+        canonical = {**base, "schema": SCOPED_SCHEMA, "semantic_scope": checked}
+        if len(json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")) + 1 > 65536:
+            raise ValueError("public task profile exceeds its 65536-byte bound")
+        return canonical
     if type(profile) is not dict or profile.get("schema") != MULTITASK_SCHEMA:
         return _validate_single_task_profile(profile, instruction=instruction)
     if set(profile) != {"schema", "instruction_sha256", "input_paths", "outputs",
@@ -319,8 +362,26 @@ def task_profile_worker_inputs(profile: dict) -> list[str]:
     return [INSTRUCTION, SMOKE, PROFILE, *validate_task_profile(profile)["input_paths"]]
 
 
+def task_profile_semantic_inputs(profile: dict) -> list[str]:
+    """Select context inputs while preserving the complete signed inventory."""
+    profile = validate_task_profile(profile)
+    paths = (profile["semantic_scope"]["input_paths"] if profile["schema"] == SCOPED_SCHEMA
+             else profile["input_paths"])
+    return [INSTRUCTION, SMOKE, PROFILE, *paths]
+
+
+def task_profile_semantic_required_paths(profile: dict) -> list[str]:
+    """Include every generated support in the declared raw context scope."""
+    profile = validate_task_profile(profile)
+    paths = (profile["semantic_scope"]["required_input_paths"]
+             if profile["schema"] == SCOPED_SCHEMA else [])
+    return [INSTRUCTION, SMOKE, PROFILE, *paths]
+
+
 def task_profile_index_paths(profile: dict) -> list[str]:
     profile = validate_task_profile(profile)
+    if profile["schema"] == SCOPED_SCHEMA:
+        return list(profile["semantic_scope"]["program_paths"])
     data = {item["path"] for item in profile.get("data_inputs", [])}
     paths = [name for name in profile["input_paths"] if name not in data]
     if len(paths) > 64:
@@ -339,7 +400,7 @@ def task_profile_spec(profile: dict, *, policy_cid: str) -> dict:
                          "cwd": ".", "expected_exit_codes": [0], "policy_cid": policy_cid}],
         "acceptance": [{"criterion_key": "declared-output-structure",
             "criterion": ("Declared output files satisfy byte bounds and Python outputs parse; benchmark correctness remains unverified"
-                if profile["schema"] == SCHEMA else
+                if profile["schema"] in {SCHEMA, SCOPED_SCHEMA} else
                 "Declared outputs satisfy byte bounds and selected Python, JSON, JSONL, XML or calendar structural syntax; benchmark correctness remains unverified"),
             "evidence_cids": [], "validation_keys": ["public-structural-smoke"]}]}
 

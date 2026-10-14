@@ -32,7 +32,7 @@ _PREFIX = (
 _END = "\n--- END ORIGINAL PUBLIC TASK REQUIREMENTS ---\n"
 _BINDINGS = frozenset({"task_id", "task_cid", "context_cid", "manifest_cid", "artifact_sha256",
     "source_path", "source_sha256", "source_bytes", "block_sha256", "block_bytes"})
-_SCHEMAS = frozenset("supervisor-public-instruction-inclusion@" + str(i) for i in range(1, 5))
+_SCHEMAS = frozenset("supervisor-public-instruction-inclusion@" + str(i) for i in range(1, 6))
 
 SemanticInstructionViewError = metadata.SemanticMetadataViewError
 

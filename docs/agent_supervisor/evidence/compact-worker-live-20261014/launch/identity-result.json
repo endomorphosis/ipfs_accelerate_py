@@ -1,0 +1,23 @@
+{
+  "arm": "full",
+  "complete_single_trial_receipt": true,
+  "configuration_unchanged": true,
+  "exit_code": 0,
+  "host_source_unchanged": true,
+  "label": "identity",
+  "preparation_unchanged": true,
+  "receipt_sha256": "f5ea12674ed2083cc50797fabde98902d6b07ff95ab7f54c1aaab72ee0b8f135",
+  "results": [
+    {
+      "exception_type": null,
+      "reward": {
+        "reward": 1.0
+      }
+    }
+  ],
+  "schema": "repeated-compact-live-launch-result@1",
+  "seconds": 1163.8005888309563,
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_sha256": "f5ea12674ed2083cc50797fabde98902d6b07ff95ab7f54c1aaab72ee0b8f135",
+  "trial_count": 1
+}

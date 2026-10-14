@@ -1,0 +1,593 @@
+{
+  "aggregates": {
+    "comments": {
+      "absent_trial_attempts": 0,
+      "complete_native_usage_for_registered_attempts": false,
+      "failed_or_incomplete_invocations": 2,
+      "observed_router_sessions": 2,
+      "official_nonpasses": 0,
+      "official_passes": 1,
+      "registered_attempts": 1,
+      "retained_trials": 1,
+      "tokens": {
+        "cache_write_input_tokens": null,
+        "cached_input_tokens": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "unknown_rewards": 0
+    },
+    "identity": {
+      "absent_trial_attempts": 0,
+      "complete_native_usage_for_registered_attempts": false,
+      "failed_or_incomplete_invocations": 2,
+      "observed_router_sessions": 2,
+      "official_nonpasses": 0,
+      "official_passes": 1,
+      "registered_attempts": 1,
+      "retained_trials": 1,
+      "tokens": {
+        "cache_write_input_tokens": null,
+        "cached_input_tokens": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "unknown_rewards": 0
+    }
+  },
+  "all_receipt_controls_match_preparation": true,
+  "attempts": [
+    {
+      "comparison_control_integrity": true,
+      "configuration": {
+        "bytes": 3393,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-identity-02/config.json",
+        "sha256": "15dc5f7ca1dad49a67bdc856b3dd5fd54ac44d539f2956eea786d649f567b036"
+      },
+      "configuration_difference_paths": [],
+      "directory": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-identity-02",
+      "generic_control_comparison": {
+        "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+        "differences": [],
+        "matches": true,
+        "status": "matched"
+      },
+      "harbor_returncode": 0,
+      "invocation": {
+        "bytes": 272,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-identity-02/invocation.json",
+        "sha256": "9acf408e6fca4450a6318432b9698ae63cac785dc66e8fb094aebd9bb10cfc12"
+      },
+      "label": "identity",
+      "launch_exit_code": 0,
+      "launch_result": {
+        "bytes": 681,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-identity-02/launch-result.json",
+        "sha256": "7ccabed354d48b0596c1f77551e26efd882d9b94a516ff83f73602c78c0063d5"
+      },
+      "launch_seconds": 1163.8005888309563,
+      "launch_start": {
+        "bytes": 1056,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-identity-02/launch-start.json",
+        "sha256": "af1d14c61c2e9e858b47e76c1834c90194afb67137e75b71a267474330fe1e91"
+      },
+      "preparation": {
+        "bytes": 83288,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-identity-02/preparation.json",
+        "sha256": "a9d1c80d6992f3d1119877403fad48cdeee5fe657ae433df244900737ad386b8"
+      },
+      "receipt": {
+        "bytes": 277579,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-identity-02/receipt.json",
+        "sha256": "f5ea12674ed2083cc50797fabde98902d6b07ff95ab7f54c1aaab72ee0b8f135"
+      },
+      "status": "observed",
+      "trials": [
+        {
+          "durations_seconds": {
+            "agent_execution": 779.347821,
+            "agent_setup": 361.537198,
+            "environment_setup": 3.375082,
+            "verifier": 2.881835
+          },
+          "exception_type": null,
+          "native_result_sha256": "d4fd96ad48b089f0c157ddf8ef997fd837948e1729edfef8d2d9f2d39a1f7d00",
+          "native_task_completed": true,
+          "native_total_seconds": null,
+          "official_reward": 1.0,
+          "outcome": "official_verifier_passed",
+          "runtime_archive_sha256": "1fe8bfc4564a916174c4b9df42c7243d6b0e6fd8b1e71593a2385bf7fbe8d157",
+          "runtime_matches_preparation": true,
+          "source_use": {
+            "counts": {
+              "accepted_requests": 7,
+              "delivered_pages": 7,
+              "delivered_response_bytes": 19220,
+              "delivered_responses": 7,
+              "delivered_source_bytes": 4461,
+              "prepared_pages": 7,
+              "prepared_source_bytes": 4461,
+              "request_hash_count": 7,
+              "response_bytes": 19220,
+              "response_hash_count": 7,
+              "sessions": 1,
+              "unique_request_hash_count": 7,
+              "unique_response_hash_count": 7
+            },
+            "helper_confirmation_delivery_observed": true,
+            "helper_preparation_observed": true,
+            "ordinary_tool_usage": null,
+            "ordinary_tool_usage_reason": "Native ordinary shell/edit tool census is not retained by these metadata receipts.",
+            "owner_response_byte_scope": "Canonical JSON response bodies, excluding frame prefixes, CLI text, commands and conversation history.",
+            "profile": "identity@1",
+            "sessions": [
+              {
+                "audit_sha256": "5ddd23bb2e8d5792f60fbf424c8ea0373a72c5db36c32f41805e132fca2a0523",
+                "counts": {
+                  "accepted_requests": 7,
+                  "delivered_pages": 7,
+                  "delivered_response_bytes": 19220,
+                  "delivered_responses": 7,
+                  "delivered_source_bytes": 4461,
+                  "prepared_pages": 7,
+                  "prepared_source_bytes": 4461,
+                  "request_hash_count": 7,
+                  "response_bytes": 19220,
+                  "response_hash_count": 7
+                },
+                "descriptor_sha256": "ac6df68d4de7dbbf7fc48e3c8af6d5efd6a44f5446cf40225eb72a5ae813e336",
+                "invocation_id_sha256": "60b86ed6a002be041e2859b76f3c6f1e1ead1d1cd0bb90d0f24715e3928a348e",
+                "profile": "identity@1",
+                "source_edit_counts": {
+                  "delivered_confirmation_pages": 1,
+                  "delivered_mapping_pages": 1,
+                  "prepared_confirmation_pages": 1,
+                  "prepared_mapping_pages": 1
+                },
+                "source_edit_mode": "mapped-span@2",
+                "status_counts": {
+                  "ok": 7
+                }
+              }
+            ],
+            "source_byte_scope": "Source slices including repeated reads; does not distinguish compact from original expansion in retained aggregate counters.",
+            "source_edit_counts": {
+              "delivered_confirmation_pages": 1,
+              "delivered_mapping_pages": 1,
+              "prepared_confirmation_pages": 1,
+              "prepared_mapping_pages": 1
+            },
+            "source_edit_mode": "mapped-span@2",
+            "source_proof_or_final_task_acceptance_established": false,
+            "status": "observed",
+            "zero_helper_use_establishes_no_efficiency_advantage": false
+          },
+          "supervisor_error_type": null,
+          "supervisor_phases_seconds": {
+            "context_seconds": 5.146396553958766,
+            "doctor_seconds": 1.9143100730143487,
+            "initial_context_seconds": 16.53330885397736,
+            "planning_seconds": 149.7710339690093,
+            "post_publication_refresh_seconds": 17.392900189035572,
+            "prepare_seconds": 0.8317456960212439
+          },
+          "supervisor_seconds": 777.4530988590559,
+          "trial": "largest-eigenval__WS7vi7k",
+          "usage": {
+            "accounting_scope": "All retained unique supervisor invocation receipts; native internal turns and unreported auxiliary calls are not separate observations.",
+            "billing_total_verified": false,
+            "cache_categories_added_to_reported_total": false,
+            "failed_or_incomplete_invocation_count": 2,
+            "invocations": [
+              {
+                "cache_included_in_input": false,
+                "error_type": null,
+                "invocation_id": "5fcf7cf9b9b74cb7b07064c4aa57392b",
+                "model": "grok-4.7",
+                "model_prompt_bytes": 34233,
+                "model_prompt_sha256": "6d15744554124b2069af8f6064b8afab0215598cbe7c4f1031dd9919ef980352",
+                "native_accounting_coherent": true,
+                "native_usage_complete_observed": null,
+                "phase": "planning",
+                "provider": "grok_cli",
+                "purpose": "planning",
+                "reported_native_counts": {
+                  "cache_write_input_tokens": 0,
+                  "cached_input_tokens": 1536,
+                  "input_tokens": 15918,
+                  "output_tokens": 7020,
+                  "total_tokens": 24474
+                },
+                "seconds": 139.33540631900541,
+                "source_dispatch": null,
+                "status": "provider_returned",
+                "timeout_seconds": 600,
+                "token_count_scope": "native_final_envelope",
+                "tokens": {
+                  "cache_write_input_tokens": null,
+                  "cached_input_tokens": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "total_tokens": null
+                }
+              },
+              {
+                "cache_included_in_input": false,
+                "error_type": null,
+                "invocation_id": "58b4cd57abff48f2bad3827160949bd4",
+                "model": "grok-4.7",
+                "model_prompt_bytes": 78597,
+                "model_prompt_sha256": "f6683222d82f19ffd23e4129b7b350a5ab8d5e73d68a7a68dce302ce9ad74bd3",
+                "native_accounting_coherent": true,
+                "native_usage_complete_observed": null,
+                "phase": "coding",
+                "provider": "grok_cli",
+                "purpose": "coding",
+                "reported_native_counts": {
+                  "cache_write_input_tokens": 0,
+                  "cached_input_tokens": 1184000,
+                  "input_tokens": 71747,
+                  "output_tokens": 30543,
+                  "total_tokens": 1286290
+                },
+                "seconds": 532.4455287000164,
+                "source_dispatch": {
+                  "descriptor_sha256": "ac6df68d4de7dbbf7fc48e3c8af6d5efd6a44f5446cf40225eb72a5ae813e336",
+                  "guidance_bytes": 2220,
+                  "guidance_sha256": "ad9ba071f8bbfee481bd5d5b5bd065083b3e687c078c282ce063a612596e8234",
+                  "profile": "identity@1",
+                  "schema": "worker-source-dispatch-observation@3",
+                  "session_id_sha256": "f494a2ff5ca5d53876a00e99c0ec814d9a400bd2d074024386d19c8d02c8102d",
+                  "source_edit_mode": "mapped-span@2"
+                },
+                "status": "provider_returned",
+                "timeout_seconds": 1800,
+                "token_count_scope": "native_final_envelope",
+                "tokens": {
+                  "cache_write_input_tokens": null,
+                  "cached_input_tokens": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "total_tokens": null
+                }
+              }
+            ],
+            "native_usage_complete_observed": false,
+            "observed_router_sessions": 2,
+            "phase_tokens": {
+              "coding": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "total_tokens": null
+              },
+              "planning": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "total_tokens": null
+              }
+            },
+            "tokens": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "unreceipted_provider_attempt": false
+          }
+        }
+      ]
+    },
+    {
+      "comparison_control_integrity": true,
+      "configuration": {
+        "bytes": 3400,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02/config.json",
+        "sha256": "8c4f6a784dbf0b9fefa8fec3c0682af6f45bad240ff74f20f63824d8442cd52f"
+      },
+      "configuration_difference_paths": [
+        "/agents/0/kwargs/source_view_profile",
+        "/jobs_dir"
+      ],
+      "directory": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02",
+      "generic_control_comparison": {
+        "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+        "differences": [],
+        "matches": true,
+        "status": "matched"
+      },
+      "harbor_returncode": 0,
+      "invocation": {
+        "bytes": 272,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02/invocation.json",
+        "sha256": "150f8ba7fe2ddc6ce520ad13fbcdda686e91ea44ba222e36907bbf06a35b28a0"
+      },
+      "label": "comments",
+      "launch_exit_code": 0,
+      "launch_result": {
+        "bytes": 681,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02/launch-result.json",
+        "sha256": "01f4fe9c20a783c14a0967e259cc3d8912ac2b8defef12ce20a0d412ffa367c9"
+      },
+      "launch_seconds": 1026.3730046619894,
+      "launch_start": {
+        "bytes": 1056,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02/launch-start.json",
+        "sha256": "da01694f461ced8876c8b56059c38e2b7aa5471f70a267e1dad6b1d5c7c0bb64"
+      },
+      "preparation": {
+        "bytes": 83295,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02/preparation.json",
+        "sha256": "42844db121a819307c4f3894f345c04e245fe9fc012c7638eb51d2567f464a5d"
+      },
+      "receipt": {
+        "bytes": 277671,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02/receipt.json",
+        "sha256": "f0ef93544f3201fe045a339738be091da759fa158c563ac3867306b4f8f44d44"
+      },
+      "status": "observed",
+      "trials": [
+        {
+          "durations_seconds": {
+            "agent_execution": 772.502862,
+            "agent_setup": 230.464098,
+            "environment_setup": 3.162547,
+            "verifier": 2.192974
+          },
+          "exception_type": null,
+          "native_result_sha256": "0a1813c6376de3a24b5268284f6a06fa715f485bc639212544133d782a8e8ca7",
+          "native_task_completed": true,
+          "native_total_seconds": null,
+          "official_reward": 1.0,
+          "outcome": "official_verifier_passed",
+          "runtime_archive_sha256": "1fe8bfc4564a916174c4b9df42c7243d6b0e6fd8b1e71593a2385bf7fbe8d157",
+          "runtime_matches_preparation": true,
+          "source_use": {
+            "counts": {
+              "accepted_requests": 6,
+              "delivered_pages": 5,
+              "delivered_response_bytes": 15399,
+              "delivered_responses": 6,
+              "delivered_source_bytes": 4102,
+              "prepared_pages": 5,
+              "prepared_source_bytes": 4102,
+              "request_hash_count": 6,
+              "response_bytes": 15399,
+              "response_hash_count": 6,
+              "sessions": 1,
+              "unique_request_hash_count": 6,
+              "unique_response_hash_count": 6
+            },
+            "helper_confirmation_delivery_observed": false,
+            "helper_preparation_observed": false,
+            "ordinary_tool_usage": null,
+            "ordinary_tool_usage_reason": "Native ordinary shell/edit tool census is not retained by these metadata receipts.",
+            "owner_response_byte_scope": "Canonical JSON response bodies, excluding frame prefixes, CLI text, commands and conversation history.",
+            "profile": "python-comments@1",
+            "sessions": [
+              {
+                "audit_sha256": "be64995d5e6760489ed33a557b8418bef73577aefbff68c6e91f45b03c385074",
+                "counts": {
+                  "accepted_requests": 6,
+                  "delivered_pages": 5,
+                  "delivered_response_bytes": 15399,
+                  "delivered_responses": 6,
+                  "delivered_source_bytes": 4102,
+                  "prepared_pages": 5,
+                  "prepared_source_bytes": 4102,
+                  "request_hash_count": 6,
+                  "response_bytes": 15399,
+                  "response_hash_count": 6
+                },
+                "descriptor_sha256": "b315f846c91b6599902087b755601f35e1cdd15a953ac319b56058a4cfc7d996",
+                "invocation_id_sha256": "9d5105d83fb7f08934cd6157d9de2d7259ae8758982e416aee2dbc807db6bcfe",
+                "profile": "python-comments@1",
+                "source_edit_counts": {
+                  "delivered_confirmation_pages": 0,
+                  "delivered_mapping_pages": 0,
+                  "prepared_confirmation_pages": 0,
+                  "prepared_mapping_pages": 0
+                },
+                "source_edit_mode": "mapped-span@2",
+                "status_counts": {
+                  "ok": 5,
+                  "retrieval_refused": 1
+                }
+              }
+            ],
+            "source_byte_scope": "Source slices including repeated reads; does not distinguish compact from original expansion in retained aggregate counters.",
+            "source_edit_counts": {
+              "delivered_confirmation_pages": 0,
+              "delivered_mapping_pages": 0,
+              "prepared_confirmation_pages": 0,
+              "prepared_mapping_pages": 0
+            },
+            "source_edit_mode": "mapped-span@2",
+            "source_proof_or_final_task_acceptance_established": false,
+            "status": "observed",
+            "zero_helper_use_establishes_no_efficiency_advantage": true
+          },
+          "supervisor_error_type": null,
+          "supervisor_phases_seconds": {
+            "context_seconds": 4.908417935948819,
+            "doctor_seconds": 1.5649309169966727,
+            "initial_context_seconds": 16.009875047951937,
+            "planning_seconds": 96.32055785297416,
+            "post_publication_refresh_seconds": 15.092086757998914,
+            "prepare_seconds": 0.8455251839477569
+          },
+          "supervisor_seconds": 770.682156785042,
+          "trial": "largest-eigenval__gB4UUzB",
+          "usage": {
+            "accounting_scope": "All retained unique supervisor invocation receipts; native internal turns and unreported auxiliary calls are not separate observations.",
+            "billing_total_verified": false,
+            "cache_categories_added_to_reported_total": false,
+            "failed_or_incomplete_invocation_count": 2,
+            "invocations": [
+              {
+                "cache_included_in_input": false,
+                "error_type": null,
+                "invocation_id": "82e692db03804cdab9e48388a5a7f187",
+                "model": "grok-4.7",
+                "model_prompt_bytes": 34233,
+                "model_prompt_sha256": "f1e15e8d7473f95260538b6e04d9eeaa5ac301505aecec5f58d3efe31f5b6897",
+                "native_accounting_coherent": true,
+                "native_usage_complete_observed": null,
+                "phase": "planning",
+                "provider": "grok_cli",
+                "purpose": "planning",
+                "reported_native_counts": {
+                  "cache_write_input_tokens": 0,
+                  "cached_input_tokens": 1536,
+                  "input_tokens": 15837,
+                  "output_tokens": 6682,
+                  "total_tokens": 24055
+                },
+                "seconds": 86.61949360894505,
+                "source_dispatch": null,
+                "status": "provider_returned",
+                "timeout_seconds": 600,
+                "token_count_scope": "native_final_envelope",
+                "tokens": {
+                  "cache_write_input_tokens": null,
+                  "cached_input_tokens": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "total_tokens": null
+                }
+              },
+              {
+                "cache_included_in_input": false,
+                "error_type": null,
+                "invocation_id": "185a4d5aacf049d585361271328f4bff",
+                "model": "grok-4.7",
+                "model_prompt_bytes": 78499,
+                "model_prompt_sha256": "7157fc76009eef6e684507c16ed9df69474857632652ec2fd74c8a69c2bc972d",
+                "native_accounting_coherent": true,
+                "native_usage_complete_observed": null,
+                "phase": "coding",
+                "provider": "grok_cli",
+                "purpose": "coding",
+                "reported_native_counts": {
+                  "cache_write_input_tokens": 0,
+                  "cached_input_tokens": 1354880,
+                  "input_tokens": 207076,
+                  "output_tokens": 35650,
+                  "total_tokens": 1597606
+                },
+                "seconds": 585.4458677170333,
+                "source_dispatch": {
+                  "descriptor_sha256": "b315f846c91b6599902087b755601f35e1cdd15a953ac319b56058a4cfc7d996",
+                  "guidance_bytes": 2227,
+                  "guidance_sha256": "619f0d87972e0f737e729d0c9c041d55b120bc99708bca4f062fa4e5c4a45188",
+                  "profile": "python-comments@1",
+                  "schema": "worker-source-dispatch-observation@3",
+                  "session_id_sha256": "def3a1ff126c5348af4133cb74e4a0d23307ecbee4e9c1a1d922a7afae37ba3b",
+                  "source_edit_mode": "mapped-span@2"
+                },
+                "status": "provider_returned",
+                "timeout_seconds": 1800,
+                "token_count_scope": "native_final_envelope",
+                "tokens": {
+                  "cache_write_input_tokens": null,
+                  "cached_input_tokens": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "total_tokens": null
+                }
+              }
+            ],
+            "native_usage_complete_observed": false,
+            "observed_router_sessions": 2,
+            "phase_tokens": {
+              "coding": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "total_tokens": null
+              },
+              "planning": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "total_tokens": null
+              }
+            },
+            "tokens": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "unreceipted_provider_attempt": false
+          }
+        }
+      ]
+    }
+  ],
+  "billing_total_verified": false,
+  "causal_advantage_claimed": false,
+  "comments_minus_identity_tokens": {
+    "cache_write_input_tokens": null,
+    "cached_input_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "total_tokens": null
+  },
+  "configuration_comparison_scope": "Full/full, only identity@1 versus python-comments@1 source display; both mapped-span@2 and legacy coding reply.",
+  "configuration_preparation_failures": [
+    {
+      "binding": {
+        "bytes": 1590,
+        "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-preparation/identity-prepare-result.json",
+        "sha256": "a204548a3baa95051c55d86447cb84ba8a2cac193c6cf79657b5075de814b780"
+      },
+      "label": "identity",
+      "provider_profile": "grok-4.7-cli-1.0.46@1",
+      "reported_model_calls": 0,
+      "reported_provider_generation_calls": 0,
+      "returncode": 1,
+      "scope": "Retained configuration preparation failure; separate from executed native trials and token totals.",
+      "seconds": 0.14780051610432565
+    }
+  ],
+  "frozen_host_source_count": 327,
+  "frozen_host_source_pins_verified": true,
+  "generic_comparator_scope": "The existing comparator omits source_view_profile; its actual match result is retained alongside the full configuration difference audit.",
+  "hidden_verifier_or_solution_contents_read": false,
+  "implementation_sha256": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "fba2883f6139b7f6e781d3cbb3858e2d3ec2bf695d51f6e4a9fbac49e2c25d9c",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/benchmarks/agent_supervisor/container_coding/native_usage_accounting.py": "a21c831eed08c9c1692121f912000ebc03a7c7d04adf9a68fd0dcba0d61cc67e",
+    "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/collect_live_readout.py": "79c0edcc6eda284ac13f2f0eb3d3341a84125523d377530b4f4dbb5cabb19a10"
+  },
+  "limitations": [
+    "The separately audited external lock owns prelaunch custody; this reader validates its hash, not launch authenticity.",
+    "Totals cover all attempts explicitly registered here; no unregistered host run or unreported auxiliary provider usage is inferred.",
+    "Supervisor phase times overlap enclosing agent times and must not be added again.",
+    "Helper preparation/confirmation delivery is separate from source semantics, proof, final validation and official reward.",
+    "Zero mapped-helper requests is no evidence of an efficiency advantage; native ordinary tool use remains unknown.",
+    "No billing, causal advantage, source proof or total-token benefit is established by this readout."
+  ],
+  "pair_lock": {
+    "bytes": 79226,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/pair-lock.json",
+    "sha256": "295b12b3f4464bbab8422ce8fdfe0414949fd3295948a54426a95ce48e015fa5"
+  },
+  "provider_calls_by_collector": 0,
+  "raw_model_transcripts_read": false,
+  "registered_attempt_manifest": {
+    "bytes": 965,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-readout-input.json",
+    "sha256": "f6bf03459958ac508e32125504fae828cef32068ee9bd0b109670f4eeaf0950c"
+  },
+  "schema": "compact-source-live-readout@1"
+}

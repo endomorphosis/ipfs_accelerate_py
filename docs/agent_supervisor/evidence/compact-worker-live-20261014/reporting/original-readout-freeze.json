@@ -1,0 +1,42 @@
+{
+  "checks": {
+    "bytes": 2232,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-readout-checks-02.json",
+    "sha256": "c3279517ab8bde804e86b8b0000be3b7836d7ff18a63f9ca2d81fb2d94f72d9c"
+  },
+  "collector": {
+    "bytes": 30486,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/collect_live_readout.py",
+    "sha256": "79c0edcc6eda284ac13f2f0eb3d3341a84125523d377530b4f4dbb5cabb19a10"
+  },
+  "independent_review": {
+    "bytes": 5565,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-readout-independent-review-02.json",
+    "sha256": "5165a62cd877abd26ef72080485be44bf8467f25d6cc13631beaae72f3371da9"
+  },
+  "manifest": {
+    "bytes": 965,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-readout-input.json",
+    "sha256": "f6bf03459958ac508e32125504fae828cef32068ee9bd0b109670f4eeaf0950c"
+  },
+  "pair_lock": {
+    "bytes": 79226,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/pair-lock.json",
+    "sha256": "295b12b3f4464bbab8422ce8fdfe0414949fd3295948a54426a95ce48e015fa5"
+  },
+  "provider_calls": 0,
+  "readiness_review": {
+    "bytes": 3531,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/final-readiness-review.json",
+    "sha256": "804aee00fe44ad4826be3ca799a43c2a9adaab1422dda8e242d8f416703076a5"
+  },
+  "reason": "Native unreceipted-attempt mappings must suppress complete totals; old freeze remains historical only.",
+  "reporting_helper_execution_authority": false,
+  "schema": "compact-live-readout-freeze@1",
+  "superseded_accounting_authoritative": false,
+  "supersedes": {
+    "bytes": 1516,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-readout-freeze.json",
+    "sha256": "cf2c8a6659f128a68c293afb579a23cb77969cab84aeef02c7c294b56a670f34"
+  }
+}

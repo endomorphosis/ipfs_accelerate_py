@@ -1,0 +1,9 @@
+{
+  "exit_code": 0,
+  "seconds": 16.25507899594959,
+  "source_unchanged": true,
+  "source_after": {
+    "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "3828f1e7fad740459687ccf23f5c7c19fb7fe50a3a9b9241037724361c67d7b3",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py": "0c99edf9152679de6bdff551dd058f0ce8602d4445bc47d572a340995ac867f7"
+  }
+}

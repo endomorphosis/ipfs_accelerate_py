@@ -21,6 +21,9 @@ SCHEMA = "supervisor-public-instruction@1"
 INTENT_SCHEMA = "supervisor-public-instruction@2"
 INVENTORY_SCHEMA = "supervisor-public-instruction@3"
 SUCCESSOR_SCHEMA = "supervisor-public-instruction@4"
+SCOPED_SCHEMA = "supervisor-public-instruction@5"
+SCOPED_INCLUSION_SCHEMA = "supervisor-public-instruction-inclusion@5"
+SCOPE_INCLUSION_SCHEMA = "terminal-signed-semantic-worker-inclusion@1"
 DIRECTORY = ".runtime/router-public-instruction"
 MAX_BYTES = 1_000_000
 MAX_INVENTORY_BYTES = 8 * 1024 * 1024
@@ -32,6 +35,7 @@ FIELDS = frozenset({"schema", "repository", "task_cid", "task_id", "manifest", "
 INTENT_FIELDS = FIELDS | {"intent_plan_admission"}
 INVENTORY_FIELDS = FIELDS | {"inventory_plan_admission", "codebase_inventory_context"}
 SUCCESSOR_FIELDS = INVENTORY_FIELDS | {"codebase_successor_context"}
+SCOPED_FIELDS = FIELDS | {"terminal_task_profile"}
 
 
 def _sha(raw):
@@ -81,6 +85,139 @@ def _current_sources(root, sources):
             raise ValueError("public instruction source inventory is stale")
 
 
+def _scoped_declaration(payload, manifest):
+    """Replay the public declaration without opening private owner state."""
+    if payload["schema"] != SCOPED_SCHEMA:
+        return None
+    from .terminal_task_profile import (
+        INSTRUCTION, PROFILE, SMOKE, SCOPED_SCHEMA as PROFILE_SCHEMA,
+        task_profile_bytes, task_profile_smoke, task_profile_spec,
+        task_profile_worker_inputs, validate_task_profile,
+    )
+    declaration = payload["terminal_task_profile"]
+    checked = validate_task_profile(declaration)
+    local._validate_local_manifest_declarations(manifest)
+    if (checked["schema"] != PROFILE_SCHEMA or declaration != checked
+            or manifest["schema"] not in {local.MANIFEST_SCHEMA, local.PLANNER_MANIFEST_SCHEMA,
+                local.CREATE_MANIFEST_SCHEMA} or len(manifest["tasks"]) != 1
+            or payload["source_path"] != INSTRUCTION
+            or set(manifest["sources"]) != set(task_profile_worker_inputs(checked))
+            or manifest["sources"][PROFILE]["sha256"] != _sha(task_profile_bytes(checked))
+            or manifest["sources"][INSTRUCTION]["sha256"] != checked["instruction_sha256"]
+            or manifest["sources"][SMOKE]["sha256"] != _sha(task_profile_smoke(checked).encode())):
+        raise ValueError("scoped public instruction differs from its complete signed task declaration")
+    expected = task_profile_spec(checked, policy_cid=content_identity(local.LOCAL_POLICY))
+    actual = manifest["tasks"][0]
+    # Evidence is already signed with the complete task specification. Retain
+    # its exact declaration while independently replaying all effects/support.
+    expected["acceptance"][0]["evidence_cids"] = actual["acceptance"][0]["evidence_cids"]
+    if actual != expected or payload["task_id"] != expected["task_key"]:
+        raise ValueError("scoped public instruction differs from complete signed task effects")
+    return checked
+
+
+def _signed_terminal_profile(root, manifest, *, current):
+    """Detect scoped profiles from signed originals, including on downgrade."""
+    from .terminal_task_profile import PROFILE, SCOPED_SCHEMA as PROFILE_SCHEMA, task_profile_bytes, validate_task_profile
+    if PROFILE not in manifest["sources"]:
+        return None
+    raw = (_source(root, PROFILE)[0] if current else
+           _git(root, "show", manifest["baseline_commit"] + ":" + PROFILE))
+    if len(raw) > 65536 or _sha(raw) != manifest["sources"][PROFILE]["sha256"]:
+        raise ValueError("signed public task profile bytes differ")
+    declared = json.loads(raw, object_pairs_hook=_unique)
+    if type(declared) is not dict:
+        raise ValueError("signed public task profile requires a declaration")
+    if declared.get("schema") != PROFILE_SCHEMA:
+        return None
+    checked = validate_task_profile(declared)
+    if raw != task_profile_bytes(checked):
+        raise ValueError("canonical scoped public task profile required")
+    return checked
+
+
+def _scoped_semantic_inclusion(payload, manifest, *, root, workspace, prompt, current, declaration):
+    """Join the actual compiled worker evidence to signed bounded selection."""
+    from .terminal_task_profile import (PROFILE, task_profile_bytes, task_profile_index_paths,
+        task_profile_semantic_inputs, task_profile_semantic_required_paths)
+    from .terminal_semantic_scope import terminal_semantic_scope_observation
+    from .semantic_router_translation import _prompt_parts, _verified_semantic
+    from ...mcp_server.mcplusplus.kubo_cid import cid_for_bytes
+
+    wire, _, _, _, text, artifact = _prompt_parts(prompt)
+    semantic, _ = _verified_semantic(root, artifact=artifact, text=text,
+        task_id=payload["task_id"], current=current)
+    paths = sorted(task_profile_semantic_inputs(declaration))
+    required = sorted(task_profile_semantic_required_paths(declaration))
+    program = sorted(task_profile_index_paths(declaration))
+    if (wire["objective_id"] != payload["task_id"]
+            or semantic["schema"] != "supervisor-semantic-worker-context@2"
+            or set(semantic["manifest"]) != set(paths)
+            or semantic.get("required_raw_paths") != required
+            or semantic.get("program_paths") != program
+            or semantic.get("raw_sources", {}).get(PROFILE) != task_profile_bytes(declaration).decode()):
+        raise ValueError("compiled semantic worker scope differs from the signed declaration")
+    # Reproduce the complete baseline tree, including executable modes, from
+    # existing Git objects. Historical replay needs no surviving worker or
+    # private owner state; live replay also verifies both working checkouts.
+    tree = _git(root, "ls-tree", "-rz", "--full-tree", manifest["baseline_commit"])
+    entries = tree.split(b"\0")
+    if len(tree) > MAX_BYTES or len(entries) - 1 > local.source_inventory_limit(manifest):
+        raise ValueError("scoped source tree exceeds its complete inventory bound")
+    modes = {}
+    for entry in entries:
+        if not entry:
+            continue
+        header, name = entry.split(b"\t", 1)
+        mode, kind, _ = header.split(b" ")
+        name = name.decode("utf-8")
+        if mode not in {b"100644", b"100755"} or kind != b"blob" or name in modes:
+            raise ValueError("scoped inputs must be exact regular Git originals")
+        modes[name] = mode == b"100755"
+    if set(modes) != set(manifest["sources"]) or any(
+            modes[name] != row["executable"] for name, row in manifest["sources"].items()):
+        raise ValueError("scoped tree differs from complete signed input modes")
+    selected, total = {}, 0
+    for name in paths:
+        if current:
+            original, info = _source(workspace, name)
+            executable = bool(info.st_mode & 0o111)
+        else:
+            original = _git(root, "show", manifest["baseline_commit"] + ":" + name)
+            executable = modes[name]
+        total += len(original)
+        if total > 1_000_000:
+            raise ValueError("selected worker original bytes exceed signed scope bound")
+        original.decode("utf-8")
+        row = manifest["sources"][name]
+        source_cid = cid_for_bytes(original)
+        if (_sha(original) != row["sha256"] or executable != row["executable"]
+                or semantic["manifest"][name] != {"sha256": row["sha256"], "source_cid": source_cid}
+                or name in semantic["raw_sources"] and semantic["raw_sources"][name] != original.decode("utf-8")):
+            raise ValueError("compiled selected source differs from signed original bytes")
+        selected[name] = dict(sha256=row["sha256"], executable=executable,
+            source_cid=source_cid, source_bytes=len(original),
+            role="program" if name in program else "support", required=name in required)
+    observation = terminal_semantic_scope_observation(declaration, payload["manifest"], selected_sources=selected)
+    if current:
+        # Semantic producer verification runs before this closing full-source
+        # replay, so a changed omitted input cannot escape through selection.
+        for checkout in (root, workspace):
+            if _git(checkout, "rev-parse", "HEAD").decode().strip() != manifest["baseline_commit"]:
+                raise ValueError("scoped public instruction baseline changed during worker replay")
+            _current_sources(checkout, manifest["sources"])
+    return dict(schema=SCOPE_INCLUSION_SCHEMA,
+        **{key: observation[key] for key in (
+            "manifest_cid", "profile_sha256", "declaration_cid", "frontier_cid",
+            "selected_count", "full_count", "frontier_count", "selected_source_bytes",
+            "max_files", "max_source_bytes")},
+        scope_observation_cid=content_identity(observation), scope_cid=semantic["scope_cid"],
+        semantic_root_cid=semantic["semantic_root_cid"], semantic_payload_sha256=_sha(text.encode()),
+        required_count=len(required), program_count=len(program),
+        native_claim_verified=False, native_allocation_verified=False, process_identity_verified=False,
+        proof_authority=False, execution_authority=False, completion_authority=False, omission_authority=False)
+
+
 def _selection(payload):
     """Replay public signature and selection; the launch digest pins the owner."""
     verify_signature = local._verify_signature
@@ -113,6 +250,7 @@ def _selection(payload):
             or manifest["sources"].get(path, {}).get("sha256") != payload["source_sha256"]
             or type(payload["source_bytes"]) is not int or not 0 < payload["source_bytes"] <= MAX_INSTRUCTION_BYTES):
         raise ValueError("public instruction must be the exact declared read-only task input")
+    _scoped_declaration(payload, manifest)
     return manifest
 
 
@@ -186,6 +324,12 @@ def prepare_public_instruction_context(*, repository: Path, admission: dict, tas
         "owner_identity": profile.identity_did, "owner_profile_id": profile.profile_id,
         "source_path": source_path, "source_sha256": expected_source_sha256, "source_bytes": len(raw),
         "completion_authority": False, "publication_authority": False, "scope_expansion_authority": False}
+    terminal_profile = _signed_terminal_profile(root, manifest, current=True)
+    if terminal_profile is not None:
+        if manifest["schema"] not in {local.MANIFEST_SCHEMA, local.PLANNER_MANIFEST_SCHEMA,
+                local.CREATE_MANIFEST_SCHEMA}:
+            raise ValueError("selected Terminal worker context requires an ordinary singleton manifest")
+        payload.update(schema=SCOPED_SCHEMA, terminal_task_profile=terminal_profile)
     if manifest["schema"] == local.INTENT_MANIFEST_SCHEMA:
         payload.update(schema=INTENT_SCHEMA, intent_plan_admission={
             "graph": admission["graph"], "receipt": admission["receipt"],
@@ -269,10 +413,11 @@ def load_public_instruction(*, artifact: Path, expected_sha256: str, task_cid: s
     if len(raw) > MAX_SUCCESSOR_BYTES or _sha(raw) != expected_sha256 or stat.S_IMODE(info.st_mode) & 0o222:
         raise ValueError("public instruction artifact digest, size or immutability differs")
     payload = json.loads(raw, object_pairs_hook=_unique)
-    fields = (SUCCESSOR_FIELDS if isinstance(payload, dict) and payload.get("schema") == SUCCESSOR_SCHEMA else
+    fields = (SCOPED_FIELDS if isinstance(payload, dict) and payload.get("schema") == SCOPED_SCHEMA else
+        SUCCESSOR_FIELDS if isinstance(payload, dict) and payload.get("schema") == SUCCESSOR_SCHEMA else
         INVENTORY_FIELDS if isinstance(payload, dict) and payload.get("schema") == INVENTORY_SCHEMA
         else INTENT_FIELDS if isinstance(payload, dict) and payload.get("schema") == INTENT_SCHEMA else FIELDS)
-    if (not isinstance(payload, dict) or set(payload) != fields or payload["schema"] not in {SCHEMA, INTENT_SCHEMA, INVENTORY_SCHEMA, SUCCESSOR_SCHEMA}
+    if (not isinstance(payload, dict) or set(payload) != fields or payload["schema"] not in {SCHEMA, INTENT_SCHEMA, INVENTORY_SCHEMA, SUCCESSOR_SCHEMA, SCOPED_SCHEMA}
             or len(raw) > (MAX_SUCCESSOR_BYTES if payload["schema"] == SUCCESSOR_SCHEMA else
                           MAX_INVENTORY_BYTES if payload["schema"] == INVENTORY_SCHEMA else MAX_BYTES)
             or content_identity({k: v for k, v in payload.items() if k != "context_cid"}) != payload["context_cid"]
@@ -285,6 +430,8 @@ def load_public_instruction(*, artifact: Path, expected_sha256: str, task_cid: s
             or (repository is not None and Path(repository).absolute() != root)):
         raise ValueError("public instruction artifact belongs to another canonical repository")
     manifest = _selection(payload)
+    if payload["schema"] == SCOPED_SCHEMA and type(require_current_source) is not bool:
+        raise ValueError("selected Terminal replay requires an explicit current/historical mode")
     if len(prompt.encode()) > 256_000:
         raise ValueError("native prompt exceeds bound")
     wire, _ = json.JSONDecoder(object_pairs_hook=_unique).raw_decode(prompt.lstrip())
@@ -296,6 +443,11 @@ def load_public_instruction(*, artifact: Path, expected_sha256: str, task_cid: s
         raise ValueError("bounded signed source inventory required")
     if _git(root, "rev-parse", baseline + "^{commit}").decode().strip() != baseline:
         raise ValueError("public instruction baseline is unavailable")
+    terminal_profile = _signed_terminal_profile(root, manifest, current=require_current_source)
+    if (terminal_profile is not None) != (payload["schema"] == SCOPED_SCHEMA):
+        raise ValueError("signed selected Terminal profile requires its explicit public instruction version")
+    if terminal_profile is not None and terminal_profile != payload["terminal_task_profile"]:
+        raise ValueError("retained selected Terminal declaration differs from signed originals")
     if require_current_source:
         if workspace is None:
             raise ValueError("public instruction dispatch requires an allocated worktree")
@@ -327,6 +479,9 @@ def load_public_instruction(*, artifact: Path, expected_sha256: str, task_cid: s
     text = source.decode("utf-8")
     if not text.strip() or "\0" in text:
         raise ValueError("public instruction requires nonempty UTF-8 text")
+    scoped_inclusion = (_scoped_semantic_inclusion(payload, manifest, root=root, workspace=workspace,
+        prompt=prompt, current=require_current_source, declaration=terminal_profile)
+        if terminal_profile is not None else None)
     block = ("\n\nOriginal public task requirements (verbatim admitted source):\n"
         "These requirements supplement the native task objective. The independently admitted output scope, "
         "execution policy and validation contract remain authoritative. This text grants no additional "
@@ -394,4 +549,6 @@ def load_public_instruction(*, artifact: Path, expected_sha256: str, task_cid: s
                 "native_inventory_current_verified_here": False,
                 "native_successor_current_verified_here": False,
                 "authority": inventory_context["authority"]})
+    if scoped_inclusion is not None:
+        receipt.update(schema=SCOPED_INCLUSION_SCHEMA, terminal_semantic_scope=scoped_inclusion)
     return block, receipt

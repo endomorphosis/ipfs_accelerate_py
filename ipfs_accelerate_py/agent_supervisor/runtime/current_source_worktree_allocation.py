@@ -24,6 +24,7 @@ from .current_source_lookup import CurrentSourceLookup
 from .current_source_task_admission import NativeSourceTaskAdmission
 
 SCHEMA = "supervisor-native-source-worktree-allocation@1"
+NOMINATED_ALLOCATION_SCHEMA = "supervisor-native-nominated-source-worktree-allocation@1"
 _SEAL = object()
 _BOUND = 262_144
 
@@ -154,6 +155,8 @@ class NativeSourceWorktreeAllocation:
         self._fixed_files = self._lifecycle_bytes = self._renewal = self._material = None
         self._original_custody = None
         self._lookup = self._lookup_refs = self._lookup_bytes = None
+        self._nominated_source_scope = self._original_nominated_source_scope = None
+        self._nominated_scope_checking = False
         self._binding = self._checking = False
         self._lock = threading.RLock()
         self._original = (self, task_admission, self._server, self._source, self._bridge, self._store,
@@ -188,6 +191,8 @@ class NativeSourceWorktreeAllocation:
                   self._original_custody, (self._fixed_files, self._lifecycle_bytes, self._material))))
               and all(_directory(path) == identity for path, identity in self._directories),
               "native source allocation original objects or policy changed")
+        _need(self._nominated_source_scope is self._original_nominated_source_scope,
+              "native allocation original nomination join changed")
         self._task_admission._retained()
 
     def _observe(self):
@@ -325,6 +330,28 @@ class NativeSourceWorktreeAllocation:
 
     def bind_current_source_lookup(self, *, cas, expected_inventory_cid, request, limits,
                                    context_cid, allowed_paths, max_response_bytes=16384, max_slice_bytes=4096):
+        return self._bind_source_lookup(cas=cas, arguments=dict(
+            expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
+            context_cid=context_cid, allowed_paths=allowed_paths,
+            max_response_bytes=max_response_bytes, max_slice_bytes=max_slice_bytes))
+
+    def bind_nominated_current_source_lookup(self, *, scope, expected_scope_cid,
+                                             cas, expected_inventory_cid, request, limits,
+                                             context_cid, max_response_bytes=16384, max_slice_bytes=4096):
+        """Join the pinned historical nomination to this actual native allocation.
+
+        The task binder independently replays the complete retained inventory.
+        The allocation supplies its retained workspace; no caller path list,
+        serialized allocation observation, or inferred worker authority is used.
+        """
+        return self._bind_source_lookup(cas=cas, arguments=dict(
+            scope=scope, expected_scope_cid=expected_scope_cid,
+            expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
+            context_cid=context_cid, max_response_bytes=max_response_bytes,
+            max_slice_bytes=max_slice_bytes), nomination=(scope, expected_scope_cid))
+
+    def _bind_source_lookup(self, *, cas, arguments, nomination=None):
+        """Share whole-operation serialization and published-reader custody."""
         with self._lock:
             _need(not self._binding and self._lookup is None, "allocation source binding is already consumed")
             self._binding = True
@@ -336,27 +363,109 @@ class NativeSourceWorktreeAllocation:
                 # SERVER is released before any native claim fence is entered.
                 with self._task_admission._lock:
                     with self._server._lock:
-                        _need(self._task_admission._source is None
+                        _need(not self._task_admission._binding_in_progress
+                              and self._task_admission._source is None
                               and self._task_admission._gateway._current_source_lookup is None,
                               "allocation requires an unbound native source reader")
                     try:
-                        result = self._task_admission.bind_current_source_lookup(repository=self._workspace, cas=cas,
-                            expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
-                            context_cid=context_cid, allowed_paths=allowed_paths,
-                            max_response_bytes=max_response_bytes, max_slice_bytes=max_slice_bytes)
+                        binder = (self._task_admission.bind_current_source_lookup if nomination is None
+                                  else self._task_admission.bind_nominated_current_source_lookup)
+                        result = binder(repository=self._workspace, cas=cas, **arguments)
                     finally:
                         with self._server._lock:
                             service = self._task_admission._source
-                            if type(service) is CurrentSourceLookup and service._root == self._workspace:
+                            if (type(service) is CurrentSourceLookup and service._root == self._workspace
+                                    and self._task_admission._gateway._current_source_lookup is service):
                                 self._lookup, self._lookup_refs = service, (service, cas, service._root)
                                 self._lookup_bytes = self._task_admission._source_bytes
                                 service._native_source_worktree_allocation = self
+                                if nomination is not None:
+                                    # The task binder's finally has already retained
+                                    # its attempted join, including after publication
+                                    # failures. Never roll back or adopt another reader.
+                                    captured = (*nomination, self._task_admission._nominated_source_scope,
+                                                service, self._lookup_bytes, cas)
+                                    self._nominated_source_scope = self._original_nominated_source_scope = captured
                 self.require_current()
                 with self._server._lock:
                     self.require_source_binding(server=self._server, service=self._lookup)
                 return result
             finally:
                 self._binding = False
+
+    def _require_nominated_join(self):
+        """Check original objects only; do not enter a native claim fence."""
+        self._retained()
+        retained = self._nominated_source_scope
+        _need(type(retained) is tuple and len(retained) == 6
+              and retained is self._original_nominated_source_scope,
+              "native allocation reader has no retained nomination join")
+        scope, expected, task_join, source, binding_bytes, cas = retained
+        admission = self._task_admission
+        _need(type(task_join) is tuple and len(task_join) == 7
+              and task_join is admission._nominated_source_scope
+              and task_join is admission._original_nominated_source_scope
+              and task_join[0] is scope and task_join[2] == expected
+              and task_join[4] is source and task_join[5] == binding_bytes
+              and task_join[6] is cas
+              and source is self._lookup and source is admission._source
+              and type(source) is CurrentSourceLookup and source._store.cas is cas
+              and binding_bytes == self._lookup_bytes == admission._source_bytes,
+              "native allocation original nominated reader changed")
+        value = scope.observation()
+        _need(canonical_json_bytes(value) == task_join[1] and value["scope_cid"] == expected
+              and task_join[3] == tuple(row["raw_path_hex"] for row in value["selected"])
+              and source._paths == task_join[3],
+              "native allocation nomination or selected path scope changed")
+        return value
+
+    def require_nominated_source_scope(self):
+        """Observe the live nomination/allocation join; return no usable grant."""
+        with self._lock:
+            _need(not self._binding, "allocation nomination binding is still in progress")
+            _need(not self._nominated_scope_checking, "allocation nomination observation reentry refused")
+            self._nominated_scope_checking = True
+            try:
+                retained = self._nominated_source_scope
+                self._require_nominated_join()
+                allocation = self.require_current()
+                nominated = self._task_admission.require_nominated_source_scope()
+                closing = self.require_current()
+                _need(allocation == closing and self._nominated_source_scope is retained,
+                      "nominated allocation changed during native observation")
+                # Both observers above acquire COOR before SERVER. Everything
+                # below is a detached closing check under SERVER only, after
+                # their coordinator clocks and retained-CAS callbacks finish.
+                with self._server._lock:
+                    self._task_admission._native()
+                    self.require_source_binding(server=self._server, service=self._lookup)
+                    fixed, record, _identity, _binding = self._observe()
+                    stable = record.to_dict()
+                    renewal = tuple(stable.pop(key) for key in ("fence", "updated_at", "expires_at"))
+                    _need(fixed == self._fixed_files and _wire(stable) == self._lifecycle_bytes
+                          and all(a >= b for a, b in zip(renewal, self._renewal)),
+                          "allocation custody changed after nominated native fences")
+                    value = self._require_nominated_join()
+                    binding = self._lookup.binding(self._task_admission._gateway.identity)
+                    _need(all(nominated[key] == binding[key] == allocation[key] for key in
+                              ("task_cid", "task_revision", "expected_task_body_cid"))
+                          and nominated["source_scope_cid"] == value["scope_cid"]
+                          and nominated["frontier_cid"] == value["frontier_cid"]
+                          and nominated["source_inventory_cid"] == binding["source_inventory_cid"]
+                          and nominated["source_binding_cid"] == binding["binding_cid"]
+                          and nominated["context_cid"] == binding["context_cid"],
+                          "nomination, source binding and allocation identities differ")
+                    # Check the complete working population after the native
+                    # callbacks, including originals outside the selected set.
+                    self._lookup._check_source()
+                    self.require_source_binding(server=self._server, service=self._lookup)
+                    self._require_nominated_join()
+                    self._renewal = renewal
+                return {**nominated, "schema": NOMINATED_ALLOCATION_SCHEMA,
+                        "allocation_cid": allocation["allocation_cid"],
+                        "allocation_ownership_verified": True, "bootstrap_verified": False}
+            finally:
+                self._nominated_scope_checking = False
 
     def require_source_binding(self, *, server, service):
         """Source join only; never acquire COOR while the caller holds SERVER."""

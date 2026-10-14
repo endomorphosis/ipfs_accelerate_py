@@ -88,3 +88,25 @@ Relative imports stay package-local (`from .<module> import ...`).
 - [Package map](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)
 - [Semantic package page](../../../docs/architecture/agent_supervisor/packages/proof.md)
 - [Architecture](../../../docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
+
+## Native IR normalization boundary
+
+`IRRegistry` verifies the requested artifact identity and bytes before
+`IRAdapterRegistry.normalize()` reads the shared declarations, formal views,
+claims, assumptions, obligations and authority sections. Native Intent,
+Legal, Security, UI and Formalization serializers also emit semantic fields
+that the shared adapter does not yet translate. A verified digest alone does
+not make these layouts compatible.
+
+The adapter returns `UNSUPPORTED` with the sorted, unconsumed field paths in
+`failure.details` when normalization would discard native semantic data. This
+also covers mixed layouts and populated aliases shadowed by another section.
+Missing values and empty collections may be ignored; malformed falsy scalars
+remain a refusal. Unknown producer metadata remains metadata.
+
+A producer integration must implement and review the family-specific mapping,
+preserve the native artifact identity and expose unsupported semantics. Adding
+registry fields to a native payload is insufficient. This refusal neither
+supplies independent owner review nor authenticates a grant or proof. Planning
+admission still requires the bound owner materials and verifier; Lean admission
+still requires the recorded `lake build <Lib>` at the generated scope.

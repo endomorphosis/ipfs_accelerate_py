@@ -1,0 +1,23 @@
+{
+  "actual_configuration_differences": [
+    "/agents/0/kwargs/semantic_metadata_view",
+    "/jobs_dir"
+  ],
+  "all_common_configuration_fields_identical": true,
+  "checked_bound_files": 10,
+  "checked_host_source_files": 327,
+  "checkpoint_task_archive_source_bindings_equal": true,
+  "execution_started": false,
+  "measurement_limits": [
+    "Actual metadata selector choice and fallback must be read from the future native coding receipt.",
+    "UTF-8 and named proxy savings do not prove billed token savings.",
+    "This sequential exploratory treatment is separate from the original source-view pair."
+  ],
+  "observed_at_utc": "2026-10-14T00:12:57.087066+00:00",
+  "original_pair_lock_sha256": "295b12b3f4464bbab8422ce8fdfe0414949fd3295948a54426a95ce48e015fa5",
+  "provider_calls": 0,
+  "release_sha256": "ed430e96262f21f252e9f440ccfb6c91e202c5597c53b12c3f873eba336d14af",
+  "schema": "metadata-treatment-independent-preparation-review@1",
+  "scope": "Preparation bindings independently checked; a separately bound runner and root execution release are still required.",
+  "status": "passed"
+}

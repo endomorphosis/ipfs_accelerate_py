@@ -35,7 +35,73 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement", "terminal_semantic_scope_dispatch_rechecked", "semantic_prompt_components")
+
+
+def _semantic_prompt_components(value):
+    """Accept only the closed, bounded diagnostic; replay checks its numbers."""
+    schema = "supervisor-semantic-prompt-component-census@1"
+    if _same_json(value, {"schema": schema, "status": "unavailable", "raw_content_exported": False}):
+        return False
+    fixed = dict(schema=schema,
+        measurement_scope="canonical-serialized-prompt-utf8-bytes@1",
+        partition_rule="member_bytes_plus_outer_punctuation_equals_object_bytes",
+        nested_partitions_overlap=True, token_estimate=False, provider_tokens=None,
+        model_prompt_wrappers_included=False, provider_calls=0,
+        raw_content_exported=False, dynamic_labels_exported=False,
+        source_freshness_verified=False, proof_authority=False, omission_authority=False,
+        completion_authority=False, execution_authority=False,
+        exact_native_round_trip_verified=True)
+    partitions = {
+        "native_object": ("evidence", "goal", "scope", "acceptance", "authority"),
+        "provider_object": ("native_context", "translated_semantic", "translation_table", "instructions", "native_suffix"),
+        "remaining_native_context": ("evidence", "goal", "scope", "acceptance", "authority"),
+        "translated_semantic": ("capsules", "admissions", "raw_sources", "manifest"),
+    }
+    evidence = ("native_evidence", "remaining_native_evidence")
+    digests = ("native_prompt_sha256", "provider_prompt_sha256")
+    counts = ("native_prompt_bytes", "native_suffix_bytes", "provider_prompt_bytes")
+    if (type(value) is not dict or set(value) != {*fixed, *partitions, *evidence, *digests, *counts}
+            or any(not _same_json(value[key], expected) for key, expected in fixed.items())
+            or len(json.dumps(value, sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False, allow_nan=False).encode()) > 16_384):
+        raise ValueError("invalid semantic prompt component census")
+
+    def integer(number):
+        if type(number) is not int or not 0 <= number <= 2_000_000:
+            raise ValueError("invalid semantic prompt component count")
+
+    for key in digests:
+        _digest(value[key])
+    for key in counts:
+        integer(value[key])
+    for key, labels in partitions.items():
+        part = value[key]
+        if (type(part) is not dict or set(part) != {"object_bytes", "outer_punctuation_bytes", "members"}
+                or type(part["members"]) is not dict or set(part["members"]) != {*labels, "other_fields"}):
+            raise ValueError("invalid semantic prompt component partition")
+        integer(part["object_bytes"])
+        integer(part["outer_punctuation_bytes"])
+        for row in part["members"].values():
+            if type(row) is not dict or set(row) != {"count", "value_bytes", "member_bytes"}:
+                raise ValueError("invalid semantic prompt component member")
+            for number in row.values():
+                integer(number)
+    for key in evidence:
+        part = value[key]
+        if (type(part) is not dict or set(part) != {"array_bytes", "outer_punctuation_bytes", "groups"}
+                or type(part["groups"]) is not dict or set(part["groups"]) != {
+                    "semantic_context", "source_formalization_context", "other_evidence"}):
+            raise ValueError("invalid semantic prompt evidence census")
+        integer(part["array_bytes"])
+        integer(part["outer_punctuation_bytes"])
+        for row in part["groups"].values():
+            if type(row) is not dict or set(row) != {"count", "row_bytes", "summary_utf8_bytes",
+                    "summary_json_string_bytes", "summary_json_string_overhead_bytes", "row_envelope_bytes"}:
+                raise ValueError("invalid semantic prompt evidence group")
+            for number in row.values():
+                integer(number)
+    return True
 
 
 def _sha(raw: bytes) -> str:
@@ -46,6 +112,34 @@ def _same_json(left, right) -> bool:
     """Compare typed canonical values: false is distinct from zero."""
     options = dict(sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     return json.dumps(left, **options) == json.dumps(right, **options)
+
+
+def _terminal_scope_inclusion(value):
+    """Validate bounded signed-selection observations, never native grants."""
+    identities = ("manifest_cid", "declaration_cid", "frontier_cid", "scope_observation_cid",
+                  "scope_cid", "semantic_root_cid")
+    digests = ("profile_sha256", "semantic_payload_sha256")
+    counts = ("selected_count", "full_count", "frontier_count", "selected_source_bytes",
+              "max_files", "max_source_bytes", "required_count", "program_count")
+    flags = ("native_claim_verified", "native_allocation_verified", "process_identity_verified",
+             "proof_authority", "execution_authority", "completion_authority", "omission_authority")
+    if (type(value) is not dict or set(value) != {"schema", *identities, *digests, *counts, *flags}
+            or value["schema"] != "terminal-signed-semantic-worker-inclusion@1"
+            or any(value[key] is not False for key in flags)
+            or any(type(value[key]) is not int for key in counts)
+            or value["max_files"] != 64 or value["max_source_bytes"] != 1_000_000
+            or not 4 <= value["selected_count"] <= 64
+            or not value["selected_count"] <= value["full_count"] <= 255
+            or value["frontier_count"] != value["full_count"] - value["selected_count"]
+            or not 0 <= value["selected_source_bytes"] <= 1_000_000
+            or not 3 <= value["required_count"] <= value["selected_count"]
+            or not 1 <= value["program_count"] <= value["selected_count"] - 3
+            or value["required_count"] + value["program_count"] < value["selected_count"]):
+        raise ValueError("invalid signed Terminal semantic scope inclusion")
+    for key in identities:
+        _identity(value[key])
+    for key in digests:
+        _digest(value[key])
 
 
 def _base(status="unknown", reason="observation_unavailable") -> dict:
@@ -279,6 +373,10 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
         if type(result[field]) is not int or not 0 < result[field] <= 262_144:
             raise ValueError("invalid input byte count")
     translated = result.get("semantic_translation") is not None
+    if "semantic_prompt_components" in result:
+        if not translated:
+            raise ValueError("semantic component census requires its translated input")
+        _semantic_prompt_components(result["semantic_prompt_components"])
     instruction = result.get("public_instruction")
     router_bytes = result.get("router_prompt_bytes", result["native_prompt_bytes"])
     if translated or instruction is not None:
@@ -314,7 +412,7 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
         _identity(residual["task_cid"])
     if instruction is not None:
         if (not isinstance(instruction, dict)
-                or instruction.get("schema") not in {"supervisor-public-instruction-inclusion@1", "supervisor-public-instruction-inclusion@2"}
+                or instruction.get("schema") not in {"supervisor-public-instruction-inclusion@1", "supervisor-public-instruction-inclusion@2", "supervisor-public-instruction-inclusion@5"}
                 or any(instruction.get(k) is not True for k in
                        ("manifest_signature_verified", "verbatim_utf8", "source_freshness_verified"))
                 or any(instruction.get(k) is not False for k in
@@ -323,6 +421,14 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
         for key in ("artifact_sha256", "source_sha256", "block_sha256"):
             _digest(instruction[key])
         _identity(instruction["task_cid"])
+        if instruction["schema"] == "supervisor-public-instruction-inclusion@5":
+            if not translated or result.get("terminal_semantic_scope_dispatch_rechecked") is not True:
+                raise ValueError("signed Terminal scope lacks its compiled dispatch replay")
+            _terminal_scope_inclusion(instruction.get("terminal_semantic_scope"))
+            if instruction["terminal_semantic_scope"]["manifest_cid"] != instruction["manifest_cid"]:
+                raise ValueError("signed Terminal scope belongs to another manifest")
+        elif "terminal_semantic_scope" in instruction:
+            raise ValueError("signed Terminal scope requires its versioned instruction receipt")
         if instruction["schema"] == "supervisor-public-instruction-inclusion@2":
             requirements = instruction.get("intent_requirements")
             if (not isinstance(requirements, dict) or requirements.get("admission_graph_verified") is not True
@@ -340,6 +446,9 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                     raise ValueError("invalid intent requirement identity population")
                 for requirement_id in requirements[key]:
                     _identity(requirement_id)
+    if ("terminal_semantic_scope_dispatch_rechecked" in result
+            and (instruction is None or instruction.get("schema") != "supervisor-public-instruction-inclusion@5")):
+        raise ValueError("signed Terminal dispatch replay requires its versioned instruction receipt")
     reply = result.get("coding_reply_contract")
     metadata = result.get("semantic_metadata_view")
     if metadata is not None:
@@ -448,7 +557,14 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             "semantic_translation_cid": encoded.table.translation_cid == receipt["semantic_translation"]["translation_cid"],
             "semantic_translation_schema": encoded.receipt["schema"] == receipt["semantic_translation"]["schema"],
         })
+        if "semantic_prompt_components" in receipt:
+            from ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation import census_semantic_router_prompt
+            census = receipt["semantic_prompt_components"]
+            if _semantic_prompt_components(census):
+                checks["semantic_prompt_components"] = _same_json(census,
+                    census_semantic_router_prompt(encoded=encoded))
     source_views = receipt.get("source_view_retrieval")
+    source_guidance = None
     if source_views is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_client import BINDING_FIELDS, guidance, canonical_json
         if not translated:
@@ -457,7 +573,19 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
         expected = {**{key: table[key] for key in BINDING_FIELDS if key not in {
             "profile", "source_manifest_sha256"}}, "profile": source_views["profile"],
             "source_manifest_sha256": _sha(canonical_json(table["source_manifest"]))}
-        advice = guidance(source_views["profile"])
+        # Historical read-only observations retain their original wire shape.
+        # The edit guidance is selected only by the explicit current dispatch
+        # schema; a mode field cannot upgrade a historical observation.
+        edit_options = {}
+        if "source_edit_mode" in source_views or source_views.get("schema") == "worker-source-dispatch-observation@3":
+            from .terminal_source_edit_policy import DEFAULT_SOURCE_EDIT_MODE, validate_source_edit_mode
+            mode = validate_source_edit_mode(source_views.get("source_edit_mode", "disabled"),
+                source_view_profile=source_views["profile"])
+            if source_views.get("schema") != "worker-source-dispatch-observation@3" or mode == DEFAULT_SOURCE_EDIT_MODE:
+                raise ValueError("mapped source guidance requires its explicit dispatch schema and mode")
+            edit_options["source_edit_mode"] = mode
+        advice = guidance(source_views["profile"], **edit_options)
+        source_guidance = advice
         checks["source_view_semantic_binding"] = all(source_views.get(key) == value for key, value in expected.items())
         checks["source_view_guidance"] = (_sha(advice.encode()) == source_views.get("guidance_sha256")
             and len(advice.encode()) == source_views.get("guidance_bytes"))
@@ -489,6 +617,10 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             checks["public_instruction_" + field] = observed[field] == instruction[field]
         if instruction["schema"] == "supervisor-public-instruction-inclusion@2":
             checks["public_instruction_intent_requirements"] = observed.get("intent_requirements") == instruction["intent_requirements"]
+        if instruction["schema"] == "supervisor-public-instruction-inclusion@5":
+            checks["public_instruction_terminal_semantic_scope"] = _same_json(
+                observed.get("terminal_semantic_scope"), instruction.get("terminal_semantic_scope"))
+            checks["terminal_semantic_scope_dispatch_observed"] = receipt.get("terminal_semantic_scope_dispatch_rechecked") is True
     if translated or instruction is not None:
         checks.update(router_prompt_sha256=_sha(router_prompt.encode()) == receipt["router_prompt_sha256"],
             router_prompt_bytes=len(router_prompt.encode()) == receipt["router_prompt_bytes"])
@@ -578,10 +710,6 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             from ipfs_accelerate_py.agent_supervisor.runtime.representation_displacement import (
                 observe_representation_displacement,
             )
-            source_guidance = None
-            if source_views is not None:
-                from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_client import guidance
-                source_guidance = guidance(source_views["profile"])
             # This replays recorded representation identities, not a trusted
             # counter callback or provider delivery. Existing @2 verification
             # remains unavailable unless that caller supplies its real counter.
@@ -731,7 +859,12 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
         raise ValueError("invalid public query")
     sources = prepared["manifest"]["payload"]["sources"]
     source_hashes = retrieval["source_sha256"]
+    from .terminal_task_profile import PROFILE
+    if (PROFILE in sources) != (type(prepared.get("task_profile")) is dict):
+        raise ValueError("historical signed public profile cannot be omitted or invented")
     expected_paths = {"bottle.py"}
+    semantic_scope_paths = set(prepared["worker_inputs"])
+    scoped_receipt = None
     if prepared.get("task_profile") is not None:
         from .terminal_task_profile import (PROFILE, validate_task_profile,
             task_profile_bytes, task_profile_index_paths)
@@ -739,6 +872,27 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
         if sources.get(PROFILE, {}).get("sha256") != _sha(task_profile_bytes(profile)):
             raise ValueError("retrieval scope profile differs from signed source")
         expected_paths = set(task_profile_index_paths(profile))
+        from .terminal_task_profile import SCOPED_SCHEMA
+        if profile["schema"] == SCOPED_SCHEMA:
+            from ipfs_accelerate_py.agent_supervisor.runtime.terminal_semantic_scope import terminal_semantic_scope_observation
+            captured_scope = expected.get("terminal_semantic_scope")
+            if type(captured_scope) is not dict:
+                raise ValueError("historical selected context lacks its signed scope observation")
+            scoped_receipt = terminal_semantic_scope_observation(profile, prepared["manifest"],
+                selected_sources=captured_scope.get("selected_sources"))
+            if captured_scope != scoped_receipt:
+                raise ValueError("historical semantic selection differs from its signed declaration")
+            semantic_scope_paths = set(scoped_receipt["selected_paths"])
+            if (semantic.get("required_raw_paths") != scoped_receipt["required_raw_paths"]
+                    or semantic.get("program_paths") != scoped_receipt["program_paths"]
+                    or any(semantic["manifest"].get(name) != {
+                        "sha256": row["sha256"], "source_cid": row["source_cid"]}
+                        for name, row in scoped_receipt["selected_sources"].items())
+                    or any(len(text.encode("utf-8")) != scoped_receipt["selected_sources"][name]["source_bytes"]
+                        for name, text in semantic["raw_sources"].items())):
+                raise ValueError("historical semantic payload differs from selected source roles or bytes")
+    if scoped_receipt is None and expected.get("terminal_semantic_scope") is not None:
+        raise ValueError("historical selected receipt requires its signed profile")
     if not isinstance(source_hashes, dict) or set(source_hashes) != expected_paths:
         raise ValueError("unexpected retrieval source scope")
     empty = retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1"
@@ -768,7 +922,7 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
         "public_query": retrieval["query_text"] == query,
         "source_hashes": all(_digest(digest) == sources[path]["sha256"] for path, digest in source_hashes.items()),
         "semantic_source_hashes": all(semantic["manifest"][path]["sha256"] == digest for path, digest in source_hashes.items()),
-        "semantic_input_scope": set(semantic["manifest"]) == set(prepared["worker_inputs"]),
+        "semantic_input_scope": set(semantic["manifest"]) == semantic_scope_paths,
         "semantic_captured_hashes": all(binding["sha256"] == sources[path]["sha256"]
             for path, binding in semantic["manifest"].items()),
         "semantic_program_scope": (semantic.get("program_paths") == sorted(expected_paths)
@@ -799,6 +953,11 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
         result["local_contract_cid"] = _identity(tasks[0].get("body", {}).get("local_planning_contract_cid"))
     if formalization is not None:
         result["source_formalization_context"] = formalization
+    if scoped_receipt is not None:
+        result["terminal_semantic_scope"] = scoped_receipt
+        result["scope_observation_profile_bound"] = True
+        result["all_selected_lengths_independently_replayed"] = False
+        result["scope_observation_is_historical_only"] = True
     return result, rendered, dispatch
 
 
@@ -826,7 +985,10 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
         return result
     result["invocations"] = [{"invocation_id": row["invocation_id"],
         "native_input_verified": None, "model_input_verified": None,
-        "status": "unverified", "reason": "native_capsule_unavailable"} for row in parsed]
+        "status": "unverified", "reason": "native_capsule_unavailable",
+        **({"semantic_prompt_components": row["semantic_prompt_components"],
+            "semantic_prompt_components_verified": None}
+            if "semantic_prompt_components" in row else {})} for row in parsed]
     root_fd = _open_directory(state)
     try:
         expected_raw = _read_at(root_fd, "context-result.json")
@@ -865,6 +1027,11 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
         os.close(root_fd)
     for invocation in result["invocations"]:
         matching = [row for row in result["matches"] if row["invocation_id"] == invocation["invocation_id"]]
+        if "semantic_prompt_components" in invocation:
+            observations = [row["model_input_checks"].get("semantic_prompt_components") for row in matching]
+            invocation["semantic_prompt_components_verified"] = (
+                True if any(value is True for value in observations)
+                else False if any(value is False for value in observations) else None)
         invocation["native_input_verified"] = bool(matching)
         invocation["model_input_verified"] = any(row["model_input_verified"] for row in matching)
         invocation["status"] = ("verified_exact_model_input" if invocation["model_input_verified"]
