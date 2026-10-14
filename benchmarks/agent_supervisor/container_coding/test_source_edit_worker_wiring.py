@@ -120,6 +120,11 @@ def test_selected_mode_reaches_shared_router_then_real_socket_edit_and_closed_ob
     assert observed['source_edit_counts'] == dict(prepared_mapping_pages=edit_count, delivered_mapping_pages=edit_count,
         prepared_confirmation_pages=edit_count, delivered_confirmation_pages=edit_count)
     assert observed['counts']['accepted_requests'] == 3 * edit_count
+    assert audit['schema'] == 'supervisor-worker-source-session@5'
+    assert observed['request_operation_coverage'] == dict(observed_sessions=1, historical_sessions=0,
+        observed_requests=3 * edit_count, historical_unattributed_requests=0, all_sessions_observed=True)
+    assert {row['operation']: row['status_counts'] for row in observed['request_operation_counts']['rows']} == {
+        'read': {'ok': edit_count}, 'edit_prepare': {'ok': edit_count}, 'edit_confirm': {'ok': edit_count}}
     assert observed['counts']['delivered_source_bytes'] < len(case['sources']['mod.py'])
     assert observed['owner_writes_performed'] is observed['task_validation_observed'] is False
     assert observed['provider_tokens'] is None and observed['total_token_savings_measured'] is False

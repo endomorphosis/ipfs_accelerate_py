@@ -485,7 +485,7 @@ def test_real_socket_discovery_counts_rows_separately_from_source_bytes(
     assert response["ok"] is True
     service.close()
     audit = json.loads(service.audit_path.read_text())
-    assert audit["schema"] == f"supervisor-worker-source-session@{3 if shared else 2}"
+    assert audit["schema"] == "supervisor-worker-source-session@5"
     assert audit["accepted_requests"] == len(audit["requests"]) == 1
     assert audit["response_bytes"] == len(client.canonical_json(response))
     entry = audit["requests"][0]
@@ -494,6 +494,8 @@ def test_real_socket_discovery_counts_rows_separately_from_source_bytes(
     assert entry["returned_discovery_rows"] == response["page"]["returned_count"]
     assert entry["returned_source_bytes"] == entry["returned_candidate_context_bytes"] == 0
     assert entry["candidate_context_page"] is False
+    assert (entry["request_operation"], entry["request_source_state"], entry["request_view"]) == (
+        "discover", "not_applicable", "not_applicable")
     assert PRIVATE_COMMENT.strip() not in client.canonical_json(audit)
     assert not service.socket_path.exists() and not service.descriptor_path.exists()
     assert audit["retrieval_provider_calls"] == audit["source_obligations_discharged"] == 0
