@@ -251,13 +251,16 @@ def _verify_predecessor(*, root, result):
     current_ranked = _ranked_capsule_binding(current_semantic, current_metadata)
     if (ranked is None) != (current_ranked is None):
         raise ValueError("published context cannot add or omit retrieval-ranked capsule selection")
-    if ranked is not None:
-        _verify_ranked_predecessor(root=root, metadata=metadata, task_id=result["task_id"])
-        old_policy, new_policy = semantic["worker_projection"], current_semantic["worker_projection"]
-        if (result["semantic"].get("worker_projection") != new_policy
+    old_policy = semantic.get("worker_projection")
+    new_policy = current_semantic.get("worker_projection")
+    if old_policy is not None or new_policy is not None:
+        if (old_policy is None or new_policy is None
+                or result["semantic"].get("worker_projection") != new_policy
                 or any(old_policy.get(key) != new_policy.get(key) for key in (
                     "schema", "selector", "query", "max_capsules", "max_bytes", "unranked_policy"))):
-            raise ValueError("published context changed ranked capsule selection policy")
+            raise ValueError("published context changed capsule selection policy")
+    if ranked is not None:
+        _verify_ranked_predecessor(root=root, metadata=metadata, task_id=result["task_id"])
     previous_retrieval = _previous_retrieval(root, metadata, result["task_id"])
     if ranked is not None:
         _verify_ranked_retrieval_lineage(root=root, result=result,

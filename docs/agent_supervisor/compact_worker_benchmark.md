@@ -139,3 +139,69 @@ context growth. The subsequent
 distinguishes refused reads from refused edit operations for future runs; it
 does not reconstruct the missing operation labels or per-turn token values in
 these three trials.
+
+## Follow-up: preserve symbolic dispatch and diagnose event growth
+
+The follow-up implementation fixes a conflict between symbolic completion and
+model-only controls. A checked `doctor_candidate` or `doctor_contract_candidate`
+can now proceed when a supported compact source, metadata or reply treatment is
+configured for the model fallback. Previously these settings could reject the
+provider-free route during implementation setup. The signed candidate handoff,
+source checks, independent validations and completion rules remain in force.
+Invalid fallback configurations are still rejected.
+
+The report preserves the requested controls and marks them
+`not_applicable_provider_free`. Source-view observations only adopt that status
+when a matching successful Doctor materialization, cleanup and absence of coding
+provider attempts are observed. A missing or contradictory receipt remains
+unavailable. This fixes a route-selection failure; it does not show that Doctor
+could solve `largest-eigenval`, whose observed dispatch was a model residual.
+
+Grok stream observations now retain at most the first 128 usage events, with
+numeric counters, event ordinals, timing and explicit omission counts. Missing
+counter fields remain null. Historical progress records retain their original
+shape without invented event histories. Event counters are not summed or used
+to replace the existing final-envelope accounting: their cumulative/per-response,
+cache and auxiliary-model semantics remain unverified. Progress updates carry
+counts only; the final receipt retains the detailed bounded history once, to
+avoid growing the worker log through repeated copies.
+
+The context audit found that semantic translation already removes the original
+semantic evidence row before inserting translated capsules. There is no
+wholesale duplicate capsule copy to remove. The native Source384 and numerical
+summaries contain different evidence. Existing compiler retry deltas do not
+control the native CLI's internal conversation. A future explicit limit of one
+or two selected capsules can use the existing bounded selection API while
+retaining the full index and source checks, but that is an advisory-evidence
+ablation and may increase retrieval calls. It has not been enabled by this fix.
+
+The [follow-up qualification](evidence/symbolic-dispatch-usage-20261014/README.md)
+records 691 distinct passing tests, including the actual Doctor proof-to-completion
+join and bounded stream observations through the router and comparison reader.
+These tests made no model calls and did not rerun the live benchmark; the token
+scores above remain the last measured observations.
+
+## Follow-up: bounded initial capsule selection
+
+The next implementation adds frozen `one-capsule@1` and `two-capsules@1` budgets
+for one signed task in the full indexed arm. The legacy maximum of eight remains
+the default. Full native indexes, required raw inputs and source checks stay
+intact; publication refresh rejects changes to the selected policy. Other arms
+and multi-task profiles refuse these explicit budgets before initialization.
+
+In two small authored repositories, one selected capsule reduced the complete
+coding prompt by 30.78–31.17%, and two reduced it by 20.45–20.71%. The existing
+byte budget selected four capsules in both legacy cases. These measurements
+use real indexed preparation and router dispatch with an authored provider,
+declared-contract planning and no learned Source384 inference. They measure
+UTF-8 bytes, not live tokens or benchmark performance.
+
+The [capsule-budget qualification](evidence/capsule-budget-20261014/README.md)
+records 440 passing tests with unchanged sources, exact measurements and scope.
+It also checks retrieval of omitted functions through current candidate capsules
+and refusal of stale generations. That API rebuilds structural capsules rather
+than restoring exact baseline or learned outputs; it requires source views and
+has a smaller symbol limit than initial indexing. A one-capsule budget can also
+change model-planning evidence. Additional retrieval or coding turns could
+offset the initial byte reduction, so total token benefit still requires a live
+comparison. The three earlier benchmark scores are unchanged.

@@ -39,7 +39,10 @@ from .terminal_task_profile import (
     validate_task_profile, validate_task_profile_contract, validate_task_data,
 )
 from .benchmark_provider_profile import CLI_VERSION, resolve_provider_profile
-from .terminal_capsule_selection_policy import DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS, validate_capsule_selection
+from .terminal_capsule_selection_policy import (
+    DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS, validate_capsule_selection,
+    DEFAULT_CAPSULE_BUDGET, CAPSULE_BUDGETS, validate_capsule_budget, capsule_budget_options,
+)
 from .terminal_planning_policy import DEFAULT_PLANNING_MODE, DECLARED_PLANNING_MODE, validate_planning_mode
 from ipfs_accelerate_py.agent_supervisor.runtime.declared_contract_planning import POLICY_ID as DECLARED_PLANNING_POLICY_ID
 
@@ -145,6 +148,10 @@ def _load_prepared(state):
     prepared = json.loads((state / "prepared.json").read_text())
     from .terminal_semantic_context_policy import validate_semantic_context_profile
     validate_semantic_context_profile(prepared.get("semantic_context_profile", "legacy-bounded@1"))
+    capsule_budget = validate_capsule_budget(prepared.get("capsule_budget", DEFAULT_CAPSULE_BUDGET), arm="full")
+    if (capsule_budget != DEFAULT_CAPSULE_BUDGET
+            and (prepared.get("task_profile") or {}).get("schema") == MULTITASK_SCHEMA):
+        raise ValueError("bounded capsules support one independent signed task")
     manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
     repository = Path(prepared["repository"])
     inputs = manifest["planning_inputs"]
@@ -273,13 +280,18 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
             intent_requirement_contract: Path | None = None, resource_profile=None,
             task_profile: dict | None = None, provider_profile: str | None = None,
             planning_mode: str = DEFAULT_PLANNING_MODE,
-            semantic_context_profile: str = "legacy-bounded@1") -> dict:
+            semantic_context_profile: str = "legacy-bounded@1",
+            capsule_budget: str = DEFAULT_CAPSULE_BUDGET) -> dict:
     """Capture original image bytes, then sign reviewed tasks before planning.
 
     This mutates only the disposable benchmark Git repository: its intentional
     dirty bottle.py bytes become a recorded baseline; no upstream bytes are
     restored. Public instruction/check files become immutable signed inputs.
     """
+    capsule_budget = validate_capsule_budget(capsule_budget, arm="full")
+    if (capsule_budget != DEFAULT_CAPSULE_BUDGET and isinstance(task_profile, dict)
+            and task_profile.get("schema") == MULTITASK_SCHEMA):
+        raise ValueError("bounded capsules support one independent signed task")
     planning_mode = validate_planning_mode(planning_mode,
         intent_requirement_contract=intent_requirement_contract)
     if (planning_mode == DECLARED_PLANNING_MODE and isinstance(task_profile, dict)
@@ -519,6 +531,7 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     }
     if planning_mode != DEFAULT_PLANNING_MODE:
         prepared["planning_mode"] = planning_mode
+    prepared.update(capsule_budget_options(capsule_budget))
     if task_profile is not None:
         prepared["task_profile"] = task_profile
     if multitask:
@@ -559,7 +572,8 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
                     numerical_selection_config: Path | None = None,
                     numerical_selection_timeout_seconds: float = 180.,
                     numerical_selection_budget_profile: str | None = None,
-                    capsule_selection: str = DEFAULT_CAPSULE_SELECTION) -> dict:
+                    capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
+                    capsule_budget: str = DEFAULT_CAPSULE_BUDGET) -> dict:
     """Prepare source indexes and a real empty-owner observation before planning.
 
     This cost belongs to the full arm's agent time. The subsequent context()
@@ -568,9 +582,12 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
     from .terminal_initial_context import prepare_initial_context
 
     validate_capsule_selection(capsule_selection, arm="full")
+    validate_capsule_budget(capsule_budget, arm="full")
     state = state.resolve(strict=True)
     prepared = _load_prepared(state)
     _require_single_task_context(prepared)
+    if prepared.get("capsule_budget", DEFAULT_CAPSULE_BUDGET) != capsule_budget:
+        raise ValueError("initial capsule budget differs from frozen preparation")
     if capsule_selection != DEFAULT_CAPSULE_SELECTION:
         from .terminal_program_population import terminal_program_partition
         if terminal_program_partition(prepared) is None:
@@ -580,6 +597,7 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
         required_raw_paths=(task_profile_semantic_required_paths(prepared["task_profile"])
             if (prepared.get("task_profile") or {}).get("schema") == SCOPED_SCHEMA else [INSTRUCTION, SMOKE]),
         train_autoencoder=train_autoencoder,
+        **capsule_budget_options(capsule_budget),
         **({"retrieval_ranked_capsules": True} if capsule_selection != DEFAULT_CAPSULE_SELECTION else {}),
         weight_transfer=weight_transfer, canonical_cve_training=canonical_cve_training,
         security_checkpoint=security_checkpoint, security_checkpoint_hub=security_checkpoint_hub,
@@ -1107,6 +1125,8 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
     stage_seconds = {}
     vectors = repository / ".runtime/terminal-vectors"
     reused = (state / "initial-context-result.json").exists()
+    if not reused and prepared.get("capsule_budget", DEFAULT_CAPSULE_BUDGET) != DEFAULT_CAPSULE_BUDGET:
+        raise ValueError("bounded capsules require their frozen initial context")
     task_cids = [task.task_cid for task in verified["graph"].tasks]
     if len(task_cids) != 1:
         raise ValueError("one independently declared Terminal-Bench task required")
@@ -1236,6 +1256,8 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
         result["new_autoencoder_training_steps"] = prepared_context["new_autoencoder_training_steps"]
     if "capsule_selection" in prepared_context:
         result["capsule_selection"] = prepared_context["capsule_selection"]
+    if "capsule_budget" in prepared_context:
+        result["capsule_budget"] = prepared_context["capsule_budget"]
     for key in ("source384_context", "numerical_formalization", "numerical_selection_384"):
         if prepared_context.get(key) is not None:
             result[key] = prepared_context[key]
@@ -1250,6 +1272,7 @@ def main():
     prep.add_argument("--repository", type=Path, required=True)
     prep.add_argument("--instruction", type=Path, required=True)
     prep.add_argument("--state", type=Path, required=True)
+    prep.add_argument("--capsule-budget", choices=CAPSULE_BUDGETS, default=DEFAULT_CAPSULE_BUDGET)
     prep.add_argument("--intent-checkpoint-descriptor", type=Path)
     prep.add_argument("--intent-action-384-config", type=Path)
     prep.add_argument("--intent-projection-request", type=Path)
@@ -1273,6 +1296,8 @@ def main():
     initial.add_argument("--model-revision", default="")
     initial.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
         help="Retrieval ranking requires an explicit public task profile with a signed program/support partition")
+    initial.add_argument("--capsule-budget", choices=CAPSULE_BUDGETS, default=DEFAULT_CAPSULE_BUDGET,
+        help="Bound selected capsules while retaining the full native index and required raw inputs")
     args = vars(parser.parse_args())
     action = args.pop("action")
     result = {"prepare": prepare, "context": context, "initial-context": initial_context}[action](**args)

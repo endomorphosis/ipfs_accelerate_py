@@ -257,9 +257,16 @@ def grok_progress_workspace(tmp_path, monkeypatch):
     return llm_router
 
 
-def _grok_progress_snapshot():
+def _grok_progress_snapshot(usage_events=0):
     from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
-    return GrokStreamParser().snapshot()
+    from ipfs_accelerate_py.cli_runtime.grok_stream_usage import MAX_COUNT, USAGE_FIELDS
+    import json
+    parser = GrokStreamParser()
+    frame = json.dumps({"type": "usage", "messageId": "private-id", "signature": "private-signature",
+                        "stopReason": "tool_use", "usage": dict.fromkeys(USAGE_FIELDS, MAX_COUNT)}).encode() + b"\n"
+    for _ in range(usage_events):
+        parser.feed(frame, elapsed_seconds=1)
+    return parser.snapshot()
 
 
 def _run_grok_progress(*, purpose="coding"):
@@ -271,14 +278,15 @@ def _run_grok_progress(*, purpose="coding"):
 
 
 @pytest.mark.parametrize("timeout", [False, True])
+@pytest.mark.parametrize("usage_events", [0, 128])
 def test_grok_progress_is_prefixed_advisory_and_final_metadata_survives_tls(
-        grok_progress_workspace, monkeypatch, capsys, timeout):
+        grok_progress_workspace, monkeypatch, capsys, timeout, usage_events):
     import json
     from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
     from ipfs_accelerate_py.agent_supervisor.runtime.provider_capacity_custody import execution_observation
     from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation, get_last_cli_observation
 
-    snapshot = _grok_progress_snapshot()
+    snapshot = _grok_progress_snapshot(usage_events)
     def generate(prompt, **kwargs):
         assert kwargs["grok_stream_progress"] is True
         kwargs["grok_progress_callback"](snapshot)
@@ -310,7 +318,11 @@ def test_grok_progress_is_prefixed_advisory_and_final_metadata_survives_tls(
     assert progress["observation_only"] is True and progress["provider_dispatch_observed"] is None
     assert all(progress[key] is False for key in (
         "completion_authority", "settlement_authority", "automatic_retry_admitted"))
-    assert progress["native_grok_progress"] == final["native_grok_progress"] == snapshot
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import grok_stream_progress_summary
+    assert final["native_grok_progress"] == snapshot
+    assert progress["native_grok_progress"] == grok_stream_progress_summary(snapshot)
+    assert "usage_observations" not in progress["native_grok_progress"]
+    assert len(advisory.encode()) < 8192
     assert final["status"] == ("failed" if timeout else "provider_returned")
     assert final["completion_authority"] is False and final["native_rollout_usage"] is None
     assert not execution_observation(advisory)["task_execution_observed"]

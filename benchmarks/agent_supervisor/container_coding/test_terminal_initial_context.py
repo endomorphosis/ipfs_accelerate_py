@@ -64,13 +64,15 @@ def _version(monkeypatch):
 
 
 @pytest.mark.parametrize("profile,limit", [("indexed-default@1", 8), ("indexed-compact@1", 2)])
-def test_indexed_capsule_profile_reaches_real_initial_context_and_refuses_drift(original, profile, limit):
+@pytest.mark.parametrize("budget,budget_limit", [("legacy", 8), ("one-capsule@1", 1), ("two-capsules@1", 2)])
+def test_indexed_capsule_profile_reaches_real_initial_context_and_refuses_drift(original, profile, limit, budget, budget_limit):
     root, instruction, state = original
     with (root / "bottle.py").open("a") as stream:
         stream.write("\n".join(f"def helper_{i}(value):\n    return value + {i}\n" for i in range(12)))
     prepared = prep.prepare(repository=root, instruction=instruction, state=state,
-        semantic_context_profile=profile)
-    receipt = prep.initial_context(state=state)
+        semantic_context_profile=profile, capsule_budget=budget)
+    receipt = prep.initial_context(state=state, capsule_budget=budget)
+    limit = min(limit, budget_limit)
     loaded = initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
     projection = loaded["semantic"]["worker_projection"]
     assert projection["selector"] == "duckdb-query-symbol-name@1"

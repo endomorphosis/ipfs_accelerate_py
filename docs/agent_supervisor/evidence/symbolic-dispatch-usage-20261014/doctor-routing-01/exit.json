@@ -1,0 +1,12 @@
+{
+  "exit_code": 1,
+  "timeout": false,
+  "elapsed_seconds": 88.92899096093606,
+  "source_unchanged": false,
+  "changed_sources": [
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_usage.py",
+    "test/api/test_grok_stream_usage.py",
+    "test/api/test_router_implementation_runner.py"
+  ]
+}

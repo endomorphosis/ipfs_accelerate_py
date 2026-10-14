@@ -1,0 +1,44 @@
+{
+  "base_commit": "59c1eb176fdd2095f184f27d6576ffaa92be2246",
+  "external_model_calls": 0,
+  "implementation_commit": "480effcfbb43c74d331a33974f464133a842348b",
+  "independent_review_sha256": "809f07e2f63b0ee0e6ccbd733dac17ee03a740d3c02174c84a5eb1342f009b87",
+  "limitations": [
+    "Authored protocol frames use locally installed Grok 1.0.52 documentation, not a new live trace from the prior pinned1.0.46 benchmark.",
+    "Usage-event arithmetic, cache semantics and all-attempt completeness remain unverified; event counters are not summed.",
+    "Provider-free repair qualification uses actual Z3/Lean, route selection, materialization, Quack claim, native publication, owner validations and typed completion; it does not launch the full daemon.",
+    "No new token savings or benchmark performance claim."
+  ],
+  "new_daemon_start_qualification": false,
+  "new_live_benchmark_trials": 0,
+  "production_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "78ec4d9b4ebe3fa57075b99191a326655dbbc70669b343bc5b84a4b4b837ceaf",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "f92679d11c62e1be8c261c589504e77d96411f56a5937830fa0d0f4fd61c5be6",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "12e407ecf7b82924c37901d14bc43d3f4ea8080b438fabaf1d1e3f92dab6d875",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "56a57bd6a752603538c9ba31ea15d88d144c0b6908f35f79e823f6467b3694c3",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "ad39baad4ba8c72031f1905ac1a500eabf2d82ee45c803b205ad60e1e964967d",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "c82fe62bd1dc63e96fd4e5f282d12951b115478b0df9f6393d3602bad0c95408",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_usage.py": "e0a30b1c7acfb45c47c8510093b21ffa650380646247c23963026e0a06831c06"
+  },
+  "retained_failure": {
+    "cause": "Authored lifecycle fixture attempted to materialize a plan whose tasks were already materialized by Doctor setup; production rejected duplicate tasks.",
+    "correction": "Claim the existing native task. The full affected test file passes in doctor-dispatch-final-03.",
+    "failure_count": 1,
+    "global_source_changed_during_run": "Concurrent Grok edits; all Doctor production files and selected test files are unchanged and match final bytes.",
+    "run": "doctor-routing-01"
+  },
+  "schema": "symbolic-dispatch-usage-qualification@1",
+  "status": "passed",
+  "test_ledger_sha256": "8900581d9a9e5263c73f8590ec0bf4c7cc156c2e7798c5de690ee55f2613ca82",
+  "tested_production_pins_match_final": true,
+  "tests": {
+    "distinct_passed": 691,
+    "files": 14,
+    "selected_run_counts": {
+      "doctor-dispatch-final-03": 27,
+      "doctor-routing-01": 229,
+      "grok-usage-tests-02": 156,
+      "integration-02": 279
+    }
+  }
+}

@@ -142,7 +142,7 @@ def test_route_builder_selects_only_model_coding():
     assert implementation_argv(**kwargs, coding_reply_mode="legacy") == old
     new = implementation_argv(**kwargs, coding_reply_mode=MODE)
     assert new[new.index("--coding-reply-mode") + 1] == MODE
-    with pytest.raises(ValueError, match="semantic model-router coding route"):
+    with pytest.raises(ValueError, match="candidate required"):
         implementation_argv(**{**kwargs, "doctor": {"route": "doctor_candidate"}}, coding_reply_mode=MODE)
 
 
