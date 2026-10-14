@@ -1,0 +1,10 @@
+[
+  "test/api/test_native_nominated_source_scope.py",
+  "test/api/test_current_source_task_admission.py",
+  "test/api/test_current_source_worktree_allocation.py",
+  "test/api/test_source_lookup_worker_channel.py",
+  "test/api/test_repository_source_scope.py",
+  "test/api/test_current_source_lookup.py",
+  "test/api/test_native_nominated_source_allocation.py",
+  "test/api/test_native_nominated_source_allocation_custody.py"
+]

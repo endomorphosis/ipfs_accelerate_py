@@ -60,8 +60,8 @@ def _protect_control_tree(root):
 
 
 @contextmanager
-def _allocation_case(tmp_path, monkeypatch):
-    with _native_case(tmp_path, monkeypatch, defer_source_binding=True) as native:
+def _allocation_case(tmp_path, monkeypatch, *, defer_source_binding=False, source_files=None):
+    with _native_case(tmp_path, monkeypatch, defer_source_binding=True, source_files=source_files) as native:
         target = _git(native.canonical, "branch", "--show-current")
         branch = "implementation/current-source-allocation"
         attempt_root = tmp_path / "portal-attempts"
@@ -114,15 +114,21 @@ def _allocation_case(tmp_path, monkeypatch):
                 context_cid=cid_for_structured({"allocation_context": native.task_cid}),
                 allowed_paths=(b"module.py".hex(),), max_response_bytes=4096,
                 max_slice_bytes=512)
-            native.binding = guard.bind_current_source_lookup(**source_binding)
             native.factory["worktree_admission"] = guard
-            session = broker.start_source_lookup_worker_broker(**native.factory)
-            native.session = session
+            if not defer_source_binding:
+                native.binding = guard.bind_current_source_lookup(**source_binding)
+                session = broker.start_source_lookup_worker_broker(**native.factory)
+                native.session = session
             yield AllocationCase(native, guard, store, record, bridge, paths,
                 dict(portal_binding), dict(portal_identity), target, branch, capture, source_binding)
         finally:
             if session is not None:
                 session.close()
+            elif defer_source_binding and native.session is not None:
+                # A deferred consumer owns creation after yield; retire that
+                # exact session before its allocation and native owner close.
+                native.session.close()
+                native.session = None
             current = store.load_workspace(native.workspace)
             if current is not None and not current.is_terminal:
                 store.mark_terminal(native.workspace, lease_id=current.lease_id,

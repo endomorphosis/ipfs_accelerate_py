@@ -996,3 +996,54 @@ planning hook. Their [separate incoming review](evidence/signed-scope-compact-re
 records that existing Terminal routes are unchanged and their new suites are
 outside this run. Typed admission material and import/source evidence retain
 their own scope; neither constructs a live source task/allocation capability.
+
+## Nominated allocation custody, 2026-10-14
+
+The [native allocation binder](current_source_worktree_allocation.md) now composes
+the existing task nomination with the actual managed worktree. Its selected
+paths come from the independently replayed nomination, and its repository path
+comes from the retained allocation. A caller cannot replace either with an
+arbitrary path list or serialized receipt. Legacy and nominated binds share
+whole-operation reentry protection. A failure before publication permits retry;
+an actually published reader remains consumed and attached after a closing
+failure.
+
+The new allocation observer checks the original task, nomination, reader,
+coordinator claim, owner grant and physical lifecycle. It checks the complete
+allocated source population after native callbacks, including omitted originals.
+Its `supervisor-native-nominated-source-worktree-allocation@1` receipt records
+allocation custody. The task-only nomination receipt continues to report no
+allocation ownership. These observations grant no compiled-context, coding
+process, proof, execution, completion or omission authority. Freshness checks
+are sequential observations; they do not lock out a concurrent writer.
+
+The [qualification bundle](evidence/nominated-source-allocation-20261014/README.md)
+uses real native claim, coordinator, CAS, Portal projection and managed Git
+worktree paths. Listener and deployment metadata are authored test seams.
+Canonical and allocated source remain independently checked by the existing
+broker. An allocated checkout can still match the retained inventory after its
+canonical counterpart changes; the broker must refuse that later worker grant.
+The nomination's ceiling is 64 files and 1,000,000 total original bytes, counted
+per selected path. The broker's 32-path ceiling remains independent. Required
+instruction, smoke and profile supports count inside those populations. A valid
+33- or 64-path nomination cannot be silently truncated into a broker grant.
+
+The next work should proceed with these distinct acceptance checks:
+
+| Work | Acceptance check |
+| --- | --- |
+| Actual coding-child handoff | Authenticate the cross-process native attempt and claim; retain the live allocation and nomination; authorize and record the owner-only to worker-writable permission transition; preserve direct-child birth and the independent broker bound. Qualify descriptor/UID custody before a model runs. |
+| Compiled context and source adoption | Independently join the existing signed profile and compiled context to that live worker. Record which scope and source generation were consumed. Qualify expansion as a new admission that retires stale capabilities, then qualify supported edits and refreshes. |
+| Relevant indexed evidence | Reuse the target codebase's DuckDB/DuckLake inventory and bounded capsules. Preserve unresolved frontier and current source hashes; distinguish decoded formal proposals, checked proof status and exact source round trips. Keep separate IR family, schema/version, decoder task and 8D/384D/768D inventories and checkpoints. |
+| Per-turn usage reconciliation | Integrate the already committed parallel capsule-budget and numeric-usage work after reviewing its overlap and qualification. Join each reported operation to turn, source generation and input hash. Missing attempts, partial totals and unknown billing remain visible. |
+| Deployment and measurement | Freeze a fresh deployment archive, a fixed read/expand/edit/refresh trace and repeated matched native/no-index/indexed trials. Compare identity, on-demand source, compaction, metadata and planning treatments separately at matched official success. Count every planning, coding, lookup, refresh, repair and failed attempt. |
+
+The [parallel survey](evidence/nominated-source-allocation-20261014/parallel-work-survey.json)
+observed the active usage-growth worktree at `eff8ef3ecc` with committed
+per-turn usage and capsule-budget progress. This increment preserves that
+worktree and implements no competing telemetry path. Its scoped remote query
+does not establish absence under every GitHub reference. Reconcile that stack
+before launching the next token experiment. Existing reconstruction assets and
+the three earlier live compaction trials remain the starting evidence; this
+host allocation join supplies no new learned reconstruction or token-saving
+result.
