@@ -1,0 +1,91 @@
+"""Native source query replay on real owner/task/allocation resources.
+
+Git/CAS, DuckDB/typed source connections, native task/claim/grants and Portal
+allocation/lifecycle are real. Quack listener and deployment UID metadata
+retain the existing authored host seams. These owner-side cases launch no
+child, admit no worker UID and execute no target, provider, model or solver.
+The checks are sequential and establish no filesystem writer lease.
+"""
+from types import SimpleNamespace
+
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.task_sources import typed_state_owner as typed
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import canonical_json_bytes
+from test.api.test_current_source_lookup import _client, _data
+from test.api.test_current_source_task_admission import SOURCE, _payload
+from test.api.test_current_source_worktree_allocation import _allocation_case
+from test.api.test_native_nominated_source_allocation_custody import bind, source_files
+
+
+DIAGNOSTIC = "native query CAS replay must release SERVER"
+
+
+@pytest.fixture
+def native_query(tmp_path, monkeypatch):
+    with _allocation_case(tmp_path, monkeypatch, defer_source_binding=True,
+                          source_files=source_files()) as case:
+        bind(case)
+        adapter = SimpleNamespace(server=case.native.server,
+            gateway=case.native.server._command_gateway, task_cid=case.native.task_cid,
+            request=case.native.retained.request, clients=[])
+        client, _token, grant = _client(adapter)
+        try:
+            yield case, client, grant
+        finally:
+            for connection in adapter.clients:
+                connection.close()
+
+
+def test_native_query_cas_callback_reenters_native_fences_after_server_release(
+        native_query, monkeypatch):
+    case, client, grant = native_query
+    service = case.guard._lookup
+    original_lock = case.native.server._lock
+    original_load = service._load
+    original_get = case.native.retained.cas.get
+    state = dict(active=False, server_held=False, reached=[], completed=[])
+
+    def replay():
+        state["active"] = True
+        try:
+            return original_load()
+        finally:
+            state["active"] = False
+
+    def cas_get(cid):
+        value = original_get(cid)
+        if state["active"] and not state["reached"]:
+            state["reached"].append(cid)
+            state["server_held"] = original_lock._is_owned()
+            # The gateway serializes callback failures. Retain this observed
+            # condition so the caller also reports the diagnostic assertion,
+            # before an unsafe COOR acquisition could deadlock the old path.
+            assert not state["server_held"], DIAGNOSTIC
+            assert case.native.handle.require_current()["task_cid"] == case.native.task_cid
+            assert case.guard.require_current()["allocation_ownership_verified"] is True
+            state["completed"].append(cid)
+        return value
+
+    monkeypatch.setattr(service, "_load", replay)
+    monkeypatch.setattr(case.native.retained.cas, "get", cas_get)
+    try:
+        response = client.source_get(_payload(case.native))
+    except typed.TypedStateOwnerError:
+        assert not state["server_held"], DIAGNOSTIC
+        raise
+    assert state["reached"] == state["completed"] and len(state["reached"]) == 1
+    assert not state["active"] and not state["server_held"]
+    assert _data(response) == SOURCE and response["ok"] is True
+    result = response["result"]
+    assert result["caller_grant_id"] == grant.grant_id
+    assert result["response_bytes"] == len(canonical_json_bytes(response)) + 1
+    assert result["response_wire_bytes"] == result["response_bytes"] + 3
+    assert result["source_complete"] is True and result["next_continuation"] is None
+    assert (result["proof_authority"] is result["completion_authority"]
+            is result["edit_authority"] is result["omission_authority"] is False)
+    assert service._continuations == {}
+    assert case.native.server._command_gateway._current_source_lookup is service
+    assert service is case.guard._lookup is case.native.handle._source
+    assert case.native.daemon.provider_invocation_recorded(case.native.attempt.attempt_id,
+        idempotency_key="provider:" + case.native.attempt.attempt_id) is None

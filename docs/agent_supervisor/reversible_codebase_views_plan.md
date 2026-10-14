@@ -1277,3 +1277,23 @@ need their own callback review. Preserve the planned permission delegation,
 cross-process provenance and independent compiled-context joins. Existing IR
 families, schema/version, decoder tasks and 8D/384D/768D assets retain their own
 reconstruction, registry and teacher-promotion gates.
+
+## Native source-query replay, 2026-10-14
+
+The [typed source-query boundary](source_lookup_worker.md#detach-native-source-query-replay)
+now releases SERVER for the retained CAS load and source-specific clock samples.
+It captures original owner/reader/connection/store/grant and registry witnesses
+first, rejects overlapping reads and active native transactions, and stages its
+response privately. Final native task/body, source population, selected bytes
+and exact active-grant checks precede one-use cursor publication. Refused reads
+preserve their predecessor and never roll back a borrowed transaction.
+
+The [query evidence](evidence/source-query-replay-20261014/README.md) keeps the
+unpatched control, listed dependency bindings and source snapshots separate
+from earlier constructor/delivery findings. Initial reader binding remains its
+own CAS callback boundary. Preserve the planned native permission delegation,
+worker provenance and signed compiled-context adoption before deployed trials.
+Reuse the existing independent IR family/schema/task and 8D/384D/768D assets;
+this source query change supplies no learned reconstruction or token-saving
+result. Fresh encoder-conditioned evaluation and native ModelManager custody
+still gate teacher promotion.

@@ -1,0 +1,472 @@
+{
+  "accelerator_execution_head": "f15c146467c29c95f39ae1f041c8eb84e76d8bc8",
+  "after": [
+    {
+      "bytes": 6658,
+      "matches_immutable_git_object": true,
+      "path": "conftest.py",
+      "repository": "accelerator",
+      "sha256": "852e190193920752eb46dae782daaae063d8f354da59abe7f997d97312a2bb02",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 12051,
+      "matches_immutable_git_object": false,
+      "path": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency_qualification_runner.py",
+      "repository": "accelerator",
+      "sha256": "257d62f31d397e3536cffd42ce00eeb719928301cf255f92e13c09a13d277868",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 18519,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_accelerate_py/testing/pytest_ast_seal.py",
+      "repository": "accelerator",
+      "sha256": "42930334f4de159e71e6c345075a05b863fe427992bc1782f0cfbdf62b44ff9e",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 3556,
+      "matches_immutable_git_object": true,
+      "path": "pytest.ini",
+      "repository": "accelerator",
+      "sha256": "a4b1418743a539807d0c2d90fb1fa986d0811cd3d1c3ea287885f8dbf028c10a",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 2054,
+      "matches_immutable_git_object": true,
+      "path": "conftest.py",
+      "repository": "datasets",
+      "sha256": "2eab130f3effda3737f25a1770ccd5f9d4955ba42c3d692d659801ffdc1035cf",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 22146,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+      "repository": "datasets",
+      "sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 45109,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+      "repository": "datasets",
+      "sha256": "3299b673d065f2e470fa993105b9c35f27bfdcec8c05a4620b4760ab0400cca1",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 104612,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+      "repository": "datasets",
+      "sha256": "777542d71f3c586f4e060926bd679ed7254e7c7fc8d93cdd3364af997ee91c9a",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 1536,
+      "matches_immutable_git_object": true,
+      "path": "pytest.ini",
+      "repository": "datasets",
+      "sha256": "01737eaafcd2b7e7e1a8db2368a93d4a28053ba44e611a10b1c87d2155dc65ff",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 20716,
+      "matches_immutable_git_object": true,
+      "path": "tests/conftest.py",
+      "repository": "datasets",
+      "sha256": "0a255dc653799cb980d7edbb1d7b2e3c8f0d81b091d4986aa712e1e8e12b7f10",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 1204,
+      "matches_immutable_git_object": true,
+      "path": "tests/unit/conftest.py",
+      "repository": "datasets",
+      "sha256": "2abb4618add06f636ab71406c19ccd828084a48ecf75448397ddb6cd2bca53a2",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 37839,
+      "matches_immutable_git_object": true,
+      "path": "tests/unit/logic/software_contracts/semantic_state/test_api.py",
+      "repository": "datasets",
+      "sha256": "035f763f866856ed2bec17317129e94db482a2bfa5e72c5b2f8516a1ba4c812d",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    }
+  ],
+  "argv": [
+    "/usr/bin/python3",
+    "-B",
+    "-m",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014/tests/unit/logic/software_contracts/semantic_state/test_api.py",
+    "--color=no",
+    "--basetemp=/tmp/sqd-n2syj_ir/pytest-temp",
+    "-o",
+    "log_cli=false",
+    "-o",
+    "cache_dir=/tmp/sqd-n2syj_ir/pytest-cache",
+    "--tb=short",
+    "--maxfail=1",
+    "--junitxml=/home/barberb/lift_coding/.worktrees/source-query-replay-20261014/docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/junit.xml"
+  ],
+  "auto_dependency_install_disabled": true,
+  "before": [
+    {
+      "bytes": 6658,
+      "matches_immutable_git_object": true,
+      "path": "conftest.py",
+      "repository": "accelerator",
+      "sha256": "852e190193920752eb46dae782daaae063d8f354da59abe7f997d97312a2bb02",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 12051,
+      "matches_immutable_git_object": false,
+      "path": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency_qualification_runner.py",
+      "repository": "accelerator",
+      "sha256": "257d62f31d397e3536cffd42ce00eeb719928301cf255f92e13c09a13d277868",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 18519,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_accelerate_py/testing/pytest_ast_seal.py",
+      "repository": "accelerator",
+      "sha256": "42930334f4de159e71e6c345075a05b863fe427992bc1782f0cfbdf62b44ff9e",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 3556,
+      "matches_immutable_git_object": true,
+      "path": "pytest.ini",
+      "repository": "accelerator",
+      "sha256": "a4b1418743a539807d0c2d90fb1fa986d0811cd3d1c3ea287885f8dbf028c10a",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 2054,
+      "matches_immutable_git_object": true,
+      "path": "conftest.py",
+      "repository": "datasets",
+      "sha256": "2eab130f3effda3737f25a1770ccd5f9d4955ba42c3d692d659801ffdc1035cf",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 22146,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+      "repository": "datasets",
+      "sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 45109,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+      "repository": "datasets",
+      "sha256": "3299b673d065f2e470fa993105b9c35f27bfdcec8c05a4620b4760ab0400cca1",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 104612,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+      "repository": "datasets",
+      "sha256": "777542d71f3c586f4e060926bd679ed7254e7c7fc8d93cdd3364af997ee91c9a",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 1536,
+      "matches_immutable_git_object": true,
+      "path": "pytest.ini",
+      "repository": "datasets",
+      "sha256": "01737eaafcd2b7e7e1a8db2368a93d4a28053ba44e611a10b1c87d2155dc65ff",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 20716,
+      "matches_immutable_git_object": true,
+      "path": "tests/conftest.py",
+      "repository": "datasets",
+      "sha256": "0a255dc653799cb980d7edbb1d7b2e3c8f0d81b091d4986aa712e1e8e12b7f10",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 1204,
+      "matches_immutable_git_object": true,
+      "path": "tests/unit/conftest.py",
+      "repository": "datasets",
+      "sha256": "2abb4618add06f636ab71406c19ccd828084a48ecf75448397ddb6cd2bca53a2",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 37839,
+      "matches_immutable_git_object": true,
+      "path": "tests/unit/logic/software_contracts/semantic_state/test_api.py",
+      "repository": "datasets",
+      "sha256": "035f763f866856ed2bec17317129e94db482a2bfa5e72c5b2f8516a1ba4c812d",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    }
+  ],
+  "child_processes_launched": false,
+  "child_pytest_configuration_selected": true,
+  "collected_tests": 45,
+  "complete_import_closure_attested": false,
+  "completed_at_utc": "2026-10-14T20:13:15.871668+00:00",
+  "completion_authority": false,
+  "cwd": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014",
+  "datasets_ancestor_conftests_bound": true,
+  "datasets_execution_path": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014",
+  "datasets_execution_revision": "f4a823231ad52c9252504810a1b00ed4738346b6",
+  "datasets_pytest_configuration_selected": false,
+  "distinct_junit_cases": 45,
+  "distribution_versions": {
+    "cryptography": "49.0.0",
+    "duckdb": "1.5.5",
+    "multiformats": "0.3.1.post4",
+    "numpy": "1.26.4",
+    "pytest": "9.1.1"
+  },
+  "docker_run": false,
+  "elapsed_seconds": 1.011,
+  "environment_updates": {
+    "HF_DATASETS_OFFLINE": "1",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/sqd-n2syj_ir/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/sqd-n2syj_ir/seal.duckdb",
+    "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+    "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+    "IPFS_DATASETS_SEMANTIC_BLOCK_CACHE": "1",
+    "IPFS_DATASETS_SEMANTIC_IDENTITY_REUSE": "1",
+    "IPFS_DATASETS_SEMANTIC_INDEX_CACHE": "1",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014:/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014:/home/barberb/lift_coding/.worktrees/repository-proof-context-kit-20261014",
+    "PYTHONUNBUFFERED": "1",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "execution_authority": false,
+  "fixed_heads_and_indexes_unchanged": true,
+  "fresh_private_seal_catalog": true,
+  "full_upstream_module": true,
+  "git_state_after": {
+    "/home/barberb/lift_coding/.worktrees/repository-proof-context-kit-20261014": {
+      "head": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+      "index_sha256": "755c0d46d5ff81281d61fe417cc692e662f9e68bee5403ae5b4470ba854b6233",
+      "refs_sha256": "18f9d26f43abe1a986f904a0a6e91c7e6b65ad20849646b4d4177a78c1b01672"
+    },
+    "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014": {
+      "head": "f15c146467c29c95f39ae1f041c8eb84e76d8bc8",
+      "index_sha256": "78444a261c787d5a44910db00e634696aac398af84d05de63367d124ff968ff8",
+      "refs_sha256": "10e6e0acc2d568dcd9795c76ff330b1c9e8410b997d842da894a1f8b82eeef35"
+    },
+    "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014": {
+      "head": "f4a823231ad52c9252504810a1b00ed4738346b6",
+      "index_sha256": "0103458032f333a7020d6436b49ed64b5a1960dd3f099125094e0bbcfd0c86d3",
+      "refs_sha256": "babfcd1d062cc58f6f2d8a9af9c652b5fede36e54839f5931cc8699e8eedad83"
+    }
+  },
+  "git_state_before": {
+    "/home/barberb/lift_coding/.worktrees/repository-proof-context-kit-20261014": {
+      "head": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+      "index_sha256": "755c0d46d5ff81281d61fe417cc692e662f9e68bee5403ae5b4470ba854b6233",
+      "refs_sha256": "18f9d26f43abe1a986f904a0a6e91c7e6b65ad20849646b4d4177a78c1b01672"
+    },
+    "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014": {
+      "head": "f15c146467c29c95f39ae1f041c8eb84e76d8bc8",
+      "index_sha256": "78444a261c787d5a44910db00e634696aac398af84d05de63367d124ff968ff8",
+      "refs_sha256": "10e6e0acc2d568dcd9795c76ff330b1c9e8410b997d842da894a1f8b82eeef35"
+    },
+    "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014": {
+      "head": "f4a823231ad52c9252504810a1b00ed4738346b6",
+      "index_sha256": "0103458032f333a7020d6436b49ed64b5a1960dd3f099125094e0bbcfd0c86d3",
+      "refs_sha256": "babfcd1d062cc58f6f2d8a9af9c652b5fede36e54839f5931cc8699e8eedad83"
+    }
+  },
+  "inherited_environment_names_removed": [
+    "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET",
+    "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+    "IPFS_ACCELERATE_META_INDEX_DUCKDB",
+    "IPFS_ACCELERATE_META_INDEX_DUCKLAKE",
+    "PYTEST_ADDOPTS",
+    "PYTEST_PLUGINS",
+    "IPFS_TEST_PROOF_REUSE_MODE"
+  ],
+  "interpreter": "/usr/bin/python3",
+  "interpreter_version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+  "junit": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 45
+  },
+  "junit.xml": {
+    "bytes": 5076,
+    "sha256": "22d7bc426460a70d016611970a5502dbd9e537ab4a7f16a063f6b462294cd156"
+  },
+  "kit_execution_revision": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "mandatory_ast_seal_configured": true,
+  "model_calls": 0,
+  "model_weights_or_embeddings_loaded": false,
+  "native_task_owners_constructed": false,
+  "observed_shared_ref_changes": [],
+  "official_task_result": null,
+  "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+  "previous_counts_added": false,
+  "private_runtime_directory": "/tmp/sqd-n2syj_ir",
+  "proof_authority": false,
+  "provider_calls": 0,
+  "pytest_exit_code": 0,
+  "pytest_invocations": 1,
+  "runtime_databases_published": false,
+  "schema": "source-query-dependency-qualification@1",
+  "separate_collection": false,
+  "solver_calls": 0,
+  "source_before_after_equal": true,
+  "source_binding_scope": "listed_standalone_dependencies_not_complete_import_closure",
+  "source_snapshots": [
+    {
+      "bytes": 6658,
+      "matches_immutable_git_object": true,
+      "path": "conftest.py",
+      "repository": "accelerator",
+      "sha256": "852e190193920752eb46dae782daaae063d8f354da59abe7f997d97312a2bb02",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/accelerator/conftest.py.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 12051,
+      "matches_immutable_git_object": false,
+      "path": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency_qualification_runner.py",
+      "repository": "accelerator",
+      "sha256": "257d62f31d397e3536cffd42ce00eeb719928301cf255f92e13c09a13d277868",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/accelerator/docs/agent_supervisor/evidence/source-query-replay-20261014/dependency_qualification_runner.py.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 18519,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_accelerate_py/testing/pytest_ast_seal.py",
+      "repository": "accelerator",
+      "sha256": "42930334f4de159e71e6c345075a05b863fe427992bc1782f0cfbdf62b44ff9e",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/accelerator/ipfs_accelerate_py/testing/pytest_ast_seal.py.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 3556,
+      "matches_immutable_git_object": true,
+      "path": "pytest.ini",
+      "repository": "accelerator",
+      "sha256": "a4b1418743a539807d0c2d90fb1fa986d0811cd3d1c3ea287885f8dbf028c10a",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/accelerator/pytest.ini.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014"
+    },
+    {
+      "bytes": 2054,
+      "matches_immutable_git_object": true,
+      "path": "conftest.py",
+      "repository": "datasets",
+      "sha256": "2eab130f3effda3737f25a1770ccd5f9d4955ba42c3d692d659801ffdc1035cf",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/datasets/conftest.py.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 22146,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+      "repository": "datasets",
+      "sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/datasets/ipfs_datasets_py/logic/software_contracts/content.py.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 45109,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+      "repository": "datasets",
+      "sha256": "3299b673d065f2e470fa993105b9c35f27bfdcec8c05a4620b4760ab0400cca1",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/datasets/ipfs_datasets_py/logic/software_contracts/semantic_state/api.py.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 104612,
+      "matches_immutable_git_object": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+      "repository": "datasets",
+      "sha256": "777542d71f3c586f4e060926bd679ed7254e7c7fc8d93cdd3364af997ee91c9a",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/datasets/ipfs_datasets_py/logic/software_contracts/semantic_state/models.py.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 1536,
+      "matches_immutable_git_object": true,
+      "path": "pytest.ini",
+      "repository": "datasets",
+      "sha256": "01737eaafcd2b7e7e1a8db2368a93d4a28053ba44e611a10b1c87d2155dc65ff",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/datasets/pytest.ini.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 20716,
+      "matches_immutable_git_object": true,
+      "path": "tests/conftest.py",
+      "repository": "datasets",
+      "sha256": "0a255dc653799cb980d7edbb1d7b2e3c8f0d81b091d4986aa712e1e8e12b7f10",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/datasets/tests/conftest.py.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 1204,
+      "matches_immutable_git_object": true,
+      "path": "tests/unit/conftest.py",
+      "repository": "datasets",
+      "sha256": "2abb4618add06f636ab71406c19ccd828084a48ecf75448397ddb6cd2bca53a2",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/datasets/tests/unit/conftest.py.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    },
+    {
+      "bytes": 37839,
+      "matches_immutable_git_object": true,
+      "path": "tests/unit/logic/software_contracts/semantic_state/test_api.py",
+      "repository": "datasets",
+      "sha256": "035f763f866856ed2bec17317129e94db482a2bfa5e72c5b2f8516a1ba4c812d",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/source-snapshot/datasets/tests/unit/logic/software_contracts/semantic_state/test_api.py.snapshot.txt",
+      "source_checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014"
+    }
+  ],
+  "started_at_utc": "2026-10-14T20:13:14.852331+00:00",
+  "status": "pass",
+  "suites": {
+    "": 45
+  },
+  "supervisor_qualification_counts_added": false,
+  "target_program_executions": 0,
+  "targets": [
+    "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014/tests/unit/logic/software_contracts/semantic_state/test_api.py"
+  ],
+  "tests.stderr.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "tests.stdout.log": {
+    "bytes": 5671,
+    "sha256": "0bdaddd6f8db5b77583f56a296fbb8baf3428b70518bc49820f6bb4be6eadf2e"
+  },
+  "total_session_token_savings_established": false,
+  "training_steps": 0,
+  "worker_uid_qualified": false
+}

@@ -1,0 +1,27 @@
+{
+  "datasets_execution_revision": "4b50ae4aac65da9166bd3b24608f32ba7e9fb23d",
+  "files": [
+    {
+      "bytes": 7656,
+      "original_path": "docs/agent_supervisor/evidence/source-query-replay-20261014/README.md",
+      "sha256": "ec07fb836cd2e89688fca28f522293180cc7723cc0d7ef608f95c052b21c5882",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/historical-documentation/source-snapshot/docs/agent_supervisor/evidence/source-query-replay-20261014/README.md.snapshot.txt"
+    },
+    {
+      "bytes": 23313,
+      "original_path": "docs/agent_supervisor/source_lookup_worker.md",
+      "sha256": "faf7621d3f52184f33353fd4b31a8d849ebaef88747ca695fbafa0759e1a9702",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/historical-documentation/source-snapshot/docs/agent_supervisor/source_lookup_worker.md.snapshot.txt"
+    },
+    {
+      "bytes": 93217,
+      "original_path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "129b1b9a14a76c27107b1962990ec82d10a589e56eb1217bb062758c563127a6",
+      "snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/historical-documentation/source-snapshot/docs/agent_supervisor/reversible_codebase_views_plan.md.snapshot.txt"
+    }
+  ],
+  "historical_receipt": "documentation-checks.json",
+  "historical_selected_qualification": "qualification-02",
+  "schema": "source-query-historical-documentation@1",
+  "source_snapshots_match_original_receipt": true
+}

@@ -1,0 +1,70 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: /tmp/sqd-n2syj_ir/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/source-query-replay-20261014
+configfile: pytest.ini
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 45 items
+
+::test_interface_constants PASSED                                        [  2%]
+::test_public_signatures_match_closed_contract PASSED                    [  4%]
+::test_package_exports_closed_facade PASSED                              [  6%]
+::test_indexed_view_protocol_is_additive_to_legacy_view_contract PASSED  [  8%]
+::test_cold_build_emits_verified_root_and_reachable_blocks PASSED        [ 11%]
+::test_cold_and_verified_incremental_are_byte_identical PASSED           [ 13%]
+::test_build_is_order_independent PASSED                                 [ 15%]
+::test_previous_bundle_has_no_persistence_side_effect PASSED             [ 17%]
+::test_invalid_previous_bundle_type_fails_typed PASSED                   [ 20%]
+::test_bundle_view_and_injected_reader_yield_identical_views PASSED      [ 22%]
+::test_verified_view_exposes_all_root_index_records_typed PASSED         [ 24%]
+::test_typed_view_selectors_reject_unknown_keys_and_direction PASSED     [ 26%]
+::test_typed_view_selectors_fail_closed_on_missing_corrupt_and_mismatched_data PASSED [ 28%]
+::test_semantic_link_rejects_canonical_fact_and_version_mismatches PASSED [ 31%]
+::test_link_traversal_rejects_canonical_node_link_binding_mismatches PASSED [ 33%]
+::test_every_read_reverifies_cid_and_schema PASSED                       [ 35%]
+::test_missing_block_fails_typed PASSED                                  [ 37%]
+::test_corrupt_block_fails_typed PASSED                                  [ 40%]
+::test_unknown_symbol_fails_typed PASSED                                 [ 42%]
+::test_open_missing_root_fails_typed PASSED                              [ 44%]
+::test_open_corrupt_root_fails_typed PASSED                              [ 46%]
+::test_producer_fields_copied_from_explicit_producer PASSED              [ 48%]
+::test_build_from_api_module_matches_package_export PASSED               [ 51%]
+::test_verify_rejects_non_bundle PASSED                                  [ 53%]
+::test_single_symbol_compile_matches_bundle_capsule PASSED               [ 55%]
+::test_warm_index_cache_still_refuses_changed_or_missing_reader_bytes[tampered] PASSED [ 57%]
+::test_warm_index_cache_still_refuses_changed_or_missing_reader_bytes[missing] PASSED [ 60%]
+::test_warm_index_cache_still_refuses_changed_or_missing_reader_bytes[foreign_index] PASSED [ 62%]
+::test_enabled_and_explicitly_disabled_index_cache_preserve_native_view_semantics PASSED [ 64%]
+::test_warm_index_reuses_native_parse_but_fetches_reader_on_every_lookup PASSED [ 66%]
+::test_warm_block_canonicality_cache_preserves_fresh_reader_failures[missing] PASSED [ 68%]
+::test_warm_block_canonicality_cache_preserves_fresh_reader_failures[corrupt] PASSED [ 71%]
+::test_warm_block_canonicality_cache_preserves_fresh_reader_failures[nonbytes] PASSED [ 73%]
+::test_structured_identity_reuse_preserves_detached_values_and_actual_reader_calls PASSED [ 75%]
+::test_structured_identity_reuse_preserves_codec_and_payload_refusals[raw_codec-True] PASSED [ 77%]
+::test_structured_identity_reuse_preserves_codec_and_payload_refusals[raw_codec-False] PASSED [ 80%]
+::test_structured_identity_reuse_preserves_codec_and_payload_refusals[noncanonical-True] PASSED [ 82%]
+::test_structured_identity_reuse_preserves_codec_and_payload_refusals[noncanonical-False] PASSED [ 84%]
+::test_structured_identity_reuse_preserves_codec_and_payload_refusals[float-True] PASSED [ 86%]
+::test_structured_identity_reuse_preserves_codec_and_payload_refusals[float-False] PASSED [ 88%]
+::test_structured_identity_reuse_preserves_codec_and_payload_refusals[wrong_cid-True] PASSED [ 91%]
+::test_structured_identity_reuse_preserves_codec_and_payload_refusals[wrong_cid-False] PASSED [ 93%]
+::test_structured_identity_reuse_preserves_codec_and_payload_refusals[json_array-True] PASSED [ 95%]
+::test_structured_identity_reuse_preserves_codec_and_payload_refusals[json_array-False] PASSED [ 97%]
+::test_structured_identity_reuse_removes_only_duplicate_canonical_and_hash_calls PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/source-query-replay-20261014/docs/agent_supervisor/evidence/source-query-replay-20261014/dependency-01/junit.xml -
+============================= slowest 10 durations =============================
+0.04s call     ::test_verified_view_exposes_all_root_index_records_typed
+0.03s call     ::test_enabled_and_explicitly_disabled_index_cache_preserve_native_view_semantics
+0.03s call     ::test_build_is_order_independent
+0.02s call     ::test_link_traversal_rejects_canonical_node_link_binding_mismatches
+0.02s call     ::test_indexed_view_protocol_is_additive_to_legacy_view_contract
+0.02s call     ::test_semantic_link_rejects_canonical_fact_and_version_mismatches
+0.02s call     ::test_cold_and_verified_incremental_are_byte_identical
+0.02s call     ::test_cold_build_emits_verified_root_and_reachable_blocks
+0.02s call     ::test_typed_view_selectors_fail_closed_on_missing_corrupt_and_mismatched_data
+0.01s call     ::test_bundle_view_and_injected_reader_yield_identical_views
+================================== Cache Info ==================================
+Commit hash: f15c1464
+Note: Uncommitted changes present
+============================== 45 passed in 0.72s ==============================

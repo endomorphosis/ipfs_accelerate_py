@@ -1,0 +1,60 @@
+{
+  "schema": "source-query-replay-fixture-correction@1",
+  "status": "static_fixture_correction",
+  "qualification_scope": "proposal for rerunning the same 27 tests; no runtime production changes",
+  "preserved_failed_qualification": {
+    "attempt": "qualification-01",
+    "commands": "docs/agent_supervisor/evidence/source-query-replay-20261014/qualification-01/commands.json",
+    "source_snapshot": "docs/agent_supervisor/evidence/source-query-replay-20261014/qualification-01/source-snapshot/test/api/test_source_query_replay.py.snapshot.txt",
+    "test_snapshot_sha256": "59c2835ac8e7898339bb9ad5b747268a1a9b8ef90a9e9c7a49e01e96a83acb22",
+    "snapshot_bytes": 23765,
+    "retained_without_overwrite": true,
+    "promoted_to_pass": false,
+    "previous_counts_added": false
+  },
+  "failure_cause": "The actual exclusive native owner already holds control.duckdb. Creating a second genuine DuckDB handle for the same file waits for the owner's process lock and fails before the retained-CAS callback is installed.",
+  "changed_test": {
+    "path": "test/api/test_source_query_replay.py",
+    "previous_sha256": "59c2835ac8e7898339bb9ad5b747268a1a9b8ef90a9e9c7a49e01e96a83acb22",
+    "current_sha256": "f2fab885c7ff2654dacb75db40628e2e90202376fe50b658cec48eb08157ca09",
+    "current_bytes": 23818,
+    "case_count": 27,
+    "parameter_sets_or_assertions_changed": false,
+    "exact_diff": [
+      {
+        "test": "test_off_lock_replay_custody_loss_preserves_the_issued_cursor[connection]",
+        "before": "            replacement = open_duckdb_connection(case.server.config.database_path)",
+        "after": "            replacement = open_duckdb_connection(case.root.parent / \"replacement-query-connection.duckdb\")"
+      },
+      {
+        "test": "test_private_read_connection_substitution_refuses_before_native_sql_and_cursor_commit",
+        "before": "    replacement = open_duckdb_connection(case.server.config.database_path)",
+        "after": "    replacement = open_duckdb_connection(case.root.parent / \"replacement-read-state-connection.duckdb\")"
+      }
+    ]
+  },
+  "replacement_handle_contract": {
+    "genuine_open_duckdb_connection": true,
+    "private_database_paths": "Each replacement uses a different file in that test fixture's private root, never the existing owner database.",
+    "source_owner_created": false,
+    "source_schema_migrated": false,
+    "grant_or_guard_types_substituted": false,
+    "separate_database_has_source_authority": false,
+    "expected_behavior": "The substituted exact connection object must be refused before source SQL or cursor publication. The private-read connection case retains its zero-candidate-execute assertion.",
+    "cleanup": "The actual temporary replacement handles are closed by the existing fixture cleanup paths."
+  },
+  "verification": {
+    "builtin_compile_passed": true,
+    "pytest_executed_here": false,
+    "runtime_modules_imported_here": false,
+    "future_qualification_required": true,
+    "production_source_changed": false,
+    "qualification_driver_changed": false,
+    "failed_logs_or_snapshots_changed": false,
+    "git_modified_or_fetched": false,
+    "model_provider_solver_or_child_calls": 0
+  },
+  "proof_authority": false,
+  "execution_authority": false,
+  "completion_authority": false
+}

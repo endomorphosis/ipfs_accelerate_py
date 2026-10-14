@@ -112,6 +112,38 @@ worker-UID admission. Initial native reader binding and privileged `source.get`
 transactions remain separate callback boundaries. The checks provide no
 filesystem writer lease.
 
+## Detach native source-query replay
+
+The native typed gateway now captures its original SERVER, connection, source
+reader, store/CAS, owner/binding bytes, issued grant and continuation registry
+before source-specific callbacks. A short-held private guard installs one busy
+marker, then releases its lock; overlapping or nested source reads refuse before
+waiting for SERVER. A renewal completed before capture remains usable. Replacing
+the captured grant during a read refuses that read.
+
+Source-specific clock samples and the retained reader's CAS load run outside
+SERVER and the grants lock. The original connection must report exactly false
+for `in_transaction` before and after detachment; missing or unsupported states
+refuse. This read opens no transaction and never rolls back somebody else's
+transaction. Unrelated operations and initial source binding retain their own
+contracts.
+
+The replay result and response remain private. Original identities, native task
+revision/body, source population, exact selected working bytes, active grant and
+registry contents close on the original connection after callbacks. Publication
+then prunes expired cursors, consumes the predecessor derived from the retained
+request, and issues a bounded successor. Refusal publishes no successor and
+preserves the predecessor. Payload/response schemas, conservative envelope
+halving, UTF-8/base64 handling and byte/wire accounting remain unchanged.
+
+The [query regression phase](evidence/source-query-replay-20261014/README.md)
+retains its unpatched control and qualified source snapshots separately from
+constructor, launch and delivery evidence. This is owner-side source custody;
+it does not authenticate a separate worker UID, grant proof or execution
+authority, establish a writer lease or measure complete-session token savings.
+The standalone reader compatibility method requires its caller's connection
+serialization; the native gateway uses the detached phases described here.
+
 ## Check before launch and before registration
 
 `require_before_spawn()` checks the original broker, descriptor and endpoint,

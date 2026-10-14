@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="8" time="162.577" timestamp="2026-10-14T19:28:09.959996+00:00" hostname="spark-b271"><testcase classname="test.api.test_source_query_replay" name="test_native_query_cas_callback_reenters_native_fences_after_server_release" time="4.828" /><testcase classname="test.api.test_source_query_replay" name="test_off_lock_replay_custody_loss_preserves_the_issued_cursor[selected]" time="1.610" /><testcase classname="test.api.test_source_query_replay" name="test_off_lock_replay_custody_loss_preserves_the_issued_cursor[omitted]" time="1.545" /><testcase classname="test.api.test_source_query_replay" name="test_off_lock_replay_custody_loss_preserves_the_issued_cursor[store]" time="1.673" /><testcase classname="test.api.test_source_query_replay" name="test_off_lock_replay_custody_loss_preserves_the_issued_cursor[binding]" time="1.650" /><testcase classname="test.api.test_source_query_replay" name="test_off_lock_replay_custody_loss_preserves_the_issued_cursor[task]" time="1.631" /><testcase classname="test.api.test_source_query_replay" name="test_off_lock_replay_custody_loss_preserves_the_issued_cursor[grant]" time="1.339" /><testcase classname="test.api.test_source_query_replay" name="test_off_lock_replay_custody_loss_preserves_the_issued_cursor[connection]" time="31.188"><failure message="ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state.DuckDBConnectionPolicyError: agent-supervisor quack prefer: no_live_owner database=/tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/control.duckdb reason=no_live_owner source=none rejections=status_missing; file fallback failed: timed out acquiring DuckDB process lock: /tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/.control.duckdb.lock">ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:371: in exclusive_file_lock
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+E   BlockingIOError: [Errno 11] Resource temporarily unavailable
+
+The above exception was the direct cause of the following exception:
+ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:1859: in open_duckdb_connection
+    return _open_file_duckdb_connection(
+ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:1438: in _open_file_duckdb_connection
+    connection = DuckDBConnection(
+ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:506: in __init__
+    self._lock_context.__enter__()
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:376: in exclusive_file_lock
+    raise TimeoutError(
+E   TimeoutError: timed out acquiring DuckDB process lock: /tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/.control.duckdb.lock
+
+The above exception was the direct cause of the following exception:
+test/api/test_source_query_replay.py:207: in test_off_lock_replay_custody_loss_preserves_the_issued_cursor
+    replacement = open_duckdb_connection(case.server.config.database_path)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:1873: in open_duckdb_connection
+    raise DuckDBConnectionPolicyError(
+E   ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state.DuckDBConnectionPolicyError: agent-supervisor quack prefer: no_live_owner database=/tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/control.duckdb reason=no_live_owner source=none rejections=status_missing; file fallback failed: timed out acquiring DuckDB process lock: /tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/.control.duckdb.lock</failure></testcase></testsuite></testsuites>

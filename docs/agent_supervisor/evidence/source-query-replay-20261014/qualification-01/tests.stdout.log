@@ -1,0 +1,77 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: /tmp/sqr-nvua9ob5/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/source-query-replay-20261014
+configfile: pytest.ini
+collecting ... collected 250 items
+
+test/api/test_source_query_replay.py::test_native_query_cas_callback_reenters_native_fences_after_server_release PASSED [  0%]
+test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[selected] PASSED [  0%]
+test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[omitted] PASSED [  1%]
+test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[store] PASSED [  1%]
+test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[binding] PASSED [  2%]
+test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[task] PASSED [  2%]
+test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[grant] PASSED [  2%]
+test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[connection] FAILED [  3%]
+
+=================================== FAILURES ===================================
+__ test_off_lock_replay_custody_loss_preserves_the_issued_cursor[connection] ___
+ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:371: in exclusive_file_lock
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+E   BlockingIOError: [Errno 11] Resource temporarily unavailable
+
+The above exception was the direct cause of the following exception:
+ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:1859: in open_duckdb_connection
+    return _open_file_duckdb_connection(
+ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:1438: in _open_file_duckdb_connection
+    connection = DuckDBConnection(
+ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:506: in __init__
+    self._lock_context.__enter__()
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:376: in exclusive_file_lock
+    raise TimeoutError(
+E   TimeoutError: timed out acquiring DuckDB process lock: /tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/.control.duckdb.lock
+
+The above exception was the direct cause of the following exception:
+test/api/test_source_query_replay.py:207: in test_off_lock_replay_custody_loss_preserves_the_issued_cursor
+    replacement = open_duckdb_connection(case.server.config.database_path)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:1873: in open_duckdb_connection
+    raise DuckDBConnectionPolicyError(
+E   ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state.DuckDBConnectionPolicyError: agent-supervisor quack prefer: no_live_owner database=/tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/control.duckdb reason=no_live_owner source=none rejections=status_missing; file fallback failed: timed out acquiring DuckDB process lock: /tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/.control.duckdb.lock
+---------------------------- Captured stderr setup -----------------------------
+2026-10-14 19:30:21,618 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - capability admitted status=compatible fingerprint=sha256:abababababababababababababababababababababababababababababababab
+2026-10-14 19:30:21,619 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-14 19:30:22,027 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - control-plane schema migration complete before ready
+2026-10-14 19:30:22,032 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-14 19:30:22,111 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - state-owner ready server_id=server:aff847be-d2b2-4cb4-9a7f-2f2430473333 listen_uri=quack:127.0.0.1:35521
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 capability admitted status=compatible fingerprint=sha256:abababababababababababababababababababababababababababababababab
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 control-plane schema migration complete before ready
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 state-owner ready server_id=server:aff847be-d2b2-4cb4-9a7f-2f2430473333 listen_uri=quack:127.0.0.1:35521
+----------------------------- Captured stderr call -----------------------------
+2026-10-14 19:30:22,317 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-14 19:30:52,323 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - ERROR - agent-supervisor quack prefer: no_live_owner database=/tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/control.duckdb reason=no_live_owner source=none rejections=status_missing; file fallback also failed error_type=TimeoutError error=timed out acquiring DuckDB process lock: /tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/.control.duckdb.lock
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+ERROR    ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1867 agent-supervisor quack prefer: no_live_owner database=/tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/control.duckdb reason=no_live_owner source=none rejections=status_missing; file fallback also failed error_type=TimeoutError error=timed out acquiring DuckDB process lock: /tmp/sqr-nvua9ob5/pytest-temp/test_off_lock_replay_custody_l6/.control.duckdb.lock
+- generated xml file: /home/barberb/lift_coding/.worktrees/source-query-replay-20261014/docs/agent_supervisor/evidence/source-query-replay-20261014/qualification-01/junit.xml -
+============================= slowest 10 durations =============================
+30.12s call     test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[connection]
+4.24s setup    test/api/test_source_query_replay.py::test_native_query_cas_callback_reenters_native_fences_after_server_release
+1.08s setup    test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[binding]
+1.08s setup    test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[store]
+1.05s setup    test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[task]
+1.02s setup    test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[selected]
+0.99s setup    test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[grant]
+0.97s setup    test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[connection]
+0.96s setup    test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[omitted]
+0.35s call     test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[binding]
+=========================== short test summary info ============================
+FAILED test/api/test_source_query_replay.py::test_off_lock_replay_custody_loss_preserves_the_issued_cursor[connection]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+=================== 1 failed, 7 passed in 162.60s (0:02:42) ====================

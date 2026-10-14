@@ -1,0 +1,58 @@
+{
+  "schema": "source-query-replay-architecture-review@1",
+  "review_kind": "read_only_static_production_review",
+  "status": "no_concrete_blocker_found",
+  "reviewed_execution_head": "b37a248a74d2cbad55dec7b1289aa7cfb367d7e4",
+  "reviewed_sources": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+      "bytes": 33198,
+      "sha256": "8fc15bf41c2b264f12dc07033298aa113a8877e6227f421c00261474d94c1bcd"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "bytes": 627164,
+      "sha256": "9b41186cf0c900ffe36e27bf4202350a5ab398b9d6c6153ecb3b10ae82b58c6b"
+    }
+  ],
+  "static_checks": [
+    "Both exact source bodies parse with Python ast.parse; no product import or runtime execution.",
+    "TypedStateOwnerGateway._execute_current_source_read retains original lock, connection, service, store/CAS, owner/binding bytes and continuation registry before the first source clock. Every detached callback interval closes against these original witnesses.",
+    "The initial grants-lock capture resolves the unique issued native source grant and peer identity without sampling a clock. Actual expiry is required after the detached admission sample; renewal completed before a request is accepted, while replacement during a read refuses.",
+    "Admission, post-replay and closing source clock samples run outside SERVER and the grants lock. _require_active_grant receives the checked sample for this path; unrelated calls retain their existing default behavior.",
+    "Exact connection.in_transaction is False at capture and closing boundaries, in addition to the wire handler's transaction_active refusal. No SQL transaction is created to probe transaction state.",
+    "Private prepare/replay/stage/close/publish require the same active state. Gateway locals independently pin original state witnesses, actual restored inventory identity and selected/response witnesses; finish accepts no caller-supplied restored inventory.",
+    "CAS replay uses the original reader outside SERVER. Native generation/fence/database UUID, task revision/body, complete committed population and selected working bytes close under the original lock after callbacks.",
+    "Closing authorization repeats active-grant validation after source authorization and after final native/source checks. Cursor pruning, predecessor consumption and successor publication occur only after that closing boundary.",
+    "Publication derives the predecessor from the byte-pinned payload continuation, removing the mutable state.cursor bypass. Original registry reference and contents must match until publication.",
+    "Compatibility execute samples its final clock, then repeats _close_read before publishing. Both gateway and compatibility paths discard only their original active state on refusal.",
+    "The gateway busy guard is held only for marker entry/exit. Nested or concurrent reads refuse promptly; finally clears only its own ticket. Refusal neither consumes a predecessor nor rolls back an external transaction this read did not create."
+  ],
+  "preserved_contracts": [
+    "Existing request/response/binding schemas, exact payload fields, canonical request byte/CID/path/integer bounds and source-only grants remain.",
+    "Private issued continuation registry, grant-bound cursor CID, millisecond expiry, capacity, one-use predecessor and cross-grant rejection remain; no public dictionary becomes authority.",
+    "Complete envelope bounds, conservative slicing, UTF8/base64/empty-source behavior, byte/wire fixed-point accounting and explicit unresolved frontier remain.",
+    "Existing native reader binding and consumed-after-failure admission/allocation markers remain; no replacement owner, grant, database or rebind fallback is introduced."
+  ],
+  "qualification_boundary": {
+    "runtime_tests_executed_by_reviewer": 0,
+    "product_imports_by_reviewer": 0,
+    "providers_or_models_invoked_by_reviewer": 0,
+    "native_sql_or_workers_launched_by_reviewer": 0,
+    "baseline_observation": {
+      "path": "docs/agent_supervisor/evidence/source-query-replay-20261014/baseline-01/commands.json",
+      "recorded_status": "expected_regression",
+      "recorded_elapsed_seconds": 25.289,
+      "executed_by_reviewer": false
+    },
+    "runtime_qualification_claimed": false,
+    "new_test_suite_reviewed": false
+  },
+  "remaining_limits": [
+    "Initial native bind still constructs CurrentSourceLookup and performs constructor CAS replay under SERVER. It remains a separate implementation and qualification gap.",
+    "Detached lock safety is established by source inspection for the wire gateway path. A compatibility caller choosing to hold its own external lock around execute is not covered by this claim.",
+    "Current-source checks are sequential, not a writer lease or atomic filesystem snapshot. This review does not authenticate arbitrary replacement runtime methods or every dependency/import.",
+    "Direct source SDK native task/body checks do not confer coordinator claims, nominated allocation custody, provider execution, proof authority or separately deployed worker UID permissions. Existing broker/native parents retain their separate checks.",
+    "Host fixtures and authored deployment metadata cannot establish cross-process permission custody, coding-child admission, measured complete model usage or token savings. Actual transport failure and incurred-byte behavior require runtime qualification."
+  ]
+}

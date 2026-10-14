@@ -1,0 +1,515 @@
+{
+  "accelerator_source_observations": [
+    {
+      "bytes": 44208,
+      "incoming_git_blob": "651c2e82073847246c5bf92ab27919c70e7c13ad",
+      "incoming_revision": "b37a248a74d2cbad55dec7b1289aa7cfb367d7e4",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "published_git_blob": "651c2e82073847246c5bf92ab27919c70e7c13ad",
+      "published_revision": "bbcc1350141120b454a9d5e7648b48cf315047c9",
+      "same_blob": true,
+      "sha256": "d837c3a59e7cbce3fb285fbb0037f5aa6f8a4597193278da6f9518a922a6c570"
+    },
+    {
+      "bytes": 27415,
+      "incoming_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+      "incoming_revision": "b37a248a74d2cbad55dec7b1289aa7cfb367d7e4",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+      "published_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+      "published_revision": "bbcc1350141120b454a9d5e7648b48cf315047c9",
+      "same_blob": true,
+      "sha256": "195c2c3d5c7173702ab2252b7cbf522fd51bff072e677759f99f7aa15c2e2373"
+    },
+    {
+      "bytes": 620001,
+      "incoming_git_blob": "d437dec6b522bc50c3e6c2eaec17c4d4370311f3",
+      "incoming_revision": "b37a248a74d2cbad55dec7b1289aa7cfb367d7e4",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "published_git_blob": "d437dec6b522bc50c3e6c2eaec17c4d4370311f3",
+      "published_revision": "bbcc1350141120b454a9d5e7648b48cf315047c9",
+      "same_blob": true,
+      "sha256": "90bdfdf7ab2303453a600b953e7728789c48cb08d2d71c5d195d3694b0f0c32b"
+    },
+    {
+      "bytes": 21339,
+      "incoming_git_blob": "fc1a8bfb95bea6686d6ec0545ff5dfae062264b9",
+      "incoming_revision": "b37a248a74d2cbad55dec7b1289aa7cfb367d7e4",
+      "path": "docs/agent_supervisor/source_lookup_worker.md",
+      "published_git_blob": "fc1a8bfb95bea6686d6ec0545ff5dfae062264b9",
+      "published_revision": "bbcc1350141120b454a9d5e7648b48cf315047c9",
+      "same_blob": true,
+      "sha256": "9e76bb954287cce7ee39a211549c460f68924e41d8fbfcd836b68db407fcaa6d"
+    }
+  ],
+  "complete_parallel_coverage_claimed": false,
+  "completion_authority": false,
+  "execution_authority": false,
+  "external_coverage": "cached local objects and named worktrees only; no universal GitHub absence claim",
+  "findings": [
+    "The incoming accelerator commit changes only its embedded datasets pin. Native broker/query/gateway and maintained channel-guide blobs are identical to the previous published construction revision.",
+    "Incoming datasets 667033fc7 changes only the legacy LegalIR CUDA runner and its tests: locally incompatible paired bundles retain bytes/receipt/rows as needs_schema_migration while valid staged batches can publish; ambiguous publisher failures and rate limits remain staged/backed off.",
+    "Earlier embedded datasets engine-resume fixes address bytecode-directory validation and waiting for a missing owned readiness receipt, outside the 51 listed native source dependencies.",
+    "No comparable foreign native source.get detachment or permission/provenance implementation was found in the named candidate peers and targeted modified paths. Their inherited native guard stack is not an unmerged feature.",
+    "Reuse the exact listed-byte comparison with historical construction QA; do not promote it to validation of new LegalIR engine/publication code, full datasets closure, or the new query change.",
+    "Parent pins, embedded datasets pins and the actual executed fixed DS4b50/Kit40 checkouts remain separate namespaces; retained historical receipts must not be silently rewritten."
+  ],
+  "foreign_worktrees_modified": false,
+  "incoming_accelerator_changed_paths": [
+    "ipfs_datasets_py"
+  ],
+  "incoming_dataset_gitlink": {
+    "after": "667033fc7040fedeb67c1d359f10ed44fa2e27b5",
+    "before": "8fd82826e8ee935270457acfeee185054eb44aed"
+  },
+  "listed_dataset_blob_comparison": {
+    "all_equal": true,
+    "count": 51,
+    "records": [
+      {
+        "actual_execution_git_blob": "7d8b29b674206355ec12a84f69920a819338e43c",
+        "incoming_embedded_git_blob": "7d8b29b674206355ec12a84f69920a819338e43c",
+        "old_embedded_git_blob": "7d8b29b674206355ec12a84f69920a819338e43c",
+        "path": "ipfs_datasets_py/__init__.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "91611948e2cd7ec3f4b8e4f8c99c70eb501b9261",
+        "incoming_embedded_git_blob": "91611948e2cd7ec3f4b8e4f8c99c70eb501b9261",
+        "old_embedded_git_blob": "91611948e2cd7ec3f4b8e4f8c99c70eb501b9261",
+        "path": "ipfs_datasets_py/logic/autoformal/tree_pin.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "e0bb0d8e74e83cd6bc24513e48f6759bce8c575a",
+        "incoming_embedded_git_blob": "e0bb0d8e74e83cd6bc24513e48f6759bce8c575a",
+        "old_embedded_git_blob": "e0bb0d8e74e83cd6bc24513e48f6759bce8c575a",
+        "path": "ipfs_datasets_py/logic/backends/smt/compiler.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "913cead23854064b5958a973a663a6fc8644f36e",
+        "incoming_embedded_git_blob": "913cead23854064b5958a973a663a6fc8644f36e",
+        "old_embedded_git_blob": "913cead23854064b5958a973a663a6fc8644f36e",
+        "path": "ipfs_datasets_py/logic/families/registry.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "93960f28a64392d5d3c6cb3f3475f27f50c26a46",
+        "incoming_embedded_git_blob": "93960f28a64392d5d3c6cb3f3475f27f50c26a46",
+        "old_embedded_git_blob": "93960f28a64392d5d3c6cb3f3475f27f50c26a46",
+        "path": "ipfs_datasets_py/logic/formalization/autoencoder/intent_action_checkpoint_384.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "575abf5ade75e0eaf11379ad0c1bca04d545b7d0",
+        "incoming_embedded_git_blob": "575abf5ade75e0eaf11379ad0c1bca04d545b7d0",
+        "old_embedded_git_blob": "575abf5ade75e0eaf11379ad0c1bca04d545b7d0",
+        "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_384.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "7331939ac4fcbfb86f0d3a589a2edbd49142b4d2",
+        "incoming_embedded_git_blob": "7331939ac4fcbfb86f0d3a589a2edbd49142b4d2",
+        "old_embedded_git_blob": "7331939ac4fcbfb86f0d3a589a2edbd49142b4d2",
+        "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_training_v2.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "fc60e3f43e9fe0bddcbea1f258a2e876284aee33",
+        "incoming_embedded_git_blob": "fc60e3f43e9fe0bddcbea1f258a2e876284aee33",
+        "old_embedded_git_blob": "fc60e3f43e9fe0bddcbea1f258a2e876284aee33",
+        "path": "ipfs_datasets_py/logic/formalization/autoencoder/structured_source_384.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "8b217953c0a6b9f8411df52f6d70953d7ce4246e",
+        "incoming_embedded_git_blob": "8b217953c0a6b9f8411df52f6d70953d7ce4246e",
+        "old_embedded_git_blob": "8b217953c0a6b9f8411df52f6d70953d7ce4246e",
+        "path": "ipfs_datasets_py/logic/intent_ir/decoder.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "a299bc1ccc7f44529daaf11634975b266c0a7c57",
+        "incoming_embedded_git_blob": "a299bc1ccc7f44529daaf11634975b266c0a7c57",
+        "old_embedded_git_blob": "a299bc1ccc7f44529daaf11634975b266c0a7c57",
+        "path": "ipfs_datasets_py/logic/intent_ir/formalize/action_contracts.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "18b61e862ca56d5dc162aa90486eda3f5bf13de9",
+        "incoming_embedded_git_blob": "18b61e862ca56d5dc162aa90486eda3f5bf13de9",
+        "old_embedded_git_blob": "18b61e862ca56d5dc162aa90486eda3f5bf13de9",
+        "path": "ipfs_datasets_py/logic/intent_ir/formalize/rich_grammar.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "e4a46f49464c84015d96f6a97d87a1a5bfa2af65",
+        "incoming_embedded_git_blob": "e4a46f49464c84015d96f6a97d87a1a5bfa2af65",
+        "old_embedded_git_blob": "e4a46f49464c84015d96f6a97d87a1a5bfa2af65",
+        "path": "ipfs_datasets_py/logic/intent_ir/schema.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "fa63fd302dad6340556a937b73883a25376f5f6b",
+        "incoming_embedded_git_blob": "fa63fd302dad6340556a937b73883a25376f5f6b",
+        "old_embedded_git_blob": "fa63fd302dad6340556a937b73883a25376f5f6b",
+        "path": "ipfs_datasets_py/logic/ir_core/canonical.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "bd4c90c1b470c944b8953f64379232f8752f65e0",
+        "incoming_embedded_git_blob": "bd4c90c1b470c944b8953f64379232f8752f65e0",
+        "old_embedded_git_blob": "bd4c90c1b470c944b8953f64379232f8752f65e0",
+        "path": "ipfs_datasets_py/logic/ir_core/schema_registry.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "1bf4da481ff84ccb3554ae0dd1126dfc4cbffb6b",
+        "incoming_embedded_git_blob": "1bf4da481ff84ccb3554ae0dd1126dfc4cbffb6b",
+        "old_embedded_git_blob": "1bf4da481ff84ccb3554ae0dd1126dfc4cbffb6b",
+        "path": "ipfs_datasets_py/logic/legal_ir/canonical_contracts.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "6ee3da24d699e94a9a7bfb00fce8ce5e726b9bc6",
+        "incoming_embedded_git_blob": "6ee3da24d699e94a9a7bfb00fce8ce5e726b9bc6",
+        "old_embedded_git_blob": "6ee3da24d699e94a9a7bfb00fce8ce5e726b9bc6",
+        "path": "ipfs_datasets_py/logic/security_ir/model.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "346f8e3fc2dea42192062e141d4d414019d9e287",
+        "incoming_embedded_git_blob": "346f8e3fc2dea42192062e141d4d414019d9e287",
+        "old_embedded_git_blob": "346f8e3fc2dea42192062e141d4d414019d9e287",
+        "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "17b7912dd99c7bfcaa8d95efa71d0e4d52c06de8",
+        "incoming_embedded_git_blob": "17b7912dd99c7bfcaa8d95efa71d0e4d52c06de8",
+        "old_embedded_git_blob": "17b7912dd99c7bfcaa8d95efa71d0e4d52c06de8",
+        "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "7f1c1c1d629ed34e2e67251ec6a9820fb7b87817",
+        "incoming_embedded_git_blob": "7f1c1c1d629ed34e2e67251ec6a9820fb7b87817",
+        "old_embedded_git_blob": "7f1c1c1d629ed34e2e67251ec6a9820fb7b87817",
+        "path": "ipfs_datasets_py/logic/software_contracts/python_frontend.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "26b2b6dd6e699a5a2e88686ecbff7d4262dd7f1b",
+        "incoming_embedded_git_blob": "26b2b6dd6e699a5a2e88686ecbff7d4262dd7f1b",
+        "old_embedded_git_blob": "26b2b6dd6e699a5a2e88686ecbff7d4262dd7f1b",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "874470606a0e28cd103b42c7d2e00155f386dad9",
+        "incoming_embedded_git_blob": "874470606a0e28cd103b42c7d2e00155f386dad9",
+        "old_embedded_git_blob": "874470606a0e28cd103b42c7d2e00155f386dad9",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "99660842f38aff730abf7c8ef58250e39b97de62",
+        "incoming_embedded_git_blob": "99660842f38aff730abf7c8ef58250e39b97de62",
+        "old_embedded_git_blob": "99660842f38aff730abf7c8ef58250e39b97de62",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "87074b234b82bfdde77572b5caf0a9603257b49d",
+        "incoming_embedded_git_blob": "87074b234b82bfdde77572b5caf0a9603257b49d",
+        "old_embedded_git_blob": "87074b234b82bfdde77572b5caf0a9603257b49d",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "711658231a1174565b85577366b7b74b37106128",
+        "incoming_embedded_git_blob": "711658231a1174565b85577366b7b74b37106128",
+        "old_embedded_git_blob": "711658231a1174565b85577366b7b74b37106128",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "6f4779e9a17259701f8b2e43ea666e5aa3636375",
+        "incoming_embedded_git_blob": "6f4779e9a17259701f8b2e43ea666e5aa3636375",
+        "old_embedded_git_blob": "6f4779e9a17259701f8b2e43ea666e5aa3636375",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/pytest_analysis.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "a05cbe7da063eb91124c292130591fe036158150",
+        "incoming_embedded_git_blob": "a05cbe7da063eb91124c292130591fe036158150",
+        "old_embedded_git_blob": "a05cbe7da063eb91124c292130591fe036158150",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "d2960e436d9539a7a1f00eafee6c0ef8f83f8731",
+        "incoming_embedded_git_blob": "d2960e436d9539a7a1f00eafee6c0ef8f83f8731",
+        "old_embedded_git_blob": "d2960e436d9539a7a1f00eafee6c0ef8f83f8731",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "755d66fbe768d4d1c6fe04d8cf79a2e7ad39ff9c",
+        "incoming_embedded_git_blob": "755d66fbe768d4d1c6fe04d8cf79a2e7ad39ff9c",
+        "old_embedded_git_blob": "755d66fbe768d4d1c6fe04d8cf79a2e7ad39ff9c",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "537c8125caefb7eb7ee29172308d08de706a4eac",
+        "incoming_embedded_git_blob": "537c8125caefb7eb7ee29172308d08de706a4eac",
+        "old_embedded_git_blob": "537c8125caefb7eb7ee29172308d08de706a4eac",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "07ed4927be7f1d1dad1825796989ec0dfa93abef",
+        "incoming_embedded_git_blob": "07ed4927be7f1d1dad1825796989ec0dfa93abef",
+        "old_embedded_git_blob": "07ed4927be7f1d1dad1825796989ec0dfa93abef",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "234fea82b071c80f9f7ddc8b33909257cdf6400c",
+        "incoming_embedded_git_blob": "234fea82b071c80f9f7ddc8b33909257cdf6400c",
+        "old_embedded_git_blob": "234fea82b071c80f9f7ddc8b33909257cdf6400c",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/bindings.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "f2162e00dc4e6f17755463141cf153a02443d65a",
+        "incoming_embedded_git_blob": "f2162e00dc4e6f17755463141cf153a02443d65a",
+        "old_embedded_git_blob": "f2162e00dc4e6f17755463141cf153a02443d65a",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "2dd0c89502613d5bd705ba91c8ce048b050a6da6",
+        "incoming_embedded_git_blob": "2dd0c89502613d5bd705ba91c8ce048b050a6da6",
+        "old_embedded_git_blob": "2dd0c89502613d5bd705ba91c8ce048b050a6da6",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/merkle.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "5b553ab1842a18ab905ecb32bafee10626163e5a",
+        "incoming_embedded_git_blob": "5b553ab1842a18ab905ecb32bafee10626163e5a",
+        "old_embedded_git_blob": "5b553ab1842a18ab905ecb32bafee10626163e5a",
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "40fd1568678706af29dbaf7011dbb24bd131be03",
+        "incoming_embedded_git_blob": "40fd1568678706af29dbaf7011dbb24bd131be03",
+        "old_embedded_git_blob": "40fd1568678706af29dbaf7011dbb24bd131be03",
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "0650c8c46d1c8ee43f7b298b36ca746c3a1e682b",
+        "incoming_embedded_git_blob": "0650c8c46d1c8ee43f7b298b36ca746c3a1e682b",
+        "old_embedded_git_blob": "0650c8c46d1c8ee43f7b298b36ca746c3a1e682b",
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "e7bc6dd90057c907a9cbbdc9db767ac4eee76344",
+        "incoming_embedded_git_blob": "e7bc6dd90057c907a9cbbdc9db767ac4eee76344",
+        "old_embedded_git_blob": "e7bc6dd90057c907a9cbbdc9db767ac4eee76344",
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_source.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "9da72916ff034adef5342fc41bc74c0ab422ccb9",
+        "incoming_embedded_git_blob": "9da72916ff034adef5342fc41bc74c0ab422ccb9",
+        "old_embedded_git_blob": "9da72916ff034adef5342fc41bc74c0ab422ccb9",
+        "path": "ipfs_datasets_py/logic/software_verification/program.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "693228e46e6559d40be6a0bcd17d3a633e168d72",
+        "incoming_embedded_git_blob": "693228e46e6559d40be6a0bcd17d3a633e168d72",
+        "old_embedded_git_blob": "693228e46e6559d40be6a0bcd17d3a633e168d72",
+        "path": "ipfs_datasets_py/logic/software_verification/source_adapters.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "02f886dde43eea867a1066e910a55cf364d6d37b",
+        "incoming_embedded_git_blob": "02f886dde43eea867a1066e910a55cf364d6d37b",
+        "old_embedded_git_blob": "02f886dde43eea867a1066e910a55cf364d6d37b",
+        "path": "ipfs_datasets_py/logic/software_verification/syntax_bridge.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "129c5c4079d2ef05924bcf62c76fb7d3fd22d5e7",
+        "incoming_embedded_git_blob": "129c5c4079d2ef05924bcf62c76fb7d3fd22d5e7",
+        "old_embedded_git_blob": "129c5c4079d2ef05924bcf62c76fb7d3fd22d5e7",
+        "path": "ipfs_datasets_py/logic/syntax_core/ast.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "ce8eb3447fdb9ed57c348e0cb16fe60528d440b6",
+        "incoming_embedded_git_blob": "ce8eb3447fdb9ed57c348e0cb16fe60528d440b6",
+        "old_embedded_git_blob": "ce8eb3447fdb9ed57c348e0cb16fe60528d440b6",
+        "path": "ipfs_datasets_py/logic/syntax_core/signatures.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "77950b04c9e103410b66a4147981146ab7bebd70",
+        "incoming_embedded_git_blob": "77950b04c9e103410b66a4147981146ab7bebd70",
+        "old_embedded_git_blob": "77950b04c9e103410b66a4147981146ab7bebd70",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/decoder.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "9621440ba04ed8dd787fc74603410300e2f738c4",
+        "incoming_embedded_git_blob": "9621440ba04ed8dd787fc74603410300e2f738c4",
+        "old_embedded_git_blob": "9621440ba04ed8dd787fc74603410300e2f738c4",
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/schema.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "3a56d4c2c31e60779ae4a41d6586934609cfc5f3",
+        "incoming_embedded_git_blob": "3a56d4c2c31e60779ae4a41d6586934609cfc5f3",
+        "old_embedded_git_blob": "3a56d4c2c31e60779ae4a41d6586934609cfc5f3",
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_production.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "85eff000585407ffa7b689c574713df824c596a1",
+        "incoming_embedded_git_blob": "85eff000585407ffa7b689c574713df824c596a1",
+        "old_embedded_git_blob": "85eff000585407ffa7b689c574713df824c596a1",
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "2b0939ac4cbf8d0c588760869708193d27285464",
+        "incoming_embedded_git_blob": "2b0939ac4cbf8d0c588760869708193d27285464",
+        "old_embedded_git_blob": "2b0939ac4cbf8d0c588760869708193d27285464",
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "0e96d544c72999d1fe9bc4c03e2585addb4a331c",
+        "incoming_embedded_git_blob": "0e96d544c72999d1fe9bc4c03e2585addb4a331c",
+        "old_embedded_git_blob": "0e96d544c72999d1fe9bc4c03e2585addb4a331c",
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_formula_codec.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "53d7123051e1a1b9737edeb8928dfe57a579286c",
+        "incoming_embedded_git_blob": "53d7123051e1a1b9737edeb8928dfe57a579286c",
+        "old_embedded_git_blob": "53d7123051e1a1b9737edeb8928dfe57a579286c",
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_family_evaluator.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "446ea6eb734d8586a060f64fc56bf198e312aabe",
+        "incoming_embedded_git_blob": "446ea6eb734d8586a060f64fc56bf198e312aabe",
+        "old_embedded_git_blob": "446ea6eb734d8586a060f64fc56bf198e312aabe",
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py",
+        "same_blob": true
+      },
+      {
+        "actual_execution_git_blob": "6e5e78a9ff1fea4c9fa36bd64b9ad85d7a98f270",
+        "incoming_embedded_git_blob": "6e5e78a9ff1fea4c9fa36bd64b9ad85d7a98f270",
+        "old_embedded_git_blob": "6e5e78a9ff1fea4c9fa36bd64b9ad85d7a98f270",
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_latent_formula.py",
+        "same_blob": true
+      }
+    ],
+    "scope": "51 listed construction dependencies; not complete import closure"
+  },
+  "network_queries": false,
+  "note": "This dated read-only survey precedes the new native-query implementation and is outside the qualification source inventory.",
+  "observed_cached_accelerator_main": "b37a248a74d2cbad55dec7b1289aa7cfb367d7e4",
+  "observed_parent_origin_main": "30d14ca11300adbe35faaa836bbfefb9d1fd2af7",
+  "observed_parent_pins": {
+    "accelerator": "bbcc1350141120b454a9d5e7648b48cf315047c9",
+    "datasets": "4b50ae4aac65da9166bd3b24608f32ba7e9fb23d",
+    "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79"
+  },
+  "peer_native_file_comparisons": [
+    {
+      "comparisons": [
+        {
+          "cached_main_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+          "changed_by_peer_own_commit": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+          "peer_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+          "same_as_cached_main": true
+        },
+        {
+          "cached_main_git_blob": "d437dec6b522bc50c3e6c2eaec17c4d4370311f3",
+          "changed_by_peer_own_commit": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+          "peer_git_blob": "d437dec6b522bc50c3e6c2eaec17c4d4370311f3",
+          "same_as_cached_main": true
+        },
+        {
+          "cached_main_git_blob": "5fd963f94a3273afffd5f24ac28c42f314efcef0",
+          "changed_by_peer_own_commit": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+          "peer_git_blob": "2a6b1c28dfb9f41cc5906382c1e6905029ec75e4",
+          "same_as_cached_main": false
+        },
+        {
+          "cached_main_git_blob": "e3be439af7a835beaca8a7a675fa59a94c4765d3",
+          "changed_by_peer_own_commit": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+          "peer_git_blob": "60abed7e659269136a1bbaa62f87bb7d003b2de7",
+          "same_as_cached_main": false
+        }
+      ],
+      "revision": "79f089c6f28f28f3f5adade4979aed115a039223"
+    },
+    {
+      "comparisons": [
+        {
+          "cached_main_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+          "changed_by_peer_own_commit": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+          "peer_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+          "same_as_cached_main": true
+        },
+        {
+          "cached_main_git_blob": "d437dec6b522bc50c3e6c2eaec17c4d4370311f3",
+          "changed_by_peer_own_commit": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+          "peer_git_blob": "d437dec6b522bc50c3e6c2eaec17c4d4370311f3",
+          "same_as_cached_main": true
+        },
+        {
+          "cached_main_git_blob": "5fd963f94a3273afffd5f24ac28c42f314efcef0",
+          "changed_by_peer_own_commit": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+          "peer_git_blob": "2a6b1c28dfb9f41cc5906382c1e6905029ec75e4",
+          "same_as_cached_main": false
+        },
+        {
+          "cached_main_git_blob": "e3be439af7a835beaca8a7a675fa59a94c4765d3",
+          "changed_by_peer_own_commit": false,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+          "peer_git_blob": "60abed7e659269136a1bbaa62f87bb7d003b2de7",
+          "same_as_cached_main": false
+        }
+      ],
+      "revision": "259b3ae686337830211893f7e585b66ecf1601e9"
+    }
+  ],
+  "previous_published_accelerator": "bbcc1350141120b454a9d5e7648b48cf315047c9",
+  "process_or_environment_values_exported": false,
+  "product_imports": false,
+  "proof_authority": false,
+  "recorded_at_utc": "2026-10-14T19:17:08.242283+00:00",
+  "refs_mutated": false,
+  "review_kind": "bounded_static_cached_Git_and_targeted_worktree_survey",
+  "schema": "source-query-replay-parallel-survey@1",
+  "target_processes_launched": false,
+  "tests_executed": false
+}
