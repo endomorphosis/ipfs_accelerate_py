@@ -835,3 +835,86 @@ snapshots/checkpoints, public instructions, router contracts and worker wiring.
 Source hashes, pinned datasets/kit commits and their actual import origins
 remained unchanged. The run made no live model calls and did not run Docker,
 training, Lean or a new Terminal Bench comparison.
+
+## October 14: admit one second coding round through the shared router
+
+The container owner now supports an explicit `--candidate-rounds 2` selection;
+absence retains one round. `terminal_doctor_dispatch.implementation_argv` can
+sign this selection for ordinary semantic coding with source retrieval. The
+owner strips this control before preparing the first worker, captures its
+provider/model/settings and complete task requirements before launch, and
+keeps the original absolute deadline. This low-level option is not yet exposed
+as a frozen full-suite benchmark configuration.
+
+`owner_candidate_dispatch` binds a successful fixed worker cleanup and a waited
+failed child to one continuation claim. It rebuilds candidate artifacts through
+the existing native symbolic pipeline, prepares the bounded prompt, opens a
+fresh read session and publishes a protected candidate handoff. The second
+child receives sealed stdin and only the remaining time. Capture, preparation
+and start are separate checks; repeated preparation/start cannot create another
+child. Replaying an old retirement refuses before worker-wide cleanup, and a
+waited second child still requires descendant cleanup before closure.
+
+`candidate_round_monitor` owns both waits and retirements. Initial success,
+signal termination, cancellation, exhausted time, registration failure or
+cleanup failure never starts a continuation. Only an ordinary positive failed
+first exit can consume the second round. A second failure is terminal. The
+existing cleanup allowance contains processes; it does not replenish model
+time. Provider output settings remain per invocation and are not represented
+as an enforced cumulative token cap.
+
+The worker and `llm_router` validate the separate candidate handoff before
+provider discovery. It binds the original baseline and public requirements,
+current candidate sources, native artifact pins, owner admission, settings and
+deadline. A bounded summary request immediately before generation proves the
+registered child's live broker access and current owner-side source/producer
+checks. That preflight is observed separately and adds no artifact text to the
+model input. Final input contains the complete original requirements, a
+bounded candidate summary and paged-retrieval guidance.
+
+The new closed reply grammar acknowledges candidate edits using the exact
+round and input generation. It does not reuse baseline symbol aliases or claim
+proof/completion. Post-edit acknowledgment checks retain those input identities
+without requiring the edited source to equal its preimage. Further reads of
+the frozen candidate context correctly refuse once that source changes.
+Independent supervisor validation remains responsible for candidate effects.
+
+Both pinned Grok and Codex paths use the existing shared router and receipt
+accounting. Each invocation records its full provider-input digest/size and
+usage separately, while retaining the original native-prompt identity. A
+separate owner lifecycle observation reports round outcomes without task text
+or provider output. Candidate-aware indexed-context report reconciliation and
+frozen full-suite controls remain necessary before a new benchmark campaign;
+baseline-only fields must not be interpreted as proof of absent candidate
+retrieval or zero usage.
+
+The concrete reporting follow-up is `terminal_context_audit._receipt`
+and its input reconstruction, whose current contract equates stdin with the
+original native prompt, plus `terminal_source_view_observation.collect`, which
+selects only `source_view_retrieval` receipts. The generic log collector already
+retains distinct router invocation IDs. Candidate-aware replay also needs
+owner-private retention of the pre-dispatch advisory artifacts and observation
+bindings before cleanup, rather than reconstructing them from the twice-edited
+workspace. Such retained bytes would be audit evidence only, never a way to
+reload dispatch admission. Full benchmark exposure then needs matching signed
+archive/config controls and provider-attempt accounting checks for both rounds.
+
+Qualification includes actual failed/second Python children, native source and
+formal artifact generation, sealed stdin, protected handoff validation, real
+socket pagination and router invocation/response checks. The local fixture
+authors its missing container UID/path isolation and replaces providers with
+test doubles. The Grok case retains a separately signed public instruction.
+No Docker, live model, theorem prover or training run was performed here.
+Doctor residual, finite-proof, numerical and mapped-edit continuations remain
+excluded. Candidate alias-table rebuilding, accepted proof-index publication
+and measured token savings remain outstanding.
+
+Results, frozen source/dependency pins and corrected developmental failures are
+recorded in [qualification.json](evidence/candidate-dispatch-20261014/qualification.json).
+
+The final frozen-source run passed all 713 tests across 24 modules in 857.40
+seconds, with no failures or skips. Source hashes and the pinned datasets/kit
+commits and import origins remained unchanged. It includes the real-process
+candidate router paths, mandatory broker preflight, both provider test doubles,
+signed public requirements, owner cleanup/cancellation, repeated-claim refusal,
+older-archive default behavior and the affected existing router/container tests.

@@ -1,0 +1,640 @@
+{
+  "artifacts": [
+    {
+      "bytes": 1354,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-context-01-result.json",
+      "sha256": "c18a40ca65eccc9a6a69b795018c774cbd1687c1e9ad3143acb7bed0363ac3d4"
+    },
+    {
+      "bytes": 1850,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-context-01-source-pins.json",
+      "sha256": "30d91bab50fec16e447d68cf14560903227f6765a6c6c82c1e36e0232336425c"
+    },
+    {
+      "bytes": 22318,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-context-01.log",
+      "sha256": "1ce84535cd2e94be463274bf266c62ff5e14968546f77e857ff85ea08d8cf9cd"
+    },
+    {
+      "bytes": 25588,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-context-01.xml",
+      "sha256": "0ce0e8e02660557b07b1f0c7d7601232222d08a1352b8abd0d6ed69457cae9e9"
+    },
+    {
+      "bytes": 1336,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-context-02-result.json",
+      "sha256": "ec44985120fb23efe55a8785b5ff940e9359236abca667f03e256f4755239b81"
+    },
+    {
+      "bytes": 2094,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-context-02-source-pins.json",
+      "sha256": "bf7a2df148f43d066abb583585a7ffd5b051302ca967eeb88a73aa541acba32b"
+    },
+    {
+      "bytes": 111,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-context-02.log",
+      "sha256": "914b778414ed4d17251f64c7e8a93417914d81b46c54d604a501ddb86c99092a"
+    },
+    {
+      "bytes": 5303,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-context-02.xml",
+      "sha256": "1f30b269e735f3dcfe5a591bd4ca7f00b49a0ae79028f0bfd57f4dd7ac1ebf17"
+    },
+    {
+      "bytes": 1303,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-01-result.json",
+      "sha256": "9131aeed918adc364f6d0696ca9ce659e3b5a9752f91eb5cf057fd604d3b4007"
+    },
+    {
+      "bytes": 1731,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-01-source-pins.json",
+      "sha256": "bf44911a6262a5abbf909eeaf44fddcf57c439bbf465fbbe4961e54375c2186a"
+    },
+    {
+      "bytes": 63113,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-01.log",
+      "sha256": "0ebff18051162aea0c5671357cceedc9958cc2a6d12d83c0f7fb4a727da2f426"
+    },
+    {
+      "bytes": 52742,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-01.xml",
+      "sha256": "dd7d21f70baee2a743cc85c6aa6b1d2df6e30910632aa22d7e52dea58c293e83"
+    },
+    {
+      "bytes": 1454,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-02-result.json",
+      "sha256": "ac4b14e6943c3f2f77a6e880f713455c0a5ef700fa69ae30d036f6aa8da96c05"
+    },
+    {
+      "bytes": 2205,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-02-source-pins.json",
+      "sha256": "bf915492285b239c61c08a6190939632d0ae997c1771ad794516b550c09fd90b"
+    },
+    {
+      "bytes": 8056,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-02.log",
+      "sha256": "dace0974735f8bde990d753016163013d5345970468f708017372d0595fddfaf"
+    },
+    {
+      "bytes": 38970,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-02.xml",
+      "sha256": "7e4d18bbfe5c7ff854a2ac2b0ed7ef1811ecfd07826e19f9f8670731e8b4e471"
+    },
+    {
+      "bytes": 1285,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-03-result.json",
+      "sha256": "5d8cc6164ac112ab24dc808bf5319c3064be196aff503c1c66f83f37d161b5dd"
+    },
+    {
+      "bytes": 2094,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-03-source-pins.json",
+      "sha256": "6dccece19684cd72bb9efd16c1afcc71334df91d84345db577d936491c258d14"
+    },
+    {
+      "bytes": 110,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-03.log",
+      "sha256": "0c52954cadbfe7ff309b9fa74393db6d76a8abe8696c5f02162205e57b153a1b"
+    },
+    {
+      "bytes": 5434,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/candidate-router-03.xml",
+      "sha256": "c95188327b948cf7f702aad761a93462650f7b6a98f59b7addc6c52b92f7143b"
+    },
+    {
+      "bytes": 1433,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-01-result.json",
+      "sha256": "d58762279a3a5fb170270d808bd9e0e2142f543ec8c2d7e2ed57833a536a8755"
+    },
+    {
+      "bytes": 1658,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-01-source-pins.json",
+      "sha256": "ccaac48d457688376a239802bdff0958ad84d8e1d35702382b633135670b5c70"
+    },
+    {
+      "bytes": 5123,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-01.log",
+      "sha256": "85e1b425c937138c2d4b963513b157f0d6e12a006048bc220f0d4405fbd8a8e6"
+    },
+    {
+      "bytes": 13273,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-01.xml",
+      "sha256": "a3cf128be2c00b4072d2db02559449a3ac925f0393bfa03bf6590c7ddd4ae9e1"
+    },
+    {
+      "bytes": 1416,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-02-result.json",
+      "sha256": "8295c15bb7ce99b0950ee185c34de45e4f5bd91ee4cab0ea0d0bee8e08979731"
+    },
+    {
+      "bytes": 1893,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-02-source-pins.json",
+      "sha256": "7f62e1313bbd655c74d6487b6c64f76d500d1a861634ec525b614b539bb389cd"
+    },
+    {
+      "bytes": 180,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-02.log",
+      "sha256": "03bbbc3d094b82843797631e4bf354bc205557dc5da4b9ece8a52e4462f0fde3"
+    },
+    {
+      "bytes": 12805,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-02.xml",
+      "sha256": "556eee843d0b6b2e9564a6740fccbe3c111f7d173cc59554e520f939a2fa7300"
+    },
+    {
+      "bytes": 1414,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-03-result.json",
+      "sha256": "5f79a4e77122a2304d7be4b244642b78bf119a858245b2831c66b8105b39d430"
+    },
+    {
+      "bytes": 2256,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-03-source-pins.json",
+      "sha256": "12fed6eb90df35c44c9eeab45cdba1bb264a32a5da3673700d85087a5bf2adc5"
+    },
+    {
+      "bytes": 180,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-03.log",
+      "sha256": "f7d6a8629260376ac7066759fa5479f3ec2e2a97f909b276d20e8a8d5172d954"
+    },
+    {
+      "bytes": 12967,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/monitor-03.xml",
+      "sha256": "e1df47448613682e24e8544a23e08e464d416ffdf7467de18189e872a6b94bb2"
+    },
+    {
+      "bytes": 1292,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/native-pipeline-01-result.json",
+      "sha256": "5d09bd74df4ae26b220156f3f3340cb7fbdfc2f8bfde590f75581ee3d9140f50"
+    },
+    {
+      "bytes": 2094,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/native-pipeline-01-source-pins.json",
+      "sha256": "c12eb55f613110d3bb78a9cede68983568b48324d5218f20150a04491375231b"
+    },
+    {
+      "bytes": 1851,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/native-pipeline-01.log",
+      "sha256": "f08ad3ac0a8bdef2dac01a016592e4254abb70f4c63881fef2115c0e16a9cac2"
+    },
+    {
+      "bytes": 1905,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/native-pipeline-01.xml",
+      "sha256": "512ab65f3843d5069e3557f27bdc991d65bf3f314cbb38a4b65f21ff7ff7efbf"
+    },
+    {
+      "bytes": 1292,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/native-pipeline-02-result.json",
+      "sha256": "07745b5bdffa74ae15cca217256ebcaf1dfb8e6b5d568db05ff3366d2fe2b891"
+    },
+    {
+      "bytes": 2094,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/native-pipeline-02-source-pins.json",
+      "sha256": "41f120a6d938fb75ed2a2c2265c019d39b02e981913bc1da0be668b9bb4e57ca"
+    },
+    {
+      "bytes": 99,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/native-pipeline-02.log",
+      "sha256": "5dc129adb768fc6f0dff076389a989cc721a9769a44b4630ba7b653866894521"
+    },
+    {
+      "bytes": 632,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/native-pipeline-02.xml",
+      "sha256": "2c2b2929818d63683867efa7fab2415ac87ccd51a205f5afab25d70c060a7834"
+    },
+    {
+      "bytes": 1298,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-01-result.json",
+      "sha256": "52cfaf291a5fa5eb5e3e8409ff9715489110c53766233781ee374e2fbde61c2f"
+    },
+    {
+      "bytes": 1967,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-01-source-pins.json",
+      "sha256": "1268e87fc2cb00fe2f3279b1ab7f59f01dff6232c87a8e8d1ef15de018f8a3d6"
+    },
+    {
+      "bytes": 8036,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-01.log",
+      "sha256": "2618e02d7f0f2bfa8f120e44952489413a6e27feba4c561ee0ec2f34e286e9c1"
+    },
+    {
+      "bytes": 11231,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-01.xml",
+      "sha256": "70101030ce9c7223b0dec0ac96449886ca5906e97f0d903296921e8f7ff661d0"
+    },
+    {
+      "bytes": 1300,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-02-result.json",
+      "sha256": "4976536f569f8b23fb1a60b8da72b96905b291a10089ad6f98ec004bd1e8f681"
+    },
+    {
+      "bytes": 2094,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-02-source-pins.json",
+      "sha256": "bf7a2df148f43d066abb583585a7ffd5b051302ca967eeb88a73aa541acba32b"
+    },
+    {
+      "bytes": 1110,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-02.log",
+      "sha256": "79ff2582429bf2d420ca6a9cea314d66d4bf65bb58f0488f69e888e55b8515ac"
+    },
+    {
+      "bytes": 4832,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-02.xml",
+      "sha256": "00ea175a1133a86f196974e05b9be80730ce247344cbad83ba9ab3fdb2ce5f06"
+    },
+    {
+      "bytes": 1283,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-03-result.json",
+      "sha256": "81f16a301a6d35fbd3b399dbff7ea2e8ac1d8edc94b15cd150729b064054d00d"
+    },
+    {
+      "bytes": 2094,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-03-source-pins.json",
+      "sha256": "fb290f4f49bf705690afcbf888738772930d58f3b7018ff827e7faee6f9d473a"
+    },
+    {
+      "bytes": 111,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-03.log",
+      "sha256": "2d81d2d4a29504d6f6fd19dc3ee76ae34a4d8c1f72193e950f54c2b6699c1f65"
+    },
+    {
+      "bytes": 5178,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/owner-dispatch-03.xml",
+      "sha256": "f6bd407d449e5ca8b5e797da654f0acab60d370c390b9d8ea7673d02a1045eee"
+    },
+    {
+      "bytes": 2693,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/qualification-01-result.json",
+      "sha256": "45923c6af78c87c08954fb9a2e6bf749540c31cbde32740109f7444ab160b9ce"
+    },
+    {
+      "bytes": 4360,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/qualification-01-source-pins.json",
+      "sha256": "a3526fa6b9697921482747a4e4b7495c42e636c775535a926b90f676d54d7796"
+    },
+    {
+      "bytes": 832,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/qualification-01.log",
+      "sha256": "82ead860faaa879c12d9a5eeab6599a0a3b0a54a8feea11676e9d8b429c136cb"
+    },
+    {
+      "bytes": 126534,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/qualification-01.xml",
+      "sha256": "d5039ba4fe185a8b2450e611e2ce289a7052dadb12f23e683f02a0a9ef482401"
+    },
+    {
+      "bytes": 1543,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/qualify-01.py",
+      "sha256": "91b5c4b4e4b9d826bc9da695e0fe7ce140207676ffc5aa93ea3b12370c9cf837"
+    },
+    {
+      "bytes": 6263,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/record-qualification.py",
+      "sha256": "0673a7155548705af7ba448f859292381cb1a7a27789d3aecccbf7440aa10da7"
+    },
+    {
+      "bytes": 3618,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/run-tests.py",
+      "sha256": "f77ed5758d980d78d971b072b3525067bf76c222f5aea238682705d7e05345a7"
+    }
+  ],
+  "base_commit": "eabda59f498fdf428b19e217c2fd3db73b8bc179",
+  "behavior": {
+    "baseline_and_candidate_source_pins_separate": true,
+    "captured_before_original_child": true,
+    "continuation_claim_one_use": true,
+    "default_rounds": 1,
+    "failed_provider_attempts_accounted": true,
+    "handoff_schema": "supervisor-candidate-dispatch-owner-handoff@1",
+    "mandatory_preprovider_socket_request": true,
+    "max_rounds": 2,
+    "native_candidate_artifacts_reused": true,
+    "original_deadline_preserved": true,
+    "original_settings_preserved": true,
+    "owner_control": "--candidate-rounds 2",
+    "preflight_provider_input_bytes": 0,
+    "provider_routes": [
+      "codex_cli/gpt-6.1-sol",
+      "grok_cli/grok-4.7"
+    ],
+    "providers_replaced_in_tests": true,
+    "real_cleanup_receipt_required": true,
+    "required_text_truncated": false,
+    "signed_public_requirements_in_native_child_test": true,
+    "snapshot_lean_binding": "SelectionMin; prepared_not_built",
+    "source_obligations_discharged": 0,
+    "strict_candidate_reply": true,
+    "worker_reply_completion_authority": false
+  },
+  "history": [
+    {
+      "counts": {
+        "error": 17,
+        "passed": 17
+      },
+      "failed_cases": [
+        "api.test_candidate_dispatch_context::test_native_candidate_handoff_is_separate_from_baseline_and_preserves_all_requirements",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[source]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[support]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[deleted]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[canonical]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[prompt]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[settings]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[digest]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[mode]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[symlink]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[descriptor]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[expired]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[symbolic_pin]",
+        "api.test_candidate_dispatch_context::test_handoff_refuses_drift_rebinding_or_unprotected_files[population]",
+        "api.test_candidate_dispatch_context::test_serialized_checkpoint_cannot_publish_dispatch_and_postedit_ack_remains_literal",
+        "api.test_candidate_dispatch_context::test_handoff_cleanup_preserves_replaced_inode",
+        "api.test_candidate_dispatch_context::test_worker_gate_never_replays_native_owner_state"
+      ],
+      "junit": "candidate-context-01.xml"
+    },
+    {
+      "counts": {
+        "passed": 36
+      },
+      "failed_cases": [],
+      "junit": "candidate-context-02.xml"
+    },
+    {
+      "counts": {
+        "failed": 16,
+        "passed": 13
+      },
+      "failed_cases": [
+        "api.test_candidate_router_dispatch::test_candidate_dispatch_preserves_native_public_requirements_and_accounts_input[codex_cli]",
+        "api.test_candidate_router_dispatch::test_candidate_dispatch_preserves_native_public_requirements_and_accounts_input[grok_cli]",
+        "api.test_candidate_router_dispatch::test_candidate_reply_binds_input_generation_after_provider_edits",
+        "api.test_candidate_router_dispatch::test_failed_candidate_attempt_preserves_native_usage[baseline-codex_cli]",
+        "api.test_candidate_router_dispatch::test_failed_candidate_attempt_preserves_native_usage[baseline-grok_cli]",
+        "api.test_candidate_router_dispatch::test_failed_candidate_attempt_preserves_native_usage[wrong_generation-codex_cli]",
+        "api.test_candidate_router_dispatch::test_failed_candidate_attempt_preserves_native_usage[wrong_generation-grok_cli]",
+        "api.test_candidate_router_dispatch::test_failed_candidate_attempt_preserves_native_usage[wrong_round-codex_cli]",
+        "api.test_candidate_router_dispatch::test_failed_candidate_attempt_preserves_native_usage[wrong_round-grok_cli]",
+        "api.test_candidate_router_dispatch::test_failed_candidate_attempt_preserves_native_usage[provider_failure-codex_cli]",
+        "api.test_candidate_router_dispatch::test_failed_candidate_attempt_preserves_native_usage[provider_failure-grok_cli]",
+        "api.test_candidate_router_dispatch::test_failed_candidate_attempt_preserves_native_usage[exit_failure-codex_cli]",
+        "api.test_candidate_router_dispatch::test_failed_candidate_attempt_preserves_native_usage[exit_failure-grok_cli]",
+        "api.test_candidate_router_dispatch::test_candidate_context_refusal_prevents_provider_call[2]",
+        "api.test_candidate_router_dispatch::test_candidate_deadline_is_clipped_again_after_provider_discovery",
+        "api.test_candidate_router_dispatch::test_candidate_expired_after_discovery_cannot_create_fresh_budget"
+      ],
+      "junit": "candidate-router-01.xml"
+    },
+    {
+      "counts": {
+        "failed": 1,
+        "passed": 207
+      },
+      "failed_cases": [
+        "api.test_candidate_router_dispatch::test_candidate_dispatch_preserves_native_public_requirements_and_accounts_input[grok_cli]"
+      ],
+      "junit": "candidate-router-02.xml"
+    },
+    {
+      "counts": {
+        "passed": 34
+      },
+      "failed_cases": [],
+      "junit": "candidate-router-03.xml"
+    },
+    {
+      "counts": {
+        "failed": 1,
+        "passed": 73
+      },
+      "failed_cases": [
+        "test.api.test_candidate_round_monitor::test_installed_worker_accepts_exact_new_handoff"
+      ],
+      "junit": "monitor-01.xml"
+    },
+    {
+      "counts": {
+        "passed": 76
+      },
+      "failed_cases": [],
+      "junit": "monitor-02.xml"
+    },
+    {
+      "counts": {
+        "passed": 77
+      },
+      "failed_cases": [],
+      "junit": "monitor-03.xml"
+    },
+    {
+      "counts": {
+        "failed": 2
+      },
+      "failed_cases": [
+        "api.test_candidate_dispatch_native_pipeline::test_owner_to_native_candidate_router_with_real_child_and_artifact_retrieval[codex_cli-gpt-6.1-sol]",
+        "api.test_candidate_dispatch_native_pipeline::test_owner_to_native_candidate_router_with_real_child_and_artifact_retrieval[grok_cli-grok-4.7]"
+      ],
+      "junit": "native-pipeline-01.xml"
+    },
+    {
+      "counts": {
+        "passed": 2
+      },
+      "failed_cases": [],
+      "junit": "native-pipeline-02.xml"
+    },
+    {
+      "counts": {
+        "error": 6,
+        "passed": 21
+      },
+      "failed_cases": [
+        "api.test_owner_candidate_dispatch::test_native_preparation_is_one_use_and_does_not_promote_advisory_objects",
+        "api.test_owner_candidate_dispatch::test_second_child_gets_sealed_stdin_pinned_settings_and_distinct_custody",
+        "api.test_owner_candidate_dispatch::test_candidate_drift_prevents_spawn_and_removes_prepared_transport",
+        "api.test_owner_candidate_dispatch::test_deadline_exhausted_after_preparation_prevents_spawn",
+        "api.test_owner_candidate_dispatch::test_registration_failure_reaps_actual_partial_child_and_consumes_claim",
+        "api.test_owner_candidate_dispatch::test_unused_preparation_close_blocks_spawn"
+      ],
+      "junit": "owner-dispatch-01.xml"
+    },
+    {
+      "counts": {
+        "failed": 1,
+        "passed": 27
+      },
+      "failed_cases": [
+        "api.test_owner_candidate_dispatch::test_owner_captures_real_initial_formalization_handoff_without_worker_identity"
+      ],
+      "junit": "owner-dispatch-02.xml"
+    },
+    {
+      "counts": {
+        "passed": 32
+      },
+      "failed_cases": [],
+      "junit": "owner-dispatch-03.xml"
+    },
+    {
+      "counts": {
+        "passed": 713
+      },
+      "failed_cases": [],
+      "junit": "qualification-01.xml"
+    }
+  ],
+  "history_notes": [
+    "Exploratory focused runs overlapped independent agent edits and can report global source_pins_unchanged=false. Final aggregate is the frozen-source qualification.",
+    "candidate-context-01 and owner-dispatch-01 exposed full baseline source-manifest records being mistaken for digest strings. Preserve the exact manifest and derive its source hash projection separately.",
+    "monitor-01 used ambient pytest argv in an authored argparse fixture. Corrected the fixture to supply actual worker argv.",
+    "candidate-router-01 reused an owner revalidation hook in the worker fixture that deliberately rejected baseline replay. Replaced it with a worker-appropriate source check.",
+    "candidate-router-02 compared normalized Grok JSON byte formatting rather than its exact parsed contract. Corrected assertion to structural equality.",
+    "owner-dispatch-02 used different authored source reference repository/tree IDs in a composed formalization fixture. Corrected to native IDs.",
+    "native-pipeline-01 expected a single stdout JSON object despite the real router also emitting its invocation receipt. The test now requires one result and one identical real receipt.",
+    "Read-only review found replayed retirement cleanup, waited-child closure, and interruption windows around partial start. Fixed before final aggregate and covered by actual-child regression tests."
+  ],
+  "limitations": {
+    "accepted_candidate_proof_index_published": false,
+    "candidate_alias_translation_table_rebuilt": false,
+    "candidate_context_reporting_reconciled": false,
+    "cumulative_provider_token_cap_enforced": false,
+    "doctor_residual_continuation": false,
+    "finite_proof_continuation": false,
+    "full_suite_archive_controls_exposed": false,
+    "hard_native_scan_cancellation": false,
+    "live_comparison_blocker": "Prior live Grok comparison was authentication-blocked; access was not requalified here.",
+    "live_provider_calls": 0,
+    "mapped_edit_continuation": false,
+    "net_token_savings_established": false,
+    "new_docker_qualification": false,
+    "new_terminal_bench_run": false,
+    "new_token_score": null,
+    "new_training_or_formal_prover_run": false,
+    "numerical_continuation": false,
+    "whole_supervisor_suite_green": false
+  },
+  "qualification": {
+    "argv": [
+      "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "--tb=short",
+      "--color=no",
+      "-o",
+      "log_cli=false",
+      "-o",
+      "addopts=",
+      "test/api/test_candidate_dispatch_native_pipeline.py",
+      "test/api/test_owner_candidate_dispatch.py",
+      "test/api/test_candidate_dispatch_context.py",
+      "test/api/test_candidate_reply_contract.py",
+      "test/api/test_candidate_router_dispatch.py",
+      "test/api/test_candidate_round_monitor.py",
+      "test/api/test_candidate_round_policy.py",
+      "test/api/test_owner_candidate_round_prompt.py",
+      "test/api/test_owner_candidate_round_context.py",
+      "test/api/test_worker_candidate_round_broker.py",
+      "test/api/test_worker_source_broker.py",
+      "test/api/test_router_public_instruction.py",
+      "test/api/test_router_implementation_runner.py",
+      "test/api/test_semantic_router_integration.py",
+      "test/api/test_grok_container_router.py",
+      "test/api/test_source_formalization_context.py",
+      "test/api/test_coding_reply_contract.py",
+      "test/api/test_terminal_doctor_dispatch.py",
+      "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py",
+      "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py",
+      "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py",
+      "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py",
+      "benchmarks/agent_supervisor/container_coding/test_numerical_obligation_worker_wiring.py",
+      "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_worker_wiring.py",
+      "--junitxml=/home/barberb/lift_coding/artifacts/candidate-dispatch-20261014/qualification-01.xml"
+    ],
+    "counts": {
+      "passed": 713
+    },
+    "dependencies": {
+      "ipfs_datasets_py": {
+        "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+        "tracked_status": ""
+      },
+      "ipfs_kit_py": {
+        "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+        "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+        "tracked_status": ""
+      }
+    },
+    "dependencies_unchanged": true,
+    "dependency_import_origins": {
+      "ipfs_datasets_py": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit/ipfs_kit_py/__init__.py"
+    },
+    "exit_code": 0,
+    "live_provider_calls": 0,
+    "seconds": 859.71405770001,
+    "source_pins_unchanged": true
+  },
+  "schema": "candidate-coding-dispatch-qualification@1",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "4fc7d37f0215bfff7fec277576d9e14749c3295cb6b66c89e354798526ac978c",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "d7eebb38c5c2801eb9ea8caeb8be998a105357edf2671668e6dea19dbf7dadf2",
+    "benchmarks/agent_supervisor/container_coding/test_numerical_obligation_worker_wiring.py": "53439863d65a592752c5567c9a75a40da03db0902088075be848839dbb23672f",
+    "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py": "a610cce5de4ae03593691b53761098465cc54dcd0ef0ca96a6750ba584805603",
+    "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_worker_wiring.py": "66b765c70a18bb806431fe7eabb032527d00e7660441430bd5b2f45929debc86",
+    "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py": "273ed9b95447197f7c3049cf5a068d24e892a4646cefc41a503190ef2676f8ec",
+    "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py": "6a023ea3a7053a726ff508955298c90e60ec1bd07352614105d5c3bb4a21721d",
+    "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py": "8da11782e0452d6d05de039b8f35c0060dab21cef580ab94585538cfb995a214",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py": "77b7580aca414a42e2497cdaf42323a384074a1c750b2815c8e0ac8086e7b058",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_reply_contract.py": "7c239cce5b9a75d2f1c994a5a1a9074839c54bfda3928c91e028800f8d5a54f9",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_monitor.py": "78df074a5c40a0cba146f861b0d4aba654b5d483a1de765c01a4e837fb879ab8",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_policy.py": "70b5b1db3f87c515c5fc8cff7fced253d9c24367eb200f959f4d630dc1e18b0c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch.py": "ec4c796e3835555bd2608675f25e960fecfb2293812efbb33d0ed011c3481ce3",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "69c7fbbfea87631e891e108f18cba417797ff704d73134b7d1e9ccbb85f942c5",
+    "test/api/test_candidate_dispatch_context.py": "9bd16112a31968484d9aeba38d76f37811579bdf189ca178745ac10e0bc3ac53",
+    "test/api/test_candidate_dispatch_native_pipeline.py": "4553716e487a19cf83fe5e63695947e045cc3b159de05dbaa919ffc1050040d6",
+    "test/api/test_candidate_reply_contract.py": "7bcae48fb1ecb2b7aed46a0b61b91f8b5c901b1c54ebf500406b2c3bbfad8616",
+    "test/api/test_candidate_round_monitor.py": "0b682e79fe23466044a309501ba3b6ac173f70eac793cb09cb41257c6eb427ec",
+    "test/api/test_candidate_round_policy.py": "ecc85d71151cb1fea83094508461080d368a0c76f335e117387d40cf5ff6d4f3",
+    "test/api/test_candidate_router_dispatch.py": "fbd93437aaa1a92debe6749de46c47e1121852bc2b2c06e0bdae5e2c60deb23e",
+    "test/api/test_coding_reply_contract.py": "2e5f8b0cf1ef4d2c1925ccd5242f945c08be4d9bfc94ef21e5007de51939a147",
+    "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+    "test/api/test_owner_candidate_dispatch.py": "61ee2fecd45256ce7b65797061dfdf3fae103bb04f5287794f8f0f3ee824b81d",
+    "test/api/test_owner_candidate_round_context.py": "9d156bb8a0f834de47177b2804c95fa649617c67cdfc655a03e2ee74b1ac6f1f",
+    "test/api/test_owner_candidate_round_prompt.py": "1fb93d5746af577a5d509801c1447d74d55022164baa3e8899ec0ca641975d8f",
+    "test/api/test_router_implementation_runner.py": "e02ebf6a530912f0ddd1070b258e3b8c01d64f418adf2592a2714e7d7ef9504a",
+    "test/api/test_router_public_instruction.py": "ecd9b19b485185447c6e8ef96dc652c60eaf99916dd63dc2cfb91bdbc257c28b",
+    "test/api/test_semantic_router_integration.py": "8be5d5f73fa57a005572bec790d88b1f3485ca3e0e5b5e2116b6eb76f07c4d03",
+    "test/api/test_source_formalization_context.py": "0a4861bc78f8cb00518a77fa630fb2b5bd524d1f2f805205f41b8472279f2fd4",
+    "test/api/test_terminal_doctor_dispatch.py": "1abb40e3e01d753489b1d09f312d8cfbe4b4acd13397504cf00582e859254935",
+    "test/api/test_worker_candidate_round_broker.py": "bb9c7fbb02fac1085fdba46ce5ce623a6b938b070e60f6a4c880df0d7a15dc83",
+    "test/api/test_worker_source_broker.py": "e8d53fe0d857d6f5ab5dcc67c6a71c0b4ef83e12099f987d38e737040c8ea55a"
+  },
+  "test_environment": {
+    "authored_paths": [
+      "single-user host cross-UID/path boundary",
+      "fixed container cleanup executable",
+      "provider discovery/route objects and generation",
+      "test source programs and signing profiles"
+    ],
+    "pytest_addopts_override": "",
+    "pytest_plugin_autoload": false,
+    "real_paths": [
+      "sealed initial broker capture",
+      "signed public instruction loader",
+      "Git source edits",
+      "waited failed child",
+      "native snapshot/capsule/formal grammar",
+      "typed owner launch and retirement",
+      "protected handoff publication and source validation",
+      "sealed second stdin",
+      "second registered Python -I descendant",
+      "descriptor hash/mode/lifetime checks",
+      "owner socket peer and PID ancestry",
+      "bounded source artifact continuation",
+      "native router candidate branch",
+      "native candidate reply validation",
+      "invocation receipt emission"
+    ],
+    "required_ast_sealing": "Required by test/conftest.py; not disabled."
+  }
+}

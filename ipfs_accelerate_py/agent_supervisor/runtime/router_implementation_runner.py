@@ -32,6 +32,8 @@ SOURCE_LOOKUP_DESCRIPTOR_ENV = "IPFS_SUPERVISOR_SOURCE_LOOKUP_DESCRIPTOR"
 SOURCE_LOOKUP_DESCRIPTOR_DIGEST_ENV = "IPFS_SUPERVISOR_SOURCE_LOOKUP_DESCRIPTOR_SHA256"
 SOURCE_DESCRIPTOR_ENV = "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR"
 SOURCE_DESCRIPTOR_DIGEST_ENV = "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR_SHA256"
+CANDIDATE_DESCRIPTOR_ENV = "IPFS_SUPERVISOR_CANDIDATE_ROUND_DESCRIPTOR"
+CANDIDATE_DESCRIPTOR_DIGEST_ENV = "IPFS_SUPERVISOR_CANDIDATE_ROUND_DESCRIPTOR_SHA256"
 
 
 @contextmanager
@@ -264,6 +266,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "credential_isolation", "provider_discovery", "provider_allocation",
     "provider_initialization", "provider_invocation", "provider_result_validation",
     "semantic_response_decode", "coding_reply_validation", "unclassified",
+    "candidate_dispatch_context", "candidate_round_preflight", "candidate_reply_contract", "candidate_reply_validation",
 })
 RUNNER_FAILURE_TYPES = frozenset({
     "ValueError", "TypeError", "RuntimeError", "PermissionError", "FileNotFoundError",
@@ -280,6 +283,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "semantic_metadata_census.py", "semantic_working_set.py",
     "source_formalization_context.py",
     "numerical_obligation_client.py", "source_lookup_worker_client.py", "worker_source_client.py",
+    "candidate_dispatch_context.py", "candidate_reply_contract.py", "worker_candidate_round_client.py",
 })
 
 
@@ -387,7 +391,8 @@ def _provider_failure_diagnostic(error: BaseException, *, provider: str) -> dict
 
 
 def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
-                        semantic_transport: bool = False) -> tuple[str, str]:
+                        semantic_transport: bool = False,
+                        candidate_transport: bool = False) -> tuple[str, str]:
     """Preserve native task bytes while making the allocated coding path explicit."""
     if purpose not in {"planning", "coding"}:
         raise ValueError("explicit planning or coding purpose required")
@@ -406,7 +411,9 @@ def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
         "The supervisor owner validates and publishes the candidate. Do not stage "
         "or commit Git changes, and do not modify Git control files. This path "
         "mapping does not expand the task's allowed files or grant completion authority.\n\n"
-        + ("Task context follows using a reversible semantic symbol table; source code and authority remain canonical:\n"
+        + ("Independently admitted candidate task context follows, retaining the complete original requirements:\n"
+           if candidate_transport else
+           "Task context follows using a reversible semantic symbol table; source code and authority remain canonical:\n"
            if semantic_transport else "Original native task prompt follows without modification:\n")
     )
     if len(advisory.encode()) > 8192:
@@ -429,6 +436,60 @@ def _refuse_candidate_preparation(prompt):
     if (type(envelope) is dict and type(envelope.get("schema")) is str
             and envelope["schema"].startswith("supervisor-owner-candidate-router-input@")):
         raise ValueError("candidate round prompt requires independent dispatch admission")
+
+
+def _candidate_round_guidance(binding):
+    """Point only at the admitted generation's bounded advisory reader."""
+    generation = binding["workspace_generation"]
+    return ("\n\nFresh candidate context is available through the separate read-only candidate session. "
+        "From the allocated workspace run: /opt/ipfs-supervisor/venv/bin/python -I "
+        "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_round_client.py "
+        "--expected-workspace-generation " + generation + " --select --artifact catalog. "
+        "The helper reads this invocation's IPFS_SUPERVISOR_CANDIDATE_ROUND_DESCRIPTOR and "
+        "IPFS_SUPERVISOR_CANDIDATE_ROUND_DESCRIPTOR_SHA256. Select candidate capsules or obligations with "
+        "--select --artifact capsules or --select --artifact obligations, optionally filtering --path, "
+        "--symbol-id or --function-id using the returned candidate catalog. For source use --path <path> "
+        "--view compact or --view original. Preserve the returned next_cursor JSON with --cursor to "
+        "continue a page and keep the exact workspace generation. These candidate identifiers differ "
+        "from baseline symbols. Baseline proof, capsule and alias bindings are historical and confer "
+        "no current evidence. Candidate formulas remain pending or unsupported as reported; retrieval "
+        "does not discharge obligations. This session cannot refresh after edits: read needed context "
+        "before editing, then edit the original allocated files. The owner validates resulting effects.\n")
+
+
+def _candidate_dispatch_observation(*, prompt, repository, workspace, boundary,
+        boundary_sha256, handoff, handoff_sha256, descriptor_path, descriptor_sha256,
+        launch_settings):
+    from .worker_candidate_round_client import load_descriptor
+    from .candidate_dispatch_context import validate_candidate_dispatch_context
+
+    descriptor = load_descriptor(descriptor_path, descriptor_sha256, workspace=workspace)
+    return validate_candidate_dispatch_context(prompt=prompt, repository=repository,
+        workspace=workspace, boundary=boundary, boundary_sha256=boundary_sha256,
+        handoff=handoff, handoff_sha256=handoff_sha256, descriptor=descriptor,
+        descriptor_path=descriptor_path, descriptor_sha256=descriptor_sha256,
+        launch_settings=launch_settings)
+
+
+def _candidate_round_preflight(*, descriptor_path, descriptor_sha256, workspace, binding):
+    """Require one bounded owner exchange from this registered child lineage."""
+    from .worker_candidate_round_client import request_context_page, canonical_json
+
+    response = request_context_page(descriptor_path, descriptor_sha256, artifact="summary",
+        expected_workspace_generation=binding["workspace_generation"], max_bytes=8192, workspace=workspace)
+    if (response.get("ok") is not True
+            or response["page"]["artifact_sha256"] != binding["candidate_artifacts"]["summary"]["sha256"]
+            or response["page"]["workspace_generation"] != binding["workspace_generation"]):
+        raise ValueError("admitted candidate summary is unavailable or differs")
+    raw = canonical_json(response)
+    if len(raw) > 8192:
+        raise ValueError("candidate summary preflight exceeds response bound")
+    return dict(schema="supervisor-candidate-round-preflight@1", requests=1,
+        session_id=binding["session_id"], workspace_generation=binding["workspace_generation"],
+        artifact="summary", artifact_sha256=response["page"]["artifact_sha256"],
+        response_sha256=hashlib.sha256(raw).hexdigest(), response_bytes=len(raw),
+        provider_input_bytes=0, child_custody_checked=True, source_freshness_checked=True,
+        producer_freshness_checked=True, proof_authority=False, completion_authority=False)
 
 
 def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int,
@@ -455,9 +516,33 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         doctor_residual_artifact: Path | None = None,
         doctor_residual_sha256: str = "", doctor_residual_task_cid: str = "",
         public_instruction_artifact: Path | None = None, public_instruction_sha256: str = "",
-        public_instruction_task_cid: str = "", budget_profile: str | None = None) -> tuple[str, dict]:
+        public_instruction_task_cid: str = "", budget_profile: str | None = None,
+        candidate_dispatch_handoff: Path | None = None,
+        candidate_dispatch_handoff_sha256: str | None = None,
+        candidate_round_descriptor: Path | None = None,
+        candidate_round_descriptor_sha256: str | None = None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
-    _refuse_candidate_preparation(prompt)
+    candidate_args = (candidate_dispatch_handoff, candidate_dispatch_handoff_sha256,
+                      candidate_round_descriptor, candidate_round_descriptor_sha256)
+    candidate_selected = any(value is not None for value in candidate_args)
+    if candidate_selected:
+        if (not all(candidate_args) or purpose != "coding" or semantic_repository is None
+                or container_boundary is None or not container_boundary_sha256 or census_only
+                or source_formalization_handoff is not None or source_formalization_handoff_sha256 is not None
+                or numerical_obligation_descriptor is not None or numerical_obligation_descriptor_sha256 is not None
+                or source_lookup_descriptor is not None or source_lookup_descriptor_sha256 is not None
+                or source_view_descriptor is not None or source_view_descriptor_sha256 is not None
+                or source_view_profile != "disabled" or source_edit_mode != "disabled"
+                or semantic_transport_schema != "supervisor-semantic-router-input@1"
+                or semantic_metadata_view != "legacy" or semantic_working_set != "legacy"
+                or semantic_metadata_token_counter is not None or coding_reply_mode != "legacy"
+                or any((doctor_residual_artifact, doctor_residual_sha256, doctor_residual_task_cid,
+                        public_instruction_artifact, public_instruction_sha256, public_instruction_task_cid))):
+            raise ValueError("candidate dispatch requires its separate complete isolated coding route")
+    else:
+        _refuse_candidate_preparation(prompt)
+        if any(key in os.environ for key in (CANDIDATE_DESCRIPTOR_ENV, CANDIDATE_DESCRIPTOR_DIGEST_ENV)):
+            raise ValueError("candidate descriptor environment requires explicit owner selection")
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
     from ipfs_accelerate_py.llm_router import generate_text, get_llm_provider
@@ -582,6 +667,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     residual_receipt = None
     residual_advisory = ""
     router_prompt = prompt
+    candidate_receipt = None
+    candidate_reply_receipt = None
+    candidate_guidance = ""
+    candidate_settings = dict(provider=provider, model=model, reasoning_effort=reasoning_effort,
+        max_output_tokens=max_output_tokens, budget_profile=budget_profile,
+        grok_coding_max_turns=grok_coding_max_turns)
     if semantic_repository is not None:
         semantic_repository = Path(semantic_repository).resolve(strict=True)
         if semantic_repository == root:
@@ -597,30 +688,45 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             return Path(value).resolve(strict=True)
         if common_dir(semantic_repository) != common_dir(root):
             raise ValueError("semantic source repository differs from allocated worktree")
-        from .semantic_router_translation import encode_semantic_router_prompt
-        encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,
-                                               transport_schema=semantic_transport_schema)
-        router_prompt = encoded.provider_prompt
-        # Retain size diagnostics outside the model input. This observes the
-        # verified transport before optional metadata projection and wrappers;
-        # the existing model_prompt fields bind the actual final input.
-        try:
-            from .semantic_router_translation import census_semantic_router_prompt
-            semantic_component_census = census_semantic_router_prompt(encoded=encoded)
-        except Exception:
-            # Diagnostic failure cannot change dispatch or expose source text
-            # through an exception. The encoder's validation above still rules.
-            semantic_component_census = {
-                "schema": "supervisor-semantic-prompt-component-census@1",
-                "status": "unavailable",
-                "raw_content_exported": False,
-            }
+        if not candidate_selected:
+            from .semantic_router_translation import encode_semantic_router_prompt
+            encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,
+                                                   transport_schema=semantic_transport_schema)
+            router_prompt = encoded.provider_prompt
+            # Retain size diagnostics outside the model input. This observes the
+            # verified transport before optional metadata projection and wrappers;
+            # the existing model_prompt fields bind the actual final input.
+            try:
+                from .semantic_router_translation import census_semantic_router_prompt
+                semantic_component_census = census_semantic_router_prompt(encoded=encoded)
+            except Exception:
+                # Diagnostic failure cannot change dispatch or expose source text
+                # through an exception. The encoder's validation above still rules.
+                semantic_component_census = {
+                    "schema": "supervisor-semantic-prompt-component-census@1",
+                    "status": "unavailable",
+                    "raw_content_exported": False,
+                }
     failure_phase = "source_formalization_context"
-    from .source_formalization_context import validate_source_formalization_context
-    formalization_receipt = validate_source_formalization_context(
-        prompt=prompt, repository=semantic_repository, workspace=root,
-        boundary=container_boundary, boundary_sha256=container_boundary_sha256 or None,
-        handoff=source_formalization_handoff, handoff_sha256=source_formalization_handoff_sha256)
+    formalization_receipt = None
+    if candidate_selected:
+        failure_phase = "candidate_dispatch_context"
+        candidate_receipt = _candidate_dispatch_observation(prompt=prompt,
+            repository=semantic_repository, workspace=root, boundary=container_boundary,
+            boundary_sha256=container_boundary_sha256, handoff=candidate_dispatch_handoff,
+            handoff_sha256=candidate_dispatch_handoff_sha256, descriptor_path=candidate_round_descriptor,
+            descriptor_sha256=candidate_round_descriptor_sha256, launch_settings=candidate_settings)
+        candidate_guidance = _candidate_round_guidance(candidate_receipt)
+        router_prompt += candidate_guidance
+        timeout = min(timeout, candidate_receipt["remaining_timeout_seconds"])
+        if type(timeout) is not int or timeout < 1:
+            raise ValueError("candidate dispatch has no remaining admitted time")
+    else:
+        from .source_formalization_context import validate_source_formalization_context
+        formalization_receipt = validate_source_formalization_context(
+            prompt=prompt, repository=semantic_repository, workspace=root,
+            boundary=container_boundary, boundary_sha256=container_boundary_sha256 or None,
+            handoff=source_formalization_handoff, handoff_sha256=source_formalization_handoff_sha256)
     numerical_receipt = None
     if numerical_selected:
         failure_phase = "numerical_obligation_descriptor"
@@ -675,7 +781,17 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         router_prompt += _source_lookup_guidance(source_lookup_receipt)
     failure_phase = "model_prompt"
     model_prompt, advisory = render_model_prompt(prompt=router_prompt, purpose=purpose, workspace=root,
-                                                semantic_transport=encoded is not None)
+        semantic_transport=encoded is not None,
+        **({"candidate_transport": True} if candidate_receipt is not None else {}))
+    if candidate_receipt is not None:
+        failure_phase = "candidate_reply_contract"
+        from .candidate_reply_contract import apply_candidate_reply_contract, candidate_completion_schema
+        model_prompt, candidate_reply_receipt = apply_candidate_reply_contract(
+            model_prompt=model_prompt, binding=candidate_receipt)
+        if provider == "grok_cli":
+            response_format = {"type": "json_schema", "json_schema": {
+                "name": "supervisor_candidate_completion", "strict": True,
+                "schema": candidate_completion_schema(candidate_receipt)}}
     coding_reply_receipt = None
     if coding_reply_mode != "legacy":
         failure_phase = "coding_reply_contract"
@@ -851,11 +967,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         "schema": "router-implementation-invocation@1", "invocation_id": invocation,
         "provider": provider, "model": model, "allocation_catalog": route.catalog_revision,
         "reasoning_effort": reasoning_effort, "purpose": purpose,
-        # Keep the original fields bound to native stdin for capsule comparison.
-        # The distinct model fields attest the complete actual provider input.
+        # Prompt fields bind actual stdin. For a separately admitted candidate
+        # envelope, native fields retain the original task instruction identity.
+        # Model fields always attest the complete actual provider input.
         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "prompt_bytes": len(prompt.encode()),
-        "native_prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-        "native_prompt_bytes": len(prompt.encode()),
+        "native_prompt_sha256": (candidate_receipt["native_prompt_sha256"] if candidate_receipt is not None
+                                 else hashlib.sha256(prompt.encode()).hexdigest()),
+        "native_prompt_bytes": (candidate_receipt["native_prompt_bytes"] if candidate_receipt is not None
+                                else len(prompt.encode())),
         "model_prompt_sha256": hashlib.sha256(model_prompt.encode()).hexdigest(),
         "model_prompt_bytes": len(model_prompt.encode()),
         "workspace_advisory_sha256": hashlib.sha256(advisory.encode()).hexdigest() if advisory else None,
@@ -873,6 +992,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     }
     if coding_reply_receipt is not None:
         receipt["coding_reply_contract"] = coding_reply_receipt
+    if candidate_receipt is not None:
+        receipt["candidate_round_dispatch"] = candidate_receipt
+        receipt["candidate_reply_contract"] = candidate_reply_receipt
+        receipt["candidate_retrieval_guidance"] = dict(
+            sha256=hashlib.sha256(candidate_guidance.encode()).hexdigest(),
+            bytes=len(candidate_guidance.encode()), requests_observed=False,
+            proof_authority=False, completion_authority=False)
     if semantic_component_census is not None:
         receipt["semantic_prompt_components"] = semantic_component_census
     if metadata_receipt is not None:
@@ -903,6 +1029,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "response_schema_validated": False,
             "execution_authority": False,
             "completion_authority": False,
+            "settlement_authority": False,
+        }}
+    if candidate_reply_receipt is not None and provider == "codex_cli":
+        provider_options["codex_output_schema"] = candidate_completion_schema(candidate_receipt)
+        receipt["provider_invocation_policy"] = {"structured_output": {
+            "schema": "codex-native-candidate-completion-json-schema@1",
+            "native_schema_requested": True, "response_schema_validated": False,
+            "execution_authority": False, "completion_authority": False,
             "settlement_authority": False,
         }}
     if formalization_receipt is not None:
@@ -955,6 +1089,30 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 "plan_admitted": False,
             }
     try:
+        if candidate_receipt is not None:
+            failure_phase = "candidate_dispatch_context"
+            current = _candidate_dispatch_observation(prompt=prompt,
+                repository=semantic_repository, workspace=root, boundary=container_boundary,
+                boundary_sha256=container_boundary_sha256, handoff=candidate_dispatch_handoff,
+                handoff_sha256=candidate_dispatch_handoff_sha256, descriptor_path=candidate_round_descriptor,
+                descriptor_sha256=candidate_round_descriptor_sha256, launch_settings=candidate_settings)
+            if ({key: value for key, value in current.items() if key != "remaining_timeout_seconds"}
+                    != {key: value for key, value in candidate_receipt.items()
+                        if key != "remaining_timeout_seconds"}):
+                raise ValueError("candidate dispatch context changed before provider dispatch")
+            timeout = min(timeout, current["remaining_timeout_seconds"])
+            if type(timeout) is not int or timeout < 1:
+                raise ValueError("candidate dispatch has no remaining admitted time")
+            receipt["timeout_seconds"] = timeout
+            receipt["candidate_round_dispatch"] = current
+            failure_phase = "candidate_round_preflight"
+            receipt["candidate_round_preflight"] = _candidate_round_preflight(
+                descriptor_path=candidate_round_descriptor, descriptor_sha256=candidate_round_descriptor_sha256,
+                workspace=root, binding=current)
+            timeout = min(timeout, (current["dispatch_deadline_monotonic_ns"] - time.monotonic_ns()) // 1_000_000_000)
+            if type(timeout) is not int or timeout < 1:
+                raise ValueError("candidate dispatch has no remaining admitted time after preflight")
+            receipt["timeout_seconds"] = timeout
         if source_receipt is not None:
             failure_phase = "source_view_descriptor"
             current = _source_broker_observation(path=source_view_descriptor,
@@ -1003,7 +1161,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                                                numerical_obligation_descriptor_sha256), \
                 _source_descriptor_environment(source_view_descriptor, source_view_descriptor_sha256), \
                 _source_lookup_descriptor_environment(source_lookup_descriptor,
-                                                      source_lookup_descriptor_sha256):
+                                                      source_lookup_descriptor_sha256), \
+                _descriptor_environment(candidate_round_descriptor, candidate_round_descriptor_sha256,
+                                        CANDIDATE_DESCRIPTOR_ENV, CANDIDATE_DESCRIPTOR_DIGEST_ENV):
             receipt["router_calls"] = 1
             output = generate_text(
                 model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
@@ -1030,6 +1190,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             output = validate_planning_response(output, codex_planning_validator)
             receipt["provider_invocation_policy"]["structured_output"]["response_schema_validated"] = True
         if response_format is not None:
+            if candidate_receipt is not None:
+                failure_phase = "candidate_reply_validation"
             # The shared adapter enforces this too. Keep the runner boundary
             # explicit in case an injected provider returns unchecked text.
             from ipfs_accelerate_py.cli_runtime.grok_structured_output import validate_response_format, decode_response
@@ -1039,6 +1201,16 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 wire_format = {**response_format, "json_schema": {**response_format["json_schema"], "schema": _wire_schema}}
                 _wire, _argument, wire_validator = validate_response_format(wire_format)
             output = decode_response(json.dumps({"text": output}), validator, additional_validator=wire_validator)
+            receipt["provider_invocation_policy"]["structured_output"]["response_schema_validated"] = True
+        if candidate_reply_receipt is not None:
+            failure_phase = "candidate_reply_validation"
+            if provider == "codex_cli" and (
+                    observation.get("codex_output_schema_sha256") != candidate_reply_receipt["native_output_schema_sha256"]
+                    or observation.get("codex_output_schema_bytes") != candidate_reply_receipt["native_output_schema_bytes"]):
+                raise RuntimeError("Codex candidate reply schema invocation metadata is missing or differs")
+            from .candidate_reply_contract import validate_candidate_completion_reply
+            output = validate_candidate_completion_reply(output, binding=candidate_receipt)
+            candidate_reply_receipt["response_validated"] = True
             receipt["provider_invocation_policy"]["structured_output"]["response_schema_validated"] = True
         if encoded is not None:
             failure_phase = "semantic_response_decode"
@@ -1136,6 +1308,10 @@ def main():
     parser.add_argument("--source-edit-mode", default="disabled", choices=("disabled", "mapped-span@1", "mapped-span@2"))
     parser.add_argument("--source-view-descriptor", type=Path)
     parser.add_argument("--source-view-descriptor-sha256")
+    parser.add_argument("--candidate-dispatch-handoff", type=Path)
+    parser.add_argument("--candidate-dispatch-handoff-sha256")
+    parser.add_argument("--candidate-round-descriptor", type=Path)
+    parser.add_argument("--candidate-round-descriptor-sha256")
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
@@ -1170,6 +1346,10 @@ def main():
                         source_edit_mode=args.source_edit_mode,
                         source_view_descriptor=args.source_view_descriptor,
                         source_view_descriptor_sha256=args.source_view_descriptor_sha256,
+                        candidate_dispatch_handoff=args.candidate_dispatch_handoff,
+                        candidate_dispatch_handoff_sha256=args.candidate_dispatch_handoff_sha256,
+                        candidate_round_descriptor=args.candidate_round_descriptor,
+                        candidate_round_descriptor_sha256=args.candidate_round_descriptor_sha256,
                         semantic_transport_schema=args.semantic_transport_schema,
                         semantic_metadata_view=args.semantic_metadata_view,
                         semantic_working_set=args.semantic_working_set,

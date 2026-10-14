@@ -128,6 +128,11 @@ for base,dirs,files in os.walk(cwd,followlinks=False):
 sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
 # The fixed lease includes allocation checks, ownership setup and formalization.
 from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import _argument,MAX_SESSION_SECONDS
+owner_candidate_rounds=1
+owner_initial_argv=list(sys.argv[1:])
+if any(arg=='--candidate-rounds' or arg.startswith('--candidate-rounds=') for arg in owner_initial_argv):
+ from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import split_owner_candidate_rounds
+ owner_candidate_rounds,owner_initial_argv=split_owner_candidate_rounds(list(sys.argv[1:]))
 owner_candidate_round_deadline=None
 try:
  owner_candidate_round_timeout=int(_argument(list(sys.argv[1:]),'--timeout','90'))
@@ -135,7 +140,7 @@ try:
 except (TypeError,ValueError,OverflowError):
  pass
 from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import prepare_container_source_formalization_dispatch
-handoff=prepare_container_source_formalization_dispatch(argv=list(sys.argv[1:]),boundary=root/'container-boundary.json',workspace=cwd)
+handoff=prepare_container_source_formalization_dispatch(argv=owner_initial_argv,boundary=root/'container-boundary.json',workspace=cwd)
 os.dup2(handoff['stdin_fd'],0,inheritable=True);os.close(handoff['stdin_fd'])
 from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_broker import worker_source_argv
 command=['/usr/bin/sudo','-n','-u','benchmarkworker','--',str(root/'bin/worker-entry'),*worker_source_argv(handoff['argv'])]
@@ -146,6 +151,7 @@ if any(part==flag or part.startswith(flag+'=') for part in sys.argv[1:] for flag
  proof_query_guard=require_finite_proof_query_isolated_worker_dispatch(command=command,environment=dict(os.environ),worktree=cwd)
 numerical_obligation_broker=None
 worker_source_broker=None
+owner_candidate_launch=None
 try:
  from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import prepare_numerical_obligation_broker
  numerical_obligation_broker=prepare_numerical_obligation_broker(argv=handoff['argv'],boundary=root/'container-boundary.json',workspace=cwd,input_fd=0)
@@ -153,6 +159,10 @@ try:
  from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_broker import prepare_worker_source_broker
  worker_source_broker=prepare_worker_source_broker(argv=handoff['argv'],boundary=root/'container-boundary.json',workspace=cwd,input_fd=0)
  if worker_source_broker is not None:command.extend(worker_source_broker.extra_argv)
+ if owner_candidate_rounds==2:
+  if numerical_obligation_broker is not None or proof_query_guard is not None:raise ValueError('candidate rounds require ordinary coding')
+  from ipfs_accelerate_py.agent_supervisor.runtime.owner_candidate_dispatch import capture_original_coding_launch
+  owner_candidate_launch=capture_original_coding_launch(source_broker=worker_source_broker,argv=handoff['argv'],absolute_deadline=owner_candidate_round_deadline,max_rounds=owner_candidate_rounds)
 except BaseException:
  try:
   if proof_query_guard is not None:proof_query_guard.abort()
@@ -162,6 +172,9 @@ except BaseException:
   finally:
    if worker_source_broker is not None:worker_source_broker.close()
  raise
+if owner_candidate_launch is not None:
+ from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_monitor import run_candidate_coding_rounds
+ raise SystemExit(run_candidate_coding_rounds(launch=owner_candidate_launch,command=command))
 """
     + OWNER_MONITOR
 )
@@ -264,6 +277,10 @@ parser.add_argument('--source-view-profile',default='disabled',choices=('disable
 parser.add_argument('--source-edit-mode',default='disabled',choices=('disabled','mapped-span@1','mapped-span@2'))
 parser.add_argument('--source-view-descriptor',type=pathlib.Path)
 parser.add_argument('--source-view-descriptor-sha256')
+parser.add_argument('--candidate-dispatch-handoff',type=pathlib.Path)
+parser.add_argument('--candidate-dispatch-handoff-sha256')
+parser.add_argument('--candidate-round-descriptor',type=pathlib.Path)
+parser.add_argument('--candidate-round-descriptor-sha256')
 parser.add_argument('--preflight',action='store_true');parser.add_argument('--preflight-sleep',type=int,default=0)
 args=parser.parse_args()
 if args.provider!=selected_provider:raise SystemExit('provider differs from deployed worker route')
@@ -278,6 +295,9 @@ numerical_obligation_values=(args.numerical_obligation_descriptor,args.numerical
 source_lookup_values=(args.source_lookup_descriptor,args.source_lookup_descriptor_sha256)
 if any(value is not None for value in source_lookup_values) and (not all(source_lookup_values) or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('exact source lookup descriptor requires isolated router coding')
 source_view_values=(args.source_view_descriptor,args.source_view_descriptor_sha256)
+candidate_values=(args.candidate_dispatch_handoff,args.candidate_dispatch_handoff_sha256,args.candidate_round_descriptor,args.candidate_round_descriptor_sha256)
+if any(value is not None for value in candidate_values):
+ if not all(candidate_values) or args.purpose!='coding' or args.semantic_repository is None or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values) or any(residual_values) or any(instruction_values) or any(formalization_values) or any(numerical_obligation_values) or any(source_lookup_values) or any(source_view_values) or args.source_view_profile!='disabled' or args.source_edit_mode!='disabled' or args.semantic_working_set!='legacy' or args.semantic_metadata_view!='legacy' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.coding_reply_mode!='legacy':raise SystemExit('exact candidate handoff requires independent ordinary coding')
 if not 1<=args.grok_coding_max_turns<=128:raise SystemExit('Grok coding turn bound must be 1 through 128')
 if args.grok_coding_max_turns!=128 and (args.provider!='grok_cli' or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('nondefault coding turns require isolated Grok model-router coding')
 if args.source_edit_mode!='disabled' and (args.source_view_profile=='disabled' or args.preflight or args.semantic_metadata_census_only):raise SystemExit('source editing requires selected coding views')
@@ -364,6 +384,7 @@ else:
  if args.grok_coding_max_turns!=128:sys.argv+=['--grok-coding-max-turns',str(args.grok_coding_max_turns)]
  if args.source_view_profile!='disabled':sys.argv+=['--source-view-profile',args.source_view_profile,'--source-view-descriptor',str(args.source_view_descriptor),'--source-view-descriptor-sha256',args.source_view_descriptor_sha256]
  if args.source_edit_mode!='disabled':sys.argv+=['--source-edit-mode',args.source_edit_mode]
+ if any(candidate_values):sys.argv+=['--candidate-dispatch-handoff',str(args.candidate_dispatch_handoff),'--candidate-dispatch-handoff-sha256',args.candidate_dispatch_handoff_sha256,'--candidate-round-descriptor',str(args.candidate_round_descriptor),'--candidate-round-descriptor-sha256',args.candidate_round_descriptor_sha256]
  raise SystemExit(run_with_child_custody(main))
 """
 
