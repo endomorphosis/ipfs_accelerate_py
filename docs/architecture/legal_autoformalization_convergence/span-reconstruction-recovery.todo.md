@@ -26,7 +26,7 @@ Three deterministic qualifications preserve complete source populations, origina
 
 ## LAC-S10R1-024 Qualify all cache-to-parent exact occurrence inventories
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
