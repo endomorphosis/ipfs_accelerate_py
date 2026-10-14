@@ -3,7 +3,7 @@
   "campaign_id": "legal-autoformalization-source-alignment-20261014",
   "datasets": {
     "root": "/home/barberb/lift_coding/.worktrees/legal-autoformalization-source-alignment-20261014",
-    "commit": "288093903e79426768222dab00c34bd39bc145e5",
+    "commit": "56f07064eb033b30fbd631ee632b29e86f4f1706",
     "expected_branch": "agent/legal-autoformalization-source-alignment-20261014"
   },
   "prior_span_reconstruction_completion": {
@@ -681,7 +681,7 @@
       "repository": "datasets",
       "path": "docs/guides/legal_source_alignment_20261014.md",
       "bytes": 10704,
-      "sha256": "ff0059f60f8906377f45e6e7cc535fc2f4d2c274f8afda4b38448674160128d7"
+      "sha256": "6be1cebc7c163d99c57b33f42d5e47023851109e89fe7d0b55a23c82508d2546"
     },
     {
       "repository": "accelerator",
@@ -3122,6 +3122,56 @@
       "path": "/home/barberb/lift_coding/.worktrees/legal-autoformalization-source-alignment-20261014/docs/implementation/reports/evidence/legal-head-repair-20261014-01/training-design-v01.json",
       "bytes": 8440,
       "sha256": "88088621c20a9bd3785a4b7149bc80493d2f154ece968d8c80d76a4f6b0fe324"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/prelaunch-qualification-v01/source-freeze-receipt.json",
+      "bytes": 1409,
+      "sha256": "db615b52fa2a64bc06fb9c478199223b3d5b8bf033c544649a120fcf5f2ddbbb"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/prelaunch-qualification-v01/real-driver-qualification.json",
+      "bytes": 1198,
+      "sha256": "5220ac6e81988f07e31e114e9e526638cd26b53435f097733fd8b76b4cd83892"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/prelaunch-qualification-v01/real-driver-prequalification-final-lease.json",
+      "bytes": 354,
+      "sha256": "46592c90761daf3213fbf748bd7b0492291592ad12804d075142b7d6ba16bafc"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/prelaunch-qualification-v01/real-driver-prequalification-final.stdout.log",
+      "bytes": 936,
+      "sha256": "2155e338db215594266c9fb1c603911766f707713bd5486e72e456a5a72e4476"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/prelaunch-qualification-v01/real-driver-prequalification-final.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/prelaunch-qualification-v01/LAC-S11-011-prequalification-result.json",
+      "bytes": 139463,
+      "sha256": "7838f9b640aee95d411002fad32739c007abb9f739dc50d2e189edcf57b01faf"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/prelaunch-qualification-v01/LAC-S11-024-prequalification-result.json",
+      "bytes": 139669,
+      "sha256": "a1524bf4457c44c5614efe4765b8d783bf54b5deaba0b501637d20f9bd811381"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/prelaunch-qualification-v01/LAC-S11-044-prequalification-result.json",
+      "bytes": 135262,
+      "sha256": "db5db2a8a17ac2b84a092acef345187fddd58ea3fba01b13555d980fd0667bbe"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/prelaunch-qualification-v01/source-manifest.json",
+      "bytes": 160309,
+      "sha256": "79f51a812d8f65a437b95aed01157e03821634ccd6990875a32421cb9b3ba3b4"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/rebind-documentation.py",
+      "bytes": 3603,
+      "sha256": "6fbb4009524e8f9ed0a76681b3d9d7022a269eb53db76b24e06d0691dff6dfcf"
     }
   ],
   "initial_board_template": {
@@ -3176,5 +3226,29 @@
     "validation_declared_child_slots": 1,
     "kernel_quota_claim": false
   },
-  "prior_campaign_trees_and_failed_evidence_preserved": true
+  "prior_campaign_trees_and_failed_evidence_preserved": true,
+  "prelaunch_documentation_revision": {
+    "previous_manifest": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/prelaunch-qualification-v01/source-manifest.json",
+      "bytes": 160309,
+      "sha256": "79f51a812d8f65a437b95aed01157e03821634ccd6990875a32421cb9b3ba3b4"
+    },
+    "previous_qualification": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-source-alignment-20261014-01/prelaunch-qualification-v01/real-driver-qualification.json",
+      "bytes": 1198,
+      "sha256": "5220ac6e81988f07e31e114e9e526638cd26b53435f097733fd8b76b4cd83892"
+    },
+    "changed_files": [
+      {
+        "path": "docs/guides/legal_source_alignment_20261014.md",
+        "previous_sha256": "ff0059f60f8906377f45e6e7cc535fc2f4d2c274f8afda4b38448674160128d7",
+        "corrected_sha256": "6be1cebc7c163d99c57b33f42d5e47023851109e89fe7d0b55a23c82508d2546"
+      }
+    ],
+    "alignment_wrapper_canonical_bytes": 7934219,
+    "source_owner_code_changed": false,
+    "population_changed": false,
+    "native_generation_started": false,
+    "native_task_reset": false
+  }
 }
