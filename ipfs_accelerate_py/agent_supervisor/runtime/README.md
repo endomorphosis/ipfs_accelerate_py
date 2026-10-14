@@ -42,6 +42,8 @@ Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resou
 | `repository_source_view` | `runtime/repository_source_view.py` |
 | `repository_intent_world` | `runtime/repository_intent_world.py` |
 | `repository_world_packet` | `runtime/repository_world_packet.py` |
+| `repository_world_packet_replay` | `runtime/repository_world_packet_replay.py` |
+| `repository_world_invocation_replay` | `runtime/repository_world_invocation_replay.py` |
 | `resource_scheduler` | `runtime/resource_scheduler.py` |
 | `role_context_selection` | `runtime/role_context_selection.py` |
 | `router_public_instruction` | `runtime/router_public_instruction.py` |
@@ -501,9 +503,10 @@ text, tool schemas and history are outside this measurement; packet item token
 estimates are separately labeled byte heuristics. Receipts record identities,
 counts, freshness and dispatch disposition without task/evidence bodies. They
 always declare `provider_retained_parent=False` and grant no completion authority.
-The API has no serialized transport, CLI selection or qualified Terminal Bench
-replay yet; the benchmark audit refuses its marker. It is disabled by default
-pending that qualification and matched complete-run evidence.
+The API has historical byte export and replay, described below, but no CLI
+selection or qualified Terminal Bench collection yet; the benchmark audit
+refuses its marker. It is disabled by default pending that qualification and
+matched complete-run evidence.
 
 `capture_repository_intent_world` supplies a required context reference from an
 independently owned `IntentRepository`, the existing signed local requirement
@@ -548,9 +551,46 @@ transaction without closing the owner's connection. Every dispatch rechecks
 readiness, exact connection/transport custody, restart identity and observations.
 A stopped or restarted owner requires a new capture. Deadlines remain
 cooperative, including inside the reused observer. This is an in-process owner
-API; remote packet transport and durable restart reconstruction remain unqualified.
+API; live packet reconstruction after owner restart remains unqualified.
 Capture leaves native task data unchanged; the reused readiness check may
 restore the owner's private attach-token file as part of normal owner maintenance.
+
+Historical replay uses two byte-oriented APIs. Call
+`freeze_repository_world_packet(prepared)` before dispatch while the source and
+native owners are still current. Retain those bytes and their SHA-256 separately.
+After dispatch, `freeze_repository_world_invocation(packet_artifact=...,
+expected_packet_sha256=..., invocation_receipt=...)` joins the frozen packet to
+the runner's recorded input bindings. This join still works after an edit has
+made the live packet stale. Retain the resulting invocation bytes and their
+SHA-256 independently as well.
+
+`replay_repository_world_packet(data, expected_sha256=...)` reconstructs the
+native packet through its normal builder and returns its historical prompt.
+`replay_repository_world_invocation(data, expected_sha256=...)` also reapplies
+workspace guidance, tool policies and the coding reply contract, checking the
+exact final user-input bytes and separate native output-schema identity.
+The invocation result exposes `.model_prompt` and a content-free `.receipt()`.
+These operations do not require the old workspace, source index, intent
+database, Quack connection or provider. They require compatible installed
+builders and renderers; implementation drift that changes output fails closed.
+
+Artifacts contain full task/context content, unlike content-free receipts.
+The caller owns storage and independent digest retention; the APIs introduce
+no artifact database or file loader. Canonical JSON rejects duplicate and
+unknown fields, nonfinite numbers and inconsistent reconstructed content.
+Packet artifacts are limited to 2 MiB, invocation artifacts to 3 MiB, and
+invocation projections to 128 KiB, with parser depth and node bounds. These are
+input/allocation bounds, not operating-system RSS containment.
+
+Replay establishes historical consistency against the caller's digest. It
+does not authenticate the caller, reverify original owner signatures, recount
+tokens, prove provider delivery or restore live dispatch authority. Historical
+currentness flags in the recorded packet receipt remain historical assertions;
+the replay receipt explicitly grants no source/owner currentness, proof,
+execution or completion authority. A replayed object cannot enter the live
+runner. Resumed work must recapture current owners and compile a new issued
+packet. Terminal Bench collector admission and complete-session savings remain
+separate pending qualifications.
 
 Opt-in container deployment requires an archive matching the current runtime
 and datasets owner sources. Preparation, execution and deployment verify the
