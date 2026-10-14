@@ -418,3 +418,13 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_source_custody/
 !/data/legal_autoformalization_source_custody/LAC-S7-*/
 !/data/legal_autoformalization_source_custody/LAC-S7-*/result.json
+
+# Owned recovery runtime is retained locally; only declared results are proposals.
+/data/agent_supervisor/legal_autoformalization_source_views_recovery/
+!/data/legal_autoformalization_source_views_recovery/
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-011/
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-011/result.json
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-024/
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-024/result.json
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-044/
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-044/result.json
