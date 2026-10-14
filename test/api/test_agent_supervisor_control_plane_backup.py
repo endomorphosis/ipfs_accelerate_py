@@ -14,6 +14,7 @@ partial restore, schema version, server stopped, stale client, backup age.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -491,6 +492,80 @@ def test_corrupt_backup_fails_independent_verification(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Restore + generation rotation
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("require_maintenance_lease", [True, False])
+@pytest.mark.parametrize("rehearsal", [False, True])
+@pytest.mark.parametrize("alternate_destination", [False, True])
+def test_restore_refuses_missing_authority_database_before_any_restore_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    require_maintenance_lease: bool,
+    rehearsal: bool,
+    alternate_destination: bool,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import control_plane_backup
+
+    db, backup_root, state_dir = _prepare_db(tmp_path)
+    service = _service(db, backup_root, state_dir)
+    lease = _lease(db)
+    snapshot = service.create_backup(maintenance_lease=lease)
+    assert service.verify_backup(snapshot).verified
+    # Retain a real historical lease and genuine backup, but remove their live
+    # authority. Do not create an initial store or restore authority from it.
+    db.unlink()
+    destination = tmp_path / "alternate" / "control.duckdb"
+
+    def inventory() -> dict[str, str]:
+        return {
+            str(path.relative_to(tmp_path)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        }
+
+    retained = inventory()
+
+    def forbidden_io(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("missing authority reached backup or database I/O")
+
+    monkeypatch.setattr(control_plane_backup, "open_duckdb_connection", forbidden_io)
+    monkeypatch.setattr(control_plane_backup, "_replace_database_files", forbidden_io)
+    monkeypatch.setattr(service, "verify_backup", forbidden_io)
+    monkeypatch.setattr(service, "rotate_generation", forbidden_io)
+    with pytest.raises(ControlPlaneBackupOwnershipError, match="existing authoritative"):
+        service.restore(
+            snapshot,
+            maintenance_lease=lease,
+            require_maintenance_lease=require_maintenance_lease,
+            rehearsal=rehearsal,
+            destination=destination if alternate_destination else None,
+        )
+    assert not db.exists()
+    assert not destination.parent.exists()
+    assert inventory() == retained
+
+
+@pytest.mark.parametrize("mapping_record", [False, True])
+def test_required_maintenance_lease_refuses_missing_authority_database(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mapping_record: bool,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import control_plane_backup
+
+    db, backup_root, state_dir = _prepare_db(tmp_path)
+    service = _service(db, backup_root, state_dir)
+    lease = _lease(db)
+    record = lease.to_dict() if mapping_record else lease
+    db.unlink()
+
+    def forbidden_open(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("missing lease authority opened a replacement database")
+
+    monkeypatch.setattr(control_plane_backup, "open_duckdb_connection", forbidden_open)
+    with pytest.raises(ControlPlaneBackupOwnershipError, match="authority database is missing"):
+        service._require_active_maintenance_lease(record)
+    assert not db.exists()
 
 
 def test_restore_reproduces_roots_and_invalidates_pre_rotation_writers(

@@ -1,0 +1,116 @@
+{
+  "archive_built": false,
+  "base_commit": "e4b8c4bba2fc7d5b7484b9021cbb9a5bcfc5e7d4",
+  "bounds": {
+    "concurrent_native_test_suites": 1,
+    "native_cpu_slots": 1,
+    "native_thread_environment": 1,
+    "offline_model_assets": true
+  },
+  "changed_python_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_capsule_budget_comparison.py": "a05c579273e4ad3a142b77441032927dda98f63fa27f101926d08e45dd7dd8a7",
+    "benchmarks/agent_supervisor/container_coding/terminal_capsule_budget_matrix.py": "fa208155f6a7807a3acbf69a428c727e1356c81839fcab1ec6f8b1360db8361a",
+    "benchmarks/agent_supervisor/container_coding/terminal_repository_source_policy.py": "ab98fd59e34e2b33428a35bed48ec5cd9430df744c2bd23d0e8f0c38f60806d6",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_comparison.py": "a12d1dbf4b19be9452a53176c8c2bbeb8221ae18b293f987722415beafe4af8a",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_matrix.py": "f1ec0fd8bec347cd8205c3bc6ef614964fbcc499df8fe412a7850be6408bcbbe",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_repository_source_deployment.py": "d7b66675d8a97ac4d88bb825cada142860e242087d0ee26534d18a907282bf31",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_index.py": "21407fd38afd625dc26a316fc55699a6444a29c8bd0a134b9cd650c882a7e3d1",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_mcp.py": "6947e4c7f902f2f13bace730f8d4f1a9bd901682b99932159bd861190aa0b6e8",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_policy.py": "5ad8fd6a25bc36700c3853162f0c16030c02b055f0db1dd6d62b5f016dea1a84",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_probe.py": "9c4e2a22cdb42c7b9706d636334eaee1d45d8f20c8f8cb0020ec00b9d6bbc010",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_session.py": "b2e8af98b1d290a8ca66f8ea6070a8d4e80417398e8e6bd2737b5fd80be96314",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_symbol.py": "eeef7441fa42d71e871cf3102d446bb797a53034f2ffa957273953dd1ea71d06",
+    "test/api/test_repository_source_index.py": "1c70bb2b380f7d29cabe5c4a3eefb292a35087ece84a099b1f9ceae2f6d796df",
+    "test/api/test_repository_source_probe.py": "e191cecb1aa97cf425375e6596663aedaa42e07dd5e3f8b66740ac8bb356fad2",
+    "test/api/test_repository_source_retrieval_observation.py": "d17f6d142f7c079083dc868eba8d9b8961ad6681fa6ba1d4aef6b003dcdce744",
+    "test/api/test_repository_source_symbol.py": "5276a784559a50fff8a4110e39f6319a433ce6169dd5177d53c0cfbc54f46577",
+    "test/api/test_repository_source_symbol_session.py": "6b597dc901ec8ebefe344afd813d60ace0dbb939cf9fe5e0433aea1e18ddff35",
+    "test/api/test_repository_source_symbol_stdio.py": "9663df5eabe351af5d49a4a3f230220651f97c8c7596fe53b535dfd8b827adc4"
+  },
+  "changed_python_sources_unchanged_during_final_checks": true,
+  "date": "2026-10-14",
+  "delegated_runs": [
+    {
+      "execution_evidence": "delegated exec_command/write_stdin response; no retained JUnit",
+      "exit_code": 0,
+      "failed": 0,
+      "fresh_ast_seal": "/tmp/symbol-helper-20261014-seal.duckdb",
+      "name": "symbol_renderer",
+      "passed": 38,
+      "pytest_elapsed_seconds": 0.95,
+      "skipped": 0,
+      "test_module": "test/api/test_repository_source_symbol.py"
+    },
+    {
+      "execution_evidence": "delegated exec_command/write_stdin response; no retained JUnit",
+      "exit_code": 0,
+      "failed": 0,
+      "fresh_ast_seal": "/tmp/symbol-session-20261014-seal.duckdb",
+      "name": "symbol_session",
+      "passed": 10,
+      "pytest_elapsed_seconds": 17.18,
+      "skipped": 0,
+      "test_module": "test/api/test_repository_source_symbol_session.py"
+    }
+  ],
+  "distinct_tests_passed": 703,
+  "failed": 0,
+  "limitations": [
+    "Native symbol IDs require current generation and original whole-file hash.",
+    "Definition reads omit enclosing/import context and dedent source.",
+    "Unsupported symbols and non-Python code require full-file originals.",
+    "Live provider behavior and full-session token savings remain unmeasured.",
+    "Runtime probe exercised exported checkout/dependency paths; no new archive/container benchmark was run."
+  ],
+  "live_provider_calls": 0,
+  "live_terminal_bench_run": false,
+  "provider_usage_measured": false,
+  "runs": [
+    {
+      "failed": 0,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-symbol-workflow-20261014/index/results.xml",
+      "junit_sha256": "115eb883f665f1a8f8802f4255ab816a419a580ff2177c518a20b7ab33963232",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-symbol-workflow-20261014/index/pytest.log",
+      "name": "index",
+      "passed": 51,
+      "skipped": 0
+    },
+    {
+      "failed": 0,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-symbol-workflow-20261014/stdio/results.xml",
+      "junit_sha256": "ce178f3abcf02c96932a515dd9e796eb71fa45303cf4027df838026050f6e5a0",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-symbol-workflow-20261014/stdio/pytest.log",
+      "name": "stdio",
+      "passed": 3,
+      "skipped": 0
+    },
+    {
+      "failed": 0,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-symbol-workflow-20261014/regression/results.xml",
+      "junit_sha256": "46c269f3ec3af73771cb76856ddc505a1224c579728ebb372b86717891952314",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-symbol-workflow-20261014/regression/pytest.log",
+      "name": "regression",
+      "passed": 556,
+      "skipped": 0
+    },
+    {
+      "failed": 0,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-symbol-workflow-20261014/probe/results.xml",
+      "junit_sha256": "1f7a7741072c016fd725581371a7a77dada0fe65119b450ba4fe9addb264b4bb",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-symbol-workflow-20261014/probe/pytest.log",
+      "name": "probe",
+      "passed": 45,
+      "skipped": 0
+    }
+  ],
+  "schema": "repository-source-symbol-workflow-qualification@1",
+  "scope": "Authored Python source through real native index, supervisor route, child MCP and installed-runtime probe; provider boundary authored.",
+  "skipped": 0,
+  "total_session_token_savings": null,
+  "wire_comparison": "wire-comparison.json",
+  "worktree": "/home/barberb/lift_coding_worktrees/token-efficiency-next-20261014"
+}

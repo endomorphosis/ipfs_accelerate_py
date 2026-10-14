@@ -142,16 +142,18 @@ TOOLS = [
           {"generation": GENERATION, "query": {"type": "string", "minLength": 1, "maxLength": 4096},
            "limit": {"type": "integer", "minimum": 1, "maximum": 32}, "max_bytes": CONTEXT_BYTES},
           ["generation", "query"]),
-    _tool("repository_capsule_expand", "Expand selected native capsules from a query's semantic root. Returns structural facts, confidence and limitations. Read current original source before editing; capsules do not prove behavior.",
+    _tool("repository_capsule_expand", "Expand selected native capsules from a query's semantic root. Returns structural facts, confidence and limitations. Read current source before editing; capsules do not prove behavior.",
           {"generation": GENERATION, "semantic_root_cid": CID,
            "stable_symbol_ids": {"type": "array", "items": CID, "minItems": 1, "maxItems": 32, "uniqueItems": True},
            "max_bytes": CONTEXT_BYTES}, ["generation", "semantic_root_cid", "stable_symbol_ids"]),
-    _tool("repository_read", "Read a source-current original or compact file with its canonical SHA256. Compact Python omits comments and formatting. When a local tokenizer is bound, compact requests return original source unless the complete compact reply uses fewer tokens.",
-          {"generation": GENERATION, "path": PATH, "representation": {"type": "string", "enum": ["original", "compact"]}}, ["generation", "path"]),
-    _tool("repository_replace_symbol", "Replace one Python definition using the read's source_sha256. symbol is its local name, such as Class.method, not a native CID or module-prefixed index name. Refreshes the canonical checkout and index; check refresh_required and run task tests.",
+    _tool("repository_read", "Read current source with its canonical file SHA256. Optional symbol_id from a query or symbols result selects a supported Python definition and returns its verified local edit name; omit it for the full file. Definitions are dedented and omit enclosing/import context. Compact omits comments/formatting; a bound local tokenizer selects it only for a smaller complete reply. Request original source for missing context.",
+          {"generation": GENERATION, "path": PATH, "symbol_id": CID,
+           "representation": {"type": "string", "enum": ["original", "compact"]}}, ["generation", "path"]),
+    _tool("repository_replace_symbol", "Replace one Python definition using the read's source_sha256, verified local symbol and returned representation. Legacy local names such as Class.method are accepted; native CIDs and module-prefixed index names are not edit names. Refreshes canonical checkout/index; check refresh_required and run task tests. Comment-only changes require a direct original-source edit.",
           {"generation": GENERATION, "path": PATH, "symbol": {"type": "string", "minLength": 1, "maxLength": 1024},
            "expected_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-           "replacement": {"type": "string", "maxLength": 262144}},
+           "replacement": {"type": "string", "maxLength": 262144},
+           "representation": {"type": "string", "enum": ["original", "compact"]}},
           ["generation", "path", "symbol", "expected_sha256", "replacement"], read_only=False),
     _tool("repository_refresh", "Capture external checkout edits and rebuild the native index. Invalidates older generations; bounded to eight captures per invocation.",
           {"generation": GENERATION}, ["generation"], read_only=False),
@@ -191,9 +193,12 @@ def _delivery_payload(name, value):
     native CIDs and duplicate representation hashes for every returned file.
     """
     if name == "repository_read":
-        return {"generation": value["generation"], "path": value["path"],
+        result = {"generation": value["generation"], "path": value["path"],
                 "source_sha256": value["original_sha256"],
                 **{key: value[key] for key in ("representation", "encoding", "content", "proof_authority")}}
+        if "symbol_id" in value:
+            result.update({key: value[key] for key in ("symbol_id", "symbol", "edit_supported", "scope")})
+        return result
     if name == "repository_list":
         entries = []
         for row in value["entries"]:
@@ -222,6 +227,90 @@ def _delivery_payload(name, value):
 
 AUDIT_FIELDS = {"schema", "sequence", "event", "tool", "success", "returned_bytes",
                 "compact", "canonical_changed", "canonical_uncertain", "refreshed"}
+RETRIEVAL_TOOLS = {"repository_context_query", "repository_capsule_expand"}
+RETRIEVAL_COUNTERS = ("query_calls", "successful_queries", "empty_queries", "nonempty_queries",
+    "candidates_returned", "expansion_calls", "successful_expansions", "empty_expansions",
+    "nonempty_expansions", "capsules_returned", "errors", "stale_generation_errors",
+    "stale_source_errors", "root_mismatch_errors", "legacy_retrieval_calls", "unbound_successes",
+    "generation_bindings_observed")
+RETRIEVAL_FALSE = ("initial_context_link_verified", "omitted_capsule_recovery_verified",
+    "model_attention_verified", "token_savings_measured", "proof_authority", "completion_authority")
+_RETRIEVAL_ERRORS = {None, "stale_generation", "stale_source", "root_mismatch", "other"}
+
+
+def _digest(value):
+    return type(value) is str and re.fullmatch(r"[a-f0-9]{64}", value) is not None
+
+
+def _retrieval_event(tool, arguments, payload, success):
+    """Observe prepared response identities without retaining query or source text."""
+    generation = arguments.get("generation") if type(arguments) is dict else None
+    if type(generation) is not int or not 1 <= generation <= 8:
+        generation = None
+    event = dict(requested_generation=generation, binding_sha256=None, returned_items=None, error=None)
+    if not success:
+        error = payload.get("error")
+        event["error"] = (error if error == "stale_generation" else "stale_source"
+            if error in {"stale_source", "refresh_required"} else "root_mismatch"
+            if error == "capsule_root_differs" else "other")
+        return event
+    items = payload.get("candidates" if tool == "repository_context_query" else "capsules")
+    fields = ("generation", "semantic_root_cid", "semantic_state_cid", "source_tree_sha256")
+    if (generation is not None and type(payload.get("generation")) is int
+            and payload["generation"] == generation and type(items) is list and len(items) <= 32
+            and _digest(payload.get("source_tree_sha256"))
+            and all(type(payload.get(key)) is str and 0 < len(payload[key]) <= 4096
+                    for key in ("semantic_root_cid", "semantic_state_cid"))):
+        event.update(returned_items=len(items), binding_sha256=hashlib.sha256(
+            _json({key: payload[key] for key in fields})).hexdigest())
+    return event
+
+
+def _validate_retrieval_event(event, success):
+    if (type(event) is not dict or set(event) != {
+            "requested_generation", "binding_sha256", "returned_items", "error"}
+            or not (event["requested_generation"] is None or type(event["requested_generation"]) is int
+                    and 1 <= event["requested_generation"] <= 8)
+            or event["error"] not in _RETRIEVAL_ERRORS):
+        raise ValueError("invalid_retrieval_audit")
+    bound = event["binding_sha256"] is not None
+    if (bound and (not _digest(event["binding_sha256"]) or event["requested_generation"] is None
+            or type(event["returned_items"]) is not int or not 0 <= event["returned_items"] <= 32)
+            or not bound and event["returned_items"] is not None
+            or success and event["error"] is not None
+            or not success and (bound or event["error"] is None)):
+        raise ValueError("invalid_retrieval_audit")
+
+
+def validate_retrieval_observation(value, *, tool_calls, errors):
+    """Validate bounded arithmetic, not independent provenance or model attention."""
+    fields = {"schema", "complete", "event_chain_sha256", *RETRIEVAL_COUNTERS, *RETRIEVAL_FALSE}
+    if (type(value) is not dict or set(value) != fields
+            or value["schema"] != "repository-source-retrieval-observation@1"
+            or type(value["complete"]) is not bool or not _digest(value["event_chain_sha256"])
+            or any(value[key] is not False for key in RETRIEVAL_FALSE)
+            or any(type(value[key]) is not int or not 0 <= value[key] <= MAX_REQUESTS * 32
+                   for key in RETRIEVAL_COUNTERS)
+            or type(tool_calls) is not int or not 0 <= tool_calls <= MAX_REQUESTS
+            or type(errors) is not int or not 0 <= errors <= tool_calls + 1):
+        raise ValueError("invalid_retrieval_observation")
+    q, e = value["query_calls"], value["expansion_calls"]
+    successes = value["successful_queries"] + value["successful_expansions"]
+    if (q + e + value["legacy_retrieval_calls"] > tool_calls or value["errors"] > errors
+            or successes > tool_calls - max(0, errors - 1)
+            or successes + value["errors"] != q + e
+            or value["successful_queries"] > q or value["successful_expansions"] > e
+            or value["empty_queries"] + value["nonempty_queries"] > value["successful_queries"]
+            or value["empty_expansions"] + value["nonempty_expansions"] > value["successful_expansions"]
+            or sum(value[key] for key in ("empty_queries", "nonempty_queries", "empty_expansions",
+                "nonempty_expansions", "unbound_successes")) != successes
+            or value["generation_bindings_observed"] + value["unbound_successes"] != successes
+            or not value["nonempty_queries"] <= value["candidates_returned"] <= 32 * value["nonempty_queries"]
+            or not value["nonempty_expansions"] <= value["capsules_returned"] <= 32 * value["nonempty_expansions"]
+            or sum(value[key] for key in ("stale_generation_errors", "stale_source_errors", "root_mismatch_errors")) > value["errors"]
+            or value["complete"] is not (value["legacy_retrieval_calls"] == value["unbound_successes"] == 0)):
+        raise ValueError("invalid_retrieval_observation")
+    return dict(value)
 
 
 class _Audit:
@@ -230,12 +319,16 @@ class _Audit:
         self.sequence = 0
 
     def record(self, event, *, tool=None, success=True, returned_bytes=0,
-               compact=False, canonical_changed=False, canonical_uncertain=False, refreshed=False):
+               compact=False, canonical_changed=False, canonical_uncertain=False, refreshed=False,
+               retrieval=None):
         self.sequence += 1
         row = {"schema": "repository-source-mcp-audit@1", "sequence": self.sequence,
                "event": event, "tool": tool, "success": success, "returned_bytes": returned_bytes,
                "compact": compact, "canonical_changed": canonical_changed,
                "canonical_uncertain": canonical_uncertain, "refreshed": refreshed}
+        if retrieval is not None:
+            _validate_retrieval_event(retrieval, success)
+            row.update(schema="repository-source-mcp-audit@2", retrieval=retrieval)
         raw = _json(row) + b"\n"
         if os.fstat(self.fd).st_size + len(raw) > MAX_AUDIT_BYTES:
             raise ValueError("audit_limit")
@@ -270,10 +363,15 @@ def summarize_repository_audit(path: str | Path) -> dict:
         rows = raw.splitlines()
         if len(rows) > MAX_REQUESTS + 1:
             raise ValueError("invalid_audit")
+        retrieval = dict(schema="repository-source-retrieval-observation@1", complete=True,
+            event_chain_sha256=hashlib.sha256(b"").hexdigest(),
+            **dict.fromkeys(RETRIEVAL_COUNTERS, 0), **dict.fromkeys(RETRIEVAL_FALSE, False))
+        retrieval_seen = False
         for sequence, line in enumerate(rows, 1):
             row = _loads(line)
-            if (type(row) is not dict or set(row) != AUDIT_FIELDS
-                    or row["schema"] != "repository-source-mcp-audit@1"
+            modern = type(row) is dict and row.get("schema") == "repository-source-mcp-audit@2"
+            if (type(row) is not dict or set(row) != AUDIT_FIELDS | ({"retrieval"} if modern else set())
+                    or row["schema"] not in {"repository-source-mcp-audit@1", "repository-source-mcp-audit@2"}
                     or type(row["sequence"]) is not int or row["sequence"] != sequence
                     or row["event"] not in {"initialize", "tool"}
                     or (row["event"] == "initialize" and row["tool"] is not None)
@@ -282,6 +380,32 @@ def summarize_repository_audit(path: str | Path) -> dict:
                     or type(row["returned_bytes"]) is not int
                     or not 0 <= row["returned_bytes"] <= MAX_RESPONSE_BYTES):
                 raise ValueError("invalid_audit")
+            if modern:
+                if row["event"] != "tool" or row["tool"] not in RETRIEVAL_TOOLS:
+                    raise ValueError("invalid_retrieval_audit")
+                event = row["retrieval"]
+                _validate_retrieval_event(event, row["success"])
+                retrieval_seen = True
+                kind = "queries" if row["tool"] == "repository_context_query" else "expansions"
+                retrieval["query_calls" if kind == "queries" else "expansion_calls"] += 1
+                retrieval["event_chain_sha256"] = hashlib.sha256(bytes.fromhex(
+                    retrieval["event_chain_sha256"]) + _json(row)).hexdigest()
+                if row["success"]:
+                    retrieval["successful_" + kind] += 1
+                    if event["returned_items"] is None:
+                        retrieval["unbound_successes"] += 1
+                    else:
+                        retrieval["generation_bindings_observed"] += 1
+                        retrieval[("nonempty_" if event["returned_items"] else "empty_") + kind] += 1
+                        retrieval["candidates_returned" if kind == "queries" else "capsules_returned"] += event["returned_items"]
+                else:
+                    retrieval["errors"] += 1
+                    counter = {"stale_generation": "stale_generation_errors", "stale_source": "stale_source_errors",
+                               "root_mismatch": "root_mismatch_errors"}.get(event["error"])
+                    if counter:
+                        retrieval[counter] += 1
+            elif row["tool"] in RETRIEVAL_TOOLS:
+                retrieval["legacy_retrieval_calls"] += 1
             result["initializations"] += row["event"] == "initialize" and row["success"]
             result["tool_calls"] += row["event"] == "tool"
             result["successful_reads"] += row["tool"] == "repository_read" and row["success"]
@@ -293,6 +417,10 @@ def summarize_repository_audit(path: str | Path) -> dict:
             result["returned_bytes"] += row["returned_bytes"]
         if rows:
             result["status"] = "observed"
+        if retrieval_seen:
+            retrieval["complete"] = retrieval["legacy_retrieval_calls"] == retrieval["unbound_successes"] == 0
+            result["retrieval_observation"] = validate_retrieval_observation(
+                retrieval, tool_calls=result["tool_calls"], errors=result["errors"])
         return result
     except FileNotFoundError:
         return result
@@ -425,7 +553,9 @@ class RepositoryMCPServer:
                 compact=name == "repository_read" and payload.get("representation") == "compact",
                 canonical_changed=name == "repository_replace_symbol" and payload.get("canonical_changed") is True,
                 canonical_uncertain=name == "repository_replace_symbol" and "canonical_changed" in payload and payload["canonical_changed"] is None,
-                refreshed=name in {"repository_refresh", "repository_replace_symbol"} and success and not payload.get("refresh_required", False))
+                refreshed=name in {"repository_refresh", "repository_replace_symbol"} and success and not payload.get("refresh_required", False),
+                retrieval=_retrieval_event(name, params.get("arguments"), payload, success)
+                    if name in RETRIEVAL_TOOLS else None)
             result = {"content": [{"type": "text", "text": raw.decode()}], "isError": not success}
         else:
             return error(-32601, "method_not_found")
@@ -436,7 +566,8 @@ class RepositoryMCPServer:
         requested = arguments.get("representation", self.config["representation"])
         original = self.session.read(**{**arguments, "representation": "original"})
         compact = self.session.read(**{**arguments, "representation": "compact"}) if requested == "compact" else None
-        if compact is not None and any(original[key] != compact[key] for key in ("generation", "path", "original_sha256")):
+        if compact is not None and any(original.get(key) != compact.get(key) for key in (
+                "generation", "path", "original_sha256", "symbol_id", "symbol", "scope", "edit_supported")):
             raise ValueError("source_changed_during_selection")
         def reply(value):
             payload = _json(_delivery_payload("repository_read", value)).decode()

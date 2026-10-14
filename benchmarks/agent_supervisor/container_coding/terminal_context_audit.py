@@ -398,6 +398,11 @@ def _token_selection_receipt(metadata: dict, item: dict) -> None:
 def _receipt(item: dict, workspace_root: Path) -> dict:
     if not isinstance(item, dict) or item.get("schema") != "router-implementation-invocation@1":
         raise ValueError("invalid router receipt")
+    if "world_task_packet" in item:
+        # The owner-bound in-process route has no frozen Terminal Bench
+        # transport/replay contract yet. Never drop its marker and audit it as
+        # the legacy prompt, even if a caller supplies matching legacy hashes.
+        raise ValueError("world task packet requires qualified Terminal Bench replay")
     if item.get("phase") != "coding" or item.get("purpose") != "coding":
         raise ValueError("non-coding router receipt")
     result = {key: item[key] for key in RECEIPT_FIELDS}
@@ -655,6 +660,8 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
 def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
                       formalization: dict | None = None, token_counter=None):
     """Reconstruct historical provider bytes without granting freshness."""
+    if "world_task_packet" in receipt:
+        raise ValueError("world task packet requires qualified Terminal Bench replay")
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
     translated = receipt.get("semantic_translation") is not None
     router_prompt, checks = rendered, {}
@@ -1285,6 +1292,8 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
         for row in receipts:
             if not isinstance(row, dict) or row.get("phase") != "coding":
                 continue
+            if "world_task_packet" in row:
+                return _base(reason="world_task_packet_replay_unqualified")
             fields = (*RECEIPT_FIELDS, *TRANSLATION_FIELDS)
             # The child must verify ordinary completion against the recorded
             # provider. Never infer a missing provider from the selected mode.

@@ -1,0 +1,147 @@
+{
+  "archive_built": false,
+  "base_commit": "e4b8c4bba2fc7d5b7484b9021cbb9a5bcfc5e7d4",
+  "bounds": {
+    "active_native_query_interrupt": false,
+    "capture_admission_memory_mb": 256,
+    "capture_cooperative_deadline_seconds": 30,
+    "concurrent_native_test_suites": 1,
+    "hard_process_rss_containment": false,
+    "native_cpu_slots": 1,
+    "native_thread_environment": 1,
+    "offline_model_assets": true,
+    "reference_default_max_bytes": 32768,
+    "reference_hard_max_bytes": 65536
+  },
+  "commands": "/home/barberb/lift_coding/artifacts/token-efficiency-intent-world-20261014/commands.txt",
+  "commands_sha256": "41de8553297c4b17e22b46bde41f9e091e23b6b28565c016fb07b62c71871d77",
+  "cycle": {
+    "authored_provider_calls": 2,
+    "full_session_token_savings": null,
+    "live_provider_calls": 0,
+    "native_intent_database": true,
+    "native_signed_command_checks": 3,
+    "native_source_generations": 2,
+    "newer_owner_observation_dispatches_refused": 1,
+    "real_child_mcp": true,
+    "stale_source_dispatches_refused": 1,
+    "task_completed": false
+  },
+  "date": "2026-10-14",
+  "dependencies": [
+    {
+      "clean": true,
+      "commit": "0897aa1d4252e175477addac5417028241de596a",
+      "name": "ipfs_datasets_py",
+      "path": "/home/barberb/lift_coding_worktrees/token-efficiency-datasets-pin-20261014"
+    },
+    {
+      "clean": true,
+      "commit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+      "name": "ipfs_kit_py",
+      "path": "/home/barberb/lift_coding_worktrees/token-efficiency-kit-pin-20261014"
+    }
+  ],
+  "distinct_tests_passed": 193,
+  "documentation_only_source_change": {
+    "ast_sha256_without_module_docstring": "c39bd4d97fa8c5c144aeaaed18bd17c819228e588896f75c44264809af1df382",
+    "explanation": "After the final focused run, module wording changed from 'commands' to 'task validation commands': the reused observer may run read-only Git subprocesses. The executable AST and test sources are unchanged.",
+    "files": {
+      "ipfs_accelerate_py/agent_supervisor/runtime/repository_intent_world.py": {
+        "after": "7e920b75c80aa018c4088b803da1d73d4ba930bdbd441a31b163c47410bf26bd",
+        "before": "baacc0181af90ddb9b2215bb03860e88c2a057c1dfbb189e34ec8b0059a46c46"
+      }
+    }
+  },
+  "errors": 0,
+  "failed": 0,
+  "implementation_and_test_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_intent_world.py": "7e920b75c80aa018c4088b803da1d73d4ba930bdbd441a31b163c47410bf26bd",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py": "89eb6a6ff94fcb54a56c7515336b5e35367c76d5ebd3fb2f4ca55a3e03ed906e",
+    "test/api/test_repository_intent_world.py": "90d9951e212a9e0eab6c7c35ff8a61164e9634210d7623c7841bb0d2e1dfcc15",
+    "test/api/test_repository_intent_world_cycle.py": "1c97a638272b028969d59a5e1a2bf1798fca7b5b3ba7d4c49d5fc4fcf6b268cb",
+    "test/api/test_repository_world_intent_binding.py": "4b5a96061a56a341a0b75b1baa5ef836aac17d0bfb3852bf5fe6e3b7f3071fa3"
+  },
+  "implementation_ast_except_module_docstring_unchanged": true,
+  "limitations": [
+    "Only independently owned local IntentRepository databases are supported; native Quack/bound-owner transport and durable restart reconstruction are not qualified.",
+    "Missing accepted world tree, policy, contract and other authorities remain unavailable. Source-session and validation inventory identities remain separate.",
+    "Freshness and deadlines are cooperative; no owner/source lock is held across provider execution, and an active native query is not forcibly interrupted.",
+    "The global native event watermark conservatively invalidates packets on unrelated owner updates; repeated capture overhead is unmeasured.",
+    "Provider responses and fixture token counters are authored. Full native input/output usage, live Terminal Bench success and token savings remain unmeasured.",
+    "Combined IR joins, learned world prediction, portable packet replay and deterministic result reuse remain future work."
+  ],
+  "live_provider_calls": 0,
+  "live_terminal_bench_run": false,
+  "prior_attempts": [
+    {
+      "duration_seconds": 81.638,
+      "errors": 0,
+      "failed": 1,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-intent-world-20261014/focused/results.xml",
+      "junit_sha256": "2877054380ecb52866cce428cebe1f436a7f731c75d7035187fc51e429e6ec79",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-intent-world-20261014/focused/pytest.log",
+      "name": "focused",
+      "passed": 24,
+      "resolution": "Corrected optional-reference fixture to use EVIDENCE tier as well as required=False; INVARIANT tier is inherently required. Final focused run also includes admission-copy race hardening.",
+      "skipped": 0,
+      "superseded_by": "focused-final"
+    },
+    {
+      "duration_seconds": 23.461,
+      "errors": 0,
+      "failed": 1,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-intent-world-20261014/cycle/results.xml",
+      "junit_sha256": "2f220f81c5d47c86963115d3411983e8ceccb9b3db2115d86b7565a57cde4bf2",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-intent-world-20261014/cycle/pytest.log",
+      "name": "cycle",
+      "passed": 0,
+      "resolution": "Selected the answer.answer function handle instead of the answer module handle for the guarded MCP symbol edit.",
+      "skipped": 0,
+      "superseded_by": "focused-final"
+    }
+  ],
+  "provider_usage_measured": false,
+  "recapture_overhead_benchmarked": false,
+  "runs": [
+    {
+      "duration_seconds": 120.378,
+      "errors": 0,
+      "failed": 0,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-intent-world-20261014/focused-final/results.xml",
+      "junit_sha256": "3f46520657e3edc49208f526f4df881c512968e915a029c63a550a96b8adce35",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-intent-world-20261014/focused-final/pytest.log",
+      "name": "focused-final",
+      "passed": 31,
+      "skipped": 0
+    },
+    {
+      "duration_seconds": 232.733,
+      "errors": 0,
+      "failed": 0,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-intent-world-20261014/regression/results.xml",
+      "junit_sha256": "65b62f60a9a3337e63729a7b3c1bdd6717e5c82d90a762f013479fffea95faeb",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-intent-world-20261014/regression/pytest.log",
+      "name": "regression",
+      "passed": 162,
+      "skipped": 0
+    }
+  ],
+  "schema": "repository-intent-world-qualification@1",
+  "scope": "Opt-in in-process native local intent evidence capture and source-context/world-packet integration.",
+  "skipped": 0,
+  "source_sha256_before_final_checks": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_intent_world.py": "baacc0181af90ddb9b2215bb03860e88c2a057c1dfbb189e34ec8b0059a46c46",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py": "89eb6a6ff94fcb54a56c7515336b5e35367c76d5ebd3fb2f4ca55a3e03ed906e",
+    "test/api/test_repository_intent_world.py": "90d9951e212a9e0eab6c7c35ff8a61164e9634210d7623c7841bb0d2e1dfcc15",
+    "test/api/test_repository_intent_world_cycle.py": "1c97a638272b028969d59a5e1a2bf1798fca7b5b3ba7d4c49d5fc4fcf6b268cb",
+    "test/api/test_repository_world_intent_binding.py": "4b5a96061a56a341a0b75b1baa5ef836aac17d0bfb3852bf5fe6e3b7f3071fa3"
+  },
+  "sources_byte_unchanged_during_final_checks": false,
+  "total_session_token_savings": null,
+  "worktree": "/home/barberb/lift_coding_worktrees/token-efficiency-next-20261014"
+}

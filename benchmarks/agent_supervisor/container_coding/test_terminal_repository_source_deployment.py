@@ -32,9 +32,18 @@ def authored_probe_receipt():
         "cache_coverage_explicit", "compact_read", "original_hash_bound", "canonical_edit",
         "stale_generation_refused", "refreshed_original_exact", "native_symbol_observed",
         "context_query_current", "capsule_expansion_bound",
+        "indexed_symbol_read", "indexed_symbol_edit", "indexed_symbol_stale_refused",
+        "indexed_symbol_refresh", "retrieval_usage_bound",
         "no_proof_authority", "private_state_removed", "actual_tool_usage_observed")}
-    usage = dict(status="observed", initializations=1, tool_calls=9, successful_reads=2,
-        compact_reads=1, canonical_edits=1, refreshes=1, errors=1, uncertain_edits=0,
+    from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_mcp import RETRIEVAL_COUNTERS, RETRIEVAL_FALSE
+    retrieval = dict(schema="repository-source-retrieval-observation@1", complete=True,
+        event_chain_sha256="a" * 64, **dict.fromkeys(RETRIEVAL_COUNTERS, 0), **dict.fromkeys(RETRIEVAL_FALSE, False))
+    retrieval.update(query_calls=1, successful_queries=1, nonempty_queries=1, candidates_returned=1,
+        expansion_calls=1, successful_expansions=1, nonempty_expansions=1, capsules_returned=1,
+        generation_bindings_observed=2)
+    usage = dict(status="observed", initializations=1, tool_calls=14, successful_reads=5,
+        compact_reads=2, canonical_edits=2, refreshes=2, errors=2, uncertain_edits=0,
+        retrieval_observation=retrieval,
         returned_bytes=4096, store_cleanup_complete=True, artifacts_retained_after_invocation=False)
     return dict(schema=probe.SCHEMA, qualified=True, checks=checks, usage=usage,
         provider_calls=0, target_code_executed=False, source_messages_retained=False,
@@ -141,13 +150,17 @@ def test_absent_and_explicit_legacy_keep_deployment_without_probe(tmp_path, supp
 
 
 @pytest.mark.parametrize("mutation", ["invalid_json", "not_object", "false_check", "missing_usage",
-    "retained_state", "bool_provider_count", "process_failure", "timeout"])
+    "retained_state", "bool_provider_count", "process_failure", "timeout", "historical_schema",
+    "missing_retrieval", "missing_symbol_check"])
 def test_failed_or_malformed_probe_stops_before_native_start_and_success_receipt(tmp_path, supported_archive, mutation):
     value = deepcopy(authored_probe_receipt())
     if mutation == "false_check": value["checks"]["native_scope_joined"] = False
     elif mutation == "missing_usage": value.pop("usage")
     elif mutation == "retained_state": value["usage"]["store_cleanup_complete"] = False
     elif mutation == "bool_provider_count": value["provider_calls"] = False
+    elif mutation == "historical_schema": value["schema"] = probe.LEGACY_SCHEMA
+    elif mutation == "missing_retrieval": value["usage"].pop("retrieval_observation")
+    elif mutation == "missing_symbol_check": value["checks"].pop("indexed_symbol_edit")
     stdout = "not JSON" if mutation == "invalid_json" else "[]" if mutation == "not_object" else json.dumps(value)
     environment = ProbeEnvironment(stdout=stdout, return_code=7 if mutation == "process_failure" else 0,
         failure=TimeoutError("authored deployment probe timeout") if mutation == "timeout" else None)

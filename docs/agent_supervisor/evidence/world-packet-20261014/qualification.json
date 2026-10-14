@@ -1,0 +1,101 @@
+{
+  "archive_built": false,
+  "base_commit": "e4b8c4bba2fc7d5b7484b9021cbb9a5bcfc5e7d4",
+  "bounds": {
+    "concurrent_native_test_suites": 1,
+    "native_cpu_slots": 1,
+    "native_thread_environment": 1,
+    "offline_model_assets": true
+  },
+  "cycle": {
+    "command_exit_code": 0,
+    "first_body_bytes": 11876,
+    "full_session_token_savings": null,
+    "live_provider_calls": 0,
+    "native_source_index": true,
+    "provider_calls_authored": 2,
+    "real_child_mcp": true,
+    "second_body_bytes": 13577,
+    "source_generations": 2,
+    "stale_dispatches_refused": 1,
+    "world_owner_inputs": "authored declarations"
+  },
+  "date": "2026-10-14",
+  "dependencies": [
+    {
+      "clean": true,
+      "commit": "0897aa1d4252e175477addac5417028241de596a",
+      "name": "ipfs_datasets_py",
+      "path": "/home/barberb/lift_coding_worktrees/token-efficiency-datasets-pin-20261014"
+    },
+    {
+      "clean": true,
+      "commit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+      "name": "ipfs_kit_py",
+      "path": "/home/barberb/lift_coding_worktrees/token-efficiency-kit-pin-20261014"
+    }
+  ],
+  "distinct_tests_passed": 277,
+  "failed": 0,
+  "implementation_and_test_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "7af1932bc47d4c244e65e201018c62f0adee253dfacd7d4abc9be04ecdb95bfb",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py": "d30eb377b582958643b2c5daf49936ee7431ef0f64a8e660cd056a558d8e7737",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "b5b87d3ae5bffffa28a9fcb1e66f11772d81cc40d752ac43337f9c77789be685",
+    "test/api/test_repository_world_cycle.py": "0b9bc89c3d7b3d9d02cf765861e88f0607ec0fb38cde7f4a81459975fd03ad85",
+    "test/api/test_repository_world_dispatch.py": "7423f0925e6247dae225b8b2e159db0a5bf789766df2ad8b18c66c7ccf1d9a7c",
+    "test/api/test_repository_world_packet.py": "889c9f24679ff30b023d75dfc07095c9eed60135062a5a88ed6817ff655b5d69"
+  },
+  "limitations": [
+    "World-owner inputs are authored and not independently refreshed by this adapter.",
+    "Source freshness checks are cooperative; no lock is held across provider execution.",
+    "Provider calls and fixture token counters are authored; provider internal prompts, tool schemas and history are unmeasured.",
+    "No CLI or serialized packet transport; Terminal Bench audit refuses the mode until replay is qualified.",
+    "Combined IR adapters, restart reconstruction, native world observation ingestion and learned prediction remain future work."
+  ],
+  "live_provider_calls": 0,
+  "live_terminal_bench_run": false,
+  "prior_attempts": [
+    {
+      "errors": 28,
+      "failed": 1,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-world-packet-20261014/focused/results.xml",
+      "name": "focused",
+      "passed": 38,
+      "resolution": "Corrected fixture Git initialization order and optional-item budget; final focused run supersedes this attempt."
+    },
+    {
+      "name": "agent_collection",
+      "resolution": "Removed historical dependency worktrees and an incompatible canonical checkout were replaced with clean pinned dependency worktrees before root qualification.",
+      "status": "unavailable"
+    }
+  ],
+  "provider_usage_measured": false,
+  "runs": [
+    {
+      "failed": 0,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-world-packet-20261014/regression/results.xml",
+      "junit_sha256": "dc299fee480a2b98929a4525000313aa2718cba921b01d45905135ea37279720",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-world-packet-20261014/regression/pytest.log",
+      "name": "regression",
+      "passed": 209,
+      "skipped": 0
+    },
+    {
+      "failed": 0,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-world-packet-20261014/focused-final/results.xml",
+      "junit_sha256": "5fb9b46c524e98fa1973d0758078a738b1616d8367edde50ce19de4f4c5f5528",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-world-packet-20261014/focused-final/pytest.log",
+      "name": "focused-final",
+      "passed": 68,
+      "skipped": 0
+    }
+  ],
+  "schema": "repository-world-packet-qualification@1",
+  "scope": "Opt-in in-process source-context/delta-packet/runner integration; real native index, child MCP edit and command check, authored provider and world-owner declarations.",
+  "skipped": 0,
+  "sources_unchanged_during_final_checks": true,
+  "total_session_token_savings": null,
+  "worktree": "/home/barberb/lift_coding_worktrees/token-efficiency-next-20261014"
+}

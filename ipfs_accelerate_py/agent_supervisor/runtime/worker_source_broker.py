@@ -53,6 +53,11 @@ class WorkerSourceBroker(NumericalObligationBroker):
         if not (self.owner_uid > 0 and self.worker_uid > 0 and os.getgid() == self.owner_uid):
             raise ValueError("source-view broker requires the isolated nonroot owner group")
         self.prompt = prompt
+        # Only the sealed-argv factory can establish whether a separately
+        # admitted public instruction was selected for this original launch.
+        # Direct constructors deliberately leave that fact unknown.
+        self.original_requirements = None
+        self.original_requirements_unavailable_reason = "original_launch_selection_not_captured"
         encoded = encode_semantic_router_prompt(prompt=prompt, repository=self.repository)
         table = encoded.table.to_dict()
         self._table_bytes = protocol.canonical_json(table)
@@ -363,8 +368,30 @@ def prepare_worker_source_broker(*, argv, boundary, workspace, input_fd=0, view_
     if size > 2 * 1024 * 1024:
         raise ValueError("source-view prompt exceeds bound")
     prompt = os.pread(input_fd, size + 1, 0).decode("utf-8")
-    return WorkerSourceBroker(repository=repository, workspace=workspace, boundary=boundary,
+    instruction_args = tuple(_argument(argv, flag) for flag in (
+        "--public-instruction-artifact", "--public-instruction-sha256", "--public-instruction-task-cid"))
+    if any(value is not None for value in instruction_args) and not all(instruction_args):
+        raise ValueError("complete original public instruction selection required")
+    value = WorkerSourceBroker(repository=repository, workspace=workspace, boundary=boundary,
         prompt=prompt, timeout_seconds=int(_argument(argv, "--timeout", "90")),
         **({"semantic_evidence_mode": "selected-capsules@1"} if working_set != "legacy" else {}),
         **({"source_edit_mode": edit_mode} if edit_mode != "disabled" else {}),
         **(dict(profile=profile) if view_policy is None else dict(view_policy=view_policy)))
+    if any(arg == flag or arg.startswith(flag + "=") for arg in argv for flag in (
+            "--doctor-residual-artifact", "--doctor-residual-sha256", "--doctor-residual-task-cid")):
+        # The ordinary launch still validates this route in its native router.
+        # Its extra residual obligations and one-call budget are not captured by
+        # the candidate prompt factory, so do not claim a complete preparation.
+        value.original_requirements_unavailable_reason = "doctor_residual_context_not_captured"
+        return value
+    try:
+        from .owner_candidate_round_prompt import capture_public_requirements, capture_native_only_requirements
+        value.original_requirements = (capture_public_requirements(source_broker=value,
+            artifact=Path(instruction_args[0]), expected_sha256=instruction_args[1],
+            task_cid=instruction_args[2]) if all(instruction_args)
+            else capture_native_only_requirements(source_broker=value))
+        value.original_requirements_unavailable_reason = None
+    except BaseException:
+        value.close()
+        raise
+    return value

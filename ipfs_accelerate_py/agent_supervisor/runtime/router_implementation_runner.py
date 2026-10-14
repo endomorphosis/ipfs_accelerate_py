@@ -23,6 +23,7 @@ import uuid
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
+    from .repository_world_packet import PreparedRepositoryWorldPacket
     from .semantic_metadata_view import SemanticMetadataTokenCounter
 
 MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
@@ -342,6 +343,32 @@ def select_model_prompt(*, native_complete_prompt: str, candidate_complete_promp
     return rendered[selected], receipt
 
 
+def _measure_world_packet_prompt(*, model_prompt, provider, model, token_counter,
+                                 max_input_tokens, native_output_schema):
+    """Budget the selected current-state input without comparing unlike tasks."""
+    _selected, measured = select_model_prompt(
+        native_complete_prompt=model_prompt, candidate_complete_prompt=None,
+        provider=provider, model=model, token_counter=token_counter,
+        max_input_tokens=max_input_tokens, native_output_schema=native_output_schema,
+    )
+    return {
+        "schema": "supervisor-world-task-prompt-measurement@1",
+        "measurement_kind": "declared_local_tokenizer",
+        "model_prompt_sha256": hashlib.sha256(model_prompt.encode()).hexdigest(),
+        "model_prompt_bytes": len(model_prompt.encode()),
+        **{name: measured[name] for name in (
+            "measurement_status", "measurement_error_type", "tokenizer_binding", "count_scope",
+            "native_output_schema_tokens", "native_output_schema_sha256", "selected_content_tokens",
+            "selected_input_tokens", "max_input_tokens", "max_prompt_bytes",
+            "provider_framing_measured", "provider_tokenizer_equivalence_verified",
+            "total_session_token_savings", "completion_authority",
+        )},
+        "provider_system_prompt_measured": False,
+        "provider_tool_schemas_measured": False,
+        "provider_internal_history_measured": False,
+    }
+
+
 def _grok_progress_emitter(invocation_id: str):
     """Keep advisory progress outside native JSON receipt and custody parsers."""
     def emit(value):
@@ -376,6 +403,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "numerical_obligation_descriptor", "source_lookup_descriptor", "source_view_descriptor",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "terminal_semantic_scope_currentness",
+    "world_task_packet", "world_task_packet_currentness",
     "semantic_metadata_view", "semantic_working_set",
     "semantic_metadata_census",
     "prompt_tokenizer", "prompt_selection",
@@ -401,6 +429,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "source_formalization_context.py",
     "numerical_obligation_client.py", "source_lookup_worker_client.py", "worker_source_client.py",
     "local_prompt_tokenizer.py",
+    "repository_world_packet.py",
 })
 
 
@@ -520,15 +549,18 @@ def _provider_failure_diagnostic(error: BaseException, *, provider: str) -> dict
 
 def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
                         semantic_transport: bool = False,
+                        world_packet: bool = False,
                         tool_output_binding: dict | None = None,
                         source_view_binding: dict | None = None,
                         repository_source_binding: dict | None = None) -> tuple[str, str]:
     """Preserve native task bytes while making the allocated coding path explicit."""
     if purpose not in {"planning", "coding"}:
         raise ValueError("explicit planning or coding purpose required")
+    if type(world_packet) is not bool or (world_packet and semantic_transport):
+        raise ValueError("explicit compatible world-packet prompt selection required")
     if purpose == "planning":
         if (tool_output_binding is not None or source_view_binding is not None
-                or repository_source_binding is not None):
+                or repository_source_binding is not None or world_packet):
             raise ValueError("helper guidance is coding-only")
         return prompt, ""
     location = json.dumps(str(workspace), ensure_ascii=True)
@@ -544,7 +576,10 @@ def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
         "The supervisor owner validates and publishes the candidate. Do not stage "
         "or commit Git changes, and do not modify Git control files. This path "
         "mapping does not expand the task's allowed files or grant completion authority.\n\n"
-        + ("Task context follows using a reversible semantic symbol table; source code and authority remain canonical:\n"
+        + ("Current task requirements and source-bound world context follow. This is a self-contained "
+           "decision packet; no retained prior provider context is assumed. Observations and retrieval "
+           "references do not grant proof or completion authority:\n" if world_packet else
+           "Task context follows using a reversible semantic symbol table; source code and authority remain canonical:\n"
            if semantic_transport else "Original native task prompt follows without modification:\n")
     )
     if tool_output_binding is not None:
@@ -559,6 +594,23 @@ def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
     if len(advisory.encode()) > 8192:
         raise ValueError("coding workspace advisory exceeds its byte bound")
     return advisory + prompt, advisory
+
+
+def _refuse_candidate_preparation(prompt):
+    """Prepared candidate envelopes need their own admission before dispatch.
+
+    An owner-local preparation must not silently become an ordinary untyped
+    prompt merely because its caller omits the baseline semantic route.
+    """
+    if type(prompt) is not str:
+        return
+    try:
+        envelope, _ = json.JSONDecoder().raw_decode(prompt.lstrip())
+    except (ValueError, RecursionError):
+        return
+    if (type(envelope) is dict and type(envelope.get("schema")) is str
+            and envelope["schema"].startswith("supervisor-owner-candidate-router-input@")):
+        raise ValueError("candidate round prompt requires independent dispatch admission")
 
 
 def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int,
@@ -593,14 +645,36 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         public_instruction_task_cid: str = "", budget_profile: str | None = None,
         prompt_token_counter: PromptTokenCounter | None = None,
         prompt_tokenizer_artifact: Path | None = None, prompt_tokenizer_sha256: str = "",
-        max_input_tokens: int | None = None) -> tuple[str, dict]:
+        max_input_tokens: int | None = None,
+        world_task_packet: PreparedRepositoryWorldPacket | None = None) -> tuple[str, dict]:
+    """Dispatch once; an optional owner-prepared packet replaces task context."""
     failure_phase = "runner_initialization"
+    _refuse_candidate_preparation(prompt)
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
     from ipfs_accelerate_py.llm_router import generate_text, get_llm_provider
     from ipfs_accelerate_py.router_deps import RouterDeps
 
     failure_phase = "argument_validation"
+    if world_task_packet is not None:
+        from .repository_world_packet import PreparedRepositoryWorldPacket
+        if type(world_task_packet) is not PreparedRepositoryWorldPacket:
+            raise ValueError("world task dispatch requires an exact prepared repository packet")
+        if (purpose != "coding" or provider != "codex_cli" or semantic_repository is not None
+                or semantic_transport_schema != "supervisor-semantic-router-input@1"
+                or semantic_metadata_view != "legacy" or semantic_metadata_token_counter is not None
+                or source_input_policy != "legacy" or query_reference_policy != "legacy"
+                or source_view_advisory_policy != "legacy" or source_view_profile != "disabled"
+                or source_edit_mode != "disabled" or census_only
+                or any(value is not None for value in (
+                    source_formalization_handoff, source_formalization_handoff_sha256,
+                    numerical_obligation_descriptor, numerical_obligation_descriptor_sha256,
+                    source_lookup_descriptor, source_lookup_descriptor_sha256,
+                    source_view_descriptor, source_view_descriptor_sha256,
+                    doctor_residual_artifact, public_instruction_artifact))
+                or any((doctor_residual_sha256, doctor_residual_task_cid,
+                        public_instruction_sha256, public_instruction_task_cid))):
+            raise ValueError("world task packet requires an independently selected Codex coding route")
     from .worker_source_client import PROFILES
     if (type(source_edit_mode) is not str or source_edit_mode not in {"disabled", "mapped-span@1", "mapped-span@2"}
             or source_edit_mode != "disabled" and (source_view_profile == "disabled" or census_only)):
@@ -757,6 +831,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     residual_advisory = ""
     router_prompt = prompt
     required_suffix = ""
+    world_packet_receipt = None
+    if world_task_packet is not None:
+        failure_phase = "world_task_packet"
+        world_packet_receipt = world_task_packet.validate_current(workspace=root, task_text=prompt)
+        router_prompt = world_task_packet.prompt
     if semantic_repository is not None:
         semantic_repository = Path(semantic_repository).resolve(strict=True)
         if semantic_repository == root:
@@ -898,6 +977,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         tool_output_binding = create_binding(workspace=root, requested_policy=tool_output_policy)
     model_prompt, advisory = render_model_prompt(prompt=router_prompt, purpose=purpose, workspace=root,
                                                 semantic_transport=encoded is not None,
+                                                world_packet=world_task_packet is not None,
                                                 tool_output_binding=tool_output_binding, source_view_binding=source_view_binding,
                                                 repository_source_binding=repository_source_binding)
     coding_reply_receipt = None
@@ -997,8 +1077,17 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             router_prompt = candidate_router
             coding_reply_receipt = candidate_reply
     prompt_selection = None
+    world_prompt_measurement = None
     metadata_candidate_receipt = None
-    if prompt_token_counter is not None or max_input_tokens is not None:
+    if world_task_packet is not None and (prompt_token_counter is not None or max_input_tokens is not None):
+        failure_phase = "prompt_selection"
+        from .coding_reply_contract import coding_completion_schema
+        world_prompt_measurement = _measure_world_packet_prompt(
+            model_prompt=model_prompt, provider=provider, model=model,
+            token_counter=prompt_token_counter, max_input_tokens=max_input_tokens,
+            native_output_schema=coding_completion_schema() if coding_reply_receipt is not None else None,
+        )
+    elif prompt_token_counter is not None or max_input_tokens is not None:
         failure_phase = "prompt_selection"
         native_router_prompt = prompt + required_suffix
         native_model_prompt, native_advisory = render_model_prompt(
@@ -1155,6 +1244,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     }
     if coding_reply_receipt is not None:
         receipt["coding_reply_contract"] = coding_reply_receipt
+    if world_packet_receipt is not None:
+        receipt["world_task_packet"] = {
+            **world_packet_receipt,
+            "dispatch_rechecked": False,
+            "provider_attempted": False,
+            "provider_retained_parent": False,
+            "prompt_measurement": world_prompt_measurement,
+        }
     if semantic_component_census is not None:
         receipt["semantic_prompt_components"] = semantic_component_census
     if tool_output_binding is not None:
@@ -1351,6 +1448,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 capsule_sha256=reference["capsule_sha256"],
                 response_bytes=len(probe_bytes), response_sha256=hashlib.sha256(probe_bytes).hexdigest(),
                 provider_input_bytes=0, source_freshness_checked=True, proof_authority=False)
+        if world_task_packet is not None:
+            failure_phase = "world_task_packet_currentness"
+            current_packet = world_task_packet.validate_current(workspace=root, task_text=prompt)
+            if current_packet != world_packet_receipt:
+                raise ValueError("world task packet changed before provider dispatch")
+            receipt["world_task_packet"]["dispatch_rechecked"] = True
         failure_phase = "provider_invocation"
         with _numerical_descriptor_environment(numerical_obligation_descriptor,
                                                numerical_obligation_descriptor_sha256), \
@@ -1363,6 +1466,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 receipt["query_reference_dispatched"] = query_reference_selected
                 receipt["query_reference_provider_attempted"] = True
             receipt["router_calls"] = 1
+            if world_task_packet is not None:
+                receipt["world_task_packet"]["provider_attempted"] = True
             output = generate_text(
                 model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
                 allow_local_fallback=False, allow_cross_provider_fallback=False,

@@ -1,8 +1,9 @@
 """Qualify an installed repository-tool runtime on disposable authored source.
 
 No provider or target code is invoked. The actual stdio server must initialize,
-read, edit, refresh and refuse an old generation. Source-bearing replies remain
-in memory; only bounded checks and counters are returned.
+read, edit, refresh and refuse an old generation. Schema @2 also requires an
+indexed symbol read/edit round trip and its retrieval audit. Source-bearing
+replies remain in memory; only bounded checks and counters are returned.
 """
 from __future__ import annotations
 
@@ -19,7 +20,8 @@ import time
 
 from . import repository_source_policy as policy
 
-SCHEMA = "repository-source-runtime-probe@1"
+SCHEMA = "repository-source-runtime-probe@2"
+LEGACY_SCHEMA = "repository-source-runtime-probe@1"
 
 
 def _request(identity, method, params=None):
@@ -69,6 +71,21 @@ def _responses(binding, requests):
         exchange(_request(11, "tools/call", dict(name="repository_capsule_expand", arguments=dict(
             generation=2, semantic_root_cid=context["semantic_root_cid"],
             stable_symbol_ids=[context["candidates"][0]["symbol_id"]]))))
+        candidate = context["candidates"][0]
+        exchange(_request(12, "tools/call", dict(name="repository_read", arguments=dict(
+            generation=2, path=candidate["path"], symbol_id=candidate["symbol_id"]))))
+        selected = json.loads(responses[-1]["result"]["content"][0]["text"])
+        exchange(_request(13, "tools/call", dict(name="repository_replace_symbol", arguments=dict(
+            generation=selected["generation"], path=selected["path"], symbol=selected["symbol"],
+            expected_sha256=selected["source_sha256"], representation=selected["representation"],
+            replacement=selected["content"].replace("return 2", "return 3")))))
+        exchange(_request(14, "tools/call", dict(name="repository_read", arguments=dict(
+            generation=2, path=candidate["path"], symbol_id=candidate["symbol_id"]))))
+        exchange(_request(15, "tools/call", dict(name="repository_read", arguments=dict(
+            generation=3, path=candidate["path"], symbol_id=candidate["symbol_id"],
+            representation="original"))))
+        exchange(_request(16, "tools/call", dict(name="repository_read", arguments=dict(
+            generation=3, path=candidate["path"], representation="original"))))
         process.stdin.close()
         code = process.wait(timeout=max(0.001, deadline - time.monotonic()))
         if code != 0 or pending or process.stdout.read(1):
@@ -122,7 +139,7 @@ def run_probe() -> dict:
                 tool(4, "repository_read", generation=1, path="probe.py"),
                 tool(5, "repository_replace_symbol", generation=1, path="probe.py", symbol="value",
                     expected_sha256=hashlib.sha256(original).hexdigest(),
-                    replacement="def value():\n    return 2\n"),
+                    replacement="def value():\n    # Authored definition context retained until compact edit.\n    return 2\n"),
                 tool(6, "repository_read", generation=1, path="probe.py"),
                 tool(7, "repository_read", generation=2, path="probe.py", representation="original"),
                 tool(8, "repository_symbols", generation=2, query="value"),
@@ -130,14 +147,14 @@ def run_probe() -> dict:
                 tool(10, "repository_context_query", generation=2, query="value", limit=1),
             ]
             responses = _responses(binding, requests)
-            if len(responses) != 11 or [row.get("id") for row in responses] != list(range(1, 12)):
+            if len(responses) != 16 or [row.get("id") for row in responses] != list(range(1, 17)):
                 raise ValueError("repository runtime probe response population differs")
             if any("error" in row for row in responses):
                 raise ValueError("repository runtime probe initialization or protocol failed")
             values = {}
             for row in responses[2:]:
                 result = row["result"]
-                if result.get("isError") is not (row["id"] == 6):
+                if result.get("isError") is not (row["id"] in {6, 14}):
                     raise ValueError("repository runtime probe tool disposition differs")
                 content = result["content"]
                 if len(content) != 1 or content[0]["type"] != "text":
@@ -148,6 +165,8 @@ def run_probe() -> dict:
             page = values[9]
             context, expanded = values[10], values[11]
             candidate = context["candidates"][0]
+            selected, targeted_edit, targeted_stale, targeted_current, final_original = (
+                values[i] for i in range(12, 17))
             observed_entries = {row["path"]: {key: value for key, value in row.items()
                                 if key not in {"path", "cache_root"}} for row in page["entries"]}
             expected_cache_hashes = {
@@ -161,7 +180,7 @@ def run_probe() -> dict:
                 native_scope_joined=status["native_index"]["source_scope_verified"] is True,
                 context_query_current=(context["generation"] == 2 and context["selected_count"] == 1
                     and candidate["path"] == "probe.py"
-                    and candidate["source_sha256"] == hashlib.sha256((workspace / "probe.py").read_bytes()).hexdigest()),
+                    and candidate["source_sha256"] == refreshed["source_sha256"]),
                 capsule_expansion_bound=(expanded["generation"] == 2
                     and expanded["semantic_root_cid"] == context["semantic_root_cid"]
                     and len(expanded["capsules"]) == 1
@@ -182,47 +201,97 @@ def run_probe() -> dict:
                 original_hash_bound=read["source_sha256"] == hashlib.sha256(original).hexdigest(),
                 canonical_edit=edit["canonical_changed"] is True and edit["generation"] == 2 and edit["refresh_required"] is False,
                 stale_generation_refused=stale.get("error") == "stale_generation",
-                refreshed_original_exact=refreshed["content"].encode() == (workspace / "probe.py").read_bytes()
-                    and "return 2" in refreshed["content"] and "Authored source comment" in refreshed["content"],
+                refreshed_original_exact=(final_original["content"].encode() == (workspace / "probe.py").read_bytes()
+                    and final_original["source_sha256"] == hashlib.sha256((workspace / "probe.py").read_bytes()).hexdigest()
+                    and "return 3" in final_original["content"] and "Authored source comment" in final_original["content"]),
                 native_symbol_observed=any(row["name"] == "probe.value" for row in symbols["symbols"]),
-                no_proof_authority=all(values[i]["proof_authority"] is False for i in (3, 4, 5, 7, 8, 9, 10, 11)),
+                indexed_symbol_read=(selected["generation"] == 2 and selected["path"] == candidate["path"]
+                    and selected["symbol_id"] == candidate["symbol_id"] and selected["symbol"] == "value"
+                    and selected["source_sha256"] == candidate["source_sha256"] and selected["edit_supported"] is True
+                    and selected["scope"] == "python_definition" and selected["representation"] == "compact"
+                    and "return 2" in selected["content"] and "Authored" not in selected["content"]),
+                indexed_symbol_edit=(targeted_edit["canonical_changed"] is True and targeted_edit["generation"] == 3
+                    and targeted_edit["refresh_required"] is False
+                    and targeted_edit["source_sha256"] == final_original["source_sha256"]),
+                indexed_symbol_stale_refused=targeted_stale.get("error") == "stale_generation",
+                indexed_symbol_refresh=(targeted_current["generation"] == 3
+                    and targeted_current["symbol_id"] == selected["symbol_id"]
+                    and targeted_current["source_sha256"] == final_original["source_sha256"]
+                    and targeted_current["source_sha256"] != selected["source_sha256"]
+                    and targeted_current["representation"] == "original" and "return 3" in targeted_current["content"]),
+                no_proof_authority=all(values[i]["proof_authority"] is False for i in (3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 15, 16)),
             )
         finally:
             usage = policy.finish_runtime_store(binding, expected_identity=identity)
         checks["private_state_removed"] = usage["store_cleanup_complete"] is True
-        checks["actual_tool_usage_observed"] = (usage["initializations"] == 1 and usage["compact_reads"] == 1
-            and usage["canonical_edits"] == 1 and usage["refreshes"] == 1 and usage["errors"] == 1)
+        checks["actual_tool_usage_observed"] = (usage["initializations"] == 1 and usage["compact_reads"] == 2
+            and usage["canonical_edits"] == 2 and usage["refreshes"] == 2 and usage["errors"] == 2)
+        try:
+            _validate_retrieval(usage)
+            checks["retrieval_usage_bound"] = True
+        except ValueError:
+            checks["retrieval_usage_bound"] = False
         return dict(schema=SCHEMA, qualified=all(checks.values()), checks=checks, usage=usage,
                     provider_calls=0, target_code_executed=False, source_messages_retained=False,
                     live_model_adoption_qualified=False)
 
 
-def validate_probe(value):
-    """Deployment cannot admit missing, partial or contradictory probe output."""
+def _validate_retrieval(usage):
+    from .repository_source_mcp import RETRIEVAL_COUNTERS, validate_retrieval_observation
+    retrieval = validate_retrieval_observation(usage.get("retrieval_observation"),
+        tool_calls=usage.get("tool_calls"), errors=usage.get("errors"))
+    expected = dict(query_calls=1, successful_queries=1, nonempty_queries=1, candidates_returned=1,
+        expansion_calls=1, successful_expansions=1, nonempty_expansions=1, capsules_returned=1,
+        generation_bindings_observed=2)
+    if (retrieval["complete"] is not True
+            or any(retrieval[key] != expected.get(key, 0) for key in RETRIEVAL_COUNTERS)):
+        raise ValueError("repository runtime probe retrieval usage differs")
+
+
+def validate_probe(value, *, allow_legacy=False):
+    """Admit current qualification; old receipts require explicit review mode.
+
+    Historical @1 evidence remains interpretable but never qualifies the new
+    indexed symbol bridge for deployment. No source or provider calls replay.
+    """
+    if type(allow_legacy) is not bool:
+        raise ValueError("explicit legacy probe review policy required")
+    legacy = type(value) is dict and value.get("schema") == LEGACY_SCHEMA
+    if legacy and not allow_legacy:
+        raise ValueError("historical repository runtime probe requires current requalification")
     expected_checks = {"initialized", "complete_tool_inventory", "source_current", "native_scope_joined",
         "cache_coverage_explicit", "compact_read", "original_hash_bound", "canonical_edit",
         "stale_generation_refused", "refreshed_original_exact", "native_symbol_observed",
         "context_query_current", "capsule_expansion_bound",
         "no_proof_authority", "private_state_removed", "actual_tool_usage_observed"}
+    if not legacy:
+        expected_checks.update({"indexed_symbol_read", "indexed_symbol_edit", "indexed_symbol_stale_refused",
+                                "indexed_symbol_refresh", "retrieval_usage_bound"})
     if (type(value) is not dict or set(value) != {"schema", "qualified", "checks", "usage",
             "provider_calls", "target_code_executed", "source_messages_retained", "live_model_adoption_qualified"}
-            or value.get("schema") != SCHEMA or value.get("qualified") is not True
+            or value.get("schema") != (LEGACY_SCHEMA if legacy else SCHEMA) or value.get("qualified") is not True
             or type(value.get("checks")) is not dict or set(value["checks"]) != expected_checks
             or any(item is not True for item in value["checks"].values())
             or type(value.get("provider_calls")) is not int or value["provider_calls"] != 0
             or any(value.get(key) is not False for key in ("target_code_executed", "source_messages_retained", "live_model_adoption_qualified"))):
         raise ValueError("repository runtime probe did not qualify")
     usage = value["usage"]
-    expected = dict(initializations=1, tool_calls=9, successful_reads=2, compact_reads=1,
-                    canonical_edits=1, refreshes=1, errors=1, uncertain_edits=0)
+    expected = (dict(initializations=1, tool_calls=9, successful_reads=2, compact_reads=1,
+                    canonical_edits=1, refreshes=1, errors=1, uncertain_edits=0) if legacy else
+                dict(initializations=1, tool_calls=14, successful_reads=5, compact_reads=2,
+                    canonical_edits=2, refreshes=2, errors=2, uncertain_edits=0))
     usage_fields = {"status", *expected, "returned_bytes", "store_cleanup_complete",
                     "artifacts_retained_after_invocation"}
+    if not legacy or type(usage) is dict and "retrieval_observation" in usage:
+        usage_fields.add("retrieval_observation")
     if (type(usage) is not dict or set(usage) != usage_fields or usage.get("status") != "observed"
             or any(type(usage.get(key)) is not int or usage[key] != number for key, number in expected.items())
             or type(usage.get("returned_bytes")) is not int or not 0 < usage["returned_bytes"] <= 128 * 1024
             or usage.get("store_cleanup_complete") is not True
             or usage.get("artifacts_retained_after_invocation") is not False):
         raise ValueError("repository runtime probe usage differs")
+    if "retrieval_observation" in usage:
+        _validate_retrieval(usage)
     return value
 
 

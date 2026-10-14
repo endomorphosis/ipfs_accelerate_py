@@ -37,8 +37,11 @@ Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resou
 | `repository_source_probe` | `runtime/repository_source_probe.py` |
 | `repository_source_revision` | `runtime/repository_source_revision.py` |
 | `repository_source_session` | `runtime/repository_source_session.py` |
+| `repository_source_symbol` | `runtime/repository_source_symbol.py` |
 | `repository_source_token_budget` | `runtime/repository_source_token_budget.py` |
 | `repository_source_view` | `runtime/repository_source_view.py` |
+| `repository_intent_world` | `runtime/repository_intent_world.py` |
+| `repository_world_packet` | `runtime/repository_world_packet.py` |
 | `resource_scheduler` | `runtime/resource_scheduler.py` |
 | `role_context_selection` | `runtime/role_context_selection.py` |
 | `router_public_instruction` | `runtime/router_public_instruction.py` |
@@ -463,8 +466,91 @@ and leaves the source session open. Compiler work uses a separate shared
 retain their own limits and release their leases before compiler admission.
 These bounds do not provide hard Python RSS or CPU containment. The adapter
 suppresses incidental metadata mirroring and creates no second catalog. This
-is a host-side planning API; the existing MCP tools and live worker routing
-are unchanged.
+is a host-side planning API; existing MCP tools remain the source access boundary.
+
+`prepare_repository_world_packet` joins an issued context compilation with the
+exact task text, explicit unresolved obligations, validation commands, permitted
+effects and write paths through the existing `DeltaTaskPacket` builder and
+admission. At compilation, include `repository_world_task_binding(task_id,
+task_text, allowed_effects, write_paths)` under the caller authority's
+`world_task_packet` key. Preparation rejects a changed task or effect/path scope
+and refuses older contexts without that binding. Write paths must be explicit
+and nonempty; an empty path population cannot accidentally imply unrestricted
+writes. Every selected context body and core constraint must survive packet
+admission unchanged; overflow or normalization that removes required content
+refuses preparation. The packet has a bounded self-contained representation,
+including an explicit unavailable-world marker when no projection was supplied.
+An optional `RepositoryWorldState` must match repository, tree, objective, task
+and policy revision. It remains an owner-supplied planning projection; this
+adapter does not independently refresh its world owner or establish its claims.
+
+The opt-in in-process call `router_implementation_runner.run(prompt=task_text,
+world_task_packet=prepared, provider="codex_cli", ...)` delivers that packet at
+the existing coding worker boundary. Keep the source session and context
+adapter alive until dispatch. The runner verifies exact task/workspace/source
+bindings again immediately before the provider attempt. Edits or generation
+refreshes require a new context and packet. Worker source handles must come from
+the worker's own source session, even when the preparation context refers to
+the same canonical files. Existing repository source tools, provider timeouts,
+cleanup and single-attempt behavior remain in force.
+
+An optional declared tokenizer measures the actual rendered prompt and explicit
+native output schema. An input-token ceiling requires a usable counter and
+cannot fall back to a prompt that omits the packet. Provider-internal system
+text, tool schemas and history are outside this measurement; packet item token
+estimates are separately labeled byte heuristics. Receipts record identities,
+counts, freshness and dispatch disposition without task/evidence bodies. They
+always declare `provider_retained_parent=False` and grant no completion authority.
+The API has no serialized transport, CLI selection or qualified Terminal Bench
+replay yet; the benchmark audit refuses its marker. It is disabled by default
+pending that qualification and matched complete-run evidence.
+
+`capture_repository_intent_world` supplies a required context reference from an
+independently owned `IntentRepository`, the existing signed local requirement
+observer and the native intent world snapshot reader. Include `.reference` in
+the compiler's declared required population, then pass the issued observation
+as `intent_world_observation` when preparing the packet. The selected task's
+reviewed specification, current signed check outcomes, applicable requirements
+and unavailable world components enter the self-contained worker input. Generic
+validation rows cannot stand in for signed observed checks. The capture API is
+read-only and runs no task validation commands; the existing observer may run
+read-only Git subprocesses. Validation remains with the existing local owner.
+
+Packet preparation and dispatch repeat both source and native intent checks.
+A newer check, changed task revision, modified admission or changed source
+requires a new observation and context. Source restoration alone cannot revive
+old validation evidence. The local validation tree and source-session tree use
+different identity contracts and remain separate. No accepted repository-tree,
+policy or completion authority is manufactured to fill missing world components.
+The local capture entry point uses an independently owned intent database.
+Capture checks shared resource admission before reading the owners and reserves
+256 MiB for the world projection. The reference defaults to 32 KiB and cannot
+exceed 64 KiB; exceeding a bound refuses the whole reference. The 30-second
+deadline is cooperative and cannot interrupt an active native query. The global
+intent event watermark deliberately invalidates captures on unrelated owner
+updates as well. Recapture overhead has not yet been benchmarked.
+
+`capture_repository_owner_intent_world` accepts the same source session,
+admission, task CID, generation and byte limit, with `server` replacing `intent`.
+It requires the actual running `QuackStateServer` and native Quack transport,
+and reads through the owner's existing exclusive connection. Use its issued
+observation and required reference with the same compiler and packet APIs.
+The original signed `intent_owner_id` remains separate from the live server's
+`native_owner_binding`, since admission and current custody can have different
+owners. Public evidence includes only the allowlisted custody identities; the
+connection, listener endpoint, database path and credentials stay private.
+
+Native capture checks shared admission before readiness, then lets the strict
+signed observer own its transaction under a deadline-bounded lock acquisition.
+A separate resource lease precedes the
+owner lock for the world snapshot transaction. Exceptions roll back that
+transaction without closing the owner's connection. Every dispatch rechecks
+readiness, exact connection/transport custody, restart identity and observations.
+A stopped or restarted owner requires a new capture. Deadlines remain
+cooperative, including inside the reused observer. This is an in-process owner
+API; remote packet transport and durable restart reconstruction remain unqualified.
+Capture leaves native task data unchanged; the reused readiness check may
+restore the owner's private attach-token file as part of normal owner maintenance.
 
 Opt-in container deployment requires an archive matching the current runtime
 and datasets owner sources. Preparation, execution and deployment verify the

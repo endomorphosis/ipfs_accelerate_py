@@ -122,6 +122,7 @@ def test_revision_refresh_reuses_ast_and_removes_deleted_symbols(tmp_path, sched
         changed = owner.symbols(query="calc.add")[0]
         assert changed["symbol_id"] == old[0]["symbol_id"]
         assert changed["version_cid"] != old[0]["version_cid"]
+        assert owner.symbol(symbol_id=old[0]["symbol_id"]) == changed
     assert (source / "deleted.py").exists() and (original / "deleted.py").exists()
 
 
@@ -386,6 +387,92 @@ def test_query_bounds(tmp_path, scheduler, kwargs):
         owner.refresh(original, manifest)
         with pytest.raises(RepositorySourceIndexError, match="invalid_symbol"):
             owner.symbols(**kwargs)
+
+
+def test_exact_symbol_lookup_is_independent_of_public_list_limits(tmp_path, scheduler, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.runtime import repository_source_index as native_index
+
+    _source, _package, original, _receipt, manifest = snapshot(tmp_path)
+    with index(tmp_path, scheduler) as owner:
+        owner.refresh(original, manifest)
+        expected = owner.symbols(path="stable.py", query="retained")[0]
+        # Lower the public cap to exercise a real population larger than it
+        # without creating a large parser workload just for this boundary.
+        monkeypatch.setattr(native_index, "MAX_RESULTS", 1)
+        assert expected not in owner.symbols(limit=1)
+        with pytest.raises(RepositorySourceIndexError, match="invalid_symbol_limit"):
+            owner.symbols(limit=2)
+        assert owner.symbols(query=expected["symbol_id"], limit=1) == []
+        actual = owner.symbol(symbol_id=expected["symbol_id"])
+        assert actual == expected
+        actual["span"]["start_line"] = 999
+        assert owner.symbol(symbol_id=expected["symbol_id"]) == expected
+
+
+def test_invalid_and_unknown_symbol_id_preserve_healthy_index(tmp_path, scheduler):
+    from ipfs_datasets_py.logic.software_contracts.content import cid_for_bytes
+
+    _source, _package, original, _receipt, manifest = snapshot(tmp_path)
+    with index(tmp_path, scheduler) as owner:
+        owner.refresh(original, manifest)
+        expected = owner.symbols(query="calc.add")[0]
+        for value in (None, True, 5, [], "", "not-a-cid", "x" * 257, "\ud800",
+                      expected["symbol_id"].upper()):
+            with pytest.raises(RepositorySourceIndexError, match="^invalid_symbol_id$") as failure:
+                owner.symbol(symbol_id=value)
+            assert failure.value.preserves_index is True
+        with pytest.raises(RepositorySourceIndexError, match="^symbol_unavailable$") as failure:
+            owner.symbol(symbol_id=cid_for_bytes(b"absent native symbol identity"))
+        assert failure.value.preserves_index is True
+        assert owner.symbol(symbol_id=expected["symbol_id"]) == expected
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+@pytest.mark.parametrize("timing", ["before", "second_fence"])
+def test_exact_symbol_lookup_checks_source_even_for_missing_identity(
+        tmp_path, scheduler, monkeypatch, unknown, timing):
+    from ipfs_datasets_py.logic.software_contracts.content import cid_for_bytes
+
+    _source, _package, original, _receipt, manifest = snapshot(tmp_path)
+    with index(tmp_path, scheduler) as owner:
+        owner.refresh(original, manifest)
+        symbol_id = (cid_for_bytes(b"missing symbol") if unknown
+                     else owner.symbols(query="calc.add")[0]["symbol_id"])
+        if timing == "before":
+            (original / "data.txt").write_text("changed outside the requested symbol\n")
+        else:
+            observe = owner._index.observe_current
+            calls = []
+
+            def change_after_second_observation(*args, **kwargs):
+                result = observe(*args, **kwargs)
+                calls.append(True)
+                if len(calls) == 2:
+                    (original / "data.txt").write_text("changed during the final fence\n")
+                return result
+
+            monkeypatch.setattr(owner._index, "observe_current", change_after_second_observation)
+        with pytest.raises(RepositorySourceIndexError, match="materialization_differs_from_package") as failure:
+            owner.symbol(symbol_id=symbol_id)
+        assert failure.value.preserves_index is False
+        if timing == "second_fence":
+            assert len(calls) == 2
+        with pytest.raises(RepositorySourceIndexError, match="index_not_current"):
+            owner.symbol(symbol_id=symbol_id)
+
+
+def test_exact_symbol_lookup_refuses_changed_native_head(tmp_path, scheduler):
+    _source, _package, original, _receipt, manifest = snapshot(tmp_path)
+    with index(tmp_path, scheduler) as owner:
+        owner.refresh(original, manifest)
+        symbol_id = owner.symbols(query="calc.add")[0]["symbol_id"]
+        owner._cx.execute("UPDATE codebase_control.heads SET generation = generation + 1 WHERE repository_id = ?",
+                          [owner.repository_id])
+        with pytest.raises(RepositorySourceIndexError, match="native_index_query_failed") as failure:
+            owner.symbol(symbol_id=symbol_id)
+        assert failure.value.preserves_index is False
+        with pytest.raises(RepositorySourceIndexError, match="index_not_current"):
+            owner.symbol(symbol_id=symbol_id)
 
 
 def test_receipt_and_caller_manifest_mutation_do_not_change_active_index(tmp_path, scheduler):

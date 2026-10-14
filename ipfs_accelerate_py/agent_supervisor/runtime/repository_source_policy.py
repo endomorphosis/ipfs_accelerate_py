@@ -61,13 +61,17 @@ def _instruction(binding):
         "repository_symbols for Python definitions, and repository_read for source reads. "
         "For capsule metadata, use repository_context_query to select structural references by symbol/path terms. "
         "Use repository_capsule_expand only when selected details from that generation and semantic root are needed. "
-        "Queries do not establish intent satisfaction. Read current original source before editing from a capsule. "
+        "Queries do not establish intent satisfaction. Read current source before editing from a capsule "
+        "and respect its raw-source requirements. "
+        "Pass the query's path and symbol_id to repository_read for a supported Python definition and its verified local edit name. "
+        "These definition reads are dedented and omit imports/enclosing context; omit symbol_id for a full file. "
         f"The selected default representation is {representation}. "
         + selection +
-        "Use repository_replace_symbol with the current source hash for supported edits; "
+        "Use repository_replace_symbol with the read's symbol, source_sha256 as expected_sha256, and returned representation for supported edits; "
         "it changes the allocated canonical checkout and refreshes the repository view. "
         "Use repository_refresh after direct terminal edits; stale indexed reads or edits are refused. "
-        "Request original source when compact content is insufficient. Terminal commands and tests "
+        "Request original source when compact content is insufficient or a symbol is unsupported; "
+        "make comment-only changes directly against original source. Terminal commands and tests "
         "still execute against the canonical checkout. Respect the task's existing allowed files. "
         "These tools do not prove behavior or establish completion. Tool availability, actual use, "
         "and token savings are measured separately.\n\n"
@@ -243,13 +247,17 @@ def finish_runtime_store(binding, *, expected_identity):
                 or stat.S_IMODE(info.st_mode) != 0o700):
             raise ValueError("repository invocation directory changed")
         try:
-            from .repository_source_mcp import summarize_repository_audit
+            from .repository_source_mcp import summarize_repository_audit, validate_retrieval_observation
             summary = summarize_repository_audit(Path(binding["audit_store"]))
+            retrieval = summary.pop("retrieval_observation", None) if type(summary) is dict else None
             if (type(summary) is dict and summary.get("status") in {"observed", "not_observed", "unavailable"}
                     and all(value is None or type(value) is int and value >= 0
                             for key, value in summary.items() if key != "status")
                     and set(summary) == set(usage) - {"store_cleanup_complete", "artifacts_retained_after_invocation"}):
                 usage.update(summary)
+                if retrieval is not None:
+                    usage["retrieval_observation"] = validate_retrieval_observation(
+                        retrieval, tool_calls=usage["tool_calls"], errors=usage["errors"])
         except Exception:
             pass
         if "tokenizer" in binding["config"]:

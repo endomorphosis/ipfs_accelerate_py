@@ -59,6 +59,18 @@ python scripts/ops/agent_supervisor/duckdb_quack_control_plane.py stages
 3. Start the state-owner against the restored path; verify generation and readiness.
 4. Resume from `rollback` or `observe` as appropriate; do **not** fabricate completions.
 
+`ControlPlaneBackup.restore()` requires the existing source authority database,
+including for a rehearsal or another destination. A supplied historical
+maintenance lease cannot authenticate a deleted database. Disabling the lease
+requirement does not permit a missing-source restore. Backup verification alone
+does not authorize restoring task, event, claim or retry state. Recovery after
+loss of the authority database needs independently authenticated native owner
+and fencing materials plus explicit cold-restore support; that path is currently
+unsupported. Keep runtime state and verified backups outside disposable
+worktrees, preserve the only backup copy, and leave the deleted generation
+closed until that custody is established. Do not recreate initial ready tasks
+or reset their history and budgets.
+
 ## Upgrade
 
 - Upgrades are rehearsal-gated: pin the source profile (for example DuckDB/Quack 1.5.x), restore a backup into a disposable environment, apply migrations, and re-run chaos + canary + shadow parity before production default.
