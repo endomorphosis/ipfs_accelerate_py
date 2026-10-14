@@ -48,7 +48,7 @@ Three deterministic qualifications preserve complete source observations and pen
 
 ## LAC-S11-044 Qualify complete pending source review handoffs
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
