@@ -74,6 +74,7 @@ def test_native_tokenizer_fallback_is_audited_without_claiming_reference_treatme
     _, receipt = invoke(dispatch_case, query_reference_policy=POLICY, prompt_token_counter=counter)
     assert receipt['prompt_selection']['selected_representation'] == 'native'
     assert receipt['semantic_translation'] is None
+    assert 'semantic_prompt_components' not in receipt
     assert receipt['query_reference_selected'] is receipt['query_reference_dispatched'] is False
     assert receipt['query_reference_provider_attempted'] is True
     assert '$required_raw_source' not in dispatch_case['calls'][-1][0]
@@ -114,6 +115,7 @@ def test_complete_manifest_mutation_during_provider_setup_refuses_dispatch(
     assert receipt['query_reference_dispatched'] is False
     assert receipt['query_reference_provider_attempted'] is False
     assert receipt['failure_phase'] == 'query_reference_freshness'
+    assert ('semantic_prompt_components' in receipt) is (not fallback)
     parsed = audit._receipt({**receipt, 'phase': 'coding'}, dispatch_case['workspace'].parent)
     _, _, checks = audit._model_projection(rendered=dispatch_case['prompt'], receipt=parsed,
         repository=dispatch_case['repository'])
@@ -210,6 +212,7 @@ def test_actual_retained_audit_binds_reference_receipt_and_native_fallback(dispa
             tokenizer_id='authored', tokenizer_revision='tie', special_token_policy='none', count_tokens=lambda _: 1)
     _, receipt = invoke(case, query_reference_policy=POLICY, **options)
     receipt['phase'] = 'coding'
+    assert ('semantic_prompt_components' in receipt) is (not fallback)
     subprocess.run(['git', '-C', str(case['repository']), 'worktree', 'remove', '--force', str(case['workspace'])],
         check=True, capture_output=True)
     monkeypatch.chdir(case['repository'])
@@ -218,6 +221,7 @@ def test_actual_retained_audit_binds_reference_receipt_and_native_fallback(dispa
     assert observed['status'] == 'verified_all_observed_model_inputs', observed
     assert observed['matches'][0]['query_reference_audit_binding_sha256'] == audit.query_reference_audit_binding_sha256(receipt)
     assert all(type(value) is bool and value for value in observed['matches'][0]['model_input_checks'].values())
+    assert ('semantic_prompt_components' in observed['matches'][0]['model_input_checks']) is (not fallback)
     report = dict(query_reference_policy=POLICY, provider_invocations=[receipt], context_input_audit=observed)
     observation = benchmark_policy.query_reference_dispatch_observation(report, POLICY)
     assert observation['effective_input_observed'] is (not fallback)

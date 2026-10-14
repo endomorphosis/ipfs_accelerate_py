@@ -979,6 +979,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             router_prompt, advisory = native_router_prompt, native_advisory
             coding_reply_receipt = native_reply_receipt
             encoded = None
+            # This census describes the translated candidate. A native input
+            # must not publish it as evidence of the selected representation.
+            # The token-selection receipt retains the comparison itself.
+            semantic_component_census = None
             query_reference_selected = False
             # The earlier proxy receipt describes an evaluated candidate; it
             # must not attest metadata transport that the tokenizer rejected.
