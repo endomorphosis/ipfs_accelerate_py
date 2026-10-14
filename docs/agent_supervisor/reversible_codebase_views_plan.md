@@ -1170,6 +1170,14 @@ source or artifact drift, with zero provider calls on refusal. Existing selected
 capsule and native spawn checks remain distinct. The current host bridge's tests
 do not establish that router combination's admission or deployed task success.
 
+The [subsequent source/session review](evidence/repository-proof-context-20261014/current-source-compatibility-review.json)
+preserves upstream repository-world and stable-symbol APIs. Their opt-in
+representations do not revive old source generations. Reuse the original native
+fences and exact lookup path, and qualify the changed index/session implementation
+with the bridge. The new world-packet lane excludes signed public instructions;
+it does not supply the still-pending closing replay for the capsule-working-set
+and instruction `@5` combination. Its separate suites are not counted here.
+
 The [newer LegalIR findings](evidence/repository-proof-context-20261014/preserved-legalir-review.json)
 preserve trained-parent reuse and a separate published conditions-head comparison.
 Fresh-panel exact IR remained zero, and actual latent conditioning was disabled.

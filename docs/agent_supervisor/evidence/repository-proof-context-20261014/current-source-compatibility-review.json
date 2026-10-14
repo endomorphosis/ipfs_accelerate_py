@@ -1,0 +1,37 @@
+{
+  "executed_tests_in_review": false,
+  "existing_evidence_modified": false,
+  "existing_evidence_revision": "2b24fde95f2938f2265d85d7351814abdca0d104",
+  "incoming_new_evidence_files": 8,
+  "incoming_revision": "c88c0eece0a91297f2ee33859adc2d71724d59d4",
+  "index_interface": "symbols arguments/rows/sort/limit, owner lock, both native/materialization fences and original5tuple retained",
+  "material_static_binder_blockers_found": false,
+  "new_index_cases_in_selected_five_suite_roster": true,
+  "new_index_static_cases": 7,
+  "new_symbol_session_mcp_world_suites_in_selected_roster": false,
+  "recorded_at_utc": "2026-10-14T10:07:18.412551+00:00",
+  "router_gap_still_pending": {
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "provider_invocation_line": 1471,
+    "request_page_line": 1438,
+    "signed_replay_line": 1419
+  },
+  "schema": "repository-proof-context-current-source-compatibility-review@1",
+  "session_interface": "Existing symbols/context-call/whole-file-read and capture/generation transition retained; symbol_id/representation features are opt-in",
+  "source_git_objects": [
+    {
+      "bytes": 26673,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_index.py",
+      "sha256": "21407fd38afd625dc26a316fc55699a6444a29c8bd0a134b9cd650c882a7e3d1"
+    },
+    {
+      "bytes": 27464,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_session.py",
+      "sha256": "b2e8af98b1d290a8ca66f8ea6070a8d4e80417398e8e6bd2737b5fd80be96314"
+    }
+  ],
+  "static_only": true,
+  "total_session_token_savings_established": false,
+  "whole_program_proved": false,
+  "world_packet_with_signed_instruction_combination": "explicitly rejected by lines663-676; no additional combined-world replay gap"
+}

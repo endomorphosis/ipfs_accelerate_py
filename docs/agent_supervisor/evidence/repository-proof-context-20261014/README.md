@@ -124,6 +124,22 @@ the reviewed incoming revision, with explicit ancestry to the original base.
 The original premerge manifest remains in [its retained copy](premerge-manifest.json)
 and Git `6bcbdaef3fbc4a27ab8d6c91be7edfe78f464586`.
 Incoming tests outside the five-suite roster are not counted as executed here.
+The [second incoming review](second-incoming-review.json) retains the later
+53-path repository-world/symbol/session integration at `c88c0eece0a91297f2ee33859adc2d71724d59d4`.
+Six listed dependencies change, including the existing index/session code and
+index tests. The [source compatibility review](current-source-compatibility-review.json)
+records unchanged symbol rows, both native fences and the retained state tuple.
+Seven newly added index cases enter the five-suite roster. The
+[complete fifth run](qualification-05/commands.json) passed 187 distinct cases,
+including all 38 new bridge controls, in 2378.264 seconds, with zero failures,
+errors or skips and all 250 bindings unchanged. The
+[current summary](current-qualification-summary.json), [stdout](qualification-05/tests.stdout.log),
+[stderr](qualification-05/tests.stderr.log) and [JUnit](qualification-05/junit.xml)
+retain that result. New symbol-session, MCP and world suites remain outside this
+roster. Earlier counts are not added to this complete run. Eight added upstream evidence objects are retained
+alongside the unchanged original evidence baseline. The earlier merged manifest
+remains in [its retained copy](first-merged-manifest.json) and the published
+qualified branch at Git `9166ee060f7907c0f3a018afd884fd46330b5a01`.
 All prior autoencoder checkpoints, embeddings, model-manager registrations and
 family/schema/version/decoder-task/dimension inventories remain available for
 later reconstruction and distillation work.
@@ -152,3 +168,15 @@ combination. This five-suite qualification covers the host bridge, not that rout
 The guide gives explicit acceptance boundaries. No reconstruction, execution,
 completion, omission authority, new model publication or token-saving result is
 claimed by this increment.
+
+The final [fourth documentation receipt](documentation-checks-04.json) and
+[workflow log](documentation-workflow-04.log) bind this fifth qualification and
+retain both original documentation receipts unchanged. The final
+`manifest.json` binds the owned source, tests, guides and phase artifacts;
+its own bytes are excluded from its file population.
+
+The [third documentation attempt](documentation-checks-03.json) stopped after
+four passing workflow blocks because its manual check found a premature link to
+the final manifest. Its [correction record](documentation-correction.json),
+[original README snapshot](documentation-03-README.snapshot.txt) and workflow log
+remain unchanged. Only the final passing attempt is selected for publication.
