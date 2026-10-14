@@ -71,6 +71,14 @@ def test_invalid_query_and_partial_pins_refuse(field, bad):
     with pytest.raises(ValueError): client.validate_request(request(**{field: bad}))
 
 
+@pytest.mark.parametrize("invalid_request", [None, [], "source-request", 1, True])
+def test_response_dispatch_preserves_malformed_request_value_error(invalid_request):
+    # Dispatch must reject a malformed local request before interpreting any
+    # response, including a success-looking response from an untrusted peer.
+    with pytest.raises(ValueError):
+        client.validate_response({"ok": True, "page": {}}, request=invalid_request)
+
+
 @pytest.mark.parametrize("change", ["extra_envelope", "extra_page", "extra_binding", "schema", "path", "view",
     "bool_size", "bool_offset", "content", "slice_sha", "full_sha", "representation_size", "offset",
     "exhausted", "cursor", "proof", "mutation", "omission", "discharged", "current", "read_only",

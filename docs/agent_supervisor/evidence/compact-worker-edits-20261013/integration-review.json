@@ -1,0 +1,85 @@
+{
+  "blocking_findings": [],
+  "checks": [
+    "Edit mode is explicit and disabled by default; service requires exact verified explicit program_paths and never falls back to support paths.",
+    "Existing broker session lifetime, UID/ancestry/socket peer, request replay and cumulative byte guards precede new dispatch.",
+    "Prepare is bound to canonical complete authenticated envelope and existing baseline/view/source/generation/policy pins; owner prepares mapping only.",
+    "Worker independently verifies the complete original and candidate bytes under existing worker write rights; no fake IsolatedWorktree, owner mutation grant or lease.",
+    "Confirmation requires the entire admitted postimage, refreshes generation and clears candidate context. Failed stale generations discard cached views and cannot be reused.",
+    "No unsupported semantic/proof/current-index authority follows from a successful edit; returned status remains validation pending.",
+    "Post-write transport or confirmation failures retain written_confirmation_unknown and never automatically retry the edit.",
+    "Edit-ready source rendering is explicit; ordinary working reads preserve legacy default projection and loader behavior.",
+    "Closed source-session@4 accounting distinguishes delivered mapping/confirmation pages; zero source bytes assigned to edit pages; discovery field pair mandatory for editing.",
+    "Router and descriptor selected mode/policy are joined before actual dispatch; guidance uses selected edit mode and is charged in prompt bytes."
+  ],
+  "complete": true,
+  "docker_qualification": {
+    "actual_uid_boundary": true,
+    "external_model_calls": 0,
+    "full_supervisor_start_qualified": false,
+    "model_hook_authored": true,
+    "network": "none",
+    "official_benchmark_verifier_executed": false,
+    "owner_uid": 1000,
+    "passed": true,
+    "path": "docker/run-01/qualification.json",
+    "sha256": "819352273b4047e985ff3998c1e1c9ff6e407f7a43a8d5bda188564f5555553b",
+    "worker_uid": 1001
+  },
+  "limitations": [
+    "One authored Python comment-removal fixture qualified in Docker; host suites cover additional mapping refusal/UTF8/CRLF/staleness cases.",
+    "No live provider token savings, benchmark task success or full supervisor START result.",
+    "Worker-local full source reads are privately required for preimage checking; only model-visible original expansion is avoided.",
+    "Successful candidate edit and smoke do not refresh/discharge symbolic proofs or authorize publication.",
+    "Source population covers owner-admitted paths; unrelated/unadmitted files are outside confirmation scope."
+  ],
+  "private_evidence_exclusions": [
+    "docker/run-01/private-state/**",
+    "docker/run-01/private-fixture-ipc/**",
+    "docker/run-01/private-worker-observations/**",
+    "raw prompts, router transcripts, live source session descriptors, owner private databases"
+  ],
+  "public_evidence_allowlist": [
+    "integration-review.json",
+    "source-validator-tests-01/command.json",
+    "source-validator-tests-01/exit.json",
+    "source-validator-tests-01/junit.xml",
+    "docker/release-01.json",
+    "docker/run_docker_qualification.py",
+    "docker/owner_probe.py",
+    "docker/worker_probe.py",
+    "docker/run-01/qualification.json",
+    "docker/run-01/results/probe-qualification.json",
+    "docker/run-01/results/session-observation.json"
+  ],
+  "resolved_findings": [
+    {
+      "impact": "ValueError API contract changed to AttributeError; ordinary transport callers validate local dicts so no authentication or write bypass was identified.",
+      "issue": "Edit dispatch read request.get before validating a malformed non-dict local request.",
+      "resolution": "Exact dict type guard before dispatch; five malformed request regression cases.",
+      "source_test": "test/api/test_worker_source_client.py::test_response_dispatch_preserves_malformed_request_value_error"
+    }
+  ],
+  "reviewed_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "ab28888f4f47f38bba829b36cf7bcd271aa212b73fb74d21b5461f47dde0be6f",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "5906904e4708c82998f2216209e6e121e7cb60c076e2f046c06f2046a52b67a4",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "019e3d40f7f2e6a647b674df7c99f96163b982671b2504d611f260540006f834",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "204d6a840ca79141e95da8a0c7fe0da471223c66a353a3c9250b1b1c1063b7f5",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "10d8fc696d1a5ab8cf42e67c405eb434798ec2ccef4532896e476e4e5b2e472a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "d08ee0cf8806959aa3795c75ddc5f1bb147dd3bfb03c45e9710b49278701ec9e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "03c8bb57112852436936fbdf18a6fbadcea7b03c7bc06b2e35a03b2d3ba48079",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py": "4a8f2eff7d5031f3dfb86988a6ef69b17694c88e9a041dd943c0ff5aea3fd6f1",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py": "08cd587a17ba5b94fc46b096f9522e9d2ce833f38d3780ec350212682cd4857d"
+  },
+  "reviewer_scope": "Independent read-only review of broker/client dispatch, cache generation, descriptor/router/collector joins. Core service authored by this reviewer and independently reviewed by another agent.",
+  "schema": "compact-worker-edit-integration-review@1",
+  "tests": {
+    "artifact": "source-validator-tests-01",
+    "exit_code": 0,
+    "failed": 0,
+    "junit_sha256": "694dcccdf447dbcdd6a4f33ecf70e108828b162b08829d8e305c6559090dfc57",
+    "passed": 55,
+    "source_unchanged": true
+  }
+}

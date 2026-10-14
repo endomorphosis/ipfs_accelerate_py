@@ -1,0 +1,72 @@
+{
+  "actual_config_difference_paths": [
+    "/agents/0/kwargs/semantic_metadata_view",
+    "/jobs_dir"
+  ],
+  "all_other_config_fields_identical": true,
+  "allowed_config_difference_paths": [
+    "/agents/0/kwargs/semantic_metadata_view",
+    "/jobs_dir"
+  ],
+  "archive_matched_host_files": 165,
+  "baseline": {
+    "bytes": 83295,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02/preparation.json",
+    "sha256": "42844db121a819307c4f3894f345c04e245fe9fc012c7638eb51d2567f464a5d"
+  },
+  "baseline_configuration": {
+    "bytes": 3400,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02/config.json",
+    "sha256": "8c4f6a784dbf0b9fefa8fec3c0682af6f45bad240ff74f20f63824d8442cd52f"
+  },
+  "checkpoint_and_task_bindings_identical": true,
+  "execution_release": "Root must separately authorize and bind a launch; this preparation audit does not execute.",
+  "execution_started": false,
+  "generic_comparator_scope": "Unmodified production comparator; exact complete configuration delta is separately verified.",
+  "host_and_archive_source_pins_current": true,
+  "host_only_test_files": 162,
+  "host_source_files": 327,
+  "model_calls": 0,
+  "original_pair_lock_unchanged": true,
+  "preparation_only": true,
+  "production_generic_comparator": {
+    "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+    "differences": [],
+    "matches": true,
+    "status": "matched"
+  },
+  "provider_generation_calls": 0,
+  "schema": "compact-metadata-treatment-preparation-audit@1",
+  "selector_observation": {
+    "actual_provider_token_savings_verified": false,
+    "complete_byte_fields": [
+      "native_complete_bytes",
+      "candidate_complete_bytes",
+      "selected_complete_bytes"
+    ],
+    "complete_hash_fields": [
+      "native_complete_sha256",
+      "candidate_complete_sha256",
+      "selected_complete_sha256"
+    ],
+    "exact_roundtrip_required": true,
+    "fallback_field": "fallback_reason",
+    "measured_candidate_bytes": null,
+    "mode": "common-bindings-instruction@1",
+    "receipt_location": "supervisor.provider_invocations[coding].semantic_metadata_view",
+    "selected_mode": "pending_actual_dispatch",
+    "selection_basis": "smaller UTF-8 bytes and named proxy",
+    "token_counter_supplied_by_cli": false
+  },
+  "status": "passed",
+  "treatment": {
+    "bytes": 83457,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-metadata-03/preparation.json",
+    "sha256": "8c8d8c542fa776dd5a8355b599ded43a86f11e5238b6d209ea9b5fd9a1defe1f"
+  },
+  "treatment_configuration": {
+    "bytes": 3476,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-metadata-03/config.json",
+    "sha256": "4e591d2aa53ee684658920bcbe7c7d742db068b9a7dd9e6449c98e7dd12f66b0"
+  }
+}

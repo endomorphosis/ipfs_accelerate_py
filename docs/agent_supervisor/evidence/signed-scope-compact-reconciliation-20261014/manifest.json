@@ -1,0 +1,2502 @@
+{
+  "accelerator_bindings": 203,
+  "actual_datasets_execution_revision": "59561dd2979e49fd26aa3fcfed6a5edbca1f718f",
+  "actual_kit_execution_revision": "8ac00bb1974b1378e12091d546d8425af34049e0",
+  "complete_import_closure_attested": false,
+  "datasets_bindings": 51,
+  "existing_checkpoint_embeddings_and_inventory_assets_modified": false,
+  "external_model_calls": 0,
+  "files": [
+    {
+      "bytes": 18980,
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "333a9c7617c8d7a79ca8649bdf4759b0425493b22a00834654e0101daa5b9e3d"
+    },
+    {
+      "bytes": 35883,
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "5a29cc320bec77c25f939bea0ad0d0a55a3ccc9aa17a87736805d37ae9c052ac"
+    },
+    {
+      "bytes": 52210,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "9875e4ce9f3c5ee91bd209810ebb0acfdf0478b21a92ada213d17ec0479bf591"
+    },
+    {
+      "bytes": 45159,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "25eed3fa37f87f2f0c14227ae1bfcb4f0dde5789e3dd7275d95593d8f70926ad"
+    },
+    {
+      "bytes": 88841,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "84ecb5d2eae9d986968172f0843f73d75ca1f4f4a9392ffc3468c1e8989e71e9"
+    },
+    {
+      "bytes": 71333,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "70539360f8d18d68afc54a095c0647945ea3c48832504e9fdd835872e06e071e"
+    },
+    {
+      "bytes": 20156,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "dc00ccaf175c38a201352ea2dc8fb7b4b176c1aa8331941fa6fe701fb55ec367"
+    },
+    {
+      "bytes": 82610,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "735ded8254f43aaf696a3273032b70654b87ecb4db3fddbee58e3be659955345"
+    },
+    {
+      "bytes": 18557,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_numerical_observation.py",
+      "sha256": "95145757a613a384b14aa8baf37aff5cfb42c83ff5bdbb1483da1898559d1043"
+    },
+    {
+      "bytes": 3545,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_planning_policy.py",
+      "sha256": "276533db278a9c9b48186213449a8ff0016597f5990503d3a2d9c0b25443bd5c"
+    },
+    {
+      "bytes": 4425,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py",
+      "sha256": "3c6f96e0ce3c3c3de9efd96c873d0eae58dbea561ea674923cb5a016f3c53fa9"
+    },
+    {
+      "bytes": 17870,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+      "sha256": "e78c18422e06f1417cb7e5c19ba7df0de7bea2d5b35606aa4cdb8220d499d99e"
+    },
+    {
+      "bytes": 7955,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "sha256": "454a8b9d35add916655175d7ecdee640e9222c63bc4cb6e7e14c5e61f91a82c4"
+    },
+    {
+      "bytes": 15672,
+      "path": "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py",
+      "sha256": "273ed9b95447197f7c3049cf5a068d24e892a4646cefc41a503190ef2676f8ec"
+    },
+    {
+      "bytes": 7866,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py",
+      "sha256": "7767775319161d898a2f306633b999c5c9bb4739bb0019d6ebdf11ae3003257c"
+    },
+    {
+      "bytes": 9742,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_declared_contract_planning.py",
+      "sha256": "2c6723eafd891e6f4fa1da7ccc0a15234443d6d117122389569bbf54fda4c1e4"
+    },
+    {
+      "bytes": 8044,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_declared_doctor_pipeline.py",
+      "sha256": "ed6b02d8f68d322ff09b69d60b83b90410a912d7d73f0b6d9d23f7b46b26db8f"
+    },
+    {
+      "bytes": 5390,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_declared_numerical_observation.py",
+      "sha256": "c943f90c7bc9161b8d1391b75d268a695cdd60f64c53b3759b7b900ee0176acb"
+    },
+    {
+      "bytes": 1146,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_doctor_prover_discovery.py",
+      "sha256": "8557f2a7cf32a21e3f285026cdcc3ce85419242d794f40bee3a5ec4910c1aa68"
+    },
+    {
+      "bytes": 11546,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_merged_worker_capability.py",
+      "sha256": "7a3469834f7bb5eb054717621b957f286e1f1688cae7230c9098d23a56f8d924"
+    },
+    {
+      "bytes": 14529,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_planning_policy.py",
+      "sha256": "c75fff4164f80fb8f4103405330ec3a32794211357b28c35cea7dab8766edaec"
+    },
+    {
+      "bytes": 7889,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py",
+      "sha256": "eb645fbf250ed5816e86ef9be2c7402eb25cd0163168b7bc6ea6a6747cc7829d"
+    },
+    {
+      "bytes": 8277,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_signed_declared_planning.py",
+      "sha256": "8e8397f38c05e88dc43607e4af0dec922e3be7f0c5bcc77c05528a7ae214f198"
+    },
+    {
+      "bytes": 17842,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py",
+      "sha256": "0c99edf9152679de6bdff551dd058f0ce8602d4445bc47d572a340995ac867f7"
+    },
+    {
+      "bytes": 5768,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source_request_observation.py",
+      "sha256": "bfde491b172d2c8a54231f916a816cd99132dbbd80d602832f6bb383a81e6f51"
+    },
+    {
+      "bytes": 12812,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_efficiency.py",
+      "sha256": "ccbecbacfef62305ce3512fe4177d7668f4f742b1667d0712416ecbe917a9c08"
+    },
+    {
+      "bytes": 8602,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py",
+      "sha256": "b84487405bbbb1dbcd190ad997c98f9008b29799adc90e524624d65b4877e637"
+    },
+    {
+      "bytes": 18332,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "sha256": "4588518a6645dd9c1fe69e59bd1b11dbb93a73536c7fcae2265a553f8a86b3d0"
+    },
+    {
+      "bytes": 8532,
+      "path": "docs/agent_supervisor/compact_worker_benchmark.md",
+      "sha256": "b0dc884f8bccffcde18bf3098d35e2626d528d3843ac103db3b2d38dd135d0d6"
+    },
+    {
+      "bytes": 3447,
+      "path": "docs/agent_supervisor/evidence/compact-worker-edits-20261013/docker-qualification.json",
+      "sha256": "819352273b4047e985ff3998c1e1c9ff6e407f7a43a8d5bda188564f5555553b"
+    },
+    {
+      "bytes": 12167,
+      "path": "docs/agent_supervisor/evidence/compact-worker-edits-20261013/integration-final-review.json",
+      "sha256": "75a009205f1e53a706b8173a063e9c8b73b44d8a0bb21b0262d08b251c009130"
+    },
+    {
+      "bytes": 5954,
+      "path": "docs/agent_supervisor/evidence/compact-worker-edits-20261013/integration-review.json",
+      "sha256": "42dd1054c003ce488bf18737d421a3ab098a096e2c276398041a4957b1461a6d"
+    },
+    {
+      "bytes": 6119,
+      "path": "docs/agent_supervisor/evidence/compact-worker-edits-20261013/observed-components.json",
+      "sha256": "26fc4a2cf478e5385a742cafa5256944b1073b6106bce8f62a615bb61f41f12a"
+    },
+    {
+      "bytes": 14839,
+      "path": "docs/agent_supervisor/evidence/compact-worker-edits-20261013/qualification.json",
+      "sha256": "51376d68f07ff7029926ece5312a770f7674376d6ffb022c2dce29d6eb8f873f"
+    },
+    {
+      "bytes": 8180,
+      "path": "docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/owner_probe.py",
+      "sha256": "7d35884dc776d9f761406aa3452d1422eae7c57e028bdffe8754152030ab5732"
+    },
+    {
+      "bytes": 4528,
+      "path": "docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/release-01.json",
+      "sha256": "b62e998003e2663790fbfbc6bcf93fe5408f9352c2665a9d47000c71c2da63a1"
+    },
+    {
+      "bytes": 11662,
+      "path": "docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/run_docker_qualification.py",
+      "sha256": "74b294246c461c229cb23f0902f6aa68577924e902d36b6cf8a10a0555ba1e65"
+    },
+    {
+      "bytes": 5483,
+      "path": "docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/worker_probe.py",
+      "sha256": "c6a3ef5b4fabdaf68ecc8f7b0fb400a409544cc7683fb8060ced9b564e7f75bb"
+    },
+    {
+      "bytes": 129163,
+      "path": "docs/agent_supervisor/evidence/compact-worker-edits-20261013/test-ledger.json",
+      "sha256": "0fb634c6a061f0ada6486c77190e9225044e72eebe8c5924ede839b1d9ff1538"
+    },
+    {
+      "bytes": 7348,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/README.md",
+      "sha256": "9184a9bde17ae9ea1cb01c889635f293bf5e6262a1b842f07b535ab1c21ef325"
+    },
+    {
+      "bytes": 30285,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/history/collect_live_readout_before_mapping_fix.py",
+      "sha256": "d24c768eb18e69bc921d51dd0586e77e19f1659500486439129e40a5f9da936e"
+    },
+    {
+      "bytes": 2018,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/history/superseded-readout-checks.json",
+      "sha256": "071223d36e345b37ff0fb52a91c8f3e3eb6f06f7e8666cda00feb26f9789e815"
+    },
+    {
+      "bytes": 1516,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/history/superseded-readout-freeze.json",
+      "sha256": "cf2c8a6659f128a68c293afb579a23cb77969cab84aeef02c7c294b56a670f34"
+    },
+    {
+      "bytes": 7271,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/history/superseded-readout-review.json",
+      "sha256": "db49d28a33a4a678dde0348f669dee2db76b5351e8bd106b5802bedc9200c9f5"
+    },
+    {
+      "bytes": 1590,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/inputs/initial-prepare-refusal.json",
+      "sha256": "a204548a3baa95051c55d86447cb84ba8a2cac193c6cf79657b5075de814b780"
+    },
+    {
+      "bytes": 2930,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/inputs/metadata-control-audit.json",
+      "sha256": "a5a80dfa21c79782c21420379854337ce36d686650c52babd5cdfea6b06a3e34"
+    },
+    {
+      "bytes": 3468,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/inputs/metadata-execution-lock.json",
+      "sha256": "e515dd821ff4df9ff0e778f3ccd9941f89630952412d931d8bd3e252baf4dac7"
+    },
+    {
+      "bytes": 78217,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/inputs/metadata-release.json",
+      "sha256": "ed430e96262f21f252e9f440ccfb6c91e202c5597c53b12c3f873eba336d14af"
+    },
+    {
+      "bytes": 1159,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/inputs/original-control-audit.json",
+      "sha256": "746a7f003175cbcff79ffbf9517b05559bb9989229665eef9270b0de6bfde06f"
+    },
+    {
+      "bytes": 79226,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/inputs/original-pair-lock.json",
+      "sha256": "295b12b3f4464bbab8422ce8fdfe0414949fd3295948a54426a95ce48e015fa5"
+    },
+    {
+      "bytes": 965,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/inputs/original-readout-registration.json",
+      "sha256": "f6bf03459958ac508e32125504fae828cef32068ee9bd0b109670f4eeaf0950c"
+    },
+    {
+      "bytes": 681,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/launch/comments-result.json",
+      "sha256": "01f4fe9c20a783c14a0967e259cc3d8912ac2b8defef12ce20a0d412ffa367c9"
+    },
+    {
+      "bytes": 1056,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/launch/comments-start.json",
+      "sha256": "da01694f461ced8876c8b56059c38e2b7aa5471f70a267e1dad6b1d5c7c0bb64"
+    },
+    {
+      "bytes": 681,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/launch/identity-result.json",
+      "sha256": "7ccabed354d48b0596c1f77551e26efd882d9b94a516ff83f73602c78c0063d5"
+    },
+    {
+      "bytes": 1056,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/launch/identity-start.json",
+      "sha256": "af1d14c61c2e9e858b47e76c1834c90194afb67137e75b71a267474330fe1e91"
+    },
+    {
+      "bytes": 881,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/launch/metadata-result.json",
+      "sha256": "ae1b23c5daf63ab20dc4fc358a89fc9c4d0e552deecd82d9b2de94a315a33b03"
+    },
+    {
+      "bytes": 1369,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/launch/metadata-start.json",
+      "sha256": "6c5e2cbd9af7feb63824b9b4c3acce4093faaeddbde3c928917539ac1a503a1d"
+    },
+    {
+      "bytes": 3658,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/launchers/run_locked_trial.py",
+      "sha256": "a41058467ae54fb1b54d0fe3d0f56b058effc4a2c821cc73ee50d5a94f35d94a"
+    },
+    {
+      "bytes": 5749,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/launchers/run_metadata_treatment_03.py",
+      "sha256": "f8f9705fd38487d5a1afc2b4de0d3fbc9cf45f79480973b2b3f3baaba986ece5"
+    },
+    {
+      "bytes": 25057,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/manifest.json",
+      "sha256": "9a5b59c72c4b2e66529b9dc262894d016e92776af78c7cbf9bd493042da42a8b"
+    },
+    {
+      "bytes": 11830,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_live_readout.py",
+      "sha256": "9300d8565b50c881a415c0e1b197afe0ae4c9db77335f4e8844edead356957b6"
+    },
+    {
+      "bytes": 7480,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_metadata_treatment_finalized_03.py",
+      "sha256": "45fadc019df0941165fce92338205cd791baac59d2f7471eaae59177b914068b"
+    },
+    {
+      "bytes": 2289,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_native_shape.py",
+      "sha256": "cdd8b53dec83790139ba8a0b851aefca7d2bd1c02618a0b35ea87c12d2af0b45"
+    },
+    {
+      "bytes": 30486,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_live_readout.py",
+      "sha256": "79c0edcc6eda284ac13f2f0eb3d3341a84125523d377530b4f4dbb5cabb19a10"
+    },
+    {
+      "bytes": 13227,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_metadata_treatment_03.py",
+      "sha256": "0af7025ed58a89e14db28ff14e97249c04db89b295dc48cedf9d3c2a5bc18e4e"
+    },
+    {
+      "bytes": 5978,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_native_shape.py",
+      "sha256": "5911e857dbf0d8e4a397e80b4152a093cb4e5f270dfcf183a5c0fe1addb86c32"
+    },
+    {
+      "bytes": 5908,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/curate_live_evidence.py",
+      "sha256": "86d002c640daaea2bf4505157b3fbe3528ac9f14117934c099773ac1a5c3e47f"
+    },
+    {
+      "bytes": 10600,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readouts/identity-control-diagnosis.json",
+      "sha256": "15c581752c9d71f00e9af74324f5ad9fa105813ff6db9c2ae87a96655325c5cf"
+    },
+    {
+      "bytes": 4791,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readouts/identity-diagnostic.json",
+      "sha256": "4ac13c4e76a6356d8ad4b04a352aafc5a3e779fa1178c5d4801aa19c3ed24294"
+    },
+    {
+      "bytes": 28151,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readouts/metadata-treatment.json",
+      "sha256": "8b5a5ca9bab35a2cbf4e754525576785c21930317ac5794a8380ab75c98bff57"
+    },
+    {
+      "bytes": 12071,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readouts/native-shape-original-pair.json",
+      "sha256": "4960eee43cdaa48d6dd21ac4eec2b9404c9dae426ec5cbf5933add6907d3f71c"
+    },
+    {
+      "bytes": 26858,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/readouts/original-pair.json",
+      "sha256": "be9c3ca132870d4fb408ae622653fcc8682547bee1695b0f137364bdfd0c0441"
+    },
+    {
+      "bytes": 1072,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/reporting/metadata-finalized-checks.json",
+      "sha256": "7395910512c07102c1fc00252de08dd25f748c3422aecc38f397f65ad2fdc9f4"
+    },
+    {
+      "bytes": 653,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/reporting/native-shape-checks.json",
+      "sha256": "05cdb549465a84be4bb9a010a91c11bf0ff43c4bbb84af635e24dcea5ee04de3"
+    },
+    {
+      "bytes": 2232,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/reporting/original-readout-checks.json",
+      "sha256": "c3279517ab8bde804e86b8b0000be3b7836d7ff18a63f9ca2d81fb2d94f72d9c"
+    },
+    {
+      "bytes": 1919,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/reporting/original-readout-freeze.json",
+      "sha256": "06ad18d034bff964b601a846dacc96834afe7dc9bb3464899a95d5bd4e0d85ed"
+    },
+    {
+      "bytes": 3531,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/reviews/final-offline-readiness.json",
+      "sha256": "804aee00fe44ad4826be3ca799a43c2a9adaab1422dda8e242d8f416703076a5"
+    },
+    {
+      "bytes": 1102,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/reviews/metadata-preparation.json",
+      "sha256": "a0fe02120ac92d76e679cab26990b2db3038253da07a1b34d4d0f7e8f9c5f095"
+    },
+    {
+      "bytes": 4229,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/reviews/metadata-reader.json",
+      "sha256": "a4f7c054b53bad01cfa1757e4a92e7bb3fa3ea638f42e99af8fdf0dbac35df12"
+    },
+    {
+      "bytes": 5565,
+      "path": "docs/agent_supervisor/evidence/compact-worker-live-20261014/reviews/original-readout.json",
+      "sha256": "5165a62cd877abd26ef72080485be44bf8467f25d6cc13631beaae72f3371da9"
+    },
+    {
+      "bytes": 3351,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/README.md",
+      "sha256": "57b947e575604d2850b17f0634ad8fa8e9808f1883cebd1e8935d65e3a3c6a40"
+    },
+    {
+      "bytes": 8849,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/copy-list.json",
+      "sha256": "d77f1f8d784fc1289a922d70f68786eea6bcea6917372c5d9f75f2340f0ebd76"
+    },
+    {
+      "bytes": 10752,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/curate_evidence.py",
+      "sha256": "a478b79504d509f56c2b102be5c7f72bf4ddb2dcd3ea13729ce81e2fd95886bd"
+    },
+    {
+      "bytes": 7505,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/command.json",
+      "sha256": "fae02e7e51e595edb7c14ba847b43440e7154f5292185c05454af09443619e5c"
+    },
+    {
+      "bytes": 1567,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/container-controls.json",
+      "sha256": "4063ec00d7150a46b06035ecd85ccc338ce9e4bc92aac42af5b5728824c70dc7"
+    },
+    {
+      "bytes": 8639,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/owner_probe.py",
+      "sha256": "b538543025f7a371f0d654ad4ddf057a1fcd54b3d537596eb8b38aa73c795b0d"
+    },
+    {
+      "bytes": 2032,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/probe-qualification.json",
+      "sha256": "622612b80e9593e9e0985e5cec9d94a74007a881cb25e0a1baf8201cd0b57ee7"
+    },
+    {
+      "bytes": 3552,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/qualification.json",
+      "sha256": "dfa5200078119733f3b857465b2478fcbdccac28f10de9143cc090e697e19975"
+    },
+    {
+      "bytes": 4856,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/release.json",
+      "sha256": "615caf0142a93e1effa6eb3df278baa8b5705c63ba2eab01c4d930bd8be7b53d"
+    },
+    {
+      "bytes": 11687,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/run_docker_qualification.py",
+      "sha256": "87a663d9ccb9d528920e3bc059405897ea998329d7fa4f795860656b77e0d4b3"
+    },
+    {
+      "bytes": 2808,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/session-observation.json",
+      "sha256": "cccc624a569832a7ca4de6349545f233d570ccc1b2e4b105415e7195d67d3a24"
+    },
+    {
+      "bytes": 6538,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/worker_probe.py",
+      "sha256": "881976eb301f8e5a2143a00853103fbd8768925a68d47a507b54b7327550454b"
+    },
+    {
+      "bytes": 3410,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/historical/check_legacy_outer_edit.py",
+      "sha256": "af9f988bbc30253d22341e50bd3b21b3805e566d097eb62165cced2b6f05641c"
+    },
+    {
+      "bytes": 519,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/historical/client-legacy-guidance-baseline.json",
+      "sha256": "2e05da134ca6252c030a4244a30e2df9afd805688e0000fe6e37c76e107bfd4e"
+    },
+    {
+      "bytes": 14980,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/historical/legacy-outer-wire-replay.json",
+      "sha256": "c2585557ad6067ea264f581c6e0b6efc03fe550d23f72d2ecf07fd1fe86508cb"
+    },
+    {
+      "bytes": 1601,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/qualification.json",
+      "sha256": "f0c76ff36e6d880fe457f686b472da06d8991c98ad5ad57f4c89fd853727ca48"
+    },
+    {
+      "bytes": 16604,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/qualifications/client.json",
+      "sha256": "e715ec8aefc8e5033ee29e5bef85d01e7eb656bdd5d1367da00ff9d667939d47"
+    },
+    {
+      "bytes": 702,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/qualifications/core.json",
+      "sha256": "c390f777686aca2dde3ac61201c4ca2e904dc8d282954e493af6bf00a92db3ed"
+    },
+    {
+      "bytes": 29457,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/qualifications/outer.json",
+      "sha256": "1c84e3fdb9f0adee05df8f9fb4234506da467a7fbbdefb86a756bbed7a108f2f"
+    },
+    {
+      "bytes": 6105,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/retained-failures.json",
+      "sha256": "86f5b19f3ee729f73c20ade92edab4501e4d621815ba944541db6671315d0e3a"
+    },
+    {
+      "bytes": 2586,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/reviews/delivery-fence-independent-review.json",
+      "sha256": "d6441323203a9956727e28218b52d7b863a8f6326d228d1bc63f92603689b98f"
+    },
+    {
+      "bytes": 3501,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/reviews/docker-byte-accounting-review.json",
+      "sha256": "49ff41aa3f66848dab44edc0ddb7895d7aec165f1181ad54621d689666acb279"
+    },
+    {
+      "bytes": 33633,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/reviews/final-evidence-review.json",
+      "sha256": "ce17f4a7c53312e1b435486a4119ad8e459ae4d2dc2bb4e78ac4d08b01f89ca5"
+    },
+    {
+      "bytes": 1537,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/reviews/history/core-independent-review.json",
+      "sha256": "ebab9a017abc20fbe5322be0e64e88ae2cb21c3348ef59daaa66db5d8ce28485"
+    },
+    {
+      "bytes": 5208,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/reviews/history/integration-review-01.json",
+      "sha256": "952b1838b640f7067106305478bebd31c461bce01a8a2494a2fc75ce7741aadc"
+    },
+    {
+      "bytes": 2828,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/reviews/integration-review.json",
+      "sha256": "0e6e0392d52dae5364510a7d4dc64081e67ba6c315c0e6684ed6148e8ede408c"
+    },
+    {
+      "bytes": 10049,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/reviews/review_docker_byte_accounting.py",
+      "sha256": "333e35a57add5c4b75a8053e2b6e2db1c1c5cf5bd386e1628a6c67378c24378a"
+    },
+    {
+      "bytes": 7767,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/sha256-manifest.json",
+      "sha256": "6ccecd7f5807aba0741230ece3e819012024b862e4166ecd18e6b60967b4c23d"
+    },
+    {
+      "bytes": 3368,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/source-bindings.json",
+      "sha256": "e47878440336a3068c65057be6695b6969ece5dc92434600574eab1cda6d25a6"
+    },
+    {
+      "bytes": 118163,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/test-ledger.json",
+      "sha256": "3c0260bd642d5379b484506b8e36b293ba9c1fd19b68734c7c1fe64ddb0dfee5"
+    },
+    {
+      "bytes": 1798,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/client/command.json",
+      "sha256": "d6515747deafede4d17b94b24ec3447c391ded5af49cb2591c025be661a5b7d5"
+    },
+    {
+      "bytes": 17935,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/client/junit.xml",
+      "sha256": "8fe7306d8532d20b8196d13d8cf182ab5b8a5395b70d252d5511d4d01c94b744"
+    },
+    {
+      "bytes": 937,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/client/result.json",
+      "sha256": "aeaf83d3d9a9b20a69a308e44e100b544aeff0508ee8ef2f9524808f98462ee5"
+    },
+    {
+      "bytes": 303,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/core/command.json",
+      "sha256": "5ffff5b450d8de2a266c4d57ff381c8ade953b5b7de76768f0155819b7e5f279"
+    },
+    {
+      "bytes": 135,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/core/exit.json",
+      "sha256": "e2d28bcdf9b2a80b174a56bf763a6dc5952dfa7b20e60556ea43d08889d037ad"
+    },
+    {
+      "bytes": 27100,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/core/junit.xml",
+      "sha256": "1e072a0c10588202841a6ddf814040091163aa049e5fde16ced2b79280b970b9"
+    },
+    {
+      "bytes": 2226,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/core/source-after.json",
+      "sha256": "f896f8d9d4f3a4d485e4419bc11a084f4fdf93b094ef12609005dcbb5540c296"
+    },
+    {
+      "bytes": 2226,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/core/source-before.json",
+      "sha256": "f896f8d9d4f3a4d485e4419bc11a084f4fdf93b094ef12609005dcbb5540c296"
+    },
+    {
+      "bytes": 1431,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/environment.json",
+      "sha256": "3c1f931c69002911373000e7d84589bc5aff94fe34dc3aaff4615fecd9d0398d"
+    },
+    {
+      "bytes": 2116,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/outer/command.json",
+      "sha256": "55b2464d2e16c5a58a0007047474d181f53a9bbbaafae36e2e215ebc550e7c57"
+    },
+    {
+      "bytes": 31664,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/outer/junit.xml",
+      "sha256": "45d4e021aa53c316503e5722b4fe7a8f6858ce423be563566f40908b8520af91"
+    },
+    {
+      "bytes": 412,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/outer/result.json",
+      "sha256": "6aff7d38b488729343be9047a964a3fd0113805c76efcd9c754a92f99cb81893"
+    },
+    {
+      "bytes": 1886,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/qualify.py",
+      "sha256": "18736ca60b4320fb50cce37a56e14423b61e363cd21c8fda86499f64aa658f20"
+    },
+    {
+      "bytes": 935,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/root/command.json",
+      "sha256": "0fac467e524a42773926f88bee4f89f33e19041ef05cd656cbcf1c06b918139b"
+    },
+    {
+      "bytes": 134,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/root/exit.json",
+      "sha256": "bf131e51b7ae8cb935eef75c16087cea0441ea19a33966ab58d52ae61adfc76b"
+    },
+    {
+      "bytes": 64987,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/root/junit.xml",
+      "sha256": "bde0216a0613dbcbadfe0fe1d7bcb29622e34a6b3521af393e3f9f399343b465"
+    },
+    {
+      "bytes": 3201,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/root/source-after.json",
+      "sha256": "da859b58bf106c5941772e9efce4f45189a60a97029d42eff828f3caa501a4ff"
+    },
+    {
+      "bytes": 3201,
+      "path": "docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/root/source-before.json",
+      "sha256": "da859b58bf106c5941772e9efce4f45189a60a97029d42eff828f3caa501a4ff"
+    },
+    {
+      "bytes": 5995,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/README.md",
+      "sha256": "e4b52bfa48f18266c9ecdeed7e203d3c51446e66aaf5e49b5469cc0c374840af"
+    },
+    {
+      "bytes": 1115,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/correction-outcome-review.json",
+      "sha256": "8dd509336cf89ca8592cbe8de14a4c057bf42ff0bff61fa1c81224d0d93905cc"
+    },
+    {
+      "bytes": 145192,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/documentation-checks.json",
+      "sha256": "86727e4ecd93c56b68a6fd51e0d10f5473d8248b8b05edfbc23e635b99ff0564"
+    },
+    {
+      "bytes": 2753,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/documentation-workflow.log",
+      "sha256": "96ac6a6a376bae15b0ba4ed99676e16403a45a5ea6bb1881377000187c1837ed"
+    },
+    {
+      "bytes": 9617,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/documentation_runner.py",
+      "sha256": "ff89e3df61e7ccaa93df5e72d8d4a57341f74056d16984df4b1eb23cc1774329"
+    },
+    {
+      "bytes": 2645,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/fixture-environment-corrections.json",
+      "sha256": "8068f23ba3928c2a9e63f2d37d46acfcf99925844aea148c499c3a4c35489889"
+    },
+    {
+      "bytes": 1871,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/incoming-native-admission-review.json",
+      "sha256": "82ca341b731fab3ffc583dea74a885cf1cd94a40d58155b7c630417eb88fe602"
+    },
+    {
+      "bytes": 4482,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/integration-review.json",
+      "sha256": "ceb9b087155f03b663555903633078e0cf8e208cc7e23bdf9e747cf971c7a303"
+    },
+    {
+      "bytes": 3007,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/parallel-reconciliation.json",
+      "sha256": "3e058a703561a4333b80fa75a503da6fe9495fbfda9e9524f663a8699812bfb2"
+    },
+    {
+      "bytes": 178564,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/commands.json",
+      "sha256": "6960a786b9c7d5f184e3de82932e1745b75373c0076c322fb400faae6d51f4ce"
+    },
+    {
+      "bytes": 367812,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/junit.xml",
+      "sha256": "3a96124210fca346cd45fc2ca9064bb79c9069d379c098d2e57f42b50b8f57b4"
+    },
+    {
+      "bytes": 9180,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/qualification-runner.snapshot.txt",
+      "sha256": "3ee076133d566170f543cbff314aeecd8cf0dc622c5ba05a43b44da1f51c414e"
+    },
+    {
+      "bytes": 18980,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/benchmark_controls.py.snapshot.txt",
+      "sha256": "333a9c7617c8d7a79ca8649bdf4759b0425493b22a00834654e0101daa5b9e3d"
+    },
+    {
+      "bytes": 35883,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py.snapshot.txt",
+      "sha256": "5a29cc320bec77c25f939bea0ad0d0a55a3ccc9aa17a87736805d37ae9c052ac"
+    },
+    {
+      "bytes": 52210,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py.snapshot.txt",
+      "sha256": "9875e4ce9f3c5ee91bd209810ebb0acfdf0478b21a92ada213d17ec0479bf591"
+    },
+    {
+      "bytes": 45159,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py.snapshot.txt",
+      "sha256": "25eed3fa37f87f2f0c14227ae1bfcb4f0dde5789e3dd7275d95593d8f70926ad"
+    },
+    {
+      "bytes": 88841,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py.snapshot.txt",
+      "sha256": "84ecb5d2eae9d986968172f0843f73d75ca1f4f4a9392ffc3468c1e8989e71e9"
+    },
+    {
+      "bytes": 71333,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py.snapshot.txt",
+      "sha256": "70539360f8d18d68afc54a095c0647945ea3c48832504e9fdd835872e06e071e"
+    },
+    {
+      "bytes": 20156,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py.snapshot.txt",
+      "sha256": "dc00ccaf175c38a201352ea2dc8fb7b4b176c1aa8331941fa6fe701fb55ec367"
+    },
+    {
+      "bytes": 82610,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py.snapshot.txt",
+      "sha256": "735ded8254f43aaf696a3273032b70654b87ecb4db3fddbee58e3be659955345"
+    },
+    {
+      "bytes": 18557,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_numerical_observation.py.snapshot.txt",
+      "sha256": "95145757a613a384b14aa8baf37aff5cfb42c83ff5bdbb1483da1898559d1043"
+    },
+    {
+      "bytes": 3545,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_planning_policy.py.snapshot.txt",
+      "sha256": "276533db278a9c9b48186213449a8ff0016597f5990503d3a2d9c0b25443bd5c"
+    },
+    {
+      "bytes": 4425,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py.snapshot.txt",
+      "sha256": "3c6f96e0ce3c3c3de9efd96c873d0eae58dbea561ea674923cb5a016f3c53fa9"
+    },
+    {
+      "bytes": 17870,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py.snapshot.txt",
+      "sha256": "e78c18422e06f1417cb7e5c19ba7df0de7bea2d5b35606aa4cdb8220d499d99e"
+    },
+    {
+      "bytes": 7955,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py.snapshot.txt",
+      "sha256": "454a8b9d35add916655175d7ecdee640e9222c63bc4cb6e7e14c5e61f91a82c4"
+    },
+    {
+      "bytes": 15672,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py.snapshot.txt",
+      "sha256": "273ed9b95447197f7c3049cf5a068d24e892a4646cefc41a503190ef2676f8ec"
+    },
+    {
+      "bytes": 1828,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py.snapshot.txt",
+      "sha256": "7276ae28bf60f5e6a248d43e3463a3099f819bdaf63f05b0b79f488ad2ae7efb"
+    },
+    {
+      "bytes": 16426,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_capsule_selection_policy.py.snapshot.txt",
+      "sha256": "f32ea155becc06aac418e0be36d524621bb11f71949dabc441af530a07310a75"
+    },
+    {
+      "bytes": 7833,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py.snapshot.txt",
+      "sha256": "439c5a66eb9d489caf547e36bbf6fbfe2f63b1070e543be47d2a3811e432ecf8"
+    },
+    {
+      "bytes": 38216,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py.snapshot.txt",
+      "sha256": "c325940970169404ca2f4e67b2b241ff33ecbeac9d4855d9b5d3112346e86998"
+    },
+    {
+      "bytes": 16320,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py.snapshot.txt",
+      "sha256": "0fe929d19a93dc2d3ca74b2e16900c5b0a0e6bb83bbaca9aa6be0a371ac76b45"
+    },
+    {
+      "bytes": 10142,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_data_profiles.py.snapshot.txt",
+      "sha256": "9aea7596c85b1b56e1e19b7c3908a0e06ad8848ccf952e6b8d33a5416879bafc"
+    },
+    {
+      "bytes": 9742,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_declared_contract_planning.py.snapshot.txt",
+      "sha256": "2c6723eafd891e6f4fa1da7ccc0a15234443d6d117122389569bbf54fda4c1e4"
+    },
+    {
+      "bytes": 8044,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_declared_doctor_pipeline.py.snapshot.txt",
+      "sha256": "ed6b02d8f68d322ff09b69d60b83b90410a912d7d73f0b6d9d23f7b46b26db8f"
+    },
+    {
+      "bytes": 5390,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_declared_numerical_observation.py.snapshot.txt",
+      "sha256": "c943f90c7bc9161b8d1391b75d268a695cdd60f64c53b3759b7b900ee0176acb"
+    },
+    {
+      "bytes": 6997,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_deferred_data.py.snapshot.txt",
+      "sha256": "8ab6ef789a0e58bb3f250b057ed658006927af90c8a479f4077ea0c1d5361cd0"
+    },
+    {
+      "bytes": 7334,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py.snapshot.txt",
+      "sha256": "9a65112e741894fa5c704b054114bee90f2702d32ddc5985ba5d29dff2a5e226"
+    },
+    {
+      "bytes": 1146,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_doctor_prover_discovery.py.snapshot.txt",
+      "sha256": "8557f2a7cf32a21e3f285026cdcc3ce85419242d794f40bee3a5ec4910c1aa68"
+    },
+    {
+      "bytes": 12047,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py.snapshot.txt",
+      "sha256": "9b66b074d5b196267c41304bdd9a6bfd8b9963b360a656e1fad28a4a5d05e841"
+    },
+    {
+      "bytes": 17692,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py.snapshot.txt",
+      "sha256": "71102816e020d184bd1c1fc5bf9e5ca2c18790688ea95318691090d3aeefd91d"
+    },
+    {
+      "bytes": 12058,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py.snapshot.txt",
+      "sha256": "8c362c3110c22a768d0594c0ccb2f52d1404f7fa36232bfc900f19cbb15aa8c3"
+    },
+    {
+      "bytes": 12953,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py.snapshot.txt",
+      "sha256": "a90b02d31f499ec18645057e992dddbc717ed42355d73ba7b54153c886791cc2"
+    },
+    {
+      "bytes": 7975,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_readiness.py.snapshot.txt",
+      "sha256": "073892fed0353813d72a90854d33d415f4784dbd717ae63a97fd36da236b335f"
+    },
+    {
+      "bytes": 11546,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_merged_worker_capability.py.snapshot.txt",
+      "sha256": "7a3469834f7bb5eb054717621b957f286e1f1688cae7230c9098d23a56f8d924"
+    },
+    {
+      "bytes": 32273,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py.snapshot.txt",
+      "sha256": "cbabbc5f5111d02e59ab9e8034f2ee6d8c400faf3c1c651e5632b522942dfb96"
+    },
+    {
+      "bytes": 19454,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py.snapshot.txt",
+      "sha256": "f27f8d4f08fc90e6b795c9b13b1ab5a225aaae187b21addc29f428c2b165ce27"
+    },
+    {
+      "bytes": 13558,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py.snapshot.txt",
+      "sha256": "3d9dab78a6eb73c1052ca68d23ef29f2c3dfeb1d0ce0a56493d99bb72103a208"
+    },
+    {
+      "bytes": 13596,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_retrieval_observation.py.snapshot.txt",
+      "sha256": "450c4e1764f5638d830ff953291490190ad3006291cee7ec945a428104e60227"
+    },
+    {
+      "bytes": 29544,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py.snapshot.txt",
+      "sha256": "36d659b1fd6f5a90f1fb861bd8e8fbf812c9d9e7370c94e373da2f13029df72c"
+    },
+    {
+      "bytes": 14529,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_planning_policy.py.snapshot.txt",
+      "sha256": "c75fff4164f80fb8f4103405330ec3a32794211357b28c35cea7dab8766edaec"
+    },
+    {
+      "bytes": 9823,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_scope_worker_capability.py.snapshot.txt",
+      "sha256": "3e125aaffcf81113a1a7781c82d9cb6e34e59bb80162ba1a009821b5f346db8a"
+    },
+    {
+      "bytes": 12423,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py.snapshot.txt",
+      "sha256": "bd6e03d2c6f21c167122a776f347733b502ffe24aa6e6e9b6ca460072795cf06"
+    },
+    {
+      "bytes": 13958,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py.snapshot.txt",
+      "sha256": "3b1ba7a5dfc4fc6088450a5899d9d959945f2aa6e53f291fde37f68f40e5ec5f"
+    },
+    {
+      "bytes": 7368,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py.snapshot.txt",
+      "sha256": "85e4081a4db224c453b0e8d0b3a125052b3b53d5537245e936e59f894a7f6e92"
+    },
+    {
+      "bytes": 7719,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_signed_declared_planning.py.snapshot.txt",
+      "sha256": "7c4d2a448e6056ddd672d4f06815e8e2f3aadfcf2c1bc6f9e3c79bb6744b3a22"
+    },
+    {
+      "bytes": 15511,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py.snapshot.txt",
+      "sha256": "a6ab7203e283a6065087f1adf3fa967106166b40652704cbf693ece67aa9e543"
+    },
+    {
+      "bytes": 17842,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py.snapshot.txt",
+      "sha256": "0c99edf9152679de6bdff551dd058f0ce8602d4445bc47d572a340995ac867f7"
+    },
+    {
+      "bytes": 5768,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_request_observation.py.snapshot.txt",
+      "sha256": "bfde491b172d2c8a54231f916a816cd99132dbbd80d602832f6bb383a81e6f51"
+    },
+    {
+      "bytes": 21126,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py.snapshot.txt",
+      "sha256": "a3648c30d9e93ee2de56933cd8a248a259f1300dc1d675e6c40fc9340136c1d3"
+    },
+    {
+      "bytes": 12822,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py.snapshot.txt",
+      "sha256": "c67bb3bedeb015187b6e6babf4d734b0a8d9238af502fa1d7411d9dca0037ff4"
+    },
+    {
+      "bytes": 12812,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_efficiency.py.snapshot.txt",
+      "sha256": "ccbecbacfef62305ce3512fe4177d7668f4f742b1667d0712416ecbe917a9c08"
+    },
+    {
+      "bytes": 8602,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py.snapshot.txt",
+      "sha256": "b84487405bbbb1dbcd190ad997c98f9008b29799adc90e524624d65b4877e637"
+    },
+    {
+      "bytes": 29176,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py.snapshot.txt",
+      "sha256": "980e0d894b642948c8f4ad79bd47f714f94e6bfcc2479a0d6462bc084da9e042"
+    },
+    {
+      "bytes": 18332,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py.snapshot.txt",
+      "sha256": "4588518a6645dd9c1fe69e59bd1b11dbb93a73536c7fcae2265a553f8a86b3d0"
+    },
+    {
+      "bytes": 14811,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_worker_signed_scope.py.snapshot.txt",
+      "sha256": "b20196250a2e139513080305eedb2c9950c587ae8c7e5a90bf9054f6468d13b8"
+    },
+    {
+      "bytes": 8180,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/owner_probe.py.snapshot.txt",
+      "sha256": "7d35884dc776d9f761406aa3452d1422eae7c57e028bdffe8754152030ab5732"
+    },
+    {
+      "bytes": 11662,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/run_docker_qualification.py.snapshot.txt",
+      "sha256": "74b294246c461c229cb23f0902f6aa68577924e902d36b6cf8a10a0555ba1e65"
+    },
+    {
+      "bytes": 5483,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/worker_probe.py.snapshot.txt",
+      "sha256": "c6a3ef5b4fabdaf68ecc8f7b0fb400a409544cc7683fb8060ced9b564e7f75bb"
+    },
+    {
+      "bytes": 30285,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/history/collect_live_readout_before_mapping_fix.py.snapshot.txt",
+      "sha256": "d24c768eb18e69bc921d51dd0586e77e19f1659500486439129e40a5f9da936e"
+    },
+    {
+      "bytes": 3658,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/launchers/run_locked_trial.py.snapshot.txt",
+      "sha256": "a41058467ae54fb1b54d0fe3d0f56b058effc4a2c821cc73ee50d5a94f35d94a"
+    },
+    {
+      "bytes": 5749,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/launchers/run_metadata_treatment_03.py.snapshot.txt",
+      "sha256": "f8f9705fd38487d5a1afc2b4de0d3fbc9cf45f79480973b2b3f3baaba986ece5"
+    },
+    {
+      "bytes": 11830,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_live_readout.py.snapshot.txt",
+      "sha256": "9300d8565b50c881a415c0e1b197afe0ae4c9db77335f4e8844edead356957b6"
+    },
+    {
+      "bytes": 7480,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_metadata_treatment_finalized_03.py.snapshot.txt",
+      "sha256": "45fadc019df0941165fce92338205cd791baac59d2f7471eaae59177b914068b"
+    },
+    {
+      "bytes": 2289,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_native_shape.py.snapshot.txt",
+      "sha256": "cdd8b53dec83790139ba8a0b851aefca7d2bd1c02618a0b35ea87c12d2af0b45"
+    },
+    {
+      "bytes": 30486,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_live_readout.py.snapshot.txt",
+      "sha256": "79c0edcc6eda284ac13f2f0eb3d3341a84125523d377530b4f4dbb5cabb19a10"
+    },
+    {
+      "bytes": 13227,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_metadata_treatment_03.py.snapshot.txt",
+      "sha256": "0af7025ed58a89e14db28ff14e97249c04db89b295dc48cedf9d3c2a5bc18e4e"
+    },
+    {
+      "bytes": 5978,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_native_shape.py.snapshot.txt",
+      "sha256": "5911e857dbf0d8e4a397e80b4152a093cb4e5f270dfcf183a5c0fe1addb86c32"
+    },
+    {
+      "bytes": 5908,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/curate_live_evidence.py.snapshot.txt",
+      "sha256": "86d002c640daaea2bf4505157b3fbe3528ac9f14117934c099773ac1a5c3e47f"
+    },
+    {
+      "bytes": 10752,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/curate_evidence.py.snapshot.txt",
+      "sha256": "a478b79504d509f56c2b102be5c7f72bf4ddb2dcd3ea13729ce81e2fd95886bd"
+    },
+    {
+      "bytes": 8639,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/owner_probe.py.snapshot.txt",
+      "sha256": "b538543025f7a371f0d654ad4ddf057a1fcd54b3d537596eb8b38aa73c795b0d"
+    },
+    {
+      "bytes": 11687,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/run_docker_qualification.py.snapshot.txt",
+      "sha256": "87a663d9ccb9d528920e3bc059405897ea998329d7fa4f795860656b77e0d4b3"
+    },
+    {
+      "bytes": 6538,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/worker_probe.py.snapshot.txt",
+      "sha256": "881976eb301f8e5a2143a00853103fbd8768925a68d47a507b54b7327550454b"
+    },
+    {
+      "bytes": 3410,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/historical/check_legacy_outer_edit.py.snapshot.txt",
+      "sha256": "af9f988bbc30253d22341e50bd3b21b3805e566d097eb62165cced2b6f05641c"
+    },
+    {
+      "bytes": 10049,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/reviews/review_docker_byte_accounting.py.snapshot.txt",
+      "sha256": "333e35a57add5c4b75a8053e2b6e2db1c1c5cf5bd386e1628a6c67378c24378a"
+    },
+    {
+      "bytes": 1886,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/qualify.py.snapshot.txt",
+      "sha256": "18736ca60b4320fb50cce37a56e14423b61e363cd21c8fda86499f64aa658f20"
+    },
+    {
+      "bytes": 16267,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py.snapshot.txt",
+      "sha256": "e5344b04fdbb1b825c42ca9d4727439c8c35b1f87cd4ac71c5a7ef3f808c1439"
+    },
+    {
+      "bytes": 6072,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/declared_contract_planning.py.snapshot.txt",
+      "sha256": "c406395b03b2508a10e5489aebb89be3d4bab34edc04e271c1553bb54f2294ae"
+    },
+    {
+      "bytes": 19938,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py.snapshot.txt",
+      "sha256": "3909c94a0e79540cc8a401eed4935dcccaaf037766b913d6e60812d296153a87"
+    },
+    {
+      "bytes": 70458,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py.snapshot.txt",
+      "sha256": "e710477b1beb3be347c878096013c56a4aba9db50d9e94368d5204d0a709d078"
+    },
+    {
+      "bytes": 43934,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py.snapshot.txt",
+      "sha256": "47d0526ca1e4000c94f76f881e5207645cfff60169796ed5e8b49fa32e8b3d6e"
+    },
+    {
+      "bytes": 18207,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py.snapshot.txt",
+      "sha256": "ebd1c861469bac02360bfa31b2cb2b1c3592ef9a50e445f043afb9518f5d4808"
+    },
+    {
+      "bytes": 32145,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py.snapshot.txt",
+      "sha256": "90711d0d9ea05c4d091acfb74b61362bc79105a320aab3ef283364cd8d0b687c"
+    },
+    {
+      "bytes": 14231,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py.snapshot.txt",
+      "sha256": "bcff050716454c625de8b7486489a6e0a33f3daf4a8989ec01059242efea6c81"
+    },
+    {
+      "bytes": 26296,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py.snapshot.txt",
+      "sha256": "0b6082ae6a15001d4e3e0b633c57a2a6557862fe253f4117805998bb2a56bb28"
+    },
+    {
+      "bytes": 4187,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py.snapshot.txt",
+      "sha256": "fe97b2b2b89c9095a4e9ef61fc89e32e24560b9f07108fed478d8e2ecb21abe6"
+    },
+    {
+      "bytes": 13552,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_codex_usage_growth.py.snapshot.txt",
+      "sha256": "1a67f8e9974ddf1e1bd469635f38b1414af36cad4d3239e396759ea9cebbfba2"
+    },
+    {
+      "bytes": 7493,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_semantic_prompt_census.py.snapshot.txt",
+      "sha256": "b303f2066a277a8868ab6c687d01754e46d69b77b13b1126dd9025eda998bcb0"
+    },
+    {
+      "bytes": 14835,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_semantic_router_integration.py.snapshot.txt",
+      "sha256": "8be5d5f73fa57a005572bec790d88b1f3485ca3e0e5b5e2116b6eb76f07c4d03"
+    },
+    {
+      "bytes": 4721,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_worker_candidate_context_broker.py.snapshot.txt",
+      "sha256": "d124b8db5197e14b5323ab661b0119dc0dc07bad15b0c25a0c55762078115339"
+    },
+    {
+      "bytes": 10011,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_worker_source_broker.py.snapshot.txt",
+      "sha256": "e8d53fe0d857d6f5ab5dcc67c6a71c0b4ef83e12099f987d38e737040c8ea55a"
+    },
+    {
+      "bytes": 10788,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_worker_source_client.py.snapshot.txt",
+      "sha256": "5708108bf1c885f7e3f41dc9c141f5e4e8bd9e377a9a7773da9d31900a56b5ef"
+    },
+    {
+      "bytes": 36399,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_worker_source_discovery_transport.py.snapshot.txt",
+      "sha256": "fad8cbcda6c2c481231ae832bbe5e69651c9083ee9eddf44f5ba1bb0f00a93b6"
+    },
+    {
+      "bytes": 27903,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_worker_source_edit.py.snapshot.txt",
+      "sha256": "cb69932e631c0f6f3069eb4e48e21766c69f1307278188fd7d590ce225510621"
+    },
+    {
+      "bytes": 18261,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_worker_source_edit_broker.py.snapshot.txt",
+      "sha256": "96f2ed0ac587d334b6711d3b77d0d141496a04a37a288841938410272ceb1d6a"
+    },
+    {
+      "bytes": 26739,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_worker_source_edit_client.py.snapshot.txt",
+      "sha256": "3be8230a3770fd380bd932ed107951fb0c0dc57da2de5deccc2d879c2762889d"
+    },
+    {
+      "bytes": 4624,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_worker_source_request_observation.py.snapshot.txt",
+      "sha256": "7737a3d091dd867b0c1ddfba5662708a3e6e9175b8e96724576ab917f1f2fcae"
+    },
+    {
+      "bytes": 16509,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/source-snapshot/test/api/test_worker_source_working_client.py.snapshot.txt",
+      "sha256": "07a86c71be6388656dcb4b8eaf811ae10542ab8ef9216139b1256c2fe84ba158"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 398171,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-01/tests.stdout.log",
+      "sha256": "76251b0db41316408600711260eb3756e876a98fcded2a176f8dc642615b76e5"
+    },
+    {
+      "bytes": 176792,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/commands.json",
+      "sha256": "f6357b7b5de64ff2f27e00213867f7b25f25638071d3b147192373acae027e3d"
+    },
+    {
+      "bytes": 2883,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/junit.xml",
+      "sha256": "c7aa25e921cec99f4a81b7c5ae567cf3bad4d0116195aef2e78573132297c1f0"
+    },
+    {
+      "bytes": 18980,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/benchmark_controls.py.snapshot.txt",
+      "sha256": "333a9c7617c8d7a79ca8649bdf4759b0425493b22a00834654e0101daa5b9e3d"
+    },
+    {
+      "bytes": 35883,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py.snapshot.txt",
+      "sha256": "5a29cc320bec77c25f939bea0ad0d0a55a3ccc9aa17a87736805d37ae9c052ac"
+    },
+    {
+      "bytes": 52210,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py.snapshot.txt",
+      "sha256": "9875e4ce9f3c5ee91bd209810ebb0acfdf0478b21a92ada213d17ec0479bf591"
+    },
+    {
+      "bytes": 45159,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py.snapshot.txt",
+      "sha256": "25eed3fa37f87f2f0c14227ae1bfcb4f0dde5789e3dd7275d95593d8f70926ad"
+    },
+    {
+      "bytes": 88841,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py.snapshot.txt",
+      "sha256": "84ecb5d2eae9d986968172f0843f73d75ca1f4f4a9392ffc3468c1e8989e71e9"
+    },
+    {
+      "bytes": 71333,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py.snapshot.txt",
+      "sha256": "70539360f8d18d68afc54a095c0647945ea3c48832504e9fdd835872e06e071e"
+    },
+    {
+      "bytes": 20156,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py.snapshot.txt",
+      "sha256": "dc00ccaf175c38a201352ea2dc8fb7b4b176c1aa8331941fa6fe701fb55ec367"
+    },
+    {
+      "bytes": 82610,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py.snapshot.txt",
+      "sha256": "735ded8254f43aaf696a3273032b70654b87ecb4db3fddbee58e3be659955345"
+    },
+    {
+      "bytes": 18557,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_numerical_observation.py.snapshot.txt",
+      "sha256": "95145757a613a384b14aa8baf37aff5cfb42c83ff5bdbb1483da1898559d1043"
+    },
+    {
+      "bytes": 3545,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_planning_policy.py.snapshot.txt",
+      "sha256": "276533db278a9c9b48186213449a8ff0016597f5990503d3a2d9c0b25443bd5c"
+    },
+    {
+      "bytes": 4425,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py.snapshot.txt",
+      "sha256": "3c6f96e0ce3c3c3de9efd96c873d0eae58dbea561ea674923cb5a016f3c53fa9"
+    },
+    {
+      "bytes": 17870,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py.snapshot.txt",
+      "sha256": "e78c18422e06f1417cb7e5c19ba7df0de7bea2d5b35606aa4cdb8220d499d99e"
+    },
+    {
+      "bytes": 7955,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py.snapshot.txt",
+      "sha256": "454a8b9d35add916655175d7ecdee640e9222c63bc4cb6e7e14c5e61f91a82c4"
+    },
+    {
+      "bytes": 15672,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py.snapshot.txt",
+      "sha256": "273ed9b95447197f7c3049cf5a068d24e892a4646cefc41a503190ef2676f8ec"
+    },
+    {
+      "bytes": 1828,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py.snapshot.txt",
+      "sha256": "7276ae28bf60f5e6a248d43e3463a3099f819bdaf63f05b0b79f488ad2ae7efb"
+    },
+    {
+      "bytes": 16426,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_capsule_selection_policy.py.snapshot.txt",
+      "sha256": "f32ea155becc06aac418e0be36d524621bb11f71949dabc441af530a07310a75"
+    },
+    {
+      "bytes": 7866,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py.snapshot.txt",
+      "sha256": "7767775319161d898a2f306633b999c5c9bb4739bb0019d6ebdf11ae3003257c"
+    },
+    {
+      "bytes": 38216,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py.snapshot.txt",
+      "sha256": "c325940970169404ca2f4e67b2b241ff33ecbeac9d4855d9b5d3112346e86998"
+    },
+    {
+      "bytes": 16320,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py.snapshot.txt",
+      "sha256": "0fe929d19a93dc2d3ca74b2e16900c5b0a0e6bb83bbaca9aa6be0a371ac76b45"
+    },
+    {
+      "bytes": 10142,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_data_profiles.py.snapshot.txt",
+      "sha256": "9aea7596c85b1b56e1e19b7c3908a0e06ad8848ccf952e6b8d33a5416879bafc"
+    },
+    {
+      "bytes": 9742,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_declared_contract_planning.py.snapshot.txt",
+      "sha256": "2c6723eafd891e6f4fa1da7ccc0a15234443d6d117122389569bbf54fda4c1e4"
+    },
+    {
+      "bytes": 8044,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_declared_doctor_pipeline.py.snapshot.txt",
+      "sha256": "ed6b02d8f68d322ff09b69d60b83b90410a912d7d73f0b6d9d23f7b46b26db8f"
+    },
+    {
+      "bytes": 5390,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_declared_numerical_observation.py.snapshot.txt",
+      "sha256": "c943f90c7bc9161b8d1391b75d268a695cdd60f64c53b3759b7b900ee0176acb"
+    },
+    {
+      "bytes": 6997,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_deferred_data.py.snapshot.txt",
+      "sha256": "8ab6ef789a0e58bb3f250b057ed658006927af90c8a479f4077ea0c1d5361cd0"
+    },
+    {
+      "bytes": 7334,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py.snapshot.txt",
+      "sha256": "9a65112e741894fa5c704b054114bee90f2702d32ddc5985ba5d29dff2a5e226"
+    },
+    {
+      "bytes": 1146,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_doctor_prover_discovery.py.snapshot.txt",
+      "sha256": "8557f2a7cf32a21e3f285026cdcc3ce85419242d794f40bee3a5ec4910c1aa68"
+    },
+    {
+      "bytes": 12047,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py.snapshot.txt",
+      "sha256": "9b66b074d5b196267c41304bdd9a6bfd8b9963b360a656e1fad28a4a5d05e841"
+    },
+    {
+      "bytes": 17692,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py.snapshot.txt",
+      "sha256": "71102816e020d184bd1c1fc5bf9e5ca2c18790688ea95318691090d3aeefd91d"
+    },
+    {
+      "bytes": 12058,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py.snapshot.txt",
+      "sha256": "8c362c3110c22a768d0594c0ccb2f52d1404f7fa36232bfc900f19cbb15aa8c3"
+    },
+    {
+      "bytes": 12953,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py.snapshot.txt",
+      "sha256": "a90b02d31f499ec18645057e992dddbc717ed42355d73ba7b54153c886791cc2"
+    },
+    {
+      "bytes": 7975,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_readiness.py.snapshot.txt",
+      "sha256": "073892fed0353813d72a90854d33d415f4784dbd717ae63a97fd36da236b335f"
+    },
+    {
+      "bytes": 11546,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_merged_worker_capability.py.snapshot.txt",
+      "sha256": "7a3469834f7bb5eb054717621b957f286e1f1688cae7230c9098d23a56f8d924"
+    },
+    {
+      "bytes": 32273,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py.snapshot.txt",
+      "sha256": "cbabbc5f5111d02e59ab9e8034f2ee6d8c400faf3c1c651e5632b522942dfb96"
+    },
+    {
+      "bytes": 19454,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py.snapshot.txt",
+      "sha256": "f27f8d4f08fc90e6b795c9b13b1ab5a225aaae187b21addc29f428c2b165ce27"
+    },
+    {
+      "bytes": 13558,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py.snapshot.txt",
+      "sha256": "3d9dab78a6eb73c1052ca68d23ef29f2c3dfeb1d0ce0a56493d99bb72103a208"
+    },
+    {
+      "bytes": 13596,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_retrieval_observation.py.snapshot.txt",
+      "sha256": "450c4e1764f5638d830ff953291490190ad3006291cee7ec945a428104e60227"
+    },
+    {
+      "bytes": 29544,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py.snapshot.txt",
+      "sha256": "36d659b1fd6f5a90f1fb861bd8e8fbf812c9d9e7370c94e373da2f13029df72c"
+    },
+    {
+      "bytes": 14529,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_planning_policy.py.snapshot.txt",
+      "sha256": "c75fff4164f80fb8f4103405330ec3a32794211357b28c35cea7dab8766edaec"
+    },
+    {
+      "bytes": 9823,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_scope_worker_capability.py.snapshot.txt",
+      "sha256": "3e125aaffcf81113a1a7781c82d9cb6e34e59bb80162ba1a009821b5f346db8a"
+    },
+    {
+      "bytes": 12423,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py.snapshot.txt",
+      "sha256": "bd6e03d2c6f21c167122a776f347733b502ffe24aa6e6e9b6ca460072795cf06"
+    },
+    {
+      "bytes": 13958,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py.snapshot.txt",
+      "sha256": "3b1ba7a5dfc4fc6088450a5899d9d959945f2aa6e53f291fde37f68f40e5ec5f"
+    },
+    {
+      "bytes": 7889,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py.snapshot.txt",
+      "sha256": "eb645fbf250ed5816e86ef9be2c7402eb25cd0163168b7bc6ea6a6747cc7829d"
+    },
+    {
+      "bytes": 8277,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_signed_declared_planning.py.snapshot.txt",
+      "sha256": "8e8397f38c05e88dc43607e4af0dec922e3be7f0c5bcc77c05528a7ae214f198"
+    },
+    {
+      "bytes": 15511,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py.snapshot.txt",
+      "sha256": "a6ab7203e283a6065087f1adf3fa967106166b40652704cbf693ece67aa9e543"
+    },
+    {
+      "bytes": 17842,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py.snapshot.txt",
+      "sha256": "0c99edf9152679de6bdff551dd058f0ce8602d4445bc47d572a340995ac867f7"
+    },
+    {
+      "bytes": 5768,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_request_observation.py.snapshot.txt",
+      "sha256": "bfde491b172d2c8a54231f916a816cd99132dbbd80d602832f6bb383a81e6f51"
+    },
+    {
+      "bytes": 21126,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py.snapshot.txt",
+      "sha256": "a3648c30d9e93ee2de56933cd8a248a259f1300dc1d675e6c40fc9340136c1d3"
+    },
+    {
+      "bytes": 12822,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py.snapshot.txt",
+      "sha256": "c67bb3bedeb015187b6e6babf4d734b0a8d9238af502fa1d7411d9dca0037ff4"
+    },
+    {
+      "bytes": 12812,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_efficiency.py.snapshot.txt",
+      "sha256": "ccbecbacfef62305ce3512fe4177d7668f4f742b1667d0712416ecbe917a9c08"
+    },
+    {
+      "bytes": 8602,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py.snapshot.txt",
+      "sha256": "b84487405bbbb1dbcd190ad997c98f9008b29799adc90e524624d65b4877e637"
+    },
+    {
+      "bytes": 29176,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py.snapshot.txt",
+      "sha256": "980e0d894b642948c8f4ad79bd47f714f94e6bfcc2479a0d6462bc084da9e042"
+    },
+    {
+      "bytes": 18332,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py.snapshot.txt",
+      "sha256": "4588518a6645dd9c1fe69e59bd1b11dbb93a73536c7fcae2265a553f8a86b3d0"
+    },
+    {
+      "bytes": 14811,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_worker_signed_scope.py.snapshot.txt",
+      "sha256": "b20196250a2e139513080305eedb2c9950c587ae8c7e5a90bf9054f6468d13b8"
+    },
+    {
+      "bytes": 8180,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/owner_probe.py.snapshot.txt",
+      "sha256": "7d35884dc776d9f761406aa3452d1422eae7c57e028bdffe8754152030ab5732"
+    },
+    {
+      "bytes": 11662,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/run_docker_qualification.py.snapshot.txt",
+      "sha256": "74b294246c461c229cb23f0902f6aa68577924e902d36b6cf8a10a0555ba1e65"
+    },
+    {
+      "bytes": 5483,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/worker_probe.py.snapshot.txt",
+      "sha256": "c6a3ef5b4fabdaf68ecc8f7b0fb400a409544cc7683fb8060ced9b564e7f75bb"
+    },
+    {
+      "bytes": 30285,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/history/collect_live_readout_before_mapping_fix.py.snapshot.txt",
+      "sha256": "d24c768eb18e69bc921d51dd0586e77e19f1659500486439129e40a5f9da936e"
+    },
+    {
+      "bytes": 3658,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/launchers/run_locked_trial.py.snapshot.txt",
+      "sha256": "a41058467ae54fb1b54d0fe3d0f56b058effc4a2c821cc73ee50d5a94f35d94a"
+    },
+    {
+      "bytes": 5749,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/launchers/run_metadata_treatment_03.py.snapshot.txt",
+      "sha256": "f8f9705fd38487d5a1afc2b4de0d3fbc9cf45f79480973b2b3f3baaba986ece5"
+    },
+    {
+      "bytes": 11830,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_live_readout.py.snapshot.txt",
+      "sha256": "9300d8565b50c881a415c0e1b197afe0ae4c9db77335f4e8844edead356957b6"
+    },
+    {
+      "bytes": 7480,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_metadata_treatment_finalized_03.py.snapshot.txt",
+      "sha256": "45fadc019df0941165fce92338205cd791baac59d2f7471eaae59177b914068b"
+    },
+    {
+      "bytes": 2289,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_native_shape.py.snapshot.txt",
+      "sha256": "cdd8b53dec83790139ba8a0b851aefca7d2bd1c02618a0b35ea87c12d2af0b45"
+    },
+    {
+      "bytes": 30486,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_live_readout.py.snapshot.txt",
+      "sha256": "79c0edcc6eda284ac13f2f0eb3d3341a84125523d377530b4f4dbb5cabb19a10"
+    },
+    {
+      "bytes": 13227,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_metadata_treatment_03.py.snapshot.txt",
+      "sha256": "0af7025ed58a89e14db28ff14e97249c04db89b295dc48cedf9d3c2a5bc18e4e"
+    },
+    {
+      "bytes": 5978,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_native_shape.py.snapshot.txt",
+      "sha256": "5911e857dbf0d8e4a397e80b4152a093cb4e5f270dfcf183a5c0fe1addb86c32"
+    },
+    {
+      "bytes": 5908,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/curate_live_evidence.py.snapshot.txt",
+      "sha256": "86d002c640daaea2bf4505157b3fbe3528ac9f14117934c099773ac1a5c3e47f"
+    },
+    {
+      "bytes": 10752,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/curate_evidence.py.snapshot.txt",
+      "sha256": "a478b79504d509f56c2b102be5c7f72bf4ddb2dcd3ea13729ce81e2fd95886bd"
+    },
+    {
+      "bytes": 8639,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/owner_probe.py.snapshot.txt",
+      "sha256": "b538543025f7a371f0d654ad4ddf057a1fcd54b3d537596eb8b38aa73c795b0d"
+    },
+    {
+      "bytes": 11687,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/run_docker_qualification.py.snapshot.txt",
+      "sha256": "87a663d9ccb9d528920e3bc059405897ea998329d7fa4f795860656b77e0d4b3"
+    },
+    {
+      "bytes": 6538,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/worker_probe.py.snapshot.txt",
+      "sha256": "881976eb301f8e5a2143a00853103fbd8768925a68d47a507b54b7327550454b"
+    },
+    {
+      "bytes": 3410,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/historical/check_legacy_outer_edit.py.snapshot.txt",
+      "sha256": "af9f988bbc30253d22341e50bd3b21b3805e566d097eb62165cced2b6f05641c"
+    },
+    {
+      "bytes": 10049,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/reviews/review_docker_byte_accounting.py.snapshot.txt",
+      "sha256": "333e35a57add5c4b75a8053e2b6e2db1c1c5cf5bd386e1628a6c67378c24378a"
+    },
+    {
+      "bytes": 1886,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/qualify.py.snapshot.txt",
+      "sha256": "18736ca60b4320fb50cce37a56e14423b61e363cd21c8fda86499f64aa658f20"
+    },
+    {
+      "bytes": 16267,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py.snapshot.txt",
+      "sha256": "e5344b04fdbb1b825c42ca9d4727439c8c35b1f87cd4ac71c5a7ef3f808c1439"
+    },
+    {
+      "bytes": 6072,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/declared_contract_planning.py.snapshot.txt",
+      "sha256": "c406395b03b2508a10e5489aebb89be3d4bab34edc04e271c1553bb54f2294ae"
+    },
+    {
+      "bytes": 19938,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py.snapshot.txt",
+      "sha256": "3909c94a0e79540cc8a401eed4935dcccaaf037766b913d6e60812d296153a87"
+    },
+    {
+      "bytes": 70458,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py.snapshot.txt",
+      "sha256": "e710477b1beb3be347c878096013c56a4aba9db50d9e94368d5204d0a709d078"
+    },
+    {
+      "bytes": 43934,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py.snapshot.txt",
+      "sha256": "47d0526ca1e4000c94f76f881e5207645cfff60169796ed5e8b49fa32e8b3d6e"
+    },
+    {
+      "bytes": 18207,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py.snapshot.txt",
+      "sha256": "ebd1c861469bac02360bfa31b2cb2b1c3592ef9a50e445f043afb9518f5d4808"
+    },
+    {
+      "bytes": 32145,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py.snapshot.txt",
+      "sha256": "90711d0d9ea05c4d091acfb74b61362bc79105a320aab3ef283364cd8d0b687c"
+    },
+    {
+      "bytes": 14231,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py.snapshot.txt",
+      "sha256": "bcff050716454c625de8b7486489a6e0a33f3daf4a8989ec01059242efea6c81"
+    },
+    {
+      "bytes": 26296,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py.snapshot.txt",
+      "sha256": "0b6082ae6a15001d4e3e0b633c57a2a6557862fe253f4117805998bb2a56bb28"
+    },
+    {
+      "bytes": 4187,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py.snapshot.txt",
+      "sha256": "fe97b2b2b89c9095a4e9ef61fc89e32e24560b9f07108fed478d8e2ecb21abe6"
+    },
+    {
+      "bytes": 13552,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_codex_usage_growth.py.snapshot.txt",
+      "sha256": "1a67f8e9974ddf1e1bd469635f38b1414af36cad4d3239e396759ea9cebbfba2"
+    },
+    {
+      "bytes": 7493,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_semantic_prompt_census.py.snapshot.txt",
+      "sha256": "b303f2066a277a8868ab6c687d01754e46d69b77b13b1126dd9025eda998bcb0"
+    },
+    {
+      "bytes": 14835,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_semantic_router_integration.py.snapshot.txt",
+      "sha256": "8be5d5f73fa57a005572bec790d88b1f3485ca3e0e5b5e2116b6eb76f07c4d03"
+    },
+    {
+      "bytes": 4721,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_worker_candidate_context_broker.py.snapshot.txt",
+      "sha256": "d124b8db5197e14b5323ab661b0119dc0dc07bad15b0c25a0c55762078115339"
+    },
+    {
+      "bytes": 10011,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_worker_source_broker.py.snapshot.txt",
+      "sha256": "e8d53fe0d857d6f5ab5dcc67c6a71c0b4ef83e12099f987d38e737040c8ea55a"
+    },
+    {
+      "bytes": 10788,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_worker_source_client.py.snapshot.txt",
+      "sha256": "5708108bf1c885f7e3f41dc9c141f5e4e8bd9e377a9a7773da9d31900a56b5ef"
+    },
+    {
+      "bytes": 36399,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_worker_source_discovery_transport.py.snapshot.txt",
+      "sha256": "fad8cbcda6c2c481231ae832bbe5e69651c9083ee9eddf44f5ba1bb0f00a93b6"
+    },
+    {
+      "bytes": 27903,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_worker_source_edit.py.snapshot.txt",
+      "sha256": "cb69932e631c0f6f3069eb4e48e21766c69f1307278188fd7d590ce225510621"
+    },
+    {
+      "bytes": 18261,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_worker_source_edit_broker.py.snapshot.txt",
+      "sha256": "96f2ed0ac587d334b6711d3b77d0d141496a04a37a288841938410272ceb1d6a"
+    },
+    {
+      "bytes": 26739,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_worker_source_edit_client.py.snapshot.txt",
+      "sha256": "3be8230a3770fd380bd932ed107951fb0c0dc57da2de5deccc2d879c2762889d"
+    },
+    {
+      "bytes": 4624,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_worker_source_request_observation.py.snapshot.txt",
+      "sha256": "7737a3d091dd867b0c1ddfba5662708a3e6e9175b8e96724576ab917f1f2fcae"
+    },
+    {
+      "bytes": 16509,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/source-snapshot/test/api/test_worker_source_working_client.py.snapshot.txt",
+      "sha256": "07a86c71be6388656dcb4b8eaf811ae10542ab8ef9216139b1256c2fe84ba158"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 5272,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/tests.stdout.log",
+      "sha256": "f7ea428788fede4f3950cee9a3e29e6529ffaf13fa5282c32ac6b6a3804a6c89"
+    },
+    {
+      "bytes": 179916,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/commands.json",
+      "sha256": "c3c1c88f6a48fb97e65c659f1cb31af1234c536575287fcbc4b63d0931ac72fb"
+    },
+    {
+      "bytes": 353730,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/junit.xml",
+      "sha256": "6ab305a8b513dc2ddd7d4b42164f21359b95bca5b8a369e8d434e8a15a63a266"
+    },
+    {
+      "bytes": 18980,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/benchmark_controls.py.snapshot.txt",
+      "sha256": "333a9c7617c8d7a79ca8649bdf4759b0425493b22a00834654e0101daa5b9e3d"
+    },
+    {
+      "bytes": 35883,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py.snapshot.txt",
+      "sha256": "5a29cc320bec77c25f939bea0ad0d0a55a3ccc9aa17a87736805d37ae9c052ac"
+    },
+    {
+      "bytes": 52210,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py.snapshot.txt",
+      "sha256": "9875e4ce9f3c5ee91bd209810ebb0acfdf0478b21a92ada213d17ec0479bf591"
+    },
+    {
+      "bytes": 45159,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py.snapshot.txt",
+      "sha256": "25eed3fa37f87f2f0c14227ae1bfcb4f0dde5789e3dd7275d95593d8f70926ad"
+    },
+    {
+      "bytes": 88841,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py.snapshot.txt",
+      "sha256": "84ecb5d2eae9d986968172f0843f73d75ca1f4f4a9392ffc3468c1e8989e71e9"
+    },
+    {
+      "bytes": 71333,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py.snapshot.txt",
+      "sha256": "70539360f8d18d68afc54a095c0647945ea3c48832504e9fdd835872e06e071e"
+    },
+    {
+      "bytes": 20156,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py.snapshot.txt",
+      "sha256": "dc00ccaf175c38a201352ea2dc8fb7b4b176c1aa8331941fa6fe701fb55ec367"
+    },
+    {
+      "bytes": 82610,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py.snapshot.txt",
+      "sha256": "735ded8254f43aaf696a3273032b70654b87ecb4db3fddbee58e3be659955345"
+    },
+    {
+      "bytes": 18557,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_numerical_observation.py.snapshot.txt",
+      "sha256": "95145757a613a384b14aa8baf37aff5cfb42c83ff5bdbb1483da1898559d1043"
+    },
+    {
+      "bytes": 3545,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_planning_policy.py.snapshot.txt",
+      "sha256": "276533db278a9c9b48186213449a8ff0016597f5990503d3a2d9c0b25443bd5c"
+    },
+    {
+      "bytes": 4425,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py.snapshot.txt",
+      "sha256": "3c6f96e0ce3c3c3de9efd96c873d0eae58dbea561ea674923cb5a016f3c53fa9"
+    },
+    {
+      "bytes": 17870,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py.snapshot.txt",
+      "sha256": "e78c18422e06f1417cb7e5c19ba7df0de7bea2d5b35606aa4cdb8220d499d99e"
+    },
+    {
+      "bytes": 7955,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py.snapshot.txt",
+      "sha256": "454a8b9d35add916655175d7ecdee640e9222c63bc4cb6e7e14c5e61f91a82c4"
+    },
+    {
+      "bytes": 15672,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py.snapshot.txt",
+      "sha256": "273ed9b95447197f7c3049cf5a068d24e892a4646cefc41a503190ef2676f8ec"
+    },
+    {
+      "bytes": 1828,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py.snapshot.txt",
+      "sha256": "7276ae28bf60f5e6a248d43e3463a3099f819bdaf63f05b0b79f488ad2ae7efb"
+    },
+    {
+      "bytes": 16426,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_capsule_selection_policy.py.snapshot.txt",
+      "sha256": "f32ea155becc06aac418e0be36d524621bb11f71949dabc441af530a07310a75"
+    },
+    {
+      "bytes": 7866,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py.snapshot.txt",
+      "sha256": "7767775319161d898a2f306633b999c5c9bb4739bb0019d6ebdf11ae3003257c"
+    },
+    {
+      "bytes": 38216,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py.snapshot.txt",
+      "sha256": "c325940970169404ca2f4e67b2b241ff33ecbeac9d4855d9b5d3112346e86998"
+    },
+    {
+      "bytes": 16320,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py.snapshot.txt",
+      "sha256": "0fe929d19a93dc2d3ca74b2e16900c5b0a0e6bb83bbaca9aa6be0a371ac76b45"
+    },
+    {
+      "bytes": 10142,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_data_profiles.py.snapshot.txt",
+      "sha256": "9aea7596c85b1b56e1e19b7c3908a0e06ad8848ccf952e6b8d33a5416879bafc"
+    },
+    {
+      "bytes": 9742,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_declared_contract_planning.py.snapshot.txt",
+      "sha256": "2c6723eafd891e6f4fa1da7ccc0a15234443d6d117122389569bbf54fda4c1e4"
+    },
+    {
+      "bytes": 8044,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_declared_doctor_pipeline.py.snapshot.txt",
+      "sha256": "ed6b02d8f68d322ff09b69d60b83b90410a912d7d73f0b6d9d23f7b46b26db8f"
+    },
+    {
+      "bytes": 5390,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_declared_numerical_observation.py.snapshot.txt",
+      "sha256": "c943f90c7bc9161b8d1391b75d268a695cdd60f64c53b3759b7b900ee0176acb"
+    },
+    {
+      "bytes": 6997,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_deferred_data.py.snapshot.txt",
+      "sha256": "8ab6ef789a0e58bb3f250b057ed658006927af90c8a479f4077ea0c1d5361cd0"
+    },
+    {
+      "bytes": 7334,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py.snapshot.txt",
+      "sha256": "9a65112e741894fa5c704b054114bee90f2702d32ddc5985ba5d29dff2a5e226"
+    },
+    {
+      "bytes": 1146,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_doctor_prover_discovery.py.snapshot.txt",
+      "sha256": "8557f2a7cf32a21e3f285026cdcc3ce85419242d794f40bee3a5ec4910c1aa68"
+    },
+    {
+      "bytes": 12047,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py.snapshot.txt",
+      "sha256": "9b66b074d5b196267c41304bdd9a6bfd8b9963b360a656e1fad28a4a5d05e841"
+    },
+    {
+      "bytes": 17692,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py.snapshot.txt",
+      "sha256": "71102816e020d184bd1c1fc5bf9e5ca2c18790688ea95318691090d3aeefd91d"
+    },
+    {
+      "bytes": 12058,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py.snapshot.txt",
+      "sha256": "8c362c3110c22a768d0594c0ccb2f52d1404f7fa36232bfc900f19cbb15aa8c3"
+    },
+    {
+      "bytes": 12953,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py.snapshot.txt",
+      "sha256": "a90b02d31f499ec18645057e992dddbc717ed42355d73ba7b54153c886791cc2"
+    },
+    {
+      "bytes": 7975,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_readiness.py.snapshot.txt",
+      "sha256": "073892fed0353813d72a90854d33d415f4784dbd717ae63a97fd36da236b335f"
+    },
+    {
+      "bytes": 11546,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_merged_worker_capability.py.snapshot.txt",
+      "sha256": "7a3469834f7bb5eb054717621b957f286e1f1688cae7230c9098d23a56f8d924"
+    },
+    {
+      "bytes": 32273,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py.snapshot.txt",
+      "sha256": "cbabbc5f5111d02e59ab9e8034f2ee6d8c400faf3c1c651e5632b522942dfb96"
+    },
+    {
+      "bytes": 19454,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py.snapshot.txt",
+      "sha256": "f27f8d4f08fc90e6b795c9b13b1ab5a225aaae187b21addc29f428c2b165ce27"
+    },
+    {
+      "bytes": 13558,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py.snapshot.txt",
+      "sha256": "3d9dab78a6eb73c1052ca68d23ef29f2c3dfeb1d0ce0a56493d99bb72103a208"
+    },
+    {
+      "bytes": 13596,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_retrieval_observation.py.snapshot.txt",
+      "sha256": "450c4e1764f5638d830ff953291490190ad3006291cee7ec945a428104e60227"
+    },
+    {
+      "bytes": 29544,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py.snapshot.txt",
+      "sha256": "36d659b1fd6f5a90f1fb861bd8e8fbf812c9d9e7370c94e373da2f13029df72c"
+    },
+    {
+      "bytes": 14529,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_planning_policy.py.snapshot.txt",
+      "sha256": "c75fff4164f80fb8f4103405330ec3a32794211357b28c35cea7dab8766edaec"
+    },
+    {
+      "bytes": 9823,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_scope_worker_capability.py.snapshot.txt",
+      "sha256": "3e125aaffcf81113a1a7781c82d9cb6e34e59bb80162ba1a009821b5f346db8a"
+    },
+    {
+      "bytes": 12423,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_scoped_task_profile.py.snapshot.txt",
+      "sha256": "bd6e03d2c6f21c167122a776f347733b502ffe24aa6e6e9b6ca460072795cf06"
+    },
+    {
+      "bytes": 13958,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py.snapshot.txt",
+      "sha256": "3b1ba7a5dfc4fc6088450a5899d9d959945f2aa6e53f291fde37f68f40e5ec5f"
+    },
+    {
+      "bytes": 7889,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py.snapshot.txt",
+      "sha256": "eb645fbf250ed5816e86ef9be2c7402eb25cd0163168b7bc6ea6a6747cc7829d"
+    },
+    {
+      "bytes": 8277,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_signed_declared_planning.py.snapshot.txt",
+      "sha256": "8e8397f38c05e88dc43607e4af0dec922e3be7f0c5bcc77c05528a7ae214f198"
+    },
+    {
+      "bytes": 15511,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_signed_semantic_scope.py.snapshot.txt",
+      "sha256": "a6ab7203e283a6065087f1adf3fa967106166b40652704cbf693ece67aa9e543"
+    },
+    {
+      "bytes": 17842,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py.snapshot.txt",
+      "sha256": "0c99edf9152679de6bdff551dd058f0ce8602d4445bc47d572a340995ac867f7"
+    },
+    {
+      "bytes": 5768,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_request_observation.py.snapshot.txt",
+      "sha256": "bfde491b172d2c8a54231f916a816cd99132dbbd80d602832f6bb383a81e6f51"
+    },
+    {
+      "bytes": 21126,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py.snapshot.txt",
+      "sha256": "a3648c30d9e93ee2de56933cd8a248a259f1300dc1d675e6c40fc9340136c1d3"
+    },
+    {
+      "bytes": 12822,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py.snapshot.txt",
+      "sha256": "c67bb3bedeb015187b6e6babf4d734b0a8d9238af502fa1d7411d9dca0037ff4"
+    },
+    {
+      "bytes": 12812,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_efficiency.py.snapshot.txt",
+      "sha256": "ccbecbacfef62305ce3512fe4177d7668f4f742b1667d0712416ecbe917a9c08"
+    },
+    {
+      "bytes": 8602,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py.snapshot.txt",
+      "sha256": "b84487405bbbb1dbcd190ad997c98f9008b29799adc90e524624d65b4877e637"
+    },
+    {
+      "bytes": 29176,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py.snapshot.txt",
+      "sha256": "980e0d894b642948c8f4ad79bd47f714f94e6bfcc2479a0d6462bc084da9e042"
+    },
+    {
+      "bytes": 18332,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py.snapshot.txt",
+      "sha256": "4588518a6645dd9c1fe69e59bd1b11dbb93a73536c7fcae2265a553f8a86b3d0"
+    },
+    {
+      "bytes": 14811,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/benchmarks/agent_supervisor/container_coding/test_terminal_worker_signed_scope.py.snapshot.txt",
+      "sha256": "b20196250a2e139513080305eedb2c9950c587ae8c7e5a90bf9054f6468d13b8"
+    },
+    {
+      "bytes": 8180,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/owner_probe.py.snapshot.txt",
+      "sha256": "7d35884dc776d9f761406aa3452d1422eae7c57e028bdffe8754152030ab5732"
+    },
+    {
+      "bytes": 11662,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/run_docker_qualification.py.snapshot.txt",
+      "sha256": "74b294246c461c229cb23f0902f6aa68577924e902d36b6cf8a10a0555ba1e65"
+    },
+    {
+      "bytes": 5483,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-edits-20261013/reproduction/worker_probe.py.snapshot.txt",
+      "sha256": "c6a3ef5b4fabdaf68ecc8f7b0fb400a409544cc7683fb8060ced9b564e7f75bb"
+    },
+    {
+      "bytes": 30285,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/history/collect_live_readout_before_mapping_fix.py.snapshot.txt",
+      "sha256": "d24c768eb18e69bc921d51dd0586e77e19f1659500486439129e40a5f9da936e"
+    },
+    {
+      "bytes": 3658,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/launchers/run_locked_trial.py.snapshot.txt",
+      "sha256": "a41058467ae54fb1b54d0fe3d0f56b058effc4a2c821cc73ee50d5a94f35d94a"
+    },
+    {
+      "bytes": 5749,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/launchers/run_metadata_treatment_03.py.snapshot.txt",
+      "sha256": "f8f9705fd38487d5a1afc2b4de0d3fbc9cf45f79480973b2b3f3baaba986ece5"
+    },
+    {
+      "bytes": 11830,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_live_readout.py.snapshot.txt",
+      "sha256": "9300d8565b50c881a415c0e1b197afe0ae4c9db77335f4e8844edead356957b6"
+    },
+    {
+      "bytes": 7480,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_metadata_treatment_finalized_03.py.snapshot.txt",
+      "sha256": "45fadc019df0941165fce92338205cd791baac59d2f7471eaae59177b914068b"
+    },
+    {
+      "bytes": 2289,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/check_native_shape.py.snapshot.txt",
+      "sha256": "cdd8b53dec83790139ba8a0b851aefca7d2bd1c02618a0b35ea87c12d2af0b45"
+    },
+    {
+      "bytes": 30486,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_live_readout.py.snapshot.txt",
+      "sha256": "79c0edcc6eda284ac13f2f0eb3d3341a84125523d377530b4f4dbb5cabb19a10"
+    },
+    {
+      "bytes": 13227,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_metadata_treatment_03.py.snapshot.txt",
+      "sha256": "0af7025ed58a89e14db28ff14e97249c04db89b295dc48cedf9d3c2a5bc18e4e"
+    },
+    {
+      "bytes": 5978,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/collect_native_shape.py.snapshot.txt",
+      "sha256": "5911e857dbf0d8e4a397e80b4152a093cb4e5f270dfcf183a5c0fe1addb86c32"
+    },
+    {
+      "bytes": 5908,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/compact-worker-live-20261014/readers/curate_live_evidence.py.snapshot.txt",
+      "sha256": "86d002c640daaea2bf4505157b3fbe3528ac9f14117934c099773ac1a5c3e47f"
+    },
+    {
+      "bytes": 10752,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/curate_evidence.py.snapshot.txt",
+      "sha256": "a478b79504d509f56c2b102be5c7f72bf4ddb2dcd3ea13729ce81e2fd95886bd"
+    },
+    {
+      "bytes": 8639,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/owner_probe.py.snapshot.txt",
+      "sha256": "b538543025f7a371f0d654ad4ddf057a1fcd54b3d537596eb8b38aa73c795b0d"
+    },
+    {
+      "bytes": 11687,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/run_docker_qualification.py.snapshot.txt",
+      "sha256": "87a663d9ccb9d528920e3bc059405897ea998329d7fa4f795860656b77e0d4b3"
+    },
+    {
+      "bytes": 6538,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/docker/worker_probe.py.snapshot.txt",
+      "sha256": "881976eb301f8e5a2143a00853103fbd8768925a68d47a507b54b7327550454b"
+    },
+    {
+      "bytes": 3410,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/historical/check_legacy_outer_edit.py.snapshot.txt",
+      "sha256": "af9f988bbc30253d22341e50bd3b21b3805e566d097eb62165cced2b6f05641c"
+    },
+    {
+      "bytes": 10049,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/reviews/review_docker_byte_accounting.py.snapshot.txt",
+      "sha256": "333e35a57add5c4b75a8053e2b6e2db1c1c5cf5bd386e1628a6c67378c24378a"
+    },
+    {
+      "bytes": 1886,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/repeated-compact-edits-20261013/tests/qualify.py.snapshot.txt",
+      "sha256": "18736ca60b4320fb50cce37a56e14423b61e363cd21c8fda86499f64aa658f20"
+    },
+    {
+      "bytes": 16267,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py.snapshot.txt",
+      "sha256": "e5344b04fdbb1b825c42ca9d4727439c8c35b1f87cd4ac71c5a7ef3f808c1439"
+    },
+    {
+      "bytes": 6072,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/declared_contract_planning.py.snapshot.txt",
+      "sha256": "c406395b03b2508a10e5489aebb89be3d4bab34edc04e271c1553bb54f2294ae"
+    },
+    {
+      "bytes": 19938,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py.snapshot.txt",
+      "sha256": "3909c94a0e79540cc8a401eed4935dcccaaf037766b913d6e60812d296153a87"
+    },
+    {
+      "bytes": 70458,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py.snapshot.txt",
+      "sha256": "e710477b1beb3be347c878096013c56a4aba9db50d9e94368d5204d0a709d078"
+    },
+    {
+      "bytes": 43934,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py.snapshot.txt",
+      "sha256": "47d0526ca1e4000c94f76f881e5207645cfff60169796ed5e8b49fa32e8b3d6e"
+    },
+    {
+      "bytes": 18207,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py.snapshot.txt",
+      "sha256": "ebd1c861469bac02360bfa31b2cb2b1c3592ef9a50e445f043afb9518f5d4808"
+    },
+    {
+      "bytes": 32145,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py.snapshot.txt",
+      "sha256": "90711d0d9ea05c4d091acfb74b61362bc79105a320aab3ef283364cd8d0b687c"
+    },
+    {
+      "bytes": 14231,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py.snapshot.txt",
+      "sha256": "bcff050716454c625de8b7486489a6e0a33f3daf4a8989ec01059242efea6c81"
+    },
+    {
+      "bytes": 26296,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py.snapshot.txt",
+      "sha256": "0b6082ae6a15001d4e3e0b633c57a2a6557862fe253f4117805998bb2a56bb28"
+    },
+    {
+      "bytes": 4187,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py.snapshot.txt",
+      "sha256": "fe97b2b2b89c9095a4e9ef61fc89e32e24560b9f07108fed478d8e2ecb21abe6"
+    },
+    {
+      "bytes": 13552,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_codex_usage_growth.py.snapshot.txt",
+      "sha256": "1a67f8e9974ddf1e1bd469635f38b1414af36cad4d3239e396759ea9cebbfba2"
+    },
+    {
+      "bytes": 7493,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_semantic_prompt_census.py.snapshot.txt",
+      "sha256": "b303f2066a277a8868ab6c687d01754e46d69b77b13b1126dd9025eda998bcb0"
+    },
+    {
+      "bytes": 14835,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_semantic_router_integration.py.snapshot.txt",
+      "sha256": "8be5d5f73fa57a005572bec790d88b1f3485ca3e0e5b5e2116b6eb76f07c4d03"
+    },
+    {
+      "bytes": 4721,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_worker_candidate_context_broker.py.snapshot.txt",
+      "sha256": "d124b8db5197e14b5323ab661b0119dc0dc07bad15b0c25a0c55762078115339"
+    },
+    {
+      "bytes": 10011,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_worker_source_broker.py.snapshot.txt",
+      "sha256": "e8d53fe0d857d6f5ab5dcc67c6a71c0b4ef83e12099f987d38e737040c8ea55a"
+    },
+    {
+      "bytes": 10788,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_worker_source_client.py.snapshot.txt",
+      "sha256": "5708108bf1c885f7e3f41dc9c141f5e4e8bd9e377a9a7773da9d31900a56b5ef"
+    },
+    {
+      "bytes": 36399,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_worker_source_discovery_transport.py.snapshot.txt",
+      "sha256": "fad8cbcda6c2c481231ae832bbe5e69651c9083ee9eddf44f5ba1bb0f00a93b6"
+    },
+    {
+      "bytes": 27903,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_worker_source_edit.py.snapshot.txt",
+      "sha256": "cb69932e631c0f6f3069eb4e48e21766c69f1307278188fd7d590ce225510621"
+    },
+    {
+      "bytes": 18261,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_worker_source_edit_broker.py.snapshot.txt",
+      "sha256": "96f2ed0ac587d334b6711d3b77d0d141496a04a37a288841938410272ceb1d6a"
+    },
+    {
+      "bytes": 26739,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_worker_source_edit_client.py.snapshot.txt",
+      "sha256": "3be8230a3770fd380bd932ed107951fb0c0dc57da2de5deccc2d879c2762889d"
+    },
+    {
+      "bytes": 4624,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_worker_source_request_observation.py.snapshot.txt",
+      "sha256": "7737a3d091dd867b0c1ddfba5662708a3e6e9175b8e96724576ab917f1f2fcae"
+    },
+    {
+      "bytes": 16509,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/source-snapshot/test/api/test_worker_source_working_client.py.snapshot.txt",
+      "sha256": "07a86c71be6388656dcb4b8eaf811ae10542ab8ef9216139b1256c2fe84ba158"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 302926,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-03/tests.stdout.log",
+      "sha256": "f506b33d7f526252b59e45950e00a9167562ab353b04c6fd26df3637ed4db68d"
+    },
+    {
+      "bytes": 10653,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification_runner.py",
+      "sha256": "5ec5ac39f19d22473a55964b83a86db2d130ed37a970b895cd73cea2a7c6affb"
+    },
+    {
+      "bytes": 31761,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/source-inventory.json",
+      "sha256": "f5913622d746807870e099974e0be10f6d488050fd6def8f3a01d10d66b9dbca"
+    },
+    {
+      "bytes": 3403,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/targets.json",
+      "sha256": "4676124a8fff2b3b8528ff79476dc34df62aa15619d44cde7c40f49355c98a33"
+    },
+    {
+      "bytes": 5092,
+      "path": "docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/whitespace-checks.json",
+      "sha256": "3c92157d32b2bb22319d7fd522f0e81844a45894502a1c263265b1f741ce17a2"
+    },
+    {
+      "bytes": 2582,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/README.md",
+      "sha256": "5a5e2320480ed701d921a053c39e3d3f8f13654ab5498e6f1ef79ac2572ff889"
+    },
+    {
+      "bytes": 358,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/capability-03/command.json",
+      "sha256": "a41624ee67dd6397ca2ecdf8afa6234c72d6035db27ddac77dd13122201e8aa5"
+    },
+    {
+      "bytes": 135,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/capability-03/exit.json",
+      "sha256": "c9d8f9f3ae70147a8ef09a88d1db5297ce30e738228e4ab5b76319f66b975069"
+    },
+    {
+      "bytes": 25608,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/capability-03/junit.xml",
+      "sha256": "85f54e2edfc1fe5925e12fac69cda24a0ce5e4c1e4b89e3aa6c89212b9117d66"
+    },
+    {
+      "bytes": 1845,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/capability-03/source-after.json",
+      "sha256": "3265f9bdc0da4bb52eba9a677180b3b92f88ced1229730c5bb998ee0c44dbd28"
+    },
+    {
+      "bytes": 1845,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/capability-03/source-before.json",
+      "sha256": "3265f9bdc0da4bb52eba9a677180b3b92f88ced1229730c5bb998ee0c44dbd28"
+    },
+    {
+      "bytes": 504,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/focused-01/command.json",
+      "sha256": "8dc7552abfbf63c8d8762c9cf6d68c1df720ab11021f90955e61a6f6d4e2086a"
+    },
+    {
+      "bytes": 133,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/focused-01/exit.json",
+      "sha256": "ea1951437b55f858f2d7c9ef808a392ecd0ebb9995854363807e63ab320314a8"
+    },
+    {
+      "bytes": 14686,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/focused-01/junit.xml",
+      "sha256": "430790799831800b3d0429eadf50dc5c1b324871056a48646b5ce55ac170264f"
+    },
+    {
+      "bytes": 1568,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/focused-01/source-after.json",
+      "sha256": "2b368f07191fdda0780665d4b75b1dec7270a65fae8b493523baefaf3af8c12a"
+    },
+    {
+      "bytes": 1568,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/focused-01/source-before.json",
+      "sha256": "2b368f07191fdda0780665d4b75b1dec7270a65fae8b493523baefaf3af8c12a"
+    },
+    {
+      "bytes": 1350,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/focused-02/command.json",
+      "sha256": "40e66f8c6fcf5271f50b79024e58f0b7495e6087664ce02fab7571e280253377"
+    },
+    {
+      "bytes": 134,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/focused-02/exit.json",
+      "sha256": "986d826baf52bde08e0f36ae2ac4e9063c957c96ed132becd7ee15b8ef4207bd"
+    },
+    {
+      "bytes": 129347,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/focused-02/junit.xml",
+      "sha256": "931ef901a4e9623cf52bd13a4a836b9f1b096300da3ca68130fd944bc7a5021d"
+    },
+    {
+      "bytes": 2929,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/focused-02/source-after.json",
+      "sha256": "27859f0888b7a93360028eac8dca0c5058b206b2f2d8b1fd3d3c7bdabe159087"
+    },
+    {
+      "bytes": 2929,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/focused-02/source-before.json",
+      "sha256": "27859f0888b7a93360028eac8dca0c5058b206b2f2d8b1fd3d3c7bdabe159087"
+    },
+    {
+      "bytes": 2560,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/independent-review.json",
+      "sha256": "b796fbd7d602712705e6cac7cce199e88c16a86e0555c9941dbe75237edb4130"
+    },
+    {
+      "bytes": 3194,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/manifest.json",
+      "sha256": "f391e112b83aa97b1e24e2c394c2316878f2775877711d901b8edbb54f9fc7de"
+    },
+    {
+      "bytes": 7718,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/qualification.json",
+      "sha256": "6a3ccb27b58188c611e5c22bd69d7463fbf36cfcf2317c5390341791b3f2bd87"
+    },
+    {
+      "bytes": 679,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/retained-failures.json",
+      "sha256": "1297a5e4875aaf03d76dacd25cd49cb6cd07fe6cd55e17bba6a3e60217e629af"
+    },
+    {
+      "bytes": 61818,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/tests-ledger.json",
+      "sha256": "f30a7d140759ecc34ec8f28c39c50dac3d0d94ca99a76c1407875c0572f3a69e"
+    },
+    {
+      "bytes": 2506,
+      "path": "docs/agent_supervisor/evidence/source-request-attribution-20261014/unchanged-interfaces.json",
+      "sha256": "e25e8df3a0043ea038df5326d33a5bfdac35f05cf521280ad9965cea800cba9a"
+    },
+    {
+      "bytes": 11092,
+      "path": "docs/agent_supervisor/live_indexed_baseline.md",
+      "sha256": "c73656ea118ab7481736dafdb6a24321357afb7264fd07d5ef172de827b8b0a4"
+    },
+    {
+      "bytes": 71984,
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "48e8b2b59d4cc56e269a17f78865aa6adc17122fd18cd191d7171312ce285ea8"
+    },
+    {
+      "bytes": 18797,
+      "path": "docs/agent_supervisor/reversible_source_views.md",
+      "sha256": "21b6e9e99d6aa72d76465024f14a0231f4744133e79956025c7e5ee92799f831"
+    },
+    {
+      "bytes": 7608,
+      "path": "docs/agent_supervisor/terminal_worker_signed_scope.md",
+      "sha256": "bd831a5e5b0c33e1e5ebceb03a10cd381a6aa472d11eadbd043974bd28aad8e9"
+    },
+    {
+      "bytes": 22271,
+      "path": "docs/agent_supervisor/worker_source_views.md",
+      "sha256": "f3edda09985fe89a55b101dca9d5ccbd264d0854d68104eb5c9bfefffd14242d"
+    },
+    {
+      "bytes": 43475,
+      "path": "docs/architecture/agent_supervisor/PLANNING_AND_ASSURANCE.md",
+      "sha256": "e0ba31701f5ff01e9d6b2aaea5e11f601a5cc890ef6d1d8ad5ab930354dfdafa"
+    },
+    {
+      "bytes": 21553,
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/planning_admission_materials.py",
+      "sha256": "36fa5b215415149e8f8f2f7f79cbdf70823e31cf3cdac6a124a401faf57126d9"
+    },
+    {
+      "bytes": 16267,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py",
+      "sha256": "e5344b04fdbb1b825c42ca9d4727439c8c35b1f87cd4ac71c5a7ef3f808c1439"
+    },
+    {
+      "bytes": 6072,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/declared_contract_planning.py",
+      "sha256": "c406395b03b2508a10e5489aebb89be3d4bab34edc04e271c1553bb54f2294ae"
+    },
+    {
+      "bytes": 19938,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
+      "sha256": "3909c94a0e79540cc8a401eed4935dcccaaf037766b913d6e60812d296153a87"
+    },
+    {
+      "bytes": 70458,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "e710477b1beb3be347c878096013c56a4aba9db50d9e94368d5204d0a709d078"
+    },
+    {
+      "bytes": 43934,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "47d0526ca1e4000c94f76f881e5207645cfff60169796ed5e8b49fa32e8b3d6e"
+    },
+    {
+      "bytes": 18207,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "sha256": "ebd1c861469bac02360bfa31b2cb2b1c3592ef9a50e445f043afb9518f5d4808"
+    },
+    {
+      "bytes": 32145,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "sha256": "90711d0d9ea05c4d091acfb74b61362bc79105a320aab3ef283364cd8d0b687c"
+    },
+    {
+      "bytes": 14231,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py",
+      "sha256": "bcff050716454c625de8b7486489a6e0a33f3daf4a8989ec01059242efea6c81"
+    },
+    {
+      "bytes": 26296,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py",
+      "sha256": "0b6082ae6a15001d4e3e0b633c57a2a6557862fe253f4117805998bb2a56bb28"
+    },
+    {
+      "bytes": 4187,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py",
+      "sha256": "fe97b2b2b89c9095a4e9ef61fc89e32e24560b9f07108fed478d8e2ecb21abe6"
+    },
+    {
+      "bytes": 26920,
+      "path": "scripts/ops/legal_ir/check_source_integration.py",
+      "sha256": "b3e527618c8de17ac301cbb8bed3ac406f8a7efd6abe8e90467513376a406432"
+    },
+    {
+      "bytes": 17921,
+      "path": "test/api/test_agent_supervisor_planning_admission_materials.py",
+      "sha256": "6f3e4b4f96035b2270d0413bfe5a29e26a3a8c8cf12d657054865661554e68bf"
+    },
+    {
+      "bytes": 13552,
+      "path": "test/api/test_codex_usage_growth.py",
+      "sha256": "1a67f8e9974ddf1e1bd469635f38b1414af36cad4d3239e396759ea9cebbfba2"
+    },
+    {
+      "bytes": 14136,
+      "path": "test/api/test_legal_ir_source_integration.py",
+      "sha256": "9ac2b12c5fbe77b315ada9c5278211fbef5a20b2ef9a9544c045f451f6e3ea98"
+    },
+    {
+      "bytes": 7493,
+      "path": "test/api/test_semantic_prompt_census.py",
+      "sha256": "b303f2066a277a8868ab6c687d01754e46d69b77b13b1126dd9025eda998bcb0"
+    },
+    {
+      "bytes": 14835,
+      "path": "test/api/test_semantic_router_integration.py",
+      "sha256": "8be5d5f73fa57a005572bec790d88b1f3485ca3e0e5b5e2116b6eb76f07c4d03"
+    },
+    {
+      "bytes": 4721,
+      "path": "test/api/test_worker_candidate_context_broker.py",
+      "sha256": "d124b8db5197e14b5323ab661b0119dc0dc07bad15b0c25a0c55762078115339"
+    },
+    {
+      "bytes": 10011,
+      "path": "test/api/test_worker_source_broker.py",
+      "sha256": "e8d53fe0d857d6f5ab5dcc67c6a71c0b4ef83e12099f987d38e737040c8ea55a"
+    },
+    {
+      "bytes": 10788,
+      "path": "test/api/test_worker_source_client.py",
+      "sha256": "5708108bf1c885f7e3f41dc9c141f5e4e8bd9e377a9a7773da9d31900a56b5ef"
+    },
+    {
+      "bytes": 36399,
+      "path": "test/api/test_worker_source_discovery_transport.py",
+      "sha256": "fad8cbcda6c2c481231ae832bbe5e69651c9083ee9eddf44f5ba1bb0f00a93b6"
+    },
+    {
+      "bytes": 27903,
+      "path": "test/api/test_worker_source_edit.py",
+      "sha256": "cb69932e631c0f6f3069eb4e48e21766c69f1307278188fd7d590ce225510621"
+    },
+    {
+      "bytes": 18261,
+      "path": "test/api/test_worker_source_edit_broker.py",
+      "sha256": "96f2ed0ac587d334b6711d3b77d0d141496a04a37a288841938410272ceb1d6a"
+    },
+    {
+      "bytes": 26739,
+      "path": "test/api/test_worker_source_edit_client.py",
+      "sha256": "3be8230a3770fd380bd932ed107951fb0c0dc57da2de5deccc2d879c2762889d"
+    },
+    {
+      "bytes": 4624,
+      "path": "test/api/test_worker_source_request_observation.py",
+      "sha256": "7737a3d091dd867b0c1ddfba5662708a3e6e9175b8e96724576ab917f1f2fcae"
+    },
+    {
+      "bytes": 16509,
+      "path": "test/api/test_worker_source_working_client.py",
+      "sha256": "07a86c71be6388656dcb4b8eaf811ae10542ab8ef9216139b1256c2fe84ba158"
+    }
+  ],
+  "final_execution": "qualification-03",
+  "final_tests": 1722,
+  "focused_qualification_invocations": 1,
+  "full_dynamic_toolchain_closure_attested": false,
+  "full_qualification_invocations": 2,
+  "historical_or_focused_results_added_to_final_count": false,
+  "later_incoming_revision": "13908028638a89c181df05813601f453d6c24a9f",
+  "listed_source_bindings": 254,
+  "local_doc_anchors": 14,
+  "local_doc_relative_links": 106,
+  "local_documentation_gates": 4,
+  "local_solver_calls": null,
+  "local_symbolic_solver_and_authored_validation_exercised": true,
+  "manifest_self_excluded": true,
+  "new_cases": 159,
+  "new_docker_trials": 0,
+  "new_official_benchmark_trials": 0,
+  "new_upstream_suites_executed_by_this_qualification": false,
+  "parallel_revision": "59c1eb176fdd2095f184f27d6576ffaa92be2246",
+  "published_signed_base": "6eebad97a1b958bb0882df97c3bc4ea22ffdb861",
+  "qualified_integration_revision": "90e38eae83dc70409b256872db9cf00038a09a02",
+  "schema": "signed-scope-compact-reconciliation-manifest@1",
+  "selected_prover_executables_unchanged": true,
+  "suites": 47,
+  "total_session_token_savings_established": false,
+  "training_steps": 0
+}

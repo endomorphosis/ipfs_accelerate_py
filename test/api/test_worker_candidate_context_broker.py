@@ -88,9 +88,11 @@ def test_actual_socket_candidate_accounting_is_separate_from_source(service, mon
     assert response["ok"]
     service.close()
     audit = json.loads(service.audit_path.read_bytes())
-    assert audit["schema"] == "supervisor-worker-source-session@2"
+    assert audit["schema"] == "supervisor-worker-source-session@5"
     assert audit["service_stopped"] and audit["accounting_complete"]
     row, = audit["requests"]
+    assert (row["request_operation"], row["request_source_state"], row["request_view"]) == (
+        "candidate_context", "working-candidate", "not_applicable")
     assert row["returned_source_bytes"] == 0 and row["candidate_context_page"] is True
     assert row["returned_candidate_context_bytes"] == response["page"]["end_offset"]
     assert row["response_bytes"] == len(protocol.canonical_json(response))

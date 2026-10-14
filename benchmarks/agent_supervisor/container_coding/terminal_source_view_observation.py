@@ -11,6 +11,7 @@ import re
 import stat
 
 from ipfs_accelerate_py.agent_supervisor.runtime import worker_source_client as protocol
+from ipfs_accelerate_py.agent_supervisor.runtime import worker_source_request_observation as request_observation
 from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import _protected_directory
 from .terminal_output_observation import _read, _open_directory, _identity
 from .terminal_numerical_retrieval_observation import (
@@ -34,21 +35,27 @@ def _base(status="unavailable", reason="evidence_unavailable"):
         total_token_savings_measured=False, raw_queries_exported=False, raw_sources_exported=False)
 
 
-def _session(raw, row, scope, *, expected_policy_binding=None):
+def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mode="disabled"):
     audit = _parse(raw)
     _need(set(audit) == _AUDIT_FIELDS and audit["schema"] in {
         "supervisor-worker-source-session@1", "supervisor-worker-source-session@2",
-        "supervisor-worker-source-session@3"}
+        "supervisor-worker-source-session@3", "supervisor-worker-source-session@4", request_observation.AUDIT_SCHEMA}
         and all(audit[key] is False for key in ("proof_authority", "execution_authority", "completion_authority")))
     for key in ("source_obligations_discharged", "retrieval_provider_calls"):
         _need(type(audit[key]) is int and audit[key] == 0)
     descriptor = protocol.validate_descriptor(audit["session"])
-    shared = descriptor["schema"] == "supervisor-worker-source-descriptor@2"
-    _need((audit["schema"] == "supervisor-worker-source-session@3") is shared)
+    editing = descriptor["schema"] == "supervisor-worker-source-descriptor@3"
+    shared = descriptor.get("view_policy_binding_sha256") is not None
+    attributed = audit["schema"] == request_observation.AUDIT_SCHEMA
+    _need((attributed or ((audit["schema"] == "supervisor-worker-source-session@4") is editing
+        and (editing or (audit["schema"] == "supervisor-worker-source-session@3") is shared)))
+        and descriptor.get("source_edit_mode", "disabled") == expected_edit_mode)
     observation = row["source_view_retrieval"]
-    expected_fields = OBSERVATION_FIELDS | set(SHARED_PIN_FIELDS) if shared else OBSERVATION_FIELDS
+    expected_fields = OBSERVATION_FIELDS | set(SHARED_PIN_FIELDS) if shared or editing else OBSERVATION_FIELDS
+    if editing:
+        expected_fields = expected_fields | {"source_edit_mode"}
     _need(type(observation) is dict and set(observation) == expected_fields
-        and observation["schema"] == ("worker-source-dispatch-observation@2" if shared
+        and observation["schema"] == ("worker-source-dispatch-observation@3" if editing else "worker-source-dispatch-observation@2" if shared
                                       else "worker-source-dispatch-observation@1")
         and all(observation[key] is False for key in ("requests_observed", "proof_authority",
                                                      "execution_authority", "completion_authority")))
@@ -58,8 +65,10 @@ def _session(raw, row, scope, *, expected_policy_binding=None):
         and all(descriptor[key] == observation[key] for key in (*protocol.BINDING_FIELDS, "boundary_manifest_sha256"))
         and descriptor["task_id"] == scope["task_alias"]
         and descriptor["workspace"] == row["workspace"] and descriptor["owner_uid"] == os.geteuid())
-    if shared:
+    if shared or editing:
         _need(all(observation[key] == descriptor[key] for key in SHARED_PIN_FIELDS))
+    if editing:
+        _need(observation["source_edit_mode"] == expected_edit_mode)
     if expected_policy_binding is not None:
         _need(shared and descriptor["view_policy_binding_sha256"] == expected_policy_binding)
     semantic = row["semantic_translation"]
@@ -68,25 +77,50 @@ def _session(raw, row, scope, *, expected_policy_binding=None):
     boundary = row["external_container_boundary"]
     _need(type(boundary) is dict and boundary.get("manifest_sha256") == descriptor["boundary_manifest_sha256"]
         and all(type(boundary.get(key)) is int and boundary[key] == descriptor[key] for key in ("owner_uid", "worker_uid")))
-    advice = protocol.guidance(descriptor["profile"]).encode()
+    advice = protocol.guidance(descriptor["profile"],
+        **({"source_edit_mode": expected_edit_mode} if editing else {})).encode()
     _need(observation["guidance_sha256"] == _sha(advice)
         and type(observation["guidance_bytes"]) is int and observation["guidance_bytes"] == len(advice))
     candidate_counts = None
     discovery_counts = None
+    edit_counts = None
     accounting_audit = audit
-    if audit["schema"] in {"supervisor-worker-source-session@2", "supervisor-worker-source-session@3"}:
+    if audit["schema"] in {"supervisor-worker-source-session@2", "supervisor-worker-source-session@3", "supervisor-worker-source-session@4", request_observation.AUDIT_SCHEMA}:
         candidate_counts = dict(prepared_pages=0, delivered_pages=0, prepared_bytes=0, delivered_bytes=0)
         discovery_counts = dict.fromkeys(DISCOVERY_COUNT_FIELDS, 0)
+        if editing:
+            edit_counts = dict(prepared_mapping_pages=0, delivered_mapping_pages=0,
+                prepared_confirmation_pages=0, delivered_confirmation_pages=0)
         _need(type(audit["requests"]) is list)
         records, discovery_typed = [], []
         for item in audit["requests"]:
             _need(type(item) is dict)
             record = dict(item)
+            if attributed:
+                request_observation.validate_record(record)
+                for field in request_observation.FIELDS:
+                    record.pop(field)
+            if editing:
+                edit = record.pop("source_edit_page", None)
+                operation = record.pop("source_edit_operation", None)
+                _need(type(edit) is bool and record.pop("owner_writes_performed", None) is False
+                    and (operation in {"prepare", "confirm"} if edit else operation is None)
+                    and (not edit or record.get("status") == "ok"))
+                if edit:
+                    _need(record.get("returned_source_bytes") == 0
+                        and record.get("returned_candidate_context_bytes") == 0
+                        and record.get("candidate_context_page") is False
+                        and record.get("discovery_page") is False
+                        and record.get("returned_discovery_rows") == 0)
+                    kind = "mapping" if operation == "prepare" else "confirmation"
+                    edit_counts["prepared_" + kind + "_pages"] += 1
+                    if record.get("delivered") is True:
+                        edit_counts["delivered_" + kind + "_pages"] += 1
             size = record.pop("returned_candidate_context_bytes", None)
             candidate = record.pop("candidate_context_page", None)
             pair = {"discovery_page", "returned_discovery_rows"} & set(record)
             _need(not pair or pair == {"discovery_page", "returned_discovery_rows"})
-            _need(not shared or bool(pair))
+            _need((not shared and not editing and not attributed) or bool(pair))
             discovery_typed.append(bool(pair))
             discovery = record.pop("discovery_page", False)
             rows = record.pop("returned_discovery_rows", 0)
@@ -109,19 +143,26 @@ def _session(raw, row, scope, *, expected_policy_binding=None):
                 discovery_counts["delivered_pages"] += discovery
                 discovery_counts["delivered_rows"] += rows
             records.append(record)
-        if not shared and (not discovery_typed or not all(discovery_typed)):
+        if not shared and not attributed and (not discovery_typed or not all(discovery_typed)):
             discovery_counts = None
         accounting_audit = dict(audit, requests=records)
     counts, statuses, requests, responses = _records(accounting_audit, descriptor,
         detail_field="returned_source_bytes", max_detail=protocol.MAX_FRAME_BYTES, count_noun="source_bytes")
     _need(all(item["returned_source_bytes"] <= item["response_bytes"] for item in audit["requests"]))
-    return dict(session_id_sha256=_sha(descriptor["session_id"].encode()),
+    result = dict(session_id_sha256=_sha(descriptor["session_id"].encode()),
         invocation_id_sha256=_sha(row["invocation_id"].encode()), audit_sha256=_sha(raw),
         descriptor_sha256=audit["descriptor_sha256"], profile=descriptor["profile"],
         semantic_sha256=descriptor["semantic_sha256"], source_manifest_sha256=descriptor["source_manifest_sha256"],
         counts=counts, candidate_context_counts=candidate_counts, discovery_counts=discovery_counts,
         status_counts=dict(sorted(statuses.items())),
-        unique_request_hash_count=len(requests), unique_response_hash_count=len(responses)), requests, responses
+        unique_request_hash_count=len(requests), unique_response_hash_count=len(responses))
+    if editing:
+        result.update(source_edit_mode=expected_edit_mode, source_edit_counts=edit_counts,
+            owner_writes_performed=False, task_validation_observed=False)
+    if attributed:
+        result["request_operation_counts"] = request_observation.operation_counts(audit["requests"])
+        _need(result["request_operation_counts"]["accepted_requests"] == counts["accepted_requests"])
+    return result, requests, responses
 
 
 def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
@@ -131,6 +172,9 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
         _need(type(rows) is list and len(rows) <= 128 and all(type(row) is dict for row in rows))
         profile = report.get("source_view_profile", "disabled")
         _need(type(profile) is str and profile in ("disabled", *protocol.PROFILES))
+        from .terminal_source_edit_policy import validate_source_edit_mode
+        edit_mode = validate_source_edit_mode(report.get("source_edit_mode", "disabled"),
+            arm=report.get("arm"), source_view_profile=profile)
         from .terminal_source_view_policy import validate_source_view_policy, source_view_observation
         policy = validate_source_view_policy(report.get("source_view_policy"), profile=profile,
             arm=report.get("arm"))
@@ -180,7 +224,7 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
                 after = os.stat(name, dir_fd=fd, follow_symlinks=False)
                 _need(_identity(before) == _identity(after) and before.st_gid == after.st_gid)
                 item, request_hashes, response_hashes = _session(raw, row, scope,
-                    expected_policy_binding=expected_policy_binding)
+                    expected_policy_binding=expected_policy_binding, expected_edit_mode=edit_mode)
                 sessions.append(item); requests.update(request_hashes); responses.update(response_hashes)
             _protected_directory(parent, owner=owner, group=owner)
             _need(_identity(directory) == _identity(parent.lstat()))
@@ -200,6 +244,22 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
             if all(item["discovery_counts"] is not None for item in sessions) else None)
         if policy is not None:
             result.update({key: report[key] for key in policy_fields})
+        if any("request_operation_counts" in item for item in sessions):
+            observed = [item for item in sessions if "request_operation_counts" in item]
+            attributed_requests = sum(item["counts"]["accepted_requests"] for item in observed)
+            result["request_operation_counts"] = request_observation.combine_operation_counts(
+                [item["request_operation_counts"] for item in observed])
+            result["request_operation_coverage"] = dict(
+                observed_sessions=len(observed), historical_sessions=len(sessions) - len(observed),
+                observed_requests=attributed_requests,
+                historical_unattributed_requests=counts["accepted_requests"] - attributed_requests,
+                all_sessions_observed=len(observed) == len(sessions))
+        if edit_mode != "disabled":
+            fields = ("prepared_mapping_pages", "delivered_mapping_pages",
+                "prepared_confirmation_pages", "delivered_confirmation_pages")
+            result.update(source_edit_mode=edit_mode,
+                source_edit_counts={key: sum(item["source_edit_counts"][key] for item in sessions) for key in fields},
+                owner_writes_performed=False, task_validation_observed=False)
         _need(len(protocol.canonical_json(result)) <= MAX_AUDIT_BYTES)
         return result
     except (OSError, ValueError, TypeError, KeyError, RuntimeError, RecursionError):

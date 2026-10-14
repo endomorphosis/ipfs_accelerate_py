@@ -44,6 +44,14 @@ from .terminal_capsule_selection_policy import (
     DEFAULT_CAPSULE_SELECTION, validate_capsule_selection,
     capsule_selection_observation, require_capsule_selection_archive,
 )
+from .terminal_planning_policy import (
+    DEFAULT_PLANNING_MODE, validate_planning_mode,
+    planning_observation, require_planning_archive,
+)
+from .terminal_source_edit_policy import (
+    DEFAULT_SOURCE_EDIT_MODE, SOURCE_EDIT_MODES, validate_source_edit_mode,
+    source_edit_selection, source_edit_observation, require_source_edit_archive,
+)
 from .terminal_source_view_policy import (
     DEFAULT_SOURCE_VIEW_PROFILE, validate_source_view_profile,
     source_view_observation, require_source_view_archive, validate_source_view_policy, source_view_policy_argv,
@@ -318,14 +326,22 @@ class FullSupervisorAgent(BaseAgent):
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                  source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
                  source_view_policy: dict | None = None,
+                 source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
                  numerical_formalization_profile: str | None = None,
+                 planning_mode: str = DEFAULT_PLANNING_MODE,
                  metadata_census_only: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         selected_provider = resolve_provider_profile(provider_profile)
         if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
+        self.planning_mode = validate_planning_mode(planning_mode,
+            intent_requirement_contract=intent_requirement_contract, task_profile=task_profile)
+        self._frozen_planning_mode = self.planning_mode
         self.capsule_selection = validate_capsule_selection(capsule_selection, arm=arm)
         self.source_view_profile = validate_source_view_profile(source_view_profile, arm=arm)
+        self.source_edit_mode = validate_source_edit_mode(source_edit_mode, arm=arm,
+            source_view_profile=self.source_view_profile)
+        self._frozen_source_edit_mode = self.source_edit_mode
         self.source_view_policy = validate_source_view_policy(source_view_policy,
             profile=self.source_view_profile, arm=arm)
         self._source_view_policy_frozen_json = json.dumps(
@@ -338,6 +354,10 @@ class FullSupervisorAgent(BaseAgent):
             arm=arm, transport_schema=self.semantic_transport_schema, provider=selected_provider["provider"])
         if type(metadata_census_only) is not bool:
             raise ValueError("explicit Boolean metadata census selection required")
+        if metadata_census_only and self.source_edit_mode != DEFAULT_SOURCE_EDIT_MODE:
+            raise ValueError("mapped source edits require a coding worker, not metadata census")
+        if metadata_census_only and self.planning_mode != DEFAULT_PLANNING_MODE:
+            raise ValueError("live metadata census requires model planning")
         if metadata_census_only and (arm != "full" or self.semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}
                 or self.coding_reply_mode != "ordinary-completion@1"):
             raise ValueError("live census requires the full common-bindings ordinary-completion route")
@@ -382,6 +402,25 @@ class FullSupervisorAgent(BaseAgent):
         selected = resolve_provider_profile(getattr(self, "provider_profile", None))
         return "isolated-native-v1+" + selected["provider"].removesuffix("_cli") + "-" + selected["cli_version"]
 
+    def _checked_planning_mode(self):
+        mode = validate_planning_mode(getattr(self, "planning_mode", DEFAULT_PLANNING_MODE),
+            intent_requirement_contract=getattr(self, "intent_requirement_contract", None),
+            task_profile=getattr(self, "task_profile", None))
+        if mode != DEFAULT_PLANNING_MODE and getattr(self, "metadata_census_only", False):
+            raise ValueError("live metadata census requires model planning")
+        if mode != getattr(self, "_frozen_planning_mode", DEFAULT_PLANNING_MODE):
+            raise ValueError("prepared planning mode changed")
+        return mode
+
+    def _checked_source_edit_mode(self, profile):
+        mode = validate_source_edit_mode(getattr(self, "source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+            arm=self.arm, source_view_profile=profile)
+        if mode != getattr(self, "_frozen_source_edit_mode", DEFAULT_SOURCE_EDIT_MODE):
+            raise ValueError("prepared source edit mode changed")
+        if mode != DEFAULT_SOURCE_EDIT_MODE and getattr(self, "metadata_census_only", False):
+            raise ValueError("mapped source edits require a coding worker, not metadata census")
+        return mode
+
     def _checked_source_view_policy(self, profile):
         selected = validate_source_view_policy(getattr(self, "source_view_policy", None),
             profile=profile, arm=self.arm)
@@ -400,6 +439,7 @@ class FullSupervisorAgent(BaseAgent):
         manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
         from .terminal_worker_capability import require_worker_capability
         require_worker_capability(manifest, getattr(self, "resource_profile", None))
+        require_planning_archive(manifest, self._checked_planning_mode())
         require_numerical_archive(manifest, getattr(self, "numerical_formalization_profile", None))
         numerical_selection_asset_arguments(manifest, self.arm, getattr(self, "resource_profile", None))
         if selection is not None and manifest.get("numerical_selection_384") is not None:
@@ -421,6 +461,7 @@ class FullSupervisorAgent(BaseAgent):
         source_view = validate_source_view_profile(
             getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=self.arm)
         self._checked_source_view_policy(source_view)
+        require_source_edit_archive(manifest, self._checked_source_edit_mode(source_view))
         require_source_view_archive(manifest, source_view, getattr(self, "resource_profile", None))
         require_retrieval_revision(manifest, self.arm, getattr(self, "model_revision", ""))
         validate_header_planning_selection(validate_source384_binding(manifest),
@@ -468,6 +509,8 @@ class FullSupervisorAgent(BaseAgent):
         from .terminal_setup_cache_advice import validate_setup_cache_selection
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
             getattr(self, "setup_cache_selection", None))
+        planning_mode = self._checked_planning_mode()
+        require_planning_archive(manifest, planning_mode)
         retrieval_revision = require_retrieval_revision(manifest, self.arm,
             getattr(self, "model_revision", ""))
         transport = validate_semantic_transport_schema(
@@ -487,6 +530,8 @@ class FullSupervisorAgent(BaseAgent):
         source_view = validate_source_view_profile(
             getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=self.arm)
         source_policy = self._checked_source_view_policy(source_view)
+        source_edit = self._checked_source_edit_mode(source_view)
+        require_source_edit_archive(manifest, source_edit)
         require_source_view_archive(manifest, source_view, getattr(self, "resource_profile", None))
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
@@ -514,6 +559,10 @@ class FullSupervisorAgent(BaseAgent):
         provider_profile = getattr(self, "provider_profile", None)
         if provider_profile is not None:
             argv += ["--provider-profile", provider_profile]
+        if source_edit != DEFAULT_SOURCE_EDIT_MODE:
+            argv += ["--source-edit-mode", source_edit]
+        if planning_mode != DEFAULT_PLANNING_MODE:
+            argv += ["--planning-mode", planning_mode]
         if numerical_profile is not None:
             argv += ["--numerical-formalization-profile", numerical_profile]
         if transport != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
@@ -565,8 +614,10 @@ class FullSupervisorAgent(BaseAgent):
                             **semantic_metadata_observation(metadata_view),
                             **capsule_selection_observation(capsule_selection),
                             **source_view_observation(source_view, source_policy),
+                            **source_edit_observation(source_edit),
                             **numerical_observation(numerical_profile, self.arm),
-                            **_intent_selection(requirement_contract),
+                            **planning_observation(planning_mode),
+                            **_intent_selection(requirement_contract, planning_mode=planning_mode),
                             "runtime_archive_sha256": manifest["archive_sha256"],
                             "security_training_assets": asset_observation,
                             "security_model_assets": asset_observation,

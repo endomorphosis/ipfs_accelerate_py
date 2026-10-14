@@ -1,0 +1,20 @@
+[
+  "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+  "-m",
+  "pytest",
+  "-q",
+  "--color=no",
+  "-o",
+  "log_cli=false",
+  "--junitxml=/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/root-tests-02/junit.xml",
+  "test/api/test_worker_source_edit_broker.py",
+  "test/api/test_worker_source_client.py",
+  "test/api/test_worker_source_working_client.py",
+  "test/api/test_worker_source_broker.py",
+  "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py",
+  "test/api/test_semantic_router_integration.py",
+  "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py",
+  "benchmarks/agent_supervisor/container_coding/test_numerical_obligation_worker_wiring.py"
+]

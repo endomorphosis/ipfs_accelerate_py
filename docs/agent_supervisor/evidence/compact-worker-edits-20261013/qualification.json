@@ -1,0 +1,337 @@
+{
+  "artifacts": {
+    "docker-qualification.json": {
+      "bytes": 3447,
+      "sha256": "819352273b4047e985ff3998c1e1c9ff6e407f7a43a8d5bda188564f5555553b"
+    },
+    "integration-final-review.json": {
+      "bytes": 12167,
+      "sha256": "75a009205f1e53a706b8173a063e9c8b73b44d8a0bb21b0262d08b251c009130"
+    },
+    "integration-review.json": {
+      "bytes": 5954,
+      "sha256": "42dd1054c003ce488bf18737d421a3ab098a096e2c276398041a4957b1461a6d"
+    },
+    "observed-components.json": {
+      "bytes": 6119,
+      "sha256": "26fc4a2cf478e5385a742cafa5256944b1073b6106bce8f62a615bb61f41f12a"
+    },
+    "reproduction/owner_probe.py": {
+      "bytes": 8180,
+      "sha256": "7d35884dc776d9f761406aa3452d1422eae7c57e028bdffe8754152030ab5732"
+    },
+    "reproduction/release-01.json": {
+      "bytes": 4528,
+      "sha256": "b62e998003e2663790fbfbc6bcf93fe5408f9352c2665a9d47000c71c2da63a1"
+    },
+    "reproduction/run_docker_qualification.py": {
+      "bytes": 11662,
+      "sha256": "74b294246c461c229cb23f0902f6aa68577924e902d36b6cf8a10a0555ba1e65"
+    },
+    "reproduction/worker_probe.py": {
+      "bytes": 5483,
+      "sha256": "c6a3ef5b4fabdaf68ecc8f7b0fb400a409544cc7683fb8060ced9b564e7f75bb"
+    },
+    "test-ledger.json": {
+      "bytes": 129163,
+      "sha256": "0fb634c6a061f0ada6486c77190e9225044e72eebe8c5924ede839b1d9ff1538"
+    }
+  },
+  "base_commit": "02de4f388a00fdfd85680b44b7ad9d3f0aff490c",
+  "feature": {
+    "arm": "full",
+    "confirmation_attempts_per_session": 1,
+    "default": "disabled",
+    "owner_source_writes": false,
+    "source_edit_mode": "mapped-span@1",
+    "successful_preparations_per_session": 1,
+    "validation_pending": true,
+    "worker_existing_file_permissions": true
+  },
+  "limitations": [
+    "Bounded admitted scope: at most 64 files / 1 MiB; explicit verified program paths only for edits.",
+    "Single successful mapped preparation/confirmation; no create/delete/move or arbitrary compact inversion.",
+    "Sequential observations do not exclude external writers or form an atomic filesystem transaction.",
+    "Post-write uncertainty never automatically retries; candidate requires inspection.",
+    "No formal proof, accepted DuckLake index publication, whole runtime deployment, full supervisor START, official benchmark reward, or live provider token savings established by this qualification."
+  ],
+  "measurements": {
+    "comments_bytes": 4178,
+    "excludes": [
+      "command text",
+      "protocol framing/newlines",
+      "later reads/replays",
+      "private owner/worker transport",
+      "common supervisor input",
+      "conversation history"
+    ],
+    "identity_bytes": 6677,
+    "identity_to_comments_delta_bytes": -2499,
+    "includes": [
+      "guidance",
+      "compact read JSON",
+      "edit JSON",
+      "final result JSON"
+    ],
+    "kind": "Four observed components of one authored fixture; not complete exchange or provider tokens",
+    "provider_tokens": null,
+    "shared_comments_bytes": 4274
+  },
+  "native_docker": {
+    "authored_provider_hook": true,
+    "cleanup_verified": true,
+    "external_model_calls": 0,
+    "network": "none",
+    "owner_uid": 1000,
+    "passed": true,
+    "real_peer_and_ancestry": true,
+    "retained_owner_inode": true,
+    "validation": "Authored answer()==2 via separate production validation worker",
+    "worker_uid": 1001
+  },
+  "private_evidence_excluded": [
+    "private-state",
+    "private-fixture-ipc",
+    "private-worker-observations",
+    "raw prompts/router transcripts",
+    "live descriptors",
+    "owner databases"
+  ],
+  "reproduction": "Unit tests are committed at the ledger paths. Docker scripts/release retain exact observed host paths and producer hashes; recreate an explicit local release for another checkout. No automatic external provider calls are authorized by the fixture.",
+  "schema": "compact-worker-edits-qualification@1",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "333a9c7617c8d7a79ca8649bdf4759b0425493b22a00834654e0101daa5b9e3d",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "ab28888f4f47f38bba829b36cf7bcd271aa212b73fb74d21b5461f47dde0be6f",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "9875e4ce9f3c5ee91bd209810ebb0acfdf0478b21a92ada213d17ec0479bf591",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "25eed3fa37f87f2f0c14227ae1bfcb4f0dde5789e3dd7275d95593d8f70926ad",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "438da2496feca8ab7b8e7e1038ec1148521358712eeee92f4157637da1d60200",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "5906904e4708c82998f2216209e6e121e7cb60c076e2f046c06f2046a52b67a4",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "dc00ccaf175c38a201352ea2dc8fb7b4b176c1aa8331941fa6fe701fb55ec367",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "019e3d40f7f2e6a647b674df7c99f96163b982671b2504d611f260540006f834",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "204d6a840ca79141e95da8a0c7fe0da471223c66a353a3c9250b1b1c1063b7f5",
+    "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py": "ec878de032bc2480f539568e270d065630c4c1813142c7dbbf9c95fa86c8347d",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py": "712f6ff3f2f7049c1e6c89740f70610dc24a639d5a86cada03fb216c40dac40c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "10d8fc696d1a5ab8cf42e67c405eb434798ec2ccef4532896e476e4e5b2e472a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "d08ee0cf8806959aa3795c75ddc5f1bb147dd3bfb03c45e9710b49278701ec9e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "03c8bb57112852436936fbdf18a6fbadcea7b03c7bc06b2e35a03b2d3ba48079",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py": "66a6e1f850f70f5206b97190cce0b51a78030f3f205055d87347ab14cb629d53",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py": "4a8f2eff7d5031f3dfb86988a6ef69b17694c88e9a041dd943c0ff5aea3fd6f1",
+    "test/api/test_worker_source_client.py": "5708108bf1c885f7e3f41dc9c141f5e4e8bd9e377a9a7773da9d31900a56b5ef",
+    "test/api/test_worker_source_edit.py": "28b954aba8c852d59acc678e33a9ad76e579b167471a7502205733ade3909619",
+    "test/api/test_worker_source_edit_broker.py": "465bd99286c5823b7613d41bfac63df36c660c5e83f3f5440a6ca550859b3ea2",
+    "test/api/test_worker_source_edit_client.py": "d7576b9e2ff61a31d23b48ab8d5d0504d683f3904922b1cff1cc73ea7472631a",
+    "test/api/test_worker_source_working_client.py": "5c1edb911269e57f2a3a8cbbf1775c096e99002685132f18e977b3184e2de49a"
+  },
+  "status": "passed",
+  "tests": {
+    "auxiliary_collection_note": "A later optional combined collect-only census exceeded its 120-second wrapper; no tests ran in that census. Counts use completed successful full-file JUnit records, not that census.",
+    "concurrent_source_changes_reconciled": {
+      "changes": [
+        "Source-client malformed-request type guard covered by final source-validator-tests-01; normal dict path unchanged.",
+        "Edit archive context-audit closure addition and latest router wiring test covered by context-audit-tests-01.",
+        "Final three measurement cases rerun with unchanged final source in final-observations-01."
+      ],
+      "run": "root-tests-02"
+    },
+    "failed_current_cases": 0,
+    "files": 15,
+    "method": "Latest complete-file JUnit run per file, normalized api.* to test.api.*; focused guidance/observation reruns supplement rather than add cases.",
+    "passed_current_cases": 772,
+    "retained_initial_issues": [
+      "service-tests-01: test setup externally acquired nonreentrant views lock; corrected service lock use and qualified service-tests-02.",
+      "client-tests-01: earlier focused run superseded by frozen client-tests-02 and guidance assertion update.",
+      "wiring-tests-01: shared test DuckDB lock before collection; isolated per-run seal stores used afterward.",
+      "wiring-tests-02: missing required doctor argument and invalid null source-scope digest in authored fixtures; corrected and rerun.",
+      "root-tests-01: legacy CLI extra descriptor preload regression and incorrect test order after deliberate stale-generation refusal; corrected, then first broad run exceeded 240-second wrapper.",
+      "debug-broker-01: confirmed deliberate stale query invalidates snapshot; positive assertions moved before hostile stale query."
+    ],
+    "runs": [
+      {
+        "changed_sources": [],
+        "evidence": {
+          "command.json": {
+            "bytes": 2296,
+            "sha256": "ffca9b0b48d6c4c2a693ace306b68369cb901d73c78c8468a980cc28cc25fcf0"
+          },
+          "exit.json": {
+            "bytes": 82,
+            "sha256": "4a990a8778a68eb681c165860a870a795fb1d3afbab26ab99ab486286ac296ff"
+          },
+          "junit.xml": {
+            "bytes": 22890,
+            "sha256": "550dea0125563587afe48f21756170b371429ce4c3fd946f1f6e06d81f1471aa"
+          }
+        },
+        "exit_code": 0,
+        "run": "service-tests-02",
+        "source_unchanged": true
+      },
+      {
+        "changed_sources": [],
+        "evidence": {
+          "command.json": {
+            "bytes": 1743,
+            "sha256": "7d00fd0324a2179a23e7d7148a4e49dbe7e549f822b5e5c354a18bc2017f50fb"
+          },
+          "junit.xml": {
+            "bytes": 15218,
+            "sha256": "889fe9adc5af0190388fa09cd3b4c4626febff1392297f1430fb157fd958a92b"
+          },
+          "result.json": {
+            "bytes": 664,
+            "sha256": "35c615c5bf06e023bc49d92a5a5ba1b3a80ebe6a3ff563c683736f481073cb8d"
+          }
+        },
+        "exit_code": 0,
+        "run": "client-tests-02",
+        "source_unchanged": true
+      },
+      {
+        "changed_sources": [],
+        "evidence": {
+          "command.json": {
+            "bytes": 1836,
+            "sha256": "277800c80e6d0c49194b006f60c21604e9b7d391eb946b4144516457bd94bcbe"
+          },
+          "junit.xml": {
+            "bytes": 390,
+            "sha256": "4be7d8f76e33486b03bcd31990b6226326ec4a23b74f7e0384ac50d5c9fdb771"
+          },
+          "result.json": {
+            "bytes": 663,
+            "sha256": "8da6db5483e83a4a119efc3f1c513fa5b5ab4013fff8f8a47833a14f084a4006"
+          }
+        },
+        "exit_code": 0,
+        "run": "client-guidance-tests-04",
+        "source_unchanged": true
+      },
+      {
+        "changed_sources": [],
+        "evidence": {
+          "command.json": {
+            "bytes": 578,
+            "sha256": "5fbdd5fbb599a8ed3fdccd839dea61ae6acb2231d0890b7c738dda4d298134dc"
+          },
+          "exit.json": {
+            "bytes": 18,
+            "sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d"
+          },
+          "junit.xml": {
+            "bytes": 42123,
+            "sha256": "06b489f98aaabc0127532cdaf0f25d01df2b8a376e031698f432e213ff6ebb98"
+          }
+        },
+        "exit_code": 0,
+        "run": "outer-tests-01",
+        "source_unchanged": null
+      },
+      {
+        "changed_sources": [
+          "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py",
+          "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py",
+          "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+          "test/api/test_worker_source_client.py"
+        ],
+        "evidence": {
+          "command.json": {
+            "bytes": 801,
+            "sha256": "6003ccece91c23744a0b1e7edeefe88f7eb555d10320b6f24bd0b9037b835cac"
+          },
+          "exit.json": {
+            "bytes": 427,
+            "sha256": "84a890b19082d490078e82c63a06f0bccda96b2880565a9e0d0051168b80796d"
+          },
+          "junit.xml": {
+            "bytes": 60455,
+            "sha256": "099430bc4d467310dba6b6ed741301b7268ddf346c5bf17272de67dee743d59b"
+          }
+        },
+        "exit_code": 0,
+        "run": "root-tests-02",
+        "source_unchanged": false
+      },
+      {
+        "changed_sources": [],
+        "evidence": {
+          "command.json": {
+            "bytes": 1770,
+            "sha256": "58cacbfef6f0a2feb30a4831b201faaa6a0b35b696e9918904033ee0cded18bc"
+          },
+          "junit.xml": {
+            "bytes": 10441,
+            "sha256": "0ba09962bad98618f01b4ae62b331f9c382ad3f38b4c98c1183da62a363fc837"
+          },
+          "result.json": {
+            "bytes": 647,
+            "sha256": "ca60eac07bec176138c1a461f09446d7727919235e03e814a9239fc49539c60e"
+          }
+        },
+        "exit_code": 0,
+        "run": "working-client-tests-01",
+        "source_unchanged": true
+      },
+      {
+        "changed_sources": [],
+        "evidence": {
+          "command.json": {
+            "bytes": 2047,
+            "sha256": "162b1ac5b40bd02f82b88193b2abfa69175e7afc782259abb20b6fc95b90bb42"
+          },
+          "exit.json": {
+            "bytes": 86,
+            "sha256": "a97051787211b509f4a7fa9f1412afc3e5d2917cfd0ba393f0db497397764294"
+          },
+          "junit.xml": {
+            "bytes": 7908,
+            "sha256": "694dcccdf447dbcdd6a4f33ecf70e108828b162b08829d8e305c6559090dfc57"
+          }
+        },
+        "exit_code": 0,
+        "run": "source-validator-tests-01",
+        "source_unchanged": true
+      },
+      {
+        "changed_sources": [],
+        "evidence": {
+          "command.json": {
+            "bytes": 1247,
+            "sha256": "93f60a136c6e083aebc04034314a6a6b35087c9b973fa4def957968fd90aa8b9"
+          },
+          "exit.json": {
+            "bytes": 44,
+            "sha256": "a3a5ea831e43fb7dc46e8d83f76644b68e61ba8c697a8613c382b0e4d8380818"
+          },
+          "junit.xml": {
+            "bytes": 38685,
+            "sha256": "38b155c09d411bbc2fa0cdab5e3045be26275b0396e653956860092bcbdc6979"
+          }
+        },
+        "exit_code": 0,
+        "run": "context-audit-tests-01",
+        "source_unchanged": true
+      },
+      {
+        "changed_sources": [],
+        "evidence": {
+          "command.json": {
+            "bytes": 370,
+            "sha256": "e244d1961c756373e409edf4fe484531c99ba20b32664b613438105c978fd531"
+          },
+          "exit.json": {
+            "bytes": 134,
+            "sha256": "58be67038d35b39ce2d409541ee818a6521555d1126e739abc0c9f6664b168e3"
+          },
+          "junit.xml": {
+            "bytes": 3083,
+            "sha256": "da61c2c3f04da48292d967abbbd40aa0879e63dd319998814df8fb6daf8bb844"
+          }
+        },
+        "exit_code": 0,
+        "run": "final-observations-01",
+        "source_unchanged": true
+      }
+    ],
+    "skipped_current_cases": 0
+  }
+}

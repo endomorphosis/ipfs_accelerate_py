@@ -1,0 +1,34 @@
+{
+  "blocking_findings": [],
+  "checks": [
+    "Generic response callback defaults to no-op, resets per-request locals and stops session on callback exception.",
+    "Selected repeated mode is joined across descriptor, runtime selection, guidance, retrospective prompt, configuration and accounting.",
+    "Successful confirmation clears advisory candidate context; next reads/formal capsules are separately generation-bound and not upgraded to proof authority.",
+    "Read-only working inspection remains possible after blocked edit outcome.",
+    "Exact retrospective prompt tests cover legacy and common-bindings metadata plus mode tampering."
+  ],
+  "limits": [
+    "Successful kernel send does not prove client receipt/decoding. Client unknown outcomes require inspection and never trigger automatic retry.",
+    "No live provider calls, formal proof discharge, TerminalBench score, full-supervisor START or token-savings claim in this offline evidence."
+  ],
+  "related_test_runs": [
+    "root-tests-02",
+    "outer-tests-03",
+    "client-tests-01",
+    "service-final-tests-03"
+  ],
+  "resolved_finding": "Authenticated active matching repeated confirmation blocks before context checks; only exact confirmed page after owner-observed successful send clears. Refused/missing/failed send remains blocked. Old/foreign ticket cannot consume or clear newer active proposal.",
+  "schema": "repeated-source-edit-final-integration-review@1",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "5a29cc320bec77c25f939bea0ad0d0a55a3ccc9aa17a87736805d37ae9c052ac",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "9f122f289de4e7618c51f5337b85ca0cd070c4ce259ebf98f5cb545575db662c",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "3828f1e7fad740459687ccf23f5c7c19fb7fe50a3a9b9241037724361c67d7b3",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "204d6a840ca79141e95da8a0c7fe0da471223c66a353a3c9250b1b1c1063b7f5",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "65485fd2c42ef7965c499df21900f8825c49b8cae66898e3d1082a7c729151ee",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "0727e5bd80e698241ea73e482237ddeae63bc1158758259e30f7e4e48685ac12",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "2feecb05abbe3077990e0efdc821f8e100c70f2a0ca915b012c53f1906e40d09",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "90711d0d9ea05c4d091acfb74b61362bc79105a320aab3ef283364cd8d0b687c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py": "0b6082ae6a15001d4e3e0b633c57a2a6557862fe253f4117805998bb2a56bb28"
+  },
+  "status": "clear"
+}

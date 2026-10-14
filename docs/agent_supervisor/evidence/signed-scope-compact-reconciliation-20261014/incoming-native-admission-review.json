@@ -1,0 +1,41 @@
+{
+  "additional_solver_model_training_calls": 0,
+  "files": [
+    {
+      "bytes": 43475,
+      "path": "docs/architecture/agent_supervisor/PLANNING_AND_ASSURANCE.md",
+      "sha256": "e0ba31701f5ff01e9d6b2aaea5e11f601a5cc890ef6d1d8ad5ab930354dfdafa"
+    },
+    {
+      "bytes": 21553,
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/planning_admission_materials.py",
+      "sha256": "36fa5b215415149e8f8f2f7f79cbdf70823e31cf3cdac6a124a401faf57126d9"
+    },
+    {
+      "bytes": 26920,
+      "path": "scripts/ops/legal_ir/check_source_integration.py",
+      "sha256": "b3e527618c8de17ac301cbb8bed3ac406f8a7efd6abe8e90467513376a406432"
+    },
+    {
+      "bytes": 17921,
+      "path": "test/api/test_agent_supervisor_planning_admission_materials.py",
+      "sha256": "6f3e4b4f96035b2270d0413bfe5a29e26a3a8c8cf12d657054865661554e68bf"
+    },
+    {
+      "bytes": 14136,
+      "path": "test/api/test_legal_ir_source_integration.py",
+      "sha256": "9ac2b12c5fbe77b315ada9c5278211fbef5a20b2ef9a9544c045f451f6e3ea98"
+    }
+  ],
+  "incoming_revision": "13908028638a89c181df05813601f453d6c24a9f",
+  "native_source_task_claim_allocation_coordinator_replaced": false,
+  "new_builder_not_implicitly_wired": true,
+  "new_suites_executed_by_reconciliation": false,
+  "no_existing_runtime_route_changed": true,
+  "parent_revision": "6eebad97a1b958bb0882df97c3bc4ea22ffdb861",
+  "qualified_accelerator_source_intersection": [],
+  "reusable_contract": "OwnerBackedPlanningAdmissionBuilder via explicit PlanningAnalysisFactory.ir_request_builder; independent owner resolver/verifier remain deployment prerequisites",
+  "review_method": "read-only Git source/route/import inspection; no imports/tests/solver invocation",
+  "schema": "signed-compact-incoming-native-admission-review@1",
+  "status": "compatible separate incoming lineage; preserve all exact published bytes"
+}

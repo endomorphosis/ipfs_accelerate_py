@@ -1,0 +1,11 @@
+[
+  "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+  "-m",
+  "pytest",
+  "-q",
+  "--color=no",
+  "-o",
+  "log_cli=false",
+  "--junitxml=/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/service-final-tests-03/junit.xml",
+  "test/api/test_worker_source_edit.py"
+]
