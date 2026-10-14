@@ -11103,6 +11103,50 @@ class DatabasePortalExecutionBridge:
         except Exception:
             pass
 
+    @staticmethod
+    def _native_failed_checkpoint_matches(implementation, state, records):
+        """Join an unfinished checkpoint, never accepted candidate effects.
+
+        Called only after consuming native waited-child custody. A nonempty
+        state pointer must match both that exact result and its durable rescue
+        event; neither arbitrary state nor a model-emitted checkpoint suffices.
+        The receipt still settles only a failed attempt, without replay rights.
+        """
+        commit = implementation.get("implementation_commit")
+        if commit in (None, ""):
+            return state.get("last_implementation_commit") in (None, "")
+        if (type(commit) is not str or re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", commit) is None
+                or state.get("last_implementation_commit") != commit
+                or implementation.get("validation_result", {}).get("attempted") is not False
+                or implementation.get("validation_result", {}).get("passed") is not False
+                or implementation.get("merge_result", {}).get("merged") is not False
+                or implementation.get("merge_result", {}).get("queued", False) is not False
+                or implementation.get("board_completion", {}).get("complete") is not False):
+            return False
+        retained = implementation.get("failed_preservation_result")
+        if (type(retained) is not dict or retained.get("preserved") is not True
+                or retained.get("preserved_commit") != commit
+                or not retained.get("rescue_branch")
+                or any(retained.get(key) != implementation.get(key)
+                       for key in ("task_id", "attempt", "branch", "worktree_path"))):
+            return False
+        failure = retained.get("provider_failure")
+        if (type(failure) is not dict or failure.get("reason") != "implementation_provider_failed"
+                or failure.get("baseline_ref") != implementation.get("baseline_ref")
+                or type(failure.get("returncode")) is not int
+                or failure.get("returncode") != implementation.get("returncode")
+                or any(failure.get(key) is not True for key in (
+                    "provider_dispatched", "provider_process_returned"))
+                or any(failure.get(key) is not False for key in (
+                    "validation_attempted", "completion_authority", "retry_authority", "proof_authority"))):
+            return False
+        events = [record for record in records if record.get("type") == "provider_failed_worktree_preserved"]
+        # Retention is recorded before releasing the physical workspace. Only
+        # these cleanup observations can change between it and finished state.
+        bound = {key: value for key, value in retained.items() if key not in {"cleanup_result", "retained"}}
+        return (len(events) == 1
+                and _canonical_json({key: events[0].get(key) for key in bound}) == _canonical_json(bound))
+
     def _native_provider_exit_failure(self, *, attempt, paths, binding, daemon,
                                       authority, implementation, summary):
         """Join actual child custody to this sealed, durably finished projection."""
@@ -11161,7 +11205,7 @@ class DatabasePortalExecutionBridge:
                     or state.get("last_implementation_task_cid") != authority["canonical_task_cid"]
                     or type(state.get("last_implementation_returncode")) is not int
                     or state.get("last_implementation_returncode") != observed["returncode"]
-                    or state.get("last_implementation_commit") not in (None, "")):
+                    or not self._native_failed_checkpoint_matches(implementation, state, records)):
                 return refused("state_mismatch")
             unavailable_reason = "rearm_check_unavailable"
             if not self.protected_path_failure_rearm_ready(attempt):
