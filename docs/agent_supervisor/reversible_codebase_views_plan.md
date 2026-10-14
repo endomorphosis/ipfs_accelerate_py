@@ -107,6 +107,48 @@ savings nor correct execution of transformed source.
 
 ## What moving the whole codebase to and from a compact state means
 
+### Current worker routes and the whole-codebase hypothesis
+
+The October 14 audit confirms that missing unchanged-tree restoration is not
+the outstanding implementation gap. The bounded
+[`repository_source_view` package](../../ipfs_accelerate_py/agent_supervisor/runtime/repository_source_view.py)
+already captures original and compact blobs and materializes either tree into
+a new directory, with tests that remove the source before original restoration.
+Its limits are 4,096 entries, 64 MiB total and 1 MiB per file. Git metadata and
+ownership/timestamps/ACLs are outside that snapshot contract. Its compact Python
+path uses an AST renderer. The CAS inventory plus KEEP/DELETE codec described
+elsewhere in this plan is a separate implementation; its exact sidecar and
+fallback guarantees must not be attributed to the AST renderer.
+
+There are also two worker routes. The older `WorkerSourceViews` reader uses
+the bounded semantic-manifest population and KEEP/DELETE profiles, with optional
+mapped-span edits. The newer
+[`RepositorySourceSession`](../../ipfs_accelerate_py/agent_supervisor/runtime/repository_source_session.py)
+uses the bounded repository snapshot and native index, defaulting to 512 files
+and 16 MiB. Its MCP tools provide path/symbol discovery, original or compact
+reads, supported definition selection, guarded canonical edits and refresh.
+Whole-repository coverage is limited to the admitted snapshot; explicit limits
+and unsupported files remain observable.
+
+The new MCP route already combines with `world_task_packet`, as exercised by
+the [native historical replay cycle](evidence/world-replay-20261014/qualification.json).
+The older `source_view_profile` route remains incompatible with that selection.
+Thus integration work should extend and qualify the existing MCP path, rather
+than assume all worker reads/edits or all world/source composition are absent.
+Both routes leave ordinary shell/file-tool reads on canonical source.
+
+A meaningful test of the user's whole-codebase hypothesis must measure that
+read surface: how many relevant reads use compact content, which fall back or
+expand, and whether the same bodies were already sent. A read-only compact
+navigation tree could broaden ordinary-tool adoption, but its paths, source
+maps and editing behavior need separate qualification. A restorable archive
+does not redirect a worker's tools. The
+[matched experiment sequence](terminal_token_metadata_plan.md#next-experiment-and-acceptance-gates)
+isolates indexed retrieval, compact representation and world-context selection
+before combining them.
+
+### Representation and editing boundaries
+
 The goal is less total model work at equal official task success. Keep three
 distinct representations of the same admitted source revision:
 

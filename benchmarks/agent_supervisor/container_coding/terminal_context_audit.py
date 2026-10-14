@@ -399,9 +399,9 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
     if not isinstance(item, dict) or item.get("schema") != "router-implementation-invocation@1":
         raise ValueError("invalid router receipt")
     if "world_task_packet" in item:
-        # The owner-bound in-process route has no frozen Terminal Bench
-        # transport/replay contract yet. Never drop its marker and audit it as
-        # the legacy prompt, even if a caller supplies matching legacy hashes.
+        # World input has a dedicated frozen artifact route. Never drop its
+        # marker and audit it as the legacy rendered-capsule prompt, even if
+        # a caller supplies matching legacy hashes.
         raise ValueError("world task packet requires qualified Terminal Bench replay")
     if item.get("phase") != "coding" or item.get("purpose") != "coding":
         raise ValueError("non-coding router receipt")
@@ -1180,7 +1180,7 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
     return result, rendered, dispatch
 
 
-def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path) -> dict:
+def _audit_legacy_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path) -> dict:
     """Read historical evidence and compare exact native and model input bytes."""
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
 
@@ -1273,6 +1273,57 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
     return result
 
 
+def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path) -> dict:
+    """Audit each explicit input route while retaining exact receipt population."""
+    if len(receipts) > MAX_RECEIPTS:
+        raise ValueError("receipt inventory exceeds audit bound")
+    world = [row for row in receipts if isinstance(row, dict) and "world_task_packet" in row]
+    if not world:
+        return _audit_legacy_terminal_context(state=state, receipts=receipts, workspace_root=workspace_root)
+    from .terminal_world_packet_audit import audit_world_terminal_context
+
+    identities = [row.get("invocation_id") for row in receipts if isinstance(row, dict)]
+    strings = [value for value in identities if type(value) is str]
+    if len(strings) != len(set(strings)):
+        result = _base(status="unverified", reason="duplicate_router_invocation")
+        result.update(coding_receipts_seen=len(receipts), usable_coding_receipts=0,
+            all_observed_coding_inputs_verified=False,
+            read_errors=[{"kind": "receipt", "error_type": "DuplicateInvocation"}])
+        return result
+    legacy = [row for row in receipts if not isinstance(row, dict) or "world_task_packet" not in row]
+    world_result = audit_world_terminal_context(state=state, receipts=world, workspace_root=workspace_root)
+    if not legacy:
+        return world_result
+    legacy_result = _audit_legacy_terminal_context(state=state, receipts=legacy, workspace_root=workspace_root)
+    result = _base()
+    for key in ("capsules", "invocations", "matches", "read_errors"):
+        result[key] = legacy_result[key] + world_result[key]
+    result["world_packet_replays"] = world_result["world_packet_replays"]
+    result["coding_receipts_seen"] = len(receipts)
+    result["usable_coding_receipts"] = sum(row.get("usable_coding_receipts", 0)
+        for row in (legacy_result, world_result))
+    for key in ("context_result_sha256", "prepared_state_sha256"):
+        values = [row[key] for row in (legacy_result, world_result) if key in row]
+        if len(set(values)) > 1:
+            result["read_errors"].append({"kind": "state", "error_type": "ChangedBetweenRoutes"})
+        elif values:
+            result[key] = values[0]
+    result["any_native_input_verified"] = any(row.get("native_input_verified") is True
+        for row in result["invocations"])
+    result["any_model_input_verified"] = any(row.get("model_input_verified") is True
+        for row in result["invocations"])
+    result["all_observed_coding_inputs_verified"] = (
+        result["usable_coding_receipts"] == len(receipts)
+        and legacy_result["all_observed_coding_inputs_verified"] is True
+        and world_result["all_observed_coding_inputs_verified"] is True
+        and not any(row["error_type"] == "ChangedBetweenRoutes" for row in result["read_errors"]))
+    result["status"] = ("verified_all_observed_model_inputs" if result["all_observed_coding_inputs_verified"]
+        else "verified_some_observed_model_inputs" if result["any_model_input_verified"]
+        else "verified_native_input_only" if result["any_native_input_verified"] else "unverified")
+    result["reason"] = "per_invocation_context_and_input_comparison"
+    return result
+
+
 def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
         workspace_root: Path, timeout_seconds: float = MAX_AUDIT_SECONDS) -> dict:
     """Run in a bounded child, with the caller's remaining cleanup allowance.
@@ -1293,7 +1344,12 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
             if not isinstance(row, dict) or row.get("phase") != "coding":
                 continue
             if "world_task_packet" in row:
-                return _base(reason="world_task_packet_replay_unqualified")
+                from .terminal_world_packet_audit import project_world_receipt
+                try:
+                    rows.append(project_world_receipt(row, workspace_root=workspace_root))
+                except (ValueError, KeyError, TypeError):
+                    return _base(reason="world_task_packet_replay_unqualified")
+                continue
             fields = (*RECEIPT_FIELDS, *TRANSLATION_FIELDS)
             # The child must verify ordinary completion against the recorded
             # provider. Never infer a missing provider from the selected mode.

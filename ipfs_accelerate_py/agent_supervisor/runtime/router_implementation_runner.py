@@ -403,7 +403,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "numerical_obligation_descriptor", "source_lookup_descriptor", "source_view_descriptor",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "terminal_semantic_scope_currentness",
-    "world_task_packet", "world_task_packet_currentness",
+    "world_task_packet", "world_task_packet_currentness", "world_packet_audit_admission",
     "semantic_metadata_view", "semantic_working_set",
     "semantic_metadata_census",
     "prompt_tokenizer", "prompt_selection",
@@ -429,7 +429,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "source_formalization_context.py",
     "numerical_obligation_client.py", "source_lookup_worker_client.py", "worker_source_client.py",
     "local_prompt_tokenizer.py",
-    "repository_world_packet.py",
+    "repository_world_packet.py", "repository_world_artifact_store.py",
 })
 
 
@@ -646,7 +646,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         prompt_token_counter: PromptTokenCounter | None = None,
         prompt_tokenizer_artifact: Path | None = None, prompt_tokenizer_sha256: str = "",
         max_input_tokens: int | None = None,
-        world_task_packet: PreparedRepositoryWorldPacket | None = None) -> tuple[str, dict]:
+        world_task_packet: PreparedRepositoryWorldPacket | None = None,
+        world_packet_audit_directory: Path | None = None) -> tuple[str, dict]:
     """Dispatch once; an optional owner-prepared packet replaces task context."""
     failure_phase = "runner_initialization"
     _refuse_candidate_preparation(prompt)
@@ -656,6 +657,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     from ipfs_accelerate_py.router_deps import RouterDeps
 
     failure_phase = "argument_validation"
+    if world_packet_audit_directory is not None and world_task_packet is None:
+        raise ValueError("world packet audit capture requires a prepared world packet")
     if world_task_packet is not None:
         from .repository_world_packet import PreparedRepositoryWorldPacket
         if type(world_task_packet) is not PreparedRepositoryWorldPacket:
@@ -832,10 +835,23 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     router_prompt = prompt
     required_suffix = ""
     world_packet_receipt = None
+    world_packet_artifact = None
+    world_packet_artifact_sha256 = None
+    world_packet_store_identity = None
     if world_task_packet is not None:
         failure_phase = "world_task_packet"
         world_packet_receipt = world_task_packet.validate_current(workspace=root, task_text=prompt)
         router_prompt = world_task_packet.prompt
+        if world_packet_audit_directory is not None:
+            failure_phase = "world_packet_audit_admission"
+            from .repository_world_packet_replay import freeze_repository_world_packet
+            from .repository_world_artifact_store import prepare_repository_world_artifact_directory
+            # Capture before provider discovery/initialization can mutate source.
+            # Historical bytes never substitute for the late live freshness gate.
+            world_packet_artifact = freeze_repository_world_packet(world_task_packet)
+            world_packet_artifact_sha256 = hashlib.sha256(world_packet_artifact).hexdigest()
+            world_packet_store_identity = prepare_repository_world_artifact_directory(
+                world_packet_audit_directory, workspace=root)
     if semantic_repository is not None:
         semantic_repository = Path(semantic_repository).resolve(strict=True)
         if semantic_repository == root:
@@ -1603,6 +1619,21 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                     receipt["native_grok_progress_error"] = "invalid_observation"
             if receipt["native_provider_outcome"]["stop_reason"] != "unknown":
                 receipt["usage"]["stop_reason"] = receipt["native_provider_outcome"]["stop_reason"]
+        if world_packet_artifact is not None:
+            try:
+                from .repository_world_artifact_store import store_repository_world_invocation_artifact
+                receipt["world_packet_replay_artifact"] = store_repository_world_invocation_artifact(
+                    directory=world_packet_audit_directory, expected_identity=world_packet_store_identity,
+                    packet_artifact=world_packet_artifact,
+                    expected_packet_sha256=world_packet_artifact_sha256, invocation_receipt=receipt)
+            except Exception:
+                # Optional retained observation cannot mask a provider success,
+                # failure, or rate limit. Never print artifact bodies or paths.
+                receipt["world_packet_replay_capture"] = {
+                    "schema": "repository-world-invocation-capture@1", "status": "unavailable",
+                    "reason": "artifact_capture_failed", "raw_content_exported": False,
+                    "completion_authority": False,
+                }
         receipt["seconds"] = time.monotonic() - started
         try:
             from .context_delivery_accounting import observe_invocation
