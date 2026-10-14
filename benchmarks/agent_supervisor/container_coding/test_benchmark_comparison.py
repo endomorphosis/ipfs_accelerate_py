@@ -321,6 +321,37 @@ def test_stream_progress_survives_comparison_without_becoming_usage_or_completio
     assert _invocations({"provider_invocations": [row]})[0]["native_grok_progress"] is None
 
 
+def test_bounded_stream_usage_survives_comparison_without_replacing_final_accounting():
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    from ipfs_accelerate_py.cli_runtime.grok_stream_usage import MAX_USAGE_EVENTS
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _invocations
+    parser = GrokStreamParser()
+    for index in range(MAX_USAGE_EVENTS + 2):
+        parser.feed((json.dumps({"type": "usage", "messageId": "private-message",
+            "signature": "private-signature", "stopReason": "tool_use",
+            "usage": {"input_tokens": 10000 + index, "cache_read_input_tokens": 9000,
+                      "output_tokens": 10, "private": "private-content"}}) + "\n").encode(),
+            elapsed_seconds=index / 10)
+    progress = parser.snapshot()
+    invocation = _grok_invocation("streamed", True)
+    invocation["native_grok_progress"] = progress
+    observed, = _invocations({"provider_invocations": [invocation]})
+    events = observed["native_grok_progress"]["usage_observations"]
+    assert events["retained_events"] == MAX_USAGE_EVENTS and events["omitted_events"] == 2
+    assert events["rows"][0]["usage"]["input_tokens"] == 10000
+    assert events["rows"][-1]["event_ordinal"] == MAX_USAGE_EVENTS
+    assert events["summation_permitted"] is False
+    assert observed["tokens"]["total_tokens"] == 42  # Only the separate final-envelope contract.
+    assert "private" not in json.dumps(observed)
+    # Existing receipts lack event history; accepting them must not invent it.
+    legacy = dict(progress, schema="native-grok-stream-progress@1")
+    legacy.pop("usage_observations")
+    invocation["native_grok_progress"] = legacy
+    historical, = _invocations({"provider_invocations": [invocation]})
+    assert historical["native_grok_progress"] == legacy
+    assert "usage_observations" not in historical["native_grok_progress"]
+
+
 def test_symbolic_coding_does_not_invent_provider_calls_or_learned_proof(tmp_path):
     receipt = _receipt(tmp_path, "symbolic.json", SUPERVISOR, [{
         "trial": "symbolic", "reward": {"reward": 1}, "supervisor": {

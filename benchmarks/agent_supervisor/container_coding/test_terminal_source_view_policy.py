@@ -108,8 +108,8 @@ def test_model_router_command_only_forwards_explicit_enabled_profile(profile):
 
 @pytest.mark.parametrize("doctor", [{"route": "doctor_candidate"}, {"route": "doctor_contract_candidate"},
     {"route": "unknown"}])
-def test_source_views_cannot_silently_change_to_provider_free_candidate(doctor):
-    with pytest.raises(ValueError, match="semantic model-router"):
+def test_source_views_cannot_admit_missing_candidate_contract_or_unknown_route(doctor):
+    with pytest.raises(ValueError, match="candidate required|semantic model-router"):
         implementation_argv(router=Path("/router"), model="authored", reasoning="high", timeout=30,
             semantic_repository=Path("/repository"), doctor=doctor, source_view_profile=MODE)
 

@@ -52,6 +52,11 @@ def test_final_response_segment_and_only_terminal_usage_reach_router(provider, t
     assert progress["response_usable"] is True
     assert progress["process_exit_observed"] is True
     assert progress["stdout_eof"] is progress["stderr_eof"] is True
+    usage_events = progress["usage_observations"]
+    assert usage_events["observed_events"] == 2
+    assert usage_events["rows"][0]["usage"]["input_tokens"] == 10000
+    assert usage_events["rows"][1]["usage"]["input_tokens"] is None
+    assert usage_events["summation_permitted"] is False
     assert snapshots
     encoded = json.dumps([progress, *snapshots])
     for secret in ("private", "Final answer", "path", "args", "toolCallId"):
@@ -124,3 +129,19 @@ def test_legacy_json_transport_unchanged(provider, monkeypatch):
 def test_unvalidated_nested_progress_is_not_retained():
     set_last_cli_observation("grok_cli", {"native_grok_progress": {"text": "private payload"}})
     assert "native_grok_progress" not in get_last_cli_observation("grok_cli")
+
+
+def test_partial_usage_stream_survives_timeout_without_inventing_final_accounting(provider, tmp_path):
+    frames = [{"type": "usage", "messageId": "private id", "signature": "private signature",
+               "stopReason": "tool_use", "usage": {"input_tokens": 12, "cache_read_input_tokens": 4000}}]
+    argv = command(tmp_path, frames, suffix="time.sleep(30)\n")
+    with pytest.raises(subprocess.TimeoutExpired):
+        provider.generate("private prompt", timeout=0.3, grok_cli_cmd=argv, grok_stream_progress=True)
+    observation = get_last_cli_observation("grok_cli")
+    assert "native_grok_input_tokens" not in observation
+    assert "native_grok_usage_observed" not in observation
+    progress = observation["native_grok_progress"]
+    assert progress["timed_out"] is True
+    assert progress["response_usable"] is False
+    assert progress["usage_observations"]["rows"][0]["usage"]["input_tokens"] == 12
+    assert "private" not in json.dumps(progress)

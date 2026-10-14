@@ -17,7 +17,10 @@ import subprocess
 import time
 from typing import Callable, Mapping, Sequence
 
-SCHEMA = "native-grok-stream-progress@1"
+from .grok_stream_usage import GrokUsageEventObserver, validate_grok_usage_events
+
+LEGACY_SCHEMA = "native-grok-stream-progress@1"
+SCHEMA = "native-grok-stream-progress@2"
 MAX_FRAME_BYTES = 256 * 1024
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 CALLBACK_INTERVAL_SECONDS = 5.0
@@ -52,9 +55,17 @@ def _number(value):
 
 def validate_grok_stream_progress(value: object) -> dict:
     """Copy one closed diagnostic snapshot; reject extra fields and authority."""
-    if type(value) is not dict or set(value) != _KEYS:
+    if type(value) is not dict:
+        raise ValueError("invalid Grok progress fields")
+    schema = value.get("schema")
+    if type(schema) is not str or schema not in {LEGACY_SCHEMA, SCHEMA}:
+        raise ValueError("invalid Grok progress schema")
+    keys = _KEYS if schema == LEGACY_SCHEMA else _KEYS | {"usage_observations"}
+    if set(value) != keys:
         raise ValueError("invalid Grok progress fields")
     for key, expected in _CONSTANTS.items():
+        if key == "schema":
+            expected = schema
         if type(value[key]) is not type(expected) or value[key] != expected:
             raise ValueError("invalid Grok progress constants")
     for key in _COUNTERS:
@@ -92,8 +103,27 @@ def validate_grok_stream_progress(value: object) -> dict:
     if value["stream_complete"] != complete or value["response_usable"] != (complete and code == 0 and terminal == "end"
             and value["final_reason_code"] == "end_turn" and value["retained_text_bytes"] > 0):
         raise ValueError("inconsistent Grok progress completion")
-    # JSON-free copy prevents callback mutations from changing parser state.
-    return {key: dict(item) if type(item) is dict else item for key, item in value.items()}
+    # Historical receipts have unknown event values; never synthesize zero rows.
+    result = {key: dict(item) if type(item) is dict else item for key, item in value.items()}
+    if schema == SCHEMA:
+        result["usage_observations"] = validate_grok_usage_events(value["usage_observations"],
+            observed_events=value["event_counts"]["usage"], frames=value["frames"],
+            duration_seconds=value["duration_seconds"], final_event_seconds=value["final_event_seconds"],
+            events_after_final=value["events_after_final"])
+    return result
+
+
+def grok_stream_progress_summary(value: object) -> dict:
+    """Project count-only callback telemetry, retaining event rows only at exit.
+
+    Repeating the entire bounded history every five seconds can exceed the
+    outer runtime's log retention bound. The historical @1 contract precisely
+    describes this projection; it does not invent missing per-event values.
+    """
+    result = validate_grok_stream_progress(value)
+    result.pop("usage_observations", None)
+    result["schema"] = LEGACY_SCHEMA
+    return validate_grok_stream_progress(result)
 
 
 def _unique(pairs):
@@ -131,6 +161,7 @@ class GrokStreamParser:
         self._text = bytearray()
         self._segment_closed = False
         self._final_payload = None
+        self._usage_observer = GrokUsageEventObserver()
         self._state = {**_CONSTANTS, **dict.fromkeys(_COUNTERS, 0), **dict.fromkeys(_TIMES),
                        **dict.fromkeys(_BOOLS, False), "returncode": None, "timeout_phase": "none",
                        "final_event_type": None, "final_reason_code": "unknown", "event_counts": dict.fromkeys(_EVENTS, 0),
@@ -263,6 +294,8 @@ class GrokStreamParser:
             status = event.get("status")
             self._inc(status if type(status) is str and status in _STATUSES else "unknown", bucket="tool_status_counts")
         elif bucket == "usage":
+            self._usage_observer.observe(event, frame_ordinal=self._state["frames"],
+                elapsed_seconds=elapsed_seconds, after_final=self._state["final_envelope_observed"])
             self._segment_closed = True
             if event.get("stopReason") == "tool_use":
                 self._clear_text()
@@ -302,6 +335,7 @@ class GrokStreamParser:
         if elapsed_seconds is not None:
             self._at(elapsed_seconds)
         state = self._state
+        state["usage_observations"] = self._usage_observer.snapshot()
         state["retained_text_bytes"] = len(self._text)
         state["stream_complete"] = bool(state["final_envelope_observed"] and not state["stream_tainted"]
             and not state["text_truncated"] and state["stdout_eof"] and state["stderr_eof"]
@@ -353,7 +387,7 @@ def capture_grok_stream(command: Sequence[str], *, env: Mapping[str, str] | None
         if progress_callback is not None and (final or now - last_callback >= CALLBACK_INTERVAL_SECONDS):
             last_callback = now
             try:
-                progress_callback(parser.snapshot(elapsed_seconds=now))
+                progress_callback(grok_stream_progress_summary(parser.snapshot(elapsed_seconds=now)))
             except Exception:
                 parser.callback_error()
 

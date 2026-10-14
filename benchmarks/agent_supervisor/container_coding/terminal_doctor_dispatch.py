@@ -257,20 +257,26 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
     from .terminal_source_edit_policy import validate_source_edit_mode
     validate_source_edit_mode(source_edit_mode, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile)
+    provider_free_candidate = doctor is not None and doctor.get("route") in {
+        "doctor_candidate", "doctor_contract_candidate"}
+    # These controls describe the model fallback, not the independently checked
+    # Doctor candidate. Validate their combinations, but do not let them veto a
+    # provider-free route. The driver records that they were not applied.
     if source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE and (semantic_repository is None
-            or doctor is not None and doctor.get("route") != "model_router"):
+            or doctor is not None and doctor.get("route") != "model_router" and not provider_free_candidate):
         raise ValueError("source views require a semantic model-router coding route")
     if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (semantic_repository is None
             or semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA
-            or doctor is not None and doctor.get("route") != "model_router"):
+            or doctor is not None and doctor.get("route") != "model_router" and not provider_free_candidate):
         raise ValueError("metadata view requires the original semantic model-router coding route")
     if coding_reply_mode != DEFAULT_CODING_REPLY_MODE and (semantic_repository is None
-            or doctor is not None and doctor.get("route") != "model_router"):
+            or doctor is not None and doctor.get("route") != "model_router" and not provider_free_candidate):
         raise ValueError("ordinary completion requires a semantic model-router coding route")
     if (semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA
-            and (semantic_repository is None or doctor is not None and doctor.get("route") != "model_router")):
+            and (semantic_repository is None or doctor is not None and doctor.get("route") != "model_router"
+                 and not provider_free_candidate)):
         raise ValueError("controller dictionary transport requires a semantic model-router coding route")
     if doctor is not None and doctor.get("route") == "doctor_contract_candidate":
         if doctor.get("status") != "candidate_ready" or doctor.get("provider_calls") != 0:

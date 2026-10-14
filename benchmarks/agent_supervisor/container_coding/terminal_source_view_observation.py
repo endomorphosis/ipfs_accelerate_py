@@ -35,6 +35,61 @@ def _base(status="unavailable", reason="evidence_unavailable"):
         total_token_savings_measured=False, raw_queries_exported=False, raw_sources_exported=False)
 
 
+def provider_free_coding_application_observed(report):
+    """Join requested controls to an observed Doctor materialization, not a route label.
+
+    This only distinguishes an inapplicable model-input observation. It grants
+    no completion authority and does not turn missing receipts into zero usage.
+    """
+    if type(report) is not dict or report.get("arm") != "full":
+        return False
+    application = report.get("coding_control_application")
+    route = report.get("implementation_route")
+    expected_schema = {"doctor_candidate": "native-doctor-candidate-materialization@1",
+        "doctor_contract_candidate": "native-doctor-contract-candidate-materialization@1"}.get(route)
+    if (expected_schema is None or type(application) is not dict or set(application) != {
+            "schema", "status", "implementation_route", "requested", "model_coding_dispatched",
+            "token_savings_established", "completion_authority"}
+            or application["schema"] != "terminal-coding-control-application@1"
+            or application["status"] != "not_applicable_provider_free"
+            or application["implementation_route"] != route
+            or any(application[key] is not False for key in (
+                "model_coding_dispatched", "token_savings_established", "completion_authority"))):
+        return False
+    metadata = report.get("semantic_metadata_view", {})
+    if type(metadata) is not dict or type(application["requested"]) is not dict or application["requested"] != {
+            "semantic_transport_schema": report.get("semantic_transport_schema", "supervisor-semantic-router-input@1"),
+            "semantic_metadata_view": metadata.get("requested_mode", "legacy"),
+            "coding_reply_mode": report.get("coding_reply_mode", "legacy"),
+            "source_view_profile": report.get("source_view_profile", "disabled"),
+            "source_edit_mode": report.get("source_edit_mode", "disabled"),
+            "source_view_policy": report.get("source_view_policy")}:
+        return False
+    rows = report.get("provider_invocations")
+    doctor = report.get("doctor_dispatch")
+    materializations = report.get("doctor_invocations")
+    if (type(rows) is not list or len(rows) > 128
+            or any(type(row) is not dict or row.get("phase") != "planning" for row in rows)
+            or (report.get("unreceipted_provider_attempt") is not None
+                and report.get("unreceipted_provider_attempt") is not False)
+            or type(report.get("worker_cleanup_returncode")) is not int
+            or report["worker_cleanup_returncode"] != 0
+            or type(doctor) is not dict or doctor.get("route") != route
+            or doctor.get("status") != "candidate_ready"
+            or type(doctor.get("provider_calls")) is not int or doctor["provider_calls"] != 0
+            or type(doctor.get("task_cid")) is not str or not doctor["task_cid"]
+            or type(materializations) is not list or len(materializations) != 1):
+        return False
+    receipt = materializations[0]
+    return (type(receipt) is dict and receipt.get("schema") == expected_schema
+        and receipt.get("task_cid") == doctor["task_cid"]
+        and receipt.get("status") == "candidate_materialized"
+        and type(receipt.get("provider_calls")) is int and receipt["provider_calls"] == 0
+        and receipt.get("publication_authority") is False and receipt.get("completion_authority") is False
+        and (route != "doctor_candidate" or type(doctor.get("candidate_commit")) is str
+             and receipt.get("candidate_commit") == doctor["candidate_commit"]))
+
+
 def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mode="disabled"):
     audit = _parse(raw)
     _need(set(audit) == _AUDIT_FIELDS and audit["schema"] in {
@@ -189,6 +244,8 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
             _need(not policy_fields.intersection(report))
         selected = [row for row in rows if "source_view_retrieval" in row]
         if not selected:
+            if provider_free_coding_application_observed(report):
+                return _base("not_applicable", "provider_free_doctor_materialization_observed")
             if profile != "disabled":
                 return _base(reason="selected_session_receipt_unavailable")
             return _base("not_selected", "no_source_view_router_observation")

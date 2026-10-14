@@ -492,6 +492,12 @@ def _final_context_audit(report: dict, *, state: Path, deadline: float) -> None:
     if report.get("arm") != "full":
         return
     try:
+        from .terminal_source_view_observation import provider_free_coding_application_observed
+        if provider_free_coding_application_observed(report):
+            from .terminal_context_audit import _base
+            report["context_input_audit"] = _base(
+                status="not_applicable", reason="provider_free_doctor_materialization_observed")
+            return
         from benchmarks.agent_supervisor.container_coding.terminal_context_audit import collect_terminal_context_audit
         report["context_input_audit"] = collect_terminal_context_audit(
             state=state, receipts=report.get("provider_invocations", []), workspace_root=WORKTREES,
@@ -1057,8 +1063,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         # Candidate routes carry no provider timeout. Check the same work
         # deadline without charging them the model route's unused reserve.
         provider_free_candidate = report["implementation_route"] in {"doctor_candidate", "doctor_contract_candidate"}
-        if source_view_profile != "disabled" and report["implementation_route"] != "model_router":
-            raise ValueError("source view profile requires the model router implementation")
         implementation_budget = (budget["implementation_seconds"] if reserved_phases else
                                  remaining() if provider_free_candidate else
                                  min(coding_timeout_seconds(resource_profile), remaining(25)))
@@ -1077,6 +1081,23 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             **({"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {}),
             **({"source_view_policy": source_view_policy} if source_view_policy is not None else {}),
             **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}))
+        if provider_free_candidate:
+            # Keep the requested treatment in the report and signed controls;
+            # no model context, view or edit broker was dispatched on this route.
+            report["coding_control_application"] = {
+                "schema": "terminal-coding-control-application@1",
+                "status": "not_applicable_provider_free",
+                "implementation_route": report["implementation_route"],
+                "requested": {"semantic_transport_schema": semantic_transport_schema,
+                    "semantic_metadata_view": semantic_metadata_view,
+                    "coding_reply_mode": coding_reply_mode,
+                    "source_view_profile": source_view_profile,
+                    "source_edit_mode": source_edit_mode,
+                    "source_view_policy": source_view_policy},
+                "model_coding_dispatched": False,
+                "token_savings_established": False,
+                "completion_authority": False,
+            }
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
             implementation += ["--provider", provider_selection["provider"]]
         if reserved_phases and not provider_free_candidate:

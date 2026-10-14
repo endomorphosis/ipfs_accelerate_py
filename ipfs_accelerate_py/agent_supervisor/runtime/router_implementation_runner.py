@@ -223,8 +223,8 @@ def _grok_progress_emitter(invocation_id: str):
     """Keep advisory progress outside native JSON receipt and custody parsers."""
     def emit(value):
         try:
-            from ipfs_accelerate_py.cli_runtime.grok_stream_capture import validate_grok_stream_progress
-            progress = validate_grok_stream_progress(value)
+            from ipfs_accelerate_py.cli_runtime.grok_stream_capture import grok_stream_progress_summary
+            progress = grok_stream_progress_summary(value)
             receipt = {
                 "schema": "router-implementation-progress@1", "invocation_id": invocation_id,
                 "provider": "grok_cli", "purpose": "coding", "native_grok_progress": progress,
