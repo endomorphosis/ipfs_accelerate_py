@@ -43,6 +43,8 @@ from .terminal_semantic_metadata_policy import (
 from .terminal_capsule_selection_policy import (
     DEFAULT_CAPSULE_SELECTION, validate_capsule_selection,
     capsule_selection_observation, require_capsule_selection_archive,
+    DEFAULT_CAPSULE_BUDGET, validate_capsule_budget,
+    capsule_budget_observation, require_capsule_budget_archive,
 )
 from .terminal_planning_policy import (
     DEFAULT_PLANNING_MODE, validate_planning_mode,
@@ -324,6 +326,7 @@ class FullSupervisorAgent(BaseAgent):
                  coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
+                 capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                  source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
                  source_view_policy: dict | None = None,
                  source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
@@ -338,6 +341,12 @@ class FullSupervisorAgent(BaseAgent):
             intent_requirement_contract=intent_requirement_contract, task_profile=task_profile)
         self._frozen_planning_mode = self.planning_mode
         self.capsule_selection = validate_capsule_selection(capsule_selection, arm=arm)
+        self.capsule_budget = validate_capsule_budget(capsule_budget, arm=arm)
+        self._frozen_capsule_budget = self.capsule_budget
+        if self.capsule_budget != DEFAULT_CAPSULE_BUDGET:
+            from .terminal_task_profile import MULTITASK_SCHEMA
+            if isinstance(task_profile, dict) and task_profile.get("schema") == MULTITASK_SCHEMA:
+                raise ValueError("bounded capsules support one independent signed task")
         self.source_view_profile = validate_source_view_profile(source_view_profile, arm=arm)
         self.source_edit_mode = validate_source_edit_mode(source_edit_mode, arm=arm,
             source_view_profile=self.source_view_profile)
@@ -412,6 +421,18 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("prepared planning mode changed")
         return mode
 
+    def _checked_capsule_budget(self):
+        value = validate_capsule_budget(getattr(self, "capsule_budget", DEFAULT_CAPSULE_BUDGET),
+            arm=self.arm)
+        if value != getattr(self, "_frozen_capsule_budget", DEFAULT_CAPSULE_BUDGET):
+            raise ValueError("prepared capsule budget changed")
+        if value != DEFAULT_CAPSULE_BUDGET:
+            from .terminal_task_profile import MULTITASK_SCHEMA
+            task_profile = getattr(self, "task_profile", None)
+            if isinstance(task_profile, dict) and task_profile.get("schema") == MULTITASK_SCHEMA:
+                raise ValueError("bounded capsules support one independent signed task")
+        return value
+
     def _checked_source_edit_mode(self, profile):
         mode = validate_source_edit_mode(getattr(self, "source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
             arm=self.arm, source_view_profile=profile)
@@ -458,6 +479,8 @@ class FullSupervisorAgent(BaseAgent):
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
         require_capsule_selection_archive(manifest, capsule_selection)
+        capsule_budget = self._checked_capsule_budget()
+        require_capsule_budget_archive(manifest, capsule_budget)
         source_view = validate_source_view_profile(
             getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=self.arm)
         self._checked_source_view_policy(source_view)
@@ -527,6 +550,8 @@ class FullSupervisorAgent(BaseAgent):
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
         require_capsule_selection_archive(manifest, capsule_selection)
+        capsule_budget = self._checked_capsule_budget()
+        require_capsule_budget_archive(manifest, capsule_budget)
         source_view = validate_source_view_profile(
             getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=self.arm)
         source_policy = self._checked_source_view_policy(source_view)
@@ -573,6 +598,8 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--semantic-metadata-view", metadata_view]
         if capsule_selection != DEFAULT_CAPSULE_SELECTION:
             argv += ["--capsule-selection", capsule_selection]
+        if capsule_budget != DEFAULT_CAPSULE_BUDGET:
+            argv += ["--capsule-budget", capsule_budget]
         if source_view != DEFAULT_SOURCE_VIEW_PROFILE:
             argv += ["--source-view-profile", source_view]
         argv += source_view_policy_argv(source_policy, profile=source_view)
@@ -613,6 +640,7 @@ class FullSupervisorAgent(BaseAgent):
                             **coding_reply_selection(reply_mode),
                             **semantic_metadata_observation(metadata_view),
                             **capsule_selection_observation(capsule_selection),
+                            **capsule_budget_observation(capsule_budget),
                             **source_view_observation(source_view, source_policy),
                             **source_edit_observation(source_edit),
                             **numerical_observation(numerical_profile, self.arm),
@@ -652,6 +680,13 @@ class FullSupervisorAgent(BaseAgent):
             try:
                 await asyncio.wait_for(environment.download_file(report_path, self.logs_dir / "supervisor-result.json"), timeout=5)
                 report = json.loads((self.logs_dir / "supervisor-result.json").read_text())
+                if capsule_budget != DEFAULT_CAPSULE_BUDGET:
+                    expected_budget = capsule_budget_observation(capsule_budget)
+                    context.metadata["capsule_budget_runtime_declared_matches"] = all(
+                        type(report.get(key)) is type(value) and report.get(key) == value
+                        for key, value in expected_budget.items())
+                    # A treatment mismatch does not erase provider usage. The
+                    # outer collector separately refuses a complete matched receipt.
                 usage = measured_usage(report)
                 populate_harbor_usage(context, usage)
                 context.metadata.update(task_completed=report["task_completed"], usage=usage,

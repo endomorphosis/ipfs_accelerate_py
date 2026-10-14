@@ -27,6 +27,9 @@ from ipfs_accelerate_py.agent_supervisor.semantic_state.intent_world_snapshot im
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
 from .terminal_task_profile import task_profile_index_paths
+from .terminal_capsule_selection_policy import (
+    DEFAULT_CAPSULE_BUDGET, capsule_budget_limit, capsule_budget_options, validate_capsule_budget,
+)
 from .terminal_program_population import (
     EMPTY_INDEX_SCHEMA, qualify_terminal_population, terminal_program_partition,
     verify_empty_terminal_population,
@@ -197,13 +200,17 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
                             numerical_selection_config: Path | None = None,
                             numerical_selection_timeout_seconds: float = 180.,
                             numerical_selection_budget_profile: str | None = None,
-                            retrieval_ranked_capsules: bool = False) -> dict:
+                            retrieval_ranked_capsules: bool = False,
+                            capsule_budget: str = DEFAULT_CAPSULE_BUDGET) -> dict:
     import duckdb
     from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index import (
         CodeVectorIndexSnapshot, CodeVectorSearchResult,
     )
 
     started = time.monotonic()
+    capsule_budget = validate_capsule_budget(capsule_budget, arm="full")
+    if prepared.get("capsule_budget", DEFAULT_CAPSULE_BUDGET) != capsule_budget:
+        raise ValueError("initial capsule budget differs from frozen preparation")
     root = Path(prepared["repository"]).resolve(strict=True)
     if type(retrieval_ranked_capsules) is not bool:
         raise ValueError("retrieval-ranked capsule selection requires a boolean opt-in")
@@ -372,6 +379,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         # in retrieval, required raw input, planner constraints and hashes.
         required_raw_paths=required_raw_paths, objective=" ".join(prepared["query"].split()), task_id=alias,
         output=output / "semantic", max_symbols=1024, worker_query=prepared["query"], worker_max_bytes=32768,
+        **({"worker_capsule_limit": capsule_budget_limit(capsule_budget)}
+            if capsule_budget != DEFAULT_CAPSULE_BUDGET else {}),
         **({"program_paths": partition["program_paths"], "defer_task_data": any(
             row["role"] == "task_data" for row in partition["support_hashes"].values())}
             if partition is not None else {}), **capsule_kwargs)
@@ -415,6 +424,7 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "model_revision": model_revision, "execution_authority": False, "completion_authority": False}
     if retrieval_ranked_capsules:
         descriptor["capsule_selection"] = "verified-retrieval-symbol-rank@1"
+    descriptor.update(capsule_budget_options(capsule_budget))
     if public_profile is not None:
         descriptor["public_task_index_scope"] = {"task_source_paths": vector_paths,
             "instruction_only": False, "source_semantics_verified": False}
@@ -444,6 +454,7 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "execution_authority": False, "completion_authority": False}
     if retrieval_ranked_capsules:
         result["capsule_selection"] = descriptor["capsule_selection"]
+    result.update(capsule_budget_options(capsule_budget))
     if empty_population:
         result.update({key: retrieval[key] for key in (
             "retrieval_schema", "source_population_cid", "disposition", "embedding_calls")})
@@ -518,10 +529,18 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
                       if prepared.get("task_profile") is not None else None)
     if descriptor.get("public_task_index_scope") != expected_scope or result.get("public_task_index_scope") != expected_scope:
         raise ValueError("initial public task index scope differs")
+    capsule_budget = validate_capsule_budget(prepared.get("capsule_budget", DEFAULT_CAPSULE_BUDGET), arm="full")
+    if (descriptor.get("capsule_budget", DEFAULT_CAPSULE_BUDGET) != capsule_budget
+            or result.get("capsule_budget", DEFAULT_CAPSULE_BUDGET) != capsule_budget):
+        raise ValueError("initial capsule budget differs from frozen preparation")
     alias, metadata = descriptor["task_alias"], descriptor["metadata"]
     semantic, view, get_block = _semantic_view(root, metadata, alias)
     capsule_selection = state / "capsule-selection.json"
     capsule_policy = semantic.get("worker_projection", {})
+    observed_capsule_limit = capsule_policy.get("max_capsules", 8)
+    if (type(observed_capsule_limit) is not int
+            or observed_capsule_limit != capsule_budget_limit(capsule_budget)):
+        raise ValueError("initial capsule budget differs from frozen preparation or verified projection")
     declared_capsules = descriptor.get("capsule_selection")
     if ("capsule_selection" in descriptor or "capsule_selection" in result
             or capsule_policy.get("selector") == "verified-retrieval-symbol-rank@1"):
@@ -802,6 +821,8 @@ def bind_admitted_context(*, state: Path, prepared: dict, admission: dict, verif
         "execution_authority": False, "completion_authority": False, "canonical_task_mutated": False}
     if "capsule_selection" in descriptor:
         result["capsule_selection"] = descriptor["capsule_selection"]
+    if "capsule_budget" in descriptor:
+        result["capsule_budget"] = descriptor["capsule_budget"]
     if descriptor.get("codebase_autoencoder") is not None:
         result["codebase_autoencoder"] = descriptor["codebase_autoencoder"]
         result["codebase_autoencoder_catalog"] = descriptor["codebase_autoencoder_catalog"]
