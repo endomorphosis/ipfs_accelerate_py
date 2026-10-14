@@ -29,6 +29,8 @@ from .supervisor_meta_index import public_replay_without_metadata
 SCHEMA = "repository-world-packet@1"
 RECEIPT_SCHEMA = "repository-world-packet-receipt@1"
 MAX_BYTES = 262144
+REPLAY_MAX_BYTES = 2 * 1024 * 1024
+ARTIFACT_SCHEMA = "repository-world-packet-artifact@1"
 _ISSUED = weakref.WeakKeyDictionary()
 _ISSUANCE_LOCK = threading.RLock()
 GUIDANCE = (
@@ -122,18 +124,22 @@ class PreparedRepositoryWorldPacket:
     _max_bytes: int = field(repr=False)
     _intent_world_observation: RepositoryIntentWorldObservation | None = field(repr=False, default=None)
     _task_id: str = field(repr=False, default="")
+    _replay_material_json: str = field(repr=False, default="")
 
     def receipt(self) -> dict:
         return json.loads(self._receipt_json)
+
+    def _seal(self):
+        return (self.prompt, self._receipt_json, self._adapter, self._capsule,
+                self._workspace, self._generation, self._max_bytes,
+                self._intent_world_observation, self._task_id, self._replay_material_json)
 
     def validate_current(self, workspace: Path, task_text: str) -> dict:
         """Fence exact workspace/task/source before a queued worker dispatch."""
         with _ISSUANCE_LOCK:
             issued = _ISSUED.get(self)
         _require(issued is not None, "world_packet_not_issued")
-        _require(issued == (self.prompt, self._receipt_json, self._adapter,
-                            self._capsule, self._workspace, self._generation, self._max_bytes,
-                            self._intent_world_observation, self._task_id),
+        _require(issued == self._seal(),
                  "world_packet_integrity_mismatch")
         _require(isinstance(workspace, Path) and workspace.is_absolute()
                  and workspace == self._workspace
@@ -154,24 +160,22 @@ class PreparedRepositoryWorldPacket:
         return receipt
 
 
-def prepare_repository_world_packet(
-    *, adapter: RepositoryContextAdapter, compilation: ContextCompileResult,
+def _render_repository_world_packet(
+    *, compilation: ContextCompileResult,
     generation: int, task_id: str, task_text: str,
     unresolved_obligations: tuple[str, ...], validation_commands: tuple[str, ...],
     proof_obligations: tuple[str, ...] = (), acceptance_ids: tuple[str, ...] = (),
     allowed_effects: tuple[str, ...], write_paths: tuple[str, ...],
     current_world: RepositoryWorldState | None = None,
-    intent_world_observation: RepositoryIntentWorldObservation | None = None,
+    intent_world_receipt: dict | None = None,
     max_bytes: int = 65536,
-) -> PreparedRepositoryWorldPacket:
-    """Admit all selected context and residual work, or refuse the whole packet.
+) -> tuple[str, dict, dict]:
+    """Pure native reconstruction shared by live admission and historical replay.
 
-    Optional references already omitted by ContextCompiler remain supervisor-side.
-    Every reference that compiler actually selected is mandatory at this bridge.
-    No packet frontier or synthetic expansion handle is delivered.
+    This checks recorded structural bindings only. Live source, native intent and
+    provider-policy verification belong to preparation and dispatch.
     """
-    _require(type(adapter) is RepositoryContextAdapter
-             and isinstance(compilation, ContextCompileResult), "invalid_world_packet_owners")
+    _require(isinstance(compilation, ContextCompileResult), "invalid_world_packet_compilation")
     _require(type(generation) is int and generation >= 1, "invalid_world_packet_generation")
     _require(type(max_bytes) is int and 1024 <= max_bytes <= MAX_BYTES, "invalid_world_packet_limit")
     _require(type(task_id) is str and task_id.strip() == task_id and task_id
@@ -190,8 +194,6 @@ def prepare_repository_world_packet(
 
     capsule = compilation.capsule
     with public_replay_without_metadata():
-        adapter.compiler.verify_compile_result(compilation)
-        adapter.validate_current(capsule, generation=generation)
         _require(compilation.required_context_preserved, "world_packet_required_context_missing")
         binding = _plain(capsule.authority["repository_context"])
         task_binding = repository_world_task_binding(task_id, task_text, effects, paths)
@@ -210,24 +212,24 @@ def prepare_repository_world_packet(
                  and capsule.repository_id == binding["repository_id"],
                  "world_packet_source_binding_mismatch")
 
-        # A caller-authored reference cannot acquire native observation status
-        # through its kind or content hash. Retain the issued owner's object so
-        # the runner also fences same-source changes to the native task/events.
+        # Historical rendering cannot establish native ownership. It only
+        # binds an already recorded observation receipt to its required body.
         reserved = tuple(reference for reference in
                          (*capsule.evidence, *capsule.expansion_references)
                          if reference.kind == "repository-intent-world")
-        intent_world_receipt = None
-        if intent_world_observation is None:
+        if intent_world_receipt is None:
             _require(not reserved, "world_packet_intent_observation_missing")
         else:
-            _require(type(intent_world_observation) is RepositoryIntentWorldObservation,
-                     "invalid_world_packet_intent_observation")
-            intent_world_receipt = intent_world_observation.validate_current(
-                session=adapter.session, generation=generation, task_id=task_id)
-            expected_reference = intent_world_observation.reference
-            _require(len(reserved) == 1 and reserved[0].required
-                     and reserved[0] in capsule.evidence
-                     and reserved[0].canonical_bytes() == expected_reference.canonical_bytes(),
+            _require(type(intent_world_receipt) is dict and len(reserved) == 1
+                     and reserved[0].required and reserved[0] in capsule.evidence,
+                     "world_packet_intent_reference_mismatch")
+            reference = reserved[0]
+            _require(reference.reference_id == intent_world_receipt.get("reference_id")
+                     and reference.content_id == intent_world_receipt.get("reference_content_id")
+                     and reference.referenced_content_id == intent_world_receipt.get("observation_cid")
+                     and intent_world_receipt.get("task_id") == task_id
+                     and type(intent_world_receipt.get("generation")) is int
+                     and intent_world_receipt["generation"] == generation,
                      "world_packet_intent_reference_mismatch")
 
         world = None
@@ -297,7 +299,6 @@ def prepare_repository_world_packet(
                  "world_packet_requirements_transformed")
         prompt = GUIDANCE + "\n" + _json(dict(schema=SCHEMA, delivery_mode="self_contained", packet=admitted))
         _require(len(prompt.encode("utf-8")) <= max_bytes, "world_packet_wire_overflow")
-        adapter.validate_current(capsule, generation=generation)
 
     receipt = dict(
         schema=RECEIPT_SCHEMA, prompt_sha256=_sha(prompt), prompt_bytes=len(prompt.encode("utf-8")),
@@ -319,15 +320,69 @@ def prepare_repository_world_packet(
     )
     if intent_world_receipt is not None:
         receipt["intent_world"] = intent_world_receipt
+    return prompt, receipt, _plain(packet.to_dict())
+
+
+def prepare_repository_world_packet(
+    *, adapter: RepositoryContextAdapter, compilation: ContextCompileResult,
+    generation: int, task_id: str, task_text: str,
+    unresolved_obligations: tuple[str, ...], validation_commands: tuple[str, ...],
+    proof_obligations: tuple[str, ...] = (), acceptance_ids: tuple[str, ...] = (),
+    allowed_effects: tuple[str, ...], write_paths: tuple[str, ...],
+    current_world: RepositoryWorldState | None = None,
+    intent_world_observation: RepositoryIntentWorldObservation | None = None,
+    max_bytes: int = 65536,
+) -> PreparedRepositoryWorldPacket:
+    """Admit a complete packet through current native owners, then seal it.
+
+    Optional compiler omissions remain supervisor-side. Every selected reference
+    is mandatory at this bridge. Retained historical material cannot revive the
+    live source, intent owner or invocation-local issuance after restart.
+    """
+    _require(type(adapter) is RepositoryContextAdapter
+             and isinstance(compilation, ContextCompileResult), "invalid_world_packet_owners")
+    capsule = compilation.capsule
+    with public_replay_without_metadata():
+        adapter.compiler.verify_compile_result(compilation)
+        adapter.validate_current(capsule, generation=generation)
+        reserved = tuple(reference for reference in
+                         (*capsule.evidence, *capsule.expansion_references)
+                         if reference.kind == "repository-intent-world")
+        intent_world_receipt = None
+        if intent_world_observation is None:
+            _require(not reserved, "world_packet_intent_observation_missing")
+        else:
+            _require(type(intent_world_observation) is RepositoryIntentWorldObservation,
+                     "invalid_world_packet_intent_observation")
+            intent_world_receipt = intent_world_observation.validate_current(
+                session=adapter.session, generation=generation, task_id=task_id)
+            expected_reference = intent_world_observation.reference
+            _require(len(reserved) == 1 and reserved[0].required
+                     and reserved[0] in capsule.evidence
+                     and reserved[0].canonical_bytes() == expected_reference.canonical_bytes(),
+                     "world_packet_intent_reference_mismatch")
+        arguments = dict(generation=generation, task_id=task_id, task_text=task_text,
+            unresolved_obligations=unresolved_obligations, validation_commands=validation_commands,
+            proof_obligations=proof_obligations, acceptance_ids=acceptance_ids,
+            allowed_effects=allowed_effects, write_paths=write_paths,
+            current_world=current_world, max_bytes=max_bytes)
+        prompt, receipt, native_packet = _render_repository_world_packet(
+            compilation=compilation, intent_world_receipt=intent_world_receipt, **arguments)
+        adapter.validate_current(capsule, generation=generation)
+
+    recipe = _plain(dict(arguments, current_world=(
+        None if current_world is None else current_world.to_record())))
+    replay_material = _json(dict(schema=ARTIFACT_SCHEMA, mode="historical_only",
+        capsule=_plain(capsule.to_record()),
+        compilation_receipt=_plain(compilation.receipt.to_record()), recipe=recipe,
+        native_packet=native_packet, prompt=prompt, packet_receipt=receipt))
+    _require(len(replay_material.encode("utf-8")) <= REPLAY_MAX_BYTES,
+             "world_packet_replay_material_overflow")
     result = PreparedRepositoryWorldPacket(prompt, _json(receipt), adapter, capsule,
-                                          adapter.session.workspace, generation, max_bytes,
-                                          intent_world_observation, task_id)
-    # An independently constructed/replaced dataclass has no owner admission.
-    # Weak keys release this invocation-local seal with the prepared object;
-    # values contain no reference back to that object.
+        adapter.session.workspace, generation, max_bytes, intent_world_observation,
+        task_id, replay_material)
+    # A frozen historical record never restores this invocation-local seal.
     with _ISSUANCE_LOCK:
-        _ISSUED[result] = (result.prompt, result._receipt_json, adapter, capsule,
-                           adapter.session.workspace, generation, max_bytes,
-                           intent_world_observation, task_id)
+        _ISSUED[result] = result._seal()
     result.validate_current(workspace=adapter.session.workspace, task_text=task_text)
     return result
