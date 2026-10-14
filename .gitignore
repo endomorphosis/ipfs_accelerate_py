@@ -458,3 +458,13 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-024/result.json
 !/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-044/
 !/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-044/result.json
+
+# Owned source-alignment runtime; exact three declared results.
+/data/agent_supervisor/legal_autoformalization_source_alignment/
+!/data/legal_autoformalization_source_alignment/
+!/data/legal_autoformalization_source_alignment/LAC-S11-011/
+!/data/legal_autoformalization_source_alignment/LAC-S11-011/result.json
+!/data/legal_autoformalization_source_alignment/LAC-S11-024/
+!/data/legal_autoformalization_source_alignment/LAC-S11-024/result.json
+!/data/legal_autoformalization_source_alignment/LAC-S11-044/
+!/data/legal_autoformalization_source_alignment/LAC-S11-044/result.json
