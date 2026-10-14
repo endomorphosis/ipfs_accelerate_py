@@ -180,3 +180,28 @@ records 691 distinct passing tests, including the actual Doctor proof-to-complet
 join and bounded stream observations through the router and comparison reader.
 These tests made no model calls and did not rerun the live benchmark; the token
 scores above remain the last measured observations.
+
+## Follow-up: bounded initial capsule selection
+
+The next implementation adds frozen `one-capsule@1` and `two-capsules@1` budgets
+for one signed task in the full indexed arm. The legacy maximum of eight remains
+the default. Full native indexes, required raw inputs and source checks stay
+intact; publication refresh rejects changes to the selected policy. Other arms
+and multi-task profiles refuse these explicit budgets before initialization.
+
+In two small authored repositories, one selected capsule reduced the complete
+coding prompt by 30.78–31.17%, and two reduced it by 20.45–20.71%. The existing
+byte budget selected four capsules in both legacy cases. These measurements
+use real indexed preparation and router dispatch with an authored provider,
+declared-contract planning and no learned Source384 inference. They measure
+UTF-8 bytes, not live tokens or benchmark performance.
+
+The [capsule-budget qualification](evidence/capsule-budget-20261014/README.md)
+records 440 passing tests with unchanged sources, exact measurements and scope.
+It also checks retrieval of omitted functions through current candidate capsules
+and refusal of stale generations. That API rebuilds structural capsules rather
+than restoring exact baseline or learned outputs; it requires source views and
+has a smaller symbol limit than initial indexing. A one-capsule budget can also
+change model-planning evidence. Additional retrieval or coding turns could
+offset the initial byte reduction, so total token benefit still requires a live
+comparison. The three earlier benchmark scores are unchanged.
