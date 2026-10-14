@@ -604,3 +604,52 @@ The checkout helper uses `source_view_advisory_policy` and
 `--source-view-advisory-policy`. The structured `SourceViewPolicy` recipe and
 `--source-view-policy-json` continue to bind signed source codec custody.
 These selections are independent; helper guidance does not grant source access.
+
+
+## Maintenance lease validity
+
+New exclusive maintenance acquisitions retain `MaintenanceLease@1` and persist
+`maintenance-lease-validity@1` in the existing extension columns. The extension
+records canonical TTL seconds; expiry is an actual UTC deadline. Backup entry
+and each exclusive repository access bind the complete supplied record to the
+native row, including owner session, process birth label, token, fence epoch,
+revision, acquisition/expiry and extension body. Validity is inclusive at
+acquisition and exclusive at expiry. Supplied records cannot strip the native
+marker or select legacy behavior for a marked row.
+
+Legacy empty-extension leases retain their historical state/token/scope checks.
+Equal legacy acquisition/expiry watermarks do not acquire a new deadline. No
+existing rows are migrated, expired, swept or taken over. An existing active
+legacy row still blocks a new acquisition until explicitly released. Marked
+release uses the exact owner/row/revision CAS while allowing expired-owner
+cleanup; exact response-loss replay returns the already released record without
+another revision. Missing authority databases refuse before creation, and the
+existing missing-source restore guard remains in force.
+
+The lease records bind stored identity. Free-form session/process-birth labels
+do not establish operating-system liveness, independent owner authentication or
+IR admission. Marked exclusive repositories refuse raw `client`, `transaction`
+and custom transaction callbacks before returning a retainable native handle.
+Migrate those marked-mode callers to closed repository operations. Ordinary and
+legacy modes retain their exact native client/transaction API. Release timestamps
+are also pinned: active records require no release time, released records require
+the actual native UTC transition time, and replay cannot replace it.
+Access checks do not make filesystem backup/restore race-proof or guarantee that
+an operation started before expiry completes before expiry. Operators must stop
+Quack and retain actual exclusive ownership for direct-file
+maintenance. Keep genuine backup custody outside disposable source worktrees.
+
+
+The exact native Quack command fabric's private owner connection reuses the
+existing immutable typed-owner operation catalog for named lifecycle-history
+operations in its original transaction. Its ingress and read projection remain
+actual separately served Quack endpoints; the operational connection is private.
+Named calls require an active owner transaction, a known non-bootstrap operation
+and exact parameter count. This capability exists only during that transaction;
+a retained method refuses after commit, rollback or close. Outside transaction
+custody, existing generation/session/heartbeat/close lifecycle operations keep
+their original trusted closed-template path. Client SQL, templates or operation
+catalogs cannot enlarge this surface. Original signed authorization, live-lease/fence checks,
+replay consumption, task CAS and durable receipt remain in the same transaction.
+This owner-local binding introduces no remote grants or owner trust and does not
+grant model, IR or Lean admission.

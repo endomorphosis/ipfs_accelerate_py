@@ -52,6 +52,10 @@ from ..task_sources.control_plane_repository import (
     DEFAULT_STORE_ID,
     MAINTENANCE_LEASE_ACTIVE,
     MaintenanceLease,
+    MAINTENANCE_LEASE_ROW_FIELDS,
+    StateRepositoryMaintenanceError,
+    _coerce_lease,
+    validate_maintenance_lease_row,
 )
 from ..task_sources.control_plane_schema import (
     CONTROL_PLANE_SCHEMA_REVISION,
@@ -2210,30 +2214,10 @@ class ControlPlaneBackup:
                 "exclusive maintenance lease is required for direct-file "
                 "backup/restore operations"
             )
-        if isinstance(lease, MaintenanceLease):
-            record = lease
-        else:
-            record = MaintenanceLease(
-                lease_id=str(lease["lease_id"]),
-                scope=str(lease["scope"]),
-                owner_session_id=str(lease["owner_session_id"]),
-                process_birth_id=str(lease.get("process_birth_id") or ""),
-                fencing_token=int(lease["fencing_token"]),
-                fence_epoch=int(lease["fence_epoch"]),
-                acquired_at=str(lease["acquired_at"]),
-                expires_at=str(lease["expires_at"]),
-                state=str(lease.get("state") or MAINTENANCE_LEASE_ACTIVE),
-                revision=int(lease.get("revision") or 0),
-            )
-        if record.state != MAINTENANCE_LEASE_ACTIVE:
-            raise ControlPlaneBackupOwnershipError(
-                f"maintenance lease is not active: {record.state}"
-            )
-        if record.scope != self.maintenance_scope:
-            raise ControlPlaneBackupOwnershipError(
-                f"maintenance lease scope mismatch: {record.scope!r} != "
-                f"{self.maintenance_scope!r}"
-            )
+        try:
+            record = _coerce_lease(lease)
+        except (KeyError, TypeError, ValueError, StateRepositoryMaintenanceError) as exc:
+            raise ControlPlaneBackupOwnershipError("maintenance lease record invalid") from exc
         # A supplied historical record cannot authenticate missing authority.
         if not self.database_path.is_file():
             raise ControlPlaneBackupOwnershipError(
@@ -2241,35 +2225,19 @@ class ControlPlaneBackup:
             )
         with open_duckdb_connection(self.database_path) as connection:
             row = connection.execute(
-                """
-                SELECT lease_id, state, fencing_token, scope
-                FROM maintenance_leases
-                WHERE lease_id = ?
-                LIMIT 1
-                """,
+                "SELECT " + ", ".join(MAINTENANCE_LEASE_ROW_FIELDS) +
+                " FROM maintenance_leases WHERE lease_id = ? LIMIT 1",
                 [record.lease_id],
             ).fetchone()
             if row is None:
-                raise ControlPlaneBackupOwnershipError(
-                    "maintenance lease not found in database"
+                raise ControlPlaneBackupOwnershipError("maintenance lease not found in database")
+            try:
+                validate_maintenance_lease_row(
+                    record, row, expected_scope=self.maintenance_scope,
+                    now=self._clock(),
                 )
-            state = str(_row_value(row, "state", _row_value(row, 1, "")))
-            token = int(
-                _row_value(row, "fencing_token", _row_value(row, 2, 0)) or 0
-            )
-            scope = str(_row_value(row, "scope", _row_value(row, 3, "")))
-            if state != MAINTENANCE_LEASE_ACTIVE:
-                raise ControlPlaneBackupOwnershipError(
-                    "maintenance lease is not active in the store"
-                )
-            if token != int(record.fencing_token):
-                raise ControlPlaneBackupOwnershipError(
-                    "maintenance lease fencing_token mismatch"
-                )
-            if scope != self.maintenance_scope:
-                raise ControlPlaneBackupOwnershipError(
-                    "maintenance lease scope mismatch in store"
-                )
+            except StateRepositoryMaintenanceError as exc:
+                raise ControlPlaneBackupOwnershipError(str(exc)) from exc
         return record
 
     def _coerce_snapshot(

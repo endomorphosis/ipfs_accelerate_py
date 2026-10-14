@@ -39,7 +39,8 @@ import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -102,6 +103,15 @@ MAINTENANCE_LEASE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/maintenance-lease@1"
 )
 STATE_REPOSITORY_VERSION: Final[int] = 1
+# Existing extension columns distinguish real validity from legacy watermarks.
+MAINTENANCE_LEASE_VALIDITY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/maintenance-lease-validity@1"
+)
+MAINTENANCE_LEASE_ROW_FIELDS: Final = (
+    "lease_id", "scope", "owner_session_id", "process_birth_id",
+    "fencing_token", "fence_epoch", "acquired_at", "expires_at", "state",
+    "revision", "extension_schema", "extension_json", "released_at",
+)
 
 DEFAULT_MAINTENANCE_SCOPE: Final = "control-plane-exclusive"
 DEFAULT_OWNER_ID: Final = "repository:local"
@@ -173,7 +183,7 @@ _REPOSITORY_TEMPLATES: Final[Mapping[str, StatementTemplate]] = MappingProxyType
             sql=(
                 "SELECT lease_id, scope, owner_session_id, process_birth_id, "
                 "fencing_token, fence_epoch, acquired_at, expires_at, state, "
-                "revision FROM maintenance_leases "
+                "revision, extension_schema, extension_json, released_at FROM maintenance_leases "
                 "WHERE scope = ? AND state = ? "
                 "ORDER BY fencing_token DESC LIMIT 1"
             ),
@@ -270,9 +280,12 @@ class MaintenanceLease:
     expires_at: str
     state: str
     revision: int = 0
+    extension_schema: str = ""
+    extension_json: str = "{}"
+    released_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "schema": self.SCHEMA,
             "lease_id": self.lease_id,
             "scope": self.scope,
@@ -285,6 +298,14 @@ class MaintenanceLease:
             "state": self.state,
             "revision": int(self.revision),
         }
+        # Preserve historical @1 serialized records byte-for-byte in shape.
+        if self.extension_schema or self.extension_json != "{}":
+            for name in ("fencing_token", "fence_epoch", "revision"):
+                result[name] = getattr(self, name)
+            result["extension_schema"] = self.extension_schema
+            result["extension_json"] = self.extension_json
+            result["released_at"] = self.released_at
+        return result
 
     @property
     def active(self) -> bool:
@@ -988,6 +1009,10 @@ class EmbeddedStateRepository(_ClientBackedStateRepository):
         if self.is_open:
             return
         if self._authority_mode is RepositoryAuthorityMode.EMBEDDED_EXCLUSIVE:
+            if not self.database_path.is_file():
+                raise StateRepositoryMaintenanceError(
+                    "exclusive maintenance authority database is missing"
+                )
             if self._provided_lease is None or not self._provided_lease.active:
                 raise StateRepositoryMaintenanceError(
                     "embedded exclusive mode requires an active maintenance lease; "
@@ -1015,9 +1040,63 @@ class EmbeddedStateRepository(_ClientBackedStateRepository):
             client.close()
             raise
         self._client = client
-        self._capture_schema_fingerprint()
-        if self._authority_mode is RepositoryAuthorityMode.EMBEDDED_EXCLUSIVE:
-            self._assert_maintenance_lease_still_active()
+        try:
+            self._capture_schema_fingerprint()
+            if self._authority_mode is RepositoryAuthorityMode.EMBEDDED_EXCLUSIVE:
+                self._assert_maintenance_lease_still_active(client)
+        except BaseException:
+            self._client = None
+            self._maintenance_lease = None
+            client.close()
+            raise
+
+    def _require_client(self) -> QuackStateClient:
+        client = super()._require_client()
+        lease = self._maintenance_lease
+        if (
+            self._authority_mode is RepositoryAuthorityMode.EMBEDDED_EXCLUSIVE
+            and lease is not None
+            and lease.extension_schema
+        ):
+            self._assert_maintenance_lease_still_active(client)
+        return client
+
+    def _reject_marked_raw_capability(self, name: str) -> None:
+        lease = self._provided_lease
+        if (
+            self._authority_mode is RepositoryAuthorityMode.EMBEDDED_EXCLUSIVE
+            and lease is not None
+            and (lease.extension_schema or lease.extension_json != "{}")
+        ):
+            self._require_client()
+            raise StateRepositoryAuthorityError(
+                f"marked exclusive maintenance forbids retainable {name}; "
+                "use closed repository operations"
+            )
+
+    @property
+    def client(self) -> QuackStateClient:
+        self._reject_marked_raw_capability("client capability")
+        return super().client
+
+    def transaction(
+        self, *, expected_generation: StoreGeneration | None = None,
+    ) -> StateTransaction:
+        self._reject_marked_raw_capability("transaction capability")
+        return super().transaction(expected_generation=expected_generation)
+
+    def submit_command(
+        self,
+        command: StateCommand,
+        *,
+        apply: Callable[[StateTransaction, StateCommand, StoreGeneration], Mapping[str, Any]] | None = None,
+        refresh_on_conflict: bool = True,
+    ) -> CASResult:
+        if apply is not None:
+            self._reject_marked_raw_capability("transaction callback")
+        return super().submit_command(
+            command, apply=apply, refresh_on_conflict=refresh_on_conflict,
+        )
 
     def verify_schema(self) -> Mapping[str, Any]:
         """Verify schema without taking a second exclusive file lock.
@@ -1073,30 +1152,24 @@ class EmbeddedStateRepository(_ClientBackedStateRepository):
             "lease_columns_ok": ["task_cid", "claim_cid", "fencing_token", "state"],
         }
 
-    def _assert_maintenance_lease_still_active(self) -> None:
+    def _assert_maintenance_lease_still_active(
+        self, client: QuackStateClient,
+    ) -> None:
         lease = self._maintenance_lease
         if lease is None:
             raise StateRepositoryMaintenanceError("maintenance lease missing")
-        rows = self._require_client().execute(
+        rows = client.execute(
             "select_active_maintenance_lease",
-            {
-                "scope": lease.scope,
-                "state": MAINTENANCE_LEASE_ACTIVE,
-            },
+            {"scope": self._maintenance_scope, "state": MAINTENANCE_LEASE_ACTIVE},
         )
         if not rows:
             raise StateRepositoryMaintenanceError(
                 "maintenance lease is not active in the store"
             )
-        row = rows[0]
-        if str(row.get("lease_id")) != lease.lease_id:
-            raise StateRepositoryMaintenanceError(
-                "maintenance lease_id mismatch for exclusive embedded open"
-            )
-        if int(row.get("fencing_token") or 0) != int(lease.fencing_token):
-            raise StateRepositoryMaintenanceError(
-                "maintenance lease fencing_token mismatch"
-            )
+        validate_maintenance_lease_row(
+            lease, rows[0], expected_scope=self._maintenance_scope,
+            now=self._clock(),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1295,23 +1368,130 @@ class QuackStateRepository(_ClientBackedStateRepository):
 # ---------------------------------------------------------------------------
 
 
+def _maintenance_instant(value: str | float | int) -> datetime:
+    try:
+        if isinstance(value, str):
+            if not value or value.strip() != value:
+                raise ValueError("empty or padded timestamp")
+            instant = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if instant.tzinfo is None or instant.utcoffset() != timedelta(0):
+                raise ValueError("timestamp must have UTC timezone")
+            return instant.astimezone(timezone.utc)
+        if type(value) not in (float, int):
+            raise ValueError("timestamp must be UTC text or epoch seconds")
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    except (ValueError, TypeError, OverflowError, OSError) as exc:
+        raise StateRepositoryMaintenanceError(
+            "maintenance lease timestamp is not a valid UTC instant"
+        ) from exc
+
+
 def _coerce_lease(
     value: MaintenanceLease | Mapping[str, Any],
 ) -> MaintenanceLease:
     if isinstance(value, MaintenanceLease):
         return value
+    marked = bool(value.get("extension_schema"))
+    # Marked values keep their actual types for the strict full-row check.
     return MaintenanceLease(
-        lease_id=str(value["lease_id"]),
-        scope=str(value["scope"]),
-        owner_session_id=str(value["owner_session_id"]),
-        process_birth_id=str(value["process_birth_id"]),
-        fencing_token=int(value["fencing_token"]),
-        fence_epoch=int(value["fence_epoch"]),
-        acquired_at=str(value["acquired_at"]),
-        expires_at=str(value["expires_at"]),
-        state=str(value.get("state") or MAINTENANCE_LEASE_ACTIVE),
-        revision=int(value.get("revision") or 0),
+        lease_id=value["lease_id"] if marked else str(value["lease_id"]),
+        scope=value["scope"] if marked else str(value["scope"]),
+        owner_session_id=value["owner_session_id"] if marked else str(value["owner_session_id"]),
+        process_birth_id=value["process_birth_id"] if marked else str(value["process_birth_id"]),
+        fencing_token=value["fencing_token"] if marked else int(value["fencing_token"]),
+        fence_epoch=value["fence_epoch"] if marked else int(value["fence_epoch"]),
+        acquired_at=value["acquired_at"] if marked else str(value["acquired_at"]),
+        expires_at=value["expires_at"] if marked else str(value["expires_at"]),
+        state=value.get("state", MAINTENANCE_LEASE_ACTIVE) if marked else str(value.get("state") or MAINTENANCE_LEASE_ACTIVE),
+        revision=value.get("revision", 0) if marked else int(value.get("revision") or 0),
+        extension_schema=value.get("extension_schema", ""),
+        extension_json=value.get("extension_json", "{}"),
+        released_at=value.get("released_at"),
     )
+
+
+def validate_maintenance_lease_row(
+    lease: MaintenanceLease | Mapping[str, Any],
+    row: Mapping[str, Any],
+    *,
+    expected_scope: str,
+    now: str | float | int,
+    check_time: bool = True,
+    expected_state: str = MAINTENANCE_LEASE_ACTIVE,
+) -> MaintenanceLease:
+    """Bind a supplied record to native authority; never migrate legacy rows.
+
+    The explicit validity marker enables full identity and real expiry checks.
+    Empty extensions retain historical state/token/scope semantics. This proves
+    row identity, not owner-process liveness or independent admission material.
+    """
+
+    record = _coerce_lease(lease)
+    native_schema = row.get("extension_schema", "")
+    native_json = row.get("extension_json", "{}")
+    if native_schema == "" and native_json == "{}":
+        if record.extension_schema or record.extension_json != "{}":
+            raise StateRepositoryMaintenanceError("maintenance lease validity marker mismatch")
+        for name in ("lease_id", "scope", "fencing_token", "state"):
+            if row.get(name) != getattr(record, name):
+                raise StateRepositoryMaintenanceError(f"maintenance lease {name} mismatch")
+        if record.scope != expected_scope or record.state != expected_state:
+            raise StateRepositoryMaintenanceError("maintenance lease scope or state mismatch")
+        return record
+    if native_schema != MAINTENANCE_LEASE_VALIDITY_SCHEMA:
+        raise StateRepositoryMaintenanceError("unsupported maintenance lease validity schema")
+    for name in MAINTENANCE_LEASE_ROW_FIELDS:
+        actual = getattr(record, name)
+        native = row.get(name)
+        if type(actual) is not type(native) or actual != native:
+            raise StateRepositoryMaintenanceError(f"maintenance lease {name} mismatch")
+    for name in ("lease_id", "scope", "owner_session_id", "process_birth_id"):
+        value = getattr(record, name)
+        if not isinstance(value, str) or not value or value.strip() != value:
+            raise StateRepositoryMaintenanceError(f"maintenance lease {name} invalid")
+    for name, minimum in (("fencing_token", 1), ("fence_epoch", 1), ("revision", 0)):
+        value = getattr(record, name)
+        if type(value) is not int or value < minimum:
+            raise StateRepositoryMaintenanceError(f"maintenance lease {name} invalid")
+    if record.scope != expected_scope or record.state != expected_state:
+        raise StateRepositoryMaintenanceError("maintenance lease scope or state mismatch")
+    if record.state == MAINTENANCE_LEASE_ACTIVE and record.released_at is not None:
+        raise StateRepositoryMaintenanceError("active maintenance lease has a release timestamp")
+    if record.state == MAINTENANCE_LEASE_RELEASED:
+        if not isinstance(record.released_at, str):
+            raise StateRepositoryMaintenanceError("maintenance release timestamp missing")
+        if _maintenance_instant(record.released_at) < _maintenance_instant(record.acquired_at):
+            raise StateRepositoryMaintenanceError("maintenance release precedes acquisition")
+    try:
+        if not isinstance(native_json, str) or len(native_json.encode("utf-8")) > 1024:
+            raise ValueError("oversize validity extension")
+        validity = json.loads(native_json)
+        if (
+            not isinstance(validity, dict)
+            or set(validity) != {"schema", "ttl_seconds"}
+            or validity["schema"] != MAINTENANCE_LEASE_VALIDITY_SCHEMA
+            or type(validity["ttl_seconds"]) is not int
+            or validity["ttl_seconds"] < 1
+            or canonical_json_bytes(validity).decode("utf-8") != native_json
+        ):
+            raise ValueError("noncanonical validity extension")
+    except (TypeError, ValueError, KeyError, ControlPlaneContractError) as exc:
+        raise StateRepositoryMaintenanceError("maintenance lease validity extension invalid") from exc
+    acquired = _maintenance_instant(record.acquired_at)
+    expires = _maintenance_instant(record.expires_at)
+    try:
+        duration = timedelta(seconds=validity["ttl_seconds"])
+    except OverflowError as exc:
+        raise StateRepositoryMaintenanceError("maintenance lease TTL is out of range") from exc
+    if expires - acquired != duration:
+        raise StateRepositoryMaintenanceError("maintenance lease TTL and timestamps disagree")
+    if check_time:
+        instant = _maintenance_instant(now)
+        if instant < acquired:
+            raise StateRepositoryMaintenanceError("maintenance lease is not yet valid")
+        if instant >= expires:
+            raise StateRepositoryMaintenanceError("maintenance lease expired")
+    return record
 
 
 def acquire_maintenance_lease(
@@ -1341,15 +1521,30 @@ def acquire_maintenance_lease(
         or fencing_token < 1
     ):
         raise StateRepositoryMaintenanceError("fencing_token must be a positive int")
-    if ttl_seconds < 1:
-        raise StateRepositoryMaintenanceError("ttl_seconds must be >= 1")
+    if type(ttl_seconds) is not int or ttl_seconds < 1:
+        raise StateRepositoryMaintenanceError("ttl_seconds must be a positive int")
+    if type(fence_epoch) is not int or fence_epoch < 1:
+        raise StateRepositoryMaintenanceError("fence_epoch must be a positive int")
+    for name, value in (("owner_session_id", owner_session_id),
+                        ("process_birth_id", process_birth_id), ("scope", scope)):
+        if not isinstance(value, str) or not value or value.strip() != value:
+            raise StateRepositoryMaintenanceError(f"{name} must be nonempty text")
     now_fn = clock or _utc_now
     acquired_at = now_fn()
-    # Expiry is an ISO-ish watermark; exact clock math is not required for the
-    # lease row — operators supply short-lived leases.
-    expires_at = acquired_at
+    if not isinstance(acquired_at, str):
+        raise StateRepositoryMaintenanceError("lease acquisition clock must return UTC text")
+    acquired = _maintenance_instant(acquired_at)
+    try:
+        expires_at = (acquired + timedelta(seconds=ttl_seconds)).isoformat().replace("+00:00", "Z")
+    except (ValueError, OverflowError) as exc:
+        raise StateRepositoryMaintenanceError("maintenance lease TTL is out of range") from exc
+    extension_json = canonical_json_bytes({
+        "schema": MAINTENANCE_LEASE_VALIDITY_SCHEMA, "ttl_seconds": ttl_seconds,
+    }).decode("utf-8")
     lease_id = f"mlease:{uuid.uuid4()}"
     path = Path(database_path)
+    if not path.is_file():
+        raise StateRepositoryMaintenanceError("maintenance lease authority database is missing")
     with open_duckdb_connection(path) as connection:
         existing = connection.execute(
             """
@@ -1384,8 +1579,8 @@ def acquire_maintenance_lease(
             INSERT INTO maintenance_leases (
                 lease_id, scope, owner_session_id, process_birth_id,
                 fencing_token, fence_epoch, acquired_at, expires_at,
-                released_at, state, revision
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+                released_at, state, revision, extension_schema, extension_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
             """,
             [
                 lease_id,
@@ -1398,6 +1593,8 @@ def acquire_maintenance_lease(
                 expires_at,
                 MAINTENANCE_LEASE_ACTIVE,
                 0,
+                MAINTENANCE_LEASE_VALIDITY_SCHEMA,
+                extension_json,
             ],
         )
     return MaintenanceLease(
@@ -1411,6 +1608,8 @@ def acquire_maintenance_lease(
         expires_at=expires_at,
         state=MAINTENANCE_LEASE_ACTIVE,
         revision=0,
+        extension_schema=MAINTENANCE_LEASE_VALIDITY_SCHEMA,
+        extension_json=extension_json,
     )
 
 
@@ -1426,7 +1625,65 @@ def release_maintenance_lease(
     now_fn = clock or _utc_now
     released_at = now_fn()
     path = Path(database_path)
+    if not path.is_file():
+        raise StateRepositoryMaintenanceError("maintenance lease authority database is missing")
     with open_duckdb_connection(path) as connection:
+        native = connection.execute(
+            "SELECT " + ", ".join(MAINTENANCE_LEASE_ROW_FIELDS) + " "
+            "FROM maintenance_leases WHERE lease_id = ? LIMIT 1",
+            [record.lease_id],
+        ).fetchone()
+        if native is None:
+            raise StateRepositoryMaintenanceError("maintenance lease not found")
+        if native["extension_schema"] or native["extension_json"] != "{}" or record.extension_schema or record.extension_json != "{}":
+            if type(record.revision) is not int or record.revision < 0:
+                raise StateRepositoryMaintenanceError("maintenance lease revision invalid")
+            if record.state == MAINTENANCE_LEASE_ACTIVE and record.released_at is not None:
+                raise StateRepositoryMaintenanceError("active maintenance lease has a release timestamp")
+            release_timestamp = (
+                native["released_at"] if native["state"] == MAINTENANCE_LEASE_RELEASED
+                and record.state == MAINTENANCE_LEASE_ACTIVE
+                else record.released_at if record.state == MAINTENANCE_LEASE_RELEASED
+                else released_at
+            )
+            released = replace(
+                record, state=MAINTENANCE_LEASE_RELEASED,
+                revision=record.revision + (record.state == MAINTENANCE_LEASE_ACTIVE),
+                released_at=release_timestamp,
+            )
+            if native["state"] == MAINTENANCE_LEASE_RELEASED:
+                # Exact response-loss replay only; supplied fields remain bound.
+                validate_maintenance_lease_row(
+                    released, native, expected_scope=record.scope, now=released_at,
+                    check_time=False, expected_state=MAINTENANCE_LEASE_RELEASED,
+                )
+                if not native["released_at"]:
+                    raise StateRepositoryMaintenanceError("maintenance release timestamp missing")
+                return released
+            validate_maintenance_lease_row(
+                record, native, expected_scope=record.scope, now=released_at,
+                check_time=False,
+            )
+            if _maintenance_instant(released_at) < _maintenance_instant(record.acquired_at):
+                raise StateRepositoryMaintenanceError("maintenance release precedes acquisition")
+            # NULL release time is pinned separately; SQL NULL equality is unknown.
+            fields = tuple(name for name in MAINTENANCE_LEASE_ROW_FIELDS if name != "released_at")
+            connection.execute(
+                "UPDATE maintenance_leases SET state = ?, released_at = ?, revision = revision + 1 "
+                "WHERE released_at IS NULL AND " + " AND ".join(name + " = ?" for name in fields),
+                [MAINTENANCE_LEASE_RELEASED, released_at] + [getattr(record, name) for name in fields],
+            )
+            after = connection.execute(
+                "SELECT " + ", ".join(MAINTENANCE_LEASE_ROW_FIELDS) + " FROM maintenance_leases WHERE lease_id = ? LIMIT 1",
+                [record.lease_id],
+            ).fetchone()
+            if after is None:
+                raise StateRepositoryMaintenanceError("maintenance release lost its authority row")
+            validate_maintenance_lease_row(
+                released, after, expected_scope=record.scope, now=released_at,
+                check_time=False, expected_state=MAINTENANCE_LEASE_RELEASED,
+            )
+            return released
         result = connection.execute(
             """
             UPDATE maintenance_leases
@@ -2314,4 +2571,7 @@ __all__ = [
     "open_state_repository",
     "populations_equivalent",
     "release_maintenance_lease",
+    "validate_maintenance_lease_row",
+    "MAINTENANCE_LEASE_VALIDITY_SCHEMA",
+    "MAINTENANCE_LEASE_ROW_FIELDS",
 ]
