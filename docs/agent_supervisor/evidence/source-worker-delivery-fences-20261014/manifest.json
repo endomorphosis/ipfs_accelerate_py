@@ -1,5 +1,6 @@
 {
   "accelerator_base": "09ad10bd0e6694db7b0570614ab289184a0713c5",
+  "accelerator_execution_head": "f58aa231805f2546d4f5cf650ef0bf3900d25540",
   "baseline_control": "baseline-01",
   "baseline_control_status": "expected_regression",
   "completion_authority": false,
@@ -8,9 +9,9 @@
   "failed_qualification_preserved": "qualification-01",
   "files": [
     {
-      "bytes": 6099,
+      "bytes": 7446,
       "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/README.md",
-      "sha256": "e77b7e243328de3ca61787292e3576926ecf738d701365d25d062a4bd637efc1"
+      "sha256": "b2ed9b508f06b49a7fd93776ab0cef348492633ed563b9bfbc49cbbabf1ff5bd"
     },
     {
       "bytes": 1568,
@@ -63,14 +64,44 @@
       "sha256": "f952e55065b37b4ac3ebba21fea81daad0cd4d99daadd3fb2039ea3f6c8e59de"
     },
     {
+      "bytes": 294839,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/documentation-checks-02.json",
+      "sha256": "544920509abb66547dcba93af1f0e238a90eed0eefb231c800237a48f5c60d78"
+    },
+    {
       "bytes": 285763,
       "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/documentation-checks.json",
       "sha256": "23b9c1a424f573883c471730b0b6484890aad2273e6259280a50fe97ebd879af"
     },
     {
       "bytes": 3093,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/documentation-workflow-02.log",
+      "sha256": "0ebfc1a9dcb919fe67f7ed629b01f249037028b678e87adb2d511186070675c4"
+    },
+    {
+      "bytes": 3093,
       "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/documentation-workflow.log",
       "sha256": "0ebfc1a9dcb919fe67f7ed629b01f249037028b678e87adb2d511186070675c4"
+    },
+    {
+      "bytes": 6099,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/first-README.md.snapshot.txt",
+      "sha256": "e77b7e243328de3ca61787292e3576926ecf738d701365d25d062a4bd637efc1"
+    },
+    {
+      "bytes": 10236,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/first-qualified-manifest.json",
+      "sha256": "4aa0b904adb5b1372a61e2b05b9ad7216a935fca72a6369632c972a363b3e2a4"
+    },
+    {
+      "bytes": 27202,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/first-release_checker.py.snapshot.txt",
+      "sha256": "b4fbb3205409e01b325a40a1f33c9e17e889092e219477f6aa8d0b4667bbb56d"
+    },
+    {
+      "bytes": 3144,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/incoming-world-review.json",
+      "sha256": "760f62ddb19b17c6e4f439b6c988a1b90cc3d87975374dd6a2e74cca5e7fb3ec"
     },
     {
       "bytes": 6642,
@@ -148,14 +179,49 @@
       "sha256": "79f774b4e31a92aaf6bf9c93a104549893eaca9556fef1ef44acc569f5ed0f8d"
     },
     {
-      "bytes": 10269,
-      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification_runner.py",
-      "sha256": "4bfcad092377018c55b054f116e726e548fab34a7e8bfae5ad633a627af1fabf"
+      "bytes": 220563,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification-03/commands.json",
+      "sha256": "8d78d2ba17d3d8cd5f59bfc5abe84df98324d6e69e4eb7ef60b5ace333c29f07"
     },
     {
-      "bytes": 27202,
+      "bytes": 28714,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification-03/junit.xml",
+      "sha256": "4522902631e7d8c5aa6696816741aad8d80ea4506f7025beca115e32365c3975"
+    },
+    {
+      "bytes": 10589,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification_runner.py.snapshot.txt",
+      "sha256": "ee6e7bbd53269a9c59ea09818c79e414f2578b237ab2a30c0e554078ae0a6ba6"
+    },
+    {
+      "bytes": 42668,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py.snapshot.txt",
+      "sha256": "2694487172dcd41f780061077486f5349faf2031cea915fc854d3d96cc9a73b4"
+    },
+    {
+      "bytes": 8914,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification-03/source-snapshot/test/api/test_native_source_worker_delivery.py.snapshot.txt",
+      "sha256": "d2be792b337c622285aacd4ef0b9c43ecbf4237201412e2f568d854b3b7fe44f"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification-03/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 26380,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification-03/tests.stdout.log",
+      "sha256": "75265cd3821713228a8fd580bed8f56f357cf0d3b56c2315cfc63096abe4ed71"
+    },
+    {
+      "bytes": 10589,
+      "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification_runner.py",
+      "sha256": "ee6e7bbd53269a9c59ea09818c79e414f2578b237ab2a30c0e554078ae0a6ba6"
+    },
+    {
+      "bytes": 28374,
       "path": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/release_checker.py",
-      "sha256": "b4fbb3205409e01b325a40a1f33c9e17e889092e219477f6aa8d0b4667bbb56d"
+      "sha256": "990c13e39db89387eeb3e741169be80448ba4b0d989ec4ad5fdf2dbaf68ca7c1"
     },
     {
       "bytes": 1803,
@@ -173,9 +239,9 @@
       "sha256": "285c1635f772e25e1805ed37ab41d414efe0514fd8c6f55d7569a2da27c3472d"
     },
     {
-      "bytes": 88013,
+      "bytes": 90636,
       "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
-      "sha256": "f35d1bb091eaf14a089acfed1a7256580ca2603166e9e34403fcaf4b7c61cb1c"
+      "sha256": "aa49f0fce1af4f86a69666c6bab482c497c578856cf19f01de86321edbd7f47d"
     },
     {
       "bytes": 19489,
@@ -193,6 +259,8 @@
       "sha256": "d2be792b337c622285aacd4ef0b9c43ecbf4237201412e2f568d854b3b7fe44f"
     }
   ],
+  "first_qualified_leaf": "7883e693c5d90fbaa445a444eaeebc90789d9db1",
+  "historical_first_full_qualification": "qualification-02",
   "kit_actual_execution": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
   "manifest_self_excluded": true,
   "model_calls": 0,
@@ -202,8 +270,8 @@
   "proof_authority": false,
   "provider_calls": 0,
   "schema": "source-worker-delivery-manifest@1",
-  "selected_documentation": "documentation-checks.json",
-  "selected_qualification": "qualification-02",
+  "selected_documentation": "documentation-checks-02.json",
+  "selected_qualification": "qualification-03",
   "selected_tests": 166,
   "solver_calls": 0,
   "source_bindings": 273,

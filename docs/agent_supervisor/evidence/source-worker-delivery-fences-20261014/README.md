@@ -62,10 +62,32 @@ Shared reference changes are separate observations with no writer attribution.
 
 The [architecture review](architecture-review.json) and
 [parallel survey](parallel-review.json) bound the implementation and overlap
-review. The local documentation receipt is `documentation-checks.json`; its
+review. The original local documentation receipt is `documentation-checks.json`; its
 exclusive raw log is `documentation-workflow.log`. The release checker validates
 the retained attempts and executes the four exact reviewed workflow blocks.
 The final `manifest.json` seals this phase without a self-hash cycle.
+
+## Integration with concurrent world-packet audit
+
+The initial qualified branch is `7883e693c5d90fbaa445a444eaeebc90789d9db1`.
+Its main push encountered upstream world-packet audit
+`8f5fa23317bc9609ea8cf7febf2d01c7b821f552`. Merge
+`f58aa231805f2546d4f5cf650ef0bf3900d25540` preserves both contributions and
+both plan updates. The [integration review](incoming-world-review.json) records
+the four changed listed accelerator files and unchanged broker/new tests. The
+first full passing run and its four-block documentation pass remain historical;
+`first-qualified-manifest.json`, `first-README.md.snapshot.txt` and
+`first-release_checker.py.snapshot.txt` retain their original bytes.
+
+The fresh merged-source record is `qualification-03/commands.json`, and its
+documentation receipt is `documentation-checks-02.json` with exclusive log
+`documentation-workflow-02.log`. The merged run passed all 166 distinct tests
+in the same eight complete suites, including all 22 new cases, with zero
+failures, errors or skips in 899.151 seconds. All 273 listed bindings and fixed
+execution HEAD/index guards stayed unchanged. Incoming world-audit suites and
+earlier counts are not added to this result.
+Actual execution HEADs remain distinct from the original published source base;
+every attempt retains its own exact source snapshots and Git guards.
 
 ## Scope and remaining work
 

@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 PHASE = Path(__file__).resolve().parent
 ROOT = PHASE.parents[3]
 BASE = '09ad10bd0e6694db7b0570614ab289184a0713c5'
+EXECUTION_REVISION = BASE
 DATASETS = Path('/home/barberb/lift_coding/.worktrees/router-source-delivery-fences-datasets-20261014')
 DATASETS_REVISION = '4b50ae4aac65da9166bd3b24608f32ba7e9fb23d'
 KIT = Path('/home/barberb/lift_coding/.worktrees/repository-proof-context-kit-20261014')
@@ -67,7 +68,7 @@ def bindings():
         raw = (root / path).read_bytes()
         row = dict(name, source_checkout=str(root), bytes=len(raw), sha256=sha(raw))
         if repository != 'accelerator' or path not in (PRODUCTION, NEW_TEST, RUNNER):
-            revision = BASE if repository == 'accelerator' else DATASETS_REVISION
+            revision = EXECUTION_REVISION if repository == 'accelerator' else DATASETS_REVISION
             assert raw == git(root, 'show', revision + ':' + path), path
             row['matches_immutable_git_object'] = True
         rows.append(row)
@@ -75,6 +76,7 @@ def bindings():
 
 
 def main():
+    global EXECUTION_REVISION
     parser = argparse.ArgumentParser()
     parser.add_argument('attempt')
     parser.add_argument('--baseline-node')
@@ -82,10 +84,13 @@ def main():
     assert re.fullmatch(r'(?:baseline|qualification)-[0-9]{2,3}', args.attempt)
     baseline = args.attempt.startswith('baseline-')
     assert baseline == bool(args.baseline_node)
+    EXECUTION_REVISION = git(ROOT, 'rev-parse', 'HEAD').decode().strip()
+    subprocess.run(['git', 'merge-base', '--is-ancestor', BASE, EXECUTION_REVISION], cwd=ROOT, check=True)
     if baseline:
+        assert EXECUTION_REVISION == BASE
         assert args.baseline_node.startswith(NEW_TEST + '::')
         assert (ROOT / PRODUCTION).read_bytes() == git(ROOT, 'show', BASE + ':' + PRODUCTION)
-    assert git(ROOT, 'rev-parse', 'HEAD').decode().strip() == BASE
+    assert git(ROOT, 'rev-parse', 'HEAD').decode().strip() == EXECUTION_REVISION
     assert git(DATASETS, 'rev-parse', 'HEAD').decode().strip() == DATASETS_REVISION
     assert git(KIT, 'rev-parse', 'HEAD').decode().strip() == KIT_REVISION
     attempt = PHASE / args.attempt
@@ -122,7 +127,7 @@ def main():
         '-o', 'cache_dir=' + str(private / 'pytest-cache'), '--tb=short', '--maxfail=1',
         '--junitxml=' + str(attempt / 'junit.xml')]
     record = dict(schema='source-worker-delivery-qualification@1', status='running',
-        started_at_utc=utc(), accelerator_base=BASE, accelerator_execution_head=BASE,
+        started_at_utc=utc(), accelerator_base=BASE, accelerator_execution_head=EXECUTION_REVISION,
         datasets_execution_revision=DATASETS_REVISION, kit_execution_revision=KIT_REVISION,
         before=before, git_state_before=before_git, targets=targets, argv=argv, cwd=str(ROOT),
         pytest_invocations=1, separate_collection=False, baseline_control=baseline,

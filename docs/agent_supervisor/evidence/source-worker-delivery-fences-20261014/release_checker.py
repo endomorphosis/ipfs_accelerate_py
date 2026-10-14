@@ -5,6 +5,7 @@ Git is read only. Shared refs are observations, never a fixed-head assertion.
 """
 from __future__ import annotations
 
+import argparse
 import collections
 import datetime
 import hashlib
@@ -119,9 +120,9 @@ def published_index_sha(root, revision):
     return sha(b"".join(rows))
 
 
-def live_git():
+def live_git(execution_head):
     fixed, refs = {}, {}
-    for root, expected in ((ROOT, BASE), (DATASETS, DATASETS_REVISION), (KIT, KIT_REVISION)):
+    for root, expected in ((ROOT, execution_head), (DATASETS, DATASETS_REVISION), (KIT, KIT_REVISION)):
         fixed[str(root)] = index_state(root)
         need(fixed[str(root)]["head"] == expected, "fixed execution HEAD differs: " + str(root))
         refs[str(root)] = sha(git(root, "for-each-ref", "--format=%(refname) %(objectname)"))
@@ -207,12 +208,16 @@ def evidence_limits(report, *, baseline):
 
 def attempt_record(attempt, listed, *, baseline=False):
     report = json.loads(read(attempt / "commands.json"))
+    execution_head = report["accelerator_execution_head"]
     need(report["schema"] == "source-worker-delivery-qualification@1"
          and report["status"] in ({"expected_regression"} if baseline else {"pass", "fail"})
-         and report["accelerator_base"] == report["accelerator_execution_head"] == BASE
+         and report["accelerator_base"] == BASE
+         and type(execution_head) is str and re.fullmatch(r"[0-9a-f]{40}", execution_head)
          and report["datasets_execution_revision"] == DATASETS_REVISION
          and report["kit_execution_revision"] == KIT_REVISION
          and report["cwd"] == str(ROOT), "retained qualification identity/status differs")
+    git(ROOT, "merge-base", "--is-ancestor", BASE, execution_head)
+    need(not baseline or execution_head == BASE, "unpatched baseline execution commit differs")
     targets = [BASELINE_NODE] if baseline else list(ROSTER)
     need(report["targets"] == targets, "exact retained target roster differs")
     private = Path(report["private_runtime_directory"])
@@ -229,7 +234,7 @@ def attempt_record(attempt, listed, *, baseline=False):
     before_git, after_git = report["git_state_before"], report["git_state_after"]
     need(set(before_git) == set(after_git) == {str(ROOT), str(DATASETS), str(KIT)},
          "qualification checkout population differs")
-    for root, revision in ((ROOT, BASE), (DATASETS, DATASETS_REVISION), (KIT, KIT_REVISION)):
+    for root, revision in ((ROOT, execution_head), (DATASETS, DATASETS_REVISION), (KIT, KIT_REVISION)):
         a, b = before_git[str(root)], after_git[str(root)]
         need(a["head"] == b["head"] == revision
              and a["index_sha256"] == b["index_sha256"] == published_index_sha(root, revision),
@@ -249,7 +254,7 @@ def attempt_record(attempt, listed, *, baseline=False):
         need(row["source_checkout"] == str(owner), "source checkout namespace differs")
         relative(owner, row["path"])
         if row["repository"] != "accelerator" or row["path"] not in CHANGED:
-            revision = BASE if owner == ROOT else DATASETS_REVISION
+            revision = execution_head if owner == ROOT else DATASETS_REVISION
             digest_row(git(owner, "show", revision + ":" + row["path"]), row,
                        "immutable listed source differs: " + row["path"])
             need(row.get("matches_immutable_git_object") is True, "immutable source marker differs")
@@ -322,12 +327,14 @@ def qualification():
     return dict(qualification_path=str(selected.relative_to(ROOT)),
                 qualification_sha256=sha(read(selected / "commands.json")),
                 qualification_binding=bind(selected / "commands.json"),
+                accelerator_base=BASE, accelerator_execution_head=report["accelerator_execution_head"],
                 selected_tests=report["collected_tests"], suites=8, new_cases=22,
                 source_bindings=checked, source_binding_scope="listed_dependencies_not_complete_import_closure",
                 baseline_control=dict(commands_binding=bind(baselines[0] / "commands.json"),
                     diagnostic=BASELINE_DIAGNOSTIC, expected_failures=1, elapsed_seconds=baseline["elapsed_seconds"],
                     unpatched_production_revision=BASE, promoted_to_pass=False),
                 attempts=[dict(commands_binding=bind(path / "commands.json"), status=record["status"],
+                               accelerator_execution_head=record["accelerator_execution_head"],
                                junit=record["junit"], selected_for_release=path == selected) for path, record in records])
 
 
@@ -374,10 +381,11 @@ def doc_inputs(checker):
 
 
 def guard(checker, excluded):
-    fixed, refs = live_git()
+    selected = qualification()
+    fixed, refs = live_git(selected["accelerator_execution_head"])
     need(sha(read(WORKFLOW)) == WORKFLOW_SHA and sha(read(VOCAB_CHECKER)) == VOCAB_CHECKER_SHA,
          "reviewed workflow/vocabulary utility differs")
-    stable = dict(qualification(), fixed_git=fixed, preserved_prior_evidence=prior_evidence(),
+    stable = dict(selected, fixed_git=fixed, preserved_prior_evidence=prior_evidence(),
                   documents=[bind(ROOT / name) for name in DOCUMENTS], documentation_inputs=doc_inputs(checker),
                   read_guards=[bind(path) for path in (Path(__file__).resolve(), UTILITY, WORKFLOW, LINK_CHECKER, VOCAB_CHECKER)],
                   current_evidence=[bind(path) for path in sorted(PHASE.rglob("*"))
@@ -392,8 +400,16 @@ def dump(stream, value):
     stream.flush()
 
 
-def main():
-    receipt, log = PHASE / "documentation-checks.json", PHASE / "documentation-workflow.log"
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--attempt", help="optional two- or three-digit documentation attempt; original outputs are the default")
+    args = parser.parse_args(argv)
+    if args.attempt is None:
+        receipt, log = PHASE / "documentation-checks.json", PHASE / "documentation-workflow.log"
+    else:
+        need(re.fullmatch(r"[0-9]{2,3}", args.attempt) is not None, "exact documentation attempt required")
+        receipt = PHASE / ("documentation-checks-" + args.attempt + ".json")
+        log = PHASE / ("documentation-workflow-" + args.attempt + ".log")
     excluded = {receipt, log, PHASE / "manifest.json"}
     need(not receipt.exists() and not log.exists(), "exclusive documentation outputs already exist")
     utility = load_stdlib_utility(UTILITY, UTILITY_SHA, "delivery_workflow_extractor")
@@ -403,6 +419,7 @@ def main():
          and len(blocks) == 4, "exact four reviewed workflow blocks required")
     before, before_refs = guard(checker, excluded)
     report = dict(schema="source-worker-delivery-documentation@1", status="running", started_at_utc=utc(),
+        documentation_attempt=args.attempt,
         before=before, exact_workflow_run_blocks=blocks, workflow_sha256=WORKFLOW_SHA,
         steps=[], source_binding_scope="listed_dependencies_not_complete_import_closure",
         complete_import_closure_attested=False, prior_evidence_check_scope="Git modes/blob IDs at base versus staged index",

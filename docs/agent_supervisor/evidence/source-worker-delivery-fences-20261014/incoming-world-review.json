@@ -1,0 +1,58 @@
+{
+  "actual_merge_parents": [
+    "7883e693c5d90fbaa445a444eaeebc90789d9db1",
+    "8f5fa23317bc9609ea8cf7febf2d01c7b821f552"
+  ],
+  "broker_and_new_tests_unchanged": true,
+  "changed_listed_accelerator_paths": [
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+  ],
+  "first_manifest_retained": "first-qualified-manifest.json",
+  "first_qualified_leaf": "7883e693c5d90fbaa445a444eaeebc90789d9db1",
+  "fresh_full_qualification_required": true,
+  "incoming_changed_paths": [
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_repository_source_policy.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_world_nomination_audit.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_world_packet_audit.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_world_packet_audit.py",
+    "docs/agent_supervisor/evidence/world-collector-20261014/qualification.json",
+    "docs/agent_supervisor/evidence/world-replay-20261014/qualification.json",
+    "docs/agent_supervisor/reversible_codebase_views_plan.md",
+    "docs/agent_supervisor/terminal_token_metadata_plan.md",
+    "ipfs_accelerate_py/agent_supervisor/runtime/README.md",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_artifact_store.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "test/api/test_repository_world_artifact_store.py"
+  ],
+  "incoming_diff_base": "09ad10bd0e6694db7b0570614ab289184a0713c5",
+  "incoming_main": "8f5fa23317bc9609ea8cf7febf2d01c7b821f552",
+  "independent_dependency_review": {
+    "broker_task_and_allocation_runtime_modules_unchanged": true,
+    "complete_dynamic_import_closure_attested": false,
+    "concrete_extra_binding_or_suite_need_found": false,
+    "method": "read_only_static_diff_and_import_call_review",
+    "new_world_audit_imports_lazy_in_unselected_audit_branches": true,
+    "new_world_store_imports_lazy_in_unselected_router_run_branches": true,
+    "new_world_suites_not_qualified_in_this_roster": true,
+    "reviewer": "signed_scope_architecture",
+    "selected_router_functions": [
+      "_source_lookup_broker_observation",
+      "_source_lookup_guidance"
+    ],
+    "selected_source_channel_imports_already_bound_router": true,
+    "tests_or_runtime_imports_by_reviewer": false,
+    "worker_archive_additions_are_string_inventories_not_imports": true
+  },
+  "merged_head": "f58aa231805f2546d4f5cf650ef0bf3900d25540",
+  "model_calls": 0,
+  "original_qualification_remains_historical": true,
+  "schema": "source-worker-delivery-incoming-world-review@1",
+  "tests_repeated_here": false,
+  "training_steps": 0
+}
