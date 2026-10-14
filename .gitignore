@@ -428,3 +428,13 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_source_views_recovery/LAC-S8R1-024/result.json
 !/data/legal_autoformalization_source_views_recovery/LAC-S8R1-044/
 !/data/legal_autoformalization_source_views_recovery/LAC-S8R1-044/result.json
+
+# Owned parent-page runtime; exact three declared qualification results.
+/data/agent_supervisor/legal_autoformalization_parent_pages/
+!/data/legal_autoformalization_parent_pages/
+!/data/legal_autoformalization_parent_pages/LAC-S9-011/
+!/data/legal_autoformalization_parent_pages/LAC-S9-011/result.json
+!/data/legal_autoformalization_parent_pages/LAC-S9-024/
+!/data/legal_autoformalization_parent_pages/LAC-S9-024/result.json
+!/data/legal_autoformalization_parent_pages/LAC-S9-044/
+!/data/legal_autoformalization_parent_pages/LAC-S9-044/result.json
