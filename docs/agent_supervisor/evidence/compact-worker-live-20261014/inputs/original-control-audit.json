@@ -1,0 +1,31 @@
+{
+  "actual_config_diff_paths": [
+    "/agents/0/kwargs/source_view_profile",
+    "/jobs_dir"
+  ],
+  "all_common_config_fields_identical": true,
+  "allowed_config_diff_paths": [
+    "/agents/0/kwargs/source_view_profile",
+    "/jobs_dir"
+  ],
+  "archive_matched_host_files": 165,
+  "complete": true,
+  "free_disk_gib": 238.724,
+  "generic_comparator_scope": "Existing comparator common fields only; exact full-config difference separately retained. No comparator relaxed.",
+  "host_and_archive_source_pins_current": true,
+  "host_only_test_files": 162,
+  "host_only_test_scope": "The existing host preparation hashes benchmark test files excluded by the production bundle; those remain host-pinned in the lock.",
+  "host_source_files": 327,
+  "intent_readiness_identical": true,
+  "model_calls": 0,
+  "production_generic_comparator": {
+    "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+    "differences": [],
+    "matches": true,
+    "status": "matched"
+  },
+  "provider_generation_calls": 0,
+  "schema": "repeated-compact-prelaunch-control-audit@1",
+  "source384_bindings_identical": true,
+  "task_hashes_identical": true
+}

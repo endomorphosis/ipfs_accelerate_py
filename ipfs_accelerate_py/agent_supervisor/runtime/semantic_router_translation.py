@@ -522,6 +522,108 @@ def replay_semantic_router_prompt_for_audit(*, prompt: str, repository: Path,
     return _encode(prompt=prompt, repository=repository, current=False, transport_schema=transport_schema)
 
 
+def census_semantic_router_prompt(*, encoded: EncodedSemanticPrompt) -> dict:
+    """Measure a reversible in-memory input without exporting its contents.
+
+    Member partitions include JSON keys/colons; their punctuation counts cover
+    only outer braces and commas. Each partition therefore reconciles exactly.
+    Nested partitions describe the same bytes again and must not be added to
+    their parents. This observation never verifies current source custody and
+    never supplies model input, a token estimate, or omission authority.
+    """
+    if type(encoded) is not EncodedSemanticPrompt:
+        raise SemanticTranslationError("typed encoded semantic prompt required for census")
+    if _restore(encoded.provider_prompt, encoded.table) != encoded.native_prompt:
+        raise SemanticTranslationError("census native prompt reconstruction differs")
+    provider = _parse(encoded.provider_prompt)
+    if _json(provider) != encoded.provider_prompt:
+        raise SemanticTranslationError("canonical provider input required for census")
+    native, end = json.JSONDecoder().raw_decode(encoded.native_prompt)
+    if _json(native) != encoded.native_prompt[:end]:
+        raise SemanticTranslationError("canonical native input required for census")
+
+    def size(value):
+        return len(_json(value).encode("utf-8"))
+
+    def partition(value, labels):
+        if type(value) is not dict:
+            raise SemanticTranslationError("object component required for census")
+        members = {label: {"count": 0, "value_bytes": 0, "member_bytes": 0}
+                   for label in (*labels.values(), "other_fields")}
+        for key, child in value.items():
+            row = members[labels.get(key, "other_fields")]
+            child_bytes = size(child)
+            row["count"] += 1
+            row["value_bytes"] += child_bytes
+            row["member_bytes"] += size(key) + 1 + child_bytes
+        punctuation = 2 + max(0, len(value) - 1)
+        total = size(value)
+        if sum(row["member_bytes"] for row in members.values()) + punctuation != total:
+            raise SemanticTranslationError("census member byte accounting differs")
+        return {"object_bytes": total, "outer_punctuation_bytes": punctuation,
+                "members": members}
+
+    def evidence(rows):
+        if type(rows) is not list or len(rows) > MAX_ITEMS:
+            raise SemanticTranslationError("bounded evidence array required for census")
+        groups = {label: dict(count=0, row_bytes=0, summary_utf8_bytes=0,
+            summary_json_string_bytes=0, summary_json_string_overhead_bytes=0,
+            row_envelope_bytes=0) for label in
+            ("semantic_context", "source_formalization_context", "other_evidence")}
+        labels = {"semantic-context": "semantic_context",
+                  "source-formalization-context": "source_formalization_context"}
+        for item in rows:
+            # Unknown labels and non-object rows remain a single closed group.
+            kind = item.get("kind") if type(item) is dict else None
+            label = labels.get(kind, "other_evidence") if type(kind) is str else "other_evidence"
+            row = groups[label]
+            row_bytes = size(item)
+            summary = item.get("summary") if type(item) is dict else None
+            text_bytes = len(summary.encode("utf-8")) if type(summary) is str else 0
+            string_bytes = size(summary) if type(summary) is str else 0
+            row["count"] += 1
+            row["row_bytes"] += row_bytes
+            row["summary_utf8_bytes"] += text_bytes
+            row["summary_json_string_bytes"] += string_bytes
+            # Includes the two JSON quotes, not just backslash escaping.
+            row["summary_json_string_overhead_bytes"] += string_bytes - text_bytes
+            row["row_envelope_bytes"] += row_bytes - string_bytes
+        punctuation = 2 + max(0, len(rows) - 1)
+        total = size(rows)
+        if sum(row["row_bytes"] for row in groups.values()) + punctuation != total:
+            raise SemanticTranslationError("census evidence byte accounting differs")
+        return {"array_bytes": total, "outer_punctuation_bytes": punctuation, "groups": groups}
+
+    provider_labels = {key: key for key in ("native_context", "translated_semantic",
+        "translation_table", "instructions", "native_suffix")}
+    semantic_labels = {key: key for key in ("capsules", "admissions", "raw_sources", "manifest")}
+    native_labels = {key: key for key in ("evidence", "goal", "scope", "acceptance", "authority")}
+    remaining = provider["native_context"]
+    output = dict(schema="supervisor-semantic-prompt-component-census@1",
+        measurement_scope="canonical-serialized-prompt-utf8-bytes@1",
+        partition_rule="member_bytes_plus_outer_punctuation_equals_object_bytes",
+        nested_partitions_overlap=True, token_estimate=False, provider_tokens=None,
+        model_prompt_wrappers_included=False, provider_calls=0,
+        raw_content_exported=False, dynamic_labels_exported=False,
+        source_freshness_verified=False, proof_authority=False, omission_authority=False,
+        completion_authority=False, execution_authority=False,
+        exact_native_round_trip_verified=True,
+        native_prompt_sha256=_sha(encoded.native_prompt),
+        native_prompt_bytes=len(encoded.native_prompt.encode("utf-8")),
+        native_suffix_bytes=len(encoded.native_prompt[end:].encode("utf-8")),
+        provider_prompt_sha256=_sha(encoded.provider_prompt),
+        provider_prompt_bytes=len(encoded.provider_prompt.encode("utf-8")),
+        native_object=partition(native, native_labels),
+        native_evidence=evidence(native["evidence"]),
+        provider_object=partition(provider, provider_labels),
+        remaining_native_context=partition(remaining, native_labels),
+        remaining_native_evidence=evidence(remaining["evidence"]),
+        translated_semantic=partition(provider["translated_semantic"], semantic_labels))
+    if len(_json(output).encode("utf-8")) > 16_384:
+        raise SemanticTranslationError("closed prompt census exceeds its byte bound")
+    return output
+
+
 def _restore(provider_prompt: str, table: SemanticTranslationTable) -> str:
     wire, mapping = _parse(provider_prompt), _parse(table.payload_json)
     if not isinstance(wire, dict):

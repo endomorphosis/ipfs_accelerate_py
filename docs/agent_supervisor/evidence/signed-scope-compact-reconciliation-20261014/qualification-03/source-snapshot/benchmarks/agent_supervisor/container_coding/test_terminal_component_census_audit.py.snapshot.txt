@@ -1,0 +1,136 @@
+"""Historical prompt diagnostics retain closed counts and reject invented data.
+
+Real producer artifacts and exact input replay are used. The output-retention
+case separately authors only the final projection seam. No provider is called.
+"""
+from copy import deepcopy
+from pathlib import Path
+import json
+
+import pytest
+
+from benchmarks.agent_supervisor.container_coding import terminal_context_audit as audit
+from benchmarks.agent_supervisor.container_coding.test_terminal_context_audit import compiled  # noqa: F401
+from ipfs_accelerate_py.agent_supervisor.runtime import semantic_router_translation as codec
+from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
+from test.api.test_semantic_router_translation import native  # noqa: F401
+
+
+@pytest.fixture
+def observed(native):
+    root, _, prompt, _ = native
+    encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=root)
+    workspace = root.parent / 'removed-allocation' / 'child'
+    model, advisory = render_model_prompt(prompt=encoded.provider_prompt, purpose='coding', workspace=workspace,
+        semantic_transport=True)
+    receipt = dict(schema='router-implementation-invocation@1', phase='coding', purpose='coding',
+        invocation_id='authored-census-receipt', workspace=str(workspace),
+        prompt_sha256=codec._sha(prompt), prompt_bytes=len(prompt.encode()),
+        native_prompt_sha256=codec._sha(prompt), native_prompt_bytes=len(prompt.encode()),
+        router_prompt_sha256=codec._sha(encoded.provider_prompt), router_prompt_bytes=len(encoded.provider_prompt.encode()),
+        model_prompt_sha256=codec._sha(model), model_prompt_bytes=len(model.encode()),
+        workspace_advisory_sha256=codec._sha(advisory), workspace_advisory_bytes=len(advisory.encode()),
+        semantic_translation=encoded.receipt,
+        semantic_prompt_components=codec.census_semantic_router_prompt(encoded=encoded))
+    return root, prompt, model, receipt
+
+
+def parse(receipt):
+    return audit._receipt(receipt, Path(receipt['workspace']).parent)
+
+
+def test_closed_census_retained_and_reproduced_from_real_historical_input(observed):
+    root, prompt, model, receipt = observed
+    parsed = parse(receipt)
+    assert parsed['semantic_prompt_components'] == receipt['semantic_prompt_components']
+    (root / 'mod.py').write_text('changed current source is not historical custody\n')
+    actual, _, checks = audit._model_projection(rendered=prompt, receipt=parsed, repository=root)
+    assert actual == model and all(checks.values())
+    assert checks['semantic_prompt_components'] is True
+
+
+@pytest.mark.parametrize('change', ['digest', 'count'])
+def test_well_typed_invented_measurement_cannot_verify_historical_input(observed, change):
+    root, prompt, model, receipt = observed
+    if change == 'digest':
+        receipt['semantic_prompt_components']['provider_prompt_sha256'] = '0' * 64
+    else:
+        receipt['semantic_prompt_components']['translated_semantic']['members']['raw_sources']['value_bytes'] += 1
+    parsed = parse(receipt)
+    actual, _, checks = audit._model_projection(rendered=prompt, receipt=parsed, repository=root)
+    assert actual == model
+    assert checks['semantic_prompt_components'] is False
+    assert not all(checks.values())
+
+
+@pytest.mark.parametrize('change', [
+    'private_top', 'private_label', 'private_row', 'boolean_count', 'negative_count',
+    'overflow_count', 'bad_digest', 'missing_partition', 'missing_member',
+    'provider_cost_false', 'token_estimate', 'authority_integer', 'freshness',
+    'provider_tokens', 'unavailable_extra', 'untranslated',
+])
+def test_census_refuses_unknown_content_typed_flags_and_unbounded_numbers(observed, change):
+    _, _, _, receipt = observed
+    census = receipt['semantic_prompt_components']
+    if change == 'private_top': census['private_text'] = 'PRIVATE source text'
+    elif change == 'private_label': census['native_evidence']['groups']['PRIVATE path.py'] = {}
+    elif change == 'private_row': census['native_object']['members']['goal']['private_text'] = 'PRIVATE intent'
+    elif change == 'boolean_count': census['provider_prompt_bytes'] = True
+    elif change == 'negative_count': census['native_suffix_bytes'] = -1
+    elif change == 'overflow_count': census['native_evidence']['groups']['other_evidence']['count'] = 2_000_001
+    elif change == 'bad_digest': census['provider_prompt_sha256'] = 'PRIVATE source'
+    elif change == 'missing_partition': census.pop('native_object')
+    elif change == 'missing_member': census['native_object']['members'].pop('other_fields')
+    elif change == 'provider_cost_false': census['provider_calls'] = False
+    elif change == 'token_estimate': census['token_estimate'] = True
+    elif change == 'authority_integer': census['proof_authority'] = 0
+    elif change == 'freshness': census['source_freshness_verified'] = True
+    elif change == 'provider_tokens': census['provider_tokens'] = 0
+    elif change == 'unavailable_extra':
+        receipt['semantic_prompt_components'] = dict(schema=census['schema'], status='unavailable',
+            raw_content_exported=False, private_text='PRIVATE source')
+    else: receipt.pop('semantic_translation')
+    with pytest.raises(ValueError) as failure:
+        parse(receipt)
+    assert 'PRIVATE' not in str(failure.value)
+
+
+@pytest.mark.parametrize('availability', ['absent', 'unavailable'])
+def test_legacy_and_unavailable_diagnostics_preserve_input_without_inventing_verification(observed, availability):
+    root, prompt, model, receipt = observed
+    if availability == 'absent': receipt.pop('semantic_prompt_components')
+    else: receipt['semantic_prompt_components'] = dict(schema='supervisor-semantic-prompt-component-census@1',
+        status='unavailable', raw_content_exported=False)
+    parsed = parse(receipt)
+    actual, _, checks = audit._model_projection(rendered=prompt, receipt=parsed, repository=root)
+    assert actual == model and all(checks.values())
+    assert 'semantic_prompt_components' not in checks
+    if availability == 'absent': assert 'semantic_prompt_components' not in parsed
+    else: assert parsed['semantic_prompt_components']['status'] == 'unavailable'
+
+
+@pytest.mark.parametrize('verified', [True, False, None])
+def test_final_audit_retains_closed_diagnostic_with_explicit_verification(compiled, observed, monkeypatch, verified):
+    # The real replay is qualified above and in the signed compact handoff. This
+    # case authors only the projection result to check final output retention.
+    _, _, _, source_receipt = observed
+    receipt = compiled['receipts'][0]
+    receipt['semantic_translation'] = source_receipt['semantic_translation']
+    receipt['router_prompt_sha256'] = receipt['native_prompt_sha256']
+    receipt['router_prompt_bytes'] = receipt['native_prompt_bytes']
+    census = deepcopy(source_receipt['semantic_prompt_components'])
+    if verified is None:
+        census = dict(schema=census['schema'], status='unavailable', raw_content_exported=False)
+    receipt['semantic_prompt_components'] = census
+    def project(*, rendered, receipt, **kwargs):
+        model, advisory = render_model_prompt(prompt=rendered, purpose='coding', workspace=Path(receipt['workspace']))
+        checks = {} if verified is None else {'semantic_prompt_components': verified}
+        return model, advisory, checks
+    monkeypatch.setattr(audit, '_model_projection', project)
+    result = audit.audit_terminal_context(state=compiled['state'], receipts=compiled['receipts'],
+        workspace_root=compiled['workspace_root'])
+    row = result['invocations'][0]
+    assert row['semantic_prompt_components'] == census
+    assert row['semantic_prompt_components_verified'] is verified
+    assert compiled['query'] not in json.dumps(result)
+    assert result['proof_authority'] is result['completion_authority'] is False

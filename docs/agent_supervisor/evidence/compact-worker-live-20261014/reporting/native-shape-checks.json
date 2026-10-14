@@ -1,0 +1,17 @@
+{
+  "checks": [
+    "explicit graph counts retained with missing subgoals unknown",
+    "native turn count and signed failure retained",
+    "raw unknown text excluded",
+    "absent tool census remains unknown",
+    "absent dispatch count stays unknown",
+    "different invocation population rejected",
+    "unvalidated stream envelope rejected"
+  ],
+  "passed": 7,
+  "production_files_changed": false,
+  "provider_calls": 0,
+  "schema": "compact-native-shape-authored-checks@1",
+  "source_sha256": "5911e857dbf0d8e4a397e80b4152a093cb4e5f270dfcf183a5c0fe1addb86c32",
+  "test_sha256": "cdd8b53dec83790139ba8a0b851aefca7d2bd1c02618a0b35ea87c12d2af0b45"
+}

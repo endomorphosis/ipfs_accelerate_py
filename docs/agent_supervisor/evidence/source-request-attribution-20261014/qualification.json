@@ -1,0 +1,113 @@
+{
+  "aggregate_schema": "worker-source-request-operation-counts@1",
+  "base_commit": "3f08cc43cbd96c9f8a5114091f65566a5962dbbc",
+  "branch": "codex/source-refusal-observation-20261014",
+  "deployed_to_retained_live_trials": false,
+  "descriptor_request_response_guidance_unchanged": true,
+  "evidence": {
+    "independent-review.json": "b796fbd7d602712705e6cac7cce199e88c16a86e0555c9941dbe75237edb4130",
+    "retained-failures.json": "1297a5e4875aaf03d76dacd25cd49cb6cd07fe6cd55e17bba6a3e60217e629af",
+    "tests-ledger.json": "f30a7d140759ecc34ec8f28c39c50dac3d0d94ca99a76c1407875c0572f3a69e",
+    "unchanged-interfaces.json": "e25e8df3a0043ea038df5326d33a5bfdac35f05cf521280ad9965cea800cba9a"
+  },
+  "external_model_calls": 0,
+  "implementation_commit": "69bc0b87bba2b27e89d246fdff3caa7ed3330c83",
+  "mapper_permissions_unchanged": true,
+  "new_docker_or_cross_uid_qualification": false,
+  "owner_audit_schema": "supervisor-worker-source-session@5",
+  "qualified_test_sha256": {
+    "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py": "273ed9b95447197f7c3049cf5a068d24e892a4646cefc41a503190ef2676f8ec",
+    "benchmarks/agent_supervisor/container_coding/test_source_policy_observation_join.py": "0640f68437dba89fd18ce8a9b084a6aceb457eddb0a1996ed94ffb23c31b9782",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py": "7276ae28bf60f5e6a248d43e3463a3099f819bdaf63f05b0b79f488ad2ae7efb",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py": "3d9dab78a6eb73c1052ca68d23ef29f2c3dfeb1d0ce0a56493d99bb72103a208",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_retrieval_observation.py": "450c4e1764f5638d830ff953291490190ad3006291cee7ec945a428104e60227",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py": "0c99edf9152679de6bdff551dd058f0ce8602d4445bc47d572a340995ac867f7",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_request_observation.py": "bfde491b172d2c8a54231f916a816cd99132dbbd80d602832f6bb383a81e6f51",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py": "a3648c30d9e93ee2de56933cd8a248a259f1300dc1d675e6c40fc9340136c1d3",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "c6494a95220f968215d9c69d8a40f7bc838cadd1f8212b63c5dc78b026171638",
+    "test/api/test_worker_candidate_context_broker.py": "d124b8db5197e14b5323ab661b0119dc0dc07bad15b0c25a0c55762078115339",
+    "test/api/test_worker_source_broker.py": "e8d53fe0d857d6f5ab5dcc67c6a71c0b4ef83e12099f987d38e737040c8ea55a",
+    "test/api/test_worker_source_discovery_transport.py": "fad8cbcda6c2c481231ae832bbe5e69651c9083ee9eddf44f5ba1bb0f00a93b6",
+    "test/api/test_worker_source_request_observation.py": "7737a3d091dd867b0c1ddfba5662708a3e6e9175b8e96724576ab917f1f2fcae",
+    "test/api/test_worker_source_working_broker.py": "74c0e1aca2c5bdcaacf25a0f06524532e962c692bbef4a2196da983479cf9f9a"
+  },
+  "repository": "ipfs_accelerate_py",
+  "runs": {
+    "capability-03": {
+      "artifacts": {
+        "command.json": "a41624ee67dd6397ca2ecdf8afa6234c72d6035db27ddac77dd13122201e8aa5",
+        "exit.json": "c9d8f9f3ae70147a8ef09a88d1db5297ce30e738228e4ab5b76319f66b975069",
+        "junit.xml": "85f54e2edfc1fe5925e12fac69cda24a0ce5e4c1e4b89e3aa6c89212b9117d66",
+        "source-after.json": "3265f9bdc0da4bb52eba9a677180b3b92f88ced1229730c5bb998ee0c44dbd28",
+        "source-before.json": "3265f9bdc0da4bb52eba9a677180b3b92f88ced1229730c5bb998ee0c44dbd28"
+      },
+      "junit_counts": {
+        "passed": 116
+      },
+      "result": {
+        "changed_sources": [],
+        "elapsed_seconds": 18.458321400918067,
+        "exit_code": 0,
+        "source_unchanged": true,
+        "timeout": false
+      }
+    },
+    "focused-02": {
+      "artifacts": {
+        "command.json": "40e66f8c6fcf5271f50b79024e58f0b7495e6087664ce02fab7571e280253377",
+        "exit.json": "986d826baf52bde08e0f36ae2ac4e9063c957c96ed132becd7ee15b8ef4207bd",
+        "junit.xml": "931ef901a4e9623cf52bd13a4a836b9f1b096300da3ca68130fd944bc7a5021d",
+        "source-after.json": "27859f0888b7a93360028eac8dca0c5058b206b2f2d8b1fd3d3c7bdabe159087",
+        "source-before.json": "27859f0888b7a93360028eac8dca0c5058b206b2f2d8b1fd3d3c7bdabe159087"
+      },
+      "junit_counts": {
+        "failure": 1,
+        "passed": 623
+      },
+      "result": {
+        "changed_sources": [],
+        "elapsed_seconds": 344.5394823009847,
+        "exit_code": 1,
+        "source_unchanged": true,
+        "timeout": false
+      }
+    }
+  },
+  "schema": "source-request-attribution-qualification@1",
+  "scope": [
+    "Real local socket requests with authored UID admission; refused read peer/context/scope cases retain parsed operation and do not mutate source.",
+    "Malformed envelopes remain unknown; successful/refused mapping and actual router-to-worker integration retain strict counters.",
+    "Historical audit schemas @1\u2013@4 preserve prior result shapes; mixed historical/new records explicitly report attribution coverage.",
+    "The final observation retains no new source paths, source text, preimages, replacements, credentials or tool transcripts.",
+    "Parsed requested operations are observational metadata before peer/context admission, not proof or action authority.",
+    "No token savings, billing completeness, full supervisor START, or benchmark performance claim is made for this diagnostic patch."
+  ],
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "3c6f96e0ce3c3c3de9efd96c873d0eae58dbea561ea674923cb5a016f3c53fa9",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "e78c18422e06f1417cb7e5c19ba7df0de7bea2d5b35606aa4cdb8220d499d99e",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "d6dfd1df366123b6d00be2705de40244b766ac5a8ac026ff8e00e948f61f10c5",
+    "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py": "273ed9b95447197f7c3049cf5a068d24e892a4646cefc41a503190ef2676f8ec",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_request_observation.py": "bfde491b172d2c8a54231f916a816cd99132dbbd80d602832f6bb383a81e6f51",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "c6494a95220f968215d9c69d8a40f7bc838cadd1f8212b63c5dc78b026171638",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "3909c94a0e79540cc8a401eed4935dcccaaf037766b913d6e60812d296153a87",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "ebd1c861469bac02360bfa31b2cb2b1c3592ef9a50e445f043afb9518f5d4808",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py": "fe97b2b2b89c9095a4e9ef61fc89e32e24560b9f07108fed478d8e2ecb21abe6",
+    "test/api/test_worker_candidate_context_broker.py": "d124b8db5197e14b5323ab661b0119dc0dc07bad15b0c25a0c55762078115339",
+    "test/api/test_worker_source_broker.py": "e8d53fe0d857d6f5ab5dcc67c6a71c0b4ef83e12099f987d38e737040c8ea55a",
+    "test/api/test_worker_source_discovery_transport.py": "fad8cbcda6c2c481231ae832bbe5e69651c9083ee9eddf44f5ba1bb0f00a93b6",
+    "test/api/test_worker_source_request_observation.py": "7737a3d091dd867b0c1ddfba5662708a3e6e9175b8e96724576ab917f1f2fcae"
+  },
+  "status": "passed",
+  "tests": {
+    "distinct_passed": 627,
+    "errors": 0,
+    "failures": 0,
+    "historical_results_added_to_final_count": false,
+    "per_file_selection": {
+      "capability-03": 116,
+      "focused-02": 511
+    },
+    "skipped": 0,
+    "test_files": 14
+  }
+}

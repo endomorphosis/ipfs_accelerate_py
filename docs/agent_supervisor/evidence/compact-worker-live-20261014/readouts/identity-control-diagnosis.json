@@ -1,0 +1,186 @@
+{
+  "evidence_bindings": {
+    "live-readout-identity-01.json": {
+      "bytes": 17608,
+      "filename": "live-readout-identity-01.json",
+      "sha256": "19eef7a48bc570c1e65b59655077273356ba32b3c865d8dada4a012cf2afe3ec"
+    },
+    "native-shape-identity-01.json": {
+      "bytes": 7026,
+      "filename": "native-shape-identity-01.json",
+      "sha256": "2d124fab2a9fda345ceb9072d078b91d9e7cde886b70c9ead27b9eb1dbbb9cd1"
+    },
+    "receipt.json": {
+      "bytes": 277579,
+      "filename": "receipt.json",
+      "sha256": "f5ea12674ed2083cc50797fabde98902d6b07ff95ab7f54c1aaab72ee0b8f135"
+    }
+  },
+  "existing_controls": [
+    {
+      "effect": "Compile the signed mechanical goal/task skeleton without a planner model call, then reuse independent admission/materialization.",
+      "id": "declared_contract_planning",
+      "limit": "Removes the separate planning invocation; does not establish semantic intent alignment or eliminate the observed 23 coding turns. This identity planning invocation reported 24,474 tokens, not a guaranteed same-task future saving.",
+      "reference": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:603",
+      "selection": "planning_mode=declared-contract@1",
+      "status": "available_opt_in"
+    },
+    {
+      "effect": "Losslessly reference common metadata and the exact independently admitted instruction already appended verbatim. Restore must match native bytes; select only a smaller complete rendered input.",
+      "id": "common_metadata_and_instruction",
+      "limit": "Current CLI path supplies no token counter; selection requires smaller bytes and named proxy. No authenticated Grok tokenizer or actual token savings follow from this gate.",
+      "reference": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py:99",
+      "selection": "semantic_metadata_view=common-bindings-instruction@1",
+      "status": "available_opt_in_for_grok_transport_1"
+    },
+    {
+      "effect": "Keep alias translation dictionary with controller while retaining exact native reconstruction.",
+      "id": "controller_dictionary",
+      "limit": "Cannot combine with common-bindings metadata modes in current route; the current dictionary is 1,335 member bytes before replacement overhead, not a token saving estimate.",
+      "reference": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py:485",
+      "selection": "semantic_transport_schema=supervisor-semantic-router-input@2",
+      "status": "available_alternative_opt_in"
+    },
+    {
+      "effect": "Prioritize verified source-bound symbol retrieval under existing capsule/byte bounds.",
+      "id": "retrieval_ranked_capsules",
+      "limit": "Identity already selected four worker capsules for four indexed symbols. Ranking alone does not establish a smaller context; Terminal preparation fixes 32,768 worker bytes and uses the default capsule cap, so a lower explicit budget would be a separately qualified feature.",
+      "reference": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py:54",
+      "selection": "capsule_selection=verified-retrieval-symbol-rank@1",
+      "status": "available_opt_in"
+    },
+    {
+      "effect": "Existing short candidate-ready acknowledgment is qualified only for Codex.",
+      "id": "ordinary_completion",
+      "limit": "A Grok extension needs explicit provider contract and tests; no evidence shows current final reply requirements caused the 23 turns.",
+      "reference": "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py:14",
+      "selection": "coding_reply_mode=ordinary-completion@1",
+      "status": "unavailable_for_grok"
+    }
+  ],
+  "facts": {
+    "coding_model_prompt_bytes": 78597,
+    "coding_native_prompt_bytes": 79595,
+    "coding_native_turns": 23,
+    "coding_stream_auto_compact_events": 0,
+    "coding_stream_tool_call_events": 22,
+    "coding_stream_unknown_tool_names": 22,
+    "coding_stream_usage_events": 23,
+    "coding_transport_bytes": 72152,
+    "indexed_symbols": 4,
+    "max_turns_requested_coding": 128,
+    "native_usage_completeness": null,
+    "official_reward": 1,
+    "ordinary_tool_source_reads_unknown": true,
+    "output_token_cap_enforced": false,
+    "per_turn_numeric_usage_not_retained": true,
+    "planning_model_prompt_bytes": 34233,
+    "planning_native_turns": 1,
+    "planning_provider_calls": 1,
+    "source_edit_confirmations_delivered": 1,
+    "source_owner_pages_delivered": 7,
+    "token_totals_are_reported_envelope_counters_not_complete_billing": true,
+    "worker_capsules": 4,
+    "worker_semantic_bytes": 31939
+  },
+  "hidden_verifier_or_solution_contents_read": false,
+  "hypotheses_not_established": [
+    "A large repeated initial context and growing tool history plausibly contribute to cached input over 23 turns, but retained metadata does not attribute costs to individual turns or tool outputs.",
+    "Metadata/formalization and selected capsule size are more promising initial-input targets than comments alone, but no actual metadata candidate was measured for this invocation.",
+    "Neither lowering max turns nor enabling an unsupported Grok completion contract is justified as a quality-preserving fix by this single trial."
+  ],
+  "offline_lossless_replay": {
+    "available": "Retained input SHA256/byte counts, closed component census, public instruction inclusion receipt and admitted context metadata.",
+    "candidate_bytes": null,
+    "missing": "Actual native/model prompt and semantic worker-context/translation source artifacts are not separately present in the retained trial file inventory.",
+    "model_calls": 0,
+    "raw_supervisor_stdout_read": false,
+    "reason": "Harness deliberately exports the explicit public result and bounded diagnostics, never the private state tree. Hashes and byte partitions do not reconstruct exact accepted-plan context.",
+    "required": "Hash-bound complete actual model input plus encoded transport and exact admitted instruction block/receipt from this invocation.",
+    "retention_reference": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py:551",
+    "selection_fallback_reason": null,
+    "status": "blocked_missing_retained_exact_input",
+    "synthetic_fixture_substituted_for_actual": false
+  },
+  "production_files_changed": false,
+  "provider_calls_by_audit": 0,
+  "raw_transcripts_read": false,
+  "recommended_next_steps": [
+    "Finish frozen identity/comments pair before changing any control.",
+    "Add a content-free in-memory comparison receipt before provider dispatch for existing metadata codecs, using the actual encoded input and instruction owner; record exact restored hashes, full native/candidate bytes, selected mode/fallback and supplied counter identity without changing selected input.",
+    "Use that measured result to choose one subsequent full/full metadata treatment, holding accepted planning controls, model, source profile and budgets fixed.",
+    "Separately qualify declared-contract planning to displace the measured mechanical planner invocation.",
+    "Add bounded intermediate numeric Grok usage observations and qualified closed tool-name normalization, with native counter semantics validated before calculating deltas; do not retain arguments, outputs or reasoning."
+  ],
+  "schema": "compact-identity-token-control-audit@1",
+  "scope": "Existing control and observability audit of one retained Grok identity trial; no live treatment changed.",
+  "source_bindings": {
+    "capsule_selection": {
+      "bytes": 7723,
+      "filename": "semantic_capsule_selection.py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "sha256": "6737a0c21c5e29f8f1afca9b02d5f93e2f202be5a8258a4fc851c59f29dbba59"
+    },
+    "declaration": {
+      "bytes": 79777,
+      "filename": "terminal_indexed_preparation.py",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "d6f28f7d3e8879eb05cd8411ef37b132f21e2d9fb233642f6b4a909bddbc7b81"
+    },
+    "initial_context": {
+      "bytes": 57928,
+      "filename": "terminal_initial_context.py",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "58dc1077e82e731b7fcddfa5eb73ae88fe5e292a456bc1cfc6528933ef5903e0"
+    },
+    "instruction_view": {
+      "bytes": 13476,
+      "filename": "semantic_instruction_view.py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
+      "sha256": "c65386bf2a43c077d84d29aa7ee44fcb283c9e31e9269e37188a8d4123580dd4"
+    },
+    "metadata_policy": {
+      "bytes": 6395,
+      "filename": "terminal_semantic_metadata_policy.py",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "sha256": "3645ca1c9a4e438f3b1308ddb70d5cf27e9f008dc2b44ab8667f757d5fc2053c"
+    },
+    "metadata_view": {
+      "bytes": 23539,
+      "filename": "semantic_metadata_view.py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "d26cb7e80b54bbbd52b64ff6097320f4b47ee619f02395df1d51f4a38b24be4d"
+    },
+    "reply_policy": {
+      "bytes": 3057,
+      "filename": "terminal_coding_reply_policy.py",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+    },
+    "retention": {
+      "bytes": 45159,
+      "filename": "full_supervisor_harbor_agent.py",
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "25eed3fa37f87f2f0c14227ae1bfcb4f0dde5789e3dd7275d95593d8f70926ad"
+    },
+    "runner": {
+      "bytes": 69044,
+      "filename": "router_implementation_runner.py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "0727e5bd80e698241ea73e482237ddeae63bc1158758259e30f7e4e48685ac12"
+    },
+    "stream": {
+      "bytes": 20262,
+      "filename": "grok_stream_capture.py",
+      "path": "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+      "sha256": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421"
+    },
+    "translation": {
+      "bytes": 43934,
+      "filename": "semantic_router_translation.py",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "47d0526ca1e4000c94f76f881e5207645cfff60169796ed5e8b49fa32e8b3d6e"
+    }
+  },
+  "token_savings_claimed": false
+}

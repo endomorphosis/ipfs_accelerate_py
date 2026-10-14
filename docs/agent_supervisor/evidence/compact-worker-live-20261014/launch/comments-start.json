@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+    "execute",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02"
+  ],
+  "arm": "full",
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+  "environment_manifest_sha256": "f37fbd3c39a10d76a51a238d8a62887deec29cb1484641ad3965e1d621764c89",
+  "inherited_environment_values_retained": false,
+  "label": "comments",
+  "pair_lock_sha256": "295b12b3f4464bbab8422ce8fdfe0414949fd3295948a54426a95ce48e015fa5",
+  "preparation_sha256": "42844db121a819307c4f3894f345c04e245fe9fc012c7638eb51d2567f464a5d",
+  "recipe_sha256": "1de12ca59219f954a14edd4d8b7d0e2a175e48c262c555601ddf4d1041012746",
+  "runner_sha256": "a41058467ae54fb1b54d0fe3d0f56b058effc4a2c821cc73ee50d5a94f35d94a",
+  "schema": "repeated-compact-live-launch@1",
+  "started_at_utc": "2026-10-13T23:59:33.943197+00:00"
+}

@@ -1,0 +1,91 @@
+{
+  "bindings": {
+    "client-tests-01/command.json": {
+      "bytes": 1798,
+      "sha256": "d6515747deafede4d17b94b24ec3447c391ded5af49cb2591c025be661a5b7d5"
+    },
+    "client-tests-01/junit.xml": {
+      "bytes": 17935,
+      "sha256": "8fe7306d8532d20b8196d13d8cf182ab5b8a5395b70d252d5511d4d01c94b744"
+    },
+    "client-tests-01/result.json": {
+      "bytes": 937,
+      "sha256": "aeaf83d3d9a9b20a69a308e44e100b544aeff0508ee8ef2f9524808f98462ee5"
+    },
+    "core-independent-review.json": {
+      "bytes": 1537,
+      "sha256": "ebab9a017abc20fbe5322be0e64e88ae2cb21c3348ef59daaa66db5d8ce28485"
+    },
+    "delivery-fence-independent-review.json": {
+      "bytes": 2586,
+      "sha256": "d6441323203a9956727e28218b52d7b863a8f6326d228d1bc63f92603689b98f"
+    },
+    "docker-byte-accounting-review.json": {
+      "bytes": 3501,
+      "sha256": "49ff41aa3f66848dab44edc0ddb7895d7aec165f1181ad54621d689666acb279"
+    },
+    "docker/run-01/qualification.json": {
+      "bytes": 3552,
+      "sha256": "dfa5200078119733f3b857465b2478fcbdccac28f10de9143cc090e697e19975"
+    },
+    "outer-tests-03/command.json": {
+      "bytes": 2116,
+      "sha256": "55b2464d2e16c5a58a0007047474d181f53a9bbbaafae36e2e215ebc550e7c57"
+    },
+    "outer-tests-03/junit.xml": {
+      "bytes": 31664,
+      "sha256": "45d4e021aa53c316503e5722b4fe7a8f6858ce423be563566f40908b8520af91"
+    },
+    "outer-tests-03/result.json": {
+      "bytes": 412,
+      "sha256": "6aff7d38b488729343be9047a964a3fd0113805c76efcd9c754a92f99cb81893"
+    },
+    "root-tests-02/command.json": {
+      "bytes": 935,
+      "sha256": "0fac467e524a42773926f88bee4f89f33e19041ef05cd656cbcf1c06b918139b"
+    },
+    "root-tests-02/exit.json": {
+      "bytes": 134,
+      "sha256": "bf131e51b7ae8cb935eef75c16087cea0441ea19a33966ab58d52ae61adfc76b"
+    },
+    "root-tests-02/junit.xml": {
+      "bytes": 64987,
+      "sha256": "bde0216a0613dbcbadfe0fe1d7bcb29622e34a6b3521af393e3f9f399343b465"
+    },
+    "service-final-tests-03/command.json": {
+      "bytes": 303,
+      "sha256": "5ffff5b450d8de2a266c4d57ff381c8ade953b5b7de76768f0155819b7e5f279"
+    },
+    "service-final-tests-03/exit.json": {
+      "bytes": 135,
+      "sha256": "e2d28bcdf9b2a80b174a56bf763a6dc5952dfa7b20e60556ea43d08889d037ad"
+    },
+    "service-final-tests-03/junit.xml": {
+      "bytes": 27100,
+      "sha256": "1e072a0c10588202841a6ddf814040091163aa049e5fde16ced2b79280b970b9"
+    }
+  },
+  "current_commit": "3f08cc43cbd96c9f8a5114091f65566a5962dbbc",
+  "distinct_passing_nodes": 714,
+  "distinct_test_files": 13,
+  "docker_runner_pins_current": true,
+  "docker_three_actual_cross_uid_edits_passed": true,
+  "limits": [
+    "Four scoped suites, not one simultaneous invocation.",
+    "Prior failed/intermediate suites remain retained and are excluded from final passing count.",
+    "Owner-observed confirmation refusal or failed delivery blocks repeated editing; a send acknowledged by the kernel is not proof of client receipt or interpretation.",
+    "Authored Docker provider hook qualifies native transport/lifecycle only; no provider tokens, benchmark reward, proof discharge or full START from that probe.",
+    "Live pair measurement is pending separately."
+  ],
+  "production_pin_count": 18,
+  "production_release_pins_current": true,
+  "reviewer": "source_context_wiring",
+  "schema": "repeated-compact-final-readiness-review@1",
+  "status": "passed",
+  "tests_by_run": {
+    "client-tests-01": 116,
+    "outer-tests-03": 149,
+    "root-tests-02": 349,
+    "service-final-tests-03": 100
+  }
+}

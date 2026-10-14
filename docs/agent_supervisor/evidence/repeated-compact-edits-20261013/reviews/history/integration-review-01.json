@@ -1,0 +1,51 @@
+{
+  "checks": [
+    "Explicit mode is validated at outer selection, bound into configuration and exact comparison controls, archive producers, owner broker construction, descriptor, router and observation.",
+    "Historical default/disabled callers preserve omitted fields; @1 construction avoids new optional mode kwargs and @1 guidance bytes are pinned by regression tests.",
+    "Old/foreign confirmation ticket at core refuses before active proposal consumption or view mutation; broker clears only advisory candidate context on refusal.",
+    "Every confirmed edit clears advisory candidate context; new source working generation is exact full-population postimage bound. Previous generation cannot be used for a later mapped preparation.",
+    "One client invocation has one prepare/write/confirm sequence, no retry. Written failures retain written_confirmation_unknown; no original body is returned in mapping or confirmation.",
+    "Historical prompt replay selects exact recorded mode and checks guidance bytes/hash. It cannot upgrade a legacy source observation using a mode field.",
+    "Existing source-session@4 accounting differentiates mapping/confirmation pages and includes all prepared/delivered response bytes. It claims no task validation or token saving."
+  ],
+  "limits": [
+    "No provider calls, no tests rerun solely for this review, no production edits.",
+    "No whole-repository rename/minification, fully general source transformation, task completion, symbolic proof discharge or paid-token advantage claimed."
+  ],
+  "open_findings": [
+    {
+      "classification": "Integration state contract requires resolution or narrower documentation",
+      "detail": "Broker context/peer failures may occur before core confirmation consumes its attempt or after successful core confirmation clears its proposal; send_frame can fail after core success. Thus core terminal-failure guarantee does not imply all broker refusals/response-delivery failures permanently block the owner session. Client uncertainty/no-auto-retry remains enforced.",
+      "id": "confirmation_failure_scope",
+      "parent_notified": true,
+      "production_edited_by_reviewer": false
+    }
+  ],
+  "review_scope": "Read-only independent integration review; core service authored by this reviewer and independently reviewed separately.",
+  "schema": "repeated-source-edit-integration-review@1",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "333a9c7617c8d7a79ca8649bdf4759b0425493b22a00834654e0101daa5b9e3d",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "5a29cc320bec77c25f939bea0ad0d0a55a3ccc9aa17a87736805d37ae9c052ac",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "9875e4ce9f3c5ee91bd209810ebb0acfdf0478b21a92ada213d17ec0479bf591",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "25eed3fa37f87f2f0c14227ae1bfcb4f0dde5789e3dd7275d95593d8f70926ad",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "84ecb5d2eae9d986968172f0843f73d75ca1f4f4a9392ffc3468c1e8989e71e9",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "9f122f289de4e7618c51f5337b85ca0cd070c4ce259ebf98f5cb545575db662c",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "a9c2d4d851ba281793e979ab117639a0e7097d2c4c20be8ec827c86a628f9961",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "204d6a840ca79141e95da8a0c7fe0da471223c66a353a3c9250b1b1c1063b7f5",
+    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "52dad9568206c2e1b0f2f1048d2fc88a901bf626f827a7c2f60c7394337b5004",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "0727e5bd80e698241ea73e482237ddeae63bc1158758259e30f7e4e48685ac12",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "9740b8beb85cc21f3e3d2001c4a84bc67d3e31a13eaa2e214dd5788647b3f2ea",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "90711d0d9ea05c4d091acfb74b61362bc79105a320aab3ef283364cd8d0b687c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py": "0b6082ae6a15001d4e3e0b633c57a2a6557862fe253f4117805998bb2a56bb28",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py": "08cd587a17ba5b94fc46b096f9522e9d2ce833f38d3780ec350212682cd4857d"
+  },
+  "status": "integration_review_complete_failure_scope_resolution_pending",
+  "test_improvement": "Root broker test clears/rebuilds cached generation; an explicit comparison of reconstructed candidate capsule/source pins after each edit would strengthen its evidence.",
+  "test_review": {
+    "client": "116 passes reported by owner, production frozen",
+    "core": "96 passes, owned producer/test unchanged",
+    "outer": "Outer qualification reviewed; 32 legacy byte-preservation cases retained",
+    "root": "Root integrated tests running; no final claim yet"
+  }
+}

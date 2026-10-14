@@ -1,0 +1,116 @@
+{
+  "archive_closure": {
+    "all_changed_and_new_production_modules_pinned": true,
+    "combined_worker_edit_owners": 40,
+    "packaging_checked": "terminal_deployment includes package .py recursively and non-test benchmark .py; both new runtime modules and policy enter fresh archive.",
+    "selected_source_edit_owners": 20,
+    "source_sha256": {
+      "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "333a9c7617c8d7a79ca8649bdf4759b0425493b22a00834654e0101daa5b9e3d",
+      "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "ab28888f4f47f38bba829b36cf7bcd271aa212b73fb74d21b5461f47dde0be6f",
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "9875e4ce9f3c5ee91bd209810ebb0acfdf0478b21a92ada213d17ec0479bf591",
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "25eed3fa37f87f2f0c14227ae1bfcb4f0dde5789e3dd7275d95593d8f70926ad",
+      "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "438da2496feca8ab7b8e7e1038ec1148521358712eeee92f4157637da1d60200",
+      "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "5906904e4708c82998f2216209e6e121e7cb60c076e2f046c06f2046a52b67a4",
+      "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "dc00ccaf175c38a201352ea2dc8fb7b4b176c1aa8331941fa6fe701fb55ec367",
+      "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "d6f28f7d3e8879eb05cd8411ef37b132f21e2d9fb233642f6b4a909bddbc7b81",
+      "benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py": "37b0a40c2958d864d013c11a8044f7b5ecdc79abe030c04d465aa80ea3615ff1",
+      "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py": "f841c4de28e87a8871ee634449cd3c1c2094fb744a1f413f4c99f12660642648",
+      "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "019e3d40f7f2e6a647b674df7c99f96163b982671b2504d611f260540006f834",
+      "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "204d6a840ca79141e95da8a0c7fe0da471223c66a353a3c9250b1b1c1063b7f5",
+      "benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py": "46e93f671ad340cbbbd97f8a783d45a3738c94869586713e293a90d0ae85145d",
+      "ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py": "39946783b55bc2fcc0fb37ea3e7e9f158f17aed3f555096f3feaa85a299fab09",
+      "ipfs_accelerate_py/agent_supervisor/runtime/context_selection_observation.py": "b304c357349245b63a3cbef6cc4ddd00862a3cca8c92281e1f4f642d4c9036aa",
+      "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "52dad9568206c2e1b0f2f1048d2fc88a901bf626f827a7c2f60c7394337b5004",
+      "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py": "c0df1ff3034024d2fff37dc51ef1947946964f2a7ebfce30c53e1e95741a1ea7",
+      "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py": "eb1423b0be436c19eb57ce96dd79667478daebba3923423a88d8fde7ed760f6b",
+      "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+      "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "10d8fc696d1a5ab8cf42e67c405eb434798ec2ccef4532896e476e4e5b2e472a",
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py": "e487cc4a2126397568324c016b43e1d9025db9ff95b256842781e7e566a5860e",
+      "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": "47d0526ca1e4000c94f76f881e5207645cfff60169796ed5e8b49fa32e8b3d6e",
+      "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+      "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py": "8219d320cc63079ce322cb2337ecb39950243cf8afeb8ccc9f266e2cd2aeace0",
+      "ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py": "3545f7db90c225b9eed1969170d5f91c0196afb24e49f7149b3650ad6fb68043",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_artifacts.py": "43fb1fa8944993008ffd6292467ec6207c4669965ae1d0c3265c73e3c6ae5d84",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py": "ea5670a07356414eca3aed2582c80ec35ab8874e497fc05f27f854c8f31cb0e0",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context_client.py": "4542ebbd5914a5b7675173b784bd7b91a5dba4d25d6170547a2e2f8fb9655ee0",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_selection.py": "ac1da0918f2c1363b8e3541bf586d92f099e7db1b7c6b353df8ff274efff9999",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "d08ee0cf8806959aa3795c75ddc5f1bb147dd3bfb03c45e9710b49278701ec9e",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "03c8bb57112852436936fbdf18a6fbadcea7b03c7bc06b2e35a03b2d3ba48079",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py": "66a6e1f850f70f5206b97190cce0b51a78030f3f205055d87347ab14cb629d53",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py": "4a8f2eff7d5031f3dfb86988a6ef69b17694c88e9a041dd943c0ff5aea3fd6f1",
+      "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py": "08cd587a17ba5b94fc46b096f9522e9d2ce833f38d3780ec350212682cd4857d",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py": "5fef9befe240eaa0678675afbda3e542c5e364c25d224ed0ae4c9f151f66e6a4",
+      "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py": "8181d562c0631c172b1706716ff14b556ee10ce38d655967e0b089314dc75d4d",
+      "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+      "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+      "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+      "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f"
+    }
+  },
+  "checked_contracts": [
+    "Opt-in selection full+enabled source view only; absent/disabled preserves historical config and controls shape.",
+    "Mode is frozen through prepare/execute/collect, Harbor setup/run, signed implementation argv, owner factory, deployed worker and router descriptor replay.",
+    "Owner creates descriptor from sealed semantic input and explicit verified program_paths; workers cannot select owner sources or admit support-file edits.",
+    "Actual peer UID, process birth/ancestry, session liveness/budget and unique request IDs remain required; owner mapping performs no source write.",
+    "Worker file rights remain unchanged. Owner-owned native files use preserved inode, regular/no-follow/single-link checks and exact pre/postimage; failures after attempted write remain uncertain, without retry.",
+    "Confirmation checks full admitted population and refreshes working generation/candidate context; source/advice/proof applicability is not promoted to task completion.",
+    "Cleanup retains closed hash/count audit after stopping source service; session@4 mode joins descriptor@3 and edit pages cannot masquerade as source/candidate/discovery payload.",
+    "Historical coding prompt and metadata displacement replay now retain exact selected edit guidance."
+  ],
+  "containers_started_by_this_review": 0,
+  "external_model_calls": 0,
+  "findings_resolved": [
+    {
+      "issue": "Editing session accepted omitted discovery field pair through historical compatibility branch.",
+      "resolution": "Root requires typed pair for editing session@4; dedicated negative regression passed."
+    },
+    {
+      "issue": "New response validator edit branch accessed request.get before type validation.",
+      "resolution": "Root added exact dict guard; source reread confirms old ValueError path remains reachable."
+    },
+    {
+      "issue": "Historical model/context replay dropped source_edit_mode and reconstructed old guidance.",
+      "resolution": "Authorized fix validates selected mode/schema and reuses exact guidance in both reconstruction branches;192 targeted cases passed, with production pins unchanged during run."
+    }
+  ],
+  "hidden_verifier_inputs_read": false,
+  "limitations": [
+    "Current local integration authors identity/container admission and provider response; kernel cross-UID behavior is pending separate Docker qualification.",
+    "Native whole-supervisor START, task admission/merge/publication and official benchmark verifier are not exercised by this review.",
+    "No exclusion of concurrent writers, atomic application guarantee, general multi-edit transaction or create/move/delete support.",
+    "Successful mapping and smoke checks do not prove behavioral equivalence or discharge source obligations.",
+    "No provider-native tokens, billing savings or representative corpus efficiency measured.",
+    "Some reviewed outer/context-audit changes were implemented by this reviewer; separate helper/native qualification remains independently owned."
+  ],
+  "native_validation_route": {
+    "available_image": "sha256:771900c18b663b33a5bf96e066346b2d5c842506523efb167aebe8d3a99b5c07",
+    "executed_by_this_review": false,
+    "no_external_provider_or_auth_required": true,
+    "platform": "linux/arm64",
+    "route": "Offline fresh Docker; real OWNER_ENTRY UID1000 -> coding WORKER_ENTRY UID1001 -> source edit socket/client; then VALIDATION_ENTRY -> WORKER_ENTRY --validate with authored answer()==2 check."
+  },
+  "qualification_evidence": [
+    "outer-qualification.json",
+    "legacy-outer-wire-replay.json",
+    "worker-wiring-qualification.json",
+    "context-audit-qualification.json"
+  ],
+  "reviewed_production_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "333a9c7617c8d7a79ca8649bdf4759b0425493b22a00834654e0101daa5b9e3d",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "ab28888f4f47f38bba829b36cf7bcd271aa212b73fb74d21b5461f47dde0be6f",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "9875e4ce9f3c5ee91bd209810ebb0acfdf0478b21a92ada213d17ec0479bf591",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "25eed3fa37f87f2f0c14227ae1bfcb4f0dde5789e3dd7275d95593d8f70926ad",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "438da2496feca8ab7b8e7e1038ec1148521358712eeee92f4157637da1d60200",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "5906904e4708c82998f2216209e6e121e7cb60c076e2f046c06f2046a52b67a4",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "dc00ccaf175c38a201352ea2dc8fb7b4b176c1aa8331941fa6fe701fb55ec367",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "019e3d40f7f2e6a647b674df7c99f96163b982671b2504d611f260540006f834",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "204d6a840ca79141e95da8a0c7fe0da471223c66a353a3c9250b1b1c1063b7f5",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "10d8fc696d1a5ab8cf42e67c405eb434798ec2ccef4532896e476e4e5b2e472a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "d08ee0cf8806959aa3795c75ddc5f1bb147dd3bfb03c45e9710b49278701ec9e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": "03c8bb57112852436936fbdf18a6fbadcea7b03c7bc06b2e35a03b2d3ba48079",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py": "66a6e1f850f70f5206b97190cce0b51a78030f3f205055d87347ab14cb629d53",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py": "4a8f2eff7d5031f3dfb86988a6ef69b17694c88e9a041dd943c0ff5aea3fd6f1"
+  },
+  "schema": "compact-edit-integration-final-review@1",
+  "status": "no_remaining_functional_blocker_found"
+}

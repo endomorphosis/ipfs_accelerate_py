@@ -1,0 +1,35 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/outer-tests-03/junit.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "DOCTOR_COMPOSITION_LEAN": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean",
+    "ELAN_TOOLCHAIN": "leanprover/lean4:v4.34.1",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/outer-tests-03/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/outer-tests-03/seal.duckdb",
+    "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013:/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/home/barberb/.local/lib/python3.12/site-packages:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_before": {
+    "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "3828f1e7fad740459687ccf23f5c7c19fb7fe50a3a9b9241037724361c67d7b3",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py": "0c99edf9152679de6bdff551dd058f0ce8602d4445bc47d572a340995ac867f7"
+  }
+}

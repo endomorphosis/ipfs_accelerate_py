@@ -1,0 +1,164 @@
+{
+  "bindings": {
+    "command": {
+      "bytes": 370,
+      "path": "/home/barberb/lift_coding/artifacts/compact-worker-edits-20261013/final-observations-01/command.json",
+      "sha256": "e244d1961c756373e409edf4fe484531c99ba20b32664b613438105c978fd531"
+    },
+    "extractor": {
+      "bytes": 7229,
+      "path": "/home/barberb/lift_coding/artifacts/compact-worker-edits-20261013/summarize_compact_edit_observations.py",
+      "sha256": "398403db111a2a238ab59d924bda5b716da67015a3ffe17525fa03fbe0509939"
+    },
+    "junit": {
+      "bytes": 3083,
+      "path": "/home/barberb/lift_coding/artifacts/compact-worker-edits-20261013/final-observations-01/junit.xml",
+      "sha256": "da61c2c3f04da48292d967abbbd40aa0879e63dd319998814df8fb6daf8bb844"
+    },
+    "process_result": {
+      "bytes": 134,
+      "path": "/home/barberb/lift_coding/artifacts/compact-worker-edits-20261013/final-observations-01/exit.json",
+      "sha256": "58be67038d35b39ce2d409541ee818a6521555d1126e739abc0c9f6664b168e3"
+    }
+  },
+  "comparisons": [
+    {
+      "baseline": {
+        "profile": "identity@1",
+        "shared": false
+      },
+      "compact_content_byte_delta": -2504,
+      "complete_exchange_token_savings_measured": false,
+      "effect": "source display profile within the same authored mapping protocol",
+      "observed_component_byte_deltas": {
+        "edit_json_bytes": 0,
+        "guidance_bytes": 7,
+        "read_response_bytes": -2506,
+        "result_bytes": 0
+      },
+      "observed_four_component_byte_delta": -2499,
+      "source_profile_name_in_guidance_is_counted": true,
+      "treatment": {
+        "profile": "python-comments@1",
+        "shared": false
+      }
+    },
+    {
+      "baseline": {
+        "profile": "python-comments@1",
+        "shared": false
+      },
+      "compact_content_byte_delta": 0,
+      "complete_exchange_token_savings_measured": false,
+      "effect": "explicit shared source policy binding overhead",
+      "observed_component_byte_deltas": {
+        "edit_json_bytes": 0,
+        "guidance_bytes": 0,
+        "read_response_bytes": 96,
+        "result_bytes": 0
+      },
+      "observed_four_component_byte_delta": 96,
+      "source_profile_name_in_guidance_is_counted": true,
+      "treatment": {
+        "profile": "python-comments@1",
+        "shared": true
+      }
+    }
+  ],
+  "excluded_components": [
+    "source-read and edit CLI command text",
+    "CLI output newlines and provider tool-message framing",
+    "subsequent source refresh response",
+    "intentional rejected replay probe and its result",
+    "private prepare/confirm request and response frames (not model-visible in this client)",
+    "enclosing supervisor prompt and provider-native system/tool scaffolding",
+    "conversation history and repeated input across model turns",
+    "authored smoke-test subprocess and its command/output"
+  ],
+  "measurement_scope": "Four observed authored components only: guidance, one compact working read response, literal edit JSON and final client result.",
+  "observation_count": 3,
+  "observation_sources_unchanged": true,
+  "observation_test_nodes": [
+    "test/api/test_worker_source_edit_broker.py::test_actual_socket_edit_preserves_hidden_source_and_refreshes[case0]",
+    "test/api/test_worker_source_edit_broker.py::test_actual_socket_edit_preserves_hidden_source_and_refreshes[case1]",
+    "test/api/test_worker_source_edit_broker.py::test_actual_socket_edit_preserves_hidden_source_and_refreshes[case2]"
+  ],
+  "observations": [
+    {
+      "authored_uid_admission": true,
+      "compact_content_bytes": 2589,
+      "edit_json_bytes": 469,
+      "external_model_calls": 0,
+      "full_supervisor_start_qualified": false,
+      "guidance_bytes": 1902,
+      "original_body_returned_in_edit": false,
+      "original_bytes": 2589,
+      "original_expansion_requests": 0,
+      "profile": "identity@1",
+      "provider_token_usage_measured": false,
+      "public_smoke_exit": 0,
+      "read_response_bytes": 3276,
+      "real_socket": true,
+      "result_bytes": 1030,
+      "shared": false,
+      "validation_pending": true,
+      "visible_component_bytes": 6677
+    },
+    {
+      "authored_uid_admission": true,
+      "compact_content_bytes": 85,
+      "edit_json_bytes": 469,
+      "external_model_calls": 0,
+      "full_supervisor_start_qualified": false,
+      "guidance_bytes": 1909,
+      "original_body_returned_in_edit": false,
+      "original_bytes": 2589,
+      "original_expansion_requests": 0,
+      "profile": "python-comments@1",
+      "provider_token_usage_measured": false,
+      "public_smoke_exit": 0,
+      "read_response_bytes": 770,
+      "real_socket": true,
+      "result_bytes": 1030,
+      "shared": false,
+      "validation_pending": true,
+      "visible_component_bytes": 4178
+    },
+    {
+      "authored_uid_admission": true,
+      "compact_content_bytes": 85,
+      "edit_json_bytes": 469,
+      "external_model_calls": 0,
+      "full_supervisor_start_qualified": false,
+      "guidance_bytes": 1909,
+      "original_body_returned_in_edit": false,
+      "original_bytes": 2589,
+      "original_expansion_requests": 0,
+      "profile": "python-comments@1",
+      "provider_token_usage_measured": false,
+      "public_smoke_exit": 0,
+      "read_response_bytes": 866,
+      "real_socket": true,
+      "result_bytes": 1030,
+      "shared": true,
+      "validation_pending": true,
+      "visible_component_bytes": 4274
+    }
+  ],
+  "run_skipped_count": 0,
+  "run_test_count": 3,
+  "schema": "compact-worker-edit-observation-summary@1",
+  "scope": {
+    "benchmark_score_measured": false,
+    "complete_model_visible_exchange_measured": false,
+    "full_supervisor_start_qualified": false,
+    "provider_native_token_usage_measured": false,
+    "real_socket_mapper_local_writer_owner_confirmation": true,
+    "separate_uid_custody_is_emulated": true,
+    "source_semantics_or_proof_success_claimed": false,
+    "token_estimate": null,
+    "token_estimate_unavailable_reason": "Exact component strings are not retained in JUnit; byte counts are not tokenizer inputs.",
+    "validation_pending": true
+  },
+  "status": "passed"
+}

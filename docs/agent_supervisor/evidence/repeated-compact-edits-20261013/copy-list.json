@@ -1,0 +1,248 @@
+{
+  "copies": [
+    {
+      "bytes": 935,
+      "destination": "tests/root/command.json",
+      "sha256": "0fac467e524a42773926f88bee4f89f33e19041ef05cd656cbcf1c06b918139b",
+      "source": "root-tests-02/command.json"
+    },
+    {
+      "bytes": 134,
+      "destination": "tests/root/exit.json",
+      "sha256": "bf131e51b7ae8cb935eef75c16087cea0441ea19a33966ab58d52ae61adfc76b",
+      "source": "root-tests-02/exit.json"
+    },
+    {
+      "bytes": 64987,
+      "destination": "tests/root/junit.xml",
+      "sha256": "bde0216a0613dbcbadfe0fe1d7bcb29622e34a6b3521af393e3f9f399343b465",
+      "source": "root-tests-02/junit.xml"
+    },
+    {
+      "bytes": 3201,
+      "destination": "tests/root/source-before.json",
+      "sha256": "da859b58bf106c5941772e9efce4f45189a60a97029d42eff828f3caa501a4ff",
+      "source": "root-tests-02/source-before.json"
+    },
+    {
+      "bytes": 3201,
+      "destination": "tests/root/source-after.json",
+      "sha256": "da859b58bf106c5941772e9efce4f45189a60a97029d42eff828f3caa501a4ff",
+      "source": "root-tests-02/source-after.json"
+    },
+    {
+      "bytes": 2116,
+      "destination": "tests/outer/command.json",
+      "sha256": "55b2464d2e16c5a58a0007047474d181f53a9bbbaafae36e2e215ebc550e7c57",
+      "source": "outer-tests-03/command.json"
+    },
+    {
+      "bytes": 412,
+      "destination": "tests/outer/result.json",
+      "sha256": "6aff7d38b488729343be9047a964a3fd0113805c76efcd9c754a92f99cb81893",
+      "source": "outer-tests-03/result.json"
+    },
+    {
+      "bytes": 31664,
+      "destination": "tests/outer/junit.xml",
+      "sha256": "45d4e021aa53c316503e5722b4fe7a8f6858ce423be563566f40908b8520af91",
+      "source": "outer-tests-03/junit.xml"
+    },
+    {
+      "bytes": 1798,
+      "destination": "tests/client/command.json",
+      "sha256": "d6515747deafede4d17b94b24ec3447c391ded5af49cb2591c025be661a5b7d5",
+      "source": "client-tests-01/command.json"
+    },
+    {
+      "bytes": 937,
+      "destination": "tests/client/result.json",
+      "sha256": "aeaf83d3d9a9b20a69a308e44e100b544aeff0508ee8ef2f9524808f98462ee5",
+      "source": "client-tests-01/result.json"
+    },
+    {
+      "bytes": 17935,
+      "destination": "tests/client/junit.xml",
+      "sha256": "8fe7306d8532d20b8196d13d8cf182ab5b8a5395b70d252d5511d4d01c94b744",
+      "source": "client-tests-01/junit.xml"
+    },
+    {
+      "bytes": 303,
+      "destination": "tests/core/command.json",
+      "sha256": "5ffff5b450d8de2a266c4d57ff381c8ade953b5b7de76768f0155819b7e5f279",
+      "source": "service-final-tests-03/command.json"
+    },
+    {
+      "bytes": 135,
+      "destination": "tests/core/exit.json",
+      "sha256": "e2d28bcdf9b2a80b174a56bf763a6dc5952dfa7b20e60556ea43d08889d037ad",
+      "source": "service-final-tests-03/exit.json"
+    },
+    {
+      "bytes": 27100,
+      "destination": "tests/core/junit.xml",
+      "sha256": "1e072a0c10588202841a6ddf814040091163aa049e5fde16ced2b79280b970b9",
+      "source": "service-final-tests-03/junit.xml"
+    },
+    {
+      "bytes": 2226,
+      "destination": "tests/core/source-before.json",
+      "sha256": "f896f8d9d4f3a4d485e4419bc11a084f4fdf93b094ef12609005dcbb5540c296",
+      "source": "service-final-tests-03/source-before.json"
+    },
+    {
+      "bytes": 2226,
+      "destination": "tests/core/source-after.json",
+      "sha256": "f896f8d9d4f3a4d485e4419bc11a084f4fdf93b094ef12609005dcbb5540c296",
+      "source": "service-final-tests-03/source-after.json"
+    },
+    {
+      "bytes": 16604,
+      "destination": "qualifications/client.json",
+      "sha256": "e715ec8aefc8e5033ee29e5bef85d01e7eb656bdd5d1367da00ff9d667939d47",
+      "source": "client-qualification.json"
+    },
+    {
+      "bytes": 29457,
+      "destination": "qualifications/outer.json",
+      "sha256": "1c84e3fdb9f0adee05df8f9fb4234506da467a7fbbdefb86a756bbed7a108f2f",
+      "source": "outer-qualification-02.json"
+    },
+    {
+      "bytes": 519,
+      "destination": "historical/client-legacy-guidance-baseline.json",
+      "sha256": "2e05da134ca6252c030a4244a30e2df9afd805688e0000fe6e37c76e107bfd4e",
+      "source": "client-legacy-guidance-baseline.json"
+    },
+    {
+      "bytes": 14980,
+      "destination": "historical/legacy-outer-wire-replay.json",
+      "sha256": "c2585557ad6067ea264f581c6e0b6efc03fe550d23f72d2ecf07fd1fe86508cb",
+      "source": "legacy-outer-wire-replay.json"
+    },
+    {
+      "bytes": 3410,
+      "destination": "historical/check_legacy_outer_edit.py",
+      "sha256": "af9f988bbc30253d22341e50bd3b21b3805e566d097eb62165cced2b6f05641c",
+      "source": "check_legacy_outer_edit.py"
+    },
+    {
+      "bytes": 5208,
+      "destination": "reviews/history/integration-review-01.json",
+      "sha256": "952b1838b640f7067106305478bebd31c461bce01a8a2494a2fc75ce7741aadc",
+      "source": "integration-review-01.json"
+    },
+    {
+      "bytes": 1537,
+      "destination": "reviews/history/core-independent-review.json",
+      "sha256": "ebab9a017abc20fbe5322be0e64e88ae2cb21c3348ef59daaa66db5d8ce28485",
+      "source": "core-independent-review.json"
+    },
+    {
+      "bytes": 2586,
+      "destination": "reviews/delivery-fence-independent-review.json",
+      "sha256": "d6441323203a9956727e28218b52d7b863a8f6326d228d1bc63f92603689b98f",
+      "source": "delivery-fence-independent-review.json"
+    },
+    {
+      "bytes": 3501,
+      "destination": "reviews/docker-byte-accounting-review.json",
+      "sha256": "49ff41aa3f66848dab44edc0ddb7895d7aec165f1181ad54621d689666acb279",
+      "source": "docker-byte-accounting-review.json"
+    },
+    {
+      "bytes": 10049,
+      "destination": "reviews/review_docker_byte_accounting.py",
+      "sha256": "333e35a57add5c4b75a8053e2b6e2db1c1c5cf5bd386e1628a6c67378c24378a",
+      "source": "review_docker_byte_accounting.py"
+    },
+    {
+      "bytes": 4856,
+      "destination": "docker/release.json",
+      "sha256": "615caf0142a93e1effa6eb3df278baa8b5705c63ba2eab01c4d930bd8be7b53d",
+      "source": "docker/release-02.json"
+    },
+    {
+      "bytes": 11687,
+      "destination": "docker/run_docker_qualification.py",
+      "sha256": "87a663d9ccb9d528920e3bc059405897ea998329d7fa4f795860656b77e0d4b3",
+      "source": "docker/run_docker_qualification.py"
+    },
+    {
+      "bytes": 8639,
+      "destination": "docker/owner_probe.py",
+      "sha256": "b538543025f7a371f0d654ad4ddf057a1fcd54b3d537596eb8b38aa73c795b0d",
+      "source": "docker/owner_probe.py"
+    },
+    {
+      "bytes": 6538,
+      "destination": "docker/worker_probe.py",
+      "sha256": "881976eb301f8e5a2143a00853103fbd8768925a68d47a507b54b7327550454b",
+      "source": "docker/worker_probe.py"
+    },
+    {
+      "bytes": 3552,
+      "destination": "docker/qualification.json",
+      "sha256": "dfa5200078119733f3b857465b2478fcbdccac28f10de9143cc090e697e19975",
+      "source": "docker/run-01/qualification.json"
+    },
+    {
+      "bytes": 2032,
+      "destination": "docker/probe-qualification.json",
+      "sha256": "622612b80e9593e9e0985e5cec9d94a74007a881cb25e0a1baf8201cd0b57ee7",
+      "source": "docker/run-01/results/probe-qualification.json"
+    },
+    {
+      "bytes": 2808,
+      "destination": "docker/session-observation.json",
+      "sha256": "cccc624a569832a7ca4de6349545f233d570ccc1b2e4b105415e7195d67d3a24",
+      "source": "docker/run-01/results/session-observation.json"
+    },
+    {
+      "bytes": 1567,
+      "destination": "docker/container-controls.json",
+      "sha256": "4063ec00d7150a46b06035ecd85ccc338ce9e4bc92aac42af5b5728824c70dc7",
+      "source": "docker/run-01/container-controls.json"
+    },
+    {
+      "bytes": 7505,
+      "destination": "docker/command.json",
+      "sha256": "fae02e7e51e595edb7c14ba847b43440e7154f5292185c05454af09443619e5c",
+      "source": "docker/run-01/command.json"
+    },
+    {
+      "bytes": 1431,
+      "destination": "tests/environment.json",
+      "sha256": "3c1f931c69002911373000e7d84589bc5aff94fe34dc3aaff4615fecd9d0398d",
+      "source": "environment.json"
+    },
+    {
+      "bytes": 1886,
+      "destination": "tests/qualify.py",
+      "sha256": "18736ca60b4320fb50cce37a56e14423b61e363cd21c8fda86499f64aa658f20",
+      "source": "qualify.py"
+    },
+    {
+      "bytes": 2828,
+      "destination": "reviews/integration-review.json",
+      "sha256": "0e6e0392d52dae5364510a7d4dc64081e67ba6c315c0e6684ed6148e8ede408c",
+      "source": "integration-review-02.json"
+    },
+    {
+      "bytes": 10752,
+      "destination": "curate_evidence.py",
+      "sha256": "a478b79504d509f56c2b102be5c7f72bf4ddb2dcd3ea13729ce81e2fd95886bd",
+      "source": "curate_evidence.py"
+    }
+  ],
+  "generated": [
+    "qualification.json",
+    "test-ledger.json",
+    "source-bindings.json",
+    "retained-failures.json",
+    "qualifications/core.json",
+    "copy-list.json"
+  ],
+  "manifest_sealing_pending_parent_review": true,
+  "schema": "repeated-compact-edit-evidence-copy-list@1"
+}

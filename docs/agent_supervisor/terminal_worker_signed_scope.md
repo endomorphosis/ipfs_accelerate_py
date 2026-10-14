@@ -109,3 +109,7 @@ next. Separate IR/schema/version/decoder-task/8D/384D/768D checkpoints,
 embeddings, model-manager registrations and DuckDB/DuckLake inventories remain
 unchanged by this handoff. No learned reconstruction or token saving follows
 from a bounded source count alone.
+
+## Parallel compact worker reconciliation, 2026-10-14
+
+The [merged improvement plan](reversible_codebase_views_plan.md#reconcile-signed-selection-with-compact-edits-and-live-measurements-2026-10-14) and [new qualification](evidence/signed-scope-compact-reconciliation-20261014/README.md) compose this signed handoff with repeated compact edits and explicit declared planning. The generic archive now retains 47 source pins, with independent edit/planning archive guards. The historical 46-pin qualification above remains unchanged. The [live measurements](compact_worker_benchmark.md) show three official passes with higher reported token totals in the compaction arms and unknown complete usage; they establish no token-saving advantage.

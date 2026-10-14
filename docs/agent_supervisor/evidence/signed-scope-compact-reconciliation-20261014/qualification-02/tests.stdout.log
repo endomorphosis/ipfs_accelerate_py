@@ -1,0 +1,38 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: /tmp/signed-scope-compact-reconciliation-qualification-02-3wvozht2/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/signed-scope-compact-reconciliation-20261014
+configfile: pytest.ini
+collecting ... collected 11 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_declared_doctor_pipeline.py::test_declared_plan_indexes_proves_and_materializes_without_model[keyword] PASSED [  9%]
+benchmarks/agent_supervisor/container_coding/test_terminal_declared_doctor_pipeline.py::test_declared_plan_indexes_proves_and_materializes_without_model[import-alias] PASSED [ 18%]
+benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_indexed_symbolic_plan_reaches_real_doctor_proof_without_a_model[keyword] PASSED [ 27%]
+benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_indexed_symbolic_plan_reaches_real_doctor_proof_without_a_model[import-alias] PASSED [ 36%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py::test_signed_scope_compact_edit_guidance_and_census_replay_together[common-bindings-instruction@1] PASSED [ 45%]
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_declared_planning.py::test_declared_plan_keeps_full_signed_contract_and_reuses_exact_selected_context PASSED [ 54%]
+benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py::test_closed_census_retained_and_reproduced_from_real_historical_input PASSED [ 63%]
+benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py::test_well_typed_invented_measurement_cannot_verify_historical_input[digest] PASSED [ 72%]
+benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py::test_well_typed_invented_measurement_cannot_verify_historical_input[count] PASSED [ 81%]
+benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py::test_legacy_and_unavailable_diagnostics_preserve_input_without_inventing_verification[absent] PASSED [ 90%]
+benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py::test_legacy_and_unavailable_diagnostics_preserve_input_without_inventing_verification[unavailable] PASSED [100%]
+
+=============================== warnings summary ===============================
+benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py::test_signed_scope_compact_edit_guidance_and_census_replay_together[common-bindings-instruction@1]
+  benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py:35: PytestWarning: record_property is incompatible with junit_family 'xunit2' (use 'legacy' or 'xunit1')
+    @pytest.mark.parametrize("metadata_view", ["legacy", "common-bindings-instruction@1"])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/barberb/lift_coding/.worktrees/signed-scope-compact-reconciliation-20261014/docs/agent_supervisor/evidence/signed-scope-compact-reconciliation-20261014/qualification-02/junit.xml -
+============================= slowest 10 durations =============================
+10.09s setup    benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py::test_signed_scope_compact_edit_guidance_and_census_replay_together[common-bindings-instruction@1]
+10.00s call     benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_indexed_symbolic_plan_reaches_real_doctor_proof_without_a_model[import-alias]
+9.15s call     benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_indexed_symbolic_plan_reaches_real_doctor_proof_without_a_model[keyword]
+8.88s call     benchmarks/agent_supervisor/container_coding/test_terminal_declared_doctor_pipeline.py::test_declared_plan_indexes_proves_and_materializes_without_model[import-alias]
+8.22s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_declared_planning.py::test_declared_plan_keeps_full_signed_contract_and_reuses_exact_selected_context
+8.15s call     benchmarks/agent_supervisor/container_coding/test_terminal_declared_doctor_pipeline.py::test_declared_plan_indexes_proves_and_materializes_without_model[keyword]
+1.65s call     benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py::test_signed_scope_compact_edit_guidance_and_census_replay_together[common-bindings-instruction@1]
+1.56s setup    benchmarks/agent_supervisor/container_coding/test_terminal_signed_declared_planning.py::test_declared_plan_keeps_full_signed_contract_and_reuses_exact_selected_context
+0.73s setup    benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py::test_legacy_and_unavailable_diagnostics_preserve_input_without_inventing_verification[absent]
+0.73s setup    benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py::test_well_typed_invented_measurement_cannot_verify_historical_input[count]
+================== 11 passed, 1 warning in 118.39s (0:01:58) ===================

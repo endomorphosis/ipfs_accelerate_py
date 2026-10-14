@@ -1,0 +1,105 @@
+{
+  "authored_new_cases": 159,
+  "checked_at_utc": "2026-10-14T02:03:01.360757+00:00",
+  "findings": [
+    {
+      "boundary": "signed selection and declared planning",
+      "result": "complete signed task effects and full inventory preserved; mechanical plan remains no-authority"
+    },
+    {
+      "boundary": "public instruction @5 and mapped edits",
+      "result": "closing source replay preserved immediately before generation; explicit edit descriptor/guidance mode join retains historical wire versions"
+    },
+    {
+      "boundary": "runtime archive",
+      "result": "47 generic owner pins and independent 22 edit / 13 planning guards compose without redundant schema changes"
+    },
+    {
+      "boundary": "prompt census",
+      "result": "historical audit omission repaired by closed typed bounded diagnostic retention and exact historical replay; unavailable remains explicitly unverified"
+    }
+  ],
+  "method": "read-only static source and authored fixture review; no execution by reviewers",
+  "model_calls": 0,
+  "new_test_files": [
+    {
+      "bytes": 7833,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_component_census_audit.py",
+      "sha256": "439c5a66eb9d489caf547e36bbf6fbfe2f63b1070e543be47d2a3811e432ecf8"
+    },
+    {
+      "bytes": 11546,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_merged_worker_capability.py",
+      "sha256": "7a3469834f7bb5eb054717621b957f286e1f1688cae7230c9098d23a56f8d924"
+    },
+    {
+      "bytes": 7368,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py",
+      "sha256": "85e4081a4db224c453b0e8d0b3a125052b3b53d5537245e936e59f894a7f6e92"
+    },
+    {
+      "bytes": 7719,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_signed_declared_planning.py",
+      "sha256": "7c4d2a448e6056ddd672d4f06815e8e2f3aadfcf2c1bc6f9e3c79bb6744b3a22"
+    }
+  ],
+  "production_native_source_broker_adoption_qualified": false,
+  "remaining_native_handoff": [
+    {
+      "requirement": "delegate existing exact task nominated binder under allocation whole-operation guard; retain bind-once consumed reader on closing failure",
+      "step": "nominated allocation binder"
+    },
+    {
+      "requirement": "owner-controlled allocation guards currently reject group-write worker handoff; explicit authority needed without weakening existing checks",
+      "step": "allocation permission transition"
+    },
+    {
+      "requirement": "actual daemon attempt/grant/coordinator and direct child process birth remain independent; daemon-wide descendant root is not accepted",
+      "step": "cross-process coding child"
+    },
+    {
+      "requirement": "preserve 32 path broker hard bound independently of semantic 64 files and 1M bytes",
+      "step": "source transport profile"
+    }
+  ],
+  "schema": "signed-compact-static-integration-review@1",
+  "source_bindings": [
+    {
+      "bytes": 82610,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "735ded8254f43aaf696a3273032b70654b87ecb4db3fddbee58e3be659955345"
+    },
+    {
+      "bytes": 6072,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/declared_contract_planning.py",
+      "sha256": "c406395b03b2508a10e5489aebb89be3d4bab34edc04e271c1553bb54f2294ae"
+    },
+    {
+      "bytes": 70458,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "e710477b1beb3be347c878096013c56a4aba9db50d9e94368d5204d0a709d078"
+    },
+    {
+      "bytes": 71333,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "70539360f8d18d68afc54a095c0647945ea3c48832504e9fdd835872e06e071e"
+    },
+    {
+      "bytes": 7955,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "sha256": "454a8b9d35add916655175d7ecdee640e9222c63bc4cb6e7e14c5e61f91a82c4"
+    },
+    {
+      "bytes": 4425,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py",
+      "sha256": "3c6f96e0ce3c3c3de9efd96c873d0eae58dbea561ea674923cb5a016f3c53fa9"
+    },
+    {
+      "bytes": 3545,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_planning_policy.py",
+      "sha256": "276533db278a9c9b48186213449a8ff0016597f5990503d3a2d9c0b25443bd5c"
+    }
+  ],
+  "tests_executed_by_reviewers": 0,
+  "token_savings_established": false
+}

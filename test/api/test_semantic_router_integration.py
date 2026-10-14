@@ -95,6 +95,8 @@ def test_actual_router_transports_capsules_and_expands_native_candidate(allocate
     assert receipt["router_prompt_bytes"] == len(encoded.provider_prompt.encode())
     assert receipt["model_prompt_bytes"] == len(actual.encode())
     assert receipt["semantic_translation"] == encoded.receipt
+    assert receipt["semantic_prompt_components"] == codec.census_semantic_router_prompt(encoded=encoded)
+    assert "supervisor-semantic-prompt-component-census@1" not in actual
     assert receipt["semantic_response_translation"]["native_grammar_validated"] is True
     assert receipt["semantic_response_translation"]["completion_authority"] is False
     assert receipt["completion_authority"] is False
@@ -109,6 +111,28 @@ def test_actual_router_transports_capsules_and_expands_native_candidate(allocate
     else:
         assert "translation_table" in transport
         assert "transport_schema" not in receipt["semantic_translation"]
+
+
+def test_component_diagnostic_failure_preserves_exact_dispatch(allocated, provider, monkeypatch):
+    repository, workspace, prompt, _ = allocated
+    _, observed = provider
+    encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=repository)
+    marker = "PRIVATE_DIAGNOSTIC_EXCEPTION"
+
+    def unavailable(**_kwargs):
+        raise ValueError(marker)
+
+    monkeypatch.setattr(codec, "census_semantic_router_prompt", unavailable)
+    output, receipt = _run(repository, prompt)
+    expected, _ = runner.render_model_prompt(prompt=encoded.provider_prompt,
+        purpose="coding", workspace=workspace, semantic_transport=True)
+    assert output == "literal summary" and len(observed) == 1
+    assert observed[0][0] == expected
+    assert receipt["semantic_prompt_components"] == {
+        "schema": "supervisor-semantic-prompt-component-census@1",
+        "status": "unavailable", "raw_content_exported": False,
+    }
+    assert marker not in json.dumps(receipt)
 
 
 @pytest.mark.parametrize("transport_schema,purpose", [

@@ -191,10 +191,22 @@ Checks do not exclude external writers, and failure after native application can
 leave a failed isolated candidate for owner cleanup. No atomic transaction is
 claimed.
 
-The adapter is a host API. The current worker source socket remains read-only;
-this does not yet expose compact edits as an authenticated model tool or enable
-them in a live Terminal-Bench arm. Source fidelity and local application tests
-do not establish provider-token savings.
+The adapter is a host API tied to `IsolatedWorktree`. The separate opt-in
+[worker mapped-edit route](worker_source_views.md#edit-a-compact-span-through-the-coding-worker)
+reuses the pure mapper with the native coding lifecycle: the source owner
+prepares and confirms; the worker writes using its existing file permissions.
+It does not construct an `IsolatedWorktree` owner or borrow that adapter's lease.
+Local integration and an offline Docker probe with actual owner/worker UIDs
+qualify the bounded edit path, including three successive edits with fresh
+generation pins. Select `mapped-span@2` for at most 16 successful preparations
+and one outstanding proposal; `mapped-span@1` keeps its single-edit contract.
+Matching confirmation failures observed by the owner block further mapped edits
+in version 2. A client reporting an uncertain write must stop and inspect the
+source, including when its failure occurs after the owner sends the response.
+That probe's provider response is authored. The subsequent
+[live benchmark](compact_worker_benchmark.md) exercises the full runtime and a
+confirmed mapped edit with Grok, with official task acceptance. Its source-only
+comparison does not establish token savings.
 
 ## Complete repository inventories in the same CAS
 
@@ -283,8 +295,12 @@ working-candidate reader now refreshes compact views after original-file edits,
 with generation-bound exact expansion and stale-continuation refusal. The
 [candidate context reader](worker_candidate_context.md) now rebuilds advisory
 capsules and numerical formulas for the captured working bytes. Accepted formal
-index publication and model-facing compact edit submission remain subsequent
-integration stages; ordinary coding edits still use exact original files.
+index publication remains a subsequent integration stage. The opt-in mapped
+worker edit handles one supported span per preparation without returning the
+original body to the model. Version 2 permits bounded successive edits to the
+existing admitted files, with fresh working pins and candidate context after
+each confirmation. Ordinary editing remains available for unsupported changes.
+Both routes modify exact original files.
 
 The [qualification evidence](evidence/reversible-source-views-20261012/README.md)
 retains 40 passing cases, including a separate-process unchanged inverse without
@@ -295,5 +311,5 @@ before operational deployment; this host API is not a live benchmark result.
 The [mapped-edit qualification](evidence/compact-source-edit-20261012/README.md)
 retains 339 passing regressions and a public-source fixture with 11 authored
 numerical comparisons. It qualifies host mapping, native application and formal
-context invalidation; model-tool integration and official benchmark performance
-remain unmeasured.
+context invalidation. Subsequent worker-tool integration is described above;
+official benchmark performance remains unmeasured.

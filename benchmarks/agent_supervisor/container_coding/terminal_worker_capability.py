@@ -32,6 +32,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_artifacts.py",

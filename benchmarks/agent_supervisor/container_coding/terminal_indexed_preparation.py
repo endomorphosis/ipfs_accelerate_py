@@ -40,6 +40,8 @@ from .terminal_task_profile import (
 )
 from .benchmark_provider_profile import CLI_VERSION, resolve_provider_profile
 from .terminal_capsule_selection_policy import DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS, validate_capsule_selection
+from .terminal_planning_policy import DEFAULT_PLANNING_MODE, DECLARED_PLANNING_MODE, validate_planning_mode
+from ipfs_accelerate_py.agent_supervisor.runtime.declared_contract_planning import POLICY_ID as DECLARED_PLANNING_POLICY_ID
 
 
 MODEL = "gpt-6.1-sol"
@@ -128,7 +130,10 @@ def _require_single_task_context(prepared):
         raise ValueError("reviewed multi-task profile permits administrative planning only; task context is unqualified")
 
 
-def _planning_strategy(contract):
+def _planning_strategy(contract, planning_mode=DEFAULT_PLANNING_MODE):
+    validate_planning_mode(planning_mode, intent_requirement_contract=contract)
+    if planning_mode == DECLARED_PLANNING_MODE:
+        return "declared_contract"
     if contract is None:
         return "direct"
     if contract.get("schema") in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3", "intent-plan-requirement-contract@4", "intent-plan-requirement-contract@5"}:
@@ -177,6 +182,11 @@ def _load_prepared(state):
         if PROFILE in manifest["sources"]:
             raise ValueError("signed public task profile cannot be omitted")
         worker_inputs, smoke = [INSTRUCTION, SMOKE, "bottle.py"], PUBLIC_SMOKE
+    mode = validate_planning_mode(prepared.get("planning_mode", DEFAULT_PLANNING_MODE),
+        intent_requirement_contract=requirement_contract)
+    if mode == DECLARED_PLANNING_MODE and multitask:
+        raise ValueError("declared-contract planning supports one independent signed task")
+    expected_strategy = _planning_strategy(requirement_contract, mode)
     expected_constraints = (_multitask_constraints(prepared["specs"], prepared["query"])
                             if multitask else _constraints(prepared["spec"], prepared["query"]))
     if (prepared["request"] != inputs["request"] or prepared["scan"] != inputs["scan"]
@@ -186,7 +196,7 @@ def _load_prepared(state):
             or prepared["worker_inputs"] != worker_inputs
             or (repository / SMOKE).read_text() != smoke
             or prepared.get("intent_requirement_contract") != requirement_contract
-            or prepared.get("planning_strategy", _planning_strategy(requirement_contract)) != _planning_strategy(requirement_contract)
+            or prepared.get("planning_strategy", expected_strategy) != expected_strategy
             or str(repository) != manifest["repository"]):
         raise ValueError("preparation differs from exact signed public input and task declarations")
     selected = _prepared_provider(prepared)
@@ -198,6 +208,13 @@ def _load_prepared(state):
             or request.budget.max_latency_ms != planner_limit * 1000):
         raise ValueError("prepared planner deadline differs from the signed resource-profile budget")
     policy = request.planning_policy
+    expected_policy = (DECLARED_PLANNING_POLICY_ID if mode == DECLARED_PLANNING_MODE
+        else "terminal-intent-symbolic-planner" if expected_strategy == "intent_symbolic"
+        else "terminal-" + selected["provider"].removesuffix("_cli") + "-planner")
+    if (policy.policy_id != expected_policy
+            or policy.allow_model is not (expected_strategy not in {"intent_symbolic", "declared_contract"})
+            or policy.fallback_policy is not LocalFallbackPolicy.DISABLED):
+        raise ValueError("planning mode differs from signed planning policy")
     if (policy.provider_preferences != (selected["provider"],)
             or policy.model_preferences != (selected["model"],)):
         raise ValueError("provider profile differs from signed planning preferences")
@@ -252,13 +269,19 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
             source_unit_intent_family_context: Path | None = None,
             source_unit_intent_logic_families: list[str] | None = None,
             intent_requirement_contract: Path | None = None, resource_profile=None,
-            task_profile: dict | None = None, provider_profile: str | None = None) -> dict:
+            task_profile: dict | None = None, provider_profile: str | None = None,
+            planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
     """Capture original image bytes, then sign reviewed tasks before planning.
 
     This mutates only the disposable benchmark Git repository: its intentional
     dirty bottle.py bytes become a recorded baseline; no upstream bytes are
     restored. Public instruction/check files become immutable signed inputs.
     """
+    planning_mode = validate_planning_mode(planning_mode,
+        intent_requirement_contract=intent_requirement_contract)
+    if (planning_mode == DECLARED_PLANNING_MODE and isinstance(task_profile, dict)
+            and task_profile.get("schema") == MULTITASK_SCHEMA):
+        raise ValueError("declared-contract planning supports one independent signed task")
     provider_selection = resolve_provider_profile(provider_profile)
     from .benchmark_resource_profile import execution_budget, planner_timeout_seconds
     execution = execution_budget(resource_profile)
@@ -289,7 +312,7 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         # Complete operation/source/dependency checking precedes preprocessing,
         # signing, state creation and any disposable repository mutation.
         requirements = validate_task_profile_contract(task_profile, requirements, instruction=text)
-    strategy = _planning_strategy(requirements)
+    strategy = _planning_strategy(requirements, planning_mode)
     # This optional datasets-owned stage precedes any goal/task declarations.
     # Its output never replaces the raw instruction or independent domain roots.
     intent_action_selection = None
@@ -436,9 +459,10 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         repository_root_cid=repository_root_cid(repository), allowlist_cid=allowlist.allowlist_cid,
         scan_policy=DirectoryScanPolicy(policy_id="terminal-public-source-scan", scanner_version="1",
             include_patterns=tuple(worker_inputs) if task_profile is not None else ("bottle.py", INSTRUCTION, SMOKE)),
-        planning_policy=PromptPlanningPolicy(policy_id=("terminal-intent-symbolic-planner"
+        planning_policy=PromptPlanningPolicy(policy_id=(DECLARED_PLANNING_POLICY_ID
+            if strategy == "declared_contract" else "terminal-intent-symbolic-planner"
             if strategy == "intent_symbolic" else "terminal-" + provider_selection["provider"].removesuffix("_cli") + "-planner"),
-            provider_preferences=(provider_selection["provider"],), model_preferences=(provider_selection["model"],), allow_model=strategy != "intent_symbolic",
+            provider_preferences=(provider_selection["provider"],), model_preferences=(provider_selection["model"],), allow_model=strategy not in {"intent_symbolic", "declared_contract"},
             fallback_policy=LocalFallbackPolicy.DISABLED),
         output_policy=PromptOutputPolicy(policy_id="terminal-planning-preview", mode="markdown",
             output_root=str(repository), allowed_output_roots=(str(repository),),
@@ -488,6 +512,8 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         "source_unit_preplanning": source_unit_preplanning,
         "preparation_seconds": time.monotonic() - started,
     }
+    if planning_mode != DEFAULT_PLANNING_MODE:
+        prepared["planning_mode"] = planning_mode
     if task_profile is not None:
         prepared["task_profile"] = task_profile
     if multitask:
@@ -496,7 +522,7 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     if requirements is not None:
         prepared["intent_requirement_contract"] = requirements
     _write(state / "prepared.json", prepared)
-    if strategy != "intent_symbolic":
+    if strategy not in {"intent_symbolic", "declared_contract"}:
         provider_request = build_prompt_goal_provider_request(
             request, scan, config=config, constraint_summaries=constraints)
         if requirements is not None:
@@ -575,6 +601,81 @@ def prepare_repository_preview(**controls):
     """Explicit opt-in capture; retain the native owner outside serialized inputs."""
     from .terminal_repository_preview import prepare_repository_preview as prepare_native
     return prepare_native(**controls)
+
+
+def _plan_declared_contract(*, state, prepared, initial, timeout_seconds):
+    """Compile the signed skeleton and use ordinary independent admission."""
+    from ipfs_accelerate_py.agent_supervisor.runtime.declared_contract_planning import build_declared_contract_plan
+    from .terminal_initial_context import load_initial_context
+
+    started = time.monotonic()
+    selected = _prepared_provider(prepared)
+    def require_remaining_budget():
+        if time.monotonic() - started >= timeout_seconds:
+            raise TimeoutError("declared-contract planning exhausted the signed planner budget")
+    (state / "planner-invoked.json").open("x").write(json.dumps({
+        "planning_strategy": "declared_contract", "planning_mode": DECLARED_PLANNING_MODE,
+        "provider_calls": 0}) + "\n")
+    result = {"schema": "terminal-indexed-planner-result@1", "qualified": False,
+        **{key: selected[key] for key in ("provider", "model", "reasoning_effort")},
+        "planning_strategy": "declared_contract", "planning_mode": DECLARED_PLANNING_MODE,
+        "planner_timeout_seconds": timeout_seconds,
+        "max_total_agent_seconds": prepared.get("max_total_agent_seconds", 300),
+        "planning_and_cold_index_overhead_included": True,
+        "provider_output_token_cap_enforced": False, "benchmark_success": None,
+        "provider_calls": 0, "provider_observation": {}, "provider_receipt": None,
+        "execution_receipt": None, "model_request_sha256": None, "isolation_verified_here": False,
+        "instruction_interpreted": False, "source_semantics_verified": False,
+        "semantic_alignment_verified": False, "proof_authority": False,
+        "execution_authority": False, "completion_authority": False}
+    try:
+        if _load_prepared(state) != prepared:
+            raise ValueError("preparation changed before declared-contract planning")
+        if initial is not None:
+            current = load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
+            _require_same_initial_selection(current, initial)
+        require_remaining_budget()
+        planned = build_declared_contract_plan(manifest=prepared["manifest"])
+        require_remaining_budget()
+        result["declared_contract_planning"] = planned["receipt"]
+        _write(state / "declared-contract-planning-receipt.json", planned["receipt"])
+        current = _load_prepared(state)
+        if current != prepared:
+            raise ValueError("preparation changed after declared-contract planning")
+        if initial is not None:
+            current_initial = load_initial_context(state=state, prepared=current, require_empty_owner=True)
+            _require_same_initial_selection(current_initial, initial)
+        require_remaining_budget()
+        admission = local.admit_local_benchmark_plan(graph=planned["graph"], manifest=prepared["manifest"])
+        require_remaining_budget()
+        # As with provider planning, retain independently accepted state even
+        # when a later storage failure prevents successful materialization.
+        _write(state / "admission.json", admission)
+        with IntentRepository(state / "intent.duckdb") as intent:
+            materialized = local.materialize_local_benchmark_plan(admission=admission, intent=intent)
+        require_remaining_budget()
+        result.update(qualified=True, task_cids=materialized["task_cids"],
+            goals=len(planned["graph"].goals), tasks=len(planned["graph"].tasks))
+    except Exception as exc:
+        result["failure"] = {"type": type(exc).__name__, "message": str(exc)}
+        diagnostic = local.project_task_contract_mismatch(exc)
+        if diagnostic is not None:
+            result["task_contract_mismatch"] = diagnostic
+    result["initial_indexed_context"] = ({"descriptor": initial["receipt"]["descriptor"],
+        "semantic_root_cid": initial["semantic"]["semantic_root_cid"],
+        "world_snapshot_cid": initial["capture"]["snapshot"]["snapshot_cid"],
+        "index_id": initial["retrieval"]["index_id"],
+        "summary_sha256": hashlib.sha256(json.dumps(initial["summaries"],
+            sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "supplied_to_router": False, "used_for_task_selection": False,
+        "execution_authority": False, "completion_authority": False} if initial else None)
+    for stage in ("intent_preplanning", "source_unit_preplanning"):
+        result[stage] = {"status": "not_used_for_declared_contract_planning", "supplied_to_router": False,
+            "before_goal_decomposition": True, "source_semantics_verified": False,
+            "execution_authority": False, "completion_authority": False}
+    result["elapsed_seconds"] = time.monotonic() - started
+    _write(state / "planning-result.json", result)
+    return result
 
 
 def _plan_symbolic(*, state, prepared, initial, timeout_seconds, repository_preview=None):
@@ -730,7 +831,8 @@ def plan(state: Path, *, provider_callable=None, timeout_seconds: int | None = N
 
 def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggregate_started=None, repository_preview=None):
     provider_selection = _prepared_provider(prepared)
-    strategy = _planning_strategy(prepared.get("intent_requirement_contract"))
+    strategy = _planning_strategy(prepared.get("intent_requirement_contract"),
+        prepared.get("planning_mode", DEFAULT_PLANNING_MODE))
     if _is_multitask(prepared):
         if strategy != "intent_symbolic":
             raise ValueError("reviewed multi-task preparation requires symbolic planning")
@@ -738,7 +840,7 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
             raise ValueError("reviewed multi-task preparation cannot reuse an unqualified initial task context")
     if repository_preview is not None and strategy != "intent_symbolic":
         raise ValueError("repository preview requires explicit symbolic operation preparation")
-    if strategy != "intent_symbolic" and not callable(provider_callable):
+    if strategy not in {"intent_symbolic", "declared_contract"} and not callable(provider_callable):
         raise ValueError("planning requires an independently qualified isolated worker router callable")
     repository = Path(prepared["repository"])
     constraints = prepared["constraints"]
@@ -748,6 +850,9 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
         initial = stage_initial_context_nomination(state=state, prepared=prepared, require_empty_owner=True)
         constraints = {**constraints, "constraint_summaries": [
             *constraints["constraint_summaries"], *initial["summaries"]]}
+    if strategy == "declared_contract":
+        return _plan_declared_contract(state=state, prepared=prepared, initial=initial,
+            timeout_seconds=timeout_seconds)
     if strategy == "intent_symbolic":
         if aggregate_started is not None:
             from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import require_applicability_budget
