@@ -28,6 +28,8 @@ the tree
 | Task proposal routing | `planning.task_proposal_router` | LLM/analysis proposals → admitted branches |
 | Formal plan compiler | `planning.formal_plan_compiler` | Graph + admission projections |
 | Formal plan validator | `planning.formal_plan_validator` | Preconditions, findings, countermodels |
+| Independent admission materials | `analysis.planning_admission_materials` | Owner-backed resolver for the explicit planning factory hook; no default trust or synthetic IR |
+| Canonical LegalIR source integration | `scripts/ops/legal_ir/check_source_integration.py` | Bounded source/receipt/ancestry and actual import-origin checks; no semantic admission |
 | Proof-carrying planner | `planning.proof_carrying_planner` | Plan stages bound to proof obligations |
 | Context package | `ipfs_accelerate_py/agent_supervisor/context/` | Capsules and decision runtime |
 | Context capsule | `context.context_contracts.ContextCapsule` | Mandatory goal/authority/scope/acceptance |
@@ -714,3 +716,99 @@ planning) may cite modules on this pipeline. Product code and this guide do
 **not** require board prefixes to understand planning or assurance. Board
 completion markers are not authoritative completion of those tasks on a later
 tree.
+
+---
+
+## Appendix C — Supplying independent plan admission materials
+
+`PlanningAnalysisFactory` accepts an explicit `ir_request_builder`. The default
+has no builder: it reports `ir_request_builder_unset` rather than deriving
+authority from the model's plan. `analysis.planning_admission_materials` supplies
+the composition boundary for an independently owned resolver and verifier.
+Neither dependency has a production fallback. A material inventory or a bound
+request is not an admitted plan.
+
+The resolver needs the exact current repository tree, workflow and scan,
+compiler-produced action/effect graph, formal source identity, evidence identity,
+execution-plan identity and policy identities. It returns typed
+`PlanAdmissionServiceRequest` materials, retaining their owner and artifact
+references. The separately supplied verifier must authenticate those owners,
+custody and scope against that same context. Hash equality and declared
+`reviewed`, `trusted` or `grounded` metadata cannot authenticate a reviewer.
+The builder constructs the request through `PlanAdmissionService`; the existing
+prompt and IR gates still decide admission.
+
+The deployment wiring uses these explicit dependencies (the resolver and verifier
+below are deployment services, not objects created from model output):
+
+```python
+from ipfs_accelerate_py.agent_supervisor.analysis.planning_admission_materials import (
+    OwnerBackedPlanningAdmissionBuilder,
+    PlanningAdmissionRunBindings,
+)
+from ipfs_accelerate_py.agent_supervisor.analysis.planning_analysis_factory import (
+    PlanningAnalysisFactory,
+)
+
+builder = OwnerBackedPlanningAdmissionBuilder(
+    material_resolver=owner_material_resolver,
+    owner_verifier=independent_owner_verifier,
+    run_bindings=PlanningAdmissionRunBindings(
+        execution_plan_id=approved_execution_plan_id,
+        policy_ids=current_workflow_and_admission_policy_ids,
+    ),
+)
+factory = PlanningAnalysisFactory(
+    repository_allowlist=approved_repository_roots,
+    ir_request_builder=builder,
+)
+```
+
+`build_with_receipt()` retains verification and service receipts in the result
+for that call; it does not store a shared mutable last result across parallel
+requests. `AdmissionMaterialsError` retains specific issues and, when the native
+service has run, its refusal receipt. `__call__` returns the typed prompt request
+for the existing hook. Both independent Intent and generated-code effect streams
+must be supplied for a plan with effects: missing streams cannot inherit candidate
+effects as a substitute for independent owner material.
+
+| Input | Existing producer or checker | What must come from its owner |
+| --- | --- | --- |
+| Intent and formalization | `proof.intent_constraint_adapter` | Actual current artifacts, grounded goal/action/effect correspondence and independent obligation receipts |
+| Legal applicability | `proof.legal_constraint_adapter` | Reviewed provisions and an exact per-action applicability query, including time, jurisdiction, principal and effects |
+| Security policy and requests | `proof.security_constraint_adapter` | Authenticated policy custody, exact principal/tool/target/state/effects, and complete policy stream |
+| Authority and roots | `AdmissionAuthority`, `RootBinding` | Actual scoped grant sources and current independently verified roots; these records do not authenticate themselves |
+| Dependencies and assumptions | `ProgramDependency`, `AdmissionAssumption`, `MandatoryClosure` | Exact action dependencies, mandatory preconditions and complete semantic closure |
+| Proof and validation | `ProofReceipt`, `ValidationRequirement`, `ValidationResult` | Independently executed, current, exact-plan receipts at the assurance level required by the existing gate |
+
+Keep checker declaration, checker execution and semantic acceptance distinct.
+A future acceptance criterion may name an executable checker while its required
+producer result remains missing or fails. Do not bind a broad statutory or
+multi-host criterion to a unit test that covers only transport or source custody.
+When a criterion combines several requirements, its checker must reject any
+missing requirement; a report listing blockers is not a successful check unless
+the criterion explicitly asks for that inventory.
+
+For canonical LegalIR source reconciliation,
+`scripts/ops/legal_ir/check_source_integration.py` consumes a bounded manifest of
+repository revisions, required implementation ancestry, immutable pilot receipts,
+producer files and protected files. It runs `require_workspace_logic_tree()` in
+a fresh process with the canonical datasets tree first on the path. Changed,
+unreconciled, absent or unchecked source requirements fail the check. It does not
+merge shared trees, open active databases, load weights, or assert statutory
+meaning. Its report covers the declared source closure, not every file on the
+machine.
+
+For a LegalIR training or inference campaign, source checks are prerequisites.
+Retain separate lineages and protected assets; supply verified local embeddings;
+bind complete targets and all applicable family semantics; retain held-out
+source fidelity and failure denominators. An autoencoder loss, formula compile,
+decompiled sentence, source report or database row cannot satisfy a Lean gate.
+Only an actual successful `lake build <Lib>` admits its recorded generated
+library/shard scope. A schema or fingerprint build does not establish source-law
+fidelity. The Constitution remains unformalized.
+
+The demonstration `ir_logic_application` path and `deterministic_ir_fixture()`
+are not production material producers. They must not be used to turn authored
+Intent/Security hashes or historical LegalIR references into independent reviewed
+roots, or to discharge obligations that have not actually been checked.
