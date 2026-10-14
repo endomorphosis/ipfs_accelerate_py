@@ -109,5 +109,8 @@ planning mode, checkpoints and task fixed while varying this budget. Record
 official reward, complete prompt bytes, retrieval traffic, coding turns and
 bounded usage observations, with cold indexing charged to the supervisor.
 Model planning and declared-contract planning require separate comparisons.
-The previous [live benchmark scores](../../compact_worker_benchmark.md) remain
-the latest measured token observations.
+The [first fresh live comparison](../capsule-budget-live-20261014/README.md)
+now records a passing legacy baseline and a one-capsule setup abort caused by a
+Grok authentication refusal. It does not yet establish a capsule-budget token
+advantage. The previous [live benchmark scores](../../compact_worker_benchmark.md)
+remain historical observations from their separate runtime and treatments.

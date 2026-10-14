@@ -1,0 +1,22 @@
+{
+  "arm": "full",
+  "capsule_budget": "one-capsule@1",
+  "complete_single_trial_receipt": false,
+  "configuration_unchanged": true,
+  "exit_code": 0,
+  "host_source_unchanged": true,
+  "label": "one-capsule",
+  "preparation_unchanged": true,
+  "receipt_sha256": "68b3c4012e1801ae4111efb5e948026289de40542780b72ad04f514d77b9a73c",
+  "results": [
+    {
+      "exception_type": "GrokCredentialReadinessError",
+      "reward": null
+    }
+  ],
+  "schema": "capsule-budget-live-launch-result@1",
+  "seconds": 535.8535866150633,
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_sha256": "68b3c4012e1801ae4111efb5e948026289de40542780b72ad04f514d77b9a73c",
+  "trial_count": 1
+}

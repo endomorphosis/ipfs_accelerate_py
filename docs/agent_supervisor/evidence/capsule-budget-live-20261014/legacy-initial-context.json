@@ -1,0 +1,34 @@
+{
+  "container_id": "b7139ed05765166a7a3a4e72f95f1f85402195abb229310f47ae5f02e56305cb",
+  "dispatch_join_performed": false,
+  "label": "legacy",
+  "launch": {
+    "bytes": 1358,
+    "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/launch-start.json",
+    "sha256": "54652df5d1ec70c61aa461368c7702b888b8a92c169c95c5ce6dd782ea0ccce5"
+  },
+  "observation": {
+    "artifact_bytes": 31939,
+    "artifact_sha256": "0e973bce2a09692c701d8619af2ce9928c6b5fcfcb1e8464408373f6457c049f",
+    "capsule_index_cid": "baguqeeratecsxisziuz6bhfhjutogw74lo3ytj5xvtkufrhktzp234eyyisa",
+    "completion_authority": false,
+    "full_capsule_count": 8,
+    "max_bytes": 32768,
+    "max_capsules": 8,
+    "omitted_capsule_count": 4,
+    "required_raw_paths": 3,
+    "selected_capsule_count": 4,
+    "semantic_equivalence_claimed": false,
+    "semantic_sha256": "0e973bce2a09692c701d8619af2ce9928c6b5fcfcb1e8464408373f6457c049f",
+    "source_changed_during_read": false,
+    "source_manifest_paths": 5,
+    "status": "observed"
+  },
+  "observed_at_utc": "2026-10-14T03:55:04.023169+00:00",
+  "observer_sha256": "578cc490457131efd941b2e8f43beabc8b498f206dc249634053460029ed895b",
+  "owner_state_read": false,
+  "pair_lock_sha256": "01bd3ab0bc782f8a8755cc4bec670b889e3e0c8db151f5c8720bcd3f59872e6d",
+  "provider_calls": 0,
+  "raw_content_exported": false,
+  "schema": "capsule-budget-initial-context-observation@1"
+}
