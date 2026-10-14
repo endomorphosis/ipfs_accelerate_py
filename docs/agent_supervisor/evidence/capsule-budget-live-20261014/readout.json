@@ -1,0 +1,1721 @@
+{
+  "aggregates": {
+    "legacy": {
+      "absent_trial_attempts": 0,
+      "complete_native_usage_for_registered_attempts": false,
+      "observed_router_sessions": 2,
+      "official_nonpasses": 0,
+      "official_passes": 1,
+      "registered_attempts": 1,
+      "retained_trials": 1,
+      "tokens": {
+        "cache_write_input_tokens": null,
+        "cached_input_tokens": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "unknown_rewards": 0
+    },
+    "one-capsule": {
+      "absent_trial_attempts": 0,
+      "complete_native_usage_for_registered_attempts": false,
+      "observed_router_sessions": 0,
+      "official_nonpasses": 0,
+      "official_passes": 0,
+      "registered_attempts": 1,
+      "retained_trials": 1,
+      "tokens": {
+        "cache_write_input_tokens": null,
+        "cached_input_tokens": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "unknown_rewards": 1
+    }
+  },
+  "all_receipt_controls_match_preparation": false,
+  "attempts": [
+    {
+      "capsule_budget": "legacy",
+      "capsule_budget_config_unchanged": null,
+      "capsule_budget_runtime_declared_matches": null,
+      "comparison_control_integrity": true,
+      "complete_single_trial_receipt": true,
+      "configuration": {
+        "bytes": 3385,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/config.json",
+        "sha256": "8dffca1c1c94c83545d0bf5407f4f796d689b3b248a0f875ea5dc490c53297b8"
+      },
+      "configuration_difference_paths": [],
+      "directory": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01",
+      "generic_control_comparison": {
+        "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+        "differences": [],
+        "matches": true,
+        "status": "matched"
+      },
+      "initial_context_observation": {
+        "binding": {
+          "bytes": 1442,
+          "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/initial-context-observation.json",
+          "sha256": "03abbe9bdeea8a7df01bb5b3e5345446bdc8876d733a1cb0900155a4e6cb6153"
+        },
+        "dispatch_joined": true,
+        "join_scope": "Canonical initial semantic artifact hash joined only to recorded coding translation semantic hash; mismatch remains preparation-only.",
+        "matched_coding_invocation_ids": [
+          "22126f97a62d4c0dbcc1a7a1734e1dd4"
+        ],
+        "observation": {
+          "artifact_bytes": 31939,
+          "artifact_sha256": "0e973bce2a09692c701d8619af2ce9928c6b5fcfcb1e8464408373f6457c049f",
+          "capsule_index_cid": "baguqeeratecsxisziuz6bhfhjutogw74lo3ytj5xvtkufrhktzp234eyyisa",
+          "completion_authority": false,
+          "full_capsule_count": 8,
+          "max_bytes": 32768,
+          "max_capsules": 8,
+          "omitted_capsule_count": 4,
+          "required_raw_paths": 3,
+          "selected_capsule_count": 4,
+          "semantic_equivalence_claimed": false,
+          "semantic_sha256": "0e973bce2a09692c701d8619af2ce9928c6b5fcfcb1e8464408373f6457c049f",
+          "source_changed_during_read": false,
+          "source_manifest_paths": 5,
+          "status": "observed"
+        },
+        "source_or_proof_authority": false,
+        "status": "observed"
+      },
+      "invocation": {
+        "bytes": 267,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/invocation.json",
+        "sha256": "3fdb4f7be2ea98ea5573dc353153050bbe64f5dfcef52e79d02c1c3ecfa66850"
+      },
+      "label": "legacy",
+      "launch_exit_code": 0,
+      "launch_result": {
+        "bytes": 707,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/launch-result.json",
+        "sha256": "4b711704fb04dc66556d5064e890d0c37ca24532e6510246627060dffd259c13"
+      },
+      "launch_seconds": 2027.0092111610575,
+      "launch_start": {
+        "bytes": 1358,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/launch-start.json",
+        "sha256": "54652df5d1ec70c61aa461368c7702b888b8a92c169c95c5ce6dd782ea0ccce5"
+      },
+      "preparation": {
+        "bytes": 84662,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/preparation.json",
+        "sha256": "2976ab29767172435556afcde7a4763138879ab4091e91abf23f78d7dd8719cb"
+      },
+      "receipt": {
+        "bytes": 301678,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/receipt.json",
+        "sha256": "28e7c79592c16fd0badfce30ad12e53a4992d0af2f057c9349f812a40980499c"
+      },
+      "status": "observed",
+      "trials": [
+        {
+          "code_learning_observation": null,
+          "context_input_audit": {
+            "all_observed_coding_inputs_verified": true,
+            "any_model_input_verified": true,
+            "any_native_input_verified": true,
+            "coding_receipts_seen": 1,
+            "error_type": null,
+            "invocations": [
+              {
+                "invocation_id": "22126f97a62d4c0dbcc1a7a1734e1dd4",
+                "model_input_verified": true,
+                "native_input_verified": true,
+                "reason": "exact_context_and_input_digests_match",
+                "status": "verified_exact_model_input"
+              }
+            ],
+            "reason": "per_invocation_context_and_input_comparison",
+            "seconds": 2.709932023892179,
+            "source_formalization": [
+              {
+                "capsule_id": "baguqeera5kio672mf2k265pbobduwchcmjwrr635pmdoqzc6xtb3c6ca36kq",
+                "chunks": 4,
+                "completion_authority": false,
+                "contexts": [
+                  {
+                    "kind": "source384-candidate-context",
+                    "receipt_sha256": "6b50cab986469c4dcbc58ce3184d840117c240e81203ab5a159c44bcc4c25d9a",
+                    "source_hashes_sha256": "5f92038ce9e9024ba07e9af22184e92fff7df4bd983287081265a84821c0f1b1",
+                    "summary_sha256": "a7b8fee3de71b54e5e438b18e0b2e573b0962b652eee54f3116a12c20d7b79b5"
+                  },
+                  {
+                    "kind": "numerical-formalization-context",
+                    "receipt_sha256": "c2eb276a2d1494e499ce4a39d96ffc8728e44757e79b7af2327f9a94d895c667",
+                    "source_hashes_sha256": "c372fac5ae67655e91742cf1dd19e236a2927dc2fd632b0f4eb2df7b8ef463d7",
+                    "summary_sha256": "26c0207a61c00b31f26239e13d626b6e4badab621cfef6dc6f03745bc26ef9b4"
+                  }
+                ],
+                "current_sources_checked": false,
+                "dispatched_context_bundle_sha256": "36cb97979b8ef90e705f7019b8e069a371b893b1ab882d880ba971ecc63b98df",
+                "execution_authority": false,
+                "expected_context_bundle_sha256": "36cb97979b8ef90e705f7019b8e069a371b893b1ab882d880ba971ecc63b98df",
+                "formalization_authority": false,
+                "historical_receipt_bindings_verified": true,
+                "matched_invocation_ids": [
+                  "22126f97a62d4c0dbcc1a7a1734e1dd4"
+                ],
+                "neural_inference_replayed": false,
+                "proof_authority": false,
+                "reported_model_input_verified": true,
+                "schema": "terminal-historical-source-formalization-observation@1",
+                "source_files": 5,
+                "source_obligations_discharged": 0,
+                "source_semantics_verified": false,
+                "task_cid": "baguqeerayyd5cpkm7hcxi4vq6ehplxer6m3cwj4pcofn6aggecuxvm3sxl5a",
+                "task_id": "TB-CODE-TASK",
+                "whole_program_semantics_verified": false,
+                "worker_evidence_sha256": "a8e9406847c8b49f6b75bdab227dea81c8ed4453af9ae61940a911fe048fcfaf"
+              }
+            ],
+            "status": "verified_all_observed_model_inputs",
+            "task_correctness_established": false,
+            "usable_coding_receipts": 1
+          },
+          "declared_output_observation": {
+            "allocation_path_sha256": null,
+            "attempt_id_sha256": "3d12d38b583dfe85a733f0c118c93fad7dcdf8713b03cae919afc48c1ce0e4f9",
+            "baseline_commit": "aa8f0303c5d5a61d1841bb908b588327f53f141c",
+            "completion_authority": false,
+            "evidence_stage": "allocation_event",
+            "invocation_id_sha256": null,
+            "observation_only": true,
+            "original_allocation_inode_verified": false,
+            "outputs": [],
+            "owner_events_sha256": null,
+            "patch_application_established": false,
+            "portal_attempt": null,
+            "reason": "reported_declared_byte_observation",
+            "schema": "terminal-declared-output-observation@1",
+            "settlement_authority": false,
+            "status": "unavailable",
+            "task_cid_sha256": "82d549b81ee10b9cad131ba11396d264d7c01bd37bb130ead8d658a228f04358",
+            "task_correctness_established": false,
+            "writer_identity_established": false
+          },
+          "doctor_observation": {
+            "candidate_materializations_observed": null,
+            "local_contract_proof_status": null,
+            "observed_worker_receipts": null,
+            "provider_calls": 0,
+            "residual_context_prepared": true,
+            "residual_successors": 1,
+            "residual_work_proposals": 0,
+            "route": "model_router",
+            "selection_is_publication_or_completion_evidence": false,
+            "status": "residual",
+            "whole_program_proved": false
+          },
+          "durations_seconds": {
+            "agent_execution": 1692.69835,
+            "agent_setup": 310.285848,
+            "environment_setup": 3.149755,
+            "verifier": 3.999464
+          },
+          "exception_type": null,
+          "indexed_context_observation": {
+            "context_preparation_is_dispatch_evidence": false,
+            "doctor_repair_status": "abstained",
+            "full_capsules": 8,
+            "indexed_symbols": 4,
+            "initial_indexes_reused": true,
+            "learned_embeddings": false,
+            "native_fact_rows_replayed": 4,
+            "new_embedding_calls": 0,
+            "prepared": true,
+            "worker_capsules": 4,
+            "worker_semantic_bytes": 31939
+          },
+          "initial_indexed_context_observation": {
+            "canonical_tasks_created": false,
+            "full_capsules": 8,
+            "indexed_symbols": 4,
+            "learned_embeddings": false,
+            "planning_model_request_sha256": "0a4b159136d6fbfe3fd28f6be1dd4d52bbaeaedf02306794d48a604aef732146",
+            "preparation_is_provider_dispatch_evidence": false,
+            "prepared": true,
+            "provider_calls": 0,
+            "summary_sha256": "6f44b92e2a399c51432e0ce027aebab78b3f32da655f1da9697bb3517186f481",
+            "supplied_to_planning_router": true,
+            "world_task_count": 0
+          },
+          "native_shape": {
+            "invocations": [
+              {
+                "exit_code": 0,
+                "invocation_id": "a1f8f12956e6417f8db2786d6aa793dc",
+                "model_prompt_bytes": 34233,
+                "native_stream": null,
+                "num_turns": 1,
+                "ordinary_source_count_scope": "Tool-name counters do not identify source paths or distinguish ordinary edits from mapped-helper shell commands.",
+                "ordinary_source_read_or_edit_count": null,
+                "phase": "planning",
+                "timed_out": null
+              },
+              {
+                "exit_code": 0,
+                "invocation_id": "22126f97a62d4c0dbcc1a7a1734e1dd4",
+                "model_prompt_bytes": 78313,
+                "native_stream": {
+                  "callback_errors": 0,
+                  "completion_authority": false,
+                  "discarded_text_bytes": 485,
+                  "duration_seconds": 1078.4357281039702,
+                  "event_counts": {
+                    "auto_compact": 0,
+                    "available_commands": 28,
+                    "end": 1,
+                    "error": 0,
+                    "max_turns_reached": 0,
+                    "plan": 0,
+                    "text": 397,
+                    "thought": 2341,
+                    "tool_call": 26,
+                    "tool_call_update": 115,
+                    "unknown": 0,
+                    "usage": 26
+                  },
+                  "event_origin_authenticated": false,
+                  "events_after_final": 0,
+                  "execution_authority": false,
+                  "final_envelope_observed": true,
+                  "final_event_seconds": 1069.242941075936,
+                  "final_event_type": "end",
+                  "final_reason_code": "end_turn",
+                  "first_event_seconds": 0.19613607495557517,
+                  "first_stderr_seconds": null,
+                  "first_stdout_seconds": 0.19613607495557517,
+                  "frames": 2934,
+                  "last_event_seconds": 1069.242941075936,
+                  "last_stderr_seconds": null,
+                  "last_stdout_seconds": 1069.242941075936,
+                  "malformed_frames": 0,
+                  "non_object_frames": 0,
+                  "observation_only": true,
+                  "oversized_frames": 0,
+                  "process_exit_observed": true,
+                  "process_exit_seconds": 1078.4352062429534,
+                  "proof_authority": false,
+                  "raw_provider_data_exported": false,
+                  "response_usable": true,
+                  "retained_text_bytes": 1157,
+                  "returncode": 0,
+                  "schema": "native-grok-stream-progress@2",
+                  "stderr_bytes": 0,
+                  "stderr_eof": true,
+                  "stdout_bytes": 963932,
+                  "stdout_eof": true,
+                  "stream_complete": true,
+                  "stream_tainted": false,
+                  "text_bytes": 1642,
+                  "text_scope": "last_usage_delimited_text_segment",
+                  "text_truncated": false,
+                  "timed_out": false,
+                  "timeout_phase": "none",
+                  "tool_name_counts": {
+                    "grep": 0,
+                    "list_dir": 0,
+                    "read_file": 1,
+                    "run_terminal_cmd": 0,
+                    "search_replace": 0,
+                    "todo_write": 0,
+                    "unknown": 25
+                  },
+                  "tool_status_counts": {
+                    "completed": 26,
+                    "failed": 0,
+                    "in_progress": 63,
+                    "pending": 26,
+                    "unknown": 26
+                  },
+                  "transport": "streaming-json",
+                  "unknown_events": 0,
+                  "usage_observations": {
+                    "billing_total_verified": false,
+                    "counter_semantics": "unverified",
+                    "observed_events": 26,
+                    "omitted_events": 0,
+                    "ordinals_are_turn_ids": false,
+                    "raw_provider_data_exported": false,
+                    "retained_events": 26,
+                    "row_limit": 128,
+                    "rows": [
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 13.722301897010766,
+                        "event_ordinal": 1,
+                        "frame_ordinal": 42,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 1536,
+                          "input_tokens": 31282,
+                          "output_tokens": 509,
+                          "reasoning_tokens": 288,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 61.792432180955075,
+                        "event_ordinal": 2,
+                        "frame_ordinal": 283,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 32768,
+                          "input_tokens": 2903,
+                          "output_tokens": 2942,
+                          "reasoning_tokens": 2510,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 72.6803388139233,
+                        "event_ordinal": 3,
+                        "frame_ordinal": 293,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 35584,
+                          "input_tokens": 3307,
+                          "output_tokens": 432,
+                          "reasoning_tokens": 179,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 92.49727428890765,
+                        "event_ordinal": 4,
+                        "frame_ordinal": 367,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 38784,
+                          "input_tokens": 1820,
+                          "output_tokens": 920,
+                          "reasoning_tokens": 861,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 109.32053180690855,
+                        "event_ordinal": 5,
+                        "frame_ordinal": 375,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 40576,
+                          "input_tokens": 2499,
+                          "output_tokens": 953,
+                          "reasoning_tokens": 203,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 157.21176212502178,
+                        "event_ordinal": 6,
+                        "frame_ordinal": 449,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 43008,
+                          "input_tokens": 1204,
+                          "output_tokens": 1432,
+                          "reasoning_tokens": 1146,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 179.5725198329892,
+                        "event_ordinal": 7,
+                        "frame_ordinal": 478,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 44160,
+                          "input_tokens": 1631,
+                          "output_tokens": 1036,
+                          "reasoning_tokens": 502,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 291.25353309395723,
+                        "event_ordinal": 8,
+                        "frame_ordinal": 898,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 45696,
+                          "input_tokens": 1361,
+                          "output_tokens": 6432,
+                          "reasoning_tokens": 6104,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 300.1602082019672,
+                        "event_ordinal": 9,
+                        "frame_ordinal": 907,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 46976,
+                          "input_tokens": 6750,
+                          "output_tokens": 397,
+                          "reasoning_tokens": 41,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 332.97036254394334,
+                        "event_ordinal": 10,
+                        "frame_ordinal": 1076,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 53632,
+                          "input_tokens": 794,
+                          "output_tokens": 2351,
+                          "reasoning_tokens": 2118,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 342.2720987019129,
+                        "event_ordinal": 11,
+                        "frame_ordinal": 1084,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 54400,
+                          "input_tokens": 2571,
+                          "output_tokens": 923,
+                          "reasoning_tokens": 133,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 358.9986350699328,
+                        "event_ordinal": 12,
+                        "frame_ordinal": 1099,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 56960,
+                          "input_tokens": 1496,
+                          "output_tokens": 1949,
+                          "reasoning_tokens": 259,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 383.46558835799806,
+                        "event_ordinal": 13,
+                        "frame_ordinal": 1162,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 58368,
+                          "input_tokens": 2303,
+                          "output_tokens": 2007,
+                          "reasoning_tokens": 792,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 479.57496374694165,
+                        "event_ordinal": 14,
+                        "frame_ordinal": 1500,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 60544,
+                          "input_tokens": 2418,
+                          "output_tokens": 7013,
+                          "reasoning_tokens": 4876,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 513.0619644349208,
+                        "event_ordinal": 15,
+                        "frame_ordinal": 1543,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 62848,
+                          "input_tokens": 7391,
+                          "output_tokens": 2526,
+                          "reasoning_tokens": 609,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 621.730388487922,
+                        "event_ordinal": 16,
+                        "frame_ordinal": 1928,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 70144,
+                          "input_tokens": 2884,
+                          "output_tokens": 4467,
+                          "reasoning_tokens": 3827,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 650.8531818459742,
+                        "event_ordinal": 17,
+                        "frame_ordinal": 2014,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 72960,
+                          "input_tokens": 4924,
+                          "output_tokens": 1750,
+                          "reasoning_tokens": 1212,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 689.966934529948,
+                        "event_ordinal": 18,
+                        "frame_ordinal": 2147,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 77824,
+                          "input_tokens": 1991,
+                          "output_tokens": 2681,
+                          "reasoning_tokens": 1694,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 716.2566766910022,
+                        "event_ordinal": 19,
+                        "frame_ordinal": 2265,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 79744,
+                          "input_tokens": 3035,
+                          "output_tokens": 2627,
+                          "reasoning_tokens": 1935,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 872.3419291909086,
+                        "event_ordinal": 20,
+                        "frame_ordinal": 2391,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 82688,
+                          "input_tokens": 2819,
+                          "output_tokens": 2441,
+                          "reasoning_tokens": 1751,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 957.1725300569087,
+                        "event_ordinal": 21,
+                        "frame_ordinal": 2496,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 85504,
+                          "input_tokens": 2528,
+                          "output_tokens": 1994,
+                          "reasoning_tokens": 1714,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 1014.0521844920004,
+                        "event_ordinal": 22,
+                        "frame_ordinal": 2530,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 87936,
+                          "input_tokens": 2423,
+                          "output_tokens": 1367,
+                          "reasoning_tokens": 705,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 1032.475182655966,
+                        "event_ordinal": 23,
+                        "frame_ordinal": 2542,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 90240,
+                          "input_tokens": 1918,
+                          "output_tokens": 1066,
+                          "reasoning_tokens": 118,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 1046.7233822739217,
+                        "event_ordinal": 24,
+                        "frame_ordinal": 2583,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 92032,
+                          "input_tokens": 1473,
+                          "output_tokens": 899,
+                          "reasoning_tokens": 554,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 1060.6950589040061,
+                        "event_ordinal": 25,
+                        "frame_ordinal": 2620,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 1536,
+                          "input_tokens": 92997,
+                          "output_tokens": 574,
+                          "reasoning_tokens": 560,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      },
+                      {
+                        "after_final": false,
+                        "counter_status": "valid",
+                        "elapsed_seconds": 1069.1054356209934,
+                        "event_ordinal": 26,
+                        "frame_ordinal": 2933,
+                        "invalid_counter_fields": 0,
+                        "stop_reason": "unknown",
+                        "usage": {
+                          "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 94464,
+                          "input_tokens": 959,
+                          "output_tokens": 480,
+                          "reasoning_tokens": 175,
+                          "total_tokens": null
+                        },
+                        "usage_container": "mapping"
+                      }
+                    ],
+                    "schema": "native-grok-usage-events@1",
+                    "selection": "first_usage_events",
+                    "summation_permitted": false
+                  }
+                },
+                "num_turns": 26,
+                "ordinary_source_count_scope": "Tool-name counters do not identify source paths or distinguish ordinary edits from mapped-helper shell commands.",
+                "ordinary_source_read_or_edit_count": null,
+                "phase": "coding",
+                "timed_out": null
+              }
+            ],
+            "native_dispatch_count": null,
+            "native_dispatch_count_scope": "No dispatch count is inferred from model invocation or planned-task counts.",
+            "planning": {
+              "count_scope": "Counts explicitly retained in the admitted planner result; absent subgoal counts remain unknown.",
+              "elapsed_seconds": 514.5335513961036,
+              "goals": 2,
+              "provider_calls": 1,
+              "qualified": true,
+              "strategy": "direct",
+              "subgoals": null,
+              "tasks": 1
+            },
+            "selected_task_status": "completed",
+            "unreceipted_attempt_present": false
+          },
+          "native_task_completed": true,
+          "native_total_seconds": null,
+          "official_reward": 1.0,
+          "outcome": "official_verifier_passed",
+          "post_publication_context": {
+            "budget_seconds": 103.96660077595152,
+            "embedding_accounting": {
+              "all_refreshes_receipted": false,
+              "known_subtotals": {
+                "local_embedding_calls": null,
+                "local_embedding_texts": null,
+                "remote_embedding_calls": null,
+                "text_generation_calls": null
+              },
+              "totals": {
+                "local_embedding_calls": null,
+                "local_embedding_texts": null,
+                "remote_embedding_calls": null,
+                "text_generation_calls": null
+              }
+            },
+            "embedding_calls": null,
+            "error_type": null,
+            "learned_numerical_accounting": null,
+            "reason": null,
+            "refresh_seconds": 22.057234536041506,
+            "status": "refreshed",
+            "task_completion_is_context_refresh_evidence": false
+          },
+          "post_publication_proof_index": null,
+          "prompt_measurement_scope": "Actual complete router task prompt sent to provider; excludes provider harness/system context and subsequent native history.",
+          "runtime_archive_sha256": "13497334d574d8b916df55c3a9b649f90dd8bc14ba56056bdd7c077a3333a17a",
+          "runtime_matches_preparation": true,
+          "source_use": {
+            "candidate_context_counts": {
+              "delivered_bytes": 0,
+              "delivered_pages": 0,
+              "prepared_bytes": 0,
+              "prepared_pages": 0
+            },
+            "counts": {
+              "accepted_requests": 6,
+              "delivered_pages": 6,
+              "delivered_response_bytes": 16160,
+              "delivered_responses": 6,
+              "delivered_source_bytes": 3530,
+              "prepared_pages": 6,
+              "prepared_source_bytes": 3530,
+              "request_hash_count": 6,
+              "response_bytes": 16160,
+              "response_hash_count": 6,
+              "sessions": 1,
+              "unique_request_hash_count": 6,
+              "unique_response_hash_count": 6
+            },
+            "discovery_counts": {
+              "delivered_pages": 1,
+              "delivered_rows": 5,
+              "prepared_pages": 1,
+              "prepared_rows": 5
+            },
+            "helper_confirmation_delivery_observed": true,
+            "helper_preparation_observed": true,
+            "ordinary_tool_usage": null,
+            "ordinary_tool_usage_reason": "Native ordinary shell/edit tool census is not retained by these metadata receipts.",
+            "owner_response_byte_scope": "Canonical JSON response bodies, excluding frame prefixes, CLI text, commands and conversation history.",
+            "profile": "identity@1",
+            "request_attribution_scope": "Requested shape before admission; successful status and delivered counts are separate evidence.",
+            "request_operation_counts": {
+              "accepted_requests": 6,
+              "admission_authority": false,
+              "classification_scope": "validated_request_shape_before_peer_and_context_admission",
+              "raw_query_fields_exported": false,
+              "rows": [
+                {
+                  "operation": "discover",
+                  "source_state": "not_applicable",
+                  "status_counts": {
+                    "ok": 1
+                  },
+                  "view": "not_applicable"
+                },
+                {
+                  "operation": "edit_confirm",
+                  "source_state": "working-candidate",
+                  "status_counts": {
+                    "ok": 1
+                  },
+                  "view": "not_applicable"
+                },
+                {
+                  "operation": "edit_prepare",
+                  "source_state": "working-candidate",
+                  "status_counts": {
+                    "ok": 1
+                  },
+                  "view": "compact"
+                },
+                {
+                  "operation": "read",
+                  "source_state": "working-candidate",
+                  "status_counts": {
+                    "ok": 2
+                  },
+                  "view": "compact"
+                },
+                {
+                  "operation": "read",
+                  "source_state": "working-candidate",
+                  "status_counts": {
+                    "ok": 1
+                  },
+                  "view": "original"
+                }
+              ],
+              "schema": "worker-source-request-operation-counts@1",
+              "unparsed_requests": 0
+            },
+            "request_operation_coverage": {
+              "all_sessions_observed": true,
+              "historical_sessions": 0,
+              "historical_unattributed_requests": 0,
+              "observed_requests": 6,
+              "observed_sessions": 1
+            },
+            "response_and_nested_payload_bytes_are_additive": false,
+            "sessions": [
+              {
+                "audit_sha256": "7d20ed7eb28065bddc2bd6b26fda57b9f4e3c2a59fae745e532e84ebee7fc2b4",
+                "candidate_context_counts": {
+                  "delivered_bytes": 0,
+                  "delivered_pages": 0,
+                  "prepared_bytes": 0,
+                  "prepared_pages": 0
+                },
+                "counts": {
+                  "accepted_requests": 6,
+                  "delivered_pages": 6,
+                  "delivered_response_bytes": 16160,
+                  "delivered_responses": 6,
+                  "delivered_source_bytes": 3530,
+                  "prepared_pages": 6,
+                  "prepared_source_bytes": 3530,
+                  "request_hash_count": 6,
+                  "response_bytes": 16160,
+                  "response_hash_count": 6
+                },
+                "descriptor_sha256": "5185964a9019f55d68a1b0d63c0f1ee541e269109f65ea353fee351a25c99e46",
+                "discovery_counts": {
+                  "delivered_pages": 1,
+                  "delivered_rows": 5,
+                  "prepared_pages": 1,
+                  "prepared_rows": 5
+                },
+                "invocation_id_sha256": "76507ca56ba70a8398fbd34eaffeb12eecc5401992cc1bd80c64e6a968c9d16e",
+                "profile": "identity@1",
+                "request_operation_counts": {
+                  "accepted_requests": 6,
+                  "admission_authority": false,
+                  "classification_scope": "validated_request_shape_before_peer_and_context_admission",
+                  "raw_query_fields_exported": false,
+                  "rows": [
+                    {
+                      "operation": "discover",
+                      "source_state": "not_applicable",
+                      "status_counts": {
+                        "ok": 1
+                      },
+                      "view": "not_applicable"
+                    },
+                    {
+                      "operation": "edit_confirm",
+                      "source_state": "working-candidate",
+                      "status_counts": {
+                        "ok": 1
+                      },
+                      "view": "not_applicable"
+                    },
+                    {
+                      "operation": "edit_prepare",
+                      "source_state": "working-candidate",
+                      "status_counts": {
+                        "ok": 1
+                      },
+                      "view": "compact"
+                    },
+                    {
+                      "operation": "read",
+                      "source_state": "working-candidate",
+                      "status_counts": {
+                        "ok": 2
+                      },
+                      "view": "compact"
+                    },
+                    {
+                      "operation": "read",
+                      "source_state": "working-candidate",
+                      "status_counts": {
+                        "ok": 1
+                      },
+                      "view": "original"
+                    }
+                  ],
+                  "schema": "worker-source-request-operation-counts@1",
+                  "unparsed_requests": 0
+                },
+                "source_edit_counts": {
+                  "delivered_confirmation_pages": 1,
+                  "delivered_mapping_pages": 1,
+                  "prepared_confirmation_pages": 1,
+                  "prepared_mapping_pages": 1
+                },
+                "source_edit_mode": "mapped-span@2",
+                "status_counts": {
+                  "ok": 6
+                }
+              }
+            ],
+            "source_byte_scope": "Source slices including repeated reads; excludes candidate context and discovery metadata.",
+            "source_edit_counts": {
+              "delivered_confirmation_pages": 1,
+              "delivered_mapping_pages": 1,
+              "prepared_confirmation_pages": 1,
+              "prepared_mapping_pages": 1
+            },
+            "source_edit_mode": "mapped-span@2",
+            "source_proof_or_final_task_acceptance_established": false,
+            "status": "observed",
+            "zero_helper_use_establishes_no_efficiency_advantage": false
+          },
+          "supervisor_error_type": null,
+          "supervisor_phases_seconds": {
+            "context_seconds": 4.810542215942405,
+            "doctor_seconds": 1.5492722860071808,
+            "initial_context_seconds": 15.621832949924283,
+            "planning_seconds": 515.8092731870711,
+            "post_publication_refresh_seconds": 22.057234536041506,
+            "prepare_seconds": 0.7417971269460395
+          },
+          "supervisor_seconds": 1690.8923618160188,
+          "trial": "largest-eigenval__WBeUrpM",
+          "usage": {
+            "accounting_not_complete_invocation_count": 2,
+            "accounting_scope": "All retained unique supervisor invocation receipts; native internal turns and unreported auxiliary calls are not separate observations.",
+            "billing_total_verified": false,
+            "cache_categories_added_to_reported_total": false,
+            "failed_invocation_count": 0,
+            "failed_or_incomplete_invocation_count": 2,
+            "invocations": [
+              {
+                "cache_included_in_input": false,
+                "error_type": null,
+                "input_observation": {
+                  "doctor_residual_context": null,
+                  "input_reconstruction_verified_by_receipt_presence": false,
+                  "measurements_are_token_savings": false,
+                  "model_prompt_bytes": 34233,
+                  "model_prompt_sha256": "0a4b159136d6fbfe3fd28f6be1dd4d52bbaeaedf02306794d48a604aef732146",
+                  "native_prompt_bytes": 34233,
+                  "native_prompt_sha256": "0a4b159136d6fbfe3fd28f6be1dd4d52bbaeaedf02306794d48a604aef732146",
+                  "router_prompt_bytes": 34233,
+                  "router_prompt_sha256": "0a4b159136d6fbfe3fd28f6be1dd4d52bbaeaedf02306794d48a604aef732146",
+                  "semantic_translation": null,
+                  "workspace_advisory_bytes": 0,
+                  "workspace_advisory_sha256": null
+                },
+                "invocation_id": "a1f8f12956e6417f8db2786d6aa793dc",
+                "model": "grok-4.7",
+                "model_prompt_bytes": 34233,
+                "model_prompt_sha256": "0a4b159136d6fbfe3fd28f6be1dd4d52bbaeaedf02306794d48a604aef732146",
+                "native_accounting_coherent": true,
+                "native_usage_complete_observed": null,
+                "phase": "planning",
+                "provider": "grok_cli",
+                "purpose": "planning",
+                "reported_native_counts": {
+                  "cache_write_input_tokens": 0,
+                  "cached_input_tokens": 1536,
+                  "input_tokens": 15817,
+                  "output_tokens": 6705,
+                  "total_tokens": 24058
+                },
+                "seconds": 505.9589639980113,
+                "semantic_input_sha256": null,
+                "semantic_prompt_components": {
+                  "reason": "not_recorded",
+                  "status": "unavailable"
+                },
+                "source_dispatch": null,
+                "status": "provider_returned",
+                "timeout_seconds": 600,
+                "token_count_scope": "native_final_envelope",
+                "tokens": {
+                  "cache_write_input_tokens": null,
+                  "cached_input_tokens": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "total_tokens": null
+                }
+              },
+              {
+                "cache_included_in_input": false,
+                "error_type": null,
+                "input_observation": {
+                  "doctor_residual_context": {
+                    "advisory_bytes": 2109,
+                    "advisory_sha256": "311adb6f82977d7d4a112f2ca6c9e0b5d5de53ed65175792095f920930f572a0",
+                    "candidate_only": true,
+                    "context_cid": "baguqeerajlibiowui3p5nt57i3oeharypdmasgjtwidm7yicwmfs2ppsosra",
+                    "derived_runtime_admitted": false,
+                    "extra_provider_calls": 0,
+                    "native_capsule_id": "baguqeerai37rvpxw2mon2dprqmbgy7qgikfu2ncg7mkspvstkxtgdwl5k34q",
+                    "schema": "doctor-residual-router-context@1",
+                    "source_freshness_verified": true
+                  },
+                  "input_reconstruction_verified_by_receipt_presence": false,
+                  "measurements_are_token_savings": false,
+                  "model_prompt_bytes": 78313,
+                  "model_prompt_sha256": "6a00c51f89cde792ea60c6c75ab1fdc8e82de389a77b09ea312968d93558cacc",
+                  "native_prompt_bytes": 79311,
+                  "native_prompt_sha256": "7b7b983ee8503fdbe1f2f483d8a85d2b04c575f5ac197f6eee234f86ef9c591b",
+                  "router_prompt_bytes": 77423,
+                  "router_prompt_sha256": "2ea178fbeca610356cd2f447ffcbf1fb56ff134e88562af9ed3c3ddd02191bbd",
+                  "semantic_translation": {
+                    "freshness_checked": true,
+                    "identifier_mappings": 19,
+                    "identifier_occurrences": 50,
+                    "native_prompt_bytes": 79311,
+                    "provider_prompt_bytes": 71868,
+                    "schema": "supervisor-semantic-router-encoding@1",
+                    "translation_cid": "bafkreihwkvf7bo6ki4s6yfsedffdjz5bmote3lxsysyjr244tc4ykmmmum"
+                  },
+                  "workspace_advisory_bytes": 890,
+                  "workspace_advisory_sha256": "5b6324e0a3380e21ee7d190d9fb2187422091b67655db2e3158d46c85634e15e"
+                },
+                "invocation_id": "22126f97a62d4c0dbcc1a7a1734e1dd4",
+                "model": "grok-4.7",
+                "model_prompt_bytes": 78313,
+                "model_prompt_sha256": "6a00c51f89cde792ea60c6c75ab1fdc8e82de389a77b09ea312968d93558cacc",
+                "native_accounting_coherent": true,
+                "native_usage_complete_observed": null,
+                "phase": "coding",
+                "provider": "grok_cli",
+                "purpose": "coding",
+                "reported_native_counts": {
+                  "cache_write_input_tokens": 0,
+                  "cached_input_tokens": 1510912,
+                  "input_tokens": 187681,
+                  "output_tokens": 52168,
+                  "total_tokens": 1750761
+                },
+                "seconds": 1078.7582167169312,
+                "semantic_input_sha256": "0e973bce2a09692c701d8619af2ce9928c6b5fcfcb1e8464408373f6457c049f",
+                "semantic_prompt_components": {
+                  "census_replayed_here": false,
+                  "measurement": {
+                    "completion_authority": false,
+                    "dynamic_labels_exported": false,
+                    "exact_native_round_trip_verified": true,
+                    "execution_authority": false,
+                    "measurement_scope": "canonical-serialized-prompt-utf8-bytes@1",
+                    "model_prompt_wrappers_included": false,
+                    "native_evidence": {
+                      "array_bytes": 71248,
+                      "groups": {
+                        "other_evidence": {
+                          "count": 2,
+                          "row_bytes": 13037,
+                          "row_envelope_bytes": 1596,
+                          "summary_json_string_bytes": 11441,
+                          "summary_json_string_overhead_bytes": 743,
+                          "summary_utf8_bytes": 10698
+                        },
+                        "semantic_context": {
+                          "count": 6,
+                          "row_bytes": 39594,
+                          "row_envelope_bytes": 4842,
+                          "summary_json_string_bytes": 34752,
+                          "summary_json_string_overhead_bytes": 2813,
+                          "summary_utf8_bytes": 31939
+                        },
+                        "source_formalization_context": {
+                          "count": 4,
+                          "row_bytes": 18604,
+                          "row_envelope_bytes": 3192,
+                          "summary_json_string_bytes": 15412,
+                          "summary_json_string_overhead_bytes": 1228,
+                          "summary_utf8_bytes": 14184
+                        }
+                      },
+                      "outer_punctuation_bytes": 13
+                    },
+                    "native_object": {
+                      "members": {
+                        "acceptance": {
+                          "count": 1,
+                          "member_bytes": 241,
+                          "value_bytes": 228
+                        },
+                        "authority": {
+                          "count": 1,
+                          "member_bytes": 6403,
+                          "value_bytes": 6391
+                        },
+                        "evidence": {
+                          "count": 1,
+                          "member_bytes": 71259,
+                          "value_bytes": 71248
+                        },
+                        "goal": {
+                          "count": 1,
+                          "member_bytes": 437,
+                          "value_bytes": 430
+                        },
+                        "other_fields": {
+                          "count": 9,
+                          "member_bytes": 491,
+                          "value_bytes": 363
+                        },
+                        "scope": {
+                          "count": 1,
+                          "member_bytes": 465,
+                          "value_bytes": 457
+                        }
+                      },
+                      "object_bytes": 79311,
+                      "outer_punctuation_bytes": 15
+                    },
+                    "native_prompt_bytes": 79311,
+                    "native_prompt_sha256": "7b7b983ee8503fdbe1f2f483d8a85d2b04c575f5ac197f6eee234f86ef9c591b",
+                    "native_suffix_bytes": 0,
+                    "nested_partitions_overlap": true,
+                    "omission_authority": false,
+                    "partition_rule": "member_bytes_plus_outer_punctuation_equals_object_bytes",
+                    "proof_authority": false,
+                    "provider_calls": 0,
+                    "provider_object": {
+                      "members": {
+                        "instructions": {
+                          "count": 1,
+                          "member_bytes": 644,
+                          "value_bytes": 629
+                        },
+                        "native_context": {
+                          "count": 1,
+                          "member_bytes": 39728,
+                          "value_bytes": 39711
+                        },
+                        "native_suffix": {
+                          "count": 1,
+                          "member_bytes": 18,
+                          "value_bytes": 2
+                        },
+                        "other_fields": {
+                          "count": 4,
+                          "member_bytes": 179,
+                          "value_bytes": 107
+                        },
+                        "translated_semantic": {
+                          "count": 1,
+                          "member_bytes": 29954,
+                          "value_bytes": 29932
+                        },
+                        "translation_table": {
+                          "count": 1,
+                          "member_bytes": 1335,
+                          "value_bytes": 1315
+                        }
+                      },
+                      "object_bytes": 71868,
+                      "outer_punctuation_bytes": 10
+                    },
+                    "provider_prompt_bytes": 71868,
+                    "provider_prompt_sha256": "95e8657cefac82d0ae1c5fd6fb5c5e6a518795326d8abd7025a2f8aff17e0d24",
+                    "provider_tokens": null,
+                    "raw_content_exported": false,
+                    "remaining_native_context": {
+                      "members": {
+                        "acceptance": {
+                          "count": 1,
+                          "member_bytes": 241,
+                          "value_bytes": 228
+                        },
+                        "authority": {
+                          "count": 1,
+                          "member_bytes": 6403,
+                          "value_bytes": 6391
+                        },
+                        "evidence": {
+                          "count": 1,
+                          "member_bytes": 31659,
+                          "value_bytes": 31648
+                        },
+                        "goal": {
+                          "count": 1,
+                          "member_bytes": 437,
+                          "value_bytes": 430
+                        },
+                        "other_fields": {
+                          "count": 9,
+                          "member_bytes": 491,
+                          "value_bytes": 363
+                        },
+                        "scope": {
+                          "count": 1,
+                          "member_bytes": 465,
+                          "value_bytes": 457
+                        }
+                      },
+                      "object_bytes": 39711,
+                      "outer_punctuation_bytes": 15
+                    },
+                    "remaining_native_evidence": {
+                      "array_bytes": 31648,
+                      "groups": {
+                        "other_evidence": {
+                          "count": 2,
+                          "row_bytes": 13037,
+                          "row_envelope_bytes": 1596,
+                          "summary_json_string_bytes": 11441,
+                          "summary_json_string_overhead_bytes": 743,
+                          "summary_utf8_bytes": 10698
+                        },
+                        "semantic_context": {
+                          "count": 0,
+                          "row_bytes": 0,
+                          "row_envelope_bytes": 0,
+                          "summary_json_string_bytes": 0,
+                          "summary_json_string_overhead_bytes": 0,
+                          "summary_utf8_bytes": 0
+                        },
+                        "source_formalization_context": {
+                          "count": 4,
+                          "row_bytes": 18604,
+                          "row_envelope_bytes": 3192,
+                          "summary_json_string_bytes": 15412,
+                          "summary_json_string_overhead_bytes": 1228,
+                          "summary_utf8_bytes": 14184
+                        }
+                      },
+                      "outer_punctuation_bytes": 7
+                    },
+                    "schema": "supervisor-semantic-prompt-component-census@1",
+                    "source_freshness_verified": false,
+                    "token_estimate": false,
+                    "translated_semantic": {
+                      "members": {
+                        "admissions": {
+                          "count": 1,
+                          "member_bytes": 2278,
+                          "value_bytes": 2265
+                        },
+                        "capsules": {
+                          "count": 1,
+                          "member_bytes": 12008,
+                          "value_bytes": 11997
+                        },
+                        "manifest": {
+                          "count": 1,
+                          "member_bytes": 889,
+                          "value_bytes": 878
+                        },
+                        "other_fields": {
+                          "count": 15,
+                          "member_bytes": 12149,
+                          "value_bytes": 11900
+                        },
+                        "raw_sources": {
+                          "count": 1,
+                          "member_bytes": 2588,
+                          "value_bytes": 2574
+                        }
+                      },
+                      "object_bytes": 29932,
+                      "outer_punctuation_bytes": 20
+                    }
+                  },
+                  "scope": "Producer census before public instruction and model wrappers; nested partitions overlap. Actual complete router task input is model_prompt_bytes, not this census.",
+                  "status": "observed"
+                },
+                "source_dispatch": {
+                  "descriptor_sha256": "5185964a9019f55d68a1b0d63c0f1ee541e269109f65ea353fee351a25c99e46",
+                  "guidance_bytes": 2220,
+                  "guidance_sha256": "ad9ba071f8bbfee481bd5d5b5bd065083b3e687c078c282ce063a612596e8234",
+                  "profile": "identity@1",
+                  "schema": "worker-source-dispatch-observation@3",
+                  "session_id_sha256": "a8fd27865cd1e8e1c835cb2a806d73e592d0d3fbff384c95992f0ffbb702ba08",
+                  "source_edit_mode": "mapped-span@2"
+                },
+                "status": "provider_returned",
+                "timeout_seconds": 1800,
+                "token_count_scope": "native_final_envelope",
+                "tokens": {
+                  "cache_write_input_tokens": null,
+                  "cached_input_tokens": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "total_tokens": null
+                }
+              }
+            ],
+            "native_usage_complete_observed": false,
+            "observed_router_sessions": 2,
+            "phase_tokens": {
+              "coding": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "total_tokens": null
+              },
+              "planning": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "total_tokens": null
+              }
+            },
+            "tokens": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "unreceipted_provider_attempt": false
+          }
+        }
+      ]
+    },
+    {
+      "capsule_budget": "one-capsule@1",
+      "capsule_budget_config_unchanged": true,
+      "capsule_budget_runtime_declared_matches": null,
+      "comparison_control_integrity": false,
+      "complete_single_trial_receipt": false,
+      "configuration": {
+        "bytes": 3433,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-one-capsule-01/config.json",
+        "sha256": "2df6ed3a1fa7b97fb83fb7cd344f94cef928abe94824ca43e7dc0efe6469e19c"
+      },
+      "configuration_difference_paths": [
+        "/agents/0/kwargs/capsule_budget",
+        "/jobs_dir"
+      ],
+      "directory": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-one-capsule-01",
+      "generic_control_comparison": {
+        "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+        "differences": [
+          "experimental_controls_sha256.capsule_budget"
+        ],
+        "matches": false,
+        "status": "mismatch"
+      },
+      "initial_context_observation": {
+        "binding": {
+          "availability": "missing",
+          "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-one-capsule-01/initial-context-observation.json"
+        },
+        "dispatch_joined": false,
+        "reason": "not_recorded",
+        "status": "unavailable"
+      },
+      "invocation": {
+        "bytes": 272,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-one-capsule-01/invocation.json",
+        "sha256": "c2cdbb1a6ec9fb5aad4b8c5a97a659505ef56b661d59ce891e09b02871a3e456"
+      },
+      "label": "one-capsule",
+      "launch_exit_code": 0,
+      "launch_result": {
+        "bytes": 718,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-one-capsule-01/launch-result.json",
+        "sha256": "88b3ce3a934d45b6f6323003d82da3b37b8c3a4a4fd4fd7b569d56dba253cf24"
+      },
+      "launch_seconds": 535.8535866150633,
+      "launch_start": {
+        "bytes": 1380,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-one-capsule-01/launch-start.json",
+        "sha256": "96e64f11d887ba669caa95dfbddd74a3b045fa349962f6fc5a97f49f4127997a"
+      },
+      "preparation": {
+        "bytes": 84918,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-one-capsule-01/preparation.json",
+        "sha256": "5a81a14640956d168c172698d9b6c8e73b91b42c728d12a1c48865ffe621a6f7"
+      },
+      "receipt": {
+        "bytes": 8774,
+        "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-one-capsule-01/receipt.json",
+        "sha256": "68b3c4012e1801ae4111efb5e948026289de40542780b72ad04f514d77b9a73c"
+      },
+      "status": "observed",
+      "trials": [
+        {
+          "code_learning_observation": null,
+          "context_input_audit": null,
+          "declared_output_observation": {
+            "completion_authority": false,
+            "observation_only": true,
+            "outputs": [],
+            "patch_application_established": false,
+            "reason": "not_recorded",
+            "schema": "terminal-declared-output-observation@1",
+            "settlement_authority": false,
+            "status": "unavailable",
+            "task_correctness_established": false,
+            "writer_identity_established": false
+          },
+          "doctor_observation": {
+            "candidate_materializations_observed": null,
+            "local_contract_proof_status": null,
+            "observed_worker_receipts": null,
+            "provider_calls": null,
+            "residual_context_prepared": null,
+            "residual_successors": null,
+            "residual_work_proposals": null,
+            "route": null,
+            "selection_is_publication_or_completion_evidence": false,
+            "status": null,
+            "whole_program_proved": false
+          },
+          "durations_seconds": {
+            "agent_execution": null,
+            "agent_setup": 513.182465,
+            "environment_setup": 5.43307,
+            "verifier": null
+          },
+          "exception_type": "GrokCredentialReadinessError",
+          "indexed_context_observation": {
+            "context_preparation_is_dispatch_evidence": false,
+            "doctor_repair_status": null,
+            "full_capsules": null,
+            "indexed_symbols": null,
+            "initial_indexes_reused": null,
+            "learned_embeddings": null,
+            "native_fact_rows_replayed": null,
+            "new_embedding_calls": null,
+            "prepared": false,
+            "worker_capsules": null,
+            "worker_semantic_bytes": null
+          },
+          "initial_indexed_context_observation": {
+            "canonical_tasks_created": null,
+            "full_capsules": null,
+            "indexed_symbols": null,
+            "learned_embeddings": null,
+            "planning_model_request_sha256": null,
+            "preparation_is_provider_dispatch_evidence": false,
+            "prepared": false,
+            "provider_calls": null,
+            "summary_sha256": null,
+            "supplied_to_planning_router": null,
+            "world_task_count": null
+          },
+          "native_shape": {
+            "invocations": [],
+            "native_dispatch_count": null,
+            "native_dispatch_count_scope": "No dispatch count is inferred from model invocation or planned-task counts.",
+            "planning": {
+              "count_scope": "Counts explicitly retained in the admitted planner result; absent subgoal counts remain unknown.",
+              "elapsed_seconds": null,
+              "goals": null,
+              "provider_calls": null,
+              "qualified": null,
+              "strategy": null,
+              "subgoals": null,
+              "tasks": null
+            },
+            "selected_task_status": null,
+            "unreceipted_attempt_present": false
+          },
+          "native_task_completed": null,
+          "native_total_seconds": null,
+          "official_reward": null,
+          "outcome": "setup_or_environment_aborted",
+          "post_publication_context": null,
+          "post_publication_proof_index": null,
+          "prompt_measurement_scope": "Actual complete router task prompt sent to provider; excludes provider harness/system context and subsequent native history.",
+          "runtime_archive_sha256": null,
+          "runtime_matches_preparation": null,
+          "source_use": {
+            "counts": null,
+            "reason": "source_session_observation_missing",
+            "status": "unavailable"
+          },
+          "supervisor_error_type": null,
+          "supervisor_phases_seconds": {
+            "context_seconds": null,
+            "doctor_seconds": null,
+            "initial_context_seconds": null,
+            "planning_seconds": null,
+            "post_publication_refresh_seconds": null,
+            "prepare_seconds": null
+          },
+          "supervisor_seconds": null,
+          "trial": "largest-eigenval__oKbEStw",
+          "usage": {
+            "accounting_not_complete_invocation_count": 0,
+            "accounting_scope": "All retained unique supervisor invocation receipts; native internal turns and unreported auxiliary calls are not separate observations.",
+            "billing_total_verified": false,
+            "cache_categories_added_to_reported_total": false,
+            "failed_invocation_count": 0,
+            "failed_or_incomplete_invocation_count": 0,
+            "invocations": [],
+            "native_usage_complete_observed": false,
+            "observed_router_sessions": 0,
+            "phase_tokens": {
+              "coding": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "total_tokens": null
+              },
+              "planning": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "total_tokens": null
+              }
+            },
+            "tokens": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "total_tokens": null
+            },
+            "unreceipted_provider_attempt": false
+          }
+        }
+      ]
+    }
+  ],
+  "billing_total_verified": false,
+  "causal_advantage_claimed": false,
+  "frozen_host_source_count": 333,
+  "frozen_reporting_files": 16,
+  "frozen_source_pins_verified": true,
+  "hidden_verifier_or_solution_contents_read": false,
+  "limitations": [
+    "Only the two explicitly registered attempts are included; missing/failing attempts are retained. No unregistered usage is inferred.",
+    "Sequential one-task full/full comparison; capsule cap can affect planning and coding. It is not a randomized general benchmark.",
+    "Grok final counters remain reported observations until explicit usage completeness is true. Cache categories are not added twice.",
+    "Bounded Grok stream usage events have unverified counter semantics; never sum them or add them to final usage.",
+    "Complete prompt means the actual router task input, excluding provider harness/system context and subsequent native history.",
+    "Semantic component partitions overlap; response bytes already contain nested source/candidate/discovery payloads.",
+    "Provider-free coding does not imply provider-free planning. Missing receipts do not establish zero cost.",
+    "Supervisor phase timings overlap native enclosing agent time. Source delivery is not source semantics, proof or official correctness.",
+    "This reader checks frozen metadata bindings and runtime digest claims; the separate launch/archive verifier owns execution custody and archive inspection."
+  ],
+  "one_capsule_minus_legacy_tokens": {
+    "cache_write_input_tokens": null,
+    "cached_input_tokens": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "total_tokens": null
+  },
+  "pair_lock": {
+    "bytes": 81972,
+    "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/pair-lock.json",
+    "sha256": "01bd3ab0bc782f8a8755cc4bec670b889e3e0c8db151f5c8720bcd3f59872e6d"
+  },
+  "provider_calls_by_reader": 0,
+  "raw_model_transcripts_read": false,
+  "reporting_inputs": {
+    "bytes": 5937,
+    "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/reporting-freeze.json",
+    "sha256": "1dec89d63da6e8462acee071b14bb8cc7bffcda3cd21e32b5c82a0b627866347"
+  },
+  "schema": "capsule-budget-live-readout@1"
+}

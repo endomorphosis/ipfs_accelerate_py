@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "test_read_live_pair.py",
+    "--junitxml=readout-tests-03.xml"
+  ],
+  "exit_code": 0,
+  "seconds": 2.4183734450489283,
+  "provider_calls": 0
+}

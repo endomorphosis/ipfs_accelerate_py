@@ -1,0 +1,28 @@
+{
+  "actual_config_diff_paths": [
+    "/agents/0/kwargs/capsule_budget",
+    "/jobs_dir"
+  ],
+  "allowed_config_diff_paths": [
+    "/agents/0/kwargs/capsule_budget",
+    "/jobs_dir"
+  ],
+  "archive_matched_host_files": 165,
+  "complete": true,
+  "expected_experimental_difference": "capsule_budget",
+  "generic_control_comparison": {
+    "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+    "differences": [
+      "experimental_controls_sha256.capsule_budget"
+    ],
+    "matches": false,
+    "status": "mismatch"
+  },
+  "host_only_test_files": 168,
+  "host_source_files": 333,
+  "no_token_savings_claimed": true,
+  "provider_generation_calls": 0,
+  "schema": "capsule-budget-prelaunch-control-audit@1",
+  "source384_bindings_identical": true,
+  "task_hashes_identical": true
+}

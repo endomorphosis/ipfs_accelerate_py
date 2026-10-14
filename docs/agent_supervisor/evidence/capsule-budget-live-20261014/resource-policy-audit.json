@@ -1,0 +1,293 @@
+{
+  "active_proof_admission": {
+    "anchors": [
+      {
+        "line": 143,
+        "observation": "extended benchmark selects local-benchmark proof profile and explicit state path",
+        "source": "benchmark_resource_profile"
+      },
+      {
+        "line": 602,
+        "observation": "same proof-resource environment forwarded to native supervisor",
+        "source": "admitted_runtime"
+      },
+      {
+        "line": 85,
+        "observation": "snapshot preparation acquires datasets root/child lease",
+        "source": "datasets_codebase_resources"
+      },
+      {
+        "line": 2251,
+        "observation": "default profile requires proof safety and recovery; no implicit account-wide ledger",
+        "source": "datasets_scheduler"
+      },
+      {
+        "line": 448,
+        "observation": "host profile reserves CPU, RAM and child-process capacity",
+        "source": "datasets_scheduler"
+      },
+      {
+        "line": 1151,
+        "observation": "general pressure checks memory, swap and GPU availability/pressure",
+        "source": "datasets_scheduler"
+      },
+      {
+        "line": 1250,
+        "observation": "proof primary gate checks reserved memory headroom and memory/CPU/IO PSI; IO stall is not disk-full percentage",
+        "source": "datasets_scheduler"
+      }
+    ],
+    "disk_full_percent_gate_found": false,
+    "pressure_and_lease_checks_preserved": true,
+    "profile": "local-benchmark@1",
+    "scope": "datasets GlobalResourceScheduler, distinct from accelerate ResourcePolicy"
+  },
+  "conclusions": {
+    "all_native_guards_remain_required": true,
+    "cache_deleted": false,
+    "evidence_ordinary_admitted_start_uses_disk95_gate": false,
+    "existing_disk95_policy_changed": false,
+    "native_start_failure_observed": false,
+    "physical_reserve_is_experiment_prerequisite_not_native_start_authority": true,
+    "production_sources_changed": false,
+    "root_selected_physical_reserve_bytes": 34359738368
+  },
+  "configured_board_reachability": {
+    "anchors": [
+      {
+        "line": 1488,
+        "observation": "config expansion returns no selected config without explicit --scheduler-config",
+        "source": "managed_supervisor"
+      },
+      {
+        "line": 21235,
+        "observation": "late authority-profile reload returns scheduler_config_path_unset when absent",
+        "source": "managed_supervisor"
+      },
+      {
+        "line": 21911,
+        "observation": "configured plan-bound child command requires config.plan_bound_dispatch",
+        "source": "managed_supervisor"
+      },
+      {
+        "line": 23921,
+        "observation": "plan-bound special bootstrap requires explicit leading marker",
+        "source": "managed_supervisor"
+      },
+      {
+        "line": 2665,
+        "observation": "configured-board capacity observation belongs to plan-bound child path",
+        "source": "managed_supervisor"
+      }
+    ],
+    "argument_factory_preserves_plan_bound_and_scheduler_defaults": true,
+    "config_class": "PortalSupervisorConfig",
+    "config_defaults": {
+      "configured_board_live_admission": null,
+      "plan_bound_dispatch": false,
+      "scheduler_config_path": null
+    },
+    "limitation": "static selected-route audit, not an execution trace or a guarantee against future configuration changes",
+    "runtime_constructor_forbidden_flags_absent": true,
+    "status": "not_selected_by_current_ordinary_constructor"
+  },
+  "generic_disk_policy": {
+    "anchors": [
+      {
+        "line": 393,
+        "observation": "telemetry uses int(round(float(value)))"
+      },
+      {
+        "line": 618,
+        "observation": "sample_host_resources obtains psutil disk usage, with statvfs fallback"
+      },
+      {
+        "line": 1360,
+        "observation": "ResourcePolicy default disk watermark95"
+      },
+      {
+        "line": 2826,
+        "observation": "_host_reasons rejects disk-sensitive execution or explicit disk demand at or above watermark"
+      },
+      {
+        "line": 2157,
+        "observation": "public evaluate mirrors metadata; private host-only helper used for read-only observation"
+      }
+    ],
+    "applies_to_current_start_not_established": true,
+    "source": "supervisor_resource_policy"
+  },
+  "host_probe": {
+    "complete_admission_decision": false,
+    "disk_available_bytes": 176403886080,
+    "disk_high_watermark_percent": 95,
+    "finished_at": "2026-10-14T03:37:41.274962+00:00",
+    "host_reasons": [
+      "host_disk_high_watermark"
+    ],
+    "native_disk_percent": 95,
+    "native_start_attempted": false,
+    "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+    "private_host_reason_helper_used_to_avoid_metadata_mirroring": true,
+    "provider_calls": 0,
+    "psutil_disk_percent": 95.4,
+    "resource_leases_acquired": 0,
+    "scope": "host-policy-prerequisite-only",
+    "started_at": "2026-10-14T03:37:41.252019+00:00"
+  },
+  "method": "source inspection and read-only host sampler; no supervisor or provider launch",
+  "no_calls": {
+    "cache_deletions": 0,
+    "native_start": 0,
+    "production_mutations": 0,
+    "provider_generation": 0,
+    "resource_acquire": 0
+  },
+  "observed_at": "2026-10-14T03:37:41.275104+00:00",
+  "ordinary_callgraph": [
+    {
+      "call": "open_existing_native_owner; AdmittedBenchmarkRuntime.create; runtime.start",
+      "line": 1144,
+      "observation": "ordinary admitted benchmark route; no finite_execution_scope or inventory_execution_scope supplied",
+      "source": "driver"
+    },
+    {
+      "call": "AdmittedBenchmarkRuntime._create",
+      "line": 340,
+      "observation": "constructs explicit quack/duckdb implementation-supervisor argv; no scheduler-config, plan-bound or configured-board admission flag",
+      "source": "admitted_runtime"
+    },
+    {
+      "call": "SupervisorControlService with _LocalLifecycleRecoveryBackend",
+      "line": 778,
+      "observation": "START dispatch remains identity, authorization and lifecycle fenced",
+      "source": "admitted_runtime"
+    },
+    {
+      "call": "_LocalLifecycleRecoveryBackend -> runtime._bounded_lifecycle_response",
+      "line": 54,
+      "observation": "existing lifecycle backend; no separate host-disk policy sampled here",
+      "source": "isolated_runtime"
+    },
+    {
+      "call": "LifecycleOrchestrator._start_new -> process.launch",
+      "line": 1470,
+      "observation": "single-process-tree and lifecycle checks retained",
+      "source": "lifecycle"
+    },
+    {
+      "call": "NativeSupervisorHealthAdapter.launch -> LinuxProcessAdapter.launch",
+      "line": 85,
+      "observation": "native process identity is retained",
+      "source": "isolated_runtime"
+    },
+    {
+      "call": "LinuxProcessAdapter.launch -> admitted popen wrapper",
+      "line": 604,
+      "observation": "actual process creation follows wrapper validation",
+      "source": "lifecycle"
+    },
+    {
+      "call": "popen -> _startup_validate -> _verify -> subprocess.Popen",
+      "line": 703,
+      "observation": "native admission/context/lease checks remain; no ResourceScheduler/sample_host_resources in this ordinary wrapper",
+      "source": "admitted_runtime"
+    }
+  ],
+  "recipe_sha256": "9c3bda868b85d13f3d15c728114c7b410201338d4091c3e0e644880e6a9d57aa",
+  "schema": "capsule-budget-resource-policy-audit@1",
+  "source_bytes_unchanged": true,
+  "source_commit": "eff8ef3eccf0f6551f18a7c9eee24c2874d25795",
+  "source_pins": {
+    "admitted_runtime": {
+      "bytes": 105991,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "sha256": "a452de28f18162dbeca518e64c24467c14bcba099c97fa28877dad2607633fc7"
+    },
+    "applicability_scope": {
+      "bytes": 32053,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py",
+      "sha256": "f3ab29cbefd27464067f922cc5a91791593862e9d4dc865660193417dced8917"
+    },
+    "benchmark_resource_profile": {
+      "bytes": 8373,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+      "sha256": "9ef67389a1e48727f43d266255661ca87a2ada119967e9d62591bb75ca5cdf7a"
+    },
+    "configured_board_scheduler": {
+      "bytes": 266206,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      "sha256": "9a3db2b03f792f977ddd84e76a6d5fb522ac9b94678c6d13122c264461c31580"
+    },
+    "control_service": {
+      "bytes": 344345,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+      "sha256": "1229e506a1bf624b4ddddbd443c484cc2e7ef396cc242208a7c27c8f8931334e"
+    },
+    "datasets_codebase_resources": {
+      "bytes": 4627,
+      "checkout": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_resources.py",
+      "sha256": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81"
+    },
+    "datasets_host_probe": {
+      "bytes": 15543,
+      "checkout": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "sha256": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633"
+    },
+    "datasets_scheduler": {
+      "bytes": 111009,
+      "checkout": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "sha256": "75fc31a79031ba941fb81570419e0c630c67363d77aafc97979a156cd02248a4"
+    },
+    "driver": {
+      "bytes": 91346,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "51530084c76214b7ba6e4fb6fae12051eb5d0ab7fff433622610fc715dc13697"
+    },
+    "isolated_runtime": {
+      "bytes": 41576,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+      "sha256": "2405e4d567c2c5c7fda4b83e41422e4cb6065cf262f1e6c47e5f7345fa4c19a9"
+    },
+    "lifecycle": {
+      "bytes": 78798,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py",
+      "sha256": "ba775d1ece31e6af9635128bec1fd771469ac8277cc5e10ad105e7fbf9d41767"
+    },
+    "managed_supervisor": {
+      "bytes": 1010184,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "sha256": "9812b7581ca5acd1231d1ce11f10603df9d794a3141096d74290350dfc13fff6"
+    },
+    "native_owner_factory": {
+      "bytes": 16784,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "benchmarks/agent_supervisor/container_coding/native_quack_qualification.py",
+      "sha256": "43d4ab90baa364014b6f4543a6aa2fa383aaba045612524336a4aa5474346e0e"
+    },
+    "source384_context": {
+      "bytes": 37601,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "sha256": "2a934f1f54b10c88a073863e4af2f282128fdc24907c2169d71666132ce07326"
+    },
+    "supervisor_resource_policy": {
+      "bytes": 258517,
+      "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "sha256": "67d4e84d542ebbc167da4488df53ab72a1b258c6722b1f1ff9c77fdb85af841c"
+    }
+  }
+}

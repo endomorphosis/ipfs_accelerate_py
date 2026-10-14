@@ -1,0 +1,17 @@
+test_binding_change_is_refused (__main__.CampaignTests.test_binding_change_is_refused) ... ok
+test_closed_json_refuses_duplicates_and_nonfinite_values (__main__.CampaignTests.test_closed_json_refuses_duplicates_and_nonfinite_values) ... ok
+test_disk_rounding_observation_does_not_claim_active_native_gate (__main__.CampaignTests.test_disk_rounding_observation_does_not_claim_active_native_gate) ... ok
+test_full_configuration_difference_detects_new_control (__main__.CampaignTests.test_full_configuration_difference_detects_new_control) ... ok
+test_gate_observations_cannot_overwrite_prior_failures (__main__.CampaignTests.test_gate_observations_cannot_overwrite_prior_failures) ... ok
+test_low_available_bytes_refuse_and_retain_observation (__main__.CampaignTests.test_low_available_bytes_refuse_and_retain_observation) ... ok
+test_no_frozen_lock_cannot_launch (__main__.CampaignTests.test_no_frozen_lock_cannot_launch) ... ok
+test_physical_storage_gate_accepts_high_percent_with_enough_bytes (__main__.CampaignTests.test_physical_storage_gate_accepts_high_percent_with_enough_bytes) ... ok
+test_recipe_has_exact_budget_treatment_and_fresh_outputs (__main__.CampaignTests.test_recipe_has_exact_budget_treatment_and_fresh_outputs) ... ok
+test_reporting_freeze_missing_validation_refuses_before_launch (__main__.CampaignTests.test_reporting_freeze_missing_validation_refuses_before_launch) ... ok
+test_reporting_freeze_requires_exact_reader_and_current_helper_bytes (__main__.CampaignTests.test_reporting_freeze_requires_exact_reader_and_current_helper_bytes) ... ok
+test_safe_environment_scrubs_provider_keys_without_logging_values (__main__.CampaignTests.test_safe_environment_scrubs_provider_keys_without_logging_values) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.032s
+
+OK
