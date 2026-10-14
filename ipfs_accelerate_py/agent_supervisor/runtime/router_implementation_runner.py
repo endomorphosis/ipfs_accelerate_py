@@ -989,11 +989,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             metadata_candidate_receipt = metadata_receipt
             metadata_receipt = None
             metadata_native_reply = None
+            displacement_receipt = None
         elif prompt_selection["selected_representation"] == "semantic" and representation == "semantic_metadata":
             coding_reply_receipt = semantic_reply_receipt
             metadata_candidate_receipt = metadata_receipt
             metadata_receipt = None
             metadata_native_reply = None
+            # The complete-input selector rejected the metadata view; its
+            # displacement observation no longer describes the selected input.
+            displacement_receipt = None
     if len(model_prompt.encode()) > 256_000:
         raise ValueError("model prompt with workspace contract exceeds its byte bound")
     # Native provider children must never inherit a typed owner token, private

@@ -107,6 +107,7 @@ def test_tokenizer_native_fallback_retains_same_source_block_and_exact_audit(dis
     assert receipt['prompt_selection']['selected_representation'] == 'native'
     assert receipt['semantic_translation'] is None
     assert 'semantic_prompt_components' not in receipt
+    assert 'representation_displacement' not in receipt
     assert receipt['source_input_view']['compact_views_included'] > 0
     replay(case, receipt)
 
