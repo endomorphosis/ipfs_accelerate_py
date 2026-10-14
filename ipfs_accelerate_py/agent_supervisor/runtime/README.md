@@ -44,7 +44,7 @@ Multi-lane execution fabric: multi-supervisor runners, event log, CAS, and resou
 | `repository_world_packet` | `runtime/repository_world_packet.py` |
 | `repository_world_packet_replay` | `runtime/repository_world_packet_replay.py` |
 | `repository_world_invocation_replay` | `runtime/repository_world_invocation_replay.py` |
-| `resource_scheduler` | `runtime/resource_scheduler.py` |
+| `repository_world_artifact_store` | `runtime/repository_world_artifact_store.py` || `resource_scheduler` | `runtime/resource_scheduler.py` |
 | `role_context_selection` | `runtime/role_context_selection.py` |
 | `router_public_instruction` | `runtime/router_public_instruction.py` |
 | `runtime_cas` | `runtime/runtime_cas.py` |
@@ -589,9 +589,43 @@ currentness flags in the recorded packet receipt remain historical assertions;
 the replay receipt explicitly grants no source/owner currentness, proof,
 execution or completion authority. A replayed object cannot enter the live
 runner. Resumed work must recapture current owners and compile a new issued
-packet. Terminal Bench collector admission and complete-session savings remain
-separate pending qualifications.
+packet. The bounded Terminal collector path below checks retained basic context;
+production worker handoff and complete-session savings remain separate work.
 
+For optional private capture, pass `world_packet_audit_directory` alongside the
+issued `world_task_packet` to `router_implementation_runner.run`. Use an absolute
+path outside the source workspace, with an existing parent. The runner creates
+only the final directory, requiring owner mode `0700`, and freezes the current
+packet before provider initialization. After dispatch and helper cleanup it
+writes a new owner mode `0600` invocation artifact. No existing file is replaced.
+Capture failure is reported as unavailable without changing the provider's
+result or retrying it. An invalid directory fails before provider dispatch.
+
+The store pins the directory inode, rejects symlinks in every path component,
+and limits each artifact to 3 MiB, the store to 16 files and 16 MiB, and lock
+waiting to 250 ms. The public receipt carries only a closed reference containing
+the invocation ID, byte length and packet/invocation digests. Artifact bodies
+contain full task and source context; retain them privately alongside that
+independently collected receipt.
+An interrupted write may leave an unreferenced partial file, including an empty
+one. It consumes a store slot but does not block later captures within the quota;
+it cannot qualify as a completed retained input.
+
+For Terminal collection, the caller selects `state/world-invocations` as the
+capture directory and retains `prepared.json` and `context-result.json`.
+`collect_terminal_context_audit` reads each exact `<invocation_id>.json` through
+bounded nofollow paths. It joins the packet to the independent receipt, rebuilds
+the input, checks the public task and required semantic/retrieval/intent context,
+and checks installed helper identities. Mixed legacy and world invocations must
+each qualify through their own reconstruction. Unknown explicit context schemas
+and missing context cannot qualify. Selected formalization bundles and signed
+Terminal scopes still require a separate integration and are rejected here.
+
+Collection accepts at most 16 receipts and 12 MiB of declared world artifacts,
+within the existing child timeout of 30 seconds. A retained input may verify
+even when a late currentness check prevented dispatch: delivery, actual tool use,
+task correctness and complete native usage remain separate observations. There
+is no CLI deserializer that turns a retained artifact into a live packet.
 Opt-in container deployment requires an archive matching the current runtime
 and datasets owner sources. Preparation, execution and deployment verify the
 compressed archive digest, inspect the actual member inventory without

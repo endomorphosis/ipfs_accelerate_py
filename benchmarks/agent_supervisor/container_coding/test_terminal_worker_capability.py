@@ -59,6 +59,14 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_world_packet_audit.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_world_nomination_audit.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet_replay.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_invocation_replay.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_artifact_store.py',
+        'source/ipfs_accelerate_py/agent_supervisor/prompt/delta_task_packet.py',
+        'source/ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py',
         'source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py',
@@ -107,7 +115,10 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     'llm_router.py', 'grok_stream_capture.py', 'grok_stream_usage.py', 'cli_metadata.py', 'grok_native_usage.py',
     'source_formalization_context.py', 'validation_runtime.py', 'representation_displacement.py',
     'numerical_obligation_broker.py', 'numerical_obligation_client.py', 'source_view_policy.py',
-    'context_selection_observation.py', 'worker_source_request_observation.py'])
+    'context_selection_observation.py', 'worker_source_request_observation.py',
+    'terminal_world_packet_audit.py', 'terminal_world_nomination_audit.py', 'repository_world_packet.py',
+    'repository_world_packet_replay.py', 'repository_world_invocation_replay.py',
+    'repository_world_artifact_store.py', 'delta_task_packet.py', 'world_model.py'])
 @pytest.mark.parametrize('kind', ['missing', 'stale', 'copied-feature'])
 def test_output_observation_requires_matching_owner_driver_and_collector(packaged, name, kind):
     manifest = copy.deepcopy(packaged[1])

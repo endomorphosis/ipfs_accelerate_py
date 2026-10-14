@@ -12,6 +12,100 @@ The [world-model integration sequence](#semantic-world-model-integration-sequenc
 below distinguishes the existing components from their remaining worker-loop
 integration and measurement gates.
 
+## Working decision: optimize the whole reading and decision loop
+
+The October 14 source audit separates three questions that must not be treated
+as the same requirement:
+
+1. Can a bounded admitted repository have an exact original representation and
+   a compact representation? Yes. The snapshot package exports both trees;
+   retained-source inventories and byte-map views also support exact historical
+   restoration. These are distinct implementations with different codecs and
+   scope limits.
+2. Can a worker navigate and edit using those representations? Yes for the
+   existing admitted read/expand/guarded-edit contracts. Arbitrary edits to a
+   multilingual minified executable checkout have no general inverse. Ordinary
+   shell reads still access original source unless a separately qualified
+   navigation surface redirects them.
+3. Does that lower complete-run tokens? This is still unestablished. A compact
+   representation helps only when it replaces model-facing text or avoids
+   later work. It can add discovery, guidance, expansion and repair instead.
+
+The next implementation priority is the **existing world-packet and indexed
+source workflow in Terminal Bench**, with explicit accounting for which content
+it replaces. The existing historical replay qualification is a prerequisite
+for that comparison; it does not shrink a packet by itself. Its current
+self-contained builder retains every selected reference body. Factor or select
+content through a separately qualified context policy, preserving mandatory
+facts and available exact expansion.
+
+Use the existing owners to retain full source, graphs, maps, IR bodies and proof
+artifacts. Compile a readable decision context from their current task-bound
+facts: objective, applicable constraints, relevant source, known outcomes,
+uncertainty and remaining obligations. IntentIR supplies requested behavior;
+CodebaseIR supplies source correspondence and dependencies; SecurityIR and UI/UX
+IR supply applicable properties with explicit unavailable coverage. Learned
+CodebaseIR and world predictors can nominate useful material or actions. Their
+latent representations need a grounded decoder or retrieval interface to affect
+the coding model, and predictions cannot stand in for checked observations.
+
+### Keep the two existing worker source routes distinct
+
+| Route | Current scope and representation | Composition boundary |
+| --- | --- | --- |
+| `WorkerSourceViews` / `source_view_profile` | At most 64 admitted semantic-manifest files and 1 MiB; retained originals and KEEP/DELETE views, with separately selected mapped-span edits | Real opt-in worker route; currently rejected alongside `world_task_packet` |
+| `RepositorySourceSession` / `repository_source_policy` | Default 512 files and 16 MiB, bounded repository snapshot and native index; original/compact file or supported definition reads and guarded canonical edits | Works with world packets and retained basic-context Terminal collection; production worker handoff remains pending |
+
+Neither route intercepts arbitrary terminal tools. Neither establishes that the
+model read every path through its compact representation. Reuse the second
+route for the immediate world-packet experiment. Broader scope admission,
+cross-language mappings and a transparent compact filesystem are separate
+extensions; building another snapshot codec would not close the measurement
+gap. The [source-view plan](reversible_codebase_views_plan.md#current-worker-routes-and-the-whole-codebase-hypothesis)
+records the different restoration and editing contracts.
+
+### Next experiment and acceptance gates
+
+The collector now has a dedicated retained world-input path, described below.
+Next connect production worker preparation and dispatch to current native owners,
+including the selected formalization and signed scope contracts. Historical
+replay must remain separate from new live owner admission. Preserve complete
+native invocation accounting; build and probe a runtime archive containing the
+selected implementation before trials. Then use these controls:
+
+| Arm | Source access | Decision context | Question answered |
+| --- | --- | --- | --- |
+| A | Current ordinary tools | Current context policy | Reference behavior and ordinary-read exposure |
+| B | Indexed gateway, exact source | Same context policy | Does selective navigation avoid irrelevant reads? |
+| C | Same indexed gateway, compact source with exact fallback | Same context policy | Does representation alone add a benefit? |
+| D | Same indexed gateway, exact source | Current-world decision context | Does selected state and checked reuse reduce repeated work? |
+| E | Same indexed gateway, compact source with exact fallback | Same current-world policy | Does compaction help after context selection? |
+
+Qualify B/C and B/D as separate matched comparisons before evaluating E.
+Required task instructions, applicable mandatory constraints, model, source
+revision, planning policy and resource controls stay fixed within each pair.
+Keep model-driven planning enabled; record realized plans and coding behavior,
+which can still vary. Learned ranking/adaptation is a later independent arm.
+The current world-packet runner supports the Codex coding route; use that same
+pinned route for its controls until another provider adapter is qualified.
+
+For each actual read, retain its generation, operation, representation, exact
+fallback or expansion, and complete model-visible response size; count declared
+local tokens only when a compatible pinned counter is available. Retain ordinary
+tool reads as well where the provider exposes them, and report unknown coverage
+otherwise. Repeated reads and responses already supplied inline must remain
+visible. Trace bytes and local token counts explain exposure; they must not be
+added again to native invocation usage.
+
+The primary result is total native planning, coding and retry input/output
+tokens at comparable official task success across preregistered repeated trials.
+Respect each provider's final/cumulative and cache accounting, retaining failed,
+deferred and incomplete attempts. Also report turns, expansions, repairs,
+latency, cost and cold versus warm index/training/check overhead. Existing
+resource admission and provider cooldown apply to every arm. A smaller archive,
+source file, first prompt or replay artifact is insufficient for promotion.
+
+## Retained measurements
 The [October 13 complete-context comparison](context_projection_pair.md) now
 measures the existing lossless metadata projection with identical source reads.
 It saves 885 of 79,362 one-pass exposed UTF-8 bytes (1.12%); both public program
@@ -447,8 +541,7 @@ definition read likewise measures one operation, not the entire conversation.
 | [Transition contracts](../../ipfs_accelerate_py/agent_supervisor/procedure_compiler/transition_model.py) | Predictions, observations, uncertainty and calibration remain distinct | Connect real action outcomes; qualify any learned predictor on held-out transitions |
 | [Semantic preparation](../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py) | Initial source/capsule preparation and a persisted `context_prepared` record | Maintain ongoing state after reads, edits, tests and failures; a preparation row alone does not do this |
 | [Existing ContextCompiler](../../ipfs_accelerate_py/agent_supervisor/context/context_compiler.py) | Bounded compilation, required coverage, retry deltas and prefix contracts | Compile the actual next provider input from current world state and verify its complete token count |
-| [DeltaTaskPacket](../../ipfs_accelerate_py/agent_supervisor/prompt/delta_task_packet.py) | Task/tree/plan/evidence identities, impacted symbols, residual obligations, validation requirements and deterministic-first admission; now connected to the opt-in in-process world packet route below | Qualify serialized transport, replay and a production Terminal Bench caller |
-| [Program-world context adapter](../../ipfs_accelerate_py/agent_supervisor/context/program_world_context.py) | Selects material identities using supplied costs; caches prefix identity bytes | Resolve admitted material bodies and measure final provider text; identity reuse is not evidence of provider prefix retention |
+| [DeltaTaskPacket](../../ipfs_accelerate_py/agent_supervisor/prompt/delta_task_packet.py) | Task/tree/plan/evidence identities, impacted symbols, residual obligations, validation requirements and deterministic-first admission; connected to the opt-in world packet route with bounded historical export and replay below | Qualify a production Terminal Bench caller/collector and fresh live admission after restart || [Program-world context adapter](../../ipfs_accelerate_py/agent_supervisor/context/program_world_context.py) | Selects material identities using supplied costs; caches prefix identity bytes | Resolve admitted material bodies and measure final provider text; identity reuse is not evidence of provider prefix retention |
 | [World database](../../ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_database.py) | Advisory DuckDB records and observational DuckLake history | Query these records through their current owners to drive selection, reuse and invalidation |
 | [Source broker](../../ipfs_accelerate_py/agent_supervisor/runtime/repository_source_mcp.py) | Current query, expansion, definition read, guarded edit and refresh | Attach observations to the task world and account for which model-facing context each operation replaces |
 
@@ -609,12 +702,13 @@ Missing world coverage is explicit. The worker receives a self-contained packet
 without relying on provider parent retention.
 
 This is a first slice of phases 2 and 3 with a local authored cycle for phase 1.
-It does not complete world-owner observation ingestion, restart reconstruction,
-combined IR adapters, deterministic result reuse, learned prediction or the
-matched Terminal Bench experiment. Its in-process API remains opt-in. The
-Terminal Bench audit refuses this mode until a frozen transport/replay contract
-can reconstruct the exact delivered input. Complete-run savings remain unknown.
-
+At this first boundary, world-owner observation ingestion and historical
+reconstruction were still pending; the subsequent slices below address them.
+Combined IR adapters, deterministic result reuse, learned prediction and the
+matched Terminal Bench experiment remain incomplete. Its in-process API remains
+opt-in. The dedicated collector integration below now admits retained basic
+context; the production dispatch handoff remains pending. Complete-run savings
+remain unknown.
 [Local qualification](evidence/world-packet-20261014/qualification.json) records
 277 passing tests: 68 new packet/dispatch/cycle cases and 209 existing regression
 cases. The cycle uses real native indexing, a real child MCP read and guarded
@@ -648,10 +742,9 @@ policy, contract and other world authorities remain unavailable instead of
 being replaced by source-session hashes.
 
 The first capture API supports independently owned local intent databases.
-The native Quack owner extension is described below; durable observation
-reconstruction, joined IR families and matched live Terminal Bench experiments
-remain outstanding.
-
+The native Quack owner and historical replay extensions are described below;
+live restart rebinding, joined IR families and matched live Terminal Bench
+experiments remain outstanding.
 [Native intent qualification](evidence/intent-world-20261014/qualification.json)
 records 193 passing tests: 31 focused cases and 162 regressions. The end-to-end
 cycle uses a real native intent database, three signed validation commands,
@@ -685,9 +778,128 @@ observer retains its own transaction, with deadline-bounded lock acquisition;
 deadlines remain cooperative. Native task data stays unchanged, while the reused
 readiness check may restore the owner's private attach-token file.
 No new command runner, metadata catalog or execution/completion authority is
-introduced. This qualifies an in-process native owner integration, with portable
-transport and reconstruction across process restarts still outstanding.
+introduced. This qualifies an in-process native owner integration. Historical
+reconstruction is covered by the next slice; resumed dispatch still requires
+new live source and owner observations.
 
+[Native Quack qualification](evidence/quack-world-20261014/qualification.json)
+records 230 passing tests: 17 native bridge cases and 213 existing regressions.
+The cycle starts the installed Quack listener, queries it over TCP, admits a
+typed native attempt and runs three signed validation commands. A real child
+MCP edits the source between two authored provider dispatches. The daemon's
+existing environment scrub removes database authority at the provider boundary.
+Source staleness and a newer failed observation each prevent dispatch, including
+after exact source restoration. Native tests also cover owner stop/restart,
+timed lock contention, mixed snapshots, resource denial/cancellation, rollback
+and preservation of an existing caller transaction. No test was skipped.
+The report retains corrected fixture attempts, exact source and JUnit hashes,
+dependency pins and serial resource bounds. Provider usage, capture overhead and
+complete-session token savings remain unmeasured.
+
+### Historical packet and complete-input replay
+
+The replay boundary retains a bounded canonical artifact before the worker
+edits source. It includes the compiled capsule, compilation receipt, exact task
+and scope recipe, full native packet, emitted prompt and packet receipt.
+Reconstruction calls the same native packet builder as live preparation and
+compares every generated record. Claimed item digests alone cannot substitute
+for rebuilding their payloads.
+
+A second artifact joins that packet to the runner's recorded input bindings.
+It reconstructs workspace guidance, tool policies and the selected coding reply
+contract, then checks the final user-input hash and separate native output-schema
+identity. Both APIs require a caller-retained SHA-256. They return historical
+values that cannot enter the live runner or restore invocation-local issuance.
+After a restart, resumed execution must recapture current native owners and
+recompile a new packet.
+
+The artifact contains full task/context content; diagnostics remain content-free.
+Storage and independent digest retention belong to the caller. No new metadata
+catalog, provider route or file loader is introduced. Input size, JSON depth and
+node bounds apply before reconstruction. Replay does not open the old source,
+intent database or Quack owner, reverify original signatures, recount tokenizer
+results or prove provider delivery. It checks the structural consistency of
+retained measurements while preserving their recorded scope.
+
+This supplies the reconstruction prerequisite for the dedicated Terminal Bench
+collector branch below. A world marker alone remains insufficient: collection
+requires a pinned invocation artifact and the retained Terminal context join.
+Production dispatch, live restart rebinding and matched complete-session token
+measurements remain pending. Replay alone establishes no token saving and grants
+no proof, execution or completion authority.
+
+[Historical replay qualification](evidence/world-replay-20261014/qualification.json)
+records 289 passing tests: 92 focused replay cases and 197 regressions, with no
+failures or skips. The end-to-end case starts the real Quack listener, records
+a signed failed command check, freezes its source-bound packet, then performs
+a real child MCP query/read/guarded edit during an authored provider dispatch.
+The edit prevents reuse and re-export of the stale live packet. After the
+owners close and the original workspace and owner files become unavailable,
+a fresh Python process reconstructs the exact rendered model input with native
+credentials removed and fixture reads, database opens, sockets, subprocesses
+and provider entry points blocked during replay.
+
+Tests also cover canonical JSON bounds, external pins, repinned inconsistencies,
+required evidence, immutable historical results, helper guidance, separate reply
+schema identity, measured and failed counter records, and live packet/audit
+regressions. Runs were serial within this session with one native CPU slot and
+offline model assets. Source bytes stayed unchanged through both runs; the
+report retains commands, dependency pins and source/JUnit hashes. Replay latency,
+operating-system memory stress and live-provider token savings were not measured.
+
+### Private invocation capture and Terminal collector join
+
+The runner now accepts an optional `world_packet_audit_directory` for an issued
+world packet. It freezes the input before provider initialization and retains
+the final receipt join after helper cleanup. This survives source edits and
+closed source owners. The store requires private owner permissions, rejects
+symlink components and directory replacement, writes exclusively, and has
+per-file, aggregate and inventory limits plus a bounded lock wait. Capture
+failure cannot mask a provider result or trigger another provider attempt.
+The independent public receipt carries only IDs, lengths and digests; the
+private artifact contains task and source context.
+
+The dedicated [world collector](../../benchmarks/agent_supervisor/container_coding/terminal_world_packet_audit.py)
+loads `state/world-invocations/<invocation_id>.json`, using the independent
+receipt's digest and bounded nofollow reads. It reconstructs actual rendered
+input and reply-schema identity, joins the public task to retained preparation,
+and preserves the existing required semantic, retrieval and intent-world
+context checks. Explicit unknown context schemas cannot enter the legacy
+compatibility branch. Mixed world and legacy populations must each qualify;
+missing, changed or duplicated observations prevent a complete-input claim.
+Installed helper-source digests remain checked. The store permits 16 files and
+16 MiB; the collector permits 16 receipts and 12 MiB of declared artifact bodies
+within its existing 30-second child deadline.
+
+This is a historical audit path for basic required contexts. Selected source
+formalization bundles and signed Terminal scopes are explicitly rejected until
+their own preparation and reconstruction are connected. No production Terminal
+CLI option recreates a live packet from these bytes. A current owner capture,
+recompilation and dispatch handoff, followed by a rebuilt runtime archive, are
+still needed for the live experiment. Even a prepared input that was never
+dispatched can reconstruct correctly: provider delivery, actual repository tool
+adoption, official task success and complete token usage remain independent
+observations.
+
+[Collector qualification](evidence/world-collector-20261014/qualification.json)
+records 783 passing tests in the final runs: 119 focused cases and 664
+regressions, with no failures or skips. The end-to-end fixture queries and
+expands a real native capsule through child MCP, observes a smaller compact file
+read and an exact symbol read, commits a guarded canonical edit, closes its
+source session and makes the original workspace unavailable. The bounded
+collector then reconstructs the exact historical input and joins the independent
+repository-tool observations. Provider responses and token counts are authored;
+this does not establish live task success or savings.
+
+The tests cover malformed pins and receipts, missing required context, unknown
+schemas, mixed populations, symlink/FIFO refusal, byte/count limits, lock
+contention, failed provider attempts and recovery after zero-byte or partial
+writes. The report retains the initial fixture failure and corrected result,
+commands, dependency pins, source/JUnit hashes and a syntax-preserving test
+format adjustment after the focused run. Runtime sources stayed unchanged
+through qualification. Runs were serial with one native CPU slot and offline
+model assets; operating-system memory stress and live token savings were not
+measured.
 ## Decide success from the complete run
 
 Count the final cumulative native input plus output tokens for every retained
