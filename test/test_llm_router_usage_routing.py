@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Dict, List, Optional
 
 import pytest
@@ -1020,3 +1021,82 @@ def test_generation_trace_still_records_provider() -> None:
     trace = get_last_generation_trace()
     assert trace["effective_provider_name"] == "named_provider"
     assert trace["effective_model_name"] == "m"
+
+
+def test_explicit_backend_does_not_trigger_automatic_route_selection(monkeypatch):
+    from ipfs_accelerate_py.llm_allocation import intelligence_index
+
+    def forbidden_selection(**kwargs):
+        pytest.fail("explicit provider instance must retain its selected route")
+
+    monkeypatch.setattr(intelligence_index, "discover_available_providers",
+        lambda: pytest.fail("explicit backend needs no provider discovery"))
+    monkeypatch.setattr(intelligence_index, "select_efficient_route", forbidden_selection)
+    provider = _CountingProvider("explicit-authored-provider")
+    assert generate_text("authored", provider_instance=provider) == "ok:authored"
+    assert provider.calls == ["authored"]
+    assert get_last_generation_trace()["effective_provider_name"] == provider.router_provider_name
+
+
+def test_default_calls_retain_automatic_route_selection(monkeypatch):
+    from ipfs_accelerate_py.llm_allocation import intelligence_index
+
+    selected = []
+    provider = _CountingProvider("authored-auto-provider")
+    monkeypatch.setattr(intelligence_index, "discover_available_providers",
+        lambda: ("authored-auto-provider",))
+
+    def select(**kwargs):
+        selected.append(kwargs)
+        return SimpleNamespace(auto_selected=True, provider="authored-auto-provider",
+            model_name="authored-auto-model", reasoning_effort="")
+
+    monkeypatch.setattr(intelligence_index, "select_efficient_route", select)
+    monkeypatch.setattr(llm_router, "get_llm_provider", lambda *args, **kwargs: provider)
+    assert generate_text("authored-default", allow_local_fallback=False,
+        allow_cross_provider_fallback=False) == "ok:authored-default"
+    assert len(selected) == 1 and selected[0]["model_name"] == "auto"
+    assert get_last_generation_trace()["effective_model_name"] == "authored-auto-model"
+
+
+@pytest.mark.parametrize("message,status", [
+    ("rate limit 429", None), ("capacity exhausted", None),
+    ("authored upstream busy", 503), ("context_length exceeded", None),
+])
+def test_configured_model_capacity_and_semantic_errors_do_not_hide_a_second_call(message, status):
+    """Failure classification reaches the usage owner after one physical call."""
+    clock = FakeClock(_now())
+    coordinator = _coord(clock)
+    scope = _scope("authored-single-attempt")
+    _configure_llm_limits(coordinator, scope, requests=5)
+    candidate = _candidate(provider_key="authored-single-attempt", scope=scope)
+    attempted_models = []
+
+    class Failure(RuntimeError):
+        status_code = status
+
+    class Provider:
+        router_provider_name = "authored-single-attempt"
+
+        def generate(self, prompt, *, model_name=None, **kwargs):
+            attempted_models.append(model_name)
+            if len(attempted_models) == 1:
+                raise Failure(message)
+            return "a hidden second call would incorrectly succeed"
+
+    provider = Provider()
+    with pytest.raises(RuntimeError):
+        generate_text("authored-failure", model_name="configured-model",
+            provider_instance=provider, usage_coordinator=coordinator,
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE,
+                fallback=FallbackClass.NONE, max_attempts=1),
+            usage_candidates=[candidate], usage_pin=RoutePin(),
+            usage_provider_by_binding={candidate.binding_id: provider},
+            usage_request=UsageRoutingRequest(
+                required=planning_required_usage(estimate_llm_usage("authored-failure")),
+                now=_rfc(clock.now()), require_snapshot=True),
+            usage_request_id="authored-model-failure",
+            usage_idempotency_key="authored-model-failure", max_tokens=32)
+    assert attempted_models == ["configured-model"]
+    assert get_last_usage_admission()["remote_charged"] is True
+    assert _headroom_available(coordinator.snapshot(scope.scope_id), UsageDimension.REQUESTS) == 4

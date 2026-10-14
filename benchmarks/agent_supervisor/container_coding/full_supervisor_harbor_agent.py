@@ -36,6 +36,26 @@ from .terminal_coding_reply_policy import (
     DEFAULT_CODING_REPLY_MODE, validate_coding_reply_mode, require_coding_reply_archive,
     coding_reply_selection,
 )
+from .terminal_source_input_policy import (
+    DEFAULT_SOURCE_INPUT_POLICY, validate_source_input_policy,
+    source_input_selection, require_source_input_archive,
+)
+from .terminal_query_reference_policy import (
+    DEFAULT_QUERY_REFERENCE_POLICY, validate_query_reference_policy,
+    query_reference_selection, require_query_reference_archive,
+)
+from .terminal_repository_source_policy import (
+    DEFAULT_REPOSITORY_SOURCE_POLICY, validate_repository_source_policy,
+    repository_source_selection, require_repository_source_archive,
+)
+from .terminal_source_view_policy import (
+    DEFAULT_SOURCE_VIEW_POLICY, validate_source_view_advisory_policy,
+    source_view_advisory_selection, require_source_view_advisory_archive,
+)
+from .terminal_tool_output_policy import (
+    DEFAULT_TOOL_OUTPUT_POLICY, validate_tool_output_policy,
+    tool_output_selection, require_tool_output_archive,
+)
 from .terminal_semantic_metadata_policy import (
     DEFAULT_SEMANTIC_METADATA_VIEW, validate_semantic_metadata_view,
     semantic_metadata_observation, require_semantic_metadata_archive,
@@ -56,12 +76,17 @@ from .terminal_source_view_policy import (
     DEFAULT_SOURCE_VIEW_PROFILE, validate_source_view_profile,
     source_view_observation, require_source_view_archive, validate_source_view_policy, source_view_policy_argv,
 )
+from .terminal_semantic_context_policy import (
+    DEFAULT_SEMANTIC_CONTEXT_PROFILE, validate_semantic_context_profile,
+    semantic_context_selection, require_semantic_context_archive,
+)
 from .terminal_numerical_policy import (
     validate_numerical_profile, numerical_observation, require_numerical_archive,
 )
 from .terminal_numerical_selection_deployment import (
     numerical_selection_asset_arguments,
 )
+from .terminal_provider_stop import provider_stop_observation
 
 
 def measured_usage(report: dict) -> dict:
@@ -122,6 +147,9 @@ def measured_usage(report: dict) -> dict:
         and type(result["cache_included_in_input"]) is bool
         and all(type(result.get(key)) is int and result[key] >= 0 for key in (
             "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")))
+    # A native task_complete event can close a failed session with no token
+    # counters. Preserve that event separately from complete accounting.
+    result["usage_accounting_complete"] = result["harbor_usage_exportable"]
     result["billing_total_verified"] = False
     result["dollar_cost"] = None
     return result
@@ -322,11 +350,17 @@ class FullSupervisorAgent(BaseAgent):
                  provider_profile: str | None = None,
                  semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
                  coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
+                 tool_output_policy: str = DEFAULT_TOOL_OUTPUT_POLICY,
+                 source_view_advisory_policy: str = DEFAULT_SOURCE_VIEW_POLICY,
+                 repository_source_policy: str = DEFAULT_REPOSITORY_SOURCE_POLICY,
+                 source_input_policy: str = DEFAULT_SOURCE_INPUT_POLICY,
+                 query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                  source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
                  source_view_policy: dict | None = None,
                  source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
+                 semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
                  numerical_formalization_profile: str | None = None,
                  planning_mode: str = DEFAULT_PLANNING_MODE,
                  metadata_census_only: bool = False, **kwargs):
@@ -347,7 +381,23 @@ class FullSupervisorAgent(BaseAgent):
         self._source_view_policy_frozen_json = json.dumps(
             source_view_observation(self.source_view_profile, self.source_view_policy),
             sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+        self.semantic_context_profile = validate_semantic_context_profile(semantic_context_profile, arm=arm)
+        from .terminal_source_view_policy import validate_source_context_combination
+        validate_source_context_combination(source_view_profile=source_view_profile,
+            source_view_advisory_policy=source_view_advisory_policy, repository_source_policy=repository_source_policy,
+            source_input_policy=source_input_policy, query_reference_policy=query_reference_policy,
+            capsule_selection=capsule_selection, semantic_context_profile=semantic_context_profile)
         self.semantic_transport_schema = validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
+        self.source_input_policy = validate_source_input_policy(source_input_policy,
+            arm=arm, provider=selected_provider["provider"], semantic_metadata_view=semantic_metadata_view)
+        self.query_reference_policy = validate_query_reference_policy(query_reference_policy,
+            arm=arm, provider=selected_provider["provider"], semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
+        self.repository_source_policy = validate_repository_source_policy(repository_source_policy,
+            arm=arm, provider=selected_provider["provider"], source_view_advisory_policy=source_view_advisory_policy)
+        self.source_view_advisory_policy = validate_source_view_advisory_policy(source_view_advisory_policy,
+            arm=arm, provider=selected_provider["provider"])
+        self.tool_output_policy = validate_tool_output_policy(tool_output_policy,
+            arm=arm, provider=selected_provider["provider"])
         self.coding_reply_mode = validate_coding_reply_mode(coding_reply_mode,
             arm=arm, provider=selected_provider["provider"])
         self.semantic_metadata_view = validate_semantic_metadata_view(semantic_metadata_view,
@@ -361,6 +411,16 @@ class FullSupervisorAgent(BaseAgent):
         if metadata_census_only and (arm != "full" or self.semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}
                 or self.coding_reply_mode != "ordinary-completion@1"):
             raise ValueError("live census requires the full common-bindings ordinary-completion route")
+        if metadata_census_only and self.source_input_policy != DEFAULT_SOURCE_INPUT_POLICY:
+            raise ValueError("source input policy requires an executed coding route")
+        if metadata_census_only and self.query_reference_policy != DEFAULT_QUERY_REFERENCE_POLICY:
+            raise ValueError("query reference policy requires an executed coding route")
+        if metadata_census_only and self.repository_source_policy != DEFAULT_REPOSITORY_SOURCE_POLICY:
+            raise ValueError("repository source policy requires an executed coding route")
+        if metadata_census_only and self.source_view_advisory_policy != DEFAULT_SOURCE_VIEW_POLICY:
+            raise ValueError("source view policy requires an executed coding route")
+        if metadata_census_only and self.tool_output_policy != DEFAULT_TOOL_OUTPUT_POLICY:
+            raise ValueError("tool output policy requires an executed coding route")
         self.metadata_census_only = metadata_census_only
         self.numerical_formalization_profile = validate_numerical_profile(numerical_formalization_profile)
         if type(disable_intent_autoencoder) is not bool:
@@ -450,6 +510,29 @@ class FullSupervisorAgent(BaseAgent):
         reply_mode = validate_coding_reply_mode(getattr(self, "coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
             arm=self.arm, provider=selected_provider["provider"])
         require_coding_reply_archive(manifest, reply_mode)
+        tool_output = validate_tool_output_policy(
+            getattr(self, "tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_tool_output_archive(manifest, tool_output)
+        source_view_advisory = validate_source_view_advisory_policy(
+            getattr(self, "source_view_advisory_policy", DEFAULT_SOURCE_VIEW_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_source_view_advisory_archive(manifest, source_view_advisory)
+        repository_source = validate_repository_source_policy(
+            getattr(self, "repository_source_policy", DEFAULT_REPOSITORY_SOURCE_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"], source_view_advisory_policy=source_view_advisory)
+        require_repository_source_archive(manifest, repository_source, archive=self.runtime_archive / "runtime.tar.gz")
+        source_input = validate_source_input_policy(
+            getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
+            semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+        query_reference = validate_query_reference_policy(
+            getattr(self, "query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
+            semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            source_input_policy=getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
+        require_source_input_archive(manifest, source_input)
+        require_query_reference_archive(manifest, query_reference)
         metadata_view = validate_semantic_metadata_view(
             getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=self.arm,
             transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
@@ -463,6 +546,9 @@ class FullSupervisorAgent(BaseAgent):
         self._checked_source_view_policy(source_view)
         require_source_edit_archive(manifest, self._checked_source_edit_mode(source_view))
         require_source_view_archive(manifest, source_view, getattr(self, "resource_profile", None))
+        semantic_profile = validate_semantic_context_profile(
+            getattr(self, "semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE), arm=self.arm)
+        require_semantic_context_archive(manifest, semantic_profile)
         require_retrieval_revision(manifest, self.arm, getattr(self, "model_revision", ""))
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
@@ -477,6 +563,8 @@ class FullSupervisorAgent(BaseAgent):
             if selected_provider["provider"] == "grok_cli" else {})
         await deploy_supervisor(environment, archive_dir=self.runtime_archive,
                                 output=self.logs_dir / "deployment", auth_json=self.auth_json, **provider_options,
+                                **({"repository_source_policy": repository_source}
+                                   if repository_source != DEFAULT_REPOSITORY_SOURCE_POLICY else {}),
                                 **({"isolated_uv_bootstrap": True} if task_profile is not None else {}),
                                 **({"setup_cache_selection": selection} if selection is not None else {}))
         boundary = self.logs_dir / "worker-boundary"
@@ -519,6 +607,29 @@ class FullSupervisorAgent(BaseAgent):
         reply_mode = validate_coding_reply_mode(getattr(self, "coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
             arm=self.arm, provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         require_coding_reply_archive(manifest, reply_mode)
+        tool_output = validate_tool_output_policy(
+            getattr(self, "tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_tool_output_archive(manifest, tool_output)
+        source_view_advisory = validate_source_view_advisory_policy(
+            getattr(self, "source_view_advisory_policy", DEFAULT_SOURCE_VIEW_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_source_view_advisory_archive(manifest, source_view_advisory)
+        repository_source = validate_repository_source_policy(
+            getattr(self, "repository_source_policy", DEFAULT_REPOSITORY_SOURCE_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"], source_view_advisory_policy=source_view_advisory)
+        require_repository_source_archive(manifest, repository_source, archive=self.runtime_archive / "runtime.tar.gz")
+        source_input = validate_source_input_policy(
+            getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
+            semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+        query_reference = validate_query_reference_policy(
+            getattr(self, "query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
+            semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            source_input_policy=getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
+        require_source_input_archive(manifest, source_input)
+        require_query_reference_archive(manifest, query_reference)
         metadata_view = validate_semantic_metadata_view(
             getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=self.arm,
             transport_schema=transport,
@@ -530,9 +641,18 @@ class FullSupervisorAgent(BaseAgent):
         source_view = validate_source_view_profile(
             getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=self.arm)
         source_policy = self._checked_source_view_policy(source_view)
+        from .terminal_source_view_policy import validate_source_context_combination
+        validate_source_context_combination(source_view_profile=source_view,
+            source_view_advisory_policy=source_view_advisory, repository_source_policy=repository_source,
+            source_input_policy=source_input, query_reference_policy=query_reference,
+            capsule_selection=capsule_selection,
+            semantic_context_profile=getattr(self, "semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE))
         source_edit = self._checked_source_edit_mode(source_view)
         require_source_edit_archive(manifest, source_edit)
         require_source_view_archive(manifest, source_view, getattr(self, "resource_profile", None))
+        semantic_profile = validate_semantic_context_profile(
+            getattr(self, "semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE), arm=self.arm)
+        require_semantic_context_archive(manifest, semantic_profile)
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
         from .terminal_worker_capability import require_worker_capability
@@ -567,6 +687,16 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--numerical-formalization-profile", numerical_profile]
         if transport != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
             argv += ["--semantic-transport-schema", transport]
+        if tool_output != DEFAULT_TOOL_OUTPUT_POLICY:
+            argv += ["--tool-output-policy", tool_output]
+        if repository_source != DEFAULT_REPOSITORY_SOURCE_POLICY:
+            argv += ["--repository-source-policy", repository_source]
+        if source_view_advisory != DEFAULT_SOURCE_VIEW_POLICY:
+            argv += ["--source-view-advisory-policy", source_view_advisory]
+        if source_input != DEFAULT_SOURCE_INPUT_POLICY:
+            argv += ["--source-input-policy", source_input]
+        if query_reference != DEFAULT_QUERY_REFERENCE_POLICY:
+            argv += ["--query-reference-policy", query_reference]
         if reply_mode != DEFAULT_CODING_REPLY_MODE:
             argv += ["--coding-reply-mode", reply_mode]
         if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
@@ -576,6 +706,8 @@ class FullSupervisorAgent(BaseAgent):
         if source_view != DEFAULT_SOURCE_VIEW_PROFILE:
             argv += ["--source-view-profile", source_view]
         argv += source_view_policy_argv(source_policy, profile=source_view)
+        if semantic_profile != DEFAULT_SEMANTIC_CONTEXT_PROFILE:
+            argv += ["--semantic-context-profile", semantic_profile]
         if getattr(self, "metadata_census_only", False):
             argv += ["--metadata-census-only"]
         task_profile = getattr(self, "task_profile", None)
@@ -611,10 +743,16 @@ class FullSupervisorAgent(BaseAgent):
                             "provider_profile": resolve_provider_profile(provider_profile),
                             **semantic_transport_selection(transport),
                             **coding_reply_selection(reply_mode),
+                            **tool_output_selection(tool_output),
+                            **source_view_advisory_selection(source_view_advisory),
+                            **repository_source_selection(repository_source),
+                            **source_input_selection(source_input),
+                            **query_reference_selection(query_reference),
                             **semantic_metadata_observation(metadata_view),
                             **capsule_selection_observation(capsule_selection),
                             **source_view_observation(source_view, source_policy),
                             **source_edit_observation(source_edit),
+                            **semantic_context_selection(semantic_profile),
                             **numerical_observation(numerical_profile, self.arm),
                             **planning_observation(planning_mode),
                             **_intent_selection(requirement_contract, planning_mode=planning_mode),
@@ -652,6 +790,9 @@ class FullSupervisorAgent(BaseAgent):
             try:
                 await asyncio.wait_for(environment.download_file(report_path, self.logs_dir / "supervisor-result.json"), timeout=5)
                 report = json.loads((self.logs_dir / "supervisor-result.json").read_text())
+                provider_stop = provider_stop_observation(report)
+                if provider_stop is not None:
+                    context.metadata["provider_stop"] = provider_stop
                 usage = measured_usage(report)
                 populate_harbor_usage(context, usage)
                 context.metadata.update(task_completed=report["task_completed"], usage=usage,

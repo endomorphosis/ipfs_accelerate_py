@@ -198,6 +198,11 @@ parser.add_argument('--semantic-transport-schema',choices=['supervisor-semantic-
 parser.add_argument('--semantic-metadata-view',choices=['legacy','common-bindings@1','common-bindings-instruction@1'],default='legacy')
 parser.add_argument('--semantic-metadata-census-only',action='store_true')
 parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion@1'],default='legacy')
+parser.add_argument('--tool-output-policy',choices=['legacy','artifact-preview@1','artifact-preview@2'],default='legacy')
+parser.add_argument('--source-view-advisory-policy',choices=['legacy','source-view-raw@1','source-view-compact@1'],default='legacy')
+parser.add_argument('--repository-source-policy',choices=['legacy','repository-source-raw@1','repository-source-compact@1'],default='legacy')
+parser.add_argument('--source-input-policy',choices=['legacy','source-input-raw@1','source-input-compact@1','source-input-ast-ref-raw@1','source-input-ast-ref-compact@1'],default='legacy')
+parser.add_argument('--query-reference-policy',choices=['legacy','required-instruction-ref@1'],default='legacy')
 parser.add_argument('--doctor-candidate-artifact',type=pathlib.Path)
 parser.add_argument('--doctor-candidate-sha256')
 parser.add_argument('--doctor-task-cid')
@@ -240,6 +245,7 @@ numerical_obligation_values=(args.numerical_obligation_descriptor,args.numerical
 source_lookup_values=(args.source_lookup_descriptor,args.source_lookup_descriptor_sha256)
 if any(value is not None for value in source_lookup_values) and (not all(source_lookup_values) or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('exact source lookup descriptor requires isolated router coding')
 source_view_values=(args.source_view_descriptor,args.source_view_descriptor_sha256)
+if args.source_view_profile!='disabled' and any(value!='legacy' for value in (args.source_view_advisory_policy,args.repository_source_policy,args.source_input_policy,args.query_reference_policy)):raise SystemExit('signed source views cannot combine with advisory or projected source policies')
 if args.source_edit_mode!='disabled' and (args.source_view_profile=='disabled' or args.preflight or args.semantic_metadata_census_only):raise SystemExit('source editing requires selected coding views')
 if args.source_view_profile!='disabled' or any(value is not None for value in source_view_values):
  if args.source_view_profile=='disabled' or not all(source_view_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values):raise SystemExit('exact source descriptor requires isolated semantic coding')
@@ -248,6 +254,11 @@ if any(formalization_values) and (not all(formalization_values) or args.semantic
 if args.semantic_metadata_view!='legacy' and (args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('metadata view requires original semantic router coding')
 if args.semantic_metadata_census_only and args.semantic_metadata_view not in ('common-bindings@1','common-bindings-instruction@1'):raise SystemExit('metadata census requires common bindings')
 if args.semantic_transport_schema!='supervisor-semantic-router-input@1' and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('controller dictionary transport requires semantic router coding')
+if args.tool_output_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('tool output policy requires semantic Codex router coding')
+if args.repository_source_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or args.source_view_advisory_policy!='legacy' or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('repository source policy requires semantic Codex router coding and exclusive source tools')
+if args.source_view_advisory_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('source view policy requires semantic Codex router coding')
+if args.source_input_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('source input policy requires semantic Codex router coding')
+if args.query_reference_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or args.semantic_metadata_view!='legacy' or args.source_input_policy!='legacy' or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('query reference policy requires semantic Codex router coding')
 if args.coding_reply_mode!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('ordinary completion requires semantic Codex router coding')
 if any(finite_values) and (not all(finite_values) or any(contract_values) or any(doctor_values) or any(residual_values) or any(instruction_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact finite repository candidate invocation required')
 if any(proof_query_values) and (not all(proof_query_values) or not all(finite_values) or any(contract_values) or any(doctor_values) or any(residual_values) or any(instruction_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact finite proof-query context invocation required')
@@ -314,6 +325,11 @@ else:
  if args.semantic_metadata_view!='legacy':sys.argv+=['--semantic-metadata-view',args.semantic_metadata_view]
  if args.semantic_metadata_census_only:sys.argv+=['--semantic-metadata-census-only']
  if args.coding_reply_mode!='legacy':sys.argv+=['--coding-reply-mode',args.coding_reply_mode]
+ if args.tool_output_policy!='legacy':sys.argv+=['--tool-output-policy',args.tool_output_policy]
+ if args.source_view_advisory_policy!='legacy':sys.argv+=['--source-view-advisory-policy',args.source_view_advisory_policy]
+ if args.repository_source_policy!='legacy':sys.argv+=['--repository-source-policy',args.repository_source_policy]
+ if args.source_input_policy!='legacy':sys.argv+=['--source-input-policy',args.source_input_policy]
+ if args.query_reference_policy!='legacy':sys.argv+=['--query-reference-policy',args.query_reference_policy]
  if args.doctor_residual_artifact is not None:sys.argv+=['--doctor-residual-artifact',str(args.doctor_residual_artifact),'--doctor-residual-sha256',args.doctor_residual_sha256,'--doctor-residual-task-cid',args.doctor_residual_task_cid]
  if args.public_instruction_artifact is not None:sys.argv+=['--public-instruction-artifact',str(args.public_instruction_artifact),'--public-instruction-sha256',args.public_instruction_sha256,'--public-instruction-task-cid',args.public_instruction_task_cid]
  if args.source_formalization_handoff is not None:sys.argv+=['--source-formalization-handoff',str(args.source_formalization_handoff),'--source-formalization-handoff-sha256',args.source_formalization_handoff_sha256]

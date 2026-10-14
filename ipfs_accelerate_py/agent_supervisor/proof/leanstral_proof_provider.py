@@ -32,7 +32,10 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from ..runtime.direct_provider_usage import DirectProviderUsageBinding
 
 from .formal_verification_capabilities import (
     ProofProviderCapability,
@@ -911,6 +914,7 @@ def _default_llm_generate(prompt: str, **kwargs: Any) -> str:
     router_kwargs = dict(kwargs)
     usage_consumer = str(router_kwargs.pop("usage_consumer_id", "") or "leanstral_proof_provider")
     usage_migrate = bool(router_kwargs.pop("usage_migrate", True))
+    usage_binding = router_kwargs.pop("usage_binding", None)
 
     def _raw_generate() -> str:
         try:
@@ -929,6 +933,85 @@ def _default_llm_generate(prompt: str, **kwargs: Any) -> str:
                 details={"dependency": "llm_router.generate_text"},
             )
         return generate(prompt, **router_kwargs)
+
+    if usage_binding is not None:
+        from ..runtime.direct_provider_usage import DirectProviderUsageBinding
+        from ..runtime.provider_usage_migration import (
+            ConsumerId,
+            ProviderUsageMigrationError,
+            retain_last_call_result,
+        )
+
+        if not isinstance(usage_binding, DirectProviderUsageBinding):
+            raise ValueError("usage_binding must be DirectProviderUsageBinding")
+        if not usage_migrate:
+            raise ValueError("usage_binding cannot bypass usage admission")
+        conflicting = {
+            key for key in router_kwargs
+            if key.startswith("usage_") or key in {
+                "provider_instance", "deps", "scheduler", "batch_scheduler",
+                "provider_batch_scheduler", "llm_provider", "model",
+            }
+        }
+        if conflicting:
+            raise ValueError("usage_binding cannot share a nested or overriding dispatch owner")
+        if router_kwargs.get("allow_local_fallback") or router_kwargs.get("allow_cross_provider_fallback"):
+            raise ValueError("usage_binding requires provider fallback to be disabled")
+        timeout = router_kwargs.get("timeout")
+        if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                or not math.isfinite(float(timeout)) or float(timeout) <= 0):
+            raise ValueError("usage_binding requires a finite positive timeout")
+        router_kwargs.update(
+            allow_local_fallback=False,
+            allow_cross_provider_fallback=False,
+            disable_model_retry=True,
+        )
+        consumer = ConsumerId(usage_consumer)
+        try:
+            migrated = usage_binding.dispatch(
+                consumer_id=consumer,
+                provider_id=str(router_kwargs.get("provider") or ""),
+                model=str(router_kwargs.get("model_name") or ""),
+                invoke=_raw_generate,
+                timeout_ms=max(1, math.ceil(float(timeout) * 1_000)),
+                estimated_input_tokens=max(1, len(prompt.encode("utf-8"))),
+                estimated_output_tokens=router_kwargs.get("max_new_tokens"),
+                stage=(
+                    "leanstral_goal_development"
+                    if consumer is ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT
+                    else "leanstral_proof"
+                ),
+                task_id=str(router_kwargs.get("task_id") or consumer.value),
+                goal_id=f"goal:{consumer.value}",
+                objective_id=consumer.value,
+                metadata={
+                    "model": str(router_kwargs.get("model_name") or ""),
+                    "side_effect": "text.generate",
+                    "input_bound_basis": "prompt_utf8_bytes",
+                },
+            )
+        except ProviderUsageMigrationError as exc:
+            raise ProofProviderError(
+                ProviderFailureCode.UNAVAILABLE,
+                "Leanstral usage admission failed",
+                retryable=False,
+                details={"reason_codes": list(exc.reason_codes)},
+            ) from exc
+        retain_last_call_result(consumer, migrated)
+        if migrated.phase not in {"settled", "replayed"} or not migrated.text:
+            raise ProofProviderError(
+                ProviderFailureCode.RESOURCE_EXHAUSTED
+                if migrated.phase == "denied" else ProviderFailureCode.UNAVAILABLE,
+                "bound Leanstral inference did not produce an admitted provider output",
+                retryable=False,
+                details={
+                    "usage_phase": migrated.phase,
+                    "reason_codes": list(migrated.reason_codes) + [
+                        "generated_text_unavailable" if not migrated.text else "provider_call_not_settled"
+                    ],
+                },
+            )
+        return migrated.text
 
     mode_raw = (
         str(os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")).strip().casefold()
@@ -1891,8 +1974,20 @@ class LeanstralProofProvider:
         config: LeanstralProofProviderConfig | None = None,
         *,
         llm_generate: LLMGenerate | None = None,
+        usage_binding: DirectProviderUsageBinding | None = None,
     ) -> None:
         self.config = config or LeanstralProofProviderConfig()
+        if usage_binding is not None:
+            from ..runtime.direct_provider_usage import DirectProviderUsageBinding
+
+            if not isinstance(usage_binding, DirectProviderUsageBinding):
+                raise ValueError("usage_binding must be DirectProviderUsageBinding")
+            if llm_generate is not None:
+                raise ValueError("usage_binding cannot be combined with a custom llm_generate")
+            if (usage_binding.provider_id != self.config.llm_provider
+                    or usage_binding.model != self.config.model):
+                raise ValueError("usage_binding must match the configured provider and model")
+        self._usage_binding = usage_binding
         if llm_generate is not None and not callable(llm_generate):
             raise ValueError("llm_generate must be callable")
         self._llm_generate = llm_generate
@@ -2266,9 +2361,16 @@ class LeanstralProofProvider:
                 errors=("timed_out",),
             )
 
+        # Runtime ownership is passed only to the default adapter, which
+        # consumes it before forwarding any kwargs to the model router.
+        usage_kwargs = (
+            {"usage_binding": self._usage_binding}
+            if self._usage_binding is not None else {}
+        )
         try:
             output = generate(
                 prompt,
+                **usage_kwargs,
                 provider=self.config.llm_provider,
                 model_name=self.config.model,
                 timeout=timeout,
@@ -2440,10 +2542,13 @@ def create_leanstral_proof_provider(
     config: LeanstralProofProviderConfig | None = None,
     *,
     llm_generate: LLMGenerate | None = None,
+    usage_binding: DirectProviderUsageBinding | None = None,
 ) -> LeanstralProofProvider:
     """Construct the provider without resolving any optional dependency."""
 
-    return LeanstralProofProvider(config, llm_generate=llm_generate)
+    return LeanstralProofProvider(
+        config, llm_generate=llm_generate, usage_binding=usage_binding
+    )
 
 
 kernel_check_leanstral_draft = verify_leanstral_draft

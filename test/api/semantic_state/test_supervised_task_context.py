@@ -150,6 +150,11 @@ def test_prepare_task_context_feeds_matching_native_semantic_and_world_roots(inp
     assert prepared["semantic"]["ducklake"]["status"] == "projected"
     assert prepared["world"]["metadata"]["status"] == "projected"
     assert prepared["canonical_task_mutated"] is False
+    projection = prepared["semantic"]["worker_projection"]
+    assert projection["selector"] == "duckdb-query-symbol-name@1"
+    assert projection["query"] == prepared["task_title"]
+    assert projection["selected_capsule_count"] <= 8
+    assert prepared["semantic"]["compact_bytes"] <= 32768
     daemon, task = daemon_and_task(inputs, prepared)
     prompt = daemon._build_implementation_prompt(task, attempt=1)
     semantic = context_from_prompt(prompt, "semantic-context")
@@ -160,9 +165,22 @@ def test_prepare_task_context_feeds_matching_native_semantic_and_world_roots(inp
     assert world["world_snapshot_cid"] == prepared["world_snapshot_cid"]
     assert world["tasks"][0]["task_cid"] == prepared["task_cid"]
     assert semantic["task_id"] == prepared["task_id"]
+    assert semantic["raw_sources"]["target.py"] == (inputs["repository"] / "target.py").read_text()
     assert world["semantic_coherence"]["status"] == "current"
     assert world["execution_authority"] is False
     assert world["completion_authority"] is False
+
+
+def test_explicit_empty_query_keeps_full_context_comparison_mode(inputs):
+    prepared = runtime.prepare_supervised_task_context(**inputs, semantic_worker_query="")
+    assert prepared["semantic"]["worker_projection"] is None
+    assert prepared["semantic"]["worker_capsules"] == prepared["semantic"]["capsules"]
+
+
+def test_supervised_context_forwards_capsule_limit(inputs):
+    prepared = runtime.prepare_supervised_task_context(**inputs, semantic_worker_capsule_limit=1)
+    assert prepared["semantic"]["worker_projection"]["max_capsules"] == 1
+    assert prepared["semantic"]["worker_capsules"] <= 1
 
 
 def test_native_retrieval_joins_the_same_task_capsules_and_world(inputs):
@@ -212,6 +230,9 @@ def test_refresh_marks_captured_world_semantics_stale_and_rejects_nomination_tam
     assert (
         world["semantic_coherence"]["captured_semantic_root_cid"] == prepared["semantic_root_cid"]
     )
+    assert semantic["worker_projection"]["selector"] == "duckdb-query-symbol-name@1"
+    assert (semantic["worker_projection"]["candidate_snapshot_cid"]
+            != prepared["semantic"]["worker_projection"]["candidate_snapshot_cid"])
     assert world["component_status"]["capsule_index"] == "stale"
     assert world["captured_component_status"]["capsule_index"] == "current"
     assert world["schedulable"] is False

@@ -393,16 +393,23 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
             capsule_kwargs["program_paths"] = vector_paths
         timings["retrieval_persistence"] = time.monotonic() - stage
         stage = time.monotonic()
+    from .terminal_semantic_context_policy import semantic_context_options, semantic_context_objective
+    context_profile = prepared.get("semantic_context_profile", "legacy-bounded@1")
+    context_options = semantic_context_options(context_profile)
+    program_options = ({"program_paths": partition["program_paths"], "defer_task_data": any(
+        row["role"] == "task_data" for row in partition["support_hashes"].values())}
+        if partition is not None else {"program_paths": sorted(signed_scope["selected_paths"] if signed_scope is not None else prepared["worker_inputs"])}
+        if context_profile != "legacy-bounded@1" else {})
+    if retrieval_ranked_capsules and context_profile != "legacy-bounded@1":
+        raise ValueError("retrieval capsule selection cannot combine with indexed semantic context profiles")
     semantic = prepare_semantic_context(repository=root,
         paths=(signed_scope["selected_paths"] if signed_scope is not None else prepared["worker_inputs"]),
         # Native semantic objectives are trimmed, printable descriptive text.
         # Normalize whitespace only here; the public query remains byte-exact
         # in retrieval, required raw input, planner constraints and hashes.
-        required_raw_paths=required_raw_paths, objective=" ".join(prepared["query"].split()), task_id=alias,
-        output=output / "semantic", max_symbols=1024, worker_query=prepared["query"], worker_max_bytes=32768,
-        **({"program_paths": partition["program_paths"], "defer_task_data": any(
-            row["role"] == "task_data" for row in partition["support_hashes"].values())}
-            if partition is not None else {}), **capsule_kwargs)
+        required_raw_paths=required_raw_paths, objective=(" ".join(prepared["query"].split()) if context_profile == "legacy-bounded@1" else semantic_context_objective(context_profile, prepared["query"])), task_id=alias,
+        output=output / "semantic", max_symbols=1024, worker_query=prepared["query"],
+        **context_options, **program_options, **capsule_kwargs)
     metadata = {"Semantic context artifact": (output / "semantic/worker-context.json").relative_to(root).as_posix(),
                 "Semantic context sha256": semantic["worker_payload_sha256"], "Semantic context refresh": "true"}
     semantic_payload, view, get_block = _semantic_view(root, metadata, alias)
@@ -479,6 +486,11 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "execution_authority": False, "completion_authority": False}
     if retrieval_ranked_capsules:
         result["capsule_selection"] = descriptor["capsule_selection"]
+    if context_profile != "legacy-bounded@1":
+        result.update(semantic_context_profile=context_profile,
+            worker_capsules=semantic["worker_capsules"],
+            worker_payload_bytes=semantic["compact_bytes"],
+            worker_projection=semantic["worker_projection"])
     if empty_population:
         result.update({key: retrieval[key] for key in (
             "retrieval_schema", "source_population_cid", "disposition", "embedding_calls")})
@@ -590,6 +602,19 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
             raise ValueError("capsules differ from selected native retrieval")
     elif "retrieval" in capsule_policy:
         raise ValueError("retrieval-ranked capsules lack their selected native retrieval")
+    from .terminal_semantic_context_policy import semantic_context_options, semantic_context_objective
+    expected_policy = semantic_context_options(prepared.get("semantic_context_profile", "legacy-bounded@1"))
+    projection = semantic.get("worker_projection") or {}
+    if declared_capsules is None and any(projection.get(field) != expected_policy[key] for field, key in (
+            ("selector", "worker_selector"), ("max_capsules", "worker_capsule_limit"),
+            ("max_bytes", "worker_max_bytes"))):
+        raise ValueError("initial semantic context differs from the frozen selection profile")
+    if projection.get("query") != prepared["query"]:
+        raise ValueError("initial semantic query differs from its literal public instruction")
+    if (prepared.get("semantic_context_profile", "legacy-bounded@1") != "legacy-bounded@1"
+            and semantic.get("objective") != semantic_context_objective(
+                prepared["semantic_context_profile"], prepared["query"])):
+        raise ValueError("initial semantic objective differs from its literal public instruction")
     retrieval = json.loads(load_code_retrieval_context(repository=root,
         artifact=metadata["Code retrieval artifact"], expected_sha256=metadata["Code retrieval sha256"], task_id=alias))
     indexed = _read(root, descriptor["index"])

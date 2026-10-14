@@ -175,7 +175,7 @@ def test_resource_pool_splits_validation_from_proof_solver_classes() -> None:
                 resource_class="cpu-proof-solver",
             ),
         ],
-        host=_host(worker_limit=4, available_worker_capacity=4),
+        host=_host(worker_limit=4, available_worker_capacity=4, capabilities=("cpu", "prover")),
     )
     by_id = {decision.lane_id: decision for decision in schedule.decisions}
     assert by_id["residual-a"].admitted is True
