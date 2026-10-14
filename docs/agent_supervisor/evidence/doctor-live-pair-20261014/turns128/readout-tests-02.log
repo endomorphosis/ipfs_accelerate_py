@@ -1,0 +1,16 @@
+test_actual_reward_is_independent_from_supervisor_completion (test_read_pilot.ReaderTests.test_actual_reward_is_independent_from_supervisor_completion) ... ok
+test_aggregate_completeness_disagreement_keeps_totals_unknown (test_read_pilot.ReaderTests.test_aggregate_completeness_disagreement_keeps_totals_unknown) ... ok
+test_conflicting_duplicate_refuses_aggregation (test_read_pilot.ReaderTests.test_conflicting_duplicate_refuses_aggregation) ... ok
+test_failure_usage_retained_and_raw_text_excluded (test_read_pilot.ReaderTests.test_failure_usage_retained_and_raw_text_excluded) ... ok
+test_final_envelope_does_not_fill_omitted_completeness (test_read_pilot.ReaderTests.test_final_envelope_does_not_fill_omitted_completeness) ... ok
+test_identical_duplicates_count_once (test_read_pilot.ReaderTests.test_identical_duplicates_count_once) ... ok
+test_missing_and_null_categories_keep_known_subtotal (test_read_pilot.ReaderTests.test_missing_and_null_categories_keep_known_subtotal) ... ok
+test_no_receipts_are_unknown_not_zero (test_read_pilot.ReaderTests.test_no_receipts_are_unknown_not_zero) ... ok
+test_reservations_alone_and_preprovider_failure_are_not_two_calls (test_read_pilot.ReaderTests.test_reservations_alone_and_preprovider_failure_are_not_two_calls) ... ok
+test_two_rounds_and_planning_count_separately (test_read_pilot.ReaderTests.test_two_rounds_and_planning_count_separately) ... ok
+test_unreceipted_attempt_suppresses_complete_not_observed (test_read_pilot.ReaderTests.test_unreceipted_attempt_suppresses_complete_not_observed) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.002s
+
+OK

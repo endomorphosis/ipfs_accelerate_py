@@ -1029,6 +1029,13 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
                 fields += ("provider", "model")
             if "representation_displacement" in row:
                 fields += ("provider", "model")
+            residual = row.get("doctor_residual_context")
+            if (type(residual) is dict
+                    and residual.get("schema") == "doctor-residual-router-context@2"):
+                # Bind Doctor capability to the original router settings. Do
+                # not recover missing values from the nested capability claim.
+                fields += ("provider", "requested_output_tokens",
+                           "provider_output_token_cap_enforced")
             rows.append({key: row[key] for key in fields if key in row})
         request = json.dumps(rows).encode()
         if len(rows) > MAX_RECEIPTS or len(request) > MAX_REQUEST_BYTES:

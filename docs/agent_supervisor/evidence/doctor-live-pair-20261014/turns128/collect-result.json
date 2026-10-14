@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "seconds": 0.2166228350251913,
+  "source_pins_unchanged": true,
+  "stderr": {
+    "bytes": 0,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/collect.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stdout": {
+    "bytes": 199450,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/collect.stdout",
+    "sha256": "717dbfbf1b91f4e65c57d649f222f4ab7d521a732e5bad3d87f7efb402bea2bb"
+  },
+  "step": "collect"
+}

@@ -1,0 +1,143 @@
+{
+  "files": [
+    {
+      "bytes": 1970,
+      "path": "collector-red01-result.json",
+      "sha256": "894e07639bf9a1a9b43110061918af90c548ddf9f57e5eeafa2e1d29892c062c",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/collector-red01-result.json"
+    },
+    {
+      "bytes": 205,
+      "path": "collector-red01-source-pins.json",
+      "sha256": "f1ef35a51f65ccb8f1486278dace383b4b6708eb9f27e7e47c8c75460386cc41",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/collector-red01-source-pins.json"
+    },
+    {
+      "bytes": 3205,
+      "path": "collector-red01.xml",
+      "sha256": "ad0125f3e570aa3b327bdd8d425273aeccb370eb3a3a436b09f3189603e2c06b",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/collector-red01.xml"
+    },
+    {
+      "bytes": 2126,
+      "path": "collector-green01-result.json",
+      "sha256": "67191d1b675a778e16f30ba6582049e3a53c41bd63657e8230a092e2607378a3",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/collector-green01-result.json"
+    },
+    {
+      "bytes": 658,
+      "path": "collector-green01-source-pins.json",
+      "sha256": "8143cfc105db054e7a96335fe841455037d7bd47db5e6459db6bdd904f1fc318",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/collector-green01-source-pins.json"
+    },
+    {
+      "bytes": 15165,
+      "path": "collector-green01.xml",
+      "sha256": "cb9e6c03e8da8199cbe2cb1d3991f948be8ba2ff5ad7b8214bd34bdef7a1dd58",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/collector-green01.xml"
+    },
+    {
+      "bytes": 1961,
+      "path": "grok-trailer-red01-result.json",
+      "sha256": "1b72a17ba2595e001660a829a2cc20bcbc86be72d54cdbc07cdc30ac80293780",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/grok-trailer-red01-result.json"
+    },
+    {
+      "bytes": 1501,
+      "path": "grok-trailer-red01-source-pins.json",
+      "sha256": "9e6039978afe6a1e87d3a0ecd74747deff14fc8d3bb8155e9de1ee1657a08480",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/grok-trailer-red01-source-pins.json"
+    },
+    {
+      "bytes": 17120,
+      "path": "grok-trailer-red01.xml",
+      "sha256": "4cbd326a13aa31c38fa11e728d3af9727908d88e772e3cd7fe88fb806a4f2edd",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/grok-trailer-red01.xml"
+    },
+    {
+      "bytes": 2079,
+      "path": "grok-trailer-green01-result.json",
+      "sha256": "71135ea45d6056ca1325ac2f225f795b947b04df90f9ee1dc9a269da71853c3e",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/grok-trailer-green01-result.json"
+    },
+    {
+      "bytes": 1966,
+      "path": "grok-trailer-green01-source-pins.json",
+      "sha256": "5a82c07483c8fdf5ae4992e94f13e9e949a6e554e0226b78c0ae2da245a66811",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/grok-trailer-green01-source-pins.json"
+    },
+    {
+      "bytes": 31147,
+      "path": "grok-trailer-green01.xml",
+      "sha256": "4571e5a7e964bd54c67884e5de355659b91ecc27802a0ca375ce1e057b27ed36",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/grok-trailer-green01.xml"
+    },
+    {
+      "bytes": 2080,
+      "path": "grok-trailer-green02-result.json",
+      "sha256": "84dccaf893572b448eca16652787ba7bf32848b5518622c7be59402d0992e785",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/grok-trailer-green02-result.json"
+    },
+    {
+      "bytes": 1966,
+      "path": "grok-trailer-green02-source-pins.json",
+      "sha256": "f9d6cafbdd547ef830cb837096c6ac353546ebafe50d3211f56e76d7fd5cb2d6",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/grok-trailer-green02-source-pins.json"
+    },
+    {
+      "bytes": 34559,
+      "path": "grok-trailer-green02.xml",
+      "sha256": "a4fce2cbb23c91dc3838d8b13883cbef935aa25341e0dcee41c0dfd4e068f79c",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/grok-trailer-green02.xml"
+    },
+    {
+      "bytes": 1999,
+      "path": "continuation-cap8-01-result.json",
+      "sha256": "6e2a94214acedd47e32056127eacba10d2cc70aa466722819f9044de3f5d7d99",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/continuation-cap8-01-result.json"
+    },
+    {
+      "bytes": 584,
+      "path": "continuation-cap8-01-source-pins.json",
+      "sha256": "852fb1514ace9555b4de3fb783a254ceaf3c3200b41be47a6848099ac7733f09",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/continuation-cap8-01-source-pins.json"
+    },
+    {
+      "bytes": 2917,
+      "path": "continuation-cap8-01.xml",
+      "sha256": "daa88bbf66a076750e6fdd1ba09827f8a5fa6e28cf99e37c5d693d5e3b28dd6b",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/continuation-cap8-01.xml"
+    },
+    {
+      "bytes": 4135,
+      "path": "run-tests.py",
+      "sha256": "0e5f381099665f1e177f01e4cbf5dadfd635685d6a32c7879c907f3fe3cfc6a5",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/run-tests.py"
+    },
+    {
+      "bytes": 2108,
+      "path": "diagnostics-multiple01-result.json",
+      "sha256": "47818dda9424663ce7f0ea4db7532204e31ccc279b6e09cc36572d282bf7f703",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/diagnostics-multiple01-result.json"
+    },
+    {
+      "bytes": 2447,
+      "path": "diagnostics-multiple01-source-pins.json",
+      "sha256": "5835cdc3be614d0d69be417aa927bf4dc8a6af0e47f4cf7e815261e5b349d853",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/diagnostics-multiple01-source-pins.json"
+    },
+    {
+      "bytes": 18918,
+      "path": "diagnostics-multiple01.xml",
+      "sha256": "2f7c1f45a98b338252f7d2a2f4f19dba066f1fc7315d8412fa4919e9b908b1ad",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/diagnostics-multiple01.xml"
+    },
+    {
+      "bytes": 8363,
+      "path": "independent-review.json",
+      "sha256": "d301dcdd713dda1baa468d36c747b7ffe16e882caeb2cc0cbadf6b825ba834ad",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-live-fixes-20261014/independent-review.json"
+    }
+  ],
+  "schema": "doctor-live-fixes-copy-provenance@1"
+}

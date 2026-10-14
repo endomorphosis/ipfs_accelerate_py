@@ -78,6 +78,49 @@ def test_end_event_then_sleep_stays_timeout_with_observation_and_prompt_cleanup(
     assert not Path((tmp_path / "prompt_path").read_text()).exists()
 
 
+@pytest.mark.parametrize("closing", [{"type": "end"}, end(stopReason="max_turn_requests")])
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_max_turns_then_end_retains_failure_and_only_explicit_final_usage(provider, tmp_path, closing, exit_code):
+    from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_usage_receipt, grok_outcome_receipt
+    frames = [*({"type": "usage", "stopReason": "tool_use", "usage": {"input_tokens": 9000}}
+                for _ in range(8)), {"type": "max_turns_reached"}, closing]
+    argv = command(tmp_path, frames, suffix=f"sys.exit({exit_code})\n")
+    with pytest.raises(llm_router.LLMRouterError):
+        provider.generate("private prompt", timeout=3, grok_cli_cmd=argv, grok_stream_progress=True)
+    observation = get_last_cli_observation("grok_cli")
+    outcome = grok_outcome_receipt(observation)
+    assert outcome["reason_code"] == "max_turns"
+    assert outcome["envelope_observed"] is True
+    assert observation["native_grok_task_complete"] is False
+    usage = grok_usage_receipt(observation)
+    if "usage" in closing:
+        assert usage["usage"] == {"input_tokens": 12, "output_tokens": 4}
+        assert usage["usage_complete_observed"] is None
+        assert usage["billing_total_verified"] is False
+    else:
+        assert usage is None
+    progress = observation["native_grok_progress"]
+    assert progress["stream_tainted"] is False
+    assert progress["stream_complete"] is True
+    assert progress["response_usable"] is False
+    assert progress["events_after_final"] == 1
+    assert progress["usage_observations"]["retained_events"] == 8
+    assert progress["usage_observations"]["summation_permitted"] is False
+    assert not Path((tmp_path / "prompt_path").read_text()).exists()
+
+
+def test_error_with_end_marker_preserves_failure_without_native_usage(provider, tmp_path):
+    argv = command(tmp_path, [{"type": "error", "message": "private failure"}, {"type": "end"}],
+                   suffix="sys.exit(1)\n")
+    with pytest.raises(llm_router.LLMRouterError):
+        provider.generate("private prompt", timeout=3, grok_cli_cmd=argv, grok_stream_progress=True)
+    observation = get_last_cli_observation("grok_cli")
+    assert observation["native_grok_reason_code"] == "execution_error"
+    assert "native_grok_usage_observed" not in observation
+    assert observation["native_grok_progress"]["stream_tainted"] is False
+    assert observation["native_grok_progress"]["response_usable"] is False
+
+
 @pytest.mark.parametrize("frames", [
     [{"type": "text", "data": "partial only"}],
     [{"type": "text", "data": "answer"}, end(), end()],

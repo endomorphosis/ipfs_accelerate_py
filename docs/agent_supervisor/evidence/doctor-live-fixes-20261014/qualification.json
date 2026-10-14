@@ -1,0 +1,102 @@
+{
+  "all_test_cases_distinct": true,
+  "b_second_child_failure_identified": false,
+  "base_runtime_commit": "3a7ec1c97be93dab918f005c93a9bbdb42409512",
+  "current_source_pins_match_qualified_runs": true,
+  "failed": 0,
+  "fresh_container_qualification_included": false,
+  "historical_live_audits_reclassified": false,
+  "limitations": [
+    "Native child continuation uses provider and UID doubles.",
+    "Worker-entry forwarding uses the real installed parser with a stubbed router entrypoint.",
+    "Original B terminal payload and child-error population remain unavailable.",
+    "Public behavioral/performance validation is planned, not implemented."
+  ],
+  "live_provider_calls": 0,
+  "passed": 426,
+  "runs": [
+    {
+      "junit": "collector-green01.xml",
+      "label": "collector-green01",
+      "modules": [
+        "test/api/test_doctor_router_budget_capability.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py"
+      ],
+      "passed": 79,
+      "result": "collector-green01-result.json",
+      "seconds": 84.49276397400536,
+      "source_pins": "collector-green01-source-pins.json"
+    },
+    {
+      "junit": "grok-trailer-green02.xml",
+      "label": "grok-trailer-green02",
+      "modules": [
+        "test/api/test_grok_stream_capture.py",
+        "test/api/test_grok_stream_usage.py",
+        "test/api/test_grok_stream_router.py",
+        "test/api/test_grok_nonstream_outcome.py"
+      ],
+      "passed": 213,
+      "result": "grok-trailer-green02-result.json",
+      "seconds": 33.107232190901414,
+      "source_pins": "grok-trailer-green02-source-pins.json"
+    },
+    {
+      "junit": "continuation-cap8-01.xml",
+      "label": "continuation-cap8-01",
+      "modules": [
+        "test/api/test_doctor_candidate_dispatch.py",
+        "test/api/test_grok_coding_turn_bound.py"
+      ],
+      "passed": 17,
+      "result": "continuation-cap8-01-result.json",
+      "seconds": 359.9189756179694,
+      "source_pins": "continuation-cap8-01-source-pins.json"
+    },
+    {
+      "junit": "diagnostics-multiple01.xml",
+      "label": "diagnostics-multiple01",
+      "modules": [
+        "test/api/test_bridge_failure_diagnostics.py",
+        "test/api/test_terminal_failure_observation.py",
+        "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py"
+      ],
+      "passed": 117,
+      "result": "diagnostics-multiple01-result.json",
+      "seconds": 70.93059049802832,
+      "source_pins": "diagnostics-multiple01-source-pins.json"
+    }
+  ],
+  "schema": "doctor-live-repairs-qualification@1",
+  "skipped": 0,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "cf1fb606552145698976a5b6cbfbe064f4c81367a39a1dce882b83491908bf24",
+    "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py": "da407a63226b6b8252ff04524a13fbff7daa6b50dc1e724c501205c70d72ca3e",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py": "cba0d89f4945d9a8b60542b6557fc2ab340b9e4e0604cd1e3cd305fb8112745a",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py": "c325940970169404ca2f4e67b2b241ff33ecbeac9d4855d9b5d3112346e86998",
+    "docs/agent_supervisor/evidence/doctor-live-fixes-20261014/run-tests.py": "0e5f381099665f1e177f01e4cbf5dadfd635685d6a32c7879c907f3fe3cfc6a5",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns128/read_pilot.py": "09b7b5ec3e55bb3a073cc0c92dca9df7d21d35c3b3f53cff614b64fcf1332ff1",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns128/run.py": "7314d5322516e47ee3b5751ff8f2f4d33305cc46e81748d6534dd1c88dd3d769",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns128/test_read_pilot.py": "5138bafa0cd18c7f955a21eb55c593af46ab884d115bb8869951f7f435c2ca32",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns8/read_pilot.py": "b6a390fa0c92d624ee77afa98aeb34e50e43a1021ce1abf5cc342ad7a9d76a1e",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns8/run.py": "1ead2d3e1cb2d1db73f06ba89a02b0decd7af73e1c942527d7f5630e2c44efbc",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns8/test_read_pilot.py": "5138bafa0cd18c7f955a21eb55c593af46ab884d115bb8869951f7f435c2ca32",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "4e627295fd16a87138005f18e47b19e704938d912e9e77522cf60c325a0486aa",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "cb1d7722b1983dc9bd316b4ef39ee203ae63b2424617a186ccbb10b167006ca9",
+    "test/api/test_bridge_failure_diagnostics.py": "d6d98005e5ad638b870c3171526e7a1f5e346b91d1bad7cca080083247262fce",
+    "test/api/test_doctor_candidate_dispatch.py": "dddf403737d86b79ef0025d4a946564548f57ad3dbcaab4977b250be64cb369b",
+    "test/api/test_doctor_router_budget_capability.py": "d1234e6bc7762a43393fad92ffffcfdd897abc934b225941c9e0ec3fcb7731d8",
+    "test/api/test_grok_coding_turn_bound.py": "02da81f059d8db57c8f24e623642d3dcf199f9c8ea6813bdc6356e465c8a2474",
+    "test/api/test_grok_nonstream_outcome.py": "a9eb81007646deb9e6bb8138a71439ba788d41b5f308b66cf6c24f21e1ea1787",
+    "test/api/test_grok_stream_capture.py": "d0e77f56d5c19f334f58fe8bb920f229a33565787d4686f44439dd10eecc9951",
+    "test/api/test_grok_stream_router.py": "86f66848758616874ab6cb8b8a453e24576cbfdf5cfc2de5a8a918ef391fa797",
+    "test/api/test_grok_stream_usage.py": "d35b26cf12d42253622c271f18fe2ba0f1f43cffc8c11299e9a0771271285d6d",
+    "test/api/test_terminal_failure_observation.py": "eb7b486e1f61f83145a12d76a214f22d2acda410d882285be845001bb2561560"
+  },
+  "superseded_runs": [
+    "collector-red01",
+    "grok-trailer-red01",
+    "grok-trailer-green01"
+  ]
+}

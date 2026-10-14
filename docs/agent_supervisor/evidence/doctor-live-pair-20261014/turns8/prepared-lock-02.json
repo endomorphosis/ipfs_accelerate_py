@@ -1,0 +1,75 @@
+{
+  "execution_started": false,
+  "files": [
+    {
+      "bytes": 146782,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/recipe.json",
+      "sha256": "2a0be4a8398720be8657e06f18a256711e4d23cd91d6e304e0fcd8c0c4d29a7c"
+    },
+    {
+      "bytes": 1671,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/environment.json",
+      "sha256": "48e249b0ad4a9cc2416e3524603bbcd4787aecb9bc4ce6067ffbb6af5684c4f4"
+    },
+    {
+      "bytes": 8874,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/run.py",
+      "sha256": "1ead2d3e1cb2d1db73f06ba89a02b0decd7af73e1c942527d7f5630e2c44efbc"
+    },
+    {
+      "bytes": 2835,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/adaptation.json",
+      "sha256": "8c13272173d6d383927f192ce6b00ea3fc24f542fc8664584d02397cdfbd125f"
+    },
+    {
+      "bytes": 1067,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/verify-result.json",
+      "sha256": "9c6fb74741f7402ca0c97701fe8b7aea3288dce5569322a7a408ea88f1d2b0c2"
+    },
+    {
+      "bytes": 535,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/prepare-result.json",
+      "sha256": "b7c4a43999f1d2ec762a69007101db10bb706d8a80082c55a8af5a0d3781fa0c"
+    },
+    {
+      "bytes": 1215,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/reporting-freeze.json",
+      "sha256": "9357f3a7f461aab5cc22b2bb85098b715432b9079d6de8aac76e7a0e0f009073"
+    },
+    {
+      "bytes": 5831,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/matched-preparation.json",
+      "sha256": "80a31e99c590386149fed39e5bcae89f8b9ca54424296310f17fa65c58205b49"
+    },
+    {
+      "bytes": 3384,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/config.json",
+      "sha256": "9e1647a71cfcc2f39809247673479f1b3421eb1661e51db131ff5304efab2be5"
+    },
+    {
+      "bytes": 89234,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/preparation.json",
+      "sha256": "8deddb5f0ee1ca9041ef69a9da780624034b924291a7e7b88f2c72a8b9310190"
+    },
+    {
+      "bytes": 2007,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/provider-readiness/grok-metadata-precheck.json",
+      "sha256": "c1eada98436f3a3903f30e25feb400c4c3a3cc734e368286361220df338f2202"
+    },
+    {
+      "bytes": 1158,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/adaptation-02.json",
+      "sha256": "6e934feb380faaaa60b343c18f0be32c414307d6ca2eaaa12de41145a305dbe1"
+    }
+  ],
+  "provider_calls": 0,
+  "schema": "doctor-turns8-prepared-lock@2",
+  "serial_cleanup_clearance_required": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/serial-predecessor-clearance.json",
+  "serial_predecessor_execute_result": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/execute-result.json",
+  "source_pins_unchanged": true,
+  "supersedes": {
+    "bytes": 2755,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/prepared-lock.json",
+    "sha256": "74e5807b8afca155b08069f07e117f753ac46ad7b86829fd883bd8aa91338626"
+  }
+}

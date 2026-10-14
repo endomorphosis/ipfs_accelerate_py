@@ -1,0 +1,148 @@
+{
+  "authority": {
+    "completion_authority": false,
+    "observation_only": true,
+    "retry_authority": false,
+    "settlement_authority": false
+  },
+  "base_commit": "3a7ec1c97be93dab918f005c93a9bbdb42409512",
+  "blocking_findings": [],
+  "issues_raised_and_resolved": [
+    {
+      "finding": "A retained ambiguous child report does not establish multiple valid error rows; it can also represent a valid row mixed with malformed matching data.",
+      "id": "ambiguous-child-population-wording",
+      "resolution": "README and pair summary now state that the original row population and exact second-child exception are unavailable.",
+      "status": "resolved"
+    },
+    {
+      "finding": "Python equality could equate boolean, integer and floating-point frozen usage values; replacing an earlier terminal also needed to preserve existing identity and spend fields.",
+      "id": "typed-frozen-terminal-bindings",
+      "resolution": "The parser now compares every existing supported identity/spend field with type-sensitive canonical JSON equality, requires presence, and has conflict/absence/type regressions.",
+      "status": "resolved"
+    }
+  ],
+  "limitations": [
+    "This is an independent source/evidence review, not a claim to have rerun the owning agents' test qualifications.",
+    "Both recorded live trials failed the official speed check; no token-saving or benchmark-advantage claim is established.",
+    "Eight-turn coding usage and its exact second-child exception remain unknown; per-event usage is not summed.",
+    "The reviewed fixes were not present in those live trials and require a fresh qualified run.",
+    "Signed public behavioral/performance validation and validation-failure continuation remain planned work, not implemented by these fixes."
+  ],
+  "private_owner_state_exported": false,
+  "raw_provider_text_exported": false,
+  "recorded_at_utc": "2026-10-14T19:59:06.951490Z",
+  "reviewed_files": [
+    {
+      "bytes": 70472,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "cf1fb606552145698976a5b6cbfbe064f4c81367a39a1dce882b83491908bf24"
+    },
+    {
+      "bytes": 6875,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py",
+      "sha256": "da407a63226b6b8252ff04524a13fbff7daa6b50dc1e724c501205c70d72ca3e"
+    },
+    {
+      "bytes": 17791,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+      "sha256": "4e627295fd16a87138005f18e47b19e704938d912e9e77522cf60c325a0486aa"
+    },
+    {
+      "bytes": 24974,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+      "relative_path": "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+      "sha256": "cb1d7722b1983dc9bd316b4ef39ee203ae63b2424617a186ccbb10b167006ca9"
+    },
+    {
+      "bytes": 22307,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/test/api/test_bridge_failure_diagnostics.py",
+      "relative_path": "test/api/test_bridge_failure_diagnostics.py",
+      "sha256": "d6d98005e5ad638b870c3171526e7a1f5e346b91d1bad7cca080083247262fce"
+    },
+    {
+      "bytes": 22805,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/test/api/test_doctor_candidate_dispatch.py",
+      "relative_path": "test/api/test_doctor_candidate_dispatch.py",
+      "sha256": "dddf403737d86b79ef0025d4a946564548f57ad3dbcaab4977b250be64cb369b"
+    },
+    {
+      "bytes": 14507,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/test/api/test_doctor_router_budget_capability.py",
+      "relative_path": "test/api/test_doctor_router_budget_capability.py",
+      "sha256": "d1234e6bc7762a43393fad92ffffcfdd897abc934b225941c9e0ec3fcb7731d8"
+    },
+    {
+      "bytes": 20897,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/test/api/test_grok_stream_capture.py",
+      "relative_path": "test/api/test_grok_stream_capture.py",
+      "sha256": "d0e77f56d5c19f334f58fe8bb920f229a33565787d4686f44439dd10eecc9951"
+    },
+    {
+      "bytes": 10264,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/test/api/test_grok_stream_router.py",
+      "relative_path": "test/api/test_grok_stream_router.py",
+      "sha256": "86f66848758616874ab6cb8b8a453e24576cbfdf5cfc2de5a8a918ef391fa797"
+    },
+    {
+      "bytes": 8421,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/docs/agent_supervisor/evidence/doctor-live-pair-20261014/README.md",
+      "relative_path": "docs/agent_supervisor/evidence/doctor-live-pair-20261014/README.md",
+      "sha256": "21c7c66d00d8effc61836da8ba853174b83e370f79bd505d72bd2be9472baf56"
+    },
+    {
+      "bytes": 3445,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/docs/agent_supervisor/evidence/doctor-live-pair-20261014/pair-summary.json",
+      "relative_path": "docs/agent_supervisor/evidence/doctor-live-pair-20261014/pair-summary.json",
+      "sha256": "034e90f938b11c4753f6fb057d27eb5d3e2d0d895982807f88d742810cbbe939"
+    },
+    {
+      "bytes": 13414,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/docs/agent_supervisor/evidence/doctor-live-pair-20261014/diagnostic-observations.json",
+      "relative_path": "docs/agent_supervisor/evidence/doctor-live-pair-20261014/diagnostic-observations.json",
+      "sha256": "34a00aaa6724e2d72702a6e893224fb7880400a5aa8d35b565b4e055f2dc43e3"
+    }
+  ],
+  "reviewer": "/root/doctor_candidate_context",
+  "schema": "doctor-live-fixes-independent-review@1",
+  "scope": [
+    "Strict original-field binding and schema1 compatibility across Doctor audit serialization and independent child replay.",
+    "Explicit Grok8 argument forwarding through the installed entrypoint and native two-child fixture.",
+    "Grok terminal trailer handling, frozen identity/spend integrity, failure preservation and non-additive usage accounting.",
+    "Bounded unattributed multi-error diagnostics, closed validators, legacy preservation and native settlement/sidecar/export regressions.",
+    "Matched-pair evidence arithmetic, lifecycle/result joins, provenance, uncertainty, privacy and outstanding public-validation plan."
+  ],
+  "status": "review_complete_no_blocking_findings",
+  "verification": {
+    "benchmark_launches": 0,
+    "copied_files_verified": 43,
+    "copy_checks": [
+      "exact byte equality with original",
+      "declared byte length",
+      "declared SHA-256"
+    ],
+    "copy_provenance": {
+      "bytes": 11623,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/docs/agent_supervisor/evidence/doctor-live-pair-20261014/copy-provenance.json",
+      "sha256": "a1752a6bba1596ddd01c43a95e53ae8aae605b9946d63af83492b115f41657b6"
+    },
+    "hidden_verifier_source_read": false,
+    "live_trial_feedback_supplied": false,
+    "provider_calls": 0,
+    "reviewed_regression_quality": "Real collector serialization and independent interpreter replay; real malformed-receipt module entrypoint; native isolated child processes and bridge settlement/sidecar/export; strict tamper and bounded-population cases.",
+    "source_edits": 0,
+    "test_reruns": 0,
+    "trial_joins_verified": [
+      "summary token subtotals",
+      "official reward",
+      "native task-completed report",
+      "input-audit status",
+      "source artifact hashes and lengths",
+      "child process lifecycle rows",
+      "official result names and statuses"
+    ]
+  },
+  "worktree": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014"
+}

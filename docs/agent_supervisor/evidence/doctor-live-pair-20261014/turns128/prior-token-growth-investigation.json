@@ -1,0 +1,56 @@
+{
+  "schema": "doctor-token-growth-investigation@1",
+  "retained_prior_report": {
+    "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__WBeUrpM/agent/supervisor-result.json",
+    "sha256": "1e43699d24137927c0cf450fe8c1b9f654039e62333449fd7e45bd4c72934cda"
+  },
+  "invocations": [
+    {
+      "phase": "planning",
+      "invocation_id": "a1f8f12956e6417f8db2786d6aa793dc",
+      "router_calls": 1,
+      "native_usage": {
+        "input_tokens": 15817,
+        "cached_input_tokens": 1536,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 6705,
+        "total_tokens": 24058,
+        "reasoning_output_tokens": 4919
+      },
+      "usage_complete_observed": null,
+      "prompt_bytes": 34233,
+      "native_cli_turns": 1
+    },
+    {
+      "phase": "coding",
+      "invocation_id": "22126f97a62d4c0dbcc1a7a1734e1dd4",
+      "router_calls": 1,
+      "native_usage": {
+        "input_tokens": 187681,
+        "cached_input_tokens": 1510912,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 52168,
+        "total_tokens": 1750761,
+        "reasoning_output_tokens": 34866
+      },
+      "usage_complete_observed": null,
+      "prompt_bytes": 79311,
+      "native_cli_turns": 26
+    }
+  ],
+  "historical_authored_redundancy_census": {
+    "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-dispatch-20261014/docs/agent_supervisor/evidence/context-projection-pair-20261013/investigation/next-context-opportunities.json",
+    "sha256": "43c6fe3a23efd4799c6606f828db37a84c66c7f1012e0c8dca2da2ab19566891"
+  },
+  "observed_facts": [
+    "Prior final native envelopes are dominated by cache-read input; reasoning output is included in output.",
+    "Prior native stream usage counters are explicitly not summable and their semantics are unverified.",
+    "The current live pair changes the native coding-turn limit from128 to8 while preserving the two-attempt policy."
+  ],
+  "inferences": [
+    "Growing cached-input observations are consistent with conversation-history amplification; exact per-tool attribution is unavailable."
+  ],
+  "next_candidate": "Opt-in exact reference for duplicated native policy metadata, preserving exact reconstruction and selecting only a smaller complete input.",
+  "complete_run_token_savings_claimed": false,
+  "provider_calls_by_observer": 0
+}

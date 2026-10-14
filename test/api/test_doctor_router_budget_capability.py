@@ -7,6 +7,8 @@ declared proposal-token budget and does not become permission to continue.
 import copy
 import hashlib
 import json
+import subprocess
+import sys
 
 import pytest
 
@@ -162,3 +164,85 @@ def test_candidate_receipt_cannot_inject_doctor_budget_capability(tmp_path):
         receipt[key] = 1
     with pytest.raises(ValueError, match="candidate Doctor budget capability is not admitted"):
         audit._receipt(receipt, tmp_path)
+
+
+@pytest.mark.parametrize("schema", [1, 2])
+def test_collector_preserves_doctor_budget_inputs_for_independent_child_replay(
+        retained, provider, monkeypatch, scenario, tmp_path, schema):
+    request, prompt, receipt, (model_input, _) = _invoke(
+        retained, provider, monkeypatch, scenario, schema=schema)
+    native_run = subprocess.run
+    captured = []
+    # Keep the collector's real projection/serialization boundary. This native
+    # fixture has one semantic capsule; replay it in an independent interpreter
+    # using the exact request received by the final-audit child.
+    code = """import hashlib, json, sys
+from pathlib import Path
+from benchmarks.agent_supervisor.container_coding import terminal_context_audit as audit
+body = json.load(sys.stdin)
+receipt = audit._receipt(body['receipt'], Path(body['workspace_root']))
+model, _, checks = audit._model_projection(rendered=body['prompt'], receipt=receipt,
+    repository=Path(body['repository']))
+result = audit._base(reason='test_child_projection')
+fields = ('provider', 'requested_output_tokens', 'provider_output_token_cap_enforced')
+result.update(received_budget_inputs={key: receipt[key] for key in fields if key in receipt},
+    reconstructed_model_sha256=hashlib.sha256(model.encode()).hexdigest(), checks=checks)
+print(json.dumps(result))
+"""
+    def child(argv, *, input, **kwargs):
+        assert argv[:5] == [sys.executable, "-B", "-P", "-m", audit.__name__]
+        rows = json.loads(input)
+        captured.extend(rows)
+        body = dict(receipt=rows[0], prompt=prompt, repository=str(request["repository"]),
+                    workspace_root=str(request["workspace"].parent))
+        return native_run([sys.executable, "-B", "-P", "-c", code],
+                          input=json.dumps(body).encode(), **kwargs)
+    monkeypatch.setattr(audit.subprocess, "run", child)
+    result = audit.collect_terminal_context_audit(state=tmp_path / "state",
+        receipts=[{**receipt, "phase": "coding"}],
+        workspace_root=request["workspace"].parent, timeout_seconds=10)
+    fields = ("provider", "requested_output_tokens", "provider_output_token_cap_enforced")
+    expected = {key: receipt[key] for key in fields} if schema == 2 else {}
+    assert {key: captured[0][key] for key in fields if key in captured[0]} == expected
+    assert result["received_budget_inputs"] == expected
+    assert result["reconstructed_model_sha256"] == hashlib.sha256(model_input.encode()).hexdigest()
+    assert all(result["checks"].values())
+    assert result["provider_calls"] == 0
+
+
+def test_collector_keeps_missing_and_forged_doctor_inputs_invalid_in_actual_child(
+        retained, provider, monkeypatch, scenario, tmp_path):
+    request, _, receipt, _ = _invoke(retained, provider, monkeypatch, scenario)
+    native_run = subprocess.run
+    captured = []
+    def child(argv, *, input, **kwargs):
+        assert argv[:5] == [sys.executable, "-B", "-P", "-m", audit.__name__]
+        captured.extend(json.loads(input))
+        return native_run(argv, input=input, **kwargs)
+    monkeypatch.setattr(audit.subprocess, "run", child)
+    fields = ("provider", "requested_output_tokens", "provider_output_token_cap_enforced")
+    changes = [(key, "missing", None) for key in fields]
+    changes += [(key, "value", None) for key in fields]
+    changes += [("provider", "value", "grok_cli"),
+                ("requested_output_tokens", "value", 129),
+                ("requested_output_tokens", "value", True),
+                ("provider_output_token_cap_enforced", "value", True),
+                ("provider_output_token_cap_enforced", "value", 0)]
+    for key, change, value in changes:
+        forged = copy.deepcopy(receipt)
+        forged["phase"] = "coding"
+        if change == "missing":
+            del forged[key]
+        else:
+            forged[key] = value
+        result = audit.collect_terminal_context_audit(state=tmp_path / "absent-state",
+            receipts=[forged], workspace_root=request["workspace"].parent, timeout_seconds=10)
+        expected = {key: forged[key] for key in fields if key in forged}
+        actual = {key: captured[-1][key] for key in fields if key in captured[-1]}
+        # JSON comparison also distinguishes false from numeric zero.
+        assert json.dumps(actual, sort_keys=True) == json.dumps(expected, sort_keys=True)
+        assert result["status"] == "unknown", (key, change, value, result)
+        assert result["reason"] == "no_usable_coding_receipt"
+        assert result["usable_coding_receipts"] == 0
+        assert result["read_errors"] == [{"kind": "receipt", "error_type": "InvalidReceipt"}]
+        assert result["capsules"] == []

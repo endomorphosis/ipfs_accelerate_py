@@ -1,5 +1,6 @@
 """Bounded native observations preserve failure decisions and exclude bodies."""
 import hashlib
+import copy
 import json
 import linecache
 import os
@@ -187,17 +188,96 @@ def test_child_log_must_match_exact_open_writer_inode(tmp_path, change):
         assert diagnostics.child_report_from_log(path, writer)["status"] == "unavailable"
 
 
+def _distinct_envelopes(count):
+    rows = []
+    for number in range(count):
+        row = _envelope()
+        row["diagnostic"]["exceptions"][0]["frames"] = [
+            {"file": "router_implementation_runner.py", "line": number+1}]
+        rows.append(row)
+    return rows
+
+
+def _read_child_rows(tmp_path, rows):
+    path = tmp_path / "multiple.log"
+    with path.open("w") as writer:
+        writer.write("".join(json.dumps(row) + "\n" for row in rows))
+        return diagnostics.child_report_from_log(path, writer)
+
+
+@pytest.mark.parametrize("count", [2, 4])
+def test_distinct_closed_child_errors_are_retained_without_log_order_or_attempt_attribution(tmp_path, count):
+    rows = _distinct_envelopes(count)
+    result = _read_child_rows(tmp_path, rows)
+    assert result == _read_child_rows(tmp_path, list(reversed(rows)))
+    assert result["schema"] == diagnostics.MULTIPLE_CHILD_SCHEMA
+    assert result["status"] == "observed_multiple_unattributed"
+    assert result["observed_record_count"] == count
+    assert result["attempt_attribution_verified"] is False
+    assert result["provider_dispatch_observed"] is None
+    assert result["completion_authority"] is result["retry_authority"] is result["settlement_authority"] is False
+    assert diagnostics.validate_child_report(result) == result
+    assert {json.dumps(row, sort_keys=True) for row in result["diagnostics"]} == {
+        json.dumps(row, sort_keys=True) for row in rows}
+
+
+@pytest.mark.parametrize("mutation", ["bool_count", "wrong_count", "too_many", "duplicate",
+    "reversed", "authority", "numeric_false", "dispatch", "attribution", "raw_body", "extra", "schema"])
+def test_multiple_child_report_is_closed_and_never_becomes_dispatch_evidence(tmp_path, mutation):
+    value = _read_child_rows(tmp_path, _distinct_envelopes(2))
+    if mutation == "bool_count": value["observed_record_count"] = True
+    elif mutation == "wrong_count": value["observed_record_count"] = 3
+    elif mutation == "too_many":
+        value.update(diagnostics=_distinct_envelopes(5), observed_record_count=5)
+    elif mutation == "duplicate": value["diagnostics"][1] = copy.deepcopy(value["diagnostics"][0])
+    elif mutation == "reversed": value["diagnostics"].reverse()
+    elif mutation == "authority": value["retry_authority"] = True
+    elif mutation == "numeric_false": value["attempt_attribution_verified"] = 0
+    elif mutation == "dispatch": value["provider_dispatch_observed"] = False
+    elif mutation == "attribution": value["attempt_attribution_verified"] = True
+    elif mutation == "raw_body": value["diagnostics"][0]["message"] = "private error body"
+    elif mutation == "extra": value["child_session"] = "invented identity"
+    else: value["schema"] = "router-child-failure-observations@2"
+    assert diagnostics.validate_child_report(value) is None
+
+
+@pytest.mark.parametrize("mutation", ["duplicate", "overflow", "invalid_envelope", "conflicting_type", "malformed", "oversized"])
+def test_multiple_child_logs_never_select_a_valid_subset(tmp_path, mutation):
+    rows = _distinct_envelopes(2)
+    if mutation == "duplicate": rows.append(copy.deepcopy(rows[0]))
+    elif mutation == "overflow": rows = _distinct_envelopes(5)
+    elif mutation == "invalid_envelope": rows[1]["message"] = "private error body"
+    elif mutation == "conflicting_type": rows[1]["error_type"] = "RuntimeError"
+    path = tmp_path / "mixed.log"
+    with path.open("w") as writer:
+        writer.write("".join(json.dumps(row) + "\n" for row in rows))
+        if mutation == "malformed": writer.write('{"schema":"router-implementation-error@2",broken}\n')
+        elif mutation == "oversized": writer.write(json.dumps({"schema": "router-implementation-error@2", "body": "x"*17000})+"\n")
+        result = diagnostics.child_report_from_log(path, writer)
+    assert result == diagnostics.missing_child_report("ambiguous")
+
+
 @pytest.mark.parametrize("pooled", [False, True])
-def test_actual_native_pre_receipt_failure_retains_closed_diagnostics(tmp_path, monkeypatch, pooled):
+@pytest.mark.parametrize("multiple", [False, True])
+def test_actual_native_pre_receipt_failure_retains_closed_diagnostics(tmp_path, monkeypatch, pooled, multiple):
     from test.api.test_native_provider_failure_settlement import _native_chain
     daemon, bridge, portals = _native_chain(tmp_path, monkeypatch, pooled=pooled)
-    daemon.execution_state_dir = tmp_path / "native-state"
+    daemon.execution_state_dir = tmp_path / "native-state/run"
     assert daemon.events_path is None
     root = Path(__file__).resolve().parents[2]
-    (tmp_path / "router_timeout.py").write_text(
+    script = tmp_path / "router_timeout.py"
+    script.write_text(
         "import sys\nsys.path.insert(0," + repr(str(root)) + ")\n"
         "from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner\n"
         "sys.argv=['runner','--model','fixture','--timeout','0']\nraise SystemExit(runner.main())\n")
+    if multiple:
+        child = ("import sys\nsys.path.insert(0," + repr(str(root)) + ")\n"
+            "from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner\n"
+            "raise SystemExit(runner.main())\n")
+        script.write_text("import subprocess,sys\nchild=" + repr(child) + "\n"
+            "for args in (['--model','fixture','--timeout','0'],['--provider','grok_cli','--model','wrong-model']):\n"
+            " result=subprocess.run([sys.executable,'-B','-P','-c',child,*args],input=b'Authored prompt')\n"
+            " assert result.returncode==1\nraise SystemExit(1)\n")
     try:
         result = daemon.run_once()
         observed = result["implementation_result"]["bridge_failure_diagnostic"]
@@ -207,8 +287,15 @@ def test_actual_native_pre_receipt_failure_retains_closed_diagnostics(tmp_path, 
         assert observed["callback"]["state"] == "failed_outcome_settled"
         assert observed["callback"]["native_exit"]["subreaper_children_absent"] is True
         child = observed["child_reported_router_failure"]
-        assert child["status"] == "observed"
-        assert child["diagnostic"]["diagnostic"]["phase"] == "argument_validation"
+        if multiple:
+            assert child["status"] == "observed_multiple_unattributed"
+            assert child["observed_record_count"] == 2
+            assert child["attempt_attribution_verified"] is False
+            assert child["provider_dispatch_observed"] is None
+            assert all(row["diagnostic"]["phase"] == "argument_validation" for row in child["diagnostics"])
+        else:
+            assert child["status"] == "observed"
+            assert child["diagnostic"]["diagnostic"]["phase"] == "argument_validation"
         attempt = daemon.get_attempt(result["attempt_id"])
         assert attempt.status == "failed"
         assert daemon.task_source.get(attempt.task_cid).status == "blocked"
@@ -225,6 +312,13 @@ def test_actual_native_pre_receipt_failure_retains_closed_diagnostics(tmp_path, 
         assert envelope["attempt_id_sha256"] == hashlib.sha256(attempt.attempt_id.encode()).hexdigest()
         assert sidecar.stat().st_size <= diagnostics.OBSERVATION_MAX_BYTES
         assert list(daemon.execution_state_dir.iterdir()) == [sidecar]
+        from benchmarks.agent_supervisor.container_coding.terminal_failure_observation import bridge_failure
+        exported = bridge_failure(daemon.execution_state_dir.parent, task_cid=attempt.task_cid,
+            attempt_id_sha256=hashlib.sha256(attempt.attempt_id.encode()).hexdigest(), phase="terminal_failure")
+        assert exported["status"] == "observed"
+        assert exported["diagnostic"]["child_reported_router_failure"] == child
+        assert exported["provider_dispatch_observed"] is None
+        assert exported["retry_authority"] is False
         logs = list(bridge._paths(attempt).root.rglob("*.log"))
         assert not any("router-implementation-invocation@1" in path.read_text() for path in logs)
     finally:

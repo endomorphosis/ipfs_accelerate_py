@@ -73,6 +73,8 @@ def generate(model_prompt,**kwargs):
     assert prompt in model_prompt if second else config['doctor_advisory'] in model_prompt
     assert kwargs['side_effecting'] is True
     assert kwargs['allow_cross_provider_fallback'] is kwargs['allow_local_fallback'] is False
+    if provider=='grok_cli':
+        assert kwargs['grok_max_turns']==config['settings']['grok_coding_max_turns']
     if second:
         wire=json.loads(prompt)
         assert wire['doctor_advisory']==config['doctor_advisory']
@@ -163,7 +165,8 @@ def _config(broker, launch, imports, attempt):
 @pytest.fixture
 def doctor_dispatch_case(doctor_service, monkeypatch, tmp_path, request):
     service, doctor_request = doctor_service
-    provider = getattr(request, "param", "codex_cli")
+    selected = getattr(request, "param", "codex_cli")
+    provider, turns = selected if isinstance(selected, tuple) else (selected, 128)
     extra = ["--doctor-residual-artifact", str(doctor_request["artifact"]),
         "--doctor-residual-sha256", doctor_request["expected_sha256"],
         "--doctor-residual-task-cid", doctor_request["task_cid"]]
@@ -172,6 +175,8 @@ def doctor_dispatch_case(doctor_service, monkeypatch, tmp_path, request):
     argv = ["--provider", provider, "--model", "grok-4.7" if provider == "grok_cli" else "gpt-6.1-sol",
         "--timeout", "180", "--max-output-tokens", "128", "--semantic-repository", str(original.repository),
         "--source-view-profile", original._binding["profile"], *extra]
+    if turns != 128:
+        argv.extend(("--grok-coding-max-turns", str(turns)))
     launch = owner.capture_original_coding_launch(source_broker=original, argv=argv,
         absolute_deadline=time.monotonic()+179, doctor_coding_policy="doctor-coding-two-attempts@1")
     imports = [str(Path(owner.__file__).resolve().parents[3])]
@@ -270,7 +275,7 @@ def test_doctor_worker_refuses_rehashed_context_policy_and_dependency_changes(do
     assert gate.validate_candidate_dispatch_context(**case.request)["doctor_candidate_dispatch"]["original_obligations_preserved"]
 
 
-@pytest.mark.parametrize("doctor_dispatch_case", ["codex_cli", "grok_cli"], indirect=True)
+@pytest.mark.parametrize("doctor_dispatch_case", ["codex_cli", "grok_cli", ("grok_cli", 8)], indirect=True)
 @pytest.mark.parametrize("drift", [False, True])
 def test_two_native_router_children_and_late_doctor_preflight(doctor_dispatch_case, monkeypatch, drift):
     case = doctor_dispatch_case
@@ -280,6 +285,8 @@ def test_two_native_router_children_and_late_doctor_preflight(doctor_dispatch_ca
     def spawn(command, *, stdin, workspace):
         assert command[:6] == list(owner._PREFIX)
         assert "--doctor-residual-artifact" not in command and "--doctor-coding-policy" not in command
+        assert command[command.index("--grok-coding-max-turns")+1] == str(
+            case.launch.launch_settings["grok_coding_max_turns"])
         config = _config(broker, case.launch, case.imports, 2)
         config.update(handoff=str(prepared.handoff.path), handoff_sha256=prepared.handoff.sha256,
             timeout=int(command[command.index("--timeout")+1]))
@@ -294,6 +301,10 @@ def test_two_native_router_children_and_late_doctor_preflight(doctor_dispatch_ca
     assert code == (9 if drift else 0), error_path.read_text()[-12000:]
     rows = [json.loads(line) for line in output_path.read_text().splitlines()]
     receipt = next(row for row in rows if row.get("schema") == "router-implementation-invocation@1")
+    if case.launch.launch_settings["provider"] == "grok_cli":
+        turns = case.launch.launch_settings["grok_coding_max_turns"]
+        assert case.first_receipt["provider_invocation_policy"]["max_turns"] == turns
+        assert receipt["provider_invocation_policy"]["max_turns"] == turns
     assert receipt["router_calls"] == (0 if drift else 1)
     assert receipt["candidate_round_preflight"]["requests"] == 1
     assert receipt["candidate_round_preflight"]["provider_input_bytes"] == 0

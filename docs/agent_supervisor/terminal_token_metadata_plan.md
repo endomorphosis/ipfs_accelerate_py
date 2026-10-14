@@ -1104,3 +1104,56 @@ recording the evidence. [Qualification evidence](evidence/doctor-dispatch-202610
 retains source and report hashes, dependency installation provenance, and the
 developmental failures that were corrected. Provider responses use test doubles;
 this establishes neither a live Terminal Bench score nor provider token savings.
+
+## October 14: first live Doctor pair and failure accounting
+
+The [first fresh live pair](evidence/doctor-live-pair-20261014/README.md) now
+exercises the full indexed supervisor with the two-attempt Doctor policy on
+`largest-eigenval`. Both trials used the same frozen runtime and Grok 4.7 router
+profile. The native coding turn limit was the only treatment change: default
+128 versus explicit 8, with output paths necessarily differing. Both official
+rewards were zero: correctness and dominance passed, speed failed.
+
+The default-limit run used one coding child and 27 internal coding turns. Its
+observed planning-plus-coding subtotal was 1,764,408 tokens, including 1,561,088
+cached input tokens. Native completeness and billing totals are still unknown.
+The capped run started two coding children, but only the first produced a router
+receipt and neither had usable final coding usage. Its 23,347 observed tokens
+cover planning alone. These results establish neither savings nor a successful
+two-model-call continuation. The [pair summary](evidence/doctor-live-pair-20261014/pair-summary.json)
+keeps coding usage unknown rather than treating the missing observations as zero.
+
+The runs exposed a Doctor v2 audit serialization defect: the collector dropped
+three original router-budget fields needed by the independent receipt validator.
+The fix forwards those fields exactly, leaving absent or forged values invalid.
+Both historical input audits remain unknown. The capped Grok stream also exposed
+a `max_turns_reached` followed by `end` sequence which the old parser treated as
+tainted, discarding its final payload. The original end payload is unavailable;
+the retained progress counters cannot establish a recovered coding total.
+
+Finally, the bounded child-error collector reported an ambiguous diagnostic,
+preventing identification of the second child's exception after container cleanup.
+The original row population is unknown: multiple valid errors and mixed malformed
+data can both produce that status. Closed diagnostic retention needs to preserve
+multiple valid errors without assigning unverified log messages to an owner
+attempt. A fresh runtime and trial are needed
+to validate the repaired observation paths live.
+
+The public-validation design in the live-pair report is the next functional
+gap. Completion currently checks output structure, while continuation reacts to
+child process failure. The public speed requirement must become a signed,
+executable acceptance check, with a typed candidate-validation observation usable
+between attempts and independent canonical validation after publication. The
+child's actual exit status, original deadline and maximum of two attempts must
+remain intact. This work is still pending; the current symbolic layers have not
+discharged the task's performance obligation.
+
+The accompanying [repair qualification](evidence/doctor-live-fixes-20261014/README.md)
+passed 426 distinct tests across 12 modules. Doctor v2 collector fields are now
+preserved; Grok terminal/end records retain a consistent native outcome and final
+usage when present; and bounded distinct child errors remain available as
+unattributed observations. Contradictory or malformed data still fails closed.
+All recorded current source pins match their qualified runs. Tests also confirm
+explicit eight-turn propagation through two native child/router paths and the
+installed worker parser, using provider/UID doubles. The live second-child cause
+remains unknown and requires fresh container evidence.

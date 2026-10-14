@@ -1,0 +1,56 @@
+{
+  "automatic_retries": 0,
+  "conditional_second_attempt": true,
+  "configuration": {
+    "bytes": 3343,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01/config.json",
+    "sha256": "a43344773e9747694cc6086ee0d8d3cc4a8b1d0deb529278e63785a9381a4387"
+  },
+  "preparation": {
+    "bytes": 89100,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01/preparation.json",
+    "sha256": "5e0962498037302760bfb769cd3845459f01b02184893e7fb3ed24b301401273"
+  },
+  "provider_fallback": false,
+  "readiness": {
+    "bytes": 2007,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/provider-readiness/grok-metadata-precheck.json",
+    "sha256": "c1eada98436f3a3903f30e25feb400c4c3a3cc734e368286361220df338f2202"
+  },
+  "recipe": {
+    "bytes": 144189,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/recipe.json",
+    "sha256": "e36904c60ede13acb075255e311c9c25b0449e4380ccdc703632d6a0dd4b39aa"
+  },
+  "reporting": {
+    "bytes": 1235,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/reporting-freeze.json",
+    "sha256": "68a78e261359b905262a29325a040e44adbecb3eff41ad031fcd710f55942a4e"
+  },
+  "runner": {
+    "bytes": 7468,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/run.py",
+    "sha256": "7314d5322516e47ee3b5751ff8f2f4d33305cc46e81748d6534dd1c88dd3d769"
+  },
+  "runtime": {
+    "all_archive_members_match": true,
+    "archive": {
+      "bytes": 1411471754,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/runtime-01/runtime.tar.gz",
+      "sha256": "2d7bce19663b874610a9e59cee6d5c8b71393145637df2e9918138c3612307fe"
+    },
+    "current_doctor_policy_sources_match": true,
+    "exit_code": 0,
+    "file_count": 27546,
+    "manifest": {
+      "bytes": 6225257,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/runtime-01/manifest.json",
+      "sha256": "c3616deb3d96e6bdb40effb52c960d028cb9afdb657d5ffa191178bdcf72c609"
+    },
+    "provider_calls": 0,
+    "seconds": 11.878162000910379,
+    "source_pins_unchanged": true,
+    "step": "verify",
+    "uncompressed_bytes": 4072599923
+  }
+}

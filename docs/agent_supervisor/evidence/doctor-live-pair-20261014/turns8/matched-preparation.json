@@ -1,0 +1,151 @@
+{
+  "archive_copied": false,
+  "archive_expanded": false,
+  "automatic_retries": 0,
+  "common_preparation_keys_matched": [
+    "task_input_sha256",
+    "archive_sha256",
+    "manifest_sha256",
+    "host_source_sha256",
+    "provider_profile",
+    "model",
+    "reasoning_effort",
+    "cli_version",
+    "resource_profile",
+    "task",
+    "arm",
+    "source384",
+    "candidate_rounds",
+    "doctor_coding_policy",
+    "doctor_coding_policy_observation"
+  ],
+  "comparison_control_differences": [
+    {
+      "parent": "32655eb52a8a21d26b60203cbe5d4ddfb95f078bc6428b8282ad9e2eb39029eb",
+      "parent_present": true,
+      "path": "/configuration_sha256",
+      "variant": "2be3daa9819ca0a7b2283728bf001a3a5bae25d9c2fc0743b4d3eb6dc48bf507",
+      "variant_present": true
+    },
+    {
+      "parent": null,
+      "parent_present": false,
+      "path": "/experimental_controls_sha256/grok_coding_max_turns",
+      "variant": "2c624232cdd221771294dfbb310aca000a0df6ac8b66b696d90ef06fdefb64a3",
+      "variant_present": true
+    },
+    {
+      "parent": "c0a284753a8334ec6ae4088506671e5239b4b7d33cd0a2a987046c1554245959",
+      "parent_present": true,
+      "path": "/sha256",
+      "variant": "bfe73f348d40ea9d3302e08c2ff67cad6a31f4d180a440691e8cb5c80860d82c",
+      "variant_present": true
+    }
+  ],
+  "config_differences": [
+    {
+      "parent": null,
+      "parent_present": false,
+      "path": "/agents/0/kwargs/grok_coding_max_turns",
+      "variant": 8,
+      "variant_present": true
+    },
+    {
+      "parent": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01/jobs",
+      "parent_present": true,
+      "path": "/jobs_dir",
+      "variant": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/jobs",
+      "variant_present": true
+    }
+  ],
+  "environment_differences": [
+    {
+      "parent": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/orchestration",
+      "parent_present": true,
+      "path": "/environment_overrides/IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR",
+      "variant": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/orchestration",
+      "variant_present": true
+    },
+    {
+      "parent": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/seal.duckdb",
+      "parent_present": true,
+      "path": "/environment_overrides/IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB",
+      "variant": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/seal.duckdb",
+      "variant_present": true
+    }
+  ],
+  "grok_native_turn_selection": {
+    "parent": 128,
+    "parent_implicit_default": true,
+    "variant": 8
+  },
+  "independent_harbor_attempts": 1,
+  "live_execution_started": false,
+  "package_installations": 0,
+  "parent_configuration": {
+    "bytes": 3343,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01/config.json",
+    "sha256": "a43344773e9747694cc6086ee0d8d3cc4a8b1d0deb529278e63785a9381a4387"
+  },
+  "parent_preparation": {
+    "bytes": 89100,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01/preparation.json",
+    "sha256": "5e0962498037302760bfb769cd3845459f01b02184893e7fb3ed24b301401273"
+  },
+  "parent_recipe": {
+    "bytes": 144189,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/recipe.json",
+    "sha256": "e36904c60ede13acb075255e311c9c25b0449e4380ccdc703632d6a0dd4b39aa"
+  },
+  "provider_calls": 0,
+  "readiness_reference": {
+    "bytes": 2007,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/provider-readiness/grok-metadata-precheck.json",
+    "sha256": "c1eada98436f3a3903f30e25feb400c4c3a3cc734e368286361220df338f2202"
+  },
+  "readiness_reused_not_fresh": true,
+  "same_original_coding_deadline_seconds": 1800,
+  "same_owner_candidate_attempts": 2,
+  "schema": "doctor-grok-turns-matched-preparation@1",
+  "shared_archive": {
+    "bytes": 1411471754,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/runtime-01/runtime.tar.gz",
+    "sha256": "2d7bce19663b874610a9e59cee6d5c8b71393145637df2e9918138c3612307fe"
+  },
+  "shared_manifest": {
+    "bytes": 6225257,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/runtime-01/manifest.json",
+    "sha256": "c3616deb3d96e6bdb40effb52c960d028cb9afdb657d5ffa191178bdcf72c609"
+  },
+  "source_pin_count": 621,
+  "source_pins_unchanged": true,
+  "source_roots": {
+    "datasets": {
+      "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014"
+    },
+    "kit": {
+      "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit"
+    },
+    "source": {
+      "commit": "3a7ec1c97be93dab918f005c93a9bbdb42409512",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-dispatch-20261014"
+    }
+  },
+  "variant_configuration": {
+    "bytes": 3384,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/config.json",
+    "sha256": "9e1647a71cfcc2f39809247673479f1b3421eb1661e51db131ff5304efab2be5"
+  },
+  "variant_preparation": {
+    "bytes": 89234,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/preparation.json",
+    "sha256": "8deddb5f0ee1ca9041ef69a9da780624034b924291a7e7b88f2c72a8b9310190"
+  },
+  "variant_recipe": {
+    "bytes": 146782,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/recipe.json",
+    "sha256": "2a0be4a8398720be8657e06f18a256711e4d23cd91d6e304e0fcd8c0c4d29a7c"
+  }
+}

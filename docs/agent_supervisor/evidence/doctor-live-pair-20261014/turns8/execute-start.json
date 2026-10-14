@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+    "execute",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01",
+    "--task",
+    "largest-eigenval"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-dispatch-20261014",
+  "free_bytes": 298934460416,
+  "recipe_sha256": "2a0be4a8398720be8657e06f18a256711e4d23cd91d6e304e0fcd8c0c4d29a7c",
+  "runner_sha256": "1ead2d3e1cb2d1db73f06ba89a02b0decd7af73e1c942527d7f5630e2c44efbc",
+  "started_at": "2026-10-14T19:36:21.000639+00:00",
+  "step": "execute"
+}

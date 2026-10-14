@@ -30,6 +30,9 @@ _EVENTS = ("text", "thought", "tool_call", "tool_call_update", "usage", "plan",
 _TOOLS = ("read_file", "search_replace", "grep", "list_dir", "todo_write", "run_terminal_cmd", "unknown")
 _STATUSES = ("pending", "in_progress", "completed", "failed", "unknown")
 _TERMINALS = frozenset({"end", "error", "max_turns_reached"})
+_END_FIELDS = frozenset({"type", "stopReason", "sessionId", "requestId", "usage", "num_turns",
+                         "modelUsage", "usage_is_incomplete", "total_cost_usd", "total_cost_usd_ticks",
+                         "cost_is_partial"})
 _REASONS = frozenset({"end_turn", "max_turns", "max_tokens", "refusal", "cancelled",
                       "structured_output_retries", "execution_error", "process_error",
                       "schema_rejected", "timeout", "other_stop", "unknown"})
@@ -161,6 +164,7 @@ class GrokStreamParser:
         self._text = bytearray()
         self._segment_closed = False
         self._final_payload = None
+        self._end_trailer_seen = False
         self._usage_observer = GrokUsageEventObserver()
         self._state = {**_CONSTANTS, **dict.fromkeys(_COUNTERS, 0), **dict.fromkeys(_TIMES),
                        **dict.fromkeys(_BOOLS, False), "returncode": None, "timeout_phase": "none",
@@ -189,6 +193,52 @@ class GrokStreamParser:
     def _clear_text(self):
         self._inc("discarded_text_bytes", len(self._text))
         self._text.clear()
+
+    def _accept_end_trailer(self, event):
+        """Keep one protocol end marker; never convert a native failure to success.
+
+        Grok 1.0.46 documents ``end`` as the last event, including after a
+        ``max_turns_reached`` notification. Its spend fields are a final native
+        envelope, not a sum of the independent per-response usage observations.
+        Diagnostics retain the first terminal's type/time and count the trailer
+        as an event after it. All other post-terminal records still taint.
+        """
+        if (self._end_trailer_seen or self._final_payload is None
+                or event.get("type") != "end" or self._state["final_reason_code"] == "unknown"):
+            return False
+        if set(event) == {"type"}:
+            self._end_trailer_seen = True
+            return True
+        if self._state["final_event_type"] == "end" or not set(event) <= _END_FIELDS:
+            return False
+        from .grok_native_usage import native_grok_observation
+        reason = native_grok_observation(event, exit_code=0)["native_grok_reason_code"]
+        if reason in {"unknown", "end_turn"} or reason != self._state["final_reason_code"]:
+            return False
+        for key in ("usage", "modelUsage"):
+            if key in event and type(event[key]) is not dict:
+                return False
+        for key in ("usage_is_incomplete", "cost_is_partial"):
+            if key in event and type(event[key]) is not bool:
+                return False
+        for key in ("sessionId", "requestId"):
+            if key in event and type(event[key]) is not str:
+                return False
+        for key in ("num_turns", "total_cost_usd_ticks"):
+            if key in event and (type(event[key]) is not int or not 0 <= event[key] <= _MAX_COUNT):
+                return False
+        if "total_cost_usd" in event and not _number(event["total_cost_usd"]):
+            return False
+        # Never replace frozen identity/spend with conflicting or absent data,
+        # nor manufacture a combined envelope from two rows. JSON equality is
+        # type-sensitive even in nested counters (unlike Python's True == 1).
+        for key in _END_FIELDS - {"type", "stopReason"}:
+            if key in self._final_payload and (key not in event or
+                    json.dumps(event[key], sort_keys=True) != json.dumps(self._final_payload[key], sort_keys=True)):
+                return False
+        self._final_payload = event
+        self._end_trailer_seen = True
+        return True
 
     def feed(self, chunk: bytes, *, elapsed_seconds: float = 0.0):
         if type(chunk) is not bytes:
@@ -243,9 +293,9 @@ class GrokStreamParser:
         if not line.strip():
             return
         self._inc("frames")
-        if self._state["final_envelope_observed"]:
+        after_final = self._state["final_envelope_observed"]
+        if after_final:
             self._inc("events_after_final")
-            self._taint()
         try:
             event = json.loads(line.decode("utf-8"), object_pairs_hook=_unique, parse_constant=_nonfinite, parse_float=_finite_float)
         except (ValueError, UnicodeError, RecursionError):
@@ -261,6 +311,10 @@ class GrokStreamParser:
         bucket = kind if type(kind) is str and kind in _EVENTS[:-1] else (
             "auto_compact" if type(kind) is str and len(kind) <= 128 and kind.startswith("auto_compact_") else "unknown")
         self._inc(bucket, bucket="event_counts")
+        if after_final:
+            if self._accept_end_trailer(event):
+                return
+            self._taint()
         if bucket == "unknown":
             self._inc("unknown_events")
             self._taint()
