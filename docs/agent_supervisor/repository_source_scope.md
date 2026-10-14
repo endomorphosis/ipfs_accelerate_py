@@ -46,7 +46,8 @@ paths and UTF-8 content without NUL. Absolute paths, aliases, `.git` components,
 backslashes, control bytes and paths over 4,096 bytes refuse. Language support
 and semantic correctness are not established by eligibility for nomination.
 
-The maximum is 64 selected files and **1,000,000 original per-path bytes**. This
+The maximum is 64 selected files and **1,000,000 total original bytes, counted
+per selected path**. This
 uses the semantic producer's stricter default rather than the reader's 1-MiB
 ceiling. Duplicate content counts once for each selected path. Mandatory
 instruction, smoke and profile support consume the same file/byte limits and
@@ -106,6 +107,35 @@ change this object's historical flags or establish allocation, coding-child or
 signed Terminal profile admission. The existing native broker's 32-path ceiling
 remains independent of the nomination's 64-file ceiling.
 
+## Join the existing managed allocation
+
+The optional [allocation nomination binder](current_source_worktree_allocation.md#bind-a-pinned-historical-nomination)
+now supplies its retained managed workspace to the existing task nomination
+binder. It reuses the actual sealed Portal projection, lifecycle records,
+native claim, original CAS and source reader. The caller independently pins the
+scope and inventory inputs; a detached nomination or allocation receipt cannot
+construct a live handle.
+
+`require_nominated_source_scope()` on that allocation returns
+`supervisor-native-nominated-source-worktree-allocation@1`, joining the source
+and frontier identities to the actual `allocation_cid` and reporting allocation
+ownership true. The task-only observation still reports allocation ownership
+false, and the nomination remains historical. Bootstrap, compiled-context,
+coding-process and proof/execution/completion/omission authority are not supplied
+by this join.
+
+The allocation checks current native task/lifecycle custody and complete
+allocated originals. The broker independently joins full canonical and allocated
+source-byte currentness and enforces its 32-path limit before granting its proxy
+route. The nomination's 64-file/1,000,000-byte ceiling includes selected required
+supports; it does not increase that worker bound or allow frontier reads.
+Already published readers remain bind-once even if a later check fails.
+
+The [composition evidence](evidence/nominated-source-allocation-20261014/README.md)
+retains the new binder and observer boundary. Actual coding-child authentication,
+signed-profile-to-nomination identity binding, source expansion and complete
+session token measurements remain separate integration work.
+
 ## Reconcile the parallel repository stack
 
 A read-only local survey found repository-planning commit
@@ -138,8 +168,8 @@ The concrete integration order is:
 4. Reuse the opt-in [signed Terminal context selection](signed_terminal_source_scope.md)
    for single Python-code tasks. Its selected context/vector subset lives beside
    complete signed `task_profile.input_paths` and includes mandatory supports.
-   Join historical nomination identities explicitly; data/multitask and native
-   read-scope admission remain separate work.
+   Join historical nomination identities explicitly; data/multitask selection
+   and the production coding-child read handoff remain separate work.
 5. Qualify native task/allocation fences, actual coding-child adoption and stale
    source refusals before matched full-session token/task experiments.
 
