@@ -506,6 +506,8 @@ def _final_context_audit(report: dict, *, state: Path, deadline: float) -> None:
         from benchmarks.agent_supervisor.container_coding.terminal_context_audit import collect_terminal_context_audit
         report["context_input_audit"] = collect_terminal_context_audit(
             state=state, receipts=report.get("provider_invocations", []), workspace_root=WORKTREES,
+            **({"candidate_parent": ROOT / "worker-observations"} if any(
+                "candidate_round_dispatch" in row for row in report.get("provider_invocations", [])) else {}),
             timeout_seconds=max(0, min(3.0, deadline - time.monotonic() - 1.0)))
     except Exception as error:
         # Observation failure must never suppress provider accounting or the
@@ -700,6 +702,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         semantic_metadata_view: str = "legacy",
         semantic_working_set: str = "legacy",
         grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
+        candidate_rounds: int = 1,
         source_view_profile: str = "disabled",
         source_edit_mode: str = "disabled",
         source_view_policy: dict | None = None,
@@ -724,6 +727,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         disable_intent_autoencoder: bool = False,
         intent_requirement_contract: Path | None = None,
         task_profile: Path | None = None) -> dict:
+    from .benchmark_controls import validate_full_supervisor_candidate_rounds
+    validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm)
     from .benchmark_provider_profile import resolve_provider_profile
     from .terminal_planning_policy import validate_planning_mode, planning_selection
     validate_planning_mode(planning_mode)
@@ -1307,6 +1312,15 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             if path.stat().st_size > 8_000_000:
                 continue
             for line in path.read_text(errors="replace").splitlines():
+                if line.startswith("[owner-candidate-rounds] "):
+                    try:
+                        marker = json.loads(line[len("[owner-candidate-rounds] "):])
+                        if isinstance(marker, dict) and marker.get("schema") == "owner-candidate-rounds-observation@1":
+                            if marker not in report.setdefault("owner_candidate_rounds", []):
+                                report["owner_candidate_rounds"].append(marker)
+                    except ValueError:
+                        pass
+                    continue
                 try:
                     item = json.loads(line)
                 except ValueError:
@@ -1328,6 +1342,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "phase": "coding", "usage": None,
                 "reason": "implementation_may_have_dispatched_without_a_final_router_receipt",
             }
+        from .terminal_candidate_attempt_accounting import apply as account_candidate_attempts
+        account_candidate_attempts(report, parent=ROOT / "worker-observations")
         if metadata_census_only:
             try:
                 from .terminal_live_census_provenance import audit_planning_usage
@@ -1400,6 +1416,15 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "proof_authority": False, "execution_authority": False, "completion_authority": False,
                 "retry_authority": False, "settlement_authority": False, "automatic_retry_admitted": False,
             }
+        try:
+            from .terminal_candidate_round_observation import collect as collect_candidate_rounds
+            report["candidate_round_retrieval_observation"] = collect_candidate_rounds(
+                parent=ROOT / "worker-observations", scope=output_observation_scope, report=report)
+        except Exception:
+            report["candidate_round_retrieval_observation"] = {
+                "schema": "terminal-candidate-round-observation@1", "status": "unavailable",
+                "reason": "observer_unavailable", "counts": None, "observation_only": True,
+                "proof_authority": False, "execution_authority": False, "completion_authority": False}
         report["seconds"] = time.monotonic() - started
         _write(report_path, report)
     return report
@@ -1424,6 +1449,8 @@ def main():
     from .terminal_semantic_working_set_policy import SEMANTIC_WORKING_SETS, DEFAULT_SEMANTIC_WORKING_SET
     parser.add_argument("--semantic-working-set", choices=SEMANTIC_WORKING_SETS, default=DEFAULT_SEMANTIC_WORKING_SET)
     parser.add_argument("--grok-coding-max-turns", type=int, default=DEFAULT_GROK_CODING_MAX_TURNS)
+    parser.add_argument("--candidate-rounds", type=int, choices=(1, 2), default=1,
+        help="Two-round ordinary-owner qualification is not admitted for full-supervisor Doctor routes")
     from .terminal_source_edit_policy import SOURCE_EDIT_MODES
     parser.add_argument("--source-edit-mode", default="disabled", choices=SOURCE_EDIT_MODES)
     from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy

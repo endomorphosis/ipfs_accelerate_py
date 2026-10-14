@@ -25,6 +25,7 @@ def run_candidate_coding_rounds(*, launch, command):
     started = time.monotonic()
     rows = []
     failure = None
+    retained_input = None
     code = 1
 
     def interrupted(signum, frame):
@@ -60,7 +61,11 @@ def run_candidate_coding_rounds(*, launch, command):
             if not suppress:
                 raise
         finally:
+            descriptor = getattr(broker, "descriptor", {})
             rows.append(dict(round_number=round_number,
+                process_started=process is not None,
+                session_id=descriptor.get("session_id"),
+                descriptor_sha256=getattr(broker, "descriptor_sha256", None),
                 returncode=None if process is None else process.returncode,
                 wait_completed=waited, retirement_observed=retired))
             handlers(interrupted)
@@ -91,6 +96,8 @@ def run_candidate_coding_rounds(*, launch, command):
         if type(code) is int and 1 <= code <= 255:
             prepared = prepare_second_coding_worker(launch=launch, retired_worker=retired)
             try:
+                audit = getattr(prepared, "audit", None)
+                retained_input = None if audit is None else audit.observation
                 running = prepared.start()
                 settle(running.process, running.source_broker, 2)
             finally:
@@ -129,6 +136,14 @@ def run_candidate_coding_rounds(*, launch, command):
             outcome="failed" if failure is not None else "workers_returned",
             failure_type=failure, completion_authority=False, proof_authority=False,
             source_obligations_discharged=0, accepted_index_published=False)
+        if retained_input is not None:
+            observation["candidate_input_retention"] = retained_input
+        try:
+            from .candidate_round_lifecycle import persist
+            observation["owner_lifecycle_retention"] = persist(
+                source_broker=launch.source_broker, observation=observation)
+        except Exception:
+            observation["owner_lifecycle_retention_unavailable"] = True
         try:
             print("[owner-candidate-rounds] "+json.dumps(observation, sort_keys=True, allow_nan=False), flush=True)
         except Exception:

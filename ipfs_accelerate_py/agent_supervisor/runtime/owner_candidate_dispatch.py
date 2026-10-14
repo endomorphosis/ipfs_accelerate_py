@@ -449,6 +449,7 @@ class PreparedCandidateWorker:
     source_broker: object = field(repr=False)
     admission: CandidateDispatchAdmission = field(repr=False)
     handoff: object = field(repr=False)
+    audit: object = field(repr=False)
 
     def __post_init__(self):
         _need(self._token is _TOKEN, "owner continuation preparation required")
@@ -536,6 +537,7 @@ def prepare_second_coding_worker(*, launch, retired_worker):
     from .owner_candidate_round_prompt import prepare_candidate_round_prompt
     from .worker_candidate_round_broker import WorkerCandidateRoundBroker
     from .candidate_dispatch_context import prepare_candidate_dispatch_handoff
+    from .owner_candidate_dispatch_audit import persist_candidate_dispatch_audit
     _need(type(launch) is CapturedCodingLaunch and type(retired_worker) is RetiredCodingWorker,
           "live captured launch and fixed cleanup retirement required")
     launch.revalidate()
@@ -560,8 +562,11 @@ def prepare_second_coding_worker(*, launch, retired_worker):
         handoff = prepare_candidate_dispatch_handoff(snapshot=snapshot, prompt=prompt,
             source_broker=broker, admission=admission)
         admission.revalidate(snapshot=snapshot, prompt=prompt, source_broker=broker)
+        audit = persist_candidate_dispatch_audit(snapshot=snapshot, prompt=prompt,
+            source_broker=broker, admission=admission, handoff=handoff)
+        admission.revalidate(snapshot=snapshot, prompt=prompt, source_broker=broker)
         launch._state.phase = "prepared"
-        return PreparedCandidateWorker(_TOKEN, launch, snapshot, prompt, broker, admission, handoff)
+        return PreparedCandidateWorker(_TOKEN, launch, snapshot, prompt, broker, admission, handoff, audit)
     except BaseException:
         launch._state.phase = "failed"
         if broker is not None:

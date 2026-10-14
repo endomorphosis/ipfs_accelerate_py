@@ -337,6 +337,7 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                  semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
                  grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
+                 candidate_rounds: int = 1,
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                  capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                  source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -345,7 +346,10 @@ class FullSupervisorAgent(BaseAgent):
                  numerical_formalization_profile: str | None = None,
                  planning_mode: str = DEFAULT_PLANNING_MODE,
                  metadata_census_only: bool = False, **kwargs):
+        from .benchmark_controls import validate_full_supervisor_candidate_rounds
+        selected_rounds = validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm)
         super().__init__(*args, **kwargs)
+        self.candidate_rounds = self._frozen_candidate_rounds = selected_rounds
         selected_provider = resolve_provider_profile(provider_profile)
         if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
@@ -494,7 +498,15 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("prepared source view policy changed")
         return selected
 
+    def _checked_candidate_rounds(self):
+        from .benchmark_controls import validate_full_supervisor_candidate_rounds
+        selected = validate_full_supervisor_candidate_rounds(getattr(self, "candidate_rounds", 1), arm=self.arm)
+        if selected != getattr(self, "_frozen_candidate_rounds", 1):
+            raise ValueError("prepared candidate rounds changed")
+        return selected
+
     async def setup(self, environment):
+        self._checked_candidate_rounds()
         from .terminal_setup_cache_advice import (
             validate_setup_cache_selection, validate_setup_cache_prerequisites, apply_setup_cache_advice,
         )
@@ -575,6 +587,7 @@ class FullSupervisorAgent(BaseAgent):
                 resource_profile=getattr(self, "resource_profile", None))
 
     async def run(self, instruction: str, environment, context: AgentContext):
+        self._checked_candidate_rounds()
         from .terminal_setup_cache_advice import validate_setup_cache_selection
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
             getattr(self, "setup_cache_selection", None))

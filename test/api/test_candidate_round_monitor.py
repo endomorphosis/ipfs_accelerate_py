@@ -222,3 +222,23 @@ def test_default_owner_remains_usable_with_older_runtime_archives(argv, optional
     else:
         exec(compile(code, "<installed-owner-round-selection>", "exec"), namespace)
         assert namespace["owner_candidate_rounds"] == 1 and namespace["owner_initial_argv"] == argv
+
+
+@pytest.mark.parametrize("failure,second", [(None, 9), ("prepare", 0)])
+def test_retention_failure_preserves_original_worker_result(monkeypatch, capsys, failure, second):
+    from ipfs_accelerate_py.agent_supervisor.runtime import candidate_round_lifecycle
+    calls = []
+    def fail(**kwargs):
+        calls.append(kwargs)
+        raise OSError("authored private persistence failure")
+    monkeypatch.setattr(candidate_round_lifecycle, "persist", fail)
+    outcome, _, children = _run(monkeypatch, failure=failure, second=second)
+    assert len(calls) == 1
+    if failure is None:
+        assert outcome == second and len(children) == 2
+    else:
+        assert isinstance(outcome, ValueError) and str(outcome) == "authored preparation failure"
+        assert len(children) == 1
+    value = _observation(capsys)
+    assert value["owner_lifecycle_retention_unavailable"] is True
+    assert "authored private" not in json.dumps(value)

@@ -35,7 +35,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement", "semantic_working_set", "semantic_working_set_preflight")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement", "semantic_working_set", "semantic_working_set_preflight", "candidate_round_dispatch", "candidate_reply_contract", "candidate_retrieval_guidance", "candidate_round_preflight")
 
 
 def _sha(raw: bytes) -> str:
@@ -278,6 +278,9 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
     for field in ("prompt_bytes", "native_prompt_bytes", "model_prompt_bytes", "workspace_advisory_bytes"):
         if type(result[field]) is not int or not 0 < result[field] <= 262_144:
             raise ValueError("invalid input byte count")
+    if any(key.startswith("candidate_") for key in result):
+        from .terminal_candidate_input_audit import validate_receipt
+        return validate_receipt(result)
     translated = result.get("semantic_translation") is not None
     instruction = result.get("public_instruction")
     router_bytes = result.get("router_prompt_bytes", result["native_prompt_bytes"])
@@ -457,9 +460,12 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
 
 
 def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
-                      formalization: dict | None = None, token_counter=None):
+                      formalization: dict | None = None, token_counter=None, candidate_parent: Path | None = None):
     """Reconstruct historical provider bytes without granting freshness."""
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
+    if "candidate_round_dispatch" in receipt:
+        from .terminal_candidate_input_audit import replay
+        return replay(rendered=rendered, receipt=receipt, parent=candidate_parent)
     translated = receipt.get("semantic_translation") is not None
     router_prompt, checks = rendered, {}
     recorded = receipt.get("source_formalization_context")
@@ -883,7 +889,8 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
     return result, rendered, dispatch
 
 
-def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path) -> dict:
+def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path,
+        candidate_parent: Path | None = None) -> dict:
     """Read historical evidence and compare exact native and model input bytes."""
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
 
@@ -928,9 +935,14 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
                     if (observed["native_prompt_sha256"] != receipt["native_prompt_sha256"]
                             or observed["native_prompt_bytes"] != receipt["native_prompt_bytes"]):
                         continue
-                    model, advisory, checks = _model_projection(rendered=rendered, receipt=receipt,
-                        repository=Path(prepared["repository"]) if prepared.get("repository") else None,
-                        formalization=formalization)
+                    try:
+                        model, advisory, checks = _model_projection(rendered=rendered, receipt=receipt,
+                            repository=Path(prepared["repository"]) if prepared.get("repository") else None,
+                            formalization=formalization, candidate_parent=candidate_parent)
+                    except Exception as error:
+                        result["read_errors"].append({"kind": "model_projection",
+                            "invocation_id": receipt["invocation_id"], "error_type": type(error).__name__})
+                        continue
                     result["matches"].append({"capsule_id": observed["capsule_id"],
                         "invocation_id": receipt["invocation_id"],
                         "workspace_sha256": _sha(receipt["workspace"].encode()),
@@ -964,7 +976,7 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
 
 
 def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
-        workspace_root: Path, timeout_seconds: float = 3.0) -> dict:
+        workspace_root: Path, timeout_seconds: float = 3.0, candidate_parent: Path | None = None) -> dict:
     """Run in a time-bounded child; collection failure cannot affect completion."""
     started = time.monotonic()
     if timeout_seconds < .1:
@@ -997,7 +1009,8 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
         # The owner may still have the task checkout as cwd. Never prepend
         # that worker-controlled directory to the trusted module search path.
         process = subprocess.run([sys.executable, "-B", "-P", "-m", __name__, "--state", str(state),
-            "--workspace-root", str(workspace_root)], input=request, capture_output=True,
+            "--workspace-root", str(workspace_root),
+            *(["--candidate-parent", str(candidate_parent)] if candidate_parent is not None else [])], input=request, capture_output=True,
             timeout=min(10.0, timeout_seconds), check=False,
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
         if process.returncode or len(process.stdout) > MAX_RESULT_BYTES:
@@ -1019,6 +1032,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", required=True, type=Path)
     parser.add_argument("--workspace-root", required=True, type=Path)
+    parser.add_argument("--candidate-parent", type=Path)
     args = parser.parse_args()
     try:
         raw = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
@@ -1027,7 +1041,7 @@ def main():
         receipts = _json(raw)
         if not isinstance(receipts, list):
             raise ValueError("audit receipts must be a list")
-        result = audit_terminal_context(state=args.state, receipts=receipts, workspace_root=args.workspace_root)
+        result = audit_terminal_context(state=args.state, receipts=receipts, workspace_root=args.workspace_root, candidate_parent=args.candidate_parent)
     except Exception as error:
         result = _base(reason="audit_unavailable")
         result["error_type"] = type(error).__name__

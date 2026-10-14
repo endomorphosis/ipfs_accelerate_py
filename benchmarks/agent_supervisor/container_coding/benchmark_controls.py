@@ -33,6 +33,37 @@ AGENT_KEYS = ("override_timeout_sec", "max_timeout_sec", "override_setup_timeout
               "extra_allowed_hosts", "load_trajectory", "resume_trajectory")
 
 
+def validate_full_supervisor_candidate_rounds(value=1, *, arm=None):
+    """Keep benchmark admission separate from the ordinary-owner qualification.
+
+    Every full-arm task currently enters Doctor, whose residual obligations and
+    one-call budget are not captured by the ordinary candidate continuation.
+    The no-index arm lacks its required semantic source broker. Neither route
+    can safely select two rounds. Refuse during preparation instead of removing
+    Doctor constraints or spending setup/planning work on an unusable trial.
+    An omitted/default selection preserves historical configs and signatures.
+    """
+    from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import validate_candidate_rounds
+    selected = validate_candidate_rounds(value)
+    if selected == 2:
+        if arm == "no-index":
+            raise ValueError("candidate rounds=2 requires an admitted semantic source broker; no-index is unsupported")
+        raise ValueError("candidate rounds=2 is not admitted for full-supervisor Doctor constraints and residual budgets")
+    return selected
+
+
+def validate_frozen_candidate_rounds(prepared, config):
+    """Reject a changed or unsupported selection before execute/collect work."""
+    kwargs = config["agents"][0].get("kwargs", {})
+    chosen = validate_full_supervisor_candidate_rounds(prepared.get("candidate_rounds", 1),
+        arm=prepared.get("arm"))
+    configured = validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1),
+        arm=kwargs.get("arm"))
+    if chosen != configured:
+        raise ValueError("prepared candidate rounds changed")
+    return chosen
+
+
 def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
                                     allow_nan=False).encode()).hexdigest()
@@ -100,7 +131,8 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "capsule_budget", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode", "semantic_working_set", "grok_coding_max_turns"}:
+        validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1), arm=kwargs.get("arm"))
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "capsule_budget", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode", "semantic_working_set", "grok_coding_max_turns", "candidate_rounds"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         validate_grok_coding_max_turns(kwargs.get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
             provider=selected["provider"])
@@ -186,6 +218,10 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
                    for key, value in task_input_sha256.items())):
         raise ValueError("complete task input hashes required")
     agent = config["agents"][0]
+    if agent.get("import_path") == (
+            "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"):
+        kwargs = agent.get("kwargs", {})
+        validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1), arm=kwargs.get("arm"))
     if agent.get("model_name") != model:
         raise ValueError("frozen model differs from configuration")
     if agent.get("name") == "codex" and not agent.get("import_path"):

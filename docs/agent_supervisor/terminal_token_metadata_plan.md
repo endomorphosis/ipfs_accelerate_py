@@ -918,3 +918,65 @@ commits and import origins remained unchanged. It includes the real-process
 candidate router paths, mandatory broker preflight, both provider test doubles,
 signed public requirements, owner cleanup/cancellation, repeated-claim refusal,
 older-archive default behavior and the affected existing router/container tests.
+
+## October 14: retain and reconcile second-round benchmark evidence
+
+Second-round preparation now retains an owner-private historical package before
+launch: the exact original requirements, candidate input, descriptor, handoff,
+source snapshot and native summary/capsule/formal artifacts. The manifest is
+published last, each payload is digest-bound, and successful packages survive
+live handoff cleanup and subsequent workspace edits. Failed publication removes
+only files created by that attempt. These bytes have no dispatch reload API and
+do not establish semantic equivalence, accepted proofs or task completion.
+
+The context audit distinguishes the original native task from candidate stdin
+and reconstructs the complete candidate provider input from the retained
+package, fixed retrieval guidance, workspace advisory and candidate reply
+grammar. It checks file custody, source/artifact digests and the dispatched
+session/generation. A missing or damaged package remains unverified. Failure
+for one invocation does not suppress another invocation's independent audit.
+It neither reruns the autoencoder nor assumes that twice-edited files represent
+the context the second worker received.
+
+A separate candidate retrieval observer joins the closed owner session audit
+to the router's descriptor and mandatory preflight. It accounts for source
+bytes, candidate artifact bytes, response bytes and preflight separately.
+Baseline retrieval reporting explicitly identifies excluded candidate sessions;
+it cannot report complete session coverage from the first round alone. These
+byte counts are not tokenizer counts, provider usage or measured token savings.
+
+Owner lifecycle retention and attempt reconciliation prevent an observed first
+receipt from hiding a possible unreceipted second attempt. Each started or
+possibly started coding child needs its own matching router receipt. Missing,
+ambiguous or malformed lifecycle evidence keeps aggregate usage unknown through
+the existing unreceipted-attempt reporting path. A surviving candidate archive
+also indicates a possible second attempt when owner interruption prevents final
+lifecycle retention, even if configuration, log markers and a second receipt are
+absent. Unmatched sibling archives keep accounting unknown. Provider usage remains a
+separate observation, including failed invocations and cached-input accounting.
+
+Full-suite admission still has a concrete blocker. Every full-arm task enters
+Doctor, and the current residual budget is one call, one round and 4096 tokens.
+The ordinary candidate continuation intentionally does not capture those
+residual obligations or that budget. The no-index arm has no required semantic
+source broker. Benchmark configuration, preparation, frozen execution and Harbor
+now reject an unsupported two-round selection before setup or model work;
+default one-round configurations and historical hashes remain unchanged.
+Enabling a full-suite two-round treatment requires explicit Doctor budget
+admission and generation-aware residual rebinding. Removing Doctor constraints
+or simply forwarding the new owner flag would not provide that behavior.
+
+Qualification uses native artifact generation, actual failed/second child
+processes, real socket preflight/pagination and retained-input reconstruction
+with authored container isolation and provider doubles. No Docker campaign,
+live provider, training or theorem-prover run was performed for this change.
+
+The frozen 19-module regression passed all 705 tests. After the final interrupted
+owner accounting correction, all 265 targeted tests across seven modules passed
+against the final source state. The full regression was not repeated after that
+small correction. Source and dependency pins stayed unchanged within each run;
+the final evidence verifies all source pins and records the three changed files
+between runs. See [qualification.json](evidence/candidate-reporting-20261014/qualification.json)
+for results, source hashes, pinned import origins and retained developmental
+failures. These results establish local contract coverage, not a new live
+Terminal Bench score or token-saving measurement.

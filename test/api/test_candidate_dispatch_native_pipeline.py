@@ -47,7 +47,8 @@ client.transport.os=SimpleNamespace(**{name:getattr(os,name) for name in dir(os)
     geteuid=lambda:config['worker_uid'],access=lambda *args:False)
 client.transport._protected_parent=lambda parent,owner:parent.stat()
 guard._protected_directory=lambda *args,**kwargs:None
-boundary.verify_container_worker_boundary=lambda **kwargs:dict(owner_uid=config['owner_uid'],worker_uid=config['worker_uid'])
+boundary.verify_container_worker_boundary=lambda **kwargs:dict(owner_uid=config['owner_uid'],
+    worker_uid=config['worker_uid'],manifest_sha256=config['boundary_sha256'])
 codex_usage_receipt.recover_codex_usage=lambda **kwargs:None
 provider=config['settings']['provider'];model=config['settings']['model']
 intelligence_index.discover_available_providers=lambda:[provider]
@@ -200,6 +201,32 @@ def test_owner_to_native_candidate_router_with_real_child_and_artifact_retrieval
         audit = json.loads(broker.audit_path.read_bytes())
         assert audit["accounting_complete"] and audit["accepted_requests"] >= 2
         assert all(row["delivered"] for row in audit["requests"])
+        from benchmarks.agent_supervisor.container_coding import terminal_candidate_round_observation as observation
+        # This fixture authors container ancestry/UID admission above. Keep
+        # that same filesystem seam while observing the actual closed socket
+        # audit, emitted router receipt and mandatory summary preflight.
+        monkeypatch.setattr(observation, "_protected_directory", lambda *args, **kwargs: None)
+        observed = observation.collect(parent=broker.audit_path.parent,
+            scope=dict(task_alias=broker.descriptor["task_id"]), report=dict(
+                provider_invocations=[dict(result["receipt"], phase="coding")],
+                worker_cleanup_returncode=0, source_view_profile=broker.descriptor["profile"]))
+        assert observed["status"] == "observed", observed
+        assert observed["counts"]["accepted_requests"] == audit["accepted_requests"]
+        assert observed["counts"]["response_bytes"] == audit["response_bytes"]
+        assert observed["preflight_counts"]["requests"] == 1
+        assert observed["preflight_counts"]["response_bytes"] == result["receipt"]["candidate_round_preflight"]["response_bytes"]
+        assert observed["candidate_context_counts"]["delivered_pages"] == audit["accepted_requests"]
+        assert observed["provider_tokens"] is None and observed["model_input_replayed"] is False
+        # Historical replay survives handoff removal and the twice-edited source.
+        prepared.close()
+        assert not prepared.handoff.path.exists() and not broker.descriptor_path.exists()
+        from benchmarks.agent_supervisor.container_coding import terminal_context_audit as input_audit
+        receipt = input_audit._receipt(dict(result["receipt"], phase="coding"), broker.workspace.parent)
+        model, advisory, checks = input_audit._model_projection(rendered=original.prompt,
+            receipt=receipt, repository=broker.repository, candidate_parent=broker.audit_path.parent)
+        assert all(checks.values()), checks
+        assert hashlib.sha256(model.encode()).hexdigest() == result["receipt"]["model_prompt_sha256"]
+        assert prepared.audit.manifest_path.exists()
     finally:
         if running is not None and running.process.poll() is None:
             running.process.kill(); running.process.wait()

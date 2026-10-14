@@ -255,6 +255,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
                grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
+               candidate_rounds: int = 1,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -263,6 +264,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                numerical_formalization_profile: str | None = None,
                planning_mode: str = DEFAULT_PLANNING_MODE,
                model_revision: str = "") -> dict:
+    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract,
         task_profile=task_profile)
     validate_numerical_profile(numerical_formalization_profile)
@@ -355,6 +357,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
             semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
             grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
+            candidate_rounds: int = 1,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
             capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
             source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -362,6 +365,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
             numerical_formalization_profile: str | None = None,
             planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
+    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract)
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
@@ -525,6 +529,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
+    benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     profile = prepared_provider_identity(prepared, config)
@@ -721,6 +726,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
+    benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
@@ -889,7 +895,11 @@ def main():
     parser.add_argument("--intent-requirement-contract", type=Path,
         help="Use source-bound @1 provider coverage or @2 reviewed symbolic operations before admission")
     parser.add_argument("--grok-coding-max-turns", type=int, default=DEFAULT_GROK_CODING_MAX_TURNS)
+    parser.add_argument("--candidate-rounds", type=int, choices=(1, 2), default=1,
+        help="Owner coding rounds; two rounds currently refuse full-supervisor preparation pending Doctor admission")
     args = parser.parse_args()
+    if args.operation != "prepare" and args.candidate_rounds != 1:
+        parser.error("candidate rounds are frozen by preparation; collect/execute cannot select them")
     if args.operation != "prepare" and args.grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS:
         parser.error("Grok coding turn bound is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.planning_mode != DEFAULT_PLANNING_MODE:
@@ -929,6 +939,7 @@ def main():
                          semantic_metadata_view=args.semantic_metadata_view,
                          **semantic_working_set_selection(args.semantic_working_set),
                          **grok_coding_selection(args.grok_coding_max_turns),
+                         candidate_rounds=args.candidate_rounds,
                          capsule_selection=args.capsule_selection,
                          capsule_budget=args.capsule_budget,
                          source_view_profile=args.source_view_profile,

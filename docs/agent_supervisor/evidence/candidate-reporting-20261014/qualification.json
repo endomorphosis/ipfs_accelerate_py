@@ -1,0 +1,310 @@
+{
+  "artifact_root": "/home/barberb/lift_coding/artifacts/candidate-reporting-20261014",
+  "base_commit": "79f089c6f28f28f3f5adade4979aed115a039223",
+  "development_history": [
+    {
+      "counts": {
+        "passed": 132
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "candidate-guard-01",
+      "note": "Early full-suite refusal and unchanged default/historical control hashes. Parallel team edits made whole-tree pins unstable.",
+      "result_sha256": "c34040234604a5d529670a5256eb9359eef751a01cd9cff8f9c568b4c1a0d63e",
+      "seconds": 66.08305973408278,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "passed": 43
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "candidate-audit-01",
+      "note": "Native owner retention and lifecycle regressions. Owned files stable; parallel report edits changed whole-tree pins.",
+      "result_sha256": "d11835b2467e1aeffe3c6425078cac4dab37d59106fd6186df4f07a02f59c2fa",
+      "seconds": 316.87054853502195,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "failed": 2,
+        "passed": 79
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 1,
+      "label": "candidate-input-01",
+      "note": "Two native cases failed at the new retrieval observer before input replay: collector tuple typo and incomplete boundary fixture. Corrected and rerun; other cases passed.",
+      "result_sha256": "ca0ec03c269666294a9d8531896782e94ceda35046d7a9f2d5c7adb6329b375a",
+      "seconds": 409.50355681497604,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "passed": 10
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "candidate-input-02",
+      "note": "Corrected native cases and historical input/tamper/rebinding tests passed. Parallel lifecycle edits changed whole-tree pins.",
+      "result_sha256": "36e082cd8f60b3e8e0416801d00fe6507d50043fc015517327127b3635a6cab4",
+      "seconds": 154.3423666029703,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "passed": 62
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "candidate-accounting-01",
+      "note": "Native lifecycle, unknown second attempts, malformed private evidence and cached-input accounting passed.",
+      "result_sha256": "462156a104c4b11af55af7307f5a5a1896b7b0120e39fe1aa7b392e9571127f6",
+      "seconds": 79.06088320992421,
+      "source_pins_unchanged": true
+    },
+    {
+      "counts": {
+        "failed": 6,
+        "passed": 201
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 1,
+      "label": "session-observation/focused-01",
+      "note": "Collector tuple initialization typo and incomplete authored boundary fixture caused six nominal failures. No production validation was relaxed.",
+      "result_sha256": "8253fb49fec2834ca42bf5ccbab0bf6f0ddbdba73b20163cf1ddc30f06f64d0c",
+      "seconds": 96.76246110291686,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "failed": 1,
+        "passed": 206
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 1,
+      "label": "session-observation/focused-02",
+      "note": "One authored tamper mutation equaled its original digest; fixture corrected. Both native cases passed.",
+      "result_sha256": "083c3200a6e0fafe35b59ff178ec81a06e20d134336d71f52bdc089b087254ab",
+      "seconds": 94.8948986340547,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "passed": 212
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "session-observation/focused-03",
+      "note": "Corrected observer fixture and additional policy/unknown cases passed.",
+      "result_sha256": "ec61a72bcf5b2679a6fd9eaa5c54b5cb6dd94e82ba380a4928cf28a902c23c9a",
+      "seconds": 4.509090772946365,
+      "source_pins_unchanged": true
+    }
+  ],
+  "final_correction": "A private candidate-audit artifact without final lifecycle evidence now indicates a possible unreceipted attempt even when configuration, markers and the second receipt are absent. Sibling archive sessions also keep accounting unknown.",
+  "final_correction_sources": {
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_attempt_accounting.py": {
+      "after": "921c05f92cc146e3be055ced4f421e412692f49cde0f15492a984b06934385d3",
+      "before": "e22f68a9ba1aaedd3b39d127ca66f2de40cc27fe86cc87682ec2c3a79c6cd7c4"
+    },
+    "test/api/test_candidate_round_lifecycle.py": {
+      "after": "a88096da9b8265e7c17f6b5c7c4837cc61ec420fa38633baaa0315df7dd0adbe",
+      "before": "0cd1a3ad408602f7905ec5b538a715bd9de40046ea1f275ee99512898371777e"
+    },
+    "test/api/test_terminal_candidate_attempt_accounting.py": {
+      "after": "76e04963c4aef9842dfa1c517be6c89904cb43de470f93b0bd7471b01c4979ad",
+      "before": "46e43bf2d6c29369eecb191e4fccaeee4e32ec9d1adc53afdbad2fb367707281"
+    }
+  },
+  "final_frozen_sources": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "4881e72e9a1dbb5b1138447fc31c354330881882adbb3ba747ac3675e0664bed",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "ce7b16268c90df306f761942689e9e1266711efe6dba99dfb5b9eaba98d46b7c",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "434656f8bac419b90417bb74b2ce3fa1468db0246e2831eb88b5c1ccc30c0ff0",
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_attempt_accounting.py": "921c05f92cc146e3be055ced4f421e412692f49cde0f15492a984b06934385d3",
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_input_audit.py": "ae6473ff779f0d67d13e3b153b9cc902ad87e348f033ce9711e4ac4835ede4ac",
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_round_observation.py": "402d42345fa16fed87657f3bdc5fb372d00d888505fdade3318b862068742e61",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "f48baf4507aebccb8ede3ea5eb180951ccdae9e10e21d9c0a4bb64c194ac2ea3",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "db368f3561d4d2514c69a329c648afba8c0f2e9ff2c7cf5490edae46e6bca9cc",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "55398206616ecb8a87c80c20b2535fde7b73277c216f5fad0a3150199e8ed03c",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "af47ead606516d8ecbbef21057268eef7310231f16bb1fc6a04d3b435a439c7e",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "180e2ac6ea8fa9079040e5d3a23a8bdafc0694ab61bbce9277068669160e05f5",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_candidate_round_guard.py": "66640863aa56ad782fdc62409c3bb9d5219a63838a1734d89636d85742613641",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c",
+    "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py": "a610cce5de4ae03593691b53761098465cc54dcd0ef0ca96a6750ba584805603",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_round_observation.py": "39f0dfdf0d3bfe578e9d0b68d331d9d01313b7e54ba5e17038e3b8c0bddd85f0",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py": "c325940970169404ca2f4e67b2b241ff33ecbeac9d4855d9b5d3112346e86998",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py": "e5557a52d564911218d9e78436f85d74addd3c89bf8ffea740a9ee9db467f6f9",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_provider_selection.py": "7334ac617cb86e14d1bab2112187b55a7c62e0fd20a8bdf2e1b1435d8710c803",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py": "eb6f9a666e3308617fc4d58db3aea365559b2594781e9a3d3ab73f1a54df13f5",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_lifecycle.py": "a096c3275464c0d467ca282c78a1adab149ee8ef1004d77e9e2295bb20b90bbf",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_monitor.py": "0cb216b04652418a64e38b5b2557ea6fe434b42617f3bcf19cd72175967c1f3b",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch.py": "7d136c91b716b8c7aff7cd44da4ef31e83807c1f972e6de004ac8ca0528a8788",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch_audit.py": "7af52704136d04981f3100f582a93794a60191f0e728b1df8dac3d970c0a5831",
+    "test/api/test_candidate_dispatch_context.py": "9bd16112a31968484d9aeba38d76f37811579bdf189ca178745ac10e0bc3ac53",
+    "test/api/test_candidate_dispatch_native_pipeline.py": "ddb3e5d9499081015f2f759ede218332608e851d48294813c8a6b309c9196241",
+    "test/api/test_candidate_input_audit.py": "78e8033af678336d1d33d3deb5c146ba9e396b3feb27c4c7726a1c5c7f808702",
+    "test/api/test_candidate_round_lifecycle.py": "a88096da9b8265e7c17f6b5c7c4837cc61ec420fa38633baaa0315df7dd0adbe",
+    "test/api/test_candidate_round_monitor.py": "ee32169cb29853af52292da2dd63ae9dd18260f7f83f3c7acb5bc116dafa4283",
+    "test/api/test_candidate_router_dispatch.py": "fbd93437aaa1a92debe6749de46c47e1121852bc2b2c06e0bdae5e2c60deb23e",
+    "test/api/test_owner_candidate_dispatch.py": "61ee2fecd45256ce7b65797061dfdf3fae103bb04f5287794f8f0f3ee824b81d",
+    "test/api/test_owner_candidate_dispatch_audit.py": "5e41d5632a03acdda5d2965ea159a268a7b838b91ccc4adbb16b91933a4d5d3f",
+    "test/api/test_terminal_candidate_attempt_accounting.py": "76e04963c4aef9842dfa1c517be6c89904cb43de470f93b0bd7471b01c4979ad"
+  },
+  "followup_qualification": {
+    "argv": [
+      "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "--tb=short",
+      "--color=no",
+      "-o",
+      "log_cli=false",
+      "-o",
+      "addopts=",
+      "test/api/test_terminal_candidate_attempt_accounting.py",
+      "test/api/test_candidate_round_lifecycle.py",
+      "test/api/test_candidate_round_monitor.py",
+      "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_provider_selection.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py",
+      "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+      "--junitxml=/home/barberb/lift_coding/artifacts/candidate-reporting-20261014/qualification-02.xml"
+    ],
+    "counts": {
+      "passed": 265
+    },
+    "dependencies": {
+      "ipfs_datasets_py": {
+        "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+        "tracked_status": ""
+      },
+      "ipfs_kit_py": {
+        "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+        "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+        "tracked_status": ""
+      }
+    },
+    "dependencies_unchanged": true,
+    "dependency_import_origins": {
+      "ipfs_datasets_py": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit/ipfs_kit_py/__init__.py"
+    },
+    "exit_code": 0,
+    "live_provider_calls": 0,
+    "seconds": 128.43214376806282,
+    "source_pins_unchanged": true
+  },
+  "initial_frozen_sources": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "4881e72e9a1dbb5b1138447fc31c354330881882adbb3ba747ac3675e0664bed",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "ce7b16268c90df306f761942689e9e1266711efe6dba99dfb5b9eaba98d46b7c",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "434656f8bac419b90417bb74b2ce3fa1468db0246e2831eb88b5c1ccc30c0ff0",
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_attempt_accounting.py": "e22f68a9ba1aaedd3b39d127ca66f2de40cc27fe86cc87682ec2c3a79c6cd7c4",
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_input_audit.py": "ae6473ff779f0d67d13e3b153b9cc902ad87e348f033ce9711e4ac4835ede4ac",
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_round_observation.py": "402d42345fa16fed87657f3bdc5fb372d00d888505fdade3318b862068742e61",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "f48baf4507aebccb8ede3ea5eb180951ccdae9e10e21d9c0a4bb64c194ac2ea3",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "db368f3561d4d2514c69a329c648afba8c0f2e9ff2c7cf5490edae46e6bca9cc",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "55398206616ecb8a87c80c20b2535fde7b73277c216f5fad0a3150199e8ed03c",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "af47ead606516d8ecbbef21057268eef7310231f16bb1fc6a04d3b435a439c7e",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "180e2ac6ea8fa9079040e5d3a23a8bdafc0694ab61bbce9277068669160e05f5",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_candidate_round_guard.py": "66640863aa56ad782fdc62409c3bb9d5219a63838a1734d89636d85742613641",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c",
+    "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py": "a610cce5de4ae03593691b53761098465cc54dcd0ef0ca96a6750ba584805603",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_round_observation.py": "39f0dfdf0d3bfe578e9d0b68d331d9d01313b7e54ba5e17038e3b8c0bddd85f0",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py": "c325940970169404ca2f4e67b2b241ff33ecbeac9d4855d9b5d3112346e86998",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py": "e5557a52d564911218d9e78436f85d74addd3c89bf8ffea740a9ee9db467f6f9",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_provider_selection.py": "7334ac617cb86e14d1bab2112187b55a7c62e0fd20a8bdf2e1b1435d8710c803",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py": "eb6f9a666e3308617fc4d58db3aea365559b2594781e9a3d3ab73f1a54df13f5",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_lifecycle.py": "a096c3275464c0d467ca282c78a1adab149ee8ef1004d77e9e2295bb20b90bbf",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_monitor.py": "0cb216b04652418a64e38b5b2557ea6fe434b42617f3bcf19cd72175967c1f3b",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch.py": "7d136c91b716b8c7aff7cd44da4ef31e83807c1f972e6de004ac8ca0528a8788",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch_audit.py": "7af52704136d04981f3100f582a93794a60191f0e728b1df8dac3d970c0a5831",
+    "test/api/test_candidate_dispatch_context.py": "9bd16112a31968484d9aeba38d76f37811579bdf189ca178745ac10e0bc3ac53",
+    "test/api/test_candidate_dispatch_native_pipeline.py": "ddb3e5d9499081015f2f759ede218332608e851d48294813c8a6b309c9196241",
+    "test/api/test_candidate_input_audit.py": "78e8033af678336d1d33d3deb5c146ba9e396b3feb27c4c7726a1c5c7f808702",
+    "test/api/test_candidate_round_lifecycle.py": "0cd1a3ad408602f7905ec5b538a715bd9de40046ea1f275ee99512898371777e",
+    "test/api/test_candidate_round_monitor.py": "ee32169cb29853af52292da2dd63ae9dd18260f7f83f3c7acb5bc116dafa4283",
+    "test/api/test_candidate_router_dispatch.py": "fbd93437aaa1a92debe6749de46c47e1121852bc2b2c06e0bdae5e2c60deb23e",
+    "test/api/test_owner_candidate_dispatch.py": "61ee2fecd45256ce7b65797061dfdf3fae103bb04f5287794f8f0f3ee824b81d",
+    "test/api/test_owner_candidate_dispatch_audit.py": "5e41d5632a03acdda5d2965ea159a268a7b838b91ccc4adbb16b91933a4d5d3f",
+    "test/api/test_terminal_candidate_attempt_accounting.py": "46e43bf2d6c29369eecb191e4fccaeee4e32ec9d1adc53afdbad2fb367707281"
+  },
+  "limitations": [
+    "Provider invocations are authored doubles; usage totals in tests are synthetic.",
+    "Native subprocess/socket/artifact paths use authored container UID and path-admission seams.",
+    "No Docker benchmark, live provider, theorem prover or training run was performed.",
+    "Retained artifacts and lifecycle observations cannot reload dispatch or establish task correctness.",
+    "Full-supervisor two-round admission remains unsupported: Doctor residual obligations and one-call budgets require separate generation-aware admission.",
+    "No new token savings, benchmark reward or performance comparison is established."
+  ],
+  "qualification": {
+    "argv": [
+      "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "--tb=short",
+      "--color=no",
+      "-o",
+      "log_cli=false",
+      "-o",
+      "addopts=",
+      "test/api/test_owner_candidate_dispatch_audit.py",
+      "test/api/test_candidate_input_audit.py",
+      "test/api/test_terminal_candidate_attempt_accounting.py",
+      "test/api/test_candidate_round_lifecycle.py",
+      "test/api/test_owner_candidate_dispatch.py",
+      "test/api/test_candidate_round_monitor.py",
+      "test/api/test_candidate_dispatch_context.py",
+      "test/api/test_candidate_router_dispatch.py",
+      "test/api/test_candidate_dispatch_native_pipeline.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_round_observation.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+      "benchmarks/agent_supervisor/container_coding/test_full_supervisor_candidate_round_guard.py",
+      "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+      "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+      "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_provider_selection.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py",
+      "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py",
+      "--junitxml=/home/barberb/lift_coding/artifacts/candidate-reporting-20261014/qualification-01.xml"
+    ],
+    "counts": {
+      "passed": 705
+    },
+    "dependencies": {
+      "ipfs_datasets_py": {
+        "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+        "tracked_status": ""
+      },
+      "ipfs_kit_py": {
+        "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+        "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+        "tracked_status": ""
+      }
+    },
+    "dependencies_unchanged": true,
+    "dependency_import_origins": {
+      "ipfs_datasets_py": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit/ipfs_kit_py/__init__.py"
+    },
+    "exit_code": 0,
+    "live_provider_calls": 0,
+    "seconds": 891.4254390019923,
+    "source_pins_unchanged": true
+  },
+  "qualification_strategy": "Frozen 19-module regression followed by focused final-state qualification of retained-archive discovery after owner interruption; the full suite was not repeated after this small correction.",
+  "schema": "candidate-reporting-qualification@1",
+  "scope": [
+    "owner-private pre-dispatch retention",
+    "historical candidate input replay",
+    "closed candidate retrieval accounting",
+    "native lifecycle and independent receipt reconciliation",
+    "early refusal of unsupported full-suite round selections",
+    "existing default controls and usage regressions"
+  ]
+}
