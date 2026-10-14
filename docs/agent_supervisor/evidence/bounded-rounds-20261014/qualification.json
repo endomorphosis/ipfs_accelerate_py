@@ -1,0 +1,559 @@
+{
+  "artifacts": [
+    {
+      "bytes": 724,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/dependency-pins.json",
+      "sha256": "e18ebf8af8e1d40c255bfd7ca74076ce39a6bacdd2fb8b02e0679a8cb229d61f"
+    },
+    {
+      "bytes": 25348,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/inner-rescue-01.log",
+      "sha256": "8aa3a7d24feae9b5bbe7c988ac22ffa560fda9a1fdf79b346ddd095f80c3703b"
+    },
+    {
+      "bytes": 13814,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/inner-rescue-01.xml",
+      "sha256": "0bcd77e859c842df7d49b06e08229e28cfd85966f6ed6f5e5196b11b52aff8f9"
+    },
+    {
+      "bytes": 12028,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/inner-rescue-02.log",
+      "sha256": "a6f0c66fc9691a085563ff0aa08c36f4a1f7486ccd2145d28e10115f68b75333"
+    },
+    {
+      "bytes": 9353,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/inner-rescue-02.xml",
+      "sha256": "88ade402a19f8c998aaad4c5683d10636cf18cfd96e7e335e82e3ed5dfb37a1e"
+    },
+    {
+      "bytes": 435,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/native-exhaustion-02-result.json",
+      "sha256": "ba9b1825a7ebefcabcbc84e6fc3b28e820256404d68eaec510429e373482680c"
+    },
+    {
+      "bytes": 83209,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/native-exhaustion-02.log",
+      "sha256": "1cf99cd2acc4e7c79cbf5fcea94bc79e4fa7b1c8b9d34b003bb885c786d27364"
+    },
+    {
+      "bytes": 2524,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/native-exhaustion-02.xml",
+      "sha256": "8e04009c405c37b98b69ce2e6941f2314ec3bde49943a2d94edac6485d8203e9"
+    },
+    {
+      "bytes": 435,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/native-exhaustion-03-result.json",
+      "sha256": "b48e0170d6846b18287ddb3dab68e2444aa92cc2ee87f6adb855e6f25c5d82aa"
+    },
+    {
+      "bytes": 1084,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/native-exhaustion-03.log",
+      "sha256": "6ee7cc8f84557f0cf22dc3c0f395fdc6c795e9b45308643e9b19f5ac0fd5edec"
+    },
+    {
+      "bytes": 586,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/native-exhaustion-03.xml",
+      "sha256": "c437713917b6e1b77c1bc5866b989aba0912085c354e65196d593723be10b4db"
+    },
+    {
+      "bytes": 403,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/native-rescue-01-result.json",
+      "sha256": "62ac3927c3c8c7cb86903383f5bef3a49983c66ef715535dfe38f9d51023d229"
+    },
+    {
+      "bytes": 1011,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/native-rescue-01.log",
+      "sha256": "0853a90f5c890bf067cac394416130c32ef02393eb3afb947e139275224c948e"
+    },
+    {
+      "bytes": 554,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/native-rescue-01.xml",
+      "sha256": "865cb129c015b0512ce25fc4204cceaa80c7f05076d46b20a77b9d84ab60a0f9"
+    },
+    {
+      "bytes": 113,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-driver-01.log",
+      "sha256": "6f3bf11dd0ffeb0847cb64bd3b015d0fbe8540638be9e82a5a542a0d174d88db"
+    },
+    {
+      "bytes": 1298,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-driver-01.xml",
+      "sha256": "8fb12514819212601e0db2e84280dc46d925544ce26bc37b4636446ff232ff44"
+    },
+    {
+      "bytes": 470,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-nonapplication-01-result.json",
+      "sha256": "88640989c6a59215dfb5ae73469db01d8d9226e4cf2c5d7da58cfcf6fa0742e6"
+    },
+    {
+      "bytes": 1650,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-nonapplication-01.log",
+      "sha256": "b883657188d804a99ac2e682648138a60c9f6c95265d377d546c8749f9f548f4"
+    },
+    {
+      "bytes": 1654,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-nonapplication-01.xml",
+      "sha256": "310776fd66948ba0c63e93af5e9e8847abdf7c2d23cd52cf90ead7ba939789cf"
+    },
+    {
+      "bytes": 612,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-nonapplication-02-result.json",
+      "sha256": "9a1210a0ddc24ea197c8fc18063129ad6dfa111105b465d44df8d4649fb898c3"
+    },
+    {
+      "bytes": 179,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-nonapplication-02.log",
+      "sha256": "d0de094fca40c01863d4df40e09eb61fed761e228bcfb39700cf3793d24ea752"
+    },
+    {
+      "bytes": 13913,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-nonapplication-02.xml",
+      "sha256": "43a87fdf772a3ef6293ff4545709237cda84f972890e3836646da381a6fb0ac7"
+    },
+    {
+      "bytes": 5397,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-targeted-01.log",
+      "sha256": "0fb0d4f87d041321fd1dfe4ccad20fd6e180641a737a6df71b40229e4494d89d"
+    },
+    {
+      "bytes": 50149,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-targeted-01.xml",
+      "sha256": "8c7fb17503c8d098c73b2106ab5cd3637d513d070335dd9742fe35cfe5ba0dbd"
+    },
+    {
+      "bytes": 261,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-targeted-02.log",
+      "sha256": "502aa79da14265073cfef9eaa0e058c35297b2eadfa05004218f54b7259e4023"
+    },
+    {
+      "bytes": 27013,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/outer-targeted-02.xml",
+      "sha256": "842331fc631b8206efd3476ccff7bfc14a6eaca2d99e29ebede14a25ce79b157"
+    },
+    {
+      "bytes": 752,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification-02.log",
+      "sha256": "58d31de8e24195665efc49e850883591121f65f356faf6b39d528261b8c2edce"
+    },
+    {
+      "bytes": 108697,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification-02.xml",
+      "sha256": "f143e3de73497b4693cef8d746086c2f0dde35be014c62df66738d77cdd10aa0"
+    },
+    {
+      "bytes": 752,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification-03.log",
+      "sha256": "bab6471769098d4c1c4af06a942ec7c55ed1a21c9a978e54d5d8059f80889e23"
+    },
+    {
+      "bytes": 116421,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification-03.xml",
+      "sha256": "83f05f92fa1d66d32af8c0eeb3436e7ddb1af985dbb757d78d12a62009ee5338"
+    },
+    {
+      "bytes": 1558,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification-result-02.json",
+      "sha256": "f39f323183b1cbe1608dc9b85af60e553c0ce45ea7b2cb5c681bc1ea0e24aed8"
+    },
+    {
+      "bytes": 1659,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification-result-03.json",
+      "sha256": "7bb1d74a755eef27e1ac4d4e7030523e9c39197394b28d82ded54b3bba788994"
+    },
+    {
+      "bytes": 1525,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification-result.json",
+      "sha256": "24589dee4eda989ab577d94f98cd2a3e452733705c30914a5c89fabf7855dc7d"
+    },
+    {
+      "bytes": 3663,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification-source-pins-02.json",
+      "sha256": "d283f5ddbaabc9ebc9346835bf9dd4b9a7e9ff09e52a8d8ca300206d3f61b934"
+    },
+    {
+      "bytes": 4046,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification-source-pins-03.json",
+      "sha256": "d303c116a1278669e2bd7b948c8f72e82f3ddd7563e1256a6b841b953dbca586"
+    },
+    {
+      "bytes": 3663,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification-source-pins.json",
+      "sha256": "a997f3a8d7b972ef1c0ed81d8a1c4569a38ed13c449bc62dffd2fd2aa0b37896"
+    },
+    {
+      "bytes": 6277,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification.log",
+      "sha256": "098500d82042aca85a1ff45298319e7a0a94fc604bb29bf8f60e965f5d79e5aa"
+    },
+    {
+      "bytes": 5876,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification.xml",
+      "sha256": "d557d0f129b6c26869e8b2941d524c5b58b41a7631e3c94181b87a30f1590504"
+    },
+    {
+      "bytes": 3653,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualify-02.py",
+      "sha256": "52f0ae84b2e11d4dac4d55ddb3666411a55174eab638a242678ca9b081acb38a"
+    },
+    {
+      "bytes": 3749,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualify-03.py",
+      "sha256": "243a615808dc16f50e8b613a103ce285f3d680a6641a2cc60596640d033006d8"
+    },
+    {
+      "bytes": 2740,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualify-stream-deadline-01.py",
+      "sha256": "c77577c733e9dc8ec6788bd684d231fe69a232804c5860c09afef631d0ae092f"
+    },
+    {
+      "bytes": 2740,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualify-stream-deadline-02.py",
+      "sha256": "ab98aac2e057f7a35c8ec581d2af7d495385c2ce9d2af4da8fc546fd33ea7132"
+    },
+    {
+      "bytes": 2740,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualify-stream-deadline-03.py",
+      "sha256": "c2d6c84e3a9b1611087923aefd4b4aca6f565e2178890b2d17330c01021635e1"
+    },
+    {
+      "bytes": 3344,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualify.py",
+      "sha256": "c96df7858b7ce360968f25aa8c63eab8b776dbfbfdc86c64c0650b9f5749f75a"
+    },
+    {
+      "bytes": 100,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-01.log",
+      "sha256": "01ba1a94f0fd1361f6154acfe5ebe6acab4fa1f6f9d7a45407a6c5c75381bdd7"
+    },
+    {
+      "bytes": 6957,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-01.xml",
+      "sha256": "744ec9cb74c4c30a8f9b835dcac10510a4a6a3cc9c5ccc0e2f3e60c7f7e575b6"
+    },
+    {
+      "bytes": 100,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-02.log",
+      "sha256": "41390080db7024d1de71d329831b2ee5867fafdb453f6b4271b9b35516015fef"
+    },
+    {
+      "bytes": 7427,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-02.xml",
+      "sha256": "8fe0ffdc58643b70813b5f49699b673ddb98e5b12c777cc78bc984272fc08755"
+    },
+    {
+      "bytes": 100,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-03.log",
+      "sha256": "29cbb76996acea6df142f00279c72f709148fde5bf4866f6673754cf5035e40c"
+    },
+    {
+      "bytes": 7572,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-03.xml",
+      "sha256": "380a94cc562f505e65852a9fed18915221974d7f0f8d8648e503f2b54f16edd7"
+    },
+    {
+      "bytes": 570,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-result-01.json",
+      "sha256": "09384d946a3c7b056d04a2524218dcaed85cbc70acba069544a8f77accd1ec42"
+    },
+    {
+      "bytes": 570,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-result-02.json",
+      "sha256": "539f83eeb554c1932ec9f6914e7115b6e7dc96f88f8fff8794e73c7497734ee5"
+    },
+    {
+      "bytes": 570,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-result-03.json",
+      "sha256": "06efb774159b2fd725d7dee60f5951157ad531840abdea35f8423e56b71980a0"
+    },
+    {
+      "bytes": 2455,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-source-pins-01.json",
+      "sha256": "7515c5ec1cc632a01a2a5ba8868ba4fe648ffb9a42f063ed4cdad37b2655991d"
+    },
+    {
+      "bytes": 2455,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-source-pins-02.json",
+      "sha256": "ac3399c2a827bf8ee35d629412817eae85f48c9073842fecc64c5d0e2a270ff1"
+    },
+    {
+      "bytes": 2455,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/stream-deadline-source-pins-03.json",
+      "sha256": "27f21257f8492d639acdcb71c8fd84118427c7dcf8c2aff323fcbaae8362c11d"
+    },
+    {
+      "bytes": 5889,
+      "path": "/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/write_evidence.py",
+      "sha256": "68087c241af30cbf9373c2460665eb863ce2f0e9eb89688df26ddd265bc829a3"
+    }
+  ],
+  "base_commit": "d49548e9a4823b6dfc3017e927dea7012770b4e3",
+  "coverage": [
+    "Frozen optional Grok coding-turn bound from preparation through Harbor, driver, worker and llm_router; defaults unchanged.",
+    "Cumulative deadline includes validation, rescue prompt/environment preparation and event persistence; invalid or exhausted budget refuses model rescue.",
+    "Deterministic rescue remains available when model rescue cannot run.",
+    "Database-bound inline rescue cannot launch an unadmitted second child; real Git and native database/portal exercised, pooled and nonpooled.",
+    "Authored Grok CLI receives sixteen-turn bound and emits exhaustion; real router and native failure settlement preserve unfinished commit and reported usage.",
+    "Explicit provider-free Doctor nonapplication may preserve single-trial receipt completeness; unavailable coding policy remains None."
+  ],
+  "created_utc": "2026-10-14T07:55:03.648926+00:00",
+  "dependencies": {
+    "datasets": {
+      "head": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "logic_import_path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014/ipfs_datasets_py/logic/__init__.py",
+      "logic_import_returncode": 0,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+      "status": []
+    },
+    "kit": {
+      "head": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+      "status": []
+    },
+    "prior": {
+      "head": "d49548e9a4823b6dfc3017e927dea7012770b4e3",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-coding-checkpoints-20261014",
+      "status": []
+    }
+  },
+  "dependency_recovery": {
+    "earlier_collection_failure": "qualification.xml: four module collection errors while the datasets checkout was absent.",
+    "missing_previous_path": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+    "restored_exact_commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+    "restored_path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+    "shared_logic_import_origin_verified": true
+  },
+  "earlier_failure_notes": [
+    "Initial focused rescue and outer runs included corrected authored-fixture failures; retained here and superseded by the final pinned consolidated run.",
+    "native-exhaustion-02 omitted the required container boundary in its authored fixture; native-exhaustion-03 corrected that fixture.",
+    "outer-nonapplication-01 and qualification.xml were collection-blocked by the missing pinned datasets checkout.",
+    "qualification-02 was provisional: the reviewed absolute-deadline fix changed source pins during the run; final qualification-03 supersedes it."
+  ],
+  "earlier_runs": [
+    {
+      "counts": {
+        "failed": 3,
+        "passed": 47
+      },
+      "failed_cases": [
+        "api.test_implementation_rescue_cumulative_deadline::test_primary_dispatch_starts_single_deadline_before_child_and_validation[3.0]",
+        "api.test_implementation_rescue_cumulative_deadline::test_primary_dispatch_starts_single_deadline_before_child_and_validation[21.0]",
+        "api.test_agent_supervisor_implementation_auto_rescue::test_inline_provider_real_child_does_not_inherit_owner_credentials"
+      ],
+      "junit": "inner-rescue-01.xml"
+    },
+    {
+      "counts": {
+        "passed": 51
+      },
+      "failed_cases": [],
+      "junit": "inner-rescue-02.xml"
+    },
+    {
+      "counts": {
+        "failed": 2
+      },
+      "failed_cases": [
+        "api.test_native_provider_rescue_boundary::test_native_grok_turn_exhaustion_preserves_edits_and_usage_without_completion[False]",
+        "api.test_native_provider_rescue_boundary::test_native_grok_turn_exhaustion_preserves_edits_and_usage_without_completion[True]"
+      ],
+      "junit": "native-exhaustion-02.xml"
+    },
+    {
+      "counts": {
+        "passed": 2
+      },
+      "failed_cases": [],
+      "junit": "native-exhaustion-03.xml"
+    },
+    {
+      "counts": {
+        "passed": 2
+      },
+      "failed_cases": [],
+      "junit": "native-rescue-01.xml"
+    },
+    {
+      "counts": {
+        "passed": 5
+      },
+      "failed_cases": [],
+      "junit": "outer-driver-01.xml"
+    },
+    {
+      "counts": {
+        "error": 1
+      },
+      "failed_cases": [
+        "::benchmarks.agent_supervisor.container_coding.test_grok_coding_budget"
+      ],
+      "junit": "outer-nonapplication-01.xml"
+    },
+    {
+      "counts": {
+        "passed": 77
+      },
+      "failed_cases": [],
+      "junit": "outer-nonapplication-02.xml"
+    },
+    {
+      "counts": {
+        "failed": 4,
+        "passed": 248
+      },
+      "failed_cases": [
+        "benchmarks.agent_supervisor.container_coding.test_grok_coding_budget::test_collect_checks_actual_policy_without_losing_usage[16-True]",
+        "benchmarks.agent_supervisor.container_coding.test_grok_coding_budget::test_harbor_frozen_value_cannot_change[removed]",
+        "benchmarks.agent_supervisor.container_coding.test_grok_coding_budget::test_harbor_frozen_value_cannot_change[changed]",
+        "benchmarks.agent_supervisor.container_coding.test_grok_coding_budget::test_harbor_frozen_value_cannot_change[introduced]"
+      ],
+      "junit": "outer-targeted-01.xml"
+    },
+    {
+      "counts": {
+        "passed": 146
+      },
+      "failed_cases": [],
+      "junit": "outer-targeted-02.xml"
+    },
+    {
+      "counts": {
+        "passed": 593
+      },
+      "failed_cases": [],
+      "junit": "qualification-02.xml"
+    },
+    {
+      "counts": {
+        "passed": 641
+      },
+      "failed_cases": [],
+      "junit": "qualification-03.xml"
+    },
+    {
+      "counts": {
+        "error": 4
+      },
+      "failed_cases": [
+        "::benchmarks.agent_supervisor.container_coding.test_grok_coding_budget",
+        "::benchmarks.agent_supervisor.container_coding.test_terminal_semantic_working_set_policy",
+        "::benchmarks.agent_supervisor.container_coding.test_semantic_working_set_worker_wiring",
+        "::test.api.test_terminal_doctor_dispatch"
+      ],
+      "junit": "qualification.xml"
+    },
+    {
+      "counts": {
+        "passed": 43
+      },
+      "failed_cases": [],
+      "junit": "stream-deadline-01.xml"
+    },
+    {
+      "counts": {
+        "passed": 46
+      },
+      "failed_cases": [],
+      "junit": "stream-deadline-02.xml"
+    },
+    {
+      "counts": {
+        "passed": 47
+      },
+      "failed_cases": [],
+      "junit": "stream-deadline-03.xml"
+    }
+  ],
+  "limitations": {
+    "automatic_native_multi_round_sessions_enabled": false,
+    "candidate_index_refresh_implemented": false,
+    "checkpoint_confers_retry_completion_or_proof_authority": false,
+    "default_grok_turn_budget_changed": false,
+    "live_comparison_blocker": "Prior live Grok treatment was authentication-blocked; this qualification does not establish restored provider access.",
+    "live_provider_calls": 0,
+    "net_token_savings_established": false,
+    "new_terminal_bench_run": false,
+    "new_token_score": null,
+    "new_training_or_formal_prover_run": false,
+    "prior_baseline_gaps": "See ../coding-checkpoints-20261014/qualification.json; this run does not resolve that broader suite backlog.",
+    "whole_supervisor_suite_green": false
+  },
+  "qualification": {
+    "argv": [
+      "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "--tb=short",
+      "--color=no",
+      "-o",
+      "log_cli=false",
+      "-o",
+      "addopts=",
+      "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+      "benchmarks/agent_supervisor/container_coding/test_grok_coding_budget.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_outer.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py",
+      "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_worker_wiring.py",
+      "test/api/test_grok_coding_turn_bound.py",
+      "test/api/test_stream_absolute_deadline.py",
+      "test/api/test_stream_process_group_cleanup.py",
+      "test/api/test_grok_container_router.py",
+      "test/api/test_terminal_doctor_dispatch.py",
+      "test/api/test_router_implementation_runner.py",
+      "test/api/test_grok_stream_router.py",
+      "test/api/test_grok_nonstream_outcome.py",
+      "test/api/test_implementation_rescue_cumulative_deadline.py",
+      "test/api/test_agent_supervisor_implementation_auto_rescue.py",
+      "test/api/test_native_provider_rescue_boundary.py",
+      "test/api/test_provider_failure_checkpoint_retention.py",
+      "test/api/test_native_provider_failure_settlement.py",
+      "test/api/test_provider_failure_retry_context.py",
+      "--junitxml=/home/barberb/lift_coding/artifacts/bounded-rounds-20261014/qualification-03.xml"
+    ],
+    "counts": {
+      "passed": 641
+    },
+    "exit_code": 0,
+    "live_provider_calls": 0,
+    "seconds": 365.8995358881075,
+    "source_pins_unchanged": true
+  },
+  "schema": "bounded-coding-round-qualification@1",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "8109674dbb5656b5c797c2ec1a9b693aab66ec070a279f1849c2b9eb2627a96e",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "387213fc0fe6d1d70734b58ceb332872b9e4080dc9cd214427be64e0dd08cdf9",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "8abd8b98d9f5ef7511a642863944246a7d1e9942f8eddfa555164263dd43cf90",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "f4d1d70547042c67d359de78dedf3d0322dee3587b95394fa8758d3019211fbb",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "d566f24a59af03dc472db294e28406a8ac1ebc8dc00d7b5c9eb641546c5b47ed",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "ba8253ec7100d38e045e93d6ef9d14741d084c1287533b2a4629595db055ee1e",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "180e2ac6ea8fa9079040e5d3a23a8bdafc0694ab61bbce9277068669160e05f5",
+    "benchmarks/agent_supervisor/container_coding/test_grok_coding_budget.py": "4c74c607fda93ddecb4fc90efc43e104b05ac8cb511fcbb89da50688354f6253",
+    "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_worker_wiring.py": "66b765c70a18bb806431fe7eabb032527d00e7660441430bd5b2f45929debc86",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_outer.py": "d4278070e8a6522c979e35c80e90cf89d1e26e7cb6650e271b51d49ca887c648",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py": "6ac3e3aca2d48974eca90927ef5a4416cd6cb39d5405aa370ce01c97ae530a0b",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_coding_budget.py": "f31d2596ad1b74ace36ef963f0fc19e6e935d532e71fea9db9b98c71793fd09c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "67aa05b0f73b3812feb33c78a495f74acb6c3689d930dd5e1a042f26a1cc2f3c",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "613d2883ad3ff9fe6b04d84e1dd3288673e1dcdb2dfbdd2e9534c5f9a65b2579",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "71c3099e6981d605ce3a6e98ff25298731cc2a295b86a89e9aa55698913894d5",
+    "test/api/test_agent_supervisor_implementation_auto_rescue.py": "7c102a751f596b7ba720fab253f4d7924b87c07fcdc49aedf358b0abe6b4d6ac",
+    "test/api/test_grok_coding_turn_bound.py": "02da81f059d8db57c8f24e623642d3dcf199f9c8ea6813bdc6356e465c8a2474",
+    "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+    "test/api/test_grok_nonstream_outcome.py": "a9eb81007646deb9e6bb8138a71439ba788d41b5f308b66cf6c24f21e1ea1787",
+    "test/api/test_grok_stream_router.py": "39880b8229d80ce54acb35f0aa47fd293f15235842ff82691acd58af990105c8",
+    "test/api/test_implementation_rescue_cumulative_deadline.py": "3abd223d9753c442104835a983fb79839c7e6702265379cc455dba2dbb870a84",
+    "test/api/test_native_provider_failure_settlement.py": "e30b285b125165859df6184cefe9a057df21fd5ac83f3b898271e9c6407000c2",
+    "test/api/test_native_provider_rescue_boundary.py": "b05fdcaeb6e03cf7a6e4798b3768a278ed6f71cbe5725bbcc567e281d7bbe9a6",
+    "test/api/test_provider_failure_checkpoint_retention.py": "9e3875f17ca75bed1543698028c400e414ba2cdef9d03ca0040deb01d4487518",
+    "test/api/test_provider_failure_retry_context.py": "514dca1a228be88631e57a8deb0ae3a953b3e807d62ca636d39bb0eb75a9f78c",
+    "test/api/test_router_implementation_runner.py": "e02ebf6a530912f0ddd1070b258e3b8c01d64f418adf2592a2714e7d7ef9504a",
+    "test/api/test_stream_absolute_deadline.py": "ef156b8488c3b5df2c02d939958f5a1b6653d3f5a681244bc540468b1c4a56f2",
+    "test/api/test_stream_process_group_cleanup.py": "50a9d1d45a5d487e8e9d4aa5625002c5a66cf2d10d12fdd5b22cf72b6beb2d82",
+    "test/api/test_terminal_doctor_dispatch.py": "1abb40e3e01d753489b1d09f312d8cfbe4b4acd13397504cf00582e859254935"
+  },
+  "test_environment": {
+    "native_fixture_container_boundary": "Authored stub; this is not Docker isolation qualification.",
+    "pytest_addopts_override": "",
+    "pytest_plugin_autoload": false,
+    "required_ast_sealing": "Registered and required by test/conftest.py; not disabled."
+  }
+}

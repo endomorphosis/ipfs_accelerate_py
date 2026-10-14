@@ -431,6 +431,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
         semantic_working_set: str = "legacy",
+        grok_coding_max_turns: int = 128,
         semantic_metadata_token_counter: SemanticMetadataTokenCounter | None = None,
         census_only: bool = False,
         coding_reply_mode: str = "legacy",
@@ -509,6 +510,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             raise ValueError("metadata token counter must match the pinned provider and model")
     if type(census_only) is not bool:
         raise ValueError("explicit Boolean census selection required")
+    from .grok_coding_budget import validate_grok_coding_max_turns
+    validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider, purpose=purpose)
+    if grok_coding_max_turns != 128 and census_only:
+        raise ValueError("nondefault coding turns require generation, not metadata census")
     if type(semantic_working_set) is not str or semantic_working_set not in {"legacy", "capsule-references@1"}:
         raise ValueError("unsupported semantic working set")
     if semantic_working_set != "legacy" and (purpose != "coding" or not source_selected
@@ -900,7 +905,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "grok_disallowed_tools": "read_file,search_tool,use_tool" if purpose == "planning" else
             "search_tool,use_tool",
             "grok_permission_mode": "dontAsk" if purpose == "planning" else "bypassPermissions",
-            "grok_max_turns": 2 if purpose == "planning" else 128}
+            "grok_max_turns": 2 if purpose == "planning" else grok_coding_max_turns}
         receipt["provider_invocation_policy"] = {
             "max_turns": provider_options["grok_max_turns"],
             "tools_profile": "none" if purpose == "planning" else "isolated_coding",
@@ -1096,6 +1101,7 @@ def main():
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--budget-profile")
     parser.add_argument("--max-output-tokens", type=int, default=4096)
+    parser.add_argument("--grok-coding-max-turns", type=int, default=128)
     parser.add_argument("--reasoning-effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
     parser.add_argument("--purpose", default="coding", choices=["planning", "coding"])
     parser.add_argument("--container-boundary", type=Path)
@@ -1149,6 +1155,7 @@ def main():
                         semantic_transport_schema=args.semantic_transport_schema,
                         semantic_metadata_view=args.semantic_metadata_view,
                         semantic_working_set=args.semantic_working_set,
+                        grok_coding_max_turns=args.grok_coding_max_turns,
                         census_only=args.semantic_metadata_census_only,
                         coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,
