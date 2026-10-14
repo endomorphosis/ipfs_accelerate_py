@@ -6962,7 +6962,7 @@ class MergeTrain:
                 return status
             if status.stdout.strip():
                 return subprocess.CompletedProcess(
-                    ["git", "status", "--porcelain"],
+                    ["git", "--no-optional-locks", "status", "--porcelain"],
                     2,
                     stdout=status.stdout,
                     stderr=f"target worktree is dirty: {target_worktree}",

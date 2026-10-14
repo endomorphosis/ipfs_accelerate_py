@@ -222,7 +222,7 @@ def _walk_source_paths(workspace: Path) -> tuple[str, ...]:
 def dirty_source_paths(workspace: Path) -> tuple[str, ...]:
     try:
         completed = subprocess.run(
-            ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+            ["git", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
             cwd=workspace,
             check=False,
             capture_output=True,
