@@ -115,7 +115,8 @@ The allocation guard binds source through its retained task-admission object,
 using the admitted allocated workspace. The caller still supplies the existing
 CAS, retained source inventory, committed repository request, context, public
 file scope and response bounds. Native exact-source checks retain their clean
-committed canonical and allocated source profile.
+committed allocated source profile. The worker broker independently adds the
+canonical checkout's complete source-byte check before exposing its proxy grant.
 
 ```python
 binding = allocation.bind_current_source_lookup(
@@ -169,6 +170,74 @@ checks, without a filesystem writer lease or cross-store atomic transaction.
 Direct privileged native SDK reads retain their generic task-body/source checks.
 This optional broker guard does not silently add coordinator and allocation
 fencing to every privileged native operation.
+
+## Bind a pinned historical nomination
+
+The allocation guard can also consume the exact
+[historical source-scope nomination](repository_source_scope.md), using its
+retained task admission and allocated workspace:
+
+```python
+binding = allocation.bind_nominated_current_source_lookup(
+    scope=existing_reviewed_source_nomination,
+    expected_scope_cid=independently_pinned_nomination_cid,
+    cas=existing_source_cas,
+    expected_inventory_cid=host_admitted_source_inventory_cid,
+    request=host_admitted_committed_source_request,
+    limits=host_admitted_source_limits,
+    context_cid=host_admitted_source_context_cid,
+    max_response_bytes=16384,
+    max_slice_bytes=4096,
+)
+observation = allocation.require_nominated_source_scope()
+```
+
+The caller supplies no alternate workspace or path list. The task binder
+cold-replays the complete retained inventory, including omitted source, against
+the independent inventory, request, limit and scope pins. It derives the exact
+selected paths from that replay. Both allocation bind methods share one
+whole-operation guard; reentrant or competing binds cannot adopt another
+reader. The original task and allocation handles, CAS, reader and binding bytes
+remain retained live objects. An observation dictionary cannot replace them.
+
+The observer returns `supervisor-native-nominated-source-worktree-allocation@1`.
+It preserves the task nomination's scope, frontier, inventory, source binding,
+context and current task identities, adding the actual `allocation_cid` and
+`allocation_ownership_verified=True`. The separate task-only observer continues
+to report allocation verification false. `bootstrap_verified`,
+`compiled_context_verified`, `coding_process_verified` and proof, execution,
+completion and omission authority remain false. The historical nomination's
+own flags are unchanged.
+
+Before returning, the observer repeats native task and allocation fencing,
+checks current projection/lifecycle custody, joins the original reader and
+nomination, and checks the complete allocated working-source population after
+native callbacks. Lifecycle loss, stale source, changed reader or scope, and
+substituted retained objects refuse. These are sequential checks; they do not
+exclude other filesystem writers. Publication failures retain an already bound
+reader and its original allocation marker. They do not undo the gateway's
+bind-once state or release the owner's cleanup responsibility.
+
+Canonical Git registration and control ownership are allocation checks;
+canonical working-source bytes are independently checked by the broker. A valid
+allocation nomination can therefore still be refused when that broker joins
+the canonical and allocated originals. Neither an allocation observation nor a
+historical source hash bypasses the broker's separate admission.
+
+The nomination permits at most 64 selected files and 1,000,000 total original
+bytes, counted per selected path, including instruction, smoke, profile or other
+required support.
+The coding broker independently permits at most 32 selected paths, with its
+existing descriptor and response bounds. A 33-path nomination can be valid for
+the allocation binder while refusing broker construction before a proxy grant.
+It is never truncated into a smaller worker scope. Unselected frontier entries
+cannot be read through the bound reader; expansion requires a separately admitted
+source lifecycle.
+
+The [nominated allocation evidence](evidence/nominated-source-allocation-20261014/README.md)
+records this composition separately from the earlier allocation qualification
+below. It does not imply an authenticated coding-child launch, automatic signed
+Terminal scope adoption, reconstruction accuracy or token savings.
 
 ## Remaining production handoff and qualification
 
