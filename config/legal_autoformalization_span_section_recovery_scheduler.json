@@ -1,0 +1,89 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.legal_autoformalization_span_section.scheduler_config@1",
+  "taskboard_path": "docs/architecture/legal_autoformalization_convergence/span-section.todo.md",
+  "objectives_path": "docs/architecture/legal_autoformalization_convergence/span-section.objectives.md",
+  "plan_path": "docs/architecture/legal_autoformalization_convergence/SPAN_SECTION_PLAN.md",
+  "validator_path": "scripts/validate_legal_autoformalization_span_section_board.py",
+  "task_prefix": "## LAC-S6-",
+  "goal_prefix": "LACB-G",
+  "board_namespace": "legal-autoformalization-span-section-20261013",
+  "merge_target_branch": "agent/legal-autoformalization-span-section-supervisor-20261013",
+  "max_lanes": 1,
+  "strict_task_sharding": false,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "retry_budget_guardrail_enabled": true,
+  "dependency_guardrail_enabled": true,
+  "reconciliation_guardrail_enabled": true,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 15,
+  "check_interval_seconds": 15,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 120,
+  "max_restarts": 2,
+  "max_task_attempts": 3,
+  "implementation_retry_budget": 2,
+  "validation_retry_budget": 2,
+  "merge_retry_budget": 3,
+  "implementation_timeout_seconds": 1800,
+  "implementation_max_timeout_seconds": 2400,
+  "implementation_log_stall_seconds": 600,
+  "worktree_submodule_paths": [],
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.7",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-6.1-sol",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "medium",
+    "max_concurrency": 1,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false,
+    "primary_executable": "/home/barberb/.local/bin/grok"
+  },
+  "source_binding": {
+    "accelerator_required_ancestor": "c213cc4c78b469408e01d33db860f090a122c73c",
+    "accelerator_required_branch": "agent/legal-autoformalization-span-section-supervisor-20261013",
+    "bootstrap_task_source": "legacy-markdown",
+    "read_only_external_sources_manifest": "config/legal_autoformalization_span_section_sources.json"
+  },
+  "runtime_paths": {
+    "root": "data/agent_supervisor/legal_autoformalization_span_section/runtime/generation-02",
+    "state": "data/agent_supervisor/legal_autoformalization_span_section/runtime/generation-02/state",
+    "worktrees": "data/agent_supervisor/legal_autoformalization_span_section/runtime/generation-02/worktrees",
+    "merge_queue": "data/agent_supervisor/legal_autoformalization_span_section/runtime/generation-02/merge_queue",
+    "logs": "data/agent_supervisor/legal_autoformalization_span_section/runtime/generation-02/logs",
+    "evidence": "data/agent_supervisor/legal_autoformalization_span_section/runtime/generation-02/evidence"
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "lac-span-section-recovery-0",
+      "strict_shard_remainder": 0
+    }
+  ],
+  "initial_projection": {
+    "task_count": 3,
+    "completed_task_ids": [
+      "LAC-S6-011",
+      "LAC-S6-024"
+    ],
+    "ready_task_ids": [
+      "LAC-S6-044"
+    ],
+    "goal_count": 4,
+    "root_goal_id": "LACB-G000"
+  },
+  "protected_paths": [
+    "config/legal_autoformalization_span_section_scheduler.json",
+    "config/legal_autoformalization_span_section_sources.json",
+    "docs/architecture/legal_autoformalization_convergence/span-section.todo.md",
+    "docs/architecture/legal_autoformalization_convergence/span-section.objectives.md",
+    "docs/architecture/legal_autoformalization_convergence/SPAN_SECTION_PLAN.md",
+    "scripts/legal_autoformalization_span_section.py",
+    "scripts/validate_legal_autoformalization_span_section_board.py",
+    "scripts/run_legal_autoformalization_supervisor.py",
+    "config/legal_autoformalization_span_section_recovery_scheduler.json"
+  ]
+}
