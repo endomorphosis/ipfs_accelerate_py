@@ -1153,6 +1153,32 @@ source-alignment and datasets progress when publishing this bridge. Separate
 family/schema/version/decoder-task and 8D/384D/768D assets remain the basis for
 later learned reconstruction; this source-backed proof join changes none of them.
 
+The [merged integration review](evidence/repository-proof-context-20261014/merged-incoming-review.json)
+preserves subsequent capsule working-set, usage-accounting and provider-checkpoint
+progress from upstream. Its fourteen changed listed dependencies require a new
+complete qualification of the merged source; the earlier passing result remains
+separate. Incoming maintained documentation updates are retained alongside raw
+historical results. Currentness and source correspondence do not themselves
+qualify these additional router and deployed-worker combinations.
+
+The [router adoption followup](evidence/repository-proof-context-20261014/router-adoption-followup.json)
+identifies a specific next repair: the incoming instruction `@5` closing replay
+occurs before a working-set RPC. Repeat the independent complete signed/profile
+and compiled-instruction replay after the callback and before model dispatch.
+Qualify the positive combined path and refusal on selected/support/profile/omitted
+source or artifact drift, with zero provider calls on refusal. Existing selected
+capsule and native spawn checks remain distinct. The current host bridge's tests
+do not establish that router combination's admission or deployed task success.
+
+The [newer LegalIR findings](evidence/repository-proof-context-20261014/preserved-legalir-review.json)
+preserve trained-parent reuse and a separate published conditions-head comparison.
+Fresh-panel exact IR remained zero, and actual latent conditioning was disabled.
+Treat that as failed generalization evidence rather than a qualified 384D teacher.
+Retain checkpoint/task/schema/latent-mode lineage, verify actual encoder assets
+and per-family ModelManager registration, then gate distillation on fresh semantic
+and text reconstruction as well as loss. This host proof-context run supplies
+no model-quality or complete dimension-matrix qualification.
+
 Next, qualify a trusted deployed consumer alongside the existing permission,
 claim, profile and instruction joins. Then extend admitted proof families and
 multi-receipt dependency closure before choosing retrieval defaults. Freeze

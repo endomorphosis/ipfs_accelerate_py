@@ -59,7 +59,7 @@ uses a valid policy mutation in the retained-policy drift control. Production
 source stayed unchanged across this correction. The original runner's display
 said three selected suites; those targets were three node IDs in one test file.
 
-The [third complete attempt](qualification-03/commands.json) passed all 180 distinct
+The [third premerge complete attempt](qualification-03/commands.json) passed all 180 distinct
 cases across five suites, including 38 new controls, in 2420.219 seconds. It had
 zero failures, errors or skips, collection and JUnit identities agreed, and all
 250 listed bindings stayed unchanged. The [summary](qualification-summary.json),
@@ -89,8 +89,13 @@ This is not deployed worker qualification or a mathematical proof gain.
 The [documentation checker](doc_qualification_runner.py) runs the four exact
 local documentation workflow blocks, checks guide/plan/record links and anchors,
 and binds the final passing full qualification separately from earlier attempts.
-Its [receipt](documentation-checks.json) and [workflow log](documentation-workflow.log)
-distinguish local checks from exact-commit hosted CI. The
+The [original premerge receipt](documentation-checks.json) and
+[workflow log](documentation-workflow.log) passed four blocks, 98 relative links
+and ten anchors. Their raw bytes and the
+[original runner snapshot](premerge-doc_qualification_runner.py.snapshot.txt)
+remain unchanged. The [second documentation receipt](documentation-checks-02.json) and
+[workflow log](documentation-workflow-02.log) bind those earlier artifacts
+alongside the independently selected fourth full qualification. The
 [CI observer](observe_hosted_ci.py) uses read-only API requests for the independently
 selected publication SHA, rechecks the closing run attempt and completed job/check
 population, and records public evidence in the parent publication. It never
@@ -107,14 +112,43 @@ refs and tests were unchanged.
 
 The [incoming review](incoming-integration-review.json) binds the preserved newer
 main changes and compares the listed datasets files to the newer parent pin.
+The [merged review](merged-incoming-review.json) separately records the later
+93-path capsule/usage/checkpoint integration at `2b24fde95f2938f2265d85d7351814abdca0d104`.
+Fourteen listed dependencies change and none overlap the new production, test or
+guide paths. The [complete fourth run](qualification-04/commands.json) passed all 180 distinct
+cases, including 38 new controls, in 2388.742 seconds with no failures, errors
+or skips and all 250 bindings unchanged. Its [summary](merged-qualification-summary.json)
+records the merged result separately from the premerge execution. The incoming maintained capsule README append
+is preserved; raw earlier results remain unchanged. Broad evidence guards use
+the reviewed incoming revision, with explicit ancestry to the original base.
+The original premerge manifest remains in [its retained copy](premerge-manifest.json)
+and Git `6bcbdaef3fbc4a27ab8d6c91be7edfe78f464586`.
 Incoming tests outside the five-suite roster are not counted as executed here.
 All prior autoencoder checkpoints, embeddings, model-manager registrations and
 family/schema/version/decoder-task/dimension inventories remain available for
 later reconstruction and distillation work.
 
+The [preserved LegalIR review](preserved-legalir-review.json) independently binds
+the newer parent note/model-card objects and attributes their results to the
+parallel experiment. It reused trained N10 weights, froze forty tensors and
+trained two conditions-head tensors. Joint exact IR was zero on each fresh
+36-example panel; scientific acceptance failed and the default stayed unchanged.
+Reported 384D inputs were placeholders with latent conditioning disabled, so
+this is not genuine dimension-path, legal-text or statutory-fidelity qualification.
+Preserve the published comparison's exact lineage and assets without promoting
+it to a teacher on training loss alone. Its receipts do not verify all family/
+dimension/schema/task registrations or ModelManager imports.
+
 The remaining production path is trusted consumer wiring, permission and native
 claim/profile/instruction handoff qualification, additional independently checked
 source-identity/proof-family backends and measured complete-session treatments.
+The [router ordering followup](router-adoption-followup.json) records a concrete
+pending combination: incoming `@5` replay precedes working-set `request_page`
+and is not repeated after that callback before provider dispatch. The existing
+capsule broker and native launch checks retain their independent protections;
+this static ordering gap is not a demonstrated exploit. Close and qualify the
+complete signed/profile/instruction replay after preflight before adopting that
+combination. This five-suite qualification covers the host bridge, not that router.
 The guide gives explicit acceptance boundaries. No reconstruction, execution,
 completion, omission authority, new model publication or token-saving result is
 claimed by this increment.

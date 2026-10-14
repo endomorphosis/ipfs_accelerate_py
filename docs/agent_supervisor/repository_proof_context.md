@@ -146,6 +146,12 @@ not replace a reviewed complete key and live admission.
    instruction. Qualify the permission and cross-process handoffs in the
    [existing deployment proposal](evidence/native-source-worker-spawn-20261014/permission-handoff-design.json).
    Preserve the existing source restoration and edit-generation paths.
+   First close the [reviewed router adoption gap](evidence/repository-proof-context-20261014/router-adoption-followup.json):
+   incoming instruction `@5` replay precedes the new working-set `request_page`
+   callback. Repeat the independent complete signed/profile/compiled-instruction
+   replay after that request and before provider dispatch, then qualify this
+   combined path with selected and omitted-source drift in both checkouts.
+   The five proof-context suites do not qualify that router combination.
 2. Add independently verified identity backends for committed Git snapshots
    and other proof families. Keep decoded logic proposals, checked local proofs
    and task acceptance distinct. Add multi-receipt composition only with explicit
@@ -155,6 +161,13 @@ not replace a reviewed complete key and live admission.
    schema/version, decoder-task and 8D/384D/768D inventories. A source generation,
    encoder revision and exact training asset lineage belong in each artifact's
    identity. Neither dimension nor low training loss establishes formal validity.
+   The [preserved LegalIR review](evidence/repository-proof-context-20261014/preserved-legalir-review.json)
+   records trained-parent reuse and a published conditions-head comparison whose
+   fresh-panel exact IR score was zero. Its 384D inputs were placeholders with
+   latent conditioning disabled. Keep that lineage separate; require actual
+   encoder/embedding conditioning and fresh held-out semantic/text reconstruction
+   before teacher promotion or distillation. Those receipts do not establish
+   the complete family/dimension/schema/task registry or ModelManager imports.
 4. Freeze matched Terminal Bench traces for baseline, indexed source retrieval,
    semantic capsules, reversible source views and proof-context treatments.
    Measure complete input/output usage across planning, coding, lookup, expansion,

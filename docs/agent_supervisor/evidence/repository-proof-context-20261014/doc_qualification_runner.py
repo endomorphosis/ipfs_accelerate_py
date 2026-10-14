@@ -3,6 +3,7 @@
 No tests, providers, models, training, Docker or official verifier are invoked.
 """
 from __future__ import annotations
+import argparse
 import datetime
 import hashlib
 import importlib.util
@@ -23,6 +24,7 @@ CHECKER_SHA = '596a0038b18d592f2e605643890afc85e457558f7b887932a474557d7586819e'
 EXPECTED_NAMES = ('Supervisor primary-doc vocabulary','Maintained-surface relative links',
     'Packaging version pin alignment','Closeout navigation markers')
 BASE = "c82e5774fe2ab97ccbb791416e9d77964c519d85"
+PRESERVED_EVIDENCE_REVISION = "2b24fde95f2938f2265d85d7351814abdca0d104"
 DATASETS_REVISION = "a0f60d42f836571a0023515e92dfb0e5724f0d79"
 KIT_REVISION = "40c98c71b95be750509ffdb21e7e5494d91b4e79"
 ROSTER = ("test/api/test_repository_proof_context.py",
@@ -145,7 +147,7 @@ def qualification():
     return attempt,report,new
 
 
-def guard():
+def guard(*, excluded_outputs):
     attempt,report,new=qualification()
     checked=[]
     datasets=Path(report['datasets_execution_path'])
@@ -164,8 +166,12 @@ def guard():
     need(len(checked)==250,'listed dependency population differs')
     need(sum(row['repository']=='accelerator' for row in checked)==199, 'accelerator binding population differs')
     need(sum(row['repository']!='accelerator' for row in checked)==51, 'datasets binding population differs')
+    # Execution stays based on c82. The reviewed incoming main legitimately
+    # extends earlier evidence; preserve those new Git objects as well.
+    git('merge-base','--is-ancestor',BASE,PRESERVED_EVIDENCE_REVISION)
+    git('merge-base','--is-ancestor',PRESERVED_EVIDENCE_REVISION,'HEAD')
     evidence=[]
-    for prefix,ref in [('docs/agent_supervisor/evidence',BASE)]:
+    for prefix,ref in [('docs/agent_supervisor/evidence',PRESERVED_EVIDENCE_REVISION)]:
         entries=git('ls-tree','-r','-z',ref,'--',prefix).split(b'\0')
         verified=[]
         for entry in entries:
@@ -181,15 +187,26 @@ def guard():
         preserved_evidence=evidence,documents=[bind(ROOT/name) for name in DOCUMENTS],
         read_guards=[bind(p) for p in (Path(__file__),WORKFLOW,CHECKER)],
         current_evidence=[bind(p) for p in sorted(PHASE.rglob('*')) if p.is_file()
-            and p.name not in {'documentation-checks.json','documentation-workflow.log'}],qualification_attempts=len(list(PHASE.glob('qualification-[0-9][0-9]'))))
+            and p not in excluded_outputs],qualification_attempts=len(list(PHASE.glob('qualification-[0-9][0-9]'))))
 
 
-def main():
-    receipt=PHASE/'documentation-checks.json';log=PHASE/'documentation-workflow.log'
+def main(argv=None):
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--attempt',help='optional two- or three-digit documentation attempt; original filenames are the default')
+    args=parser.parse_args(argv)
+    if args.attempt is None:
+        receipt=PHASE/'documentation-checks.json';log=PHASE/'documentation-workflow.log'
+    else:
+        need(re.fullmatch(r'[0-9]{2,3}',args.attempt) is not None,
+             'exact documentation attempt required')
+        receipt=PHASE/('documentation-checks-'+args.attempt+'.json')
+        log=PHASE/('documentation-workflow-'+args.attempt+'.log')
+    excluded_outputs={receipt,log}
     need(not receipt.exists() and not log.exists(),'documentation outputs already exist')
     need(sha(CHECKER.read_bytes())==CHECKER_SHA,'reviewed checker changed')
-    before=guard();blocks=extract_workflow_blocks()
+    before=guard(excluded_outputs=excluded_outputs);blocks=extract_workflow_blocks()
     report=dict(schema='repository-proof-context-documentation@1',started_at_utc=utc(),before=before,
+        documentation_attempt=args.attempt,
         exact_workflow_run_blocks=blocks,workflow_sha256=WORKFLOW_SHA,steps=[],
         additional_tests=False,models=False,providers=False,solver_calls=0,docker=False,
         native_solver_or_kernel_executions=0,proof_authority=False,completion_authority=False,
@@ -219,7 +236,7 @@ def main():
         links.append(dict(path=name,errors=errors,relative_links=len(relative),anchors=sum(bool(fragment) for _,fragment in relative)))
     report.update(manual_links=links,relative_links=sum(row['relative_links'] for row in links),anchors=sum(row['anchors'] for row in links))
     need(all(not row['errors'] for row in links),'manual links or anchors failed')
-    after=guard();need(before==after,'documentation read guards changed')
+    after=guard(excluded_outputs=excluded_outputs);need(before==after,'documentation read guards changed')
     report.update(after=after,status='pass',completed_at_utc=utc(),log_binding=bind(log))
     receipt.write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
     print(json.dumps({key:report[key] for key in ('status','relative_links','anchors')}))

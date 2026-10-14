@@ -1,0 +1,76 @@
+{
+  "comparison_checkpoint": {
+    "bytes": 9337887,
+    "sha256": "ff9f05efea37cda9678c31143e2d75339ae91397785c97ec70a1795dbe18eb4a"
+  },
+  "complete_family_dimension_schema_task_registry_verified": false,
+  "default_decoder_changed": false,
+  "disposition": "Retain separate LegalIR conditions-presence comparison identity, exact donor/task/schema/latent-mode provenance, and failed fresh generalization evidence. Do not promote as a genuine384D/distillation teacher. Independently validate actual encoder conditioning and fresh heldout semantic/text reconstruction before promotion.",
+  "external_encoder_executed": false,
+  "genuine_8d_384d_768d_qualification": false,
+  "huggingface_publication_reported": {
+    "additive_bytes": 74081975,
+    "additive_files": 176,
+    "older_hub_identities_preserved": 5269,
+    "reverified_over_network_in_this_review": false,
+    "revision": "77e33d1c07b09a421b272e3ccb0af229933a7f82",
+    "url": "https://huggingface.co/Publicus/legal-ir-autoencoder/tree/77e33d1c07b09a421b272e3ccb0af229933a7f82/releases/20261014-conditions-balanced-v1"
+  },
+  "input_vectors": "placeholders_not_external_encoder_outputs",
+  "joint_exact_ir": {
+    "authored_dev": [
+      46,
+      72
+    ],
+    "authored_eval": [
+      33,
+      72
+    ],
+    "fresh_dev": [
+      0,
+      36
+    ],
+    "fresh_test": [
+      0,
+      36
+    ],
+    "train": [
+      153,
+      168
+    ]
+  },
+  "latent_conditioning_enabled": false,
+  "lean_compilation_qualified": false,
+  "legal_text_reconstruction_qualified": false,
+  "modelmanager_imports_verified_by_these_receipts": false,
+  "models_executed_in_this_review": 0,
+  "observed_at_utc": "2026-10-14T09:22:07.993936+00:00",
+  "parent_revision": "bedf465e0269d4a099f5307b760c18dd843f79f0",
+  "proof_authority": false,
+  "reported_input_dimension": 384,
+  "results_attribution": "other_agent_published_receipts_not_this_proof_context_qualification",
+  "reuse": {
+    "donor_checkpoint_sha256": "b4ea8a502789f6dddba6e159eb7ecebb753d8344a833b0afb9109cfd6830bcd3",
+    "frozen_parent_tensors": 40,
+    "trained_head_tensors": 2,
+    "training_updates": 32
+  },
+  "schema": "repository-proof-context-preserved-legalir-review@1",
+  "scientific_acceptance": false,
+  "sources": [
+    {
+      "bytes": 7443,
+      "path": "implementation_plan/docs/125-legal-balanced-execution-2026-10-14.md",
+      "sha256": "837c19d9ae1d92d7e0a2596d4949b9e5b84746299bfc1baeaffc6d0d3c6c2f84"
+    },
+    {
+      "bytes": 3599,
+      "path": "artifacts/legal-balanced-execution-20261014-01/MODEL_CARD_v01.md",
+      "sha256": "a91ded7f061bd729e62309e60898ec62c0575553ffefe7d75daf26da437d51c3"
+    }
+  ],
+  "statutory_example_count": 8,
+  "statutory_examples_scored": false,
+  "total_session_token_savings_established": false,
+  "training_steps_in_this_review": 0
+}
