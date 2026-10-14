@@ -1,0 +1,10 @@
+[
+  "benchmarks/agent_supervisor/container_coding/test_terminal_signed_working_set_closing.py",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_worker_signed_scope.py",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_signed_compact_handoff.py",
+  "test/api/test_semantic_working_set_dispatch.py",
+  "test/api/test_semantic_router_integration.py",
+  "test/api/test_router_implementation_runner.py",
+  "test/api/test_router_public_instruction.py",
+  "test/api/test_repository_world_dispatch.py"
+]

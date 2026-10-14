@@ -1416,18 +1416,6 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
             if current != source_lookup_receipt:
                 raise ValueError("source descriptor changed before provider dispatch")
-        if scoped_instruction:
-            # Provider initialization and earlier descriptor checks may run
-            # caller code. Rejoin the compiled selection and complete signed
-            # originals immediately before dispatch, without native owner keys.
-            failure_phase = "terminal_semantic_scope_currentness"
-            current_instruction, current_receipt = load_public_instruction(
-                artifact=public_instruction_artifact, expected_sha256=public_instruction_sha256,
-                task_cid=public_instruction_task_cid, prompt=prompt, workspace=root,
-                repository=semantic_repository)
-            if current_instruction != instruction or current_receipt != instruction_receipt:
-                raise ValueError("signed Terminal scope changed before provider dispatch")
-            receipt["terminal_semantic_scope_dispatch_rechecked"] = True
         if working_set_receipt is not None and working_set_receipt["selected_mode"] != "legacy":
             failure_phase = "semantic_working_set"
             from .worker_semantic_evidence_client import request_page
@@ -1460,6 +1448,22 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 _source_descriptor_environment(source_view_descriptor, source_view_descriptor_sha256), \
                 _source_lookup_descriptor_environment(source_lookup_descriptor,
                                                       source_lookup_descriptor_sha256):
+            if scoped_instruction:
+                # Initialization, descriptor checks and working-set preflight
+                # may run caller code. Close the complete signed source replay
+                # after those callbacks and descriptor-context entry, without
+                # native owner keys or trusting an RPC freshness claim.
+                failure_phase = "terminal_semantic_scope_currentness"
+                current_instruction, current_receipt = load_public_instruction(
+                    artifact=public_instruction_artifact, expected_sha256=public_instruction_sha256,
+                    task_cid=public_instruction_task_cid, prompt=prompt, workspace=root,
+                    repository=semantic_repository, require_current_source=True)
+                if current_instruction != instruction or current_receipt != instruction_receipt:
+                    raise ValueError("signed Terminal scope changed before provider dispatch")
+                if Path.cwd().resolve(strict=True) != root:
+                    raise ValueError("signed Terminal scope requires the current allocated worktree")
+                receipt["terminal_semantic_scope_dispatch_rechecked"] = True
+            failure_phase = "provider_invocation"
             if source_input_view is not None:
                 receipt["source_input_dispatched"] = True
             if query_reference_view is not None:

@@ -1,0 +1,35 @@
+{
+  "architecture_review": "Move the existing unchanged full loader/equality check after preflight and descriptor-context entry; independently check actual allocated CWD; preserve false authority/dispatch flags on refusal.",
+  "base": "b184d30229b3b8f23a390ca24580962d44620536",
+  "baseline_identity": "existing published b184 source reused without modification",
+  "changes_to_foreign_worktrees": false,
+  "equivalent_post_working_set_rpc_signed_replay_found": false,
+  "overlapping_working_router_edits": [
+    "supervisor-candidate-dispatch-20261014",
+    "world-packet-terminal-replay-20261014",
+    "token-efficiency-next-20261014"
+  ],
+  "overlaps_described": "Separate candidate/world routes may create textual merge overlaps; none inspected moves signed replay after working-set RPC. Older full branch stacks are not evidence of unpublished missing work.",
+  "parallel_agent_test_authoring_completed": false,
+  "peer_worktrees": [
+    "supervisor-candidate-dispatch-20261014",
+    "capsule-columns-context-replacement-20261014",
+    "world-packet-terminal-replay-20261014",
+    "legal-ir-remaining-recovery-integrated-20261014",
+    "legal-ir-remaining-supervisor-gaps-20261014",
+    "legal-ir-versioned-maintenance-leases-20261014",
+    "token-efficiency-next-20261014"
+  ],
+  "recorded_at_utc": "2026-10-14T11:20:45.696177+00:00",
+  "remaining_limits": [
+    "native claim/allocation and deployed UID admission",
+    "filesystem writer races after final replay",
+    "independently conditioned per-family/schema/task/dimension decoder checkpoints",
+    "actual ModelManager registration",
+    "whole-session matched official-success token measurements"
+  ],
+  "review_mode": "read_only_local_git_objects_and_targeted_working_file_observations",
+  "schema": "router-signed-scope-closing-parallel-review@1",
+  "scope": "seven_named_peer_worktrees_and_their_heads_not_every_remote_branch",
+  "test_authoring_owner": "root"
+}
