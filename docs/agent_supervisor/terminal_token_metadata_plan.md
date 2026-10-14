@@ -431,3 +431,75 @@ representation and integration checks. The October 12 instruction pair above
 records a small observed native-token difference; repeatable savings remain
 unestablished. Reversible source-view input and complete-run benefits are still
 unmeasured.
+## October 14: preserve unfinished coding work before shortening sessions
+
+Inspection of the native continuation path found two prerequisites for bounded
+coding sessions. The benchmark currently permits one implementation attempt,
+and a Grok coding invocation can run 128 native turns. An ordinary nonzero
+provider exit previously left a dirty nonpooled checkout, or released a pooled
+checkout, without creating the committed candidate reference that the retry
+seeding path reads. Simply increasing the attempt count could therefore repeat
+work. This is a possible retry cost mechanism, not a measured explanation of
+the historical 26-turn run, which completed within its original attempt.
+
+Failed-provider retention now uses the existing native rescue-commit machinery.
+It keeps the provider failure and records that validation was not attempted;
+it does not mark the task complete. Before releasing a changed checkout, the
+owner must preserve the candidate, verify its rescue reference and record the
+retention event. Failed preservation retains the physical checkout. Existing
+capacity, protected-path and uncertain-process custody paths keep their
+separate handling. A retained commit is not a proof or permission to replay:
+the existing same-task accepted-proposal, path-scope and fresh patch checks
+still control retry seeding.
+
+The generic nonstreaming Grok adapter also rejects explicit native incomplete
+outcomes even when the process exits zero and includes text. This closes a
+gap outside the supervisor's already stricter streaming coding path. Native
+usage remains available on failure; conflicting stop aliases are not rewritten
+into fabricated successful observations. Literal stop-related words inside
+model text are not control messages.
+
+Offline qualification uses authored child executables and real Git retention,
+with cold retry-context checks both without indexes and with the real semantic
+index producer. It verifies that unresolved acceptance and validation
+requirements survive a restart, and that a worker checkpoint saying
+`complete` cannot discharge them. The canonical source/index still describe
+the admitted baseline; preserved candidate changes remain distinct evidence.
+These checks do not run a paid model, demonstrate a second coding dispatch or
+establish a new Terminal-Bench score or token saving.
+
+The remaining bounded-session integration must:
+
+1. Admit an explicit initial-call and repair-call budget under one cumulative
+   deadline, using the existing same-attempt validation/Doctor repair pipeline.
+   Keep timeout, turn exhaustion and unknown outcomes distinct from completion.
+2. Obtain a fresh owner-admitted prompt and command after a failed validation.
+   Sealed commands cannot be reused with an altered prompt. Retain the full
+   required context because provider retention of a local context delta is
+   unverified.
+3. Bind the edited working candidate to a new source generation and refresh
+   its index/proof frontier. Baseline `capsule-references@1` retrieval becomes
+   stale after edits; it cannot stand in for candidate evidence.
+4. Measure every planning, coding and repair invocation, retrieval expansion,
+   indexing refresh and failed attempt, preserving unknown usage and the
+   provider's cache accounting. Compare total-run cost and verifier reward in
+   fresh matched indexed/no-index/native trials once provider access is ready.
+
+This change does not shorten the default 128-turn coding call or enable
+automatic multi-round benchmark sessions. It fixes retention and outcome
+contracts needed before that experiment can be interpreted reliably.
+
+Qualification records and source hashes are retained in
+[qualification.json](evidence/coding-checkpoints-20261014/qualification.json).
+The main run passed 260 checks and exposed one test assertion that incorrectly
+searched across semantic chunk boundaries. After correcting that assertion to
+reassemble and verify the exact source and hash, both cold-context cases passed.
+The latest results therefore cover 261 distinct passing checks across the two
+runs, with unchanged production sources; this was not one all-green invocation.
+Broader regression checks found four failures that also reproduce on the clean
+starting commit: an obsolete deterministic-writer API call, a checkpoint-path
+omission assertion that conflicts with full context reconstruction, and two
+capacity-custody expectations. The incremental-runtime test module also fails
+collection on that baseline because `guarded_worktree_pool_mutation` is absent.
+These are recorded separately from the focused checkpoint/router qualification;
+this is not a claim that the entire supervisor test suite passes.
