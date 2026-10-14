@@ -271,6 +271,10 @@ class NumericalObligationBroker:
         return dict(returned_rows=response["page"]["returned_count"]
             if response is not None and response["ok"] else 0)
 
+    def _request_details(self, request=None):
+        """Optional closed diagnostics for a protocol-validated request."""
+        return {}
+
     def _response_finished(self, request, response, *, delivered):
         """Optional session transition after the transport's send observation."""
 
@@ -289,13 +293,15 @@ class NumericalObligationBroker:
                 self._inflight = accepted
             started = time.monotonic_ns()
             record = dict(ordinal=accepted, status="invalid_request", request_sha256=None,
-                response_sha256=None, response_bytes=0, delivered=False, **self._record_details())
+                response_sha256=None, response_bytes=0, delivered=False,
+                **self._record_details(), **self._request_details())
             with channel:
                 channel.settimeout(2.)
                 request = response = None
                 try:
                     request = self.protocol.validate_request(self.protocol.receive_frame(channel))
                     record["request_sha256"] = _sha(self.protocol.canonical_json(request))
+                    record.update(self._request_details(request))
                     response = self._answer(request, channel)
                     if self._stop.is_set():
                         raise ValueError("numerical retrieval stopped before response")

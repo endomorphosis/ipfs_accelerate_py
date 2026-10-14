@@ -11,6 +11,7 @@ import re
 import stat
 
 from ipfs_accelerate_py.agent_supervisor.runtime import worker_source_client as protocol
+from ipfs_accelerate_py.agent_supervisor.runtime import worker_source_request_observation as request_observation
 from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import _protected_directory
 from .terminal_output_observation import _read, _open_directory, _identity
 from .terminal_numerical_retrieval_observation import (
@@ -38,15 +39,16 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
     audit = _parse(raw)
     _need(set(audit) == _AUDIT_FIELDS and audit["schema"] in {
         "supervisor-worker-source-session@1", "supervisor-worker-source-session@2",
-        "supervisor-worker-source-session@3", "supervisor-worker-source-session@4"}
+        "supervisor-worker-source-session@3", "supervisor-worker-source-session@4", request_observation.AUDIT_SCHEMA}
         and all(audit[key] is False for key in ("proof_authority", "execution_authority", "completion_authority")))
     for key in ("source_obligations_discharged", "retrieval_provider_calls"):
         _need(type(audit[key]) is int and audit[key] == 0)
     descriptor = protocol.validate_descriptor(audit["session"])
     editing = descriptor["schema"] == "supervisor-worker-source-descriptor@3"
     shared = descriptor.get("view_policy_binding_sha256") is not None
-    _need((audit["schema"] == "supervisor-worker-source-session@4") is editing
-        and (editing or (audit["schema"] == "supervisor-worker-source-session@3") is shared)
+    attributed = audit["schema"] == request_observation.AUDIT_SCHEMA
+    _need((attributed or ((audit["schema"] == "supervisor-worker-source-session@4") is editing
+        and (editing or (audit["schema"] == "supervisor-worker-source-session@3") is shared)))
         and descriptor.get("source_edit_mode", "disabled") == expected_edit_mode)
     observation = row["source_view_retrieval"]
     expected_fields = OBSERVATION_FIELDS | set(SHARED_PIN_FIELDS) if shared or editing else OBSERVATION_FIELDS
@@ -83,7 +85,7 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
     discovery_counts = None
     edit_counts = None
     accounting_audit = audit
-    if audit["schema"] in {"supervisor-worker-source-session@2", "supervisor-worker-source-session@3", "supervisor-worker-source-session@4"}:
+    if audit["schema"] in {"supervisor-worker-source-session@2", "supervisor-worker-source-session@3", "supervisor-worker-source-session@4", request_observation.AUDIT_SCHEMA}:
         candidate_counts = dict(prepared_pages=0, delivered_pages=0, prepared_bytes=0, delivered_bytes=0)
         discovery_counts = dict.fromkeys(DISCOVERY_COUNT_FIELDS, 0)
         if editing:
@@ -94,6 +96,10 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
         for item in audit["requests"]:
             _need(type(item) is dict)
             record = dict(item)
+            if attributed:
+                request_observation.validate_record(record)
+                for field in request_observation.FIELDS:
+                    record.pop(field)
             if editing:
                 edit = record.pop("source_edit_page", None)
                 operation = record.pop("source_edit_operation", None)
@@ -114,7 +120,7 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
             candidate = record.pop("candidate_context_page", None)
             pair = {"discovery_page", "returned_discovery_rows"} & set(record)
             _need(not pair or pair == {"discovery_page", "returned_discovery_rows"})
-            _need((not shared and not editing) or bool(pair))
+            _need((not shared and not editing and not attributed) or bool(pair))
             discovery_typed.append(bool(pair))
             discovery = record.pop("discovery_page", False)
             rows = record.pop("returned_discovery_rows", 0)
@@ -137,7 +143,7 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
                 discovery_counts["delivered_pages"] += discovery
                 discovery_counts["delivered_rows"] += rows
             records.append(record)
-        if not shared and (not discovery_typed or not all(discovery_typed)):
+        if not shared and not attributed and (not discovery_typed or not all(discovery_typed)):
             discovery_counts = None
         accounting_audit = dict(audit, requests=records)
     counts, statuses, requests, responses = _records(accounting_audit, descriptor,
@@ -153,6 +159,9 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
     if editing:
         result.update(source_edit_mode=expected_edit_mode, source_edit_counts=edit_counts,
             owner_writes_performed=False, task_validation_observed=False)
+    if attributed:
+        result["request_operation_counts"] = request_observation.operation_counts(audit["requests"])
+        _need(result["request_operation_counts"]["accepted_requests"] == counts["accepted_requests"])
     return result, requests, responses
 
 
@@ -235,6 +244,16 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
             if all(item["discovery_counts"] is not None for item in sessions) else None)
         if policy is not None:
             result.update({key: report[key] for key in policy_fields})
+        if any("request_operation_counts" in item for item in sessions):
+            observed = [item for item in sessions if "request_operation_counts" in item]
+            attributed_requests = sum(item["counts"]["accepted_requests"] for item in observed)
+            result["request_operation_counts"] = request_observation.combine_operation_counts(
+                [item["request_operation_counts"] for item in observed])
+            result["request_operation_coverage"] = dict(
+                observed_sessions=len(observed), historical_sessions=len(sessions) - len(observed),
+                observed_requests=attributed_requests,
+                historical_unattributed_requests=counts["accepted_requests"] - attributed_requests,
+                all_sessions_observed=len(observed) == len(sessions))
         if edit_mode != "disabled":
             fields = ("prepared_mapping_pages", "delivered_mapping_pages",
                 "prepared_confirmation_pages", "delivered_confirmation_pages")

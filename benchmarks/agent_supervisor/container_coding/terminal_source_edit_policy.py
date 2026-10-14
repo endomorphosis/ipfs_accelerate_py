@@ -25,6 +25,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",

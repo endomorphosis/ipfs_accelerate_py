@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 from . import worker_source_client as protocol
+from .worker_source_request_observation import AUDIT_SCHEMA, request_details
 from .numerical_obligation_broker import (
     MAX_SESSION_SECONDS, MAX_TOTAL_RESPONSE_BYTES, NumericalObligationBroker, _argument,
 )
@@ -18,7 +19,7 @@ from .numerical_obligation_broker import (
 
 class WorkerSourceBroker(NumericalObligationBroker):
     protocol = protocol
-    audit_schema = "supervisor-worker-source-session@2"
+    audit_schema = AUDIT_SCHEMA
     file_prefix = "source-view"
 
     def __init__(self, *, repository, workspace, boundary, prompt, timeout_seconds,
@@ -66,7 +67,6 @@ class WorkerSourceBroker(NumericalObligationBroker):
                 view_policy_binding_sha256=hashlib.sha256(
                     protocol.canonical_json(admission["view_policy_binding"])).hexdigest())
             self._descriptor_schema = protocol.DESCRIPTOR_SCHEMA_V2
-            self.audit_schema = "supervisor-worker-source-session@3"
         # Read the exact artifact already sealed into the verified translation.
         # Its versioned program selection excludes support/instruction files.
         from .semantic_router_translation import _read, _sha, _parse
@@ -88,7 +88,6 @@ class WorkerSourceBroker(NumericalObligationBroker):
                 source_scope_sha256=admission["scope_sha256"],
                 view_policy_binding_sha256=self._session_binding.get("view_policy_binding_sha256"))
             self._descriptor_schema = protocol.DESCRIPTOR_SCHEMA_V3
-            self.audit_schema = "supervisor-worker-source-session@4"
         self._start_session(identity=self._session_binding, boundary_sha=boundary_sha,
                             timeout_seconds=timeout_seconds, descriptor_schema=self._descriptor_schema)
 
@@ -221,6 +220,9 @@ class WorkerSourceBroker(NumericalObligationBroker):
             self._edit_confirmation_blocked = False
         # A successful send is not a client acknowledgment. Client-side loss
         # still requires inspection and must never trigger an automatic retry.
+
+    def _request_details(self, request=None):
+        return request_details(request)
 
     def _record_details(self, response=None):
         page = response["page"] if response is not None and response["ok"] else None

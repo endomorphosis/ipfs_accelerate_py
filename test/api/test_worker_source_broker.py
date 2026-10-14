@@ -137,7 +137,7 @@ def test_socket_lifecycle_retains_source_accounting_not_numerical_rows(service, 
     service.close()
     assert not service.socket_path.exists() and not service.descriptor_path.exists()
     audit = json.loads(service.audit_path.read_bytes())
-    assert audit["schema"] == "supervisor-worker-source-session@2"
+    assert audit["schema"] == "supervisor-worker-source-session@5"
     assert audit["service_stopped"] is audit["accounting_complete"] is True
     assert audit["accepted_requests"] == len(audit["requests"]) == 1
     assert audit["requests"][0]["returned_source_bytes"] == len(_bytes(response["page"]))
