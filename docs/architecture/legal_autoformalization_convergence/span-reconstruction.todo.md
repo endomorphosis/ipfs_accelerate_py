@@ -4,7 +4,7 @@ Three deterministic qualifications preserve complete source populations, origina
 
 ## LAC-S10-011 Qualify exact original-parent text views
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
