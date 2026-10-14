@@ -1047,3 +1047,72 @@ before launching the next token experiment. Existing reconstruction assets and
 the three earlier live compaction trials remain the starting evidence; this
 host allocation join supplies no new learned reconstruction or token-saving
 result.
+
+## Native broker launch boundary, 2026-10-14
+
+The [broker launch gates](source_lookup_worker.md#check-before-launch-and-before-registration)
+now carry the retained native task, nomination and allocation through a trusted
+launcher's before-spawn check and closing child registration. Complete source
+currentness in both roots remains independent of allocation ownership. A native
+session requires the actual `Popen` child, its direct-parent/kernel birth and
+allocated working directory; peer reads remain disabled until closing checks
+pass. A refusal after birth closes and revokes the source session but leaves
+the launcher responsible for terminating/reaping the actual child and workers.
+Preserve that distinction when counting failed attempts: a before-spawn refusal
+and an already launched child are different events and costs.
+
+The [new qualification](evidence/native-source-worker-spawn-20261014/README.md)
+uses inert same-UID children and actual native/CAS/Portal/worktree fixtures.
+It supplies no new worker-UID, compiled-context, provider, proof or official-task
+result. Parent/birth checks authenticate this direct-owner boundary; they do not
+allow a different container wrapper to submit a serialized child identity.
+Currentness checks remain sequential rather than a filesystem writer lease.
+
+Two concrete deployment prerequisites remain. First, retain the original
+allocation and add a separately sealed permission delegation. The guard accepts
+owner-controlled modes and pins their exact identities; the ordinary Terminal
+wrapper changes candidate directories to `3770`/`2770`, files to `660`/`770` and
+the Git marker to `440`. These changes must not be hidden by recapturing old
+control witnesses or allowing group writes in the generic allocation guard.
+Keep canonical Git, Portal, lifecycle and attempt controls owner protected.
+Second, authenticate the actual native daemon/wrapper claim and child ancestry
+across processes. Reuse the existing finite-proof dispatch protocol's reviewed
+pattern rather than interpreting routing paths or copied claim tuples as grants.
+Join signed profile `@4` and compiled instruction `@5` independently afterward.
+
+The [permission and process handoff proposal](evidence/native-source-worker-spawn-20261014/permission-handoff-design.json)
+breaks that work into four reviewable increments: provision read-only access
+before allocation capture, seal writable delegation without replacing original
+witnesses, authenticate wrapper and child provenance, then join signed context.
+Each increment lists acceptance, refusal and cleanup checks. The proposal is
+not an implemented delegation or a qualified worker launch.
+
+The [fresh parallel survey](evidence/native-source-worker-spawn-20261014/parallel-work-survey.json)
+observed an active integration checkout containing both published allocation
+custody and the committed capsule-budget/per-turn usage stack. Preserve that
+reconciliation and review its actual published result before deployment or
+token experiments. This increment does not duplicate router, capsule or usage
+implementations. Existing independent IR/dimension/schema/task checkpoints,
+embeddings, model-manager entries and DuckDB/DuckLake inventories remain the
+assets for subsequent controlled reconstruction and complete-session trials.
+
+The [published integration review](evidence/native-source-worker-spawn-20261014/incoming-integration-review.json)
+confirms that the parallel repository session, context adapter, capsule-budget
+and per-turn usage work has reached upstream. Reuse its generation-bound
+refresh, source validation, expansion and edit paths. Their worker-side source
+generations remain separate from native Quack claim, allocation and source-grant
+successors: an edit invalidates the old native current-source reader, and a
+new generation needs explicit admission. Qualify the combined stack before
+deployment; preserving incoming commits alone does not qualify all their code.
+
+The [next indexed-proof context proposal](evidence/native-source-worker-spawn-20261014/indexed-proof-context-followup.json)
+uses the existing DuckDB-backed repository index, context adapter and formal
+verification cache. Join checked proof references with a complete admitted cache
+key and the current repository generation; retain mandatory evidence, assumptions
+and residual obligations. Independently match Git-tree identities to the
+adapter's SHA256 source identity instead of relabeling digests. Existing
+source-backed repository restoration and unchanged-AST edits preserve retained
+original bytes within their declared scope; they do not measure learned IR
+reconstruction. Measure the complete session after the permission/process joins,
+including retrieval, expansion, edits, refresh, failures and validation. The
+proposal creates no proof authority and reports no token saving.
