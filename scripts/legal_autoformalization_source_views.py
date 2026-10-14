@@ -10,6 +10,7 @@ import argparse
 import base64
 from datetime import datetime, timezone
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -18,6 +19,12 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 import zlib
+
+
+_dependency_spec = importlib.util.spec_from_file_location("legal_source_views_dependencies",
+    Path(__file__).with_name("legal_autoformalization_runtime_dependencies.py"))
+dependencies = importlib.util.module_from_spec(_dependency_spec)
+_dependency_spec.loader.exec_module(dependencies)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -120,7 +127,8 @@ def bindings(task, sources_path):
     rows = []
     pins = {row["path"]: row["sha256"] for row in sources["immutable_inputs"]
             if row.get("repository", "datasets") == "datasets"}
-    for name in dict.fromkeys([*job["code_paths"], *tests]):
+    config_paths = [job["pytest_config"]] if "pytest_config" in job else []
+    for name in dict.fromkeys([*job["code_paths"], *tests, *config_paths]):
         path = relative_file(datasets, name)
         git(datasets, "ls-files", "--error-unmatch", "--", name)
         actual = identity(path)
@@ -155,22 +163,58 @@ def bindings(task, sources_path):
         "driver_sha256": identity(__file__)["sha256"], "datasets_commit": commit,
         "datasets_tree": git(datasets, "rev-parse", "HEAD^{tree}"), "inputs": rows,
         "prior_source_custody_completion_sha256": prior["sha256"], "accelerator_inputs": accelerator_rows,
-        "external_evidence": sources.get("external_evidence", []), "interpreter": interpreter}
+        "external_evidence": sources.get("external_evidence", []), "interpreter": interpreter,
+        "runtime_dependencies": job.get("runtime_dependencies")}
 
 
 def command(job):
     return [job.get("python_executable", sys.executable), "-B", "-m", "pytest", "-q",
-            *job["test_paths"]]
+            *(["-c", job["pytest_config"]] if "pytest_config" in job else []), *job["test_paths"]]
 
 
-def execution_environment_policy(datasets):
+def execution_environment_policy(datasets, job=None):
     """Nonsecret, recorded overrides binding imports and pytest invocation."""
-    return {"PYTHONPATH": str(Path(datasets).resolve(strict=True)), "PYTEST_ADDOPTS": "", "PYTHONOPTIMIZE": "0",
+    pinned = Path(datasets).resolve(strict=True)
+    manifest = (job or {}).get("runtime_dependencies")
+    roots = dependencies.roots_from_manifest(manifest) if manifest is not None else []
+    need(all(not root.is_relative_to(pinned) for root in roots), "Dependency root overlaps datasets source")
+    return {"PYTHONPATH": os.pathsep.join([str(pinned), *map(str, roots)]),
+            "PYTHONNOUSERSITE": "1", "PYTHONPYCACHEPREFIX": "",
+            "PYTEST_ADDOPTS": "", "PYTHONOPTIMIZE": "0",
             "PYTHONDONTWRITEBYTECODE": "1", "IPFS_AUTO_INSTALL": "false",
             "IPFS_DATASETS_AUTO_INSTALL": "false", "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
             "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0", "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
             "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1",
             "CUDA_VISIBLE_DEVICES": ""}
+
+
+def isolated_child_environment(datasets, job, temporary):
+    """Read no ambient bytecode caches; -B also prevents new cache writes."""
+    prefix = Path(temporary) / "python-bytecode"
+    prefix.mkdir(mode=0o700)
+    need(not any(prefix.iterdir()), "Qualification bytecode prefix must start empty")
+    return {**os.environ, **execution_environment_policy(datasets, job),
+            "PYTHONPYCACHEPREFIX": str(prefix)}
+
+
+def validate_runtime_dependencies(datasets, job):
+    """Verify curated existing dependencies in the exact qualification child environment."""
+    manifest = job.get("runtime_dependencies")
+    if manifest is None:
+        return None  # Legacy source-contract fixtures declare no external closure.
+    helper = Path(__file__).with_name("legal_autoformalization_runtime_dependencies.py")
+    cmd = [job.get("python_executable", sys.executable), "-B", str(helper),
+           wire({"manifest": manifest, "datasets": str(Path(datasets).resolve(strict=True))}).decode("utf-8")]
+    with tempfile.TemporaryDirectory(prefix="legal-runtime-dependencies-") as temporary:
+        env = isolated_child_environment(datasets, job, temporary)
+        out_path, err_path = Path(temporary) / "stdout", Path(temporary) / "stderr"
+        with out_path.open("wb") as out, err_path.open("wb") as err:
+            run = subprocess.run(cmd, cwd=datasets, env=env, stdin=subprocess.DEVNULL,
+                stdout=out, stderr=err, timeout=60, check=False)
+        need(run.returncode == 0, "Runtime dependency verification failed: " + _failure_tail(err_path))
+        observed = read_json(out_path)
+    need(observed == manifest["observation"], "Runtime dependency observation differs")
+    return observed
 
 
 REAL_INPUT_SCRIPT = '''import hashlib,json,os,stat,sys
@@ -405,8 +449,9 @@ def run_real_input(datasets, job):
     """Recompute a pinned real-input observation in the datasets interpreter."""
     cmd = real_input_command(job)
     need(cmd is not None, "Real-input profile required")
-    env = dict(os.environ, **execution_environment_policy(datasets))
+    validate_runtime_dependencies(datasets, job)
     with tempfile.TemporaryDirectory(prefix="legal-span-section-real-input-") as temporary:
+        env = isolated_child_environment(datasets, job, temporary)
         stdout, stderr = Path(temporary) / "stdout", Path(temporary) / "stderr"
         with stdout.open("wb") as out, stderr.open("wb") as err:
             run = subprocess.run(cmd, cwd=datasets, env=env, stdin=subprocess.DEVNULL,
@@ -508,9 +553,10 @@ def refusal_payload(error):
 
 
 def execute(datasets, job):
-    environment_policy = execution_environment_policy(datasets)
-    env = dict(os.environ, **environment_policy)
+    dependency_binding = validate_runtime_dependencies(datasets, job)
+    environment_policy = execution_environment_policy(datasets, job)
     with tempfile.TemporaryDirectory(prefix="legal-span-section-tests-") as temporary:
+        env = isolated_child_environment(datasets, job, temporary)
         junit = Path(temporary) / "junit.xml"
         cases, failed_cases = [], []
 
@@ -550,8 +596,9 @@ def execute(datasets, job):
                     "name": _bounded_failure_text(node.get("name", "")), "status": issues[0].tag,
                     "message": _bounded_failure_text(issues[0].get("message") or issues[0].text)})
         result = {"command": command(job), "returncode": run.returncode, "cases": cases,
-            "ephemeral_options": {"junitxml": "temporary", "cache_dir": "temporary"},
-            "environment_policy": environment_policy,
+            "ephemeral_options": {"junitxml": "temporary", "cache_dir": "temporary",
+                                  "python_cache_prefix": "empty temporary directory"},
+            "environment_policy": environment_policy, "runtime_dependencies": dependency_binding,
             "test_count": len(cases), "passed_count": sum(c["status"] == "passed" for c in cases),
             "stdout_sha256": identity(Path(temporary) / "stdout")["sha256"],
             "stderr_sha256": identity(Path(temporary) / "stderr")["sha256"]}
@@ -583,10 +630,13 @@ def validate(result, task, sources_path):
     validate_real_input(observed.get("real_input_execution"), job)
     need(observed["command"] == command(job) and observed["returncode"] == 0,
          "Qualification command or outcome differs")
-    need(observed.get("ephemeral_options") == {"junitxml": "temporary", "cache_dir": "temporary"},
+    need(observed.get("ephemeral_options") == {"junitxml": "temporary", "cache_dir": "temporary",
+                                             "python_cache_prefix": "empty temporary directory"},
          "Qualification temporary output policy differs")
-    need(observed.get("environment_policy") == execution_environment_policy(datasets),
+    need(observed.get("environment_policy") == execution_environment_policy(datasets, job),
          "Qualification import/pytest environment policy differs")
+    need(observed.get("runtime_dependencies") == validate_runtime_dependencies(datasets, job),
+         "Qualification runtime dependency closure differs")
     cases = observed["cases"]
     need(isinstance(cases, list) and len(cases) >= int(job.get("minimum_tests", 1))
          and all(c["status"] == "passed" for c in cases), "Incomplete passing test population")

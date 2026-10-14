@@ -39,6 +39,19 @@ checkout Git guards and signed-scope/admission machinery remain in force. Only
 declared results and owned operational records may change. A complete post-merge
 replay follows authenticated terminal tree fencing and lease release.
 
+The resumed controller keeps that same generation-01 queue, task identities and
+retry history. Strict sharding assigns each task to its existing home lane and
+disables cross-lane fallback after failures. Native attempt and restart limits
+remain unchanged. The prior plugin-startup failures are retained separately.
+
+Each job now binds its exact local interpreter, dataset pytest configuration,
+dependency roots, active distribution metadata, module origins and curated file
+hash closure. User-site loading stays disabled; required AnyIO and asyncio pytest
+plugins remain enabled. Tests, dependency probes and real-input replay all use an
+empty temporary bytecode-cache prefix with writes disabled. No package or model
+weights are downloaded. Host-managed execution preserves native STOP fencing and
+resource release; operational liveness does not establish semantic acceptance.
+
 Complete real-input reports are retained losslessly in bounded zlib/base64
 envelopes so each native result stays below the unchanged proposal file limit.
 Validation bounds decoded allocation, checks the entire canonical report and
