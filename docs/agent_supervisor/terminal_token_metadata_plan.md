@@ -980,3 +980,67 @@ between runs. See [qualification.json](evidence/candidate-reporting-20261014/qua
 for results, source hashes, pinned import origins and retained developmental
 failures. These results establish local contract coverage, not a new live
 Terminal Bench score or token-saving measurement.
+
+## October 14: preserve Doctor constraints and expose the actual budget boundary
+
+Tracing the full-arm continuation found that `ResidualLlmBudget` was serialized
+but not validated or charged by the coding route. The shared proposal admission
+code charges response tokens and caller-supplied cost units; the native coding
+CLI can make multiple internal model requests. Neither current CLI adapter maps
+the router's requested output tokens into a native hard token cap. Consequently
+the declared one-call/4096-token/one-round/one-cost-unit tuple cannot establish a
+known remaining coding budget or authorize a second coding worker.
+
+New Doctor artifacts use version 2 and validate every limit as an exact positive
+integer, with closed fields and matching duplicated native capsule counters.
+The retained artifact and router receipt distinguish declared limits from
+unavailable native enforcement and cost conversion. Only the compact limits
+enter the model advisory, adding 104 UTF-8 bytes in the native fixture; verbose
+capability observations remain outside model input. Valid version 1 artifacts
+still reconstruct their original advisory and receipt formats. Both versions
+receive strict budget validation, and the input audit checks version 2 budget
+and capability bindings against the retained artifact.
+
+The source broker now captures actual Doctor residual requirements before the
+first child. A separate typed candidate preparation preserves the exact original
+advisory and obligations while binding it to the candidate generation, native
+artifact roots and current source hashes. Doctor inventory outside the candidate
+inventory must remain unchanged, including executable mode. The original
+canonical sources must still match their admitted baseline. This preparation
+does not rerun a prover or discharge an obligation, and it has no serialized
+reload or dispatch API. Ordinary candidate prompt preparation refuses captured
+Doctor requirements until continuation budget enforcement is available.
+
+The ordinary Doctor router also rechecks the entire residual artifact and source
+inventory after provider initialization and retrieval preflight, immediately
+before the model call. A change during setup fails before provider invocation;
+legitimate candidate edits made during the model call remain permitted.
+
+Full-benchmark two-round selection remains unavailable. A concrete next step
+with the current providers is a separately admitted coding policy limiting two
+owner attempts, two outer router invocations and the original shared deadline,
+while explicitly treating token and dollar usage as observations. This would
+leave the separate residual-proposal budget unchanged. It would not claim to
+limit CLI-internal model calls or tool turns. Missing usage would remain unknown
+accounting, rather than create a fresh budget or imply savings.
+
+That policy must be captured from frozen configuration and signed launch
+arguments. Every possible child attempt, including an interrupted or unreceipted
+one, must consume its reservation. Actual first-child retirement and the fresh
+candidate generation must bind the second admission. Doctor preparation must
+then be bound into dispatch, immutable retention and historical input replay
+before forwarding the selection through the benchmark harness. Qualification
+must cover policy omission/substitution, third-attempt and replay refusal,
+deadline expiry, complete Doctor source drift and two real child/router paths
+carrying unchanged obligations and proposal limits. The current change does not
+raise the one-round default, spend additional provider calls, or establish token
+savings.
+
+The final frozen regression passed all 718 tests across 24 modules in 1022.78
+seconds, with no failures or skips. All 33 Python source pins and the pinned
+datasets/kit commits and import origins remained unchanged. Native Doctor
+capture, candidate generation, late source drift, both ordinary candidate router
+paths, historical input reconstruction, metadata census and benchmark reporting
+are covered. [Qualification evidence](evidence/doctor-continuation-20261014/qualification.json)
+also retains the corrected developmental fixture failures. Provider calls use
+test doubles; this is not a live Terminal Bench campaign or a token score.

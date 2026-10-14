@@ -36,6 +36,33 @@ CANDIDATE_DESCRIPTOR_ENV = "IPFS_SUPERVISOR_CANDIDATE_ROUND_DESCRIPTOR"
 CANDIDATE_DESCRIPTOR_DIGEST_ENV = "IPFS_SUPERVISOR_CANDIDATE_ROUND_DESCRIPTOR_SHA256"
 
 
+def doctor_budget_capability(*, provider, requested_output_tokens, budget_observation):
+    """Describe native coding limits without turning advisory limits into admission.
+
+    Both CLI adapters receive max_tokens/max_new_tokens through the shared
+    router, but neither establishes a native output or total-token hard cap.
+    A residual-proposal budget is not a ledger for their internal agent turns.
+    """
+    if (provider not in {"codex_cli", "grok_cli"}
+            or type(requested_output_tokens) is not int
+            or not 1 <= requested_output_tokens <= 16_384):
+        raise ValueError("explicit Doctor coding budget capability settings required")
+    from .doctor_residual_budget import validate_budget_observation
+    budget_observation = validate_budget_observation(budget_observation)
+    raw = json.dumps(budget_observation, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, allow_nan=False).encode()
+    return {"schema": "doctor-native-coding-budget-capability@1",
+        "provider": provider, "requested_output_tokens": requested_output_tokens,
+        "budget_observation_sha256": hashlib.sha256(raw).hexdigest(),
+        "requested_output_tokens_semantics": "shared-router-generation-request",
+        "native_output_token_cap_enforced": False,
+        "native_total_token_cap_enforced": False,
+        "provider_cost_cap_enforced": False,
+        "provider_usage_converted_to_residual_budget": False,
+        "additional_router_rounds_admitted": False,
+        "completion_authority": False}
+
+
 @contextmanager
 def _numerical_descriptor_environment(path, digest):
     with _descriptor_environment(path, digest, NUMERICAL_DESCRIPTOR_ENV, NUMERICAL_DESCRIPTOR_DIGEST_ENV):
@@ -276,7 +303,7 @@ RUNNER_FAILURE_TYPES = frozenset({
 })
 RUNNER_FAILURE_FILES = frozenset({
     "router_implementation_runner.py", "container_worker_boundary.py",
-    "semantic_router_translation.py", "doctor_residual_context.py",
+    "semantic_router_translation.py", "doctor_residual_context.py", "doctor_residual_budget.py",
     "router_public_instruction.py", "local_planning_admission.py",
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
     "semantic_metadata_view.py", "semantic_instruction_view.py",
@@ -665,6 +692,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     encoded = None
     semantic_component_census = None
     residual_receipt = None
+    residual_capability = None
     residual_advisory = ""
     router_prompt = prompt
     candidate_receipt = None
@@ -761,6 +789,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         residual_advisory, residual_receipt = load_doctor_residual_advisory(
             artifact=doctor_residual_artifact, expected_sha256=doctor_residual_sha256,
             repository=semantic_repository, task_cid=doctor_residual_task_cid, prompt=prompt, workspace=root)
+        if residual_receipt["schema"] == "doctor-residual-router-context@2":
+            residual_capability = doctor_budget_capability(provider=provider,
+                requested_output_tokens=max_output_tokens,
+                budget_observation=residual_receipt["budget_observation"])
         router_prompt += residual_advisory
     failure_phase = "public_instruction"
     instruction_receipt = None
@@ -942,6 +974,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             receipt["source_view_retrieval"] = source_receipt
         if semantic_component_census is not None:
             receipt["semantic_prompt_components"] = semantic_component_census
+        if residual_capability is not None:
+            receipt["doctor_budget_capability"] = residual_capability
         return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     failure_phase = "provider_discovery"
     available = discover_available_providers()
@@ -990,6 +1024,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         "usage": None, "completion_authority": False,
         "external_container_boundary": boundary,
     }
+    if residual_capability is not None:
+        receipt["doctor_budget_capability"] = residual_capability
     if coding_reply_receipt is not None:
         receipt["coding_reply_contract"] = coding_reply_receipt
     if candidate_receipt is not None:
@@ -1156,6 +1192,17 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 capsule_sha256=reference["capsule_sha256"],
                 response_bytes=len(probe_bytes), response_sha256=hashlib.sha256(probe_bytes).hexdigest(),
                 provider_input_bytes=0, source_freshness_checked=True, proof_authority=False)
+        if residual_receipt is not None:
+            failure_phase = "doctor_residual"
+            # Provider discovery and source preflight can take time. Doctor's
+            # inventory can exceed the retrieval inventory, so check the whole
+            # admitted residual again immediately before spending a model call.
+            current_advisory, current_residual = load_doctor_residual_advisory(
+                artifact=doctor_residual_artifact, expected_sha256=doctor_residual_sha256,
+                repository=semantic_repository, task_cid=doctor_residual_task_cid,
+                prompt=prompt, workspace=root)
+            if current_advisory != residual_advisory or current_residual != residual_receipt:
+                raise ValueError("Doctor residual context changed before provider dispatch")
         failure_phase = "provider_invocation"
         with _numerical_descriptor_environment(numerical_obligation_descriptor,
                                                numerical_obligation_descriptor_sha256), \

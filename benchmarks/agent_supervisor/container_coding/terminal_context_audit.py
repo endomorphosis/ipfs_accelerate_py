@@ -35,7 +35,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement", "semantic_working_set", "semantic_working_set_preflight", "candidate_round_dispatch", "candidate_reply_contract", "candidate_retrieval_guidance", "candidate_round_preflight")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "doctor_budget_capability", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement", "semantic_working_set", "semantic_working_set_preflight", "candidate_round_dispatch", "candidate_reply_contract", "candidate_retrieval_guidance", "candidate_round_preflight")
 
 
 def _sha(raw: bytes) -> str:
@@ -279,6 +279,8 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
         if type(result[field]) is not int or not 0 < result[field] <= 262_144:
             raise ValueError("invalid input byte count")
     if any(key.startswith("candidate_") for key in result):
+        if "doctor_budget_capability" in result:
+            raise ValueError("candidate Doctor budget capability is not admitted")
         from .terminal_candidate_input_audit import validate_receipt
         return validate_receipt(result)
     translated = result.get("semantic_translation") is not None
@@ -309,12 +311,30 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
     residual = result.get("doctor_residual_context")
     if residual is not None:
         if (not translated or not isinstance(residual, dict)
-                or residual.get("schema") != "doctor-residual-router-context@1"
+                or residual.get("schema") not in {"doctor-residual-router-context@1", "doctor-residual-router-context@2"}
                 or residual.get("candidate_only") is not True):
             raise ValueError("invalid Doctor residual receipt")
         for key in ("artifact_sha256", "advisory_sha256"):
             _digest(residual[key])
         _identity(residual["task_cid"])
+        if residual["schema"] == "doctor-residual-router-context@2":
+            from ipfs_accelerate_py.agent_supervisor.runtime.doctor_residual_budget import validate_budget_observation
+            from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import doctor_budget_capability
+            budget = validate_budget_observation(residual.get("budget_observation"))
+            if not _same_json(residual.get("residual_budget"), budget["limits"]):
+                raise ValueError("Doctor residual budget receipt projections differ")
+            expected = doctor_budget_capability(provider=item.get("provider"),
+                requested_output_tokens=item.get("requested_output_tokens"), budget_observation=budget)
+            if (not _same_json(result.get("doctor_budget_capability"), expected)
+                    or item.get("provider_output_token_cap_enforced") is not False):
+                raise ValueError("Doctor coding route does not enforce native token caps")
+            result.update({key: item[key] for key in
+                ("provider", "requested_output_tokens", "provider_output_token_cap_enforced")})
+        elif any(key in residual for key in ("residual_budget", "budget_observation")):
+            raise ValueError("historical Doctor receipts cannot acquire budget declarations")
+    if "doctor_budget_capability" in result and (
+            residual is None or residual.get("schema") != "doctor-residual-router-context@2"):
+        raise ValueError("Doctor budget capability requires the versioned residual receipt")
     if instruction is not None:
         if (not isinstance(instruction, dict)
                 or instruction.get("schema") not in {"supervisor-public-instruction-inclusion@1", "supervisor-public-instruction-inclusion@2"}
@@ -529,6 +549,15 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
         router_prompt += advisory
         for field in ("context_cid", "native_capsule_id", "advisory_sha256", "advisory_bytes"):
             checks["doctor_residual_" + field] = observed[field] == residual[field]
+        checks["doctor_residual_schema"] = observed["schema"] == residual["schema"]
+        if residual["schema"] == "doctor-residual-router-context@2":
+            from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import doctor_budget_capability
+            for field in ("residual_budget", "budget_observation"):
+                checks["doctor_residual_" + field] = _same_json(observed.get(field), residual[field])
+            expected = doctor_budget_capability(provider=receipt["provider"],
+                requested_output_tokens=receipt["requested_output_tokens"],
+                budget_observation=observed["budget_observation"])
+            checks["doctor_budget_capability"] = _same_json(expected, receipt["doctor_budget_capability"])
     instruction = receipt.get("public_instruction")
     block = observed_instruction = None
     if instruction is not None:

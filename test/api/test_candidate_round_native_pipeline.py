@@ -199,22 +199,10 @@ def test_requirement_capture_failure_retires_the_new_session(source_service, mon
     assert json.loads(observed[0].audit_path.read_bytes())["accounting_complete"] is True
 
 
-def test_doctor_launch_remains_live_but_cannot_drop_uncaptured_residual_constraints(source_service):
-    original = _prepared(source_service, ["--doctor-residual-artifact", "/authored/residual.json",
-        "--doctor-residual-sha256", "a"*64, "--doctor-residual-task-cid", "authored-task"])
-    try:
-        assert not original._closed and original.descriptor_path.is_file()
-        assert original.original_requirements is None
-        assert original.original_requirements_unavailable_reason == "doctor_residual_context_not_captured"
-        with pytest.raises(ValueError, match="Doctor residual"):
-            prompts.capture_native_only_requirements(source_broker=original)
-        _waited_edit(original)
-        snapshot = snapshots.prepare_candidate_round_context(source_broker=original, prior_returncode=7,
-            round_number=2, absolute_deadline=time.monotonic()+90)
-        with pytest.raises(ValueError):
-            prompts.prepare_candidate_round_prompt(snapshot=snapshot)
-    finally:
-        original.close()
+def test_doctor_launch_refuses_invalid_initial_residual_capture(source_service):
+    with pytest.raises((ValueError, OSError)):
+        _prepared(source_service, ["--doctor-residual-artifact", "/authored/residual.json",
+            "--doctor-residual-sha256", "a"*64, "--doctor-residual-task-cid", "authored-task"])
 
 
 @pytest.mark.parametrize("provider,purpose", [("codex_cli", "coding"), ("grok_cli", "coding"),

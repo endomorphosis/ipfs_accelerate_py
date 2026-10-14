@@ -48,7 +48,8 @@ def validate_full_supervisor_candidate_rounds(value=1, *, arm=None):
     if selected == 2:
         if arm == "no-index":
             raise ValueError("candidate rounds=2 requires an admitted semantic source broker; no-index is unsupported")
-        raise ValueError("candidate rounds=2 is not admitted for full-supervisor Doctor constraints and residual budgets")
+        raise ValueError("candidate rounds=2 is not admitted for full-supervisor Doctor constraints: "
+            "explicit continuation budget admission is unavailable; native CLI hard token caps are not enforced")
     return selected
 
 

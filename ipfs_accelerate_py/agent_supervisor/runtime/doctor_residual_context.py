@@ -22,8 +22,12 @@ from ..proof.formal_verification_contracts import content_identity
 from . import local_planning_admission as local
 from .doctor_candidate_runner import _directory, _git, _read, _unique
 from .doctor_task_workflow import PreparedDoctorTaskRepair, _assert_task_current, _residual_evidence
+from .doctor_residual_budget import (
+    residual_budget_observation, validate_budget_observation, validate_residual_budget,
+)
 
-SCHEMA = "supervisor-doctor-residual-context@1"
+LEGACY_SCHEMA = "supervisor-doctor-residual-context@1"
+SCHEMA = "supervisor-doctor-residual-context@2"
 MAX_BYTES = 262_144
 FIELDS = frozenset({"schema", "repository", "repository_cid", "base_commit", "task_cid", "task_id",
     "task_revision", "manifest_cid", "contract_cid", "source_manifest", "plan_cid", "goal_cid",
@@ -80,8 +84,10 @@ def prepare_doctor_residual_context(*, prepared: PreparedDoctorTaskRepair, resul
         allowed_paths=tuple(outputs), allowed_effects=tuple(sorted({row["effect"] for row in spec["outputs"]})),
         validation_commands=tuple(validations),
         critique_id=refill["receipt_id"], critique_decision="repair_required", deterministic_closure=False,
-        # Advisory for one existing coding call; no additional proposal call is
-        # authorized, and no rejected/repairable plan record is invented.
+        # Declared residual-proposal limits. The coding adapter does not charge
+        # this proposal session or enforce a native CLI token/cost cap. The
+        # observation below records that distinction before publication; these
+        # limits do not authorize another coding or proposal call.
         residual_budget=ResidualLlmBudget(max_calls=1, max_tokens=4096, max_rounds=1, max_cost_units=1),
     ))
     payload = {"schema": SCHEMA, "repository": str(prepared.runtime.checkout_root),
@@ -95,6 +101,7 @@ def prepare_doctor_residual_context(*, prepared: PreparedDoctorTaskRepair, resul
                             "work_proposals": len(refill.get("work_proposals", []))},
         "provider_calls": 0, "derived_runtime_admitted": False,
         "completion_authority": False, "publication_authority": False}
+    payload["budget_observation"] = residual_budget_observation(payload["capsule"])
     payload["context_cid"] = content_identity(payload)
     raw = json.dumps(payload, sort_keys=True, indent=2).encode() + b"\n"
     if len(raw) > MAX_BYTES:
@@ -142,7 +149,9 @@ def load_doctor_residual_advisory(*, artifact: Path, expected_sha256: str, repos
     if len(raw) > MAX_BYTES or _sha(raw) != expected_sha256 or stat.S_IMODE(info.st_mode) & 0o222:
         raise ValueError("residual context digest, size or read-only artifact differs")
     payload = json.loads(raw, object_pairs_hook=_unique)
-    if (not isinstance(payload, dict) or set(payload) != FIELDS or payload["schema"] != SCHEMA
+    schema = payload.get("schema") if type(payload) is dict else None
+    fields = FIELDS | {"budget_observation"} if schema == SCHEMA else FIELDS
+    if (type(payload) is not dict or set(payload) != fields or schema not in (LEGACY_SCHEMA, SCHEMA)
             or payload["repository"] != str(root) or payload["task_cid"] != task_cid
             or content_identity({key: value for key, value in payload.items() if key != "context_cid"}) != payload["context_cid"]
             or payload["provider_calls"] != 0
@@ -177,6 +186,10 @@ def load_doctor_residual_advisory(*, artifact: Path, expected_sha256: str, repos
         if require_current_source and local._sources(workspace, sorted(sources), max_files=256) != sources:
             raise ValueError("allocated residual source is stale")
     capsule = payload["capsule"]
+    budget = validate_residual_budget(capsule)
+    budget_observation = residual_budget_observation(capsule)
+    if schema == SCHEMA and validate_budget_observation(payload["budget_observation"]) != budget_observation:
+        raise ValueError("Doctor residual budget observation differs from native capsule")
     paths = [row["path"] for row in payload["outputs"]]
     if (capsule.get("task_id") != payload["task_id"] or set(capsule.get("allowed_paths", [])) != set(paths)
             or capsule.get("validation_commands") != payload["validation_commands"]
@@ -201,6 +214,9 @@ def load_doctor_residual_advisory(*, artifact: Path, expected_sha256: str, repos
             "evidence_refs": list(row.evidence_refs)} for row in residuals],
         "proposed_work": payload["proposal_counts"], "derived_runtime_admitted": False,
         "completion_authority": False, "proof_authority": False, "scope_expansion_authority": False}
+    if schema == SCHEMA:
+        advisory_payload.update(schema="doctor-residual-coding-advisory@2",
+            declared_residual_proposal_budget=budget)
     advisory = ("\n\nVerified Doctor residual context for this existing coding task:\n"
         "Use these remaining obligations to guide work within the original declared outputs and validation. "
         "Unavailable screened analysis, an unsupported Doctor operator or a missing prover does not establish a source defect. "
@@ -217,4 +233,7 @@ def load_doctor_residual_advisory(*, artifact: Path, expected_sha256: str, repos
         "source_freshness_verified": require_current_source, "historical_replay": not require_current_source,
         "candidate_only": True, "completion_authority": False, "publication_authority": False,
         "derived_runtime_admitted": False, "extra_provider_calls": 0}
+    if schema == SCHEMA:
+        receipt.update(schema="doctor-residual-router-context@2", residual_budget=dict(budget),
+            budget_observation=residual_budget_observation(capsule))
     return advisory, receipt

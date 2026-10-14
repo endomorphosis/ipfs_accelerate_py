@@ -206,6 +206,8 @@ def capture_original_coding_launch(*, source_broker, argv, absolute_deadline, ma
     requirements = broker.original_requirements
     _need(type(requirements) is OriginalRequirements and requirements._source_broker is broker,
           "complete original requirements capture required")
+    _need(requirements._doctor_requirements is None,
+          "Doctor continuation requires independent residual budget enforcement")
     _need(requirements.native_prompt == broker.prompt.encode(), "original native prompt changed")
     public = tuple(values.get(flag) for flag in ("--public-instruction-artifact",
         "--public-instruction-sha256", "--public-instruction-task-cid"))
