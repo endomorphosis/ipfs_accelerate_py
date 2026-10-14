@@ -1,7 +1,8 @@
 """Current native intent and public-check evidence for source task packets.
 
-This read-only bridge uses the existing signed observation reader and world
-snapshot owner. It does not manufacture accepted repository/world roots, run
+This bridge reads native task data through the existing signed observation
+reader and world snapshot owner. Native readiness may maintain the owner's
+private attach-token handoff file. It does not manufacture accepted repository/world roots, run
 task validation commands, or persist another catalog. Source and intent namespaces remain
 distinct. Freshness is cooperative and must be checked at each dispatch.
 """
@@ -158,6 +159,7 @@ def _native_owner_current(*, server, owner, watermark, deadline):
                  "intent_world_owner_or_admission_changed")
         reader = IntentRepository(bound_connection=server._connection, install_schema=False)
         _require(reader.event_watermark() == watermark, "intent_world_capture_changed")
+        _require(time.monotonic() < deadline, "intent_world_capture_timeout")
 
 
 def _source_binding(session, generation):
@@ -199,13 +201,20 @@ def _resources(session, deadline):
     )
 
 
-def _capture(*, session, intent, admission, task_id, generation, max_bytes):
+def _capture(*, session, intent, admission, task_id, generation, max_bytes,
+             server=None, expected_owner=None):
     _require(type(task_id) is str and task_id and task_id.strip() == task_id
              and len(task_id.encode("utf-8")) <= 512, "invalid_intent_task_id")
     _require(type(max_bytes) is int and 1024 <= max_bytes <= MAX_BYTES,
              "invalid_intent_world_limit")
     _require(type(session) is RepositorySourceSession, "native_source_session_required")
-    owner = _owner_identity(intent)
+    if server is None:
+        owner = _owner_identity(intent)
+    else:
+        _require(intent is None, "ambiguous_intent_owner")
+        _require_native_server(server)
+        owner = None
+    native_owner_binding = None
     # Every native read and the eventual public projection consume the same
     # captured bytes. A caller's mutable mapping never becomes a second input
     # after its signature and digest checks have completed.
@@ -227,32 +236,73 @@ def _capture(*, session, intent, admission, task_id, generation, max_bytes):
         # can request the same scheduler; never recursively reserve its slot.
         with _resources(session, deadline) as lease:
             _require(not lease.cancelled, "intent_world_capture_cancelled")
-        observed = observe_local_intent_requirements(admission=admission, intent=intent)
+        if server is None:
+            def observe():
+                return observe_local_intent_requirements(admission=admission, intent=intent)
+        else:
+            # No readiness query or native owner read precedes the admission
+            # gate. The strict reader owns its transaction and may request
+            # applicability resources; never wrap it in a root lease.
+            owner, native_owner_binding = _native_owner_identity(server, deadline)
+            _require(expected_owner is None or owner == expected_owner,
+                     "intent_world_owner_or_admission_changed")
+            _require(native_owner_binding["repository_id"] == admission["manifest"]["payload"].get("repository_cid"),
+                     "intent_world_owner_mismatch")
+            def observe():
+                # Bound contention for the same RLock the reader already holds
+                # throughout observation. Its reentrant acquisition adds no
+                # new lock lifetime, and no resource lease is held here.
+                with _native_owner_lock(server, deadline):
+                    return observe_owner_intent_requirements(server=server, admission=admission)
+        observed = observe()
         observed_task = _selected(observed["tasks"], task_id)
-        _require(observed["intent_owner_id"] == intent.owner_id,
-                 "intent_world_owner_mismatch")
+        if server is None:
+            _require(observed["intent_owner_id"] == intent.owner_id,
+                     "intent_world_owner_mismatch")
+        else:
+            binding = observed.get("native_owner_binding")
+            _require(isinstance(binding, Mapping) and binding == {
+                key: native_owner_binding[key] for key in (
+                    "server_id", "database_uuid", "generation", "process_birth_id",
+                    "repository_id", "ready_checked",
+                )}, "intent_world_owner_mismatch")
         _require(time.monotonic() < deadline, "intent_world_capture_timeout")
         # The strict reader may invoke its own native applicability admission;
         # do not hold another root lease around that reader. The pure MVCC
         # world capture gets a separate bounded shared-resource reservation.
         with _resources(session, deadline) as lease:
             _require(not lease.cancelled, "intent_world_capture_cancelled")
-            world = capture_intent_world_snapshot(intent,
-                repository_id=observed["repository_id"], task_cids=(task_id,))
+            if server is None:
+                world = capture_intent_world_snapshot(intent,
+                    repository_id=observed["repository_id"], task_cids=(task_id,))
+            else:
+                # Acquire resources before waiting for the exclusive owner.
+                world = _native_world_capture(server=server, owner=owner,
+                    repository_id=observed["repository_id"], task_id=task_id, deadline=deadline)
             _require(not lease.cancelled, "intent_world_capture_cancelled")
         selected = _selected(world["plan_projection"]["tasks"], task_id)
         _require(world["planning_context"]["event_watermark"] == observed["native_event_watermark"]
                  and selected["revision"] == observed_task["revision"],
                  "intent_world_capture_changed")
         # The separate native transactions must agree in both directions.
-        repeated = observe_local_intent_requirements(admission=admission, intent=intent)
-        _require(repeated == observed and intent.event_watermark() == observed["native_event_watermark"],
-                 "intent_world_capture_changed")
+        repeated = observe()
+        _require(repeated == observed, "intent_world_capture_changed")
+        if server is None:
+            _require(intent.event_watermark() == observed["native_event_watermark"],
+                     "intent_world_capture_changed")
+        else:
+            _native_owner_current(server=server, owner=owner,
+                watermark=observed["native_event_watermark"], deadline=deadline)
         _require(time.monotonic() < deadline, "intent_world_capture_timeout")
     after = _source_binding(session, generation)
     _require(before == after, "intent_world_source_changed")
-    _require(_owner_identity(intent) == owner
-             and _admission_identity(original_admission) == admission_sha,
+    def owner_current():
+        if server is None:
+            return _owner_identity(intent) == owner
+        _native_owner_current(server=server, owner=owner,
+            watermark=observed["native_event_watermark"], deadline=deadline)
+        return True
+    _require(owner_current() and _admission_identity(original_admission) == admission_sha,
              "intent_world_owner_or_admission_changed")
 
     # Signed contracts and arbitrary task/plan bodies stay behind their owner.
@@ -287,6 +337,9 @@ def _capture(*, session, intent, admission, task_id, generation, max_bytes):
         freshness_scope="source_session_and_live_native_intent",
         missing_authority="accepted_world_tree_policy_contract_and_other_unavailable_components",
         **_AUTHORITY)
+    if native_owner_binding is not None:
+        material.update(native_owner_binding=native_owner_binding,
+                        native_owner_access="in_process_exclusive_connection")
     summary = _json(material)
     observation_cid = content_identity(material)
     reference = ContextReference(reference_id="repository-intent-world:" + observation_cid,
@@ -301,7 +354,7 @@ def _capture(*, session, intent, admission, task_id, generation, max_bytes):
         reference_id=reference.reference_id, reference_content_id=reference.content_id,
         summary_sha256=_sha(summary), summary_bytes=len(summary.encode("utf-8")),
         reference_bytes=len(reference.canonical_bytes()), task_id=task_id,
-        task_revision=selected["revision"], intent_owner_id=intent.owner_id,
+        task_revision=selected["revision"], intent_owner_id=observed["intent_owner_id"],
         native_event_watermark=observed["native_event_watermark"],
         intent_repository_id=observed["repository_id"],
         intent_source_tree_id=observed["current_source_tree_id"],
@@ -314,8 +367,10 @@ def _capture(*, session, intent, admission, task_id, generation, max_bytes):
         world_schedulable=world["schedulable"], native_intent_freshness_checked=True,
         source_freshness_checked=True, resource_limits=dict(admission_memory_mb=256,
             cooperative_deadline_seconds=30, parser_hard_rss_limit=False), **_AUTHORITY)
-    _require(_owner_identity(intent) == owner
-             and _admission_identity(original_admission) == admission_sha,
+    if native_owner_binding is not None:
+        receipt.update(native_owner_binding=native_owner_binding,
+                       native_owner_access="in_process_exclusive_connection")
+    _require(owner_current() and _admission_identity(original_admission) == admission_sha,
              "intent_world_owner_or_admission_changed")
     return reference, _json(receipt), owner, admission_sha
 
@@ -327,13 +382,14 @@ class RepositoryIntentWorldObservation:
     reference: ContextReference
     _receipt_json: str = field(repr=False)
     _session: RepositorySourceSession = field(repr=False)
-    _intent: IntentRepository = field(repr=False)
+    _intent: IntentRepository | None = field(repr=False)
     _admission: Mapping = field(repr=False)
     _owner: tuple = field(repr=False)
     _admission_sha: str = field(repr=False)
     _task_id: str = field(repr=False)
     _generation: int = field(repr=False)
     _max_bytes: int = field(repr=False)
+    _server: object | None = field(default=None, repr=False)
 
     def receipt(self) -> dict:
         return json.loads(self._receipt_json)
@@ -341,7 +397,7 @@ class RepositoryIntentWorldObservation:
     def _seal(self):
         return (self.reference.canonical_bytes(), self._receipt_json, self._session, self._intent,
                 id(self._admission), self._owner, self._admission_sha, self._task_id,
-                self._generation, self._max_bytes)
+                self._generation, self._max_bytes, id(self._server))
 
     def validate_current(self, *, session, generation, task_id) -> dict:
         with _ISSUANCE_LOCK:
@@ -350,11 +406,13 @@ class RepositoryIntentWorldObservation:
         _require(session is self._session and generation == self._generation
                  and type(generation) is int and task_id == self._task_id,
                  "intent_world_consumer_binding_mismatch")
-        _require(_owner_identity(self._intent) == self._owner
+        # Native owner checks run inside _capture, after resource admission.
+        _require((self._server is not None or _owner_identity(self._intent) == self._owner)
                  and _admission_identity(self._admission) == self._admission_sha,
                  "intent_world_owner_or_admission_changed")
         reference, receipt, owner, admission_sha = _capture(session=session, intent=self._intent,
-            admission=self._admission, task_id=task_id, generation=generation, max_bytes=self._max_bytes)
+            admission=self._admission, task_id=task_id, generation=generation, max_bytes=self._max_bytes,
+            server=self._server, expected_owner=self._owner)
         _require(reference.canonical_bytes() == self.reference.canonical_bytes()
                  and receipt == self._receipt_json and owner == self._owner
                  and admission_sha == self._admission_sha, "intent_world_observation_changed")
@@ -368,6 +426,25 @@ def capture_repository_intent_world(*, session, intent, admission, task_id,
         admission=admission, task_id=task_id, generation=generation, max_bytes=max_bytes)
     result = RepositoryIntentWorldObservation(reference, receipt, session, intent, admission,
         owner, admission_sha, task_id, generation, max_bytes)
+    with _ISSUANCE_LOCK:
+        _ISSUED[result] = result._seal()
+    return result
+
+
+def capture_repository_owner_intent_world(*, session, server, admission, task_id,
+                                          generation, max_bytes=32768) -> RepositoryIntentWorldObservation:
+    """Capture through a live in-process native Quack owner, without reopening it.
+
+    The exact server and connection remain private custody references. This is
+    not a remote-client API or a portable receipt: each dispatch must reobserve
+    that live owner. Signed materialization and current server identities are
+    retained separately because custody may have transferred between them.
+    """
+    _require_native_server(server)
+    reference, receipt, owner, admission_sha = _capture(session=session, intent=None,
+        server=server, admission=admission, task_id=task_id, generation=generation, max_bytes=max_bytes)
+    result = RepositoryIntentWorldObservation(reference, receipt, session, None, admission,
+        owner, admission_sha, task_id, generation, max_bytes, server)
     with _ISSUANCE_LOCK:
         _ISSUED[result] = result._seal()
     return result

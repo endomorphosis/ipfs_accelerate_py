@@ -522,14 +522,35 @@ requires a new observation and context. Source restoration alone cannot revive
 old validation evidence. The local validation tree and source-session tree use
 different identity contracts and remain separate. No accepted repository-tree,
 policy or completion authority is manufactured to fill missing world components.
-This first bridge uses an independently owned local intent database; native
-Quack owner-session transport and restart reconstruction remain separate work.
+The local capture entry point uses an independently owned intent database.
 Capture checks shared resource admission before reading the owners and reserves
 256 MiB for the world projection. The reference defaults to 32 KiB and cannot
 exceed 64 KiB; exceeding a bound refuses the whole reference. The 30-second
 deadline is cooperative and cannot interrupt an active native query. The global
 intent event watermark deliberately invalidates captures on unrelated owner
 updates as well. Recapture overhead has not yet been benchmarked.
+
+`capture_repository_owner_intent_world` accepts the same source session,
+admission, task CID, generation and byte limit, with `server` replacing `intent`.
+It requires the actual running `QuackStateServer` and native Quack transport,
+and reads through the owner's existing exclusive connection. Use its issued
+observation and required reference with the same compiler and packet APIs.
+The original signed `intent_owner_id` remains separate from the live server's
+`native_owner_binding`, since admission and current custody can have different
+owners. Public evidence includes only the allowlisted custody identities; the
+connection, listener endpoint, database path and credentials stay private.
+
+Native capture checks shared admission before readiness, then lets the strict
+signed observer own its transaction under a deadline-bounded lock acquisition.
+A separate resource lease precedes the
+owner lock for the world snapshot transaction. Exceptions roll back that
+transaction without closing the owner's connection. Every dispatch rechecks
+readiness, exact connection/transport custody, restart identity and observations.
+A stopped or restarted owner requires a new capture. Deadlines remain
+cooperative, including inside the reused observer. This is an in-process owner
+API; remote packet transport and durable restart reconstruction remain unqualified.
+Capture leaves native task data unchanged; the reused readiness check may
+restore the owner's private attach-token file as part of normal owner maintenance.
 
 Opt-in container deployment requires an archive matching the current runtime
 and datasets owner sources. Preparation, execution and deployment verify the

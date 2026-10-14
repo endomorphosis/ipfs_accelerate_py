@@ -648,8 +648,9 @@ policy, contract and other world authorities remain unavailable instead of
 being replaced by source-session hashes.
 
 The first capture API supports independently owned local intent databases.
-Native Quack owner transport, durable observation reconstruction, joined IR
-families and matched live Terminal Bench experiments remain outstanding.
+The native Quack owner extension is described below; durable observation
+reconstruction, joined IR families and matched live Terminal Bench experiments
+remain outstanding.
 
 [Native intent qualification](evidence/intent-world-20261014/qualification.json)
 records 193 passing tests: 31 focused cases and 162 regressions. The end-to-end
@@ -664,6 +665,28 @@ capture-size limits. Runs were serial with one native CPU slot and offline
 model assets. The report records dependency pins, JUnit/source hashes, corrected
 fixture attempts and a documentation-only source correction. Recapture overhead
 and complete live-provider token savings remain unmeasured.
+
+### Native Quack owner capture
+
+`capture_repository_owner_intent_world` extends the required-reference path to
+an actual live `QuackStateServer`. It reuses the native signed requirement
+observer and captures the world snapshot in a transaction on the owner's
+exclusive connection. It does not reopen the database file. Original admission
+signer identity stays distinct from current server custody, and only allowlisted
+custody fields reach worker context and receipts. Private endpoints, paths and
+credentials stay with the owner.
+
+The issued observation retains the exact owner, connection and transport.
+Preparation and immediate pre-dispatch checks reject changed evidence or owner
+custody, including a stopped or restarted server. Resource admission precedes
+native reads, the world projection acquires its reservation before the owner
+lock, and transaction exceptions leave the connection usable. The existing
+observer retains its own transaction, with deadline-bounded lock acquisition;
+deadlines remain cooperative. Native task data stays unchanged, while the reused
+readiness check may restore the owner's private attach-token file.
+No new command runner, metadata catalog or execution/completion authority is
+introduced. This qualifies an in-process native owner integration, with portable
+transport and reconstruction across process restarts still outstanding.
 
 ## Decide success from the complete run
 
