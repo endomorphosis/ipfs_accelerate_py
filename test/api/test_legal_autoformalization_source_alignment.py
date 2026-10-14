@@ -368,6 +368,168 @@ def test_official_input_population_is_closed_and_bounded_before_retention(alignm
         driver.run_real_input(datasets, job("original_source_alignment"))
 
 
+@pytest.fixture
+def referenced_report(tmp_path, monkeypatch):
+    # Force the transport boundary cheaply; real reports are qualified separately
+    # against the unchanged native caps and complete pinned production baselines.
+    monkeypatch.setattr(driver, "MAX_COMPRESSED_REPORT_BYTES", 32)
+    def build(kind="original_source_alignment", name="baseline.json"):
+        report = {"schema": "legal-source-alignment-real-input/v1", "kind": kind,
+            "report": {"rows": [{"ordinal": i, "text": "Literal é evidence " + str(i)} for i in range(16)],
+                "unknown_metadata": ["retained", {"nested": "entire population"}], "authority": {"legal": False}}}
+        path = tmp_path / name
+        path.write_bytes(driver.wire(report) + b"\n")
+        baseline = {**driver.identity(path), "canonical_json_sha256": driver.sha(driver.wire(report))}
+        return report, baseline
+    return build
+
+
+@pytest.mark.parametrize("kind", driver.SOURCE_ALIGNMENT_KINDS)
+def test_reference_fallback_losslessly_recovers_every_full_report_field(referenced_report, kind):
+    report, baseline = referenced_report(kind)
+    envelope = driver.pack_real_input_report(report, trusted_baseline=baseline)
+    assert set(envelope) == {"schema", "encoding", "baseline", "report_sha256", "report_bytes", "report_schema", "kind"}
+    assert envelope["schema"] == driver.REPORT_REFERENCE_SCHEMA
+    assert envelope["encoding"] == "pinned-baseline-reference"
+    assert envelope["report_bytes"] == len(driver.wire(report))
+    assert envelope["baseline"] == baseline
+    assert driver.unpack_real_input_report(envelope, trusted_baseline=baseline) == report
+    assert len(driver.wire(envelope)) < driver.MAX_RESULT_BYTES
+    job = {"real_input": {"spec": {"kind": kind}, "baseline": baseline}}
+    driver.validate_real_input({"kind": kind, "report": envelope, "report_sha256": driver.sha(driver.wire(report))}, job)
+
+
+def test_fallback_compares_whole_generated_payload_even_when_hash_helper_matches(referenced_report, monkeypatch):
+    report, baseline = referenced_report()
+    other = copy.deepcopy(report)
+    other["report"]["rows"].pop()
+    real_sha = driver.sha
+    # An apparent equality of digest strings must not replace whole byte equality.
+    def colliding_sha(raw):
+        if raw == driver.wire(other):
+            return baseline["canonical_json_sha256"]
+        return real_sha(raw)
+    monkeypatch.setattr(driver, "sha", colliding_sha)
+    with pytest.raises(ValueError, match="Generated complete report differs"):
+        driver.pack_real_input_report(other, trusted_baseline=baseline)
+
+
+@pytest.mark.parametrize("damage", ["missing-trust", "foreign-path", "raw-hash", "canonical-hash", "bytes", "extra-pin-key"])
+def test_reference_cannot_choose_its_own_baseline_before_file_open(referenced_report, monkeypatch, damage):
+    report, baseline = referenced_report()
+    envelope = driver.pack_real_input_report(report, trusted_baseline=baseline)
+    trusted = baseline
+    if damage == "missing-trust":
+        trusted = None
+    elif damage == "foreign-path":
+        envelope["baseline"]["path"] = str(Path(baseline["path"]).parent / "provider-chosen.json")
+    elif damage == "raw-hash":
+        envelope["baseline"]["sha256"] = "0" * 64
+    elif damage == "canonical-hash":
+        envelope["baseline"]["canonical_json_sha256"] = "0" * 64
+    elif damage == "bytes":
+        envelope["baseline"]["bytes"] += 1
+    else:
+        envelope["baseline"]["self_authenticated"] = True
+    def deny_open(*args, **kwargs):
+        pytest.fail("untrusted reference must not open any file")
+    monkeypatch.setattr(driver.os, "open", deny_open)
+    with pytest.raises(ValueError):
+        driver.unpack_real_input_report(envelope, trusted_baseline=trusted)
+
+
+@pytest.mark.parametrize("damage", ["report-sha", "report-size", "boolean-size", "schema", "kind", "extra-key", "encoding"])
+def test_resealed_reference_metadata_cannot_change_full_pinned_payload(referenced_report, damage):
+    report, baseline = referenced_report()
+    envelope = driver.pack_real_input_report(report, trusted_baseline=baseline)
+    if damage == "report-sha": envelope["report_sha256"] = "0" * 64
+    elif damage == "report-size": envelope["report_bytes"] -= 1
+    elif damage == "boolean-size": envelope["report_bytes"] = True
+    elif damage == "schema": envelope["report_schema"] = "pretend-legal-authority/v1"
+    elif damage == "kind": envelope["kind"] = "source_review_handoff"
+    elif damage == "encoding": envelope["encoding"] = "unverified-pointer"
+    else: envelope["passed"] = True
+    with pytest.raises(ValueError):
+        driver.unpack_real_input_report(envelope, trusted_baseline=baseline)
+
+
+def test_modified_baseline_body_cannot_be_recovered_from_old_reference(referenced_report):
+    report, baseline = referenced_report()
+    envelope = driver.pack_real_input_report(report, trusted_baseline=baseline)
+    changed = copy.deepcopy(report)
+    changed["report"]["rows"][0]["text"] = "changed evidence"
+    Path(baseline["path"]).write_bytes(driver.wire(changed) + b"\n")
+    with pytest.raises(ValueError, match="Trusted baseline"):
+        driver.unpack_real_input_report(envelope, trusted_baseline=baseline)
+
+
+@pytest.mark.parametrize("alias", ["symlink", "raw-path", "dot-path", "repeated-separator"])
+def test_independently_pinned_baseline_custody_refuses_aliases(referenced_report, alias):
+    report, baseline = referenced_report()
+    target = Path(baseline["path"])
+    if alias == "symlink":
+        path = target.parent / "baseline-alias.json"
+        path.symlink_to(target)
+    elif alias == "raw-path":
+        directory = target.parent / "subdirectory"
+        directory.mkdir()
+        path = directory / ".." / target.name
+    elif alias == "dot-path":
+        path = str(target.parent) + "/./" + target.name
+    else:
+        path = str(target.parent) + "//" + target.name
+    baseline["path"] = str(path)
+    with pytest.raises(ValueError, match="alias refused"):
+        driver.pack_real_input_report(report, trusted_baseline=baseline)
+
+
+@pytest.mark.parametrize("damage", ["raw-cap", "canonical-pin", "raw-pin", "boolean-bytes", "raised-bytes", "wrong-kind", "wrong-schema"])
+def test_reference_fallback_requires_exact_bounded_external_file_pins(referenced_report, monkeypatch, damage):
+    report, baseline = referenced_report()
+    if damage == "raw-cap": monkeypatch.setattr(driver, "MAX_BYTES", len(driver.wire(report)) - 1)
+    elif damage == "canonical-pin": baseline["canonical_json_sha256"] = "0" * 64
+    elif damage == "raw-pin": baseline["sha256"] = "0" * 64
+    elif damage == "boolean-bytes": baseline["bytes"] = True
+    elif damage == "raised-bytes": baseline["bytes"] = driver.MAX_BYTES + 1
+    else:
+        changed = copy.deepcopy(report)
+        changed["kind" if damage == "wrong-kind" else "schema"] = "foreign-stage-profile"
+        Path(baseline["path"]).write_bytes(driver.wire(changed) + b"\n")
+        baseline = {**driver.identity(baseline["path"]), "canonical_json_sha256": driver.sha(driver.wire(changed))}
+    with pytest.raises(ValueError):
+        driver.pack_real_input_report(report, trusted_baseline=baseline)
+
+
+def test_older_profile_cannot_use_stage11_reference_even_with_matching_file_pin(referenced_report):
+    report, baseline = referenced_report()
+    report["schema"] = "legal-source-views-real-input/v1"
+    report["kind"] = "source_view_inventory"
+    path = Path(baseline["path"])
+    path.write_bytes(driver.wire(report) + b"\n")
+    baseline = {**driver.identity(path), "canonical_json_sha256": driver.sha(driver.wire(report))}
+    with pytest.raises(ValueError, match="Compressed full real-input report exceeds"):
+        driver.pack_real_input_report(report, trusted_baseline=baseline)
+
+
+def test_reference_is_not_substituted_for_complete_subprocess_execution(alignment_input_fixture, monkeypatch):
+    datasets, payload, values, job_builder, put = alignment_input_fixture
+    job = job_builder("original_source_alignment")
+    job.update({"test_paths": ["test_owner.py"], "minimum_tests": 1})
+    full = {"schema": "legal-source-alignment-real-input/v1", "kind": "original_source_alignment", "report": values["alignment"]}
+    baseline = put("baseline.json", full)
+    baseline["canonical_json_sha256"] = driver.sha(driver.wire(full))
+    job["real_input"]["baseline"] = baseline
+    monkeypatch.setattr(driver, "MAX_COMPRESSED_REPORT_BYTES", 32)
+    calls = []
+    def actual_child(*args):
+        calls.append(1)
+        raise ValueError("fixed owner child failed; baseline is not execution")
+    monkeypatch.setattr(driver, "run_real_input", actual_child)
+    with pytest.raises(ValueError, match="baseline is not execution"):
+        driver.execute(datasets, job)
+    assert calls == [1]
+
+
 def test_frozen_qualification_executes_real_test_and_never_rewrites(frozen, monkeypatch):
     _, sources, _ = frozen
     first = driver.materialize("LAC-S11-044", sources)

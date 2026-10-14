@@ -31,6 +31,7 @@ MAX_RESULT_BYTES = 900 * 1024  # Below unchanged native 1,048,576-byte file gate
 MAX_COMPRESSED_REPORT_BYTES = 625 * 1024
 MAX_ENCODED_REPORT_BYTES = 840 * 1024
 REPORT_ENVELOPE_SCHEMA = "legal-autoformalization-source-alignment-real-report-envelope/v1"
+REPORT_REFERENCE_SCHEMA = "legal-autoformalization-source-alignment-pinned-baseline-reference/v1"
 MAX_FAILURE_CASES = 5
 MAX_FAILURE_FIELD_BYTES = 512
 MAX_FAILURE_TAIL_BYTES = 1024
@@ -804,6 +805,10 @@ def run_real_input(datasets, job):
 
 def expected_real_input(job):
     baseline = job["real_input"]["baseline"]
+    if job["real_input"]["spec"]["kind"] in SOURCE_ALIGNMENT_KINDS:
+        expected = _trusted_baseline_report(baseline)
+        need(expected["kind"] == job["real_input"]["spec"]["kind"], "Trusted baseline differs from configured stage11 kind")
+        return expected
     need(type(baseline["bytes"]) is int and 0 < baseline["bytes"] <= MAX_BYTES
          and Path(baseline["path"]).stat().st_size == baseline["bytes"], "Real-input baseline moved or exceeds bound")
     need(identity(baseline["path"])["sha256"] == baseline["sha256"], "Real-input baseline moved")
@@ -812,11 +817,62 @@ def expected_real_input(job):
     return expected
 
 
-def pack_real_input_report(report):
-    """Retain the entire canonical report below native proposal file limits."""
+def _baseline_pin(baseline):
+    """Validate literal bounded pin metadata without consulting its path."""
+    need(type(baseline) is dict and set(baseline) == {"path", "sha256", "bytes", "canonical_json_sha256"},
+         "Closed independently trusted stage11 baseline pin required")
+    need(type(baseline["path"]) is str and 0 < len(baseline["path"]) <= 4096
+         and type(baseline["bytes"]) is int
+         and 0 < baseline["bytes"] <= MAX_BYTES, "Trusted baseline raw byte cap differs")
+    for key in ("sha256", "canonical_json_sha256"):
+        value = baseline[key]
+        need(type(value) is str and len(value) == 64
+             and all(char in "0123456789abcdef" for char in value), "Invalid trusted baseline digest")
+
+
+def _trusted_baseline_report(baseline):
+    """Capture the complete independently pinned stage11 baseline, without aliases."""
+    _baseline_pin(baseline)
+    path = Path(baseline["path"])
+    need(path.is_absolute() and str(path) == baseline["path"] and path.resolve(strict=True) == path,
+         "Trusted baseline alias refused")
+    marker = lambda info: (info.st_dev, info.st_ino, info.st_mode, info.st_size,
+                           info.st_mtime_ns, info.st_ctime_ns)
+    before_path = path.lstat()
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        before = os.fstat(stream.fileno())
+        need(stat.S_ISREG(before.st_mode) and before.st_size == baseline["bytes"]
+             and marker(before_path) == marker(before), "Trusted baseline initial file identity differs")
+        raw = stream.read(MAX_BYTES + 1)
+        need(len(raw) == baseline["bytes"] and len(raw) <= MAX_BYTES, "Trusted baseline raw byte cap differs")
+        need(marker(before) == marker(os.fstat(stream.fileno())) == marker(path.lstat())
+             and path.resolve(strict=True) == path, "Trusted baseline changed during capture")
+    need(sha(raw) == baseline["sha256"], "Trusted baseline raw file pin differs")
+    report = json.loads(raw)
+    need(type(report) is dict and report.get("schema") == "legal-source-alignment-real-input/v1"
+         and report.get("kind") in SOURCE_ALIGNMENT_KINDS, "Trusted baseline stage11 schema or kind differs")
+    need(sha(wire(report)) == baseline["canonical_json_sha256"], "Trusted baseline FULL canonical pin differs")
+    return report
+
+
+def pack_real_input_report(report, *, trusted_baseline=None):
+    """Transport the entire report, or its exact independently pinned stage11 file.
+
+    A reference supplies no execution proof. Its generation still follows the
+    complete fixed-owner subprocess and exact whole-report baseline comparison.
+    """
     raw = wire(report)
     need(0 < len(raw) <= MAX_BYTES, "Complete real-input report exceeds raw byte cap")
     compressed = zlib.compress(raw, level=9)
+    stage11 = (type(report) is dict and report.get("schema") == "legal-source-alignment-real-input/v1"
+               and report.get("kind") in SOURCE_ALIGNMENT_KINDS)
+    if stage11 and (len(compressed) > MAX_COMPRESSED_REPORT_BYTES or 4 * ((len(compressed) + 2) // 3) > MAX_ENCODED_REPORT_BYTES):
+        expected = _trusted_baseline_report(trusted_baseline)
+        need(raw == wire(expected), "Generated complete report differs from independently trusted baseline")
+        return {"schema": REPORT_REFERENCE_SCHEMA, "encoding": "pinned-baseline-reference",
+            "baseline": dict(trusted_baseline), "report_sha256": sha(raw), "report_bytes": len(raw),
+            "report_schema": report["schema"], "kind": report["kind"]}
     need(len(compressed) <= MAX_COMPRESSED_REPORT_BYTES, "Compressed full real-input report exceeds byte cap")
     encoded = base64.b64encode(compressed).decode("ascii")
     need(len(encoded) <= MAX_ENCODED_REPORT_BYTES, "Encoded full real-input report exceeds byte cap")
@@ -826,8 +882,24 @@ def pack_real_input_report(report):
         "encoded_bytes": len(encoded), "data": encoded}
 
 
-def unpack_real_input_report(envelope):
+def unpack_real_input_report(envelope, *, trusted_baseline=None):
     """Bound allocation before decode; authentication remains the external baseline."""
+    if type(envelope) is dict and envelope.get("schema") == REPORT_REFERENCE_SCHEMA:
+        need(set(envelope) == {"schema", "encoding", "baseline", "report_sha256", "report_bytes", "report_schema", "kind"}
+             and envelope.get("encoding") == "pinned-baseline-reference", "Closed stage11 baseline reference required")
+        _baseline_pin(trusted_baseline)
+        _baseline_pin(envelope["baseline"])
+        need(envelope["baseline"] == trusted_baseline,
+             "Reference differs from independently trusted source-config baseline")
+        need(type(envelope["report_bytes"]) is int and 0 < envelope["report_bytes"] <= MAX_BYTES,
+             "Reference canonical report byte cap differs")
+        report = _trusted_baseline_report(trusted_baseline)
+        canonical = wire(report)
+        need(envelope["report_bytes"] == len(canonical)
+             and envelope["report_sha256"] == sha(canonical) == trusted_baseline["canonical_json_sha256"]
+             and envelope["report_schema"] == report["schema"] and envelope["kind"] == report["kind"],
+             "Reference complete report metadata differs")
+        return report
     need(type(envelope) is dict and set(envelope) == {"schema", "encoding", "report_bytes",
         "report_sha256", "compressed_bytes", "compressed_sha256", "encoded_bytes", "data"},
         "Closed complete-report envelope required")
@@ -867,7 +939,8 @@ def validate_real_input(observed, job):
     if observed["kind"] in (*SOURCE_ALIGNMENT_KINDS, *SOURCE_SPAN_KINDS, *PARENT_PAGE_KINDS, *SOURCE_VIEWS_KINDS):
         need(type(observed["report"]) is dict and observed["report"].get("report_sha256") == expected_sha256,
              "Complete-report envelope differs from independently pinned baseline before decode")
-    report = unpack_real_input_report(observed["report"]) if observed["kind"] in (*SOURCE_ALIGNMENT_KINDS, *SOURCE_SPAN_KINDS, *PARENT_PAGE_KINDS, *SOURCE_VIEWS_KINDS) else observed["report"]
+    report = unpack_real_input_report(observed["report"], trusted_baseline=profile["baseline"]
+        if observed["kind"] in SOURCE_ALIGNMENT_KINDS else None) if observed["kind"] in (*SOURCE_ALIGNMENT_KINDS, *SOURCE_SPAN_KINDS, *PARENT_PAGE_KINDS, *SOURCE_VIEWS_KINDS) else observed["report"]
     need(wire(report) == wire(expected),
          "Real-input observation differs from independently pinned baseline")
 
@@ -947,7 +1020,9 @@ def execute(datasets, job):
         if job.get("real_input"):
             report = run_real_input(datasets, job)
             result["real_input_execution"] = {"kind": job["real_input"]["spec"]["kind"],
-                "report": pack_real_input_report(report) if job["real_input"]["spec"]["kind"] in (*SOURCE_ALIGNMENT_KINDS, *SOURCE_SPAN_KINDS, *PARENT_PAGE_KINDS, *SOURCE_VIEWS_KINDS) else report,
+                "report": pack_real_input_report(report, trusted_baseline=job["real_input"]["baseline"]
+                    if job["real_input"]["spec"]["kind"] in SOURCE_ALIGNMENT_KINDS else None)
+                    if job["real_input"]["spec"]["kind"] in (*SOURCE_ALIGNMENT_KINDS, *SOURCE_SPAN_KINDS, *PARENT_PAGE_KINDS, *SOURCE_VIEWS_KINDS) else report,
                 "report_sha256": sha(wire(report))}
             validate_real_input(result["real_input_execution"], job)
         return result

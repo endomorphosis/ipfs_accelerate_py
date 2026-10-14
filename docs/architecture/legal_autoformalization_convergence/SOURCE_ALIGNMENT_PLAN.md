@@ -39,11 +39,23 @@ New task identifiers and generation-01 runtime paths isolate this continuation.
 All jobs use the pinned existing virtual environment with PYTHONNOUSERSITE=1,
 one-thread settings and no dependency installation. The sealed native executor,
 Git transaction guard, generation-bound terminal fencing and shared advisory
-resource policy remain unchanged. Reports retain complete populations in bounded
-lossless zlib/base64 envelopes under unchanged native file and patch limits.
-Raw-file and independent FULL report pins authenticate replay inputs; self-seals
-do not establish source or legal authority. Independent post-merge replay follows
-native completion, authenticated tree fencing and resource-lease release.
+resource policy remain unchanged. Small complete reports use bounded lossless
+zlib/base64 envelopes. When a stage11 report exceeds the compressed transport
+limit, its native receipt references the complete retained external baseline by
+an independently source-configured raw-file pin and FULL canonical report pin.
+The freshly regenerated whole report must equal that complete baseline byte for
+byte before any reference is created. Recovery requires the same trusted pin,
+stable regular-file custody, exact lengths and both hashes; a receipt cannot
+choose another file. No row, field or source population is omitted. Native file,
+patch, compressed and raw-report limits remain unchanged.
+
+A baseline reference describes transport and supplies no execution proof.
+Every qualification still executes the complete fixed-owner subprocess against
+the original pinned inputs before packing; post-merge replay independently
+regenerates every report again. Raw-file and independent FULL report pins bind
+replay inputs, while self-seals and reference metadata do not establish source
+or legal authority. Native completion, authenticated tree fencing and resource
+lease release precede independent post-merge qualification.
 
 Page custody remains the qualified original-parent contract: preflight inventories
 optional CRC declarations; CRC values are verified for decoded page bodies only.
