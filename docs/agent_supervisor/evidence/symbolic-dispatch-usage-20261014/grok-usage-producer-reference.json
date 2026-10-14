@@ -1,0 +1,16 @@
+{
+  "schema": "grok-usage-producer-reference@1",
+  "reference_path": "/home/barberb/.grok/docs/user-guide/14-headless-mode.md",
+  "reference_sha256": "e7862bae7ef9e301c0b1448bcd33d35369949c661bdba0cc08b289972e6cb24a",
+  "local_metadata_version": "1.0.52",
+  "local_metadata_version_sha256": "8b8bbcf411306ea2159d36f4854cc741c47e60741aa7c6c74fa929f3d0dfedf3",
+  "reference_lines": [
+    231,
+    266
+  ],
+  "fixture_kind": "authored documented protocol shape",
+  "raw_provider_content_retained": false,
+  "previous_benchmark_cli_version": "1.0.46",
+  "live_provider_calls": 0,
+  "caveat": "Current locally installed documentation is not a pinned 1.0.46 live fixture; event counters are observations with unverified arithmetic semantics."
+}

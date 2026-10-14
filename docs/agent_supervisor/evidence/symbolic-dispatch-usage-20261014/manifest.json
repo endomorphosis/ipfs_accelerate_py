@@ -1,0 +1,111 @@
+{
+  "external_model_calls": 0,
+  "files": {
+    "README.md": {
+      "bytes": 3618,
+      "sha256": "a23a609de01e6d7633aea67aaa53913ec9d9157038783f59ba622362620eebf2"
+    },
+    "doctor-dispatch-final-03/command.json": {
+      "bytes": 311,
+      "sha256": "952f015acd77870c7a26f6b59e84e1d01370ffb8889e1d941eff5d634f0f9b5a"
+    },
+    "doctor-dispatch-final-03/exit.json": {
+      "bytes": 135,
+      "sha256": "41b96369196a99b92c9d6863f3683694e6b7efaddf1d00a36586c4d0be459a81"
+    },
+    "doctor-dispatch-final-03/junit.xml": {
+      "bytes": 5309,
+      "sha256": "5378e5837d837b890a0315a0be945e34dce704b69c0b36d1e5389bf19fe45f79"
+    },
+    "doctor-dispatch-final-03/source-after.json": {
+      "bytes": 2616,
+      "sha256": "a12adfbf63c5697d7fc58bf89589e8199cf7c2b6306e960a117e49b07e41aff0"
+    },
+    "doctor-dispatch-final-03/source-before.json": {
+      "bytes": 2616,
+      "sha256": "a12adfbf63c5697d7fc58bf89589e8199cf7c2b6306e960a117e49b07e41aff0"
+    },
+    "doctor-routing-01/command.json": {
+      "bytes": 762,
+      "sha256": "eb12f7fed301f99b1c0f5b5636702b4744d5300e31bc11a435c00276dc6d72ec"
+    },
+    "doctor-routing-01/exit.json": {
+      "bytes": 352,
+      "sha256": "be44aa1aec0e362229733fd94589a515df34711a20af663562627e62b4485cbd"
+    },
+    "doctor-routing-01/junit.xml": {
+      "bytes": 58862,
+      "sha256": "7b7265cc355fe3faf054917c087c12fe1d3e7fc5268b5b56249e5f1ff290d9f4"
+    },
+    "doctor-routing-01/source-after.json": {
+      "bytes": 2471,
+      "sha256": "39a63cfabf432d75af3aaea7f4b15303e05d9bf093ea225b4d4b439a72140eb6"
+    },
+    "doctor-routing-01/source-before.json": {
+      "bytes": 2471,
+      "sha256": "66e8baa8b760ca030df8010fc27a1aa8b6b85d73898835ffde853a815c47b5f4"
+    },
+    "grok-usage-producer-reference.json": {
+      "bytes": 739,
+      "sha256": "d936f3731d6c79c1b255a1b99feb5eeb7856514705e5a2b6a8c0eba7f1e2de48"
+    },
+    "grok-usage-size-check.json": {
+      "bytes": 1134,
+      "sha256": "a452ced4094612e1375ee635e8383d5ec6e76396c0a5649b57b1523602d3003b"
+    },
+    "grok-usage-tests-02/command.json": {
+      "bytes": 433,
+      "sha256": "10d1e49c455d9d4273130aa5bd36689534d955c86d25d5bbe09bed9a6b59f4fb"
+    },
+    "grok-usage-tests-02/exit.json": {
+      "bytes": 134,
+      "sha256": "b3b7c02f6153e6d03fa05019d37bccb26510446eb57b2282947f0a316220f2fe"
+    },
+    "grok-usage-tests-02/junit.xml": {
+      "bytes": 25473,
+      "sha256": "7f5b0961faf92172294ba4160ea4cff911a67bdd9eb0174bd6e6fa8637a07823"
+    },
+    "grok-usage-tests-02/source-after.json": {
+      "bytes": 2616,
+      "sha256": "a12adfbf63c5697d7fc58bf89589e8199cf7c2b6306e960a117e49b07e41aff0"
+    },
+    "grok-usage-tests-02/source-before.json": {
+      "bytes": 2616,
+      "sha256": "a12adfbf63c5697d7fc58bf89589e8199cf7c2b6306e960a117e49b07e41aff0"
+    },
+    "independent-review.json": {
+      "bytes": 7351,
+      "sha256": "809f07e2f63b0ee0e6ccbd733dac17ee03a740d3c02174c84a5eb1342f009b87"
+    },
+    "integration-02/command.json": {
+      "bytes": 499,
+      "sha256": "51beec7cb1b91a9fdeb9d75755ef9e4395b32cfedfc718c1795ddbdfdcf17cad"
+    },
+    "integration-02/exit.json": {
+      "bytes": 134,
+      "sha256": "6107a0ee31c3c4fae09ceea650cfd94c5b2505b149afa920ec4e17273b25fa43"
+    },
+    "integration-02/junit.xml": {
+      "bytes": 57336,
+      "sha256": "2307a8c60a5270147b6e98acd76866399e3cee6fd36bc0babaff30d89962f49f"
+    },
+    "integration-02/source-after.json": {
+      "bytes": 2765,
+      "sha256": "180bf68460360bf42bb946d69e4e0bdcb5599a8b6e7ddc245368ad148c94ad6a"
+    },
+    "integration-02/source-before.json": {
+      "bytes": 2765,
+      "sha256": "180bf68460360bf42bb946d69e4e0bdcb5599a8b6e7ddc245368ad148c94ad6a"
+    },
+    "qualification.json": {
+      "bytes": 2907,
+      "sha256": "6c19cc00fb4df9f7d68c98d6d779dfe8c7fb53e2361b0c41c085cc0b914a3514"
+    },
+    "tests-ledger.json": {
+      "bytes": 112293,
+      "sha256": "8900581d9a9e5263c73f8590ec0bf4c7cc156c2e7798c5de690ee55f2613ca82"
+    }
+  },
+  "new_live_benchmark_trials": 0,
+  "schema": "symbolic-dispatch-usage-evidence-manifest@1"
+}

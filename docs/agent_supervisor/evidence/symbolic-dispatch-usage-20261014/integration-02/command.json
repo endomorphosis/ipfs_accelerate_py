@@ -1,0 +1,13 @@
+[
+  "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+  "-m",
+  "pytest",
+  "-q",
+  "--color=no",
+  "-o",
+  "log_cli=false",
+  "--junitxml=/home/barberb/lift_coding/artifacts/bounded-context-growth-20261014/integration-02/junit.xml",
+  "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py"
+]
