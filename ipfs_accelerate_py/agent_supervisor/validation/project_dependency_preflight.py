@@ -545,6 +545,196 @@ def _setuptools_file_backed_dependencies(
     )
 
 
+def _scoped_contract_schema(parsed: Mapping[str, Any]) -> str | None:
+    """Return the declared scoped-contract schema without accepting it.
+
+    ``None`` means no contract table is present. An empty string means the
+    table is present but not a mapping the recovery path can inspect.
+    """
+
+    tool = parsed.get("tool")
+    if not isinstance(tool, Mapping):
+        return None
+    namespace = tool.get("ipfs-accelerate-agent-supervisor")
+    if namespace is None:
+        return None
+    if not isinstance(namespace, Mapping):
+        return ""
+    contract = namespace.get("project-dependency-preflight")
+    if contract is None:
+        return None
+    if not isinstance(contract, Mapping):
+        return ""
+    schema = contract.get("schema")
+    if type(schema) is not str:
+        return ""
+    return schema
+
+
+def _unimplemented_contract_leaves_command_undeclared(
+    parsed: Mapping[str, Any],
+    validation_commands: Sequence[str],
+) -> bool:
+    """True when no implemented contract claims these validation commands."""
+
+    schema = _scoped_contract_schema(parsed)
+    if schema is None:
+        return True
+    if (
+        schema
+        in {
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA,
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
+        }
+        or not schema
+    ):
+        return False
+    tool = parsed.get("tool")
+    namespace = tool.get("ipfs-accelerate-agent-supervisor") if isinstance(tool, Mapping) else None
+    contract = (
+        namespace.get("project-dependency-preflight")
+        if isinstance(namespace, Mapping)
+        else None
+    )
+    if not isinstance(contract, Mapping):
+        return False
+    targets = contract.get("targets")
+    declared: set[str] = set()
+    if targets is None:
+        declared = set()
+    elif type(targets) is not list:
+        return False
+    else:
+        for entry in targets:
+            if type(entry) is not dict:
+                return False
+            digest = entry.get("validation-command-sha256")
+            if (
+                type(digest) is not str
+                or _LOWER_SHA256_PATTERN.fullmatch(digest) is None
+            ):
+                return False
+            declared.add(digest)
+    for command in validation_commands:
+        command_digest = hashlib.sha256(
+            str(command).encode("utf-8")
+        ).hexdigest()
+        if command_digest in declared:
+            return False
+    return True
+
+
+def _setup_install_requires_literal(payload: bytes) -> list[str]:
+    """Read a literal ``install_requires`` list without executing setup.py."""
+
+    try:
+        source = payload.decode("utf-8")
+        tree = ast.parse(source, filename="setup.py", mode="exec")
+    except (SyntaxError, UnicodeError) as exc:
+        raise ValueError("setup.py install_requires authority is not static") from exc
+    setup_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "setup"
+    ]
+    if len(setup_calls) != 1:
+        raise ValueError("setup.py authority must contain exactly one setup call")
+    setup_call = setup_calls[0]
+    if any(keyword.arg is None for keyword in setup_call.keywords):
+        raise ValueError("setup.py authority cannot expand setup keyword arguments")
+    selected = [
+        keyword.value
+        for keyword in setup_call.keywords
+        if keyword.arg == "install_requires"
+    ]
+    if len(selected) != 1 or not isinstance(selected[0], ast.List):
+        raise ValueError("setup.py install_requires must be one literal list")
+    requirements: list[str] = []
+    for element in selected[0].elts:
+        if not (
+            isinstance(element, ast.Constant)
+            and type(element.value) is str
+            and element.value
+            and element.value.strip() == element.value
+        ):
+            raise ValueError("setup.py install_requires entries must be literal strings")
+        requirements.append(element.value)
+    if len(requirements) != len(set(requirements)):
+        raise ValueError("setup.py install_requires contains duplicate entries")
+    return requirements
+
+
+def _commands_bind_absolute_pytest(commands: Sequence[str]) -> bool:
+    """True when every pytest token is an existing absolute executable."""
+
+    saw_pytest = False
+    for command in commands:
+        try:
+            tokens = shlex.split(str(command), posix=True)
+        except ValueError:
+            return False
+        for token in tokens:
+            executable = PurePosixPath(token.replace("\\", "/")).name
+            if executable not in {"pytest", "py.test"}:
+                continue
+            saw_pytest = True
+            candidate = Path(token)
+            if not candidate.is_absolute():
+                return False
+            try:
+                candidate_stat = candidate.stat()
+            except OSError:
+                return False
+            if (
+                not stat_module.S_ISREG(candidate_stat.st_mode)
+                or not os.access(candidate, os.X_OK)
+            ):
+                return False
+    return saw_pytest
+
+
+def _recover_literal_install_requires(
+    parsed: Mapping[str, Any],
+    project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
+    validation_commands: Sequence[str],
+    file_backed_error: BaseException,
+) -> tuple[list[str], list[dict[str, Any]]] | None:
+    """Repair an unresolved dynamic contract from literal setup.py metadata.
+
+    A reviewed v1 or v2 contract, a declared setuptools dependency file, and
+    a command named by an unimplemented contract stay fail-closed. Recovery
+    is only the literal ``install_requires`` list, which may be empty.
+    """
+
+    if str(file_backed_error) != "setuptools dynamic configuration is unavailable":
+        return None
+    if not _unimplemented_contract_leaves_command_undeclared(
+        parsed,
+        validation_commands,
+    ):
+        return None
+    try:
+        setup_path, setup_payload = _read_bounded_contained_regular_file(
+            project_root,
+            project_root / "setup.py",
+            maximum_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
+            expected_containment_root_snapshot=expected_project_root_snapshot,
+        )
+        requirements = _setup_install_requires_literal(setup_payload)
+    except (OSError, UnicodeError, ValueError):
+        return None
+    return requirements, [
+        {
+            "path": setup_path.relative_to(project_root).as_posix(),
+            "sha256": hashlib.sha256(setup_payload).hexdigest(),
+            "bytes": len(setup_payload),
+        }
+    ]
+
+
 def _scoped_dependency_contract_configuration(
     parsed: Mapping[str, Any],
 ) -> Mapping[str, Any] | None:
@@ -2249,7 +2439,7 @@ def _bounded_static_project(
                 project_root,
                 project_root_snapshot,
             )
-        except (OSError, UnicodeError, ValueError):
+        except (OSError, UnicodeError, ValueError) as file_backed_error:
             try:
                 (
                     dependencies,
@@ -2266,20 +2456,31 @@ def _bounded_static_project(
                     prior_seed_authority,
                 )
             except (OSError, UnicodeError, ValueError) as exc:
-                failure = {
-                    "root": relative_root,
-                    "project_name_sha256": _project_name_sha256(project),
-                    "applicable": True,
-                    "passed": False,
-                    "reason": "dynamic_dependencies_unresolved",
-                    "pyproject_sha256": pyproject_sha256,
-                    "error_type": type(exc).__name__,
-                }
-                if isinstance(exc, _ScopedDependencyContractError):
-                    failure["contract_error_reason"] = exc.reason
-                return failure
-            dependency_source = "agent_supervisor_scoped_setup_extra"
-            scoped_contract_selected = True
+                recovered = _recover_literal_install_requires(
+                    parsed,
+                    project_root,
+                    project_root_snapshot,
+                    validation_commands,
+                    file_backed_error,
+                )
+                if recovered is None:
+                    failure = {
+                        "root": relative_root,
+                        "project_name_sha256": _project_name_sha256(project),
+                        "applicable": True,
+                        "passed": False,
+                        "reason": "dynamic_dependencies_unresolved",
+                        "pyproject_sha256": pyproject_sha256,
+                        "error_type": type(exc).__name__,
+                    }
+                    if isinstance(exc, _ScopedDependencyContractError):
+                        failure["contract_error_reason"] = exc.reason
+                    return failure
+                dependencies, dependency_manifests = recovered
+                dependency_source = "setup_py_literal_install_requires"
+            else:
+                dependency_source = "agent_supervisor_scoped_setup_extra"
+                scoped_contract_selected = True
         else:
             dependency_source = "setuptools_dynamic_file"
     elif dependencies is None:
@@ -2312,6 +2513,17 @@ def _bounded_static_project(
         selected_extras = ["test"]
         validation_manifests: list[dict[str, Any]] = []
         validation_dependency_source = "scoped_dependency_contract"
+    elif (
+        dependency_source == "setup_py_literal_install_requires"
+        and _commands_bind_absolute_pytest(validation_commands)
+    ):
+        # The validation command already names the runner that will execute.
+        # Do not park the task because the supervisor interpreter lacks pytest.
+        validation_dependencies = []
+        validation_marker_extras = []
+        selected_extras = []
+        validation_manifests = []
+        validation_dependency_source = "validation_command_runner"
     else:
         try:
             (
@@ -3359,6 +3571,41 @@ def _read_dependency_probe_source() -> bytes:
     return module_path.read_bytes()
 
 
+def _dependency_probe_receipt_from_output(output: str) -> Any:
+    """Return the one JSON receipt from a sealed dependency probe.
+
+    The child writes one object to stdout. Import-time warnings can reach
+    stderr first, and the probe captures both streams together. One trailing
+    receipt is still that output. Two JSON objects are ambiguous and stay
+    invalid, so a log line cannot hide a second receipt.
+    """
+
+    try:
+        return json.loads(output)
+    except (TypeError, ValueError):
+        pass
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if not lines:
+        raise ValueError("dependency probe output is not one JSON receipt")
+    objects: list[dict[str, Any]] = []
+    for line in lines:
+        try:
+            item = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(item, dict):
+            objects.append(item)
+    try:
+        last = json.loads(lines[-1])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "dependency probe output is not one JSON receipt"
+        ) from exc
+    if len(objects) != 1 or not isinstance(last, dict):
+        raise ValueError("dependency probe output is not one JSON receipt")
+    return last
+
+
 def _run_dependency_probe(
     payload: Mapping[str, Any],
     *,
@@ -3442,7 +3689,7 @@ def _run_dependency_probe(
                 "validation_python_launcher": launcher,
             }
         try:
-            result = json.loads(output)
+            result = _dependency_probe_receipt_from_output(output)
         except (TypeError, ValueError) as exc:
             return {
                 "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,

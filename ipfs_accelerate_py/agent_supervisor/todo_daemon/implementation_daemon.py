@@ -254,6 +254,7 @@ from ..validation.validation_runtime import (
     ValidationRuntimeError,
     canonical_validation_environment_contract,
     sealed_validation_python_runner,
+    validation_command_launcher_argv0,
     validation_python_launcher_environment,
     validation_shell_command,
 )
@@ -3164,6 +3165,40 @@ def pending_retry_budget_repair_sources(
     return blocked
 
 
+def _read_only_repair_provider_role_metadata(
+    task: PortalTask,
+    source_task: PortalTask,
+) -> dict[str, Any] | None:
+    """Copy a read-only source role onto a check repair that names none.
+
+    A generated validation repair can already store the source command and
+    still omit ``Provider role``.  Dispatch then selects a model runner for a
+    check.  Copy the role only when both tasks are declared checks.  An edit
+    repair, including a completion-gap task with no safe path, keeps its route.
+    """
+
+    if not task_is_declared_read_only_validation(source_task):
+        return None
+    if not task_is_declared_read_only_validation(task):
+        return None
+    source_role = ""
+    for key, value in (source_task.metadata or {}).items():
+        if str(key).strip().lower().replace("_", " ") == "provider role":
+            source_role = str(value).strip()
+            break
+    if not source_role:
+        return None
+    metadata = dict(task.metadata or {})
+    for key, value in metadata.items():
+        if (
+            str(key).strip().lower().replace("_", " ") == "provider role"
+            and str(value).strip()
+        ):
+            return None
+    metadata["Provider role"] = source_role
+    return metadata
+
+
 def inherit_retry_budget_repair_validation(
     tasks: Sequence[PortalTask],
 ) -> list[PortalTask]:
@@ -3174,7 +3209,9 @@ def inherit_retry_budget_repair_validation(
     report before dispatch; it cannot prove the repair.  Keep the board bytes
     immutable, but execute a recognized generated repair with its source
     task's reviewed validation contract.  Explicit non-discovery repair
-    validation remains untouched.
+    validation remains untouched.  A repair that already carries that check
+    and declares no edit target still receives the source read-only provider
+    role, so the check is not dispatched to a model.
     """
 
     tasks_by_id = {task.task_id: task for task in tasks}
@@ -3194,15 +3231,26 @@ def inherit_retry_budget_repair_validation(
             if normalize_validation_command_text(str(command))
         ]
         discovery_only = not current_validation
-        if len(current_validation) == 1 and discovery_path:
+        if len(current_validation) == 1:
             try:
-                discovery_only = shlex.split(current_validation[0]) == [
+                discovery_tokens = shlex.split(current_validation[0])
+            except ValueError:
+                discovery_tokens = []
+            if discovery_path:
+                discovery_only = discovery_tokens == [
                     "test",
                     "-f",
                     discovery_path,
                 ]
-            except ValueError:
-                discovery_only = False
+            elif (
+                len(discovery_tokens) == 3
+                and discovery_tokens[0] == "test"
+                and discovery_tokens[1] == "-f"
+                and discovery_tokens[2].startswith("/")
+            ):
+                # Generated repairs prove the failure report with `test -f`
+                # even when the discovery path was not copied into metadata.
+                discovery_only = True
         source_validation = [
             normalize_validation_command_text(str(command))
             for command in (
@@ -3222,6 +3270,18 @@ def inherit_retry_budget_repair_validation(
             or not discovery_only
             or not source_validation
         ):
+            if (
+                source_task is not None
+                and source_task_id
+                and not discovery_only
+            ):
+                role_metadata = _read_only_repair_provider_role_metadata(
+                    task,
+                    source_task,
+                )
+                if role_metadata is not None:
+                    effective.append(replace(task, metadata=role_metadata))
+                    continue
             effective.append(task)
             continue
         effective_metadata = dict(task.metadata)
@@ -3229,6 +3289,25 @@ def inherit_retry_budget_repair_validation(
         effective_metadata["retry repair validation inherited from"] = (
             source_task_id
         )
+        # A pure check does not need a model. The generated repair otherwise
+        # dispatches a provider to restate the failure report, then stays
+        # blocked when that provider cannot start.
+        source_role = ""
+        for key, value in source_task.metadata.items():
+            if str(key).strip().lower().replace("_", " ") == "provider role":
+                source_role = str(value).strip()
+                break
+        repair_has_role = any(
+            str(key).strip().lower().replace("_", " ") == "provider role"
+            and str(value).strip()
+            for key, value in effective_metadata.items()
+        )
+        if (
+            not repair_has_role
+            and source_role
+            and task_is_declared_read_only_validation(source_task)
+        ):
+            effective_metadata["Provider role"] = source_role
         effective.append(
             replace(
                 task,
@@ -4115,6 +4194,9 @@ COMPLETION_GAP_EDIT_SCOPE_ROLES = frozenset(
     }
 )
 COMPLETION_GAP_MANUAL_REVIEW_ROLE = "completion_gate_gap_manual_review"
+DETERMINISTIC_DECLARED_OUTPUT_TARGET_REQUIRED = (
+    "deterministic-only task requires a declared output/edit target"
+)
 
 
 def completion_gap_edit_scope(
@@ -4177,6 +4259,48 @@ def completion_gap_edit_scope(
         if relative not in authorized:
             authorized.append(relative)
     return tuple(authorized)
+
+
+def _task_metadata_csv(task: PortalTask, key: str) -> tuple[str, ...]:
+    metadata = {
+        str(item_key).strip().lower().replace("_", " "): str(value or "").strip()
+        for item_key, value in task.metadata.items()
+    }
+    return tuple(split_csv(metadata.get(key, "")))
+
+
+def task_declares_edit_target(
+    task: PortalTask,
+    *,
+    repo_root: Path | None = None,
+) -> bool:
+    """Return whether this task is an edit, including an unsafe empty gap.
+
+    A completion-gap role remains an edit task when its safe path list is
+    empty. Ordinary validation with no outputs and no predicted paths does
+    not declare an edit target.
+    """
+
+    if completion_gap_edit_scope(task, repo_root=repo_root) is not None:
+        return True
+    if task_declared_output_paths(task):
+        return True
+    return bool(
+        _task_metadata_csv(task, "predicted files")
+        or _task_metadata_csv(task, "predicted outputs")
+    )
+
+
+def task_is_declared_read_only_validation(
+    task: PortalTask,
+    *,
+    repo_root: Path | None = None,
+) -> bool:
+    """Return whether the task is a check with no declared edit target."""
+
+    if not any(str(command).strip() for command in task.validation):
+        return False
+    return not task_declares_edit_target(task, repo_root=repo_root)
 
 
 def task_implementation_protected_path_conflicts(
@@ -19835,12 +19959,399 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         return schedule if schedule.get("active", False) else {}
 
+    def _release_repaired_dependency_preflight_cooldowns(
+        self,
+        tasks_by_id: dict[str, PortalTask] | None = None,
+    ) -> list[str]:
+        """Drop a dependency-preflight cooldown once its contract resolves.
+
+        The same failing receipt used to stay parked until the backoff
+        expired. Re-check only tasks deferred for that reason. A passing
+        receipt clears the scheduler backpressure so the task can run.
+        """
+
+        now = time.time()
+        cooled: list[tuple[str, Any]] = []
+        for entry in self.task_queue.entries.values():
+            if entry.cooldown_until <= now:
+                continue
+            if (
+                entry.notes
+                != "validation_project_dependency_preflight_failed"
+            ):
+                continue
+            cooled.append((str(entry.task_id or ""), entry))
+        if not cooled:
+            return []
+        if tasks_by_id is None or any(
+            task_id not in tasks_by_id for task_id, _entry in cooled if task_id
+        ):
+            try:
+                tasks_by_id = {
+                    task.task_id: task for task in self._load_tasks()
+                }
+            except (
+                OSError,
+                UnicodeDecodeError,
+                TaskSourceError,
+                ValueError,
+            ):
+                logging.getLogger(__name__).warning(
+                    "dependency preflight cooldown release skipped: tasks unavailable"
+                )
+                return []
+        released: list[str] = []
+        for task_id, entry in cooled:
+            task = tasks_by_id.get(task_id)
+            if task is None:
+                continue
+            try:
+                validation = tuple(getattr(task, "validation", ()) or ())
+                if not validation:
+                    continue
+                preflight_kwargs: dict[str, Any] = {}
+                try:
+                    identity = self._identity_for_task(task)
+                except Exception:
+                    identity = None
+                if identity is not None:
+                    preflight_kwargs["task_authority"] = {
+                        "board_namespace": identity.board_namespace,
+                        "canonical_task_cid": identity.canonical_task_cid,
+                        "declared_outputs": list(
+                            task_declared_output_paths(task)
+                        ),
+                    }
+                receipt = preflight_validation_project_dependencies(
+                    self.repo_root,
+                    validation,
+                    **preflight_kwargs,
+                )
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "dependency preflight cooldown release skipped for %s: %s",
+                    task_id,
+                    type(exc).__name__,
+                )
+                continue
+            if (
+                not isinstance(receipt, Mapping)
+                or receipt.get("passed") is not True
+            ):
+                continue
+            entry.reset_retry_state()
+            released.append(task_id)
+        if not released:
+            return []
+        self.task_queue.save()
+        self._record_event(
+            "dependency_preflight_cooldown_released",
+            {
+                "task_ids": released,
+                "reason": "validation_project_dependency_contract_repaired",
+            },
+        )
+        return released
+
+    def _release_repaired_read_only_validation_cooldowns(
+        self,
+        tasks_by_id: dict[str, PortalTask] | None = None,
+    ) -> list[str]:
+        """Drop the output-target cooldown once the task is a pure check.
+
+        A deterministic task with a validation command and no declared edit
+        target used to park on that ValueError until a person added Outputs.
+        The repaired scheduler runs the command without staging the checkout,
+        so the same note can be released. A task that still declares an edit,
+        including an empty completion-gap scope, keeps its cooldown.
+        """
+
+        note = "ValueError: " + DETERMINISTIC_DECLARED_OUTPUT_TARGET_REQUIRED
+        now = time.time()
+        cooled: list[tuple[str, Any]] = []
+        for entry in self.task_queue.entries.values():
+            if entry.cooldown_until <= now:
+                continue
+            if entry.notes != note:
+                continue
+            cooled.append((str(entry.task_id or ""), entry))
+        if not cooled:
+            return []
+        if tasks_by_id is None or any(
+            task_id not in tasks_by_id for task_id, _entry in cooled if task_id
+        ):
+            try:
+                tasks_by_id = {
+                    task.task_id: task for task in self._load_tasks()
+                }
+            except (
+                OSError,
+                UnicodeDecodeError,
+                TaskSourceError,
+                ValueError,
+            ):
+                logging.getLogger(__name__).warning(
+                    "read-only validation cooldown release skipped: "
+                    "tasks unavailable"
+                )
+                return []
+        released: list[str] = []
+        for task_id, entry in cooled:
+            task = tasks_by_id.get(task_id)
+            if task is None:
+                continue
+            if not task_is_declared_read_only_validation(
+                task,
+                repo_root=self.repo_root,
+            ):
+                continue
+            entry.reset_retry_state()
+            released.append(task_id)
+        if not released:
+            return []
+        self.task_queue.save()
+        self._record_event(
+            "read_only_validation_cooldown_released",
+            {
+                "task_ids": released,
+                "reason": "declared_read_only_validation_repaired",
+            },
+        )
+        return released
+
+    def _provider_isolation_failure_is_obsolete(self, task_id: str) -> bool:
+        """Return whether this task's newest log is an unavailable provider.
+
+        A later local validation writes a newer log. That log does not name
+        the provider runner, so a failed check keeps its cooldown.
+        """
+
+        if not task_id:
+            return False
+        log_dir = self.implementation_log_dir
+        try:
+            logs = [
+                path
+                for path in log_dir.glob(f"{task_id.lower()}-attempt-*.log")
+                if path.is_file()
+            ]
+        except OSError:
+            return False
+        if not logs:
+            return False
+        newest = max(logs, key=lambda path: path.stat().st_mtime_ns)
+        try:
+            text = newest.read_text(encoding="utf-8", errors="replace")[:8000]
+        except OSError:
+            return False
+        return (
+            "grok_cli_runner" in text
+            or "provider isolation unavailable" in text
+        )
+
+    def _release_obsolete_provider_repair_cooldowns(
+        self,
+        tasks_by_id: dict[str, PortalTask] | None = None,
+    ) -> list[str]:
+        """Release a repair that failed only because the model runner could not start.
+
+        The repair is now the source task's read-only check. A validation
+        failure recorded after that change keeps the cooldown.
+        """
+
+        note = "validation_or_implementation_failed"
+        now = time.time()
+        cooled: list[tuple[str, Any]] = []
+        for entry in self.task_queue.entries.values():
+            if entry.cooldown_until <= now or entry.notes != note:
+                continue
+            cooled.append((str(entry.task_id or ""), entry))
+        if not cooled:
+            return []
+        if tasks_by_id is None or any(
+            task_id not in tasks_by_id for task_id, _entry in cooled if task_id
+        ):
+            try:
+                tasks_by_id = {
+                    task.task_id: task for task in self._load_tasks()
+                }
+            except (
+                OSError,
+                UnicodeDecodeError,
+                TaskSourceError,
+                ValueError,
+            ):
+                logging.getLogger(__name__).warning(
+                    "obsolete provider repair cooldown release skipped: "
+                    "tasks unavailable"
+                )
+                return []
+        released: list[str] = []
+        for task_id, entry in cooled:
+            task = tasks_by_id.get(task_id)
+            if task is None or not is_retry_budget_repair_task(task):
+                continue
+            if not task_is_declared_read_only_validation(
+                task,
+                repo_root=self.repo_root,
+            ):
+                continue
+            if self._task_declared_implementation_provider(task) not in {
+                ExecutionMode.DETERMINISTIC_ONLY.value,
+                "operator-only",
+            }:
+                continue
+            if not self._provider_isolation_failure_is_obsolete(task_id):
+                continue
+            entry.reset_retry_state()
+            released.append(task_id)
+        if not released:
+            return []
+        self.task_queue.save()
+        self._record_event(
+            "obsolete_provider_repair_cooldown_released",
+            {
+                "task_ids": released,
+                "reason": "read_only_repair_no_longer_needs_provider",
+            },
+        )
+        return released
+
+    def _venv_launcher_failure_is_obsolete(self, task_id: str) -> bool:
+        """Return whether the newest log is the sealed interpreter missing a venv module.
+
+        A later pytest failure writes a different log. That log keeps its cooldown.
+        """
+
+        if not task_id:
+            return False
+        log_dir = self.implementation_log_dir
+        try:
+            logs = [
+                path
+                for path in log_dir.glob(f"{task_id.lower()}-attempt-*.log")
+                if path.is_file()
+            ]
+        except OSError:
+            return False
+        if not logs:
+            return False
+        newest = max(logs, key=lambda path: path.stat().st_mtime_ns)
+        try:
+            text = newest.read_text(encoding="utf-8", errors="replace")[:8000]
+        except OSError:
+            return False
+        return (
+            "No module named pytest" in text
+            or "No module named 'ipfs_accelerate_py.testing'" in text
+        )
+
+    def _validation_uses_venv_argv0(self, task: PortalTask) -> bool:
+        for command in task.validation:
+            try:
+                if validation_command_launcher_argv0(str(command)):
+                    return True
+            except ValidationRuntimeError:
+                continue
+        return False
+
+    def _release_obsolete_venv_launcher_cooldowns(
+        self,
+        tasks_by_id: dict[str, PortalTask] | None = None,
+    ) -> list[str]:
+        """Retry a read-only venv check that failed before the launcher preserved it.
+
+        The sealed interpreter used to start without the virtualenv, so pytest
+        and the venv's plugins were missing. A real test failure recorded after
+        the launcher fix keeps its cooldown.
+        """
+
+        note = "validation_or_implementation_failed"
+        now = time.time()
+        cooled: list[tuple[str, Any]] = []
+        for entry in self.task_queue.entries.values():
+            if entry.cooldown_until <= now or entry.notes != note:
+                continue
+            cooled.append((str(entry.task_id or ""), entry))
+        if not cooled:
+            return []
+        if tasks_by_id is None or any(
+            task_id not in tasks_by_id for task_id, _entry in cooled if task_id
+        ):
+            try:
+                tasks_by_id = {
+                    task.task_id: task for task in self._load_tasks()
+                }
+            except (
+                OSError,
+                UnicodeDecodeError,
+                TaskSourceError,
+                ValueError,
+            ):
+                logging.getLogger(__name__).warning(
+                    "obsolete venv launcher cooldown release skipped: "
+                    "tasks unavailable"
+                )
+                return []
+        released: list[str] = []
+        for task_id, entry in cooled:
+            task = tasks_by_id.get(task_id)
+            if task is None:
+                continue
+            if not task_is_declared_read_only_validation(
+                task,
+                repo_root=self.repo_root,
+            ):
+                continue
+            if self._task_declared_implementation_provider(task) not in {
+                ExecutionMode.DETERMINISTIC_ONLY.value,
+                "operator-only",
+            }:
+                continue
+            if not self._validation_uses_venv_argv0(task):
+                continue
+            if not self._venv_launcher_failure_is_obsolete(task_id):
+                continue
+            entry.reset_retry_state()
+            released.append(task_id)
+        if not released:
+            return []
+        self.task_queue.save()
+        self._record_event(
+            "obsolete_venv_launcher_cooldown_released",
+            {
+                "task_ids": released,
+                "reason": "read_only_venv_launcher_preserves_argv0",
+            },
+        )
+        return released
+
     def _selectable_task_retry_schedule(self) -> dict[str, Any]:
         """Return the earliest cooldown for durable ready work in this lane."""
 
         state = PortalTaskState.load(self.state_path)
         if state.active_task_id or state.implementation_in_progress:
             return {}
+        # A repaired contract must wake selection even when the cached
+        # ready-id list is empty. Leaving the cooldown parked repeats the
+        # same preflight failure until the backoff clock expires.
+        released = self._release_repaired_dependency_preflight_cooldowns()
+        released.extend(
+            self._release_repaired_read_only_validation_cooldowns()
+        )
+        released.extend(
+            self._release_obsolete_provider_repair_cooldowns()
+        )
+        released.extend(
+            self._release_obsolete_venv_launcher_cooldowns()
+        )
+        if released:
+            return {
+                "active": False,
+                "retry_after_seconds": 0.0,
+                "task_ids": released[:20],
+                "task_count": len(released),
+            }
         task_ids = list(dict.fromkeys(state.selectable_ready_task_ids))
         if not task_ids:
             return {}
@@ -21416,16 +21927,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         log_path=log_path,
                         state=state,
                     )
-                    validation_result = (
-                        self._admit_deterministic_validation_materialization(
-                            workspace_path,
-                            task,
-                            log_path,
-                            state=state,
-                            baseline_ref=baseline_ref,
-                            materialization_result=validation_result,
+                    if (
+                        validation_result.get(
+                            "read_only_declared_validation"
                         )
-                    )
+                        is not True
+                    ):
+                        validation_result = (
+                            self._admit_deterministic_validation_materialization(
+                                workspace_path,
+                                task,
+                                log_path,
+                                state=state,
+                                baseline_ref=baseline_ref,
+                                materialization_result=validation_result,
+                            )
+                        )
                 else:
                     # Prefer the clean/no-change candidate path when the
                     # provider produced no patch (already-satisfied residual
@@ -21499,18 +22016,68 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if validation_result.get("passed", False) and (
                     deterministic_only or self.production_provider_policy is not None
                 ):
-                    # The typed local plan may materialize a proposal-authorized
-                    # output.  In the direct checkout that candidate must cross
-                    # the same durable commit gate used by the isolated path
-                    # before the tracked-output/completion tail can inspect it.
-                    deterministic_commit_result = (
-                        self._commit_worktree_changes(
-                            workspace_path,
-                            task,
-                            attempt,
-                            baseline_ref=baseline_ref,
+                    if (
+                        validation_result.get(
+                            "read_only_declared_validation"
                         )
-                    )
+                        is True
+                    ):
+                        # The proof is the declared command. Do not stage the
+                        # checkout: a direct workspace can already contain
+                        # unrelated files, and this task declared no edit.
+                        head_now = self._run_git(
+                            ["rev-parse", "HEAD"],
+                            cwd=workspace_path,
+                        ).stdout.strip()
+                        branch_now = self._git_current_branch(
+                            workspace_path
+                        )
+                        if (
+                            not baseline_ref
+                            or head_now != baseline_ref
+                            or (
+                                baseline_branch
+                                and branch_now != baseline_branch
+                            )
+                        ):
+                            effective_returncode = 1
+                            validation_result = {
+                                **validation_result,
+                                "passed": False,
+                                "returncode": 1,
+                                "reason": (
+                                    "read_only_declared_validation_"
+                                    "mutated_baseline"
+                                ),
+                            }
+                            deterministic_commit_result = {
+                                "committed": False,
+                                "reason": (
+                                    "read_only_declared_validation_"
+                                    "mutated_baseline"
+                                ),
+                            }
+                        else:
+                            deterministic_commit_result = {
+                                "committed": False,
+                                "reason": "read_only_declared_validation",
+                                "commit_forbidden": True,
+                                "baseline_ref": baseline_ref,
+                                "head": head_now,
+                            }
+                    else:
+                        # The typed local plan may materialize a proposal-authorized
+                        # output.  In the direct checkout that candidate must cross
+                        # the same durable commit gate used by the isolated path
+                        # before the tracked-output/completion tail can inspect it.
+                        deterministic_commit_result = (
+                            self._commit_worktree_changes(
+                                workspace_path,
+                                task,
+                                attempt,
+                                baseline_ref=baseline_ref,
+                            )
+                        )
                     if self.production_provider_policy is not None and not deterministic_only:
                         commit = str(deterministic_commit_result.get("commit") or "")
                         if not commit:
@@ -21519,10 +22086,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             task, attempt=attempt, workspace_path=workspace_path,
                             implementation_commit=commit,
                         )
-                    if not (
-                        deterministic_commit_result.get("committed") is True
-                        or deterministic_commit_result.get("reason")
-                        == "no_changes"
+                    if (
+                        deterministic_commit_result.get("reason")
+                        != "read_only_declared_validation"
+                        and not (
+                            deterministic_commit_result.get("committed")
+                            is True
+                            or deterministic_commit_result.get("reason")
+                            == "no_changes"
+                        )
                     ):
                         effective_returncode = 1
                         validation_result = {
@@ -21568,14 +22140,26 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         status_command,
                         cwd=workspace_path,
                     ).stdout.strip()
-                    final_candidate_entries, final_candidate_expansions = (
-                        self._collect_proposal_candidate_diff(
-                            workspace_path,
-                            baseline_ref=baseline_ref,
-                            scope_paths=self._proposal_scope_paths(task),
-                            task=task,
+                    if (
+                        validation_result.get(
+                            "read_only_declared_validation"
                         )
-                    )
+                        is True
+                    ):
+                        # Reading the candidate diff can restore scoped
+                        # gitlinks. A check with no edit target must not
+                        # touch the checkout.
+                        final_candidate_entries = ()
+                        final_candidate_expansions = ()
+                    else:
+                        final_candidate_entries, final_candidate_expansions = (
+                            self._collect_proposal_candidate_diff(
+                                workspace_path,
+                                baseline_ref=baseline_ref,
+                                scope_paths=self._proposal_scope_paths(task),
+                                task=task,
+                            )
+                        )
                     final_candidate_fingerprint = (
                         self._proposal_candidate_fingerprint(
                             final_candidate_entries
@@ -21721,6 +22305,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             }
                         )
                     )
+                    if (
+                        validation_result.get(
+                            "read_only_declared_validation"
+                        )
+                        is True
+                    ):
+                        # A clean tree is not an empty-diff proposal. The
+                        # issued no-change gate stays required for edits.
+                        validation_attempted_no_change = False
                     direct_candidate_state[
                         "validation_attempted_no_change"
                     ] = validation_attempted_no_change
@@ -31372,16 +31965,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                     log_path=log_path,
                                     state=state,
                                 )
-                                validation_result = (
-                                    self._admit_deterministic_validation_materialization(
-                                        worktree_path,
-                                        task,
-                                        log_path,
-                                        state=state,
-                                        baseline_ref=baseline_ref,
-                                        materialization_result=validation_result,
+                                if (
+                                    validation_result.get(
+                                        "read_only_declared_validation"
                                     )
-                                )
+                                    is not True
+                                ):
+                                    validation_result = (
+                                        self._admit_deterministic_validation_materialization(
+                                            worktree_path,
+                                            task,
+                                            log_path,
+                                            state=state,
+                                            baseline_ref=baseline_ref,
+                                            materialization_result=validation_result,
+                                        )
+                                    )
                                 if operator_prepared_outputs:
                                     validation_result[
                                         "operator_prepared_outputs"
@@ -31512,6 +32111,47 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             failed_preservation_result.get("cleanup_result")
                             or cleanup_result
                         )
+                elif (
+                    validation_result.get("passed", False)
+                    and validation_result.get(
+                        "read_only_declared_validation"
+                    )
+                    is True
+                ):
+                    head_after = self._run_git(
+                        ["rev-parse", "HEAD"],
+                        cwd=worktree_path,
+                    ).stdout.strip()
+                    branch_after = self._git_current_branch(worktree_path)
+                    if (
+                        head_after != baseline_ref
+                        or branch_after != branch_name
+                    ):
+                        returncode = 1
+                        validation_result = {
+                            **validation_result,
+                            "passed": False,
+                            "returncode": 1,
+                            "reason": (
+                                "read_only_declared_validation_"
+                                "mutated_baseline"
+                            ),
+                        }
+                        commit_result = {
+                            "committed": False,
+                            "reason": (
+                                "read_only_declared_validation_"
+                                "mutated_baseline"
+                            ),
+                        }
+                    else:
+                        commit_result = {
+                            "committed": False,
+                            "reason": "read_only_declared_validation",
+                            "commit_forbidden": True,
+                            "baseline_ref": baseline_ref,
+                            "head": head_after,
+                        }
                 elif validation_result.get("passed", False):
                     pre_commit_handoff = (
                         self._validated_candidate_handoff_guard(
@@ -32624,6 +33264,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and isinstance(no_change_guard, dict)
             and no_change_guard.get("allowed")
         )
+        read_only_declared_completion = bool(
+            not implementation_commit
+            and validation_result.get("read_only_declared_validation")
+            is True
+            and validation_result.get("passed") is True
+            and commit_result.get("reason")
+            == "read_only_declared_validation"
+            and str(commit_result.get("head") or "")
+            == str(baseline_ref or "")
+        )
         # Board completion is intentionally stricter than validation success:
         # merge-queued candidates remain incomplete until integrated into the
         # configured merge target (see merge train consumer).
@@ -32631,6 +33281,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             returncode=returncode,
             merge_result=merge_result,
             no_change_completion=no_change_completion,
+            read_only_declared_validation=read_only_declared_completion,
         )
         completion_published_in_transaction = False
         completion_finalized_by_merge_callback = False
@@ -32691,6 +33342,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         )
                         if integration_commit_proof.get("passed") is True
                         else ""
+                    )
+                elif read_only_declared_completion:
+                    integration_commit_proof = {}
+                    completion_tree_id = self._resolved_commit_ref(
+                        self.repo_root,
+                        baseline_ref,
                     )
                 else:
                     integration_commit_proof = {}
@@ -35311,6 +35968,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         returncode: int,
         merge_result: Mapping[str, Any],
         no_change_completion: bool,
+        read_only_declared_validation: bool = False,
     ) -> dict[str, Any]:
         """Decide whether the durable board may flip to completed.
 
@@ -35327,7 +35985,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "pending_merge": False,
                 "reason": "implementation_or_validation_failed",
             }
-        if merged or no_change_completion:
+        if merged or no_change_completion or read_only_declared_validation:
             return {
                 "complete": True,
                 "pending_merge": False,
@@ -35335,6 +35993,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "merged_into_target"
                     if merged
                     else "validated_no_change_completion"
+                    if no_change_completion
+                    else "validated_read_only_declared_validation"
                 ),
             }
         if queued:
@@ -44690,8 +45350,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "deterministic-only task requires a declared validation command"
             )
 
+        read_only_declared = (
+            not allow_read_only
+            and task_is_declared_read_only_validation(
+                task,
+                repo_root=self.repo_root,
+            )
+        )
         changed_paths: list[str] = []
-        if not allow_read_only:
+        if not allow_read_only and not read_only_declared:
             completion_scope = completion_gap_edit_scope(
                 task,
                 repo_root=self.repo_root,
@@ -44707,10 +45374,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ):
                     if path not in changed_paths:
                         changed_paths.append(path)
-        if not changed_paths and not allow_read_only:
-            raise ValueError(
-                "deterministic-only task requires a declared output/edit target"
-            )
+        if (
+            not changed_paths
+            and not allow_read_only
+            and not read_only_declared
+        ):
+            raise ValueError(DETERMINISTIC_DECLARED_OUTPUT_TARGET_REQUIRED)
 
         repository_id, fallback_tree_id = (
             self._implementation_repository_and_tree_ids(task)
@@ -44778,6 +45447,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "command_count": len(command_bindings),
             "commands": command_bindings,
             "changed_paths": sorted(dict.fromkeys(changed_paths)),
+            "read_only_declared_validation": read_only_declared,
         }
         binding["validation_plan_cid"] = content_identity(binding)
         return binding
@@ -45030,6 +45700,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "receipt_id"
             ]
             validation_result["validation_plan_binding"] = dict(binding)
+
+        if binding.get("read_only_declared_validation") is True:
+            validation_result["read_only_declared_validation"] = True
+            validation_result["commit_forbidden"] = True
 
         self._record_event(
             "deterministic_task_execution_finished",
@@ -47813,8 +48487,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     exist_ok=True,
                 )
             try:
+                bound_argv0 = validation_command_launcher_argv0(
+                    str(spec.command)
+                )
                 with validation_python_launcher_environment(
-                    child_environment
+                    child_environment,
+                    argv0=bound_argv0,
                 ) as (launcher_environment, launcher_receipt):
                     launcher_evidence = {
                         "content_sha256": (
@@ -67145,6 +67823,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             # If ALL tasks conflict, proceed anyway (don't deadlock)
         if not ready:
             return None
+        ready_by_id = {task.task_id: task for task in ready}
+        self._release_repaired_dependency_preflight_cooldowns(ready_by_id)
+        self._release_repaired_read_only_validation_cooldowns(ready_by_id)
+        self._release_obsolete_provider_repair_cooldowns(ready_by_id)
+        self._release_obsolete_venv_launcher_cooldowns(ready_by_id)
         # Filter out tasks in cooldown from persistent queue
         cooled_ready: list[PortalTask] = []
         for task in ready:
@@ -71293,6 +71976,11 @@ class DatabaseImplementationDaemon:
             # If ALL tasks conflict, proceed anyway (don't deadlock)
         if not ready:
             return None
+        ready_by_id = {task.task_id: task for task in ready}
+        self._release_repaired_dependency_preflight_cooldowns(ready_by_id)
+        self._release_repaired_read_only_validation_cooldowns(ready_by_id)
+        self._release_obsolete_provider_repair_cooldowns(ready_by_id)
+        self._release_obsolete_venv_launcher_cooldowns(ready_by_id)
         # Filter out tasks in cooldown from persistent queue
         cooled_ready = [t for t in ready if not self.task_queue.is_cooled_down(self._canonical_ref(t))]
         if not cooled_ready:
