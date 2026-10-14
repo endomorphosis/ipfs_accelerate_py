@@ -1458,6 +1458,17 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "completion_authority": False, "provider_ingestion_verified": False,
                 "total_token_savings_measured": False, "raw_content_exported": False,
             }
+        try:
+            from .terminal_owner_candidate_refresh_observation import collect as collect_candidate_refresh
+            report["owner_candidate_refresh_observation"] = collect_candidate_refresh(
+                parent=ROOT / "worker-observations", scope=output_observation_scope, report=report)
+        except Exception:
+            report["owner_candidate_refresh_observation"] = {
+                "schema": "terminal-owner-candidate-refresh-observation@1", "status": "unavailable",
+                "reason": "observer_unavailable", "counts": None, "observation_only": True,
+                "proof_authority": False, "execution_authority": False, "completion_authority": False,
+                "retry_authority": False, "settlement_authority": False, "automatic_retry_admitted": False,
+            }
         report["seconds"] = time.monotonic() - started
         _write(report_path, report)
     return report

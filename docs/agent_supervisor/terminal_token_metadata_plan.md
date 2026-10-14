@@ -671,3 +671,80 @@ checkout after its previous path disappeared; its commit and import origin
 are included in the qualification record.
 Automatic native multi-round sessions, a refreshed accepted proof index for
 candidate edits, and a matched live token/reward result remain outstanding.
+
+
+## October 14: refresh candidate context after a failed worker
+
+The installed owner monitor now rebuilds advisory candidate context after a
+coding worker exits with a positive failure code, isolated-worker cleanup
+succeeds, and all brokers close. It reuses the retained source admission and
+the native datasets candidate builder to produce fresh semantic capsules and
+formal projections from the edited working tree. The canonical baseline and
+its original semantic translation remain independently checked. Changes do
+not become baseline proofs, and the baseline-only reader continues rejecting
+edited source.
+
+The resulting snapshot binds the task, original prompt digest, prior child
+and source session, descriptor digest, working generation, source hashes,
+program-file selection and native producer hashes. Source and producer
+revalidation bracket generation and checkpoint writing. Native generation
+invokes no model or prover. Unresolved obligations and unsupported constructs
+remain explicit; generated Lean is marked prepared, not built or verified.
+The population remains the original admitted files. Added paths receive no
+coverage, and missing admitted files refuse refresh rather than silently
+shrinking that population.
+
+The owner retains three artifacts (summary, capsules and formal projections)
+in a private directory, with a bounded manifest that contains bindings and
+hashes but no native prompt. Creation is exclusive: another observation for
+the same session cannot replace an existing checkpoint. Ordinary source drift,
+deadline expiry and write failures remove only files created by that call.
+The manifest is written last, but a hard process crash can leave incomplete
+files; this is not crash-atomic publication or automatic recovery. The
+collector rejects incomplete evidence.
+
+Refresh uses the remaining allowance measured from owner entry, including
+ownership setup and formalization. It does not reset a timeout after failure
+or change the existing provider-call timeout. Native generation checks this
+deadline cooperatively. Cleanup remains protected from interruption, then
+interrupt handlers are restored before analysis. Refresh refusal or
+interruption preserves the failed worker outcome and emits bounded diagnostic
+metadata. Negative signal exits, unretired workers and failed cleanup do not
+trigger refresh.
+
+The benchmark report adds `owner_candidate_refresh_observation`. It selects
+only manifest names bound to source-session receipts from the current trial
+and verifies private file modes, stable reads, hashes, sizes and task/prompt
+bindings. A provider-success receipt can still have a prepared checkpoint
+when its enclosing worker later fails. Missing evidence for a failed selected
+session stays unavailable; it is not counted as zero. Reported artifact bytes
+measure retained files, not model input, delivered context or saved tokens.
+Checkpoint `elapsed_seconds` runs through artifact writing and prepublication
+validation; it excludes the final manifest write and final revalidation. Use
+the outer trial duration for total cost, including that remaining work.
+
+This closes candidate preparation and retention for failed worker exits.
+It does not yet admit a second coding child, send these artifacts to a model,
+publish an accepted proof index, or handle a successful child followed by
+validation failure. Continuation still needs an owner-admitted candidate-aware
+prompt, source descriptor and child custody under the same task, attempt and
+remaining budget. The existing baseline descriptor must not be reused.
+
+The end-to-end authored fixture runs the installed monitor, a real editing
+child, actual broker retirement, the native datasets grammar, private writer
+and report collector. An `argmax` to `argmin` edit changes the emitted Lean
+binding from `SelectionMax` to `SelectionMin`, changes the capsule signature
+and source hash, preserves canonical source and leaves obligations pending.
+Container UID admission, the isolated cleanup executable and router receipt
+are authored; this does not qualify Docker isolation, provider delivery or
+full live supervision. Both failed and provider-returned receipt cases are
+covered. Source pins, test results and limitations are retained in
+[qualification.json](evidence/owner-rounds-20261014/qualification.json).
+
+The final frozen-source qualification passed all 527 checks across 18 modules,
+with no skips or live provider calls. It includes candidate source/admission,
+checkpoint rollback, cancellation, native failed-provider retention, worker
+wiring and benchmark observations. The datasets and kit commits and actual
+import origins stayed pinned and clean. An early fixture socket-path error
+and an overly broad Lean assertion are retained in the run history alongside
+their corrected results; they are not hidden as successful runs.

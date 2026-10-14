@@ -34,8 +34,10 @@ except (OSError,ValueError,ImportError,RuntimeError):
 """
 
 OWNER_MONITOR = r"""
-import signal,subprocess
+import json,signal,subprocess,time
 process=None
+worker_waited=False
+worker_cleanup_succeeded=False
 def interrupted(signum,frame):
  raise InterruptedError('owner monitor interrupted')
 for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,interrupted)
@@ -49,6 +51,7 @@ try:
  guard=globals().get("proof_query_guard")
  if guard is not None:guard.note_spawned(process)
  code=process.wait()
+ worker_waited=True
 except BaseException:
  if process is not None:
   try:process.terminate()
@@ -60,6 +63,7 @@ finally:
  for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,signal.SIG_IGN)
  try:
   cleanup=subprocess.run(['/usr/bin/sudo','-n','-u','benchmarkworker','--','/opt/ipfs-supervisor/bin/worker-entry','--cleanup'],cwd='/',stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,start_new_session=True,timeout=15)
+  worker_cleanup_succeeded=cleanup.returncode==0
   if cleanup.returncode:code=1
  finally:
   try:
@@ -72,12 +76,36 @@ finally:
    finally:
     source_broker=globals().get("worker_source_broker")
     if source_broker is not None:source_broker.close()
+# Retired worker observations cannot authorize another child or completion.
+# Refresh only after native wait, isolated cleanup and every broker retirement.
+source_broker=globals().get("worker_source_broker")
+refresh_deadline=globals().get("owner_candidate_round_deadline")
+if worker_waited and worker_cleanup_succeeded and type(code) is int and code>0 and source_broker is not None and refresh_deadline is not None:
+ observation=None
+ refresh_flags={'proof_authority':False,'execution_authority':False,'completion_authority':False,'retry_authority':False,'settlement_authority':False,'automatic_retry_admitted':False,'model_inference_calls':0,'provider_calls':0,'source_obligations_discharged':0}
+ try:
+  # Cleanup must finish, but advisory candidate analysis remains interruptible.
+  for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,interrupted)
+  if type(code) is not int or process.returncode!=code or process.poll()!=code:
+   raise ValueError('worker exit is not settled')
+  if time.monotonic()>=refresh_deadline:
+   observation={'schema':'owner-candidate-refresh-observation@1','status':'skipped','reason_code':'deadline_exhausted',**refresh_flags}
+  else:
+   from ipfs_accelerate_py.agent_supervisor.runtime.owner_candidate_round_checkpoint import persist_failed_worker_candidate_context
+   observation=persist_failed_worker_candidate_context(source_broker=source_broker,prior_returncode=code,absolute_deadline=refresh_deadline)
+ except Exception:
+  observation={'schema':'owner-candidate-refresh-observation@1','status':'failed','reason_code':'refresh_failed',**refresh_flags}
+ try:
+  if observation is not None:print('[owner-candidate-refresh] '+json.dumps(observation,sort_keys=True,allow_nan=False),flush=True)
+ except Exception:
+  pass
 raise SystemExit(code)
 """
 
 OWNER_ENTRY = (
     r"""#!/opt/ipfs-supervisor/venv/bin/python -I
-import json,os,pathlib,sys
+import json,os,pathlib,sys,time
+owner_candidate_round_started=time.monotonic()
 root=pathlib.Path('/opt/ipfs-supervisor')
 boundary=json.loads((root/'container-boundary.json').read_text())
 if os.getuid()!=boundary['owner_uid'] or os.geteuid()!=boundary['owner_uid']:raise SystemExit('owner identity required')
@@ -98,6 +126,14 @@ for base,dirs,files in os.walk(cwd,followlinks=False):
   if q.is_symlink() or not q.is_file() or q.stat().st_uid not in (1000,1001) or q.stat().st_nlink!=1:raise SystemExit('candidate input is not one allocated regular file')
   if q.stat().st_uid==1000:q.chmod(0o440 if q==cwd/'.git' else (0o770 if q.stat().st_mode&0o111 else 0o660))
 sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
+# The fixed lease includes allocation checks, ownership setup and formalization.
+from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import _argument,MAX_SESSION_SECONDS
+owner_candidate_round_deadline=None
+try:
+ owner_candidate_round_timeout=int(_argument(list(sys.argv[1:]),'--timeout','90'))
+ if 1<=owner_candidate_round_timeout<=MAX_SESSION_SECONDS:owner_candidate_round_deadline=owner_candidate_round_started+owner_candidate_round_timeout
+except (TypeError,ValueError,OverflowError):
+ pass
 from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import prepare_container_source_formalization_dispatch
 handoff=prepare_container_source_formalization_dispatch(argv=list(sys.argv[1:]),boundary=root/'container-boundary.json',workspace=cwd)
 os.dup2(handoff['stdin_fd'],0,inheritable=True);os.close(handoff['stdin_fd'])
