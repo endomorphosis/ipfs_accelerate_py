@@ -418,3 +418,9 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_source_custody/
 !/data/legal_autoformalization_source_custody/LAC-S7-*/
 !/data/legal_autoformalization_source_custody/LAC-S7-*/result.json
+
+# Generated state for the declared source-view generation; preserve on resume.
+/data/agent_supervisor/legal_autoformalization_source_views/runtime/generation-01/
+!/data/legal_autoformalization_source_views/
+!/data/legal_autoformalization_source_views/LAC-S8-*/
+!/data/legal_autoformalization_source_views/LAC-S8-*/result.json
