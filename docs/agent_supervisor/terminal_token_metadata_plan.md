@@ -573,3 +573,101 @@ and measure every call, tool expansion and retry. World/formalization payloads
 need their own exact readers and coverage checks before further deferral. A
 live matched comparison remains necessary; the preceding live treatment was
 authentication-blocked and supplies no token-savings result for this profile.
+
+## October 14: bound coding calls without resetting the repair budget
+
+Grok coding now has an explicit `--grok-coding-max-turns` experiment control.
+It accepts integers from 1 through 128; the omitted/default value remains 128,
+and planning retains its separate two-turn bound. Select the control during
+benchmark `prepare` with the Grok provider profile. It is frozen through the
+configuration, declared-control hash, runtime archive, Harbor adapter, container
+driver and isolated worker into `llm_router`. Both full and no-index arms can
+select it. Codex and metadata-only routes reject a nondefault value. Doctor
+candidate routes retain their provider-free behavior.
+
+This is a single-call limit, not an automatic continuation policy. Reaching
+the native turn limit remains a failed provider outcome, including when the
+CLI exits zero with partial text. Native usage observations remain attached
+to the failure, and the prior rescue-commit work preserves unfinished source.
+The collector distinguishes the configured value, runtime declaration and
+observed coding-call policy. Missing invocation evidence remains unavailable;
+neither a declaration nor fewer turns establishes lower total cost at equal
+verifier reward.
+
+A provider-free Doctor route can still produce a complete benchmark receipt
+when its explicit nonapplication record matches the frozen turn selection and
+there is no coding or unreceipted invocation. Its coding-policy observation
+stays unavailable because no coding call exercised the bound. Empty receipts
+alone cannot establish this exception, and any planning usage is retained.
+
+The legacy inline repair path previously granted a fresh provider timeout
+after the first child and its validation. It now receives one absolute
+monotonic deadline captured at the initial child dispatch. Validation, prompt
+and environment preparation, and event persistence consume that remaining
+window. Missing, invalid or exhausted deadlines block another provider call.
+Initial indexing and setup remain outside this provider-call window and under
+the existing outer benchmark deadline. Deterministic materialization, staging
+and revalidation remain available when the provider budget is exhausted.
+Prepared and actually started children have separate events.
+
+The process runner also receives that absolute deadline. It refuses an expired
+lease before launch, deducts child-start event persistence from the subsequent
+wait, and caps progress-based waits at the same deadline. If a synchronous
+birth callback returns after expiry, the runner fences the child and reports
+timeout. Cleanup retains its own grace period; the deadline cannot interrupt
+a callback that has not returned.
+
+Database-bound inline model repair is explicitly refused until the owner can
+admit a new round and account for its child custody. Previously this path could
+call the subprocess runner without the first launch's owner gate, child-birth
+binding and custody tracking. Scoped sealed-provider commands retain their
+existing refusal as well. These refusals do not prohibit deterministic repair
+or turn a failed attempt into completion.
+
+Tracing the Terminal wrapper clarifies the remaining integration: it already
+seals fresh stdin and creates new broker descriptors on each launch. Its
+semantic producer and source broker still require the allocated source to
+match the admitted baseline. Reissuing the original context after edits
+therefore fails the source checks; reusing old descriptor fields is not the
+solution. Ordinary canonical refresh also reads `self.repo_root`, rather than
+the working candidate.
+
+The next native-round contract must bind all of the following:
+
+1. The existing task, attempt, claim and workspace fence, plus a distinct round
+   identity, the prior validation outcome and remaining cumulative budget.
+2. An owner-captured candidate generation alongside the independently checked
+   canonical baseline. The existing candidate builder can regenerate native
+   capsules and numerical grammar artifacts from those captured bytes. Its
+   output is advisory: pending obligations and unsupported constructs remain
+   visible, and baseline proofs do not become candidate proofs. The current
+   population is bounded to 64 admitted files and 1 MiB; added or deleted paths
+   require an explicit scope decision.
+3. A fresh typed context, formalization handoff and broker binding for those
+   candidate bytes, retaining the complete task requirements, unresolved
+   constraints and failure evidence. The baseline-only exact capsule reader
+   must continue refusing edited source.
+4. The actual next child birth, waited outcome and quiescence, through the
+   native owner launch gate. The existing single-child receipt cannot stand in
+   for multiple children. Deterministic candidate review should run before
+   admitting another paid call, including after an exhausted call; exhaustion
+   itself remains neither validation nor completion evidence.
+
+Offline qualification includes an authored Grok executable that receives the
+16-turn flag, edits a real Git worktree and emits a native turn-exhaustion end
+event. The real router rejects it, the database supervisor settles the failed
+child, and the unfinished commit and usage survive. Container isolation is
+authored in that fixture; it is not a Docker or live-model benchmark. Native
+database tests also exercise successful first children whose output fails
+validation, verifying that no unbound second child launches.
+
+Source pins and final test results are recorded in
+[qualification.json](evidence/bounded-rounds-20261014/qualification.json).
+The final frozen-source run passed all 641 checks across 19 modules, with no
+skips or live provider calls. It includes process cleanup, router/worker
+dispatch, benchmark controls, deterministic rescue and native failed-checkpoint
+retention. The exact datasets dependency was restored in a new isolated
+checkout after its previous path disappeared; its commit and import origin
+are included in the qualification record.
+Automatic native multi-round sessions, a refreshed accepted proof index for
+candidate edits, and a matched live token/reward result remain outstanding.

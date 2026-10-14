@@ -1125,6 +1125,7 @@ def run_process_group_stream(
     inherit_environment: bool = True,
     replace_env: bool = False,
     timeout_seconds: float,
+    absolute_deadline: float | None = None,
     progress_timeout_seconds: float | None = None,
     max_timeout_seconds: float | None = None,
     progress_paths: Sequence[Path | str] = (),
@@ -1147,7 +1148,28 @@ def run_process_group_stream(
     noisy or malicious child from extending its lease forever. Supplying only
     ``on_progress`` retains the absolute deadline while polling the same
     progress marker for telemetry.
+
+    ``absolute_deadline`` is an optional monotonic deadline shared with earlier
+    provider work. Launch and birth-callback time consume that lease; an expired
+    lease cannot start a child or become a fresh relative timeout after birth.
     """
+
+    if absolute_deadline is not None and (
+        type(absolute_deadline) not in (int, float)
+        or not -sys.float_info.max <= absolute_deadline <= sys.float_info.max
+    ):
+        raise ValueError("absolute_deadline must be a finite monotonic timestamp")
+
+    def remaining_absolute_budget() -> float | None:
+        if absolute_deadline is None:
+            return None
+        remaining = absolute_deadline - time.monotonic()
+        if remaining <= 0:
+            exc = subprocess.TimeoutExpired(cmd=list(command), timeout=0.0)
+            setattr(exc, "timeout_reason", "absolute_deadline")
+            setattr(exc, "absolute_deadline", absolute_deadline)
+            raise exc
+        return remaining
 
     input_value: Any = input_text
     if input_text is not None and not text:
@@ -1204,6 +1226,7 @@ def run_process_group_stream(
                 "progress_poll_seconds must be finite and positive"
             )
         poll_seconds = max(0.01, requested_poll_seconds)
+    remaining_absolute_budget()
     process = launch_process_child(
         command,
         cwd=cwd,
@@ -1219,6 +1242,7 @@ def run_process_group_stream(
         **({"dispatch_binding": dispatch_binding} if dispatch_binding is not None else {}),
     )
     callback_failure_cleaned = False
+    deferred_deadline_failure: subprocess.TimeoutExpired | None = None
     try:
         if on_started is not None:
             try:
@@ -1262,16 +1286,20 @@ def run_process_group_stream(
                         "provider runner callback failure could not be fenced"
                     ) from callback_error
                 raise
+        remaining = remaining_absolute_budget()
         if not monitor_progress:
             process.communicate(
                 input=input_value,
-                timeout=max(0.0, float(timeout_seconds)),
+                timeout=(max(0.0, float(timeout_seconds)) if remaining is None
+                         else min(max(0.0, float(timeout_seconds)), remaining)),
             )
         else:
             assert hard_timeout is not None
             assert poll_seconds is not None
             started = time.monotonic()
             hard_deadline = started + hard_timeout
+            if absolute_deadline is not None:
+                hard_deadline = min(hard_deadline, absolute_deadline)
             idle_deadline = (
                 started + idle_timeout
                 if idle_timeout is not None
@@ -1311,7 +1339,12 @@ def run_process_group_stream(
                 )
                 input_thread.start()
 
-            while process.poll() is None:
+            while True:
+                # Check before poll can reap a completed leader: a slow
+                # progress callback must not turn an expired lease into success.
+                remaining_absolute_budget()
+                if process.poll() is not None:
+                    break
                 now = time.monotonic()
                 if cancel_requested is not None:
                     cancellation = cancel_requested()
@@ -1324,11 +1357,9 @@ def run_process_group_stream(
                         raise ProcessGroupCancelled(str(reason))
                 timeout_reason = ""
                 if now >= hard_deadline:
-                    timeout_reason = (
-                        "hard_timeout"
-                        if idle_timeout is not None
-                        else "absolute_timeout"
-                    )
+                    timeout_reason = "hard_timeout" if idle_timeout is not None else "absolute_timeout"
+                    if absolute_deadline is not None and hard_deadline == absolute_deadline:
+                        timeout_reason = "absolute_deadline"
                 elif idle_deadline is not None and now >= idle_deadline:
                     timeout_reason = "progress_idle_timeout"
                 if timeout_reason:
@@ -1345,6 +1376,8 @@ def run_process_group_stream(
                     setattr(exc, "progress_events", progress_events)
                     setattr(exc, "progress_timeout_seconds", idle_timeout)
                     setattr(exc, "max_timeout_seconds", hard_timeout)
+                    if timeout_reason == "absolute_deadline":
+                        setattr(exc, "absolute_deadline", absolute_deadline)
                     raise exc
 
                 wait_deadlines = [
@@ -1389,6 +1422,9 @@ def run_process_group_stream(
                             pass
             if input_thread is not None:
                 input_thread.join(timeout=0.1)
+        # Waiting or a callback can finish after the shared lease, including
+        # when the leader has already exited. Cleanup retains its own grace.
+        remaining_absolute_budget()
     except ProcessGroupCancelled:
         # A canonical-board cancellation is an authority hand-off, so the
         # provider tree must be unable to execute before the caller can release
@@ -1407,15 +1443,9 @@ def run_process_group_stream(
         process.wait()
         raise
     except subprocess.TimeoutExpired as exc:
-        terminate_pid_tree(
-            process.pid,
-            grace_seconds=max(0.0, float(termination_grace_seconds)),
-        )
-        try:
-            process.communicate(timeout=max(0.1, float(termination_grace_seconds)))
-        except subprocess.TimeoutExpired:
-            terminate_process_group(process, signal.SIGKILL)
-            process.communicate()
+        if absolute_deadline is not None and time.monotonic() >= absolute_deadline:
+            setattr(exc, "timeout_reason", "absolute_deadline")
+            setattr(exc, "absolute_deadline", absolute_deadline)
         timeout_exc = subprocess.TimeoutExpired(
             cmd=list(command),
             timeout=float(getattr(exc, "timeout", timeout_seconds)),
@@ -1428,10 +1458,26 @@ def run_process_group_stream(
             "progress_events",
             "progress_timeout_seconds",
             "max_timeout_seconds",
+            "absolute_deadline",
         ):
             if hasattr(exc, attribute):
                 setattr(timeout_exc, attribute, getattr(exc, attribute))
-        raise timeout_exc from exc
+        if absolute_deadline is not None and process.returncode is not None:
+            # A callback may run after wait has reaped the leader. Its numeric
+            # PID is no longer ours to walk/kill; quiesce the owned group below
+            # before reporting the late deadline observation.
+            deferred_deadline_failure = timeout_exc
+        else:
+            terminate_pid_tree(
+                process.pid,
+                grace_seconds=max(0.0, float(termination_grace_seconds)),
+            )
+            try:
+                process.communicate(timeout=max(0.1, float(termination_grace_seconds)))
+            except subprocess.TimeoutExpired:
+                terminate_process_group(process, signal.SIGKILL)
+                process.communicate()
+            raise timeout_exc from exc
     # A successful CLI process may have daemonized descendants that closed
     # their inherited output descriptors.  They remain in the owned session
     # and could mutate the checkout after the implementation fence's final
@@ -1468,6 +1514,8 @@ def run_process_group_stream(
         if signal_group(signal.SIGTERM) and not wait_for_group_absence(grace):
             if signal_group(signal.SIGKILL) and not wait_for_group_absence(max(0.1, grace)):
                 raise ProcessGroupCleanupUnverified()
+    if deferred_deadline_failure is not None:
+        raise deferred_deadline_failure
     return subprocess.CompletedProcess(
         args=list(command),
         returncode=int(process.returncode or 0),

@@ -1,6 +1,12 @@
 """One-shot original Harbor task trials for the full and no-index supervisor arms."""
 from __future__ import annotations
 
+from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
+    DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns, grok_coding_selection,
+    require_grok_coding_archive, grok_coding_runtime_matches,
+    grok_coding_not_applicable_provider_free,
+)
+
 import argparse
 from datetime import datetime
 import hashlib
@@ -278,6 +284,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
+               grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -309,6 +316,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
         capsule_selection=capsule_selection, semantic_context_profile=semantic_context_profile)
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
+    validate_grok_coding_max_turns(grok_coding_max_turns, provider=selected_provider["provider"])
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
     validate_tool_output_policy(tool_output_policy, arm=arm, provider=selected_provider["provider"])
     validate_source_view_advisory_policy(source_view_advisory_policy, arm=arm, provider=selected_provider["provider"])
@@ -344,6 +352,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **planning_selection(planning_mode),
                    **semantic_metadata_selection(semantic_metadata_view),
                    **semantic_working_set_selection(semantic_working_set),
+                   **grok_coding_selection(grok_coding_max_turns),
                    **capsule_selection_options(capsule_selection),
                    **capsule_budget_options(capsule_budget),
                    **source_view_selection(source_view_profile, source_view_policy),
@@ -401,11 +410,12 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
             semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
+            grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
             capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
             source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
             source_view_policy: dict | None = None,
-               source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
+            source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
             semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
             numerical_formalization_profile: str | None = None,
             planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
@@ -426,6 +436,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         capsule_selection=capsule_selection, semantic_context_profile=semantic_context_profile)
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
+    validate_grok_coding_max_turns(grok_coding_max_turns, provider=selected_provider["provider"])
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
     validate_tool_output_policy(tool_output_policy, arm=arm, provider=selected_provider["provider"])
     validate_source_view_advisory_policy(source_view_advisory_policy, arm=arm, provider=selected_provider["provider"])
@@ -466,6 +477,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_query_reference_archive(manifest, query_reference_policy)
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
     require_semantic_working_set_archive(manifest, semantic_working_set)
+    require_grok_coding_archive(manifest, grok_coding_max_turns)
     require_capsule_selection_archive(manifest, capsule_selection)
     require_capsule_budget_archive(manifest, capsule_budget)
     require_source_view_archive(manifest, source_view_profile, resource_profile)
@@ -529,6 +541,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         query_reference_policy=query_reference_policy,
         semantic_metadata_view=semantic_metadata_view,
         **semantic_working_set_selection(semantic_working_set),
+        **grok_coding_selection(grok_coding_max_turns),
         capsule_selection=capsule_selection,
         capsule_budget=capsule_budget,
         source_view_profile=source_view_profile,
@@ -573,6 +586,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **query_reference_selection(query_reference_policy),
               **semantic_metadata_observation(semantic_metadata_view),
               **semantic_working_set_observation(semantic_working_set),
+              **grok_coding_selection(grok_coding_max_turns),
               **capsule_selection_observation(capsule_selection),
               **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view_profile, source_view_policy),
@@ -807,6 +821,12 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
         validate_source_context_combination(source_view_profile=signed_profile,
             source_view_advisory_policy=advisory, repository_source_policy=repository_policy,
             source_input_policy=input_policy, query_reference_policy=reference_policy)
+    grok_turns = validate_grok_coding_max_turns(
+        prepared.get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    configured_grok_turns = validate_grok_coding_max_turns(
+        config["agents"][0].get("kwargs", {}).get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
+        provider=resolve_provider_profile(config["agents"][0].get("kwargs", {}).get("provider_profile"))["provider"])
     working_set = validate_semantic_working_set(
         prepared.get("semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET), arm=prepared["arm"],
         source_view_profile=source_view, transport_schema=transport, metadata_view=metadata_view)
@@ -876,6 +896,18 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                 all(type(report.get(key)) is type(value) and report.get(key) == value
                     for key, value in expected_budget.items())
                 for report in reported_budgets)
+    grok_turns_runtime_matches = None
+    grok_turns_policy_matches = None
+    grok_turns_not_applicable = None
+    if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS and trials:
+        if all(type(trial["supervisor"]) is dict for trial in trials):
+            grok_turns_runtime_matches = all(
+                type(trial["supervisor"].get("grok_coding_max_turns")) is int
+                and trial["supervisor"]["grok_coding_max_turns"] == grok_turns for trial in trials)
+            policies = [grok_coding_runtime_matches(trial["supervisor"], grok_turns) for trial in trials]
+            grok_turns_policy_matches = False if False in policies else True if all(value is True for value in policies) else None
+            grok_turns_not_applicable = all(grok_coding_not_applicable_provider_free(
+                trial["supervisor"], grok_turns) for trial in trials)
     working_set_runtime_matches = None
     if working_set != DEFAULT_SEMANTIC_WORKING_SET and trials:
         expected_working_set = semantic_working_set_observation(working_set)
@@ -907,6 +939,13 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                  if "tool_output_policy" in prepared or "tool_output_policy" in config["agents"][0].get("kwargs", {}) else {}),
               **semantic_metadata_observation(metadata_view),
               **semantic_working_set_observation(working_set),
+              **grok_coding_selection(grok_turns),
+              **({"grok_coding_config_unchanged": configured_grok_turns == grok_turns}
+                 if "grok_coding_max_turns" in prepared or "grok_coding_max_turns" in config["agents"][0].get("kwargs", {}) else {}),
+              **({"grok_coding_runtime_declared_matches": grok_turns_runtime_matches,
+                  "grok_coding_runtime_policy_matches": grok_turns_policy_matches,
+                  "grok_coding_not_applicable_provider_free": grok_turns_not_applicable}
+                 if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS else {}),
               **({"semantic_working_set_config_unchanged": configured_working_set == working_set}
                  if "semantic_working_set" in prepared or "semantic_working_set" in config["agents"][0].get("kwargs", {}) else {}),
               **({"semantic_working_set_runtime_declared_matches": working_set_runtime_matches}
@@ -951,6 +990,10 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and configured_transport == transport and configured_reply_mode == reply_mode
                   and configured_numerical == numerical_profile and configured_planning == planning_mode
                   and configured_metadata_view == metadata_view
+                  and configured_grok_turns == grok_turns
+                  and (grok_turns == DEFAULT_GROK_CODING_MAX_TURNS or
+                       grok_turns_runtime_matches is True and
+                       (grok_turns_policy_matches is True or grok_turns_not_applicable is True))
                   and configured_working_set == working_set
                   and (working_set == DEFAULT_SEMANTIC_WORKING_SET or working_set_runtime_matches is True)
                   and configured_capsules == capsule_selection
@@ -1101,6 +1144,12 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
         validate_source_context_combination(source_view_profile=signed_profile,
             source_view_advisory_policy=advisory, repository_source_policy=repository_policy,
             source_input_policy=input_policy, query_reference_policy=reference_policy)
+    grok_turns = validate_grok_coding_max_turns(
+        prepared.get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    configured_grok_turns = validate_grok_coding_max_turns(
+        config["agents"][0].get("kwargs", {}).get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
+        provider=resolve_provider_profile(config["agents"][0].get("kwargs", {}).get("provider_profile"))["provider"])
     working_set = validate_semantic_working_set(
         prepared.get("semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET), arm=prepared["arm"],
         source_view_profile=source_view, transport_schema=transport, metadata_view=metadata_view)
@@ -1114,6 +1163,8 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     configured_source_edit = validate_source_edit_mode(
         config["agents"][0].get("kwargs", {}).get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
         arm=prepared["arm"], source_view_profile=configured_source_view)
+    if grok_turns != configured_grok_turns:
+        raise ValueError("prepared Grok coding turn bound changed")
     if working_set != configured_working_set:
         raise ValueError("prepared semantic working set changed")
     if source_edit != configured_source_edit:
@@ -1148,6 +1199,7 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     require_query_reference_archive(current_manifest, query_reference)
     require_semantic_metadata_archive(current_manifest, metadata_view)
     require_semantic_working_set_archive(current_manifest, working_set)
+    require_grok_coding_archive(current_manifest, grok_turns)
     require_capsule_selection_archive(current_manifest, capsule_selection)
     require_capsule_budget_archive(current_manifest, capsule_budget)
     require_source_view_archive(current_manifest, source_view,
@@ -1316,7 +1368,10 @@ def main():
         help="Verify the explicit local Intent384 configuration matches the packaged assets")
     parser.add_argument("--intent-requirement-contract", type=Path,
         help="Use source-bound @1 provider coverage or @2 reviewed symbolic operations before admission")
+    parser.add_argument("--grok-coding-max-turns", type=int, default=DEFAULT_GROK_CODING_MAX_TURNS)
     args = parser.parse_args()
+    if args.operation != "prepare" and args.grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS:
+        parser.error("Grok coding turn bound is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.planning_mode != DEFAULT_PLANNING_MODE:
         parser.error("planning mode is frozen during prepare; collect/execute cannot select it")
     if args.operation != 'execute' and (args.provider_backoff_directory is not None or args.provider_max_wait_seconds != 0):
@@ -1373,6 +1428,7 @@ def main():
                          semantic_metadata_view=args.semantic_metadata_view,
                          semantic_context_profile=args.semantic_context_profile,
                          **semantic_working_set_selection(args.semantic_working_set),
+                         **grok_coding_selection(args.grok_coding_max_turns),
                          capsule_selection=args.capsule_selection,
                          capsule_budget=args.capsule_budget,
                          source_view_profile=args.source_view_profile,

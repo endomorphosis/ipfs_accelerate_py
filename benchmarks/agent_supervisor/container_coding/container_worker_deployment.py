@@ -228,6 +228,7 @@ parser.add_argument('--numerical-obligation-descriptor',type=pathlib.Path)
 parser.add_argument('--numerical-obligation-descriptor-sha256')
 parser.add_argument('--source-lookup-descriptor',type=pathlib.Path)
 parser.add_argument('--source-lookup-descriptor-sha256')
+parser.add_argument('--grok-coding-max-turns',type=int,default=128)
 parser.add_argument('--source-view-profile',default='disabled',choices=('disabled','identity@1','python-whitespace@1','python-comments@1'))
 parser.add_argument('--source-edit-mode',default='disabled',choices=('disabled','mapped-span@1','mapped-span@2'))
 parser.add_argument('--source-view-descriptor',type=pathlib.Path)
@@ -247,6 +248,8 @@ source_lookup_values=(args.source_lookup_descriptor,args.source_lookup_descripto
 if any(value is not None for value in source_lookup_values) and (not all(source_lookup_values) or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('exact source lookup descriptor requires isolated router coding')
 source_view_values=(args.source_view_descriptor,args.source_view_descriptor_sha256)
 if args.source_view_profile!='disabled' and any(value!='legacy' for value in (args.source_view_advisory_policy,args.repository_source_policy,args.source_input_policy,args.query_reference_policy)):raise SystemExit('signed source views cannot combine with advisory or projected source policies')
+if not 1<=args.grok_coding_max_turns<=128:raise SystemExit('Grok coding turn bound must be 1 through 128')
+if args.grok_coding_max_turns!=128 and (args.provider!='grok_cli' or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('nondefault coding turns require isolated Grok model-router coding')
 if args.source_edit_mode!='disabled' and (args.source_view_profile=='disabled' or args.preflight or args.semantic_metadata_census_only):raise SystemExit('source editing requires selected coding views')
 if args.source_view_profile!='disabled' or any(value is not None for value in source_view_values):
  if args.source_view_profile=='disabled' or not all(source_view_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values):raise SystemExit('exact source descriptor requires isolated semantic coding')
@@ -338,6 +341,7 @@ else:
  if args.source_formalization_handoff is not None:sys.argv+=['--source-formalization-handoff',str(args.source_formalization_handoff),'--source-formalization-handoff-sha256',args.source_formalization_handoff_sha256]
  if args.numerical_obligation_descriptor is not None:sys.argv+=['--numerical-obligation-descriptor',str(args.numerical_obligation_descriptor),'--numerical-obligation-descriptor-sha256',args.numerical_obligation_descriptor_sha256]
  if args.source_lookup_descriptor is not None:sys.argv+=['--source-lookup-descriptor',str(args.source_lookup_descriptor),'--source-lookup-descriptor-sha256',args.source_lookup_descriptor_sha256]
+ if args.grok_coding_max_turns!=128:sys.argv+=['--grok-coding-max-turns',str(args.grok_coding_max_turns)]
  if args.source_view_profile!='disabled':sys.argv+=['--source-view-profile',args.source_view_profile,'--source-view-descriptor',str(args.source_view_descriptor),'--source-view-descriptor-sha256',args.source_view_descriptor_sha256]
  if args.source_edit_mode!='disabled':sys.argv+=['--source-edit-mode',args.source_edit_mode]
  raise SystemExit(run_with_child_custody(main))

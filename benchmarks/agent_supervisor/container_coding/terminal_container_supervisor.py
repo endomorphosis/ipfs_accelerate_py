@@ -6,6 +6,11 @@ verifier runs afterwards and remains outside this process's indexed context.
 """
 from __future__ import annotations
 
+from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
+    DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns, grok_coding_selection,
+    grok_coding_runtime_matches,
+)
+
 import argparse
 from collections import deque
 from contextlib import ExitStack
@@ -696,6 +701,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
         semantic_working_set: str = "legacy",
+        grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
         source_view_profile: str = "disabled",
         source_edit_mode: str = "disabled",
         source_view_policy: dict | None = None,
@@ -789,6 +795,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     validate_tool_output_policy(tool_output_policy, arm=arm, provider=provider_selection["provider"])
     if metadata_census_only and tool_output_policy != "legacy":
         raise ValueError("tool output policy requires an executed coding route")
+    validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider_selection["provider"])
+    if grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS and metadata_census_only:
+        raise ValueError("nondefault coding turns require generation, not metadata census")
     if type(metadata_census_only) is not bool:
         raise ValueError("explicit Boolean metadata census selection required")
     if metadata_census_only and planning_mode != "model":
@@ -875,6 +884,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               **source_edit_observation(source_edit_mode),
               **semantic_context_selection(semantic_context_profile),
               **semantic_working_set_observation(semantic_working_set),
+              **grok_coding_selection(grok_coding_max_turns),
               **coding_reply_selection(coding_reply_mode),
               **tool_output_selection(tool_output_policy),
               **source_view_advisory_selection(source_view_advisory_policy),
@@ -1138,12 +1148,14 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             None if provider_free_candidate else coding_timeout_seconds(resource_profile))
         report["provider_coding_timeout_seconds"] = None if provider_free_candidate else implementation_budget
         implementation = implementation_argv(router=ROUTER, model=provider_selection["model"],
+            provider=provider_selection["provider"],
             reasoning=provider_selection["reasoning_effort"],
             timeout=implementation_budget,
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor,
             semantic_transport_schema=semantic_transport_schema,
             coding_reply_mode=coding_reply_mode,
             **semantic_working_set_selection(semantic_working_set),
+            **grok_coding_selection(grok_coding_max_turns),
             **({"source_view_profile": source_view_profile} if source_view_profile != "disabled" else {}),
             **({"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {}),
             **({"source_view_policy": source_view_policy} if source_view_policy is not None else {}),
@@ -1166,6 +1178,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     "source_view_profile": source_view_profile,
                     "source_edit_mode": source_edit_mode,
                     **semantic_working_set_selection(semantic_working_set),
+                    **grok_coding_selection(grok_coding_max_turns),
                     "source_view_policy": source_view_policy},
                 "model_coding_dispatched": False,
                 "token_savings_established": False,
@@ -1382,6 +1395,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             except Exception as error:
                 report["planning_usage_audit"] = {"status": "unavailable", "error_type": type(error).__name__,
                                                  "complete_total_tokens": None}
+        if grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS:
+            report["grok_coding_runtime_policy_matches"] = grok_coding_runtime_matches(report, grok_coding_max_turns)
         _final_context_audit(report, state=state, deadline=deadline)
         try:
             progress.finish(report)
@@ -1466,6 +1481,7 @@ def main():
     parser.add_argument("--source-view-profile", default=DEFAULT_SOURCE_VIEW_PROFILE, choices=SOURCE_VIEW_PROFILES)
     from .terminal_semantic_working_set_policy import SEMANTIC_WORKING_SETS, DEFAULT_SEMANTIC_WORKING_SET
     parser.add_argument("--semantic-working-set", choices=SEMANTIC_WORKING_SETS, default=DEFAULT_SEMANTIC_WORKING_SET)
+    parser.add_argument("--grok-coding-max-turns", type=int, default=DEFAULT_GROK_CODING_MAX_TURNS)
     from .terminal_source_edit_policy import SOURCE_EDIT_MODES
     parser.add_argument("--source-edit-mode", default="disabled", choices=SOURCE_EDIT_MODES)
     from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy

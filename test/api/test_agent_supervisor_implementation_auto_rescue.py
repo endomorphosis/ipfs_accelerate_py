@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import subprocess
+import json
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -749,6 +751,7 @@ def _run_inline_rescue(
         state=None,
         command=command,
         base_prompt="repair the implementation",
+        provider_deadline=time.monotonic() + 60,
     )
 
 
@@ -762,7 +765,11 @@ def test_inline_provider_real_child_does_not_inherit_owner_credentials(
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "dummy-owner-token")
     monkeypatch.setenv("CUSTOM_OWNER_CREDENTIAL", "dummy-indirect-owner-token")
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE", "env://CUSTOM_OWNER_CREDENTIAL")
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", '{"test":"owner-binding"}')
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import DatabaseProgramConfig
+    program = DatabaseProgramConfig(authority_mode="quack", task_source_kind="duckdb",
+        endpoint_secret_handle="env://CUSTOM_OWNER_CREDENTIAL", quack_endpoint="quack:127.0.0.1:45123",
+        store_id="rescue-fixture", store_generation="7", schema_revision="1")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", json.dumps(program.to_dict()))
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT", "quack:127.0.0.1:45123")
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "7")
     monkeypatch.setenv("UNRELATED_PROVIDER_AUTH", "dummy-provider-auth")
@@ -893,6 +900,7 @@ def test_scoped_test_secret_remediation_runs_once_then_fully_revalidates(
 
     def fake_stream(run_command, **kwargs):
         provider_calls.append({"command": list(run_command), **dict(kwargs)})
+        kwargs["on_started"](SimpleNamespace(pid=12345))
         return subprocess.CompletedProcess(run_command, 0)
 
     replacement = SimpleNamespace(
@@ -950,6 +958,7 @@ def test_scoped_test_secret_remediation_runs_once_then_fully_revalidates(
         state=None,
         command=["/opt/providers/grok", "--model", "grok-4.6"],
         base_prompt="Implement the redaction trace test.",
+        provider_deadline=time.monotonic() + 60,
     )
 
     assert result["passed"] is True
@@ -1034,6 +1043,7 @@ def test_scoped_test_secret_remediation_rejects_unchanged_proposal(
         state=None,
         command=["/opt/providers/grok"],
         base_prompt="Implement the redaction trace test.",
+        provider_deadline=time.monotonic() + 60,
     )
 
     assert result["passed"] is False
@@ -1106,6 +1116,7 @@ def test_scoped_test_secret_remediation_rejects_deleted_security_assertion(
         state=None,
         command=["/opt/providers/grok"],
         base_prompt="Implement the redaction trace test.",
+        provider_deadline=time.monotonic() + 60,
     )
 
     assert result["passed"] is False

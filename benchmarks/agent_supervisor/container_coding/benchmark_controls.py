@@ -7,6 +7,10 @@ are exported. Legacy preparations cannot acquire a retrospective declaration.
 
 from __future__ import annotations
 
+from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
+    DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns,
+)
+
 import hashlib
 import json
 import re
@@ -17,6 +21,7 @@ PLANNING_SCHEMA = "terminal-benchmark-declared-controls@3"
 SOURCE_EDIT_SCHEMA = "terminal-benchmark-declared-controls@4"
 CAPSULE_BUDGET_SCHEMA = "terminal-benchmark-declared-controls@5"
 SEMANTIC_WORKING_SET_SCHEMA = "terminal-benchmark-declared-controls@6"
+GROK_CODING_SCHEMA = "terminal-benchmark-declared-controls@7"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 JOB_KEYS = ("n_attempts", "n_concurrent_trials", "retry", "timeout_multiplier",
             "agent_timeout_multiplier", "agent_setup_timeout_multiplier",
@@ -95,12 +100,14 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {'arm', 'capsule_budget', 'capsule_selection', 'coding_reply_mode', 'intent_requirement_contract', 'model_revision', 'numerical_formalization_profile', 'planning_mode', 'provider_profile', 'query_reference_policy', 'repository_source_policy', 'resource_profile', 'runtime_archive', 'semantic_context_profile', 'semantic_metadata_view', 'semantic_transport_schema', 'semantic_working_set', 'setup_cache_selection', 'source_edit_mode', 'source_input_policy', 'source_view_advisory_policy', 'source_view_policy', 'source_view_profile', 'task_profile', 'tool_output_policy'}:
+        if set(kwargs) - {'arm', 'capsule_budget', 'capsule_selection', 'coding_reply_mode', 'grok_coding_max_turns', 'intent_requirement_contract', 'model_revision', 'numerical_formalization_profile', 'planning_mode', 'provider_profile', 'query_reference_policy', 'repository_source_policy', 'resource_profile', 'runtime_archive', 'semantic_context_profile', 'semantic_metadata_view', 'semantic_transport_schema', 'semantic_working_set', 'setup_cache_selection', 'source_edit_mode', 'source_input_policy', 'source_view_advisory_policy', 'source_view_policy', 'source_view_profile', 'task_profile', 'tool_output_policy'}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         from .terminal_source_view_policy import validate_source_context_combination
         validate_source_context_combination(**{key: kwargs[key] for key in (
             "source_view_profile", "source_view_advisory_policy", "repository_source_policy",
             "source_input_policy", "query_reference_policy", "capsule_selection", "semantic_context_profile") if key in kwargs})
+        validate_grok_coding_max_turns(kwargs.get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
+            provider=selected["provider"])
         if "semantic_working_set" in kwargs:
             from .terminal_semantic_working_set_policy import validate_semantic_working_set
             validate_semantic_working_set(kwargs["semantic_working_set"], arm=kwargs.get("arm"),
@@ -260,6 +267,10 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
     if working_set != DEFAULT_SEMANTIC_WORKING_SET:
         controls["schema"] = SEMANTIC_WORKING_SET_SCHEMA
         controls.setdefault("experimental_controls_sha256", {})["semantic_working_set"] = _digest(working_set)
+    grok_turns = validate_grok_coding_max_turns(kwargs.get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS))
+    if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
+        controls["schema"] = GROK_CODING_SCHEMA
+        controls.setdefault("experimental_controls_sha256", {})["grok_coding_max_turns"] = _digest(grok_turns)
     controls["sha256"] = _digest(controls)
     return controls
 
@@ -270,7 +281,14 @@ def validate_controls(value):
             "agent_controls_sha256", "sha256"}
     if not isinstance(value, dict):
         return False
-    if value.get("schema") == SEMANTIC_WORKING_SET_SCHEMA:
+    if value.get("schema") == GROK_CODING_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict or "grok_coding_max_turns" not in experiment
+                or set(experiment) - {"grok_coding_max_turns", "semantic_working_set", "capsule_budget", "source_edit_mode", "planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())):
+            return False
+    elif value.get("schema") == SEMANTIC_WORKING_SET_SCHEMA:
         keys.add("experimental_controls_sha256")
         experiment = value.get("experimental_controls_sha256")
         if (type(experiment) is not dict or "semantic_working_set" not in experiment

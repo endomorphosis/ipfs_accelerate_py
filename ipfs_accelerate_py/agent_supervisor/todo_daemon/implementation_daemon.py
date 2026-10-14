@@ -30561,6 +30561,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         provider_process = None
         provider_process_returned = False
         provider_child_custody = None
+        provider_deadline: float | None = None
         child_reported_router_failure = None
         # A no-change gate is valid for one implementation attempt only.
         self._implementation_no_change_policy_gates.clear()
@@ -30984,7 +30985,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             }
                     else:
                         def invoke_provider() -> subprocess.CompletedProcess[str]:
-                            nonlocal provider_dispatched, provider_process_returned, provider_child_custody, child_reported_router_failure
+                            nonlocal provider_dispatched, provider_process_returned, provider_child_custody, child_reported_router_failure, provider_deadline
                             # Fail closed if gate identity drifted.
                             if not provider_gate.get("provider_authorized"):
                                 raise RuntimeError(
@@ -31041,8 +31042,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
                             if self._database_attempt_authority is not None:
                                 provider_child_custody = self._begin_database_provider_child_custody()
+                            provider_deadline = time.monotonic() + timeout_policy.max_timeout_seconds
                             provider_completed = run_process_group_stream(
                                 command,
+                                absolute_deadline=provider_deadline,
                                 cwd=worktree_path,
                                 stdout=log_fh,
                                 input_text=prompt,
@@ -31475,6 +31478,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                             command=command,
                                             base_prompt=prompt,
                                             allow_provider_rescue=bool(command),
+                                            provider_deadline=provider_deadline,
                                             replayable_consumed_proposal_ids=(
                                                 seed_replayable_proposal_ids
                                             ),
@@ -46380,6 +46384,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         command: Sequence[str] = (),
         base_prompt: str = "",
         allow_provider_rescue: bool = True,
+        provider_deadline: float | None = None,
         replayable_consumed_proposal_ids: Sequence[str] = (),
     ) -> dict[str, Any]:
         """Attempt bounded same-attempt rescue after failure review.
@@ -46390,6 +46395,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         2. Stage declared dirty/ignored outputs and revalidate once.
         3. If still failing with guide_rescue signal, run one focused
            provider repair pass on the preserved worktree, then revalidate.
+
+        Provider rescue spends only the remaining absolute monotonic deadline
+        captured by the primary launch. Missing budget or owner-bound native
+        dispatch blocks that provider pass, while deterministic rescue remains
+        available.
         """
 
         from ..validation.implementation_auto_rescue import (
@@ -46413,6 +46423,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         expected = task_declared_output_paths(task)
         validation_commands = tuple(getattr(task, "validation", ()) or ())
         protected_provider_command = False
+        provider_rescue_blocked_reason = ""
         if command:
             try:
                 protected_provider_command = bool(
@@ -46422,6 +46433,36 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 # Ambiguous sealed authority is protected too. It must never
                 # be converted into an unsealed invocation with a new prompt.
                 protected_provider_command = True
+
+        def provider_rescue_budget() -> tuple[float | None, str]:
+            # A second database-bound child needs fresh owner dispatch and
+            # native custody, which this legacy inline path does not provide.
+            if getattr(self, "_database_attempt_authority", None) is not None:
+                return None, "database_provider_rescue_requires_owner_dispatch"
+            if protected_provider_command:
+                return None, "sealed_provider_rescue_requires_owner_dispatch"
+            if provider_deadline is None:
+                return None, "provider_rescue_deadline_missing"
+            if (type(provider_deadline) not in (int, float)
+                    or not -sys.float_info.max <= provider_deadline <= sys.float_info.max):
+                return None, "provider_rescue_deadline_invalid"
+            remaining = provider_deadline - time.monotonic()
+            if not math.isfinite(remaining) or remaining <= 0:
+                return None, "provider_rescue_deadline_exhausted"
+            return remaining, ""
+
+        def record_provider_block(reason: str) -> None:
+            nonlocal provider_rescue_blocked_reason
+            if reason and reason != provider_rescue_blocked_reason:
+                provider_rescue_blocked_reason = reason
+                self._record_event("implementation_auto_rescue_provider_blocked", {
+                    "task_id": task.task_id, "attempt": int(attempt), "reason": reason,
+                })
+
+        def with_provider_block(record: dict[str, Any]) -> dict[str, Any]:
+            if provider_rescue_blocked_reason:
+                record["auto_rescue"]["provider_rescue_blocked_reason"] = provider_rescue_blocked_reason
+            return record
 
         for _step in range(4):
             present = self._expected_outputs_present_on_disk(
@@ -46440,6 +46481,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     for item in (review.get("missing_expected_outputs") or ())
                     if str(item).strip()
                 )
+            _remaining, budget_block = provider_rescue_budget()
+            if command and allow_provider_rescue:
+                record_provider_block(budget_block)
             plan = plan_automatic_implementation_rescue(
                 validation_result=result,
                 expected_outputs=expected,
@@ -46453,6 +46497,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     allow_provider_rescue
                     and command
                     and not protected_provider_command
+                    and not budget_block
                 ),
                 expected_outputs_present_on_disk=present,
                 dirty_in_scope_paths=dirty,
@@ -46543,7 +46588,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         result.get("reason")
                         or "auto_rescue_materialize_and_stage_passed"
                     )
-                    return result
+                    return with_provider_block(result)
                 continue
 
             if plan.action is AutoRescueAction.STRIP_DENIED_HELPERS:
@@ -46614,7 +46659,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         result.get("reason")
                         or "auto_rescue_strip_denied_helpers_passed"
                     )
-                    return result
+                    return with_provider_block(result)
                 continue
 
             if plan.action is AutoRescueAction.STAGE_AND_REVALIDATE:
@@ -46683,7 +46728,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         result.get("reason")
                         or "auto_rescue_stage_and_revalidate_passed"
                     )
-                    return result
+                    return with_provider_block(result)
                 continue
 
             if plan.action in {
@@ -46692,7 +46737,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             }:
                 if not command or not allow_provider_rescue:
                     break
-                provider_passes += 1
                 rescue_prompt = build_inline_provider_rescue_prompt(
                     base_prompt=base_prompt,
                     validation_result=result,
@@ -46725,18 +46769,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         },
                     )
                     break
-                self._record_event(
-                    "implementation_auto_rescue_provider_started",
-                    {
-                        "task_id": task.task_id,
-                        "attempt": int(attempt),
-                        "plan": plan.to_record(),
-                        "failed_commands": list(plan.failed_commands),
-                        "base_prompt_id": base_prompt_id,
-                        "rescue_prompt_id": rescue_prompt_id,
-                        "strategy_changed": True,
-                    },
-                )
                 with _open_private_implementation_log(log_path, "a") as log_fh:
                     log_fh.write(
                         "\n[auto-rescue] inline_provider_rescue start\n"
@@ -46754,8 +46786,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 ),
                             )
                         )
+                        remaining, budget_block = provider_rescue_budget()
+                        if budget_block:
+                            record_provider_block(budget_block)
+                            break
+                        provider_start_details = {
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            "plan": plan.to_record(),
+                            "failed_commands": list(plan.failed_commands),
+                            "base_prompt_id": base_prompt_id,
+                            "rescue_prompt_id": rescue_prompt_id,
+                            "strategy_changed": True,
+                        }
+                        self._record_event("implementation_auto_rescue_provider_prepared", provider_start_details)
+                        # Prompt/environment construction and durable event
+                        # writes also consume the original provider lease.
+                        remaining, budget_block = provider_rescue_budget()
+                        if budget_block:
+                            record_provider_block(budget_block)
+                            break
+                        def provider_started(process: subprocess.Popen[Any]) -> None:
+                            self._record_event("implementation_auto_rescue_provider_started", {
+                                **provider_start_details, "provider_pid": process.pid,
+                            })
+                        provider_passes += 1
                         completed = run_process_group_stream(
                             list(command),
+                            absolute_deadline=provider_deadline,
                             cwd=workspace_path,
                             stdout=log_fh,
                             input_text=rescue_prompt,
@@ -46764,6 +46822,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             timeout_seconds=min(
                                 float(self.implementation_timeout),
                                 3600.0,
+                                remaining,
                             ),
                             progress_timeout_seconds=None,
                             max_timeout_seconds=min(
@@ -46776,8 +46835,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                     or self.implementation_timeout
                                 ),
                                 7200.0,
+                                remaining,
                             ),
                             progress_paths=(),
+                            on_started=provider_started,
                             on_progress=None,
                         )
                         log_fh.write(
@@ -46797,6 +46858,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 "error": str(exc)[-1000:],
                             },
                         )
+                        if isinstance(exc, subprocess.TimeoutExpired) and getattr(
+                            exc, "timeout_reason", None
+                        ) == "absolute_deadline":
+                            record_provider_block("provider_rescue_deadline_exhausted")
                         break
                 self._stage_declared_candidate_outputs(workspace_path, task)
                 result.pop("failure_review", None)
@@ -46973,7 +47038,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "last_action": plan.action.value,
                         },
                     )
-                    return result
+                    return with_provider_block(result)
                 break
 
         result = dict(result)
@@ -46984,6 +47049,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "provider_rescue_blocked_by_prompt_binding": (
                 protected_provider_command
             ),
+            **({"provider_rescue_blocked_reason": provider_rescue_blocked_reason}
+               if provider_rescue_blocked_reason else {}),
             "succeeded": False,
         }
         result["auto_rescue_terminal"] = True
