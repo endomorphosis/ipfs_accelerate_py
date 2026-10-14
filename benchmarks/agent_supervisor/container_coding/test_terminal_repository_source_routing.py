@@ -191,11 +191,13 @@ def test_container_cli_forwards_flag_and_census_refuses_before_io(tmp_path, monk
 
 
 @pytest.mark.parametrize("doctor", [{"route": "doctor_candidate"}, {"route": "doctor_contract_candidate"}])
-def test_route_builder_refuses_provider_free_paths(mode, doctor):
+def test_route_builder_refuses_unchecked_provider_free_candidates(mode, doctor):
     from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import implementation_argv
     kwargs = dict(router=Path("/router"), model="fixture", reasoning="high", timeout=30,
         semantic_repository=Path("/app"), doctor=doctor)
-    with pytest.raises(ValueError, match="semantic model-router coding route"):
+    expected = ("committed provider-free Doctor candidate required" if doctor["route"] == "doctor_candidate"
+                else "checked local contract candidate required")
+    with pytest.raises(ValueError, match=expected):
         implementation_argv(**kwargs, repository_source_policy=mode)
 
 

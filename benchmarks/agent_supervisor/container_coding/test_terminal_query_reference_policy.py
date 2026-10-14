@@ -2,6 +2,7 @@
 import asyncio
 import hashlib
 import json
+import tarfile
 from pathlib import Path
 import shlex
 import sys
@@ -145,7 +146,7 @@ def test_route_builder_selects_only_model_coding(mode):
     assert implementation_argv(**kwargs, query_reference_policy="legacy") == old
     new = implementation_argv(**kwargs, query_reference_policy=mode)
     assert new[new.index("--query-reference-policy") + 1] == mode
-    with pytest.raises(ValueError, match="semantic model-router coding route"):
+    with pytest.raises(ValueError, match="committed provider-free Doctor candidate required"):
         implementation_argv(**{**kwargs, "doctor": {"route": "doctor_candidate"}}, query_reference_policy=mode)
 
 
@@ -194,8 +195,11 @@ def test_prepare_freezes_output_policy_without_provider_calls(tmp_path, monkeypa
     dataset, _ = authored_task(tmp_path)
     archive = tmp_path / "archive"
     archive.mkdir()
-    raw = b"AUTHORED-no-executable-archive"
-    (archive / "runtime.tar.gz").write_bytes(raw)
+    # Numerical deployment inspects the archive even when no assets are selected.
+    # A real empty gzip/tar models that absence without executable fixture content.
+    with tarfile.open(archive / "runtime.tar.gz", "w:gz"):
+        pass
+    raw = (archive / "runtime.tar.gz").read_bytes()
     (archive / "manifest.json").write_text(json.dumps(_supervisor_manifest({**inventory(),
         "archive_sha256": hashlib.sha256(raw).hexdigest(), "codex_version": CLI_VERSION})))
     commands = []

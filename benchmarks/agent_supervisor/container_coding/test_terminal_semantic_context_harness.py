@@ -2,6 +2,7 @@
 import asyncio
 import hashlib
 import json
+import tarfile
 from pathlib import Path
 import shlex
 import sys
@@ -29,8 +30,11 @@ def inventory():
 
 def write_archive(root, *, current=True):
     root.mkdir(parents=True, exist_ok=True)
-    raw = b"AUTHORED-no-executable-archive"
-    (root / "runtime.tar.gz").write_bytes(raw)
+    # Numerical deployment inspects the archive even when no assets are selected.
+    # A real empty gzip/tar models that absence without executable fixture content.
+    with tarfile.open(root / "runtime.tar.gz", "w:gz"):
+        pass
+    raw = (root / "runtime.tar.gz").read_bytes()
     manifest = _supervisor_manifest({**(inventory() if current else {"files": []}),
         "archive_sha256": hashlib.sha256(raw).hexdigest(), "codex_version": CLI_VERSION,
         "learned_requirements": []})

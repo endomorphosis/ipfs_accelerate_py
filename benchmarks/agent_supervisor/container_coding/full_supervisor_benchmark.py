@@ -786,11 +786,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
         config["agents"][0].get("kwargs", {}).get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
         arm=prepared["arm"])
     from .terminal_source_view_policy import validate_source_context_combination
-    for profile, advisory, repository_policy, input_policy, reference_policy in (
+    for signed_profile, advisory, repository_policy, input_policy, reference_policy in (
             (source_view, source_view_advisory, repository_source, source_input, query_reference),
             (configured_source_view, configured_source_view_advisory, configured_repository_source,
              configured_source_input, configured_query_reference)):
-        validate_source_context_combination(source_view_profile=profile,
+        validate_source_context_combination(source_view_profile=signed_profile,
             source_view_advisory_policy=advisory, repository_source_policy=repository_policy,
             source_input_policy=input_policy, query_reference_policy=reference_policy)
     source_edit = validate_source_edit_mode(prepared.get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
@@ -1056,11 +1056,11 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
         config["agents"][0].get("kwargs", {}).get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
         arm=prepared["arm"])
     from .terminal_source_view_policy import validate_source_context_combination
-    for profile, advisory, repository_policy, input_policy, reference_policy in (
+    for signed_profile, advisory, repository_policy, input_policy, reference_policy in (
             (source_view, source_view_advisory, repository_source, source_input, query_reference),
             (configured_source_view, configured_source_view_advisory, configured_repository_source,
              configured_source_input, configured_query_reference)):
-        validate_source_context_combination(source_view_profile=profile,
+        validate_source_context_combination(source_view_profile=signed_profile,
             source_view_advisory_policy=advisory, repository_source_policy=repository_policy,
             source_input_policy=input_policy, query_reference_policy=reference_policy)
     source_edit = validate_source_edit_mode(prepared.get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
