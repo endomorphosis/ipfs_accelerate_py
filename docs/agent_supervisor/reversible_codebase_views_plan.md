@@ -1104,3 +1104,15 @@ generations remain separate from native Quack claim, allocation and source-grant
 successors: an edit invalidates the old native current-source reader, and a
 new generation needs explicit admission. Qualify the combined stack before
 deployment; preserving incoming commits alone does not qualify all their code.
+
+The [next indexed-proof context proposal](evidence/native-source-worker-spawn-20261014/indexed-proof-context-followup.json)
+uses the existing DuckDB-backed repository index, context adapter and formal
+verification cache. Join checked proof references with a complete admitted cache
+key and the current repository generation; retain mandatory evidence, assumptions
+and residual obligations. Independently match Git-tree identities to the
+adapter's SHA256 source identity instead of relabeling digests. Existing
+source-backed repository restoration and unchanged-AST edits preserve retained
+original bytes within their declared scope; they do not measure learned IR
+reconstruction. Measure the complete session after the permission/process joins,
+including retrieval, expansion, edits, refresh, failures and validation. The
+proposal creates no proof authority and reports no token saving.

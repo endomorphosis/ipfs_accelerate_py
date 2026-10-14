@@ -42,7 +42,9 @@ and supporting records. Actual datasets execution is
 `ebdf6539a4afaf1f10c20744cb14222ef9db4d2b`; kit stays at
 `8ac00bb1974b1378e12091d546d8425af34049e0`. The list is not a complete import
 closure or toolchain attestation. Runtime databases and state remain private.
-The final merged execution status will be recorded after integration checks. The
+The sixth merged run passed 276 distinct tests across twelve suites, including
+53 new cases, in 1018.995 seconds, with zero failures, errors or skips. Collection
+and JUnit identities agree and all 218 listed bindings stayed unchanged. The
 [first attempt](qualification-01/commands.json) was deliberately interrupted
 after static review found two middle CAS loads under the owner lock. It collected
 272 cases and retained 238 JUnit cases with no failures, errors or skips; it is
@@ -131,8 +133,17 @@ Published `e4b8c4bba2` incorporates capsule-budget, per-turn usage, repository
 session/context and acceptance-declaration progress. The
 [integration review](incoming-integration-review.json) records 417 incoming paths:
 none overlap the seven owned source/test/guide paths, but 28 of the 218 listed
-dependencies change. Preserve those changes and qualify the merged state in a
-fresh complete sixth run; the fifth premerge result does not qualify that state.
+dependencies change. Those changes are preserved and the merged state is qualified
+in a fresh complete sixth run. That merged run passes all 276 cases; the fifth
+premerge result remains separate and is not added to its count.
 Incoming tests outside the twelve-suite roster are not counted as executed here.
 Existing worker-side repository refresh/edit generations do not themselves
 authorize a successor native Quack task, allocation or source grant.
+
+The [indexed-proof context followup](indexed-proof-context-followup.json) identifies
+a subsequent bounded adapter using existing DuckDB/capsule and proof-cache assets.
+It requires the complete admitted cache key, current generation and independently
+checked source-identity correspondence, preserving mandatory evidence and residuals.
+Exact source-backed restoration, learned IR reconstruction, scoped proof status
+and complete-session token usage remain separate measurements. This is static
+planning evidence, without new implementation, execution or savings claims.
