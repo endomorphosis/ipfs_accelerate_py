@@ -1162,21 +1162,22 @@ historical results. Currentness and source correspondence do not themselves
 qualify these additional router and deployed-worker combinations.
 
 The [router adoption followup](evidence/repository-proof-context-20261014/router-adoption-followup.json)
-identifies a specific next repair: the incoming instruction `@5` closing replay
-occurs before a working-set RPC. Repeat the independent complete signed/profile
-and compiled-instruction replay after the callback and before model dispatch.
-Qualify the positive combined path and refusal on selected/support/profile/omitted
-source or artifact drift, with zero provider calls on refusal. Existing selected
-capsule and native spawn checks remain distinct. The current host bridge's tests
-do not establish that router combination's admission or deployed task success.
+identified a specific repair: instruction `@5` closing replay occurred before
+a working-set RPC. The [later closing-replay qualification](evidence/router-signed-scope-closing-20261014/README.md)
+records that repair separately from the original five proof-context suites.
+Complete signed/profile/compiled-instruction replay now follows preflight and
+descriptor-context entry, with an actual allocated-CWD check before dispatch.
+Existing selected-capsule and native spawn checks remain distinct; host controls
+do not establish deployed worker admission or task success.
 
 The [subsequent source/session review](evidence/repository-proof-context-20261014/current-source-compatibility-review.json)
 preserves upstream repository-world and stable-symbol APIs. Their opt-in
 representations do not revive old source generations. Reuse the original native
 fences and exact lookup path, and qualify the changed index/session implementation
 with the bridge. The new world-packet lane excludes signed public instructions;
-it does not supply the still-pending closing replay for the capsule-working-set
-and instruction `@5` combination. Its separate suites are not counted here.
+it does not itself supply the closing replay for the capsule-working-set and
+instruction `@5` combination. Its separate suites are not counted in the
+original proof-context qualification.
 
 The [newer LegalIR findings](evidence/repository-proof-context-20261014/preserved-legalir-review.json)
 preserve trained-parent reuse and a separate published conditions-head comparison.

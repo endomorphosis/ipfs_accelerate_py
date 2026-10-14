@@ -1,0 +1,32 @@
+{
+  "actual_inert_socket_client_probes": true,
+  "authored_provider_usage_figures": true,
+  "baseline_control": "baseline-01",
+  "baseline_control_status": "expected_regression",
+  "baseline_count_added_to_selected_tests": false,
+  "deployed_worker_qualified": false,
+  "elapsed_seconds": 538.257,
+  "external_provider_calls": 0,
+  "model_calls": 0,
+  "native_solver_or_kernel_executions": 0,
+  "new_cases": 18,
+  "official_task_result": null,
+  "recorded_at_utc": "2026-10-14T11:30:06.395836+00:00",
+  "schema": "router-signed-scope-closing-qualification-summary@1",
+  "selected_qualification": "qualification-01",
+  "selected_tests": 145,
+  "source_before_after_equal": true,
+  "source_bindings": 265,
+  "suites": {
+    "benchmarks.agent_supervisor.container_coding.test_terminal_signed_compact_handoff": 3,
+    "benchmarks.agent_supervisor.container_coding.test_terminal_signed_working_set_closing": 18,
+    "benchmarks.agent_supervisor.container_coding.test_terminal_worker_signed_scope": 10,
+    "test.api.test_repository_world_dispatch": 30,
+    "test.api.test_router_implementation_runner": 32,
+    "test.api.test_router_public_instruction": 21,
+    "test.api.test_semantic_router_integration": 19,
+    "test.api.test_semantic_working_set_dispatch": 12
+  },
+  "total_session_token_savings_established": false,
+  "training_steps": 0
+}

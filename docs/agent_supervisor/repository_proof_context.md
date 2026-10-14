@@ -146,12 +146,13 @@ not replace a reviewed complete key and live admission.
    instruction. Qualify the permission and cross-process handoffs in the
    [existing deployment proposal](evidence/native-source-worker-spawn-20261014/permission-handoff-design.json).
    Preserve the existing source restoration and edit-generation paths.
-   First close the [reviewed router adoption gap](evidence/repository-proof-context-20261014/router-adoption-followup.json):
-   incoming instruction `@5` replay precedes the new working-set `request_page`
-   callback. Repeat the independent complete signed/profile/compiled-instruction
-   replay after that request and before provider dispatch, then qualify this
-   combined path with selected and omitted-source drift in both checkouts.
-   The five proof-context suites do not qualify that router combination.
+   The [closing-replay qualification](evidence/router-signed-scope-closing-20261014/README.md)
+   addresses the [reviewed router adoption gap](evidence/repository-proof-context-20261014/router-adoption-followup.json):
+   instruction `@5` now reloads the artifact, signed profile, compiled selection
+   and complete signed sources after working-set preflight and descriptor-context
+   entry. It checks the actual allocated CWD before attempting the provider.
+   These host regression controls do not qualify deployed worker admission,
+   native claim/allocation joins or an atomic filesystem writer lease.
 2. Add independently verified identity backends for committed Git snapshots
    and other proof families. Keep decoded logic proposals, checked local proofs
    and task acceptance distinct. Add multi-receipt composition only with explicit
