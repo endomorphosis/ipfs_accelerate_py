@@ -84,8 +84,10 @@ def test_native_round_rebuild_preserves_baseline_and_exact_advisory_pins(source_
     metadata = after.revalidate()
     old_formal = json.loads(before.artifacts["formal"])["reports"]["mod.py"]
     formal = json.loads(after.artifacts["formal"])["reports"]["mod.py"]
-    assert "SelectionMax" in json.dumps(old_formal["projections"]["lean"])
-    assert "SelectionMin" in json.dumps(formal["projections"]["lean"])
+    old_definitions = {row["definition"] for row in old_formal["projections"]["lean"]["bindings"]}
+    definitions = {row["definition"] for row in formal["projections"]["lean"]["bindings"]}
+    assert "SelectionMax" in old_definitions and "SelectionMin" not in old_definitions
+    assert "SelectionMin" in definitions and "SelectionMax" not in definitions
     assert before.metadata["semantic_root_cid"] != metadata["semantic_root_cid"]
     assert before.metadata["workspace_generation"] != metadata["workspace_generation"]
     capsules = json.loads(after.artifacts["capsules"])["capsules"]
