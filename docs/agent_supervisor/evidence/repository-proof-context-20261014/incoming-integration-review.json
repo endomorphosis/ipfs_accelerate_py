@@ -1,0 +1,350 @@
+{
+  "datasets_actual_execution": "a0f60d42f836571a0023515e92dfb0e5724f0d79",
+  "datasets_comparison": {
+    "all_identical": true,
+    "listed_files": [
+      {
+        "bytes": 56829,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/__init__.py",
+        "sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9"
+      },
+      {
+        "bytes": 2052,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/autoformal/tree_pin.py",
+        "sha256": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2"
+      },
+      {
+        "bytes": 86862,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/backends/smt/compiler.py",
+        "sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5"
+      },
+      {
+        "bytes": 51399,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/families/registry.py",
+        "sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450"
+      },
+      {
+        "bytes": 7118,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/formalization/autoencoder/intent_action_checkpoint_384.py",
+        "sha256": "467b5e00df9e6960618a36064255d2680f2b369e3f27bf1901b6260a132b5eab"
+      },
+      {
+        "bytes": 3468,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_384.py",
+        "sha256": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7"
+      },
+      {
+        "bytes": 31851,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_training_v2.py",
+        "sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+      },
+      {
+        "bytes": 27328,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/formalization/autoencoder/structured_source_384.py",
+        "sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7"
+      },
+      {
+        "bytes": 24220,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/intent_ir/decoder.py",
+        "sha256": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257"
+      },
+      {
+        "bytes": 14572,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/intent_ir/formalize/action_contracts.py",
+        "sha256": "694e490c8f62bf8abed4cea0f60f161888436ee5886b1e814784ff77da811cc7"
+      },
+      {
+        "bytes": 11527,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/intent_ir/formalize/rich_grammar.py",
+        "sha256": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b"
+      },
+      {
+        "bytes": 27163,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/intent_ir/schema.py",
+        "sha256": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56"
+      },
+      {
+        "bytes": 14098,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/ir_core/canonical.py",
+        "sha256": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0"
+      },
+      {
+        "bytes": 31823,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/ir_core/schema_registry.py",
+        "sha256": "1b214ea190a41c6a451377a03bc71ea84f6703314293ef78c5f269082eee4fbe"
+      },
+      {
+        "bytes": 109257,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/legal_ir/canonical_contracts.py",
+        "sha256": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b"
+      },
+      {
+        "bytes": 37220,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/security_ir/model.py",
+        "sha256": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39"
+      },
+      {
+        "bytes": 57876,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+        "sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f"
+      },
+      {
+        "bytes": 22146,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+        "sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df"
+      },
+      {
+        "bytes": 53460,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/python_frontend.py",
+        "sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df"
+      },
+      {
+        "bytes": 22314,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py",
+        "sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d"
+      },
+      {
+        "bytes": 14891,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py",
+        "sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15"
+      },
+      {
+        "bytes": 8128,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py",
+        "sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102"
+      },
+      {
+        "bytes": 34958,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+        "sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75"
+      },
+      {
+        "bytes": 22375,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py",
+        "sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68"
+      },
+      {
+        "bytes": 30681,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/pytest_analysis.py",
+        "sha256": "45a0ab3fae08e91db2971540e5d933c8e82c47e7f65b3e5ec88912dbedc67ab4"
+      },
+      {
+        "bytes": 54595,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py",
+        "sha256": "744c5d1699403239d3eb5e9588a38a38cbc0cc56799c2884d8821f1a4e1bdd76"
+      },
+      {
+        "bytes": 32144,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+        "sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1"
+      },
+      {
+        "bytes": 48191,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+        "sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6"
+      },
+      {
+        "bytes": 18520,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py",
+        "sha256": "4e269d1e2f39ea27582e98f240996696d61b0fe0b1358e363ff2376baa7972e3"
+      },
+      {
+        "bytes": 43440,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+        "sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51"
+      },
+      {
+        "bytes": 20976,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/bindings.py",
+        "sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc"
+      },
+      {
+        "bytes": 31668,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py",
+        "sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d"
+      },
+      {
+        "bytes": 33366,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/merkle.py",
+        "sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0"
+      },
+      {
+        "bytes": 102763,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+        "sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586"
+      },
+      {
+        "bytes": 44955,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py",
+        "sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822"
+      },
+      {
+        "bytes": 8003,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
+        "sha256": "8a044dae64a12cccee904929d60b8a7c0aec51d0266592394e237ca4bbe90e85"
+      },
+      {
+        "bytes": 28735,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_source.py",
+        "sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5"
+      },
+      {
+        "bytes": 58065,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_verification/program.py",
+        "sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+      },
+      {
+        "bytes": 76841,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_verification/source_adapters.py",
+        "sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003"
+      },
+      {
+        "bytes": 47941,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/software_verification/syntax_bridge.py",
+        "sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116"
+      },
+      {
+        "bytes": 56966,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/syntax_core/ast.py",
+        "sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4"
+      },
+      {
+        "bytes": 30488,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/syntax_core/signatures.py",
+        "sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf"
+      },
+      {
+        "bytes": 7300,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/decoder.py",
+        "sha256": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3"
+      },
+      {
+        "bytes": 120714,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/logic/ui_ux_ir/schema.py",
+        "sha256": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855"
+      },
+      {
+        "bytes": 26219,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_production.py",
+        "sha256": "735ca0597186e094d736ef58435c82956c4ab805a68fc7a6adbfc0ee21ee889f"
+      },
+      {
+        "bytes": 19364,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py",
+        "sha256": "ce80ed6294009e04580051e6eb06a817d74a8a56f04814ad0a698e3d27dd0d41"
+      },
+      {
+        "bytes": 34679,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py",
+        "sha256": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6"
+      },
+      {
+        "bytes": 14622,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_formula_codec.py",
+        "sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290"
+      },
+      {
+        "bytes": 42137,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_family_evaluator.py",
+        "sha256": "3b6cd3a6fade78fed275a478f010329e5d030a250b914c4b46ab0f0d77b9d5ab"
+      },
+      {
+        "bytes": 146870,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py",
+        "sha256": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd"
+      },
+      {
+        "bytes": 35427,
+        "matches_newer_parent_pin": true,
+        "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_latent_formula.py",
+        "sha256": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+      }
+    ],
+    "scope": "51_explicitly_listed_files_not_complete_import_closure"
+  },
+  "decision": "Preserve newer LegalIR source-alignment and native formalization progress. No initial incoming paths alter the existing header cache/session/compiler bridge owners. Keep actual immutable execution revision separate from newer datasets parent pin.",
+  "foreign_working_trees_modified": false,
+  "incoming_tests_outside_five_suite_roster_executed_here": false,
+  "initial_incoming_listed_dependency_overlap": [],
+  "initial_incoming_paths": [
+    ".gitignore",
+    "config/legal_autoformalization_source_alignment_scheduler.json",
+    "config/legal_autoformalization_source_alignment_sources.json",
+    "data/legal_autoformalization_source_alignment/LAC-S11-011/result.json",
+    "data/legal_autoformalization_source_alignment/LAC-S11-024/result.json",
+    "data/legal_autoformalization_source_alignment/LAC-S11-044/result.json",
+    "docs/architecture/legal_autoformalization_convergence/SOURCE_ALIGNMENT_PLAN.md",
+    "docs/architecture/legal_autoformalization_convergence/source-alignment.objectives.md",
+    "docs/architecture/legal_autoformalization_convergence/source-alignment.todo.md",
+    "ipfs_accelerate_py/agent_supervisor/proof/README.md",
+    "ipfs_accelerate_py/agent_supervisor/proof/native_formalization_profile.py",
+    "scripts/legal_autoformalization_source_alignment.py",
+    "scripts/validate_legal_autoformalization_source_alignment_board.py",
+    "test/api/test_agent_supervisor_native_formalization_profile.py",
+    "test/api/test_legal_autoformalization_source_alignment.py"
+  ],
+  "kit_actual_execution": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "later_accelerator_main_changes": [],
+  "listed_kit_bindings": 0,
+  "observed_at_utc": "2026-10-14T08:11:22.211886+00:00",
+  "parent_remote_main_at_observation": "6c7c63225513598d9b4ca4710d04e01994b36077",
+  "preserved_parent_gitlinks": {
+    "external/ipfs_accelerate": "c82e5774fe2ab97ccbb791416e9d77964c519d85",
+    "external/ipfs_datasets": "4e3930f7dca099ce9727512e6fba400209224652",
+    "external/ipfs_kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79"
+  },
+  "previous_published_increment": "df577aee916a20594e6672dceadd6e40e3948d16",
+  "qualified_accelerator_base": "c82e5774fe2ab97ccbb791416e9d77964c519d85",
+  "remote_main_at_observation": "c82e5774fe2ab97ccbb791416e9d77964c519d85",
+  "schema": "repository-proof-context-incoming-review@1"
+}

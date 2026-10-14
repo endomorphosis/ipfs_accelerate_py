@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="244.569" timestamp="2026-10-14T07:56:56.128931+00:00" hostname="spark-b271"><testcase classname="test.api.test_repository_proof_context" name="test_compile_render_reuses_owners_without_reexecuting_authored_provers" time="111.533" /><testcase classname="test.api.test_repository_proof_context" name="test_budget_omits_optional_digest_without_omitting_complete_conditions" time="12.618"><failure message="ipfs_accelerate_py.agent_supervisor.context.context_compiler.ContextCompilationError: max_optional_items must be an integer of at least 1">test/api/test_repository_proof_context.py:252: in test_budget_omits_optional_digest_without_omitting_complete_conditions
+    with context_case(authored, tmp_path, scheduler, optional_items=0) as case:
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+test/api/test_repository_proof_context.py:110: in context_case
+    adapter = session.context_adapter(compiler(optional_items=optional_items, tokenizer=tokenizer))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_repository_proof_context.py:79: in compiler
+    value_policy=EvidenceValuePolicy(max_optional_items=optional_items))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+&lt;string&gt;:6: in __init__
+    ???
+ipfs_accelerate_py/agent_supervisor/context/context_compiler.py:1203: in __post_init__
+    _integer(
+ipfs_accelerate_py/agent_supervisor/context/context_compiler.py:308: in _integer
+    raise ContextCompilationError(
+E   ipfs_accelerate_py.agent_supervisor.context.context_compiler.ContextCompilationError: max_optional_items must be an integer of at least 1</failure></testcase><testcase classname="test.api.test_repository_proof_context" name="test_independent_security_ir_residuals_survive_projection" time="101.987" /></testsuite></testsuites>

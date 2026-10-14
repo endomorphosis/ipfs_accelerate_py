@@ -1116,3 +1116,48 @@ original bytes within their declared scope; they do not measure learned IR
 reconstruction. Measure the complete session after the permission/process joins,
 including retrieval, expansion, edits, refresh, failures and validation. The
 proposal creates no proof authority and reports no token saving.
+
+## Checked local proof context, 2026-10-14
+
+The [proof-context bridge](repository_proof_context.md) now implements the first
+backend of that indexed-proof proposal. It wraps the existing repository adapter,
+native index and live header-proof-cache admission. The complete independently
+reviewed key and original receipt remain bound; all local theorem inputs,
+assumptions, source premises, residual obligations and frontiers are required
+context. The compiler can defer the optional proof digest while keeping those
+conditions and every caller-required IntentIR, SecurityIR and UI/UXIR reference.
+Expansion, retry and final rendering recheck source and proof eligibility.
+
+The identity review found a necessary refinement to the proposal: a native
+header key's tree is the signed task-scope CID, rather than a committed Git
+tree. The session's source-view SHA256 and private index repository ID are
+different identities again. This backend checks complete signed regular-file
+correspondence, including omitted originals, and preserves all namespaces. It
+supports a fully signed dirty candidate but makes no Git-tree equivalence claim.
+Generic committed-tree keys need a separate independently verified backend.
+
+The [current qualification record](evidence/repository-proof-context-20261014/README.md)
+uses actual signed source, Git, SQLite/DuckDB/CAS, index, session and compiler
+owners. Its existing authored fixture supplies pinned prover transcripts;
+no native solver/kernel, provider, model, training or worker runs. Cache reuse
+does not prove execution, whole-program correctness or task completion. Sequential
+closing checks still require consumer-boundary validation and do not exclude
+filesystem writers. Record their scan and cache overhead in the eventual trial.
+
+The [parallel survey](evidence/repository-proof-context-20261014/parallel-work-survey.json)
+retains the scoped review of capsule working sets, provider-failure checkpoints,
+repository context, native formalization proposals and model catalogs. The
+[incoming review](evidence/repository-proof-context-20261014/incoming-integration-review.json)
+records byte compatibility with the frozen execution. Preserve the newer LegalIR
+source-alignment and datasets progress when publishing this bridge. Separate
+family/schema/version/decoder-task and 8D/384D/768D assets remain the basis for
+later learned reconstruction; this source-backed proof join changes none of them.
+
+Next, qualify a trusted deployed consumer alongside the existing permission,
+claim, profile and instruction joins. Then extend admitted proof families and
+multi-receipt dependency closure before choosing retrieval defaults. Freeze
+matched complete-session Terminal Bench trials, including every planning,
+coding, lookup, expansion, edit, refresh, verification, retry and failed attempt.
+Compare total input/output tokens and latency at matched official success.
+Reversible source restoration, learned semantic reconstruction, proof status
+and complete-session savings remain separate measurements.

@@ -1,0 +1,28 @@
+{
+  "authored_prover_transcripts": true,
+  "collection_execution_agrees": true,
+  "elapsed_seconds": 2420.219,
+  "errors": 0,
+  "failures": 0,
+  "model_calls": 0,
+  "native_solver_or_kernel_executions": 0,
+  "new_cases": 38,
+  "previous_counts_added": false,
+  "provider_calls": 0,
+  "recorded_at_utc": "2026-10-14T09:02:07.474682+00:00",
+  "schema": "repository-proof-context-complete-qualification-summary@1",
+  "selected_qualification": "qualification-03",
+  "selected_tests": 180,
+  "skips": 0,
+  "source_before_after_equal": true,
+  "source_bindings": 250,
+  "suites": {
+    "test.api.test_repository_context_compiler": 46,
+    "test.api.test_repository_context_optional_evidence": 11,
+    "test.api.test_repository_proof_context": 38,
+    "test.api.test_repository_source_index": 44,
+    "test.api.test_repository_source_session": 41
+  },
+  "timing_scope": "authored_test_run_not_production_latency_or_matched_session_usage",
+  "total_session_token_savings_established": false
+}

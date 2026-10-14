@@ -1,0 +1,264 @@
+{
+  "accelerator_base": "c82e5774fe2ab97ccbb791416e9d77964c519d85",
+  "authored_pinned_prover_transcripts": true,
+  "completion_authority": false,
+  "datasets_actual_execution": "a0f60d42f836571a0023515e92dfb0e5724f0d79",
+  "execution_authority": false,
+  "files": [
+    {
+      "bytes": 7767,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/README.md",
+      "sha256": "044929ee463ba9dd6401da78976913662f5aaa79ff8aa897c1597b67248b5cab"
+    },
+    {
+      "bytes": 14105,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/doc_qualification_runner.py",
+      "sha256": "b31871ae7da2fd595892bb06f34b407e7d962e8c20d6aa32ac44bbf7261ae48d"
+    },
+    {
+      "bytes": 162086,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/documentation-checks.json",
+      "sha256": "4f3a10244bfaa80a60a06a9175156a10124a4ffa1fb412bcdc996893b6c59a86"
+    },
+    {
+      "bytes": 2753,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/documentation-workflow.log",
+      "sha256": "96ac6a6a376bae15b0ba4ed99676e16403a45a5ea6bb1881377000187c1837ed"
+    },
+    {
+      "bytes": 1023,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/fixture-correction.json",
+      "sha256": "f90f279ce0156258e581d458fbe28d44acf3c84a6019269874271218f89aebae"
+    },
+    {
+      "bytes": 3477,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/implementation-review.json",
+      "sha256": "e7b48d85bdb452883ac231d3501e1819e780b2564470d1e45810fef1c67f9e45"
+    },
+    {
+      "bytes": 15339,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/incoming-integration-review.json",
+      "sha256": "12e730be5c0e6ba1b7f06b363d51eaad6d4be0236f1b38221911220be8757622"
+    },
+    {
+      "bytes": 5187,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/observe_hosted_ci.py",
+      "sha256": "37111d7cece618c72a9d8606c4c128f10e81e3fe04fd4109fb1eef187e0e8486"
+    },
+    {
+      "bytes": 9768,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/parallel-work-survey.json",
+      "sha256": "4f7255c9b072f999eec859a1311b97d9140b693cebaeeffea8430084eca49e9d"
+    },
+    {
+      "bytes": 130308,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-01/commands.json",
+      "sha256": "e80b57c5e25d4492067cd0365646a10f4fe15e10e49f3fa0a917f212d91f4ebf"
+    },
+    {
+      "bytes": 2044,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-01/junit.xml",
+      "sha256": "f7e039308736d54cbc77c0639c0cd5ad541fd01d35c1fe1c24669f03d36963ad"
+    },
+    {
+      "bytes": 9712,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification_runner.py.snapshot.txt",
+      "sha256": "9a2cc6b3638152142c377c0b566f9ce4b32e02ff9250f99e9b798af973d6e4a3"
+    },
+    {
+      "bytes": 24157,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_context.py.snapshot.txt",
+      "sha256": "8190c300d54ae2ad023fa8e720f0772519956b67de8722c39087a04e8c364558"
+    },
+    {
+      "bytes": 17258,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_context_projection.py.snapshot.txt",
+      "sha256": "a830f856f61a89d7b0607d77c626b818d678eabaf6b0f3a1a03babfb328c8180"
+    },
+    {
+      "bytes": 23845,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_source_binding.py.snapshot.txt",
+      "sha256": "0ec97f6fdd0df8b68961a759e3898bc9ac52a041a83462de0af1318ce4e1548f"
+    },
+    {
+      "bytes": 27263,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-01/source-snapshot/test/api/test_repository_proof_context.py.snapshot.txt",
+      "sha256": "16d2934c11436840d9c4be4f2fbe763f980334956488cb1069c82c1a3b606717"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-01/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 27230,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-01/tests.stdout.log",
+      "sha256": "483c59ac4ff8df73c5478ac0524aea7ce49f7b4b98172cbd1268b0a860d0b748"
+    },
+    {
+      "bytes": 130420,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-02/commands.json",
+      "sha256": "d586780a981ee60d570fd85104fc13cbd58ff43eb0b036767a0bfcf1db337b91"
+    },
+    {
+      "bytes": 1211,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-02/junit.xml",
+      "sha256": "cb084a5fb800b9758f5cf3378c33097b08cac4b6f6462a79818a10033b0103ca"
+    },
+    {
+      "bytes": 9973,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-02/source-snapshot/docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification_runner.py.snapshot.txt",
+      "sha256": "a38e7b4d9109c2df730da51c8eeda2bc736f96af1fb98880b8503b1d360a5673"
+    },
+    {
+      "bytes": 24157,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_context.py.snapshot.txt",
+      "sha256": "8190c300d54ae2ad023fa8e720f0772519956b67de8722c39087a04e8c364558"
+    },
+    {
+      "bytes": 17258,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_context_projection.py.snapshot.txt",
+      "sha256": "a830f856f61a89d7b0607d77c626b818d678eabaf6b0f3a1a03babfb328c8180"
+    },
+    {
+      "bytes": 23845,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-02/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_source_binding.py.snapshot.txt",
+      "sha256": "0ec97f6fdd0df8b68961a759e3898bc9ac52a041a83462de0af1318ce4e1548f"
+    },
+    {
+      "bytes": 27750,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-02/source-snapshot/test/api/test_repository_proof_context.py.snapshot.txt",
+      "sha256": "9ae4bd51d2f2fe762e5abfe3f9187d776f8062af0af325d79192029603b7d19a"
+    },
+    {
+      "bytes": 4795,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-02/tests.stderr.log",
+      "sha256": "00235dd8c4a5afa88b116f6574d1bc0609fcca85f5acc1b57d12b0fb5656b084"
+    },
+    {
+      "bytes": 1211,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-02/tests.stdout.log",
+      "sha256": "3709622f7ec37299358266c7ca29a45a365f6cd988afbd3776ba88d1010cb35b"
+    },
+    {
+      "bytes": 130442,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-03/commands.json",
+      "sha256": "4e67441ad512db4540a2c7ff002f84d93ed3ce726798b22f33e605af154981ff"
+    },
+    {
+      "bytes": 27607,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-03/junit.xml",
+      "sha256": "8680b91670d7ae371f9f22cea52667ac6eb088347933d7f9dd6ca50cdb2f896e"
+    },
+    {
+      "bytes": 9987,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-03/source-snapshot/docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification_runner.py.snapshot.txt",
+      "sha256": "d022366d028970cc5713355a2151a8010c2e4c18a5736c6e7fde765044bb4bf5"
+    },
+    {
+      "bytes": 24157,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_context.py.snapshot.txt",
+      "sha256": "8190c300d54ae2ad023fa8e720f0772519956b67de8722c39087a04e8c364558"
+    },
+    {
+      "bytes": 17258,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_context_projection.py.snapshot.txt",
+      "sha256": "a830f856f61a89d7b0607d77c626b818d678eabaf6b0f3a1a03babfb328c8180"
+    },
+    {
+      "bytes": 23845,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-03/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_source_binding.py.snapshot.txt",
+      "sha256": "0ec97f6fdd0df8b68961a759e3898bc9ac52a041a83462de0af1318ce4e1548f"
+    },
+    {
+      "bytes": 27770,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-03/source-snapshot/test/api/test_repository_proof_context.py.snapshot.txt",
+      "sha256": "95e1cbbac63d0a0fe3dff354d95b5858431e74ee2385ca0f3b1f4084d012c661"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-03/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 24693,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-03/tests.stdout.log",
+      "sha256": "ffc711e1616b293a41a28c3445ee214298ce95be8715afcc237b6ec5482d9dc4"
+    },
+    {
+      "bytes": 843,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-interruption.json",
+      "sha256": "b43999768ddfdf23a18258c7e316aa21b7f8f1216fd3a1d416cd6ab0ea2af3a1"
+    },
+    {
+      "bytes": 985,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification-summary.json",
+      "sha256": "4b69303785bfe4669f98f4cd38a28a5335ad75936f8d65dbbf964047980acfd9"
+    },
+    {
+      "bytes": 9987,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/qualification_runner.py",
+      "sha256": "d022366d028970cc5713355a2151a8010c2e4c18a5736c6e7fde765044bb4bf5"
+    },
+    {
+      "bytes": 924,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/query-fixture-correction.json",
+      "sha256": "4e26619ca86238554bbb8df21eb50ee1565d24203657a58005cd7026fbdc8be5"
+    },
+    {
+      "bytes": 30777,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/source-inventory.json",
+      "sha256": "631ea750a9706df182a01320bb59da123c127807ba7fe961b1b400a2053f92eb"
+    },
+    {
+      "bytes": 253,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/targets.json",
+      "sha256": "dae3baf40b748c69a2fdfc3ca1e61f0a501fa7da507ce14f7d07288459893a03"
+    },
+    {
+      "bytes": 10332,
+      "path": "docs/agent_supervisor/repository_proof_context.md",
+      "sha256": "543d1dadd1cd87bd2d8b796888a4c81e647b810d0155e2edc5ead00d9cc18d31"
+    },
+    {
+      "bytes": 84251,
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "7deedad1ec7dd5d58f0944032293ec5edb3e0c515011dc4a208842ad68f7e737"
+    },
+    {
+      "bytes": 24157,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_context.py",
+      "sha256": "8190c300d54ae2ad023fa8e720f0772519956b67de8722c39087a04e8c364558"
+    },
+    {
+      "bytes": 17258,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_context_projection.py",
+      "sha256": "a830f856f61a89d7b0607d77c626b818d678eabaf6b0f3a1a03babfb328c8180"
+    },
+    {
+      "bytes": 23845,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_source_binding.py",
+      "sha256": "0ec97f6fdd0df8b68961a759e3898bc9ac52a041a83462de0af1318ce4e1548f"
+    },
+    {
+      "bytes": 27770,
+      "path": "test/api/test_repository_proof_context.py",
+      "sha256": "95e1cbbac63d0a0fe3dff354d95b5858431e74ee2385ca0f3b1f4084d012c661"
+    }
+  ],
+  "kit_actual_execution": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "manifest_self_excluded": true,
+  "model_calls": 0,
+  "native_solver_or_kernel_executions": 0,
+  "new_cases": 38,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "schema": "repository-proof-context-manifest@1",
+  "selected_documentation": "documentation-checks.json",
+  "selected_qualification": "qualification-03",
+  "selected_tests": 180,
+  "source_bindings": 250,
+  "suites": 5,
+  "total_session_token_savings_established": false,
+  "training_steps": 0
+}

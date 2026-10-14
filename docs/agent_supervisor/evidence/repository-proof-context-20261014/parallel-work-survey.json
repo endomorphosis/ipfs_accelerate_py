@@ -1,0 +1,229 @@
+{
+  "decision": "Reuse existing repository session/index/compiler and native header proof-cache owners. Keep capsule retrieval, provider-failure retention, native formalization proposals and IR catalogs independent; review incoming main before publication.",
+  "foreign_files_modified": false,
+  "foreign_refs_mutated": false,
+  "foreign_tests_executed": false,
+  "local_head_refs_observed": 156,
+  "local_worktree_records_observed": 68,
+  "observed_at_utc": "2026-10-14T08:06:54.941316+00:00",
+  "records": [
+    {
+      "bridge_paths_present": false,
+      "head": "513abbb94fef9c8e215f77734b465436eb74bd1f",
+      "head_after_read": "513abbb94fef9c8e215f77734b465436eb74bd1f",
+      "ref": "codex/supervisor-residual-context-20261014",
+      "scoped_related_files": [
+        {
+          "bytes": 12307,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_failure_policy.py",
+          "sha256": "9b71ae6942bc60a574052e58aa4666563ae02fdaeaa7ae72b5c1958d714adddc"
+        },
+        {
+          "bytes": 22746,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py",
+          "sha256": "28e386246430a6ee46152d3ef3b2bb755fcccc6ce6653b7fb91aab8de6354c29"
+        },
+        {
+          "bytes": 5151,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence.py",
+          "sha256": "ab3367e0f974a6a7e7fa5de5b76815896e3ee00cc898d4a9fba5da4d5665917b"
+        },
+        {
+          "bytes": 12365,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence_client.py",
+          "sha256": "e4714fd9bffa8275cb6570039139d7cc7aa8399681ce18ef76be9243c59cb736"
+        },
+        {
+          "bytes": 37473,
+          "path": "test/api/test_native_provider_failure_settlement.py",
+          "sha256": "7307d5199cbe2aa3162bf0599ca9ccd70cc425f683fb5cafbad2a90c20ee940d"
+        },
+        {
+          "bytes": 8869,
+          "path": "test/api/test_router_provider_failure_diagnostics.py",
+          "sha256": "cb6e4ed216776e1253d4c0f2ae990517b89745eecaff0391553de06132513f0b"
+        },
+        {
+          "bytes": 20095,
+          "path": "test/api/test_semantic_working_set.py",
+          "sha256": "9ecdfae9908a7c639a34c0e46087111efe0b96433c62f56d83ac509beea47fd8"
+        },
+        {
+          "bytes": 11214,
+          "path": "test/api/test_semantic_working_set_dispatch.py",
+          "sha256": "427248e229ddcbc3635159be9834feae91fb1ecd5ac7c451acb6c114ace49c6a"
+        },
+        {
+          "bytes": 16167,
+          "path": "test/api/test_worker_semantic_evidence.py",
+          "sha256": "78769d45eef8628597626560c8bbbc1068f87a30889fc7eb6fd99975a8e32f4e"
+        }
+      ]
+    },
+    {
+      "bridge_paths_present": false,
+      "head": "d49548e9a4823b6dfc3017e927dea7012770b4e3",
+      "head_after_read": "d49548e9a4823b6dfc3017e927dea7012770b4e3",
+      "ref": "codex/supervisor-coding-checkpoints-20261014",
+      "scoped_related_files": [
+        {
+          "bytes": 12307,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_failure_policy.py",
+          "sha256": "9b71ae6942bc60a574052e58aa4666563ae02fdaeaa7ae72b5c1958d714adddc"
+        },
+        {
+          "bytes": 22746,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py",
+          "sha256": "28e386246430a6ee46152d3ef3b2bb755fcccc6ce6653b7fb91aab8de6354c29"
+        },
+        {
+          "bytes": 5151,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence.py",
+          "sha256": "ab3367e0f974a6a7e7fa5de5b76815896e3ee00cc898d4a9fba5da4d5665917b"
+        },
+        {
+          "bytes": 12365,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence_client.py",
+          "sha256": "e4714fd9bffa8275cb6570039139d7cc7aa8399681ce18ef76be9243c59cb736"
+        },
+        {
+          "bytes": 40549,
+          "path": "test/api/test_native_provider_failure_settlement.py",
+          "sha256": "e30b285b125165859df6184cefe9a057df21fd5ac83f3b898271e9c6407000c2"
+        },
+        {
+          "bytes": 12733,
+          "path": "test/api/test_provider_failure_checkpoint_retention.py",
+          "sha256": "9e3875f17ca75bed1543698028c400e414ba2cdef9d03ca0040deb01d4487518"
+        },
+        {
+          "bytes": 5178,
+          "path": "test/api/test_provider_failure_retry_context.py",
+          "sha256": "514dca1a228be88631e57a8deb0ae3a953b3e807d62ca636d39bb0eb75a9f78c"
+        },
+        {
+          "bytes": 8869,
+          "path": "test/api/test_router_provider_failure_diagnostics.py",
+          "sha256": "cb6e4ed216776e1253d4c0f2ae990517b89745eecaff0391553de06132513f0b"
+        },
+        {
+          "bytes": 20095,
+          "path": "test/api/test_semantic_working_set.py",
+          "sha256": "9ecdfae9908a7c639a34c0e46087111efe0b96433c62f56d83ac509beea47fd8"
+        },
+        {
+          "bytes": 11214,
+          "path": "test/api/test_semantic_working_set_dispatch.py",
+          "sha256": "427248e229ddcbc3635159be9834feae91fb1ecd5ac7c451acb6c114ace49c6a"
+        },
+        {
+          "bytes": 16167,
+          "path": "test/api/test_worker_semantic_evidence.py",
+          "sha256": "78769d45eef8628597626560c8bbbc1068f87a30889fc7eb6fd99975a8e32f4e"
+        }
+      ]
+    },
+    {
+      "bridge_paths_present": false,
+      "head": "f694117c1e26de9ead13834cb7a72bbf9b9f942c",
+      "head_after_read": "f694117c1e26de9ead13834cb7a72bbf9b9f942c",
+      "ref": "codex/legal-ir-native-profile-integrated-20261014",
+      "scoped_related_files": [
+        {
+          "bytes": 17475,
+          "path": "docs/agent_supervisor/evidence/native-source-worker-spawn-20261014/qualification-06/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/repository_context_compiler.py.snapshot.txt",
+          "sha256": "062ee527eed3f2435d4269a6af8ca93da95628b66c7151e22561ff4be870461c"
+        },
+        {
+          "bytes": 26365,
+          "path": "docs/agent_supervisor/evidence/native-source-worker-spawn-20261014/qualification-06/source-snapshot/test/api/test_repository_context_compiler.py.snapshot.txt",
+          "sha256": "1e8480d18a6b39e0372678dc2534201f44a71fd7ad80c1d1eadd1d201993d8a9"
+        },
+        {
+          "bytes": 19680,
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/native_formalization_profile.py",
+          "sha256": "88065c114f669b2ffdf555715f99a0d5ee3a57634ef5987aaf526cb379f7549a"
+        },
+        {
+          "bytes": 12307,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_failure_policy.py",
+          "sha256": "9b71ae6942bc60a574052e58aa4666563ae02fdaeaa7ae72b5c1958d714adddc"
+        },
+        {
+          "bytes": 17475,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_context_compiler.py",
+          "sha256": "062ee527eed3f2435d4269a6af8ca93da95628b66c7151e22561ff4be870461c"
+        },
+        {
+          "bytes": 16253,
+          "path": "test/api/test_agent_supervisor_native_formalization_profile.py",
+          "sha256": "0be915d454234ba630ad4da0ef29698c72e0cb80f4c2582c7ad7e70a1b5b58c3"
+        },
+        {
+          "bytes": 37473,
+          "path": "test/api/test_native_provider_failure_settlement.py",
+          "sha256": "7307d5199cbe2aa3162bf0599ca9ccd70cc425f683fb5cafbad2a90c20ee940d"
+        },
+        {
+          "bytes": 26365,
+          "path": "test/api/test_repository_context_compiler.py",
+          "sha256": "1e8480d18a6b39e0372678dc2534201f44a71fd7ad80c1d1eadd1d201993d8a9"
+        },
+        {
+          "bytes": 8869,
+          "path": "test/api/test_router_provider_failure_diagnostics.py",
+          "sha256": "cb6e4ed216776e1253d4c0f2ae990517b89745eecaff0391553de06132513f0b"
+        }
+      ]
+    },
+    {
+      "bridge_paths_present": false,
+      "head": "ce2cd1026f21e52384ddf29c50c4a459baef927e",
+      "head_after_read": "ce2cd1026f21e52384ddf29c50c4a459baef927e",
+      "ref": "codex/repository-context-compiler-20261013",
+      "scoped_related_files": [
+        {
+          "bytes": 12307,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_failure_policy.py",
+          "sha256": "9b71ae6942bc60a574052e58aa4666563ae02fdaeaa7ae72b5c1958d714adddc"
+        },
+        {
+          "bytes": 16474,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_context_compiler.py",
+          "sha256": "7e6df7da7d414a2d920b787f4a50859c76f1d8d7fa6dc2aebc6aee882dde412e"
+        },
+        {
+          "bytes": 37473,
+          "path": "test/api/test_native_provider_failure_settlement.py",
+          "sha256": "7307d5199cbe2aa3162bf0599ca9ccd70cc425f683fb5cafbad2a90c20ee940d"
+        },
+        {
+          "bytes": 26365,
+          "path": "test/api/test_repository_context_compiler.py",
+          "sha256": "1e8480d18a6b39e0372678dc2534201f44a71fd7ad80c1d1eadd1d201993d8a9"
+        },
+        {
+          "bytes": 8869,
+          "path": "test/api/test_router_provider_failure_diagnostics.py",
+          "sha256": "cb6e4ed216776e1253d4c0f2ae990517b89745eecaff0391553de06132513f0b"
+        }
+      ]
+    },
+    {
+      "bridge_paths_present": false,
+      "head": "dad94e4f2f542c7307dc0ce08613fa1ece469418",
+      "head_after_read": "dad94e4f2f542c7307dc0ce08613fa1ece469418",
+      "ref": "codex/ir-persistent-catalog-20261004",
+      "scoped_related_files": [
+        {
+          "bytes": 12307,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_failure_policy.py",
+          "sha256": "9b71ae6942bc60a574052e58aa4666563ae02fdaeaa7ae72b5c1958d714adddc"
+        }
+      ]
+    }
+  ],
+  "schema": "repository-proof-context-parallel-survey@1",
+  "scope": "five_local_refs_and_their_supervisor_docs_api_trees",
+  "whole_git_ref_absence_claim": false
+}

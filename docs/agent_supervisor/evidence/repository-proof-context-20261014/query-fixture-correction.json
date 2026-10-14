@@ -1,0 +1,14 @@
+{
+  "corrected_source_sha256": "95e1cbbac63d0a0fe3dff354d95b5858431e74ee2385ca0f3b1f4084d012c661",
+  "correction": "Use exact authored clean_label clean_payload symbol query; existing repository capsule lexical vocabulary unchanged.",
+  "failure": "Short queryclean has no exact underscore-bearing symbol matches; native_handle asserted before expansion.",
+  "original_attempt": "qualification-02",
+  "original_raw_evidence_preserved": true,
+  "original_source_sha256": "9ae4bd51d2f2fe762e5abfe3f9187d776f8062af0af325d79192029603b7d19a",
+  "production_source_changed": false,
+  "recorded_at_utc": "2026-10-14T08:21:15.058273+00:00",
+  "runner_change": "Subsequent full attempt stops on first failure (--maxfail=1); a final passing full attempt still must execute the complete180case roster.",
+  "schema": "repository-proof-context-query-fixture-correction@1",
+  "static_new_cases": 38,
+  "tests_executed_by_repair": false
+}
