@@ -203,8 +203,10 @@ and one outstanding proposal; `mapped-span@1` keeps its single-edit contract.
 Matching confirmation failures observed by the owner block further mapped edits
 in version 2. A client reporting an uncertain write must stop and inspect the
 source, including when its failure occurs after the owner sends the response.
-The provider response is authored; full runtime
-deployment and live Terminal-Bench token savings remain unmeasured.
+That probe's provider response is authored. The subsequent
+[live benchmark](compact_worker_benchmark.md) exercises the full runtime and a
+confirmed mapped edit with Grok, with official task acceptance. Its source-only
+comparison does not establish token savings.
 
 ## Complete repository inventories in the same CAS
 

@@ -1,0 +1,151 @@
+{
+  "checks": [
+    {
+      "detail": "Bounded canonical regular-file descriptor reads reject links, changed identities, duplicate JSON members and nonfinite numbers.",
+      "id": "bounded_metadata_reads",
+      "result": "passed"
+    },
+    {
+      "detail": "Provider-specific completeness is reused, arithmetic checked, and missing or incoherent counters remain unknown.",
+      "id": "native_usage_contract",
+      "result": "passed"
+    },
+    {
+      "detail": "Final total equals input plus cached-input plus cache-write-input plus output; reported total is retained once.",
+      "id": "grok_disjoint_categories",
+      "result": "passed"
+    },
+    {
+      "detail": "Final cumulative total equals input plus output; cached input is not added again.",
+      "id": "codex_included_cache",
+      "result": "passed"
+    },
+    {
+      "detail": "Any incomplete retained invocation or unreceipted-provider marker prevents complete aggregate token totals.",
+      "id": "incomplete_or_unreceipted_usage",
+      "result": "passed"
+    },
+    {
+      "detail": "Input population must exactly equal the hash-bound lock. Pending, failed and trial-less registered attempts remain visible and prevent complete aggregate usage.",
+      "id": "attempt_retention",
+      "result": "passed"
+    },
+    {
+      "detail": "Reported zero-generation prepare failures are separately retained; absent executed-trial usage is not fabricated as zero tokens.",
+      "id": "preparation_failures",
+      "result": "passed"
+    },
+    {
+      "detail": "Exact configuration audit permits only source_view_profile and jobs_dir differences, with common archive, route, task, resource and frozen host source bindings.",
+      "id": "configuration_controls",
+      "result": "passed"
+    },
+    {
+      "detail": "Generic comparator output is retained with its source_view_profile omission explicitly disclosed; it is supplemented by exact complete configuration comparison.",
+      "id": "generic_comparator_limit",
+      "result": "passed"
+    },
+    {
+      "detail": "Observed attempts bind frozen start identities, exact task and provider route, retained receipt hash and postlaunch unchanged controls; unmatched or pending runtime suppresses token deltas.",
+      "id": "launch_and_receipt_joins",
+      "result": "passed"
+    },
+    {
+      "detail": "Nonempty observed owner sessions must join exact invocation, session, descriptor, selected profile and mapped-span@2 metadata.",
+      "id": "source_dispatch_observation_join",
+      "result": "passed"
+    },
+    {
+      "detail": "Complete closed aggregate and per-session base counter sets are required; base and edit aggregates and status totals are recomputed. Global unique counts are bounded rather than incorrectly summed across sessions.",
+      "id": "source_count_closure",
+      "result": "passed"
+    },
+    {
+      "detail": "Delivered prepare/confirmation counts identify observed helper use. Missing helper telemetry and ordinary shell/edit tool census remain unknown; helper use conveys no proof or acceptance authority.",
+      "id": "helper_vs_ordinary_tools",
+      "result": "passed"
+    },
+    {
+      "detail": "Only fixed-key numerical metadata, bounded status tags, hashes and artifact bindings are emitted; source text, prompts, queries and transcript bodies are not exported.",
+      "id": "closed_output_projection",
+      "result": "passed"
+    },
+    {
+      "detail": "Registered two-attempt full/full identity-versus-comments pair is distinct from a native Codex baseline. No billing completeness, randomization, statistical result, causality or token advantage is asserted.",
+      "id": "comparison_scope",
+      "result": "passed"
+    }
+  ],
+  "evidence_bindings": {
+    "live-readout-checks.json": {
+      "bytes": 2018,
+      "filename": "live-readout-checks.json",
+      "sha256": "071223d36e345b37ff0fb52a91c8f3e3eb6f06f7e8666cda00feb26f9789e815"
+    },
+    "live-readout-preflight-02.json": {
+      "bytes": 8387,
+      "filename": "live-readout-preflight-02.json",
+      "sha256": "60b1786ea69246c7d23ca62e6309700a6107fb61e739ff96e120feab08240aef"
+    },
+    "pair-lock.json": {
+      "bytes": 79226,
+      "filename": "pair-lock.json",
+      "sha256": "295b12b3f4464bbab8422ce8fdfe0414949fd3295948a54426a95ce48e015fa5"
+    }
+  },
+  "hidden_verifier_or_solution_contents_read": false,
+  "limitations": [
+    "This review validates the observer, not final live results; both retained preflight arms had no trial receipts and token totals remained null.",
+    "Prelaunch authenticity and custody belong to the independently frozen execution lock, not the postprocessing reader.",
+    "Retained native usage covers registered observed sessions, not unknown auxiliary providers or an independently reconciled bill.",
+    "Source counters are retained owner metadata; ordinary native tools, original-versus-compact slice composition and full bidirectional request bytes are not inferred.",
+    "Historical preflight-02 was produced before final source-count hardening and is retained as a pending-state example, not final-code live qualification.",
+    "No provider calls, source execution, production edits, full test-suite reruns, transcripts or hidden verifier contents were needed for this independent review."
+  ],
+  "owner_authored_validation": {
+    "failed": 0,
+    "independently_rerun": false,
+    "passed": 35,
+    "scope": "Authored accounting/refusal checks plus retained content-free Docker metadata replay; not a live comparison."
+  },
+  "production_files_changed": false,
+  "raw_model_transcripts_read": false,
+  "release_blockers": [],
+  "resolved_findings": [
+    {
+      "id": "observed_empty_or_partial_source_counts",
+      "resolution": "Collector now requires nonempty owner sessions joined to actual dispatches and exact aggregate/per-session counter key sets before reporting observed zero helper use. Four new authored refusal checks cover missing aggregate/session counters, empty sessions and missing dispatcher."
+    }
+  ],
+  "review_scope": "Read-only inspection of artifact-only collector and authored validation receipts; no live outcome or raw model transcript review.",
+  "reviewer_provider_calls": 0,
+  "schema": "compact-source-live-readout-independent-review@1",
+  "source_bindings": {
+    "benchmark_comparison.py": {
+      "bytes": 59614,
+      "filename": "benchmark_comparison.py",
+      "sha256": "fba2883f6139b7f6e781d3cbb3858e2d3ec2bf695d51f6e4a9fbac49e2c25d9c"
+    },
+    "benchmark_controls.py": {
+      "bytes": 18980,
+      "filename": "benchmark_controls.py",
+      "sha256": "333a9c7617c8d7a79ca8649bdf4759b0425493b22a00834654e0101daa5b9e3d"
+    },
+    "check_live_readout.py": {
+      "bytes": 11017,
+      "filename": "check_live_readout.py",
+      "sha256": "d90b847b2f506cac98c212969c58177f061bd82dfb3a11b98bc71dcce99afee2"
+    },
+    "collect_live_readout.py": {
+      "bytes": 30285,
+      "filename": "collect_live_readout.py",
+      "sha256": "d24c768eb18e69bc921d51dd0586e77e19f1659500486439129e40a5f9da936e"
+    },
+    "native_usage_accounting.py": {
+      "bytes": 2282,
+      "filename": "native_usage_accounting.py",
+      "sha256": "a21c831eed08c9c1692121f912000ebc03a7c7d04adf9a68fd0dcba0d61cc67e"
+    }
+  },
+  "status": "passed"
+}

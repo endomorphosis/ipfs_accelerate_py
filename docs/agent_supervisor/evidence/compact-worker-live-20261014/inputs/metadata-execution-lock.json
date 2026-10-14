@@ -1,0 +1,70 @@
+{
+  "allowed_config_difference_paths": [
+    "/agents/0/kwargs/semantic_metadata_view",
+    "/jobs_dir"
+  ],
+  "comparison_scope": "Separate sequential metadata treatment compared with completed comments baseline; original source-view pair unchanged.",
+  "created_at_utc": "2026-10-14T00:17:15.381486+00:00",
+  "execution_authorization": "Root separately releases actual execution; creating this lock does not launch.",
+  "files": {
+    "archive": {
+      "bytes": 1411353200,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-preparation/runtime-01/runtime.tar.gz",
+      "sha256": "1fe8bfc4564a916174c4b9df42c7243d6b0e6fd8b1e71593a2385bf7fbe8d157"
+    },
+    "baseline_launch_result": {
+      "bytes": 681,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-02/launch-result.json",
+      "sha256": "01f4fe9c20a783c14a0967e259cc3d8912ac2b8defef12ce20a0d412ffa367c9"
+    },
+    "baseline_pair_lock": {
+      "bytes": 79226,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/pair-lock.json",
+      "sha256": "295b12b3f4464bbab8422ce8fdfe0414949fd3295948a54426a95ce48e015fa5"
+    },
+    "configuration": {
+      "bytes": 3476,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-metadata-03/config.json",
+      "sha256": "4e591d2aa53ee684658920bcbe7c7d742db068b9a7dd9e6449c98e7dd12f66b0"
+    },
+    "environment": {
+      "bytes": 1652,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-environment.json",
+      "sha256": "f37fbd3c39a10d76a51a238d8a62887deec29cb1484641ad3965e1d621764c89"
+    },
+    "independent_preparation_review": {
+      "bytes": 1102,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/metadata-treatment-independent-preparation-review-03.json",
+      "sha256": "a0fe02120ac92d76e679cab26990b2db3038253da07a1b34d4d0f7e8f9c5f095"
+    },
+    "preparation": {
+      "bytes": 83457,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-comments-metadata-03/preparation.json",
+      "sha256": "8c8d8c542fa776dd5a8355b599ded43a86f11e5238b6d209ea9b5fd9a1defe1f"
+    },
+    "recipe": {
+      "bytes": 4034,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-preparation/metadata-treatment-recipe-03.json",
+      "sha256": "d0fc7c60a6a7ced9852f0a33aaaf32e43a64071417940d6fa5702832bb3c55e8"
+    },
+    "release": {
+      "bytes": 78217,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/metadata-treatment-release-03.json",
+      "sha256": "ed430e96262f21f252e9f440ccfb6c91e202c5597c53b12c3f873eba336d14af"
+    },
+    "runner": {
+      "bytes": 5749,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/run_metadata_treatment_03.py",
+      "sha256": "f8f9705fd38487d5a1afc2b4de0d3fbc9cf45f79480973b2b3f3baaba986ece5"
+    },
+    "runtime_manifest": {
+      "bytes": 6218585,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-preparation/runtime-01/manifest.json",
+      "sha256": "17af783e768ae1803ae4db97fc5e9e0b49485a5fd1a3f2addbc65b1a050ca890"
+    }
+  },
+  "frozen_before_launch": true,
+  "label": "comments-metadata",
+  "original_pair_lock_unchanged": true,
+  "schema": "compact-metadata-live-execution-lock@1"
+}

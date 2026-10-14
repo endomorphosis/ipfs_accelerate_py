@@ -1,0 +1,108 @@
+{
+  "authored_validation": {
+    "failed": 0,
+    "independently_rerun": false,
+    "new_checks": 3,
+    "passed": 38,
+    "scope": "Authored accounting/refusal checks plus retained content-free Docker metadata replay; not a live comparison."
+  },
+  "checks": [
+    {
+      "detail": "Reviewed terminal_container_supervisor.py planning interruption and possible coding dispatch without receipt; both emit a phase/usage/reason mapping, not literal True. Only closed boolean presence is exported by the collector.",
+      "id": "actual_producer_contract",
+      "result": "passed"
+    },
+    {
+      "detail": "Byte comparison against retained old collector confirms the sole change is conservative marker detection: any value other than None or literal False prevents aggregate completeness.",
+      "id": "minimal_collector_delta",
+      "result": "passed"
+    },
+    {
+      "detail": "New producer-shaped coding-failure regression includes a complete planning invocation: reported native planning counts remain visible while complete aggregate tokens become null.",
+      "id": "actual_failure_mapping",
+      "result": "passed"
+    },
+    {
+      "detail": "Missing or None marker retains prior behavior; literal False regression confirms known complete usage stays complete.",
+      "id": "absence_and_false",
+      "result": "passed"
+    },
+    {
+      "detail": "An empty mapping is treated as potential missing usage instead of silently establishing completeness; regression passes.",
+      "id": "malformed_present_marker",
+      "result": "passed"
+    },
+    {
+      "detail": "Existing collect path requires all trial usage native_usage_complete_observed flags before summing aggregate tokens or computing the paired difference; the corrected false flag therefore suppresses both.",
+      "id": "aggregate_and_pair_propagation",
+      "result": "passed"
+    },
+    {
+      "detail": "No fields from the failure mapping are copied into output; lock/config comparison, bounded metadata reads, source-use closure, cache arithmetic and ordinary-tool unknown handling are unchanged.",
+      "id": "scope_and_privacy_unchanged",
+      "result": "passed"
+    },
+    {
+      "detail": "Old collector/helper/checks, independent review and freeze remain retained separately; new hashes and 38-check receipt identify the final observational version.",
+      "id": "preserved_history",
+      "result": "passed"
+    }
+  ],
+  "hidden_verifier_or_solution_contents_read": false,
+  "no_live_outcome_assessed": true,
+  "production_files_changed": false,
+  "raw_model_transcripts_read": false,
+  "release_blockers": [],
+  "remaining_limitations": [
+    "This review validates the observer, not final live results; both retained preflight arms had no trial receipts and token totals remained null.",
+    "Prelaunch authenticity and custody belong to the independently frozen execution lock, not the postprocessing reader.",
+    "Retained native usage covers registered observed sessions, not unknown auxiliary providers or an independently reconciled bill.",
+    "Source counters are retained owner metadata; ordinary native tools, original-versus-compact slice composition and full bidirectional request bytes are not inferred.",
+    "Historical preflight-02 was produced before final source-count hardening and is retained as a pending-state example, not final-code live qualification.",
+    "No provider calls, source execution, production edits, full test-suite reruns, transcripts or hidden verifier contents were needed for this independent review."
+  ],
+  "review_scope": "Read-only review of minimal artifact collector delta against actual supervisor producer and retained authored checks. Existing unchanged collector review findings remain applicable except the superseded marker-completeness finding.",
+  "reviewer_provider_calls": 0,
+  "schema": "compact-source-live-readout-independent-review@2",
+  "source_bindings": {
+    "check_live_readout.py": {
+      "bytes": 11830,
+      "filename": "check_live_readout.py",
+      "sha256": "9300d8565b50c881a415c0e1b197afe0ae4c9db77335f4e8844edead356957b6"
+    },
+    "collect_live_readout.py": {
+      "bytes": 30486,
+      "filename": "collect_live_readout.py",
+      "sha256": "79c0edcc6eda284ac13f2f0eb3d3341a84125523d377530b4f4dbb5cabb19a10"
+    },
+    "native_usage_accounting.py": {
+      "bytes": 2282,
+      "filename": "native_usage_accounting.py",
+      "sha256": "a21c831eed08c9c1692121f912000ebc03a7c7d04adf9a68fd0dcba0d61cc67e"
+    },
+    "terminal_container_supervisor.py": {
+      "bytes": 88841,
+      "filename": "terminal_container_supervisor.py",
+      "sha256": "84ecb5d2eae9d986968172f0843f73d75ca1f4f4a9392ffc3468c1e8989e71e9"
+    }
+  },
+  "status": "passed",
+  "supersedes": {
+    "freeze": {
+      "bytes": 1516,
+      "filename": "live-readout-freeze.json",
+      "sha256": "cf2c8a6659f128a68c293afb579a23cb77969cab84aeef02c7c294b56a670f34"
+    },
+    "reason": "Prior review missed the actual producer mapping shape of unreceipted_provider_attempt. The earlier frozen collector could mark planning-only usage complete after an unreceipted coding dispatch. Prior evidence remains historical and is not final qualification.",
+    "review": {
+      "bytes": 7271,
+      "filename": "live-readout-independent-review.json",
+      "sha256": "db49d28a33a4a678dde0348f669dee2db76b5351e8bd106b5802bedc9200c9f5"
+    }
+  },
+  "validation_binding": {
+    "bytes": 2232,
+    "filename": "live-readout-checks-02.json",
+    "sha256": "c3279517ab8bde804e86b8b0000be3b7836d7ff18a63f9ca2d81fb2d94f72d9c"
+  }
+}

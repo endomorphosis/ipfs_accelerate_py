@@ -1,0 +1,22 @@
+{
+  "benchmarks/agent_supervisor/container_coding/terminal_source_edit_policy.py": "3c6f96e0ce3c3c3de9efd96c873d0eae58dbea561ea674923cb5a016f3c53fa9",
+  "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "e78c18422e06f1417cb7e5c19ba7df0de7bea2d5b35606aa4cdb8220d499d99e",
+  "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "d6dfd1df366123b6d00be2705de40244b766ac5a8ac026ff8e00e948f61f10c5",
+  "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py": "273ed9b95447197f7c3049cf5a068d24e892a4646cefc41a503190ef2676f8ec",
+  "benchmarks/agent_supervisor/container_coding/test_source_policy_observation_join.py": "0640f68437dba89fd18ce8a9b084a6aceb457eddb0a1996ed94ffb23c31b9782",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py": "7276ae28bf60f5e6a248d43e3463a3099f819bdaf63f05b0b79f488ad2ae7efb",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py": "3d9dab78a6eb73c1052ca68d23ef29f2c3dfeb1d0ce0a56493d99bb72103a208",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_retrieval_observation.py": "450c4e1764f5638d830ff953291490190ad3006291cee7ec945a428104e60227",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py": "0c99edf9152679de6bdff551dd058f0ce8602d4445bc47d572a340995ac867f7",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_source_request_observation.py": "bfde491b172d2c8a54231f916a816cd99132dbbd80d602832f6bb383a81e6f51",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py": "a3648c30d9e93ee2de56933cd8a248a259f1300dc1d675e6c40fc9340136c1d3",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "544d31533f06437f8ceaf8ceeff49020319c2d300a46e8fefc14ed8a3eea62a8",
+  "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": "3909c94a0e79540cc8a401eed4935dcccaaf037766b913d6e60812d296153a87",
+  "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "ebd1c861469bac02360bfa31b2cb2b1c3592ef9a50e445f043afb9518f5d4808",
+  "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py": "fe97b2b2b89c9095a4e9ef61fc89e32e24560b9f07108fed478d8e2ecb21abe6",
+  "test/api/test_worker_candidate_context_broker.py": "d124b8db5197e14b5323ab661b0119dc0dc07bad15b0c25a0c55762078115339",
+  "test/api/test_worker_source_broker.py": "e8d53fe0d857d6f5ab5dcc67c6a71c0b4ef83e12099f987d38e737040c8ea55a",
+  "test/api/test_worker_source_discovery_transport.py": "fad8cbcda6c2c481231ae832bbe5e69651c9083ee9eddf44f5ba1bb0f00a93b6",
+  "test/api/test_worker_source_request_observation.py": "7737a3d091dd867b0c1ddfba5662708a3e6e9175b8e96724576ab917f1f2fcae",
+  "test/api/test_worker_source_working_broker.py": "74c0e1aca2c5bdcaacf25a0f06524532e962c692bbef4a2196da983479cf9f9a"
+}

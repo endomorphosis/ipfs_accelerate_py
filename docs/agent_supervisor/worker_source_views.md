@@ -272,7 +272,7 @@ inodes in the native sticky worktree are written in place, matching the existing
 worker writer. No atomic filesystem transaction or exclusion of other writers
 is claimed. Owner mapping and confirmation never write source files themselves.
 
-The route uses source descriptor version 3 and session audit version 4. Its
+The route uses source descriptor version 3 and session audit version 5. Its
 optional shared-policy binding remains fixed. The collector records delivered
 prepare/confirmation pages separately from source bytes. Those counts establish
 neither final task acceptance nor provider-token savings. Local integration
@@ -287,8 +287,14 @@ It preserves comments, source inode/mode and support files, then validates the
 final result in a separate process. Its seven CLI outputs contain 6,199 bytes,
 including seven newlines. The ten private owner responses contain 20,269 framed
 bytes; these overlapping scopes must not be added or treated as provider tokens.
-Full supervisor START
-and live benchmark comparison of this treatment remain unmeasured.
+The subsequent [live benchmark](compact_worker_benchmark.md) runs the full
+supervisor with real Grok calls on `largest-eigenval`. All three treatments pass
+the official verifier. Identity views exercise one confirmed mapped edit; the
+compact-comments arm with legacy metadata has no successful mapping observation.
+The separate compact-metadata treatment exercises three confirmed mapped edits.
+Both compaction treatments report more tokens than identity. This does not
+establish a minification advantage or qualify every supported edit through a
+live model.
 
 The retained [qualification record](evidence/compact-worker-edits-20261013/qualification.json)
 separates these checks from the small byte comparison. For one authored fixture,
@@ -343,6 +349,19 @@ and bytes. The context audit reconstructs that guidance. After worker cleanup,
 `terminal_source_view_observation` joins private session accounting to the
 selected profile, semantic/router receipts and task alias. It exports counts
 and hashes; missing, incomplete or mismatched evidence remains unavailable.
+
+Session audit version 5 additionally records closed operation, source-state and
+view labels after parsing each request, before peer/context admission. This
+distinguishes refused reads, discovery, candidate-context requests, edit
+preparation and confirmation without retaining raw queries or source bodies.
+Malformed requests remain `unknown`. These labels describe what was requested;
+they do not establish permission, a successful edit or a discharged obligation.
+The collector retains historical version 1–4 records without inventing their
+missing labels and reports attribution coverage when versions are mixed.
+The linked live comparison predates this diagnostic change, so its refusal
+cannot be classified retrospectively.
+The [diagnostic qualification](evidence/source-request-attribution-20261014/README.md)
+records 627 distinct passing regression tests and the unchanged interfaces.
 
 Response bytes count owner protocol envelopes, excluding framing and client
 newlines. Returned source bytes include repeated reads and both representations.

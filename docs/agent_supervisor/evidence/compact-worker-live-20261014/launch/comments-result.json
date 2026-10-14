@@ -1,0 +1,23 @@
+{
+  "arm": "full",
+  "complete_single_trial_receipt": true,
+  "configuration_unchanged": true,
+  "exit_code": 0,
+  "host_source_unchanged": true,
+  "label": "comments",
+  "preparation_unchanged": true,
+  "receipt_sha256": "f0ef93544f3201fe045a339738be091da759fa158c563ac3867306b4f8f44d44",
+  "results": [
+    {
+      "exception_type": null,
+      "reward": {
+        "reward": 1.0
+      }
+    }
+  ],
+  "schema": "repeated-compact-live-launch-result@1",
+  "seconds": 1026.3730046619894,
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_sha256": "f0ef93544f3201fe045a339738be091da759fa158c563ac3867306b4f8f44d44",
+  "trial_count": 1
+}

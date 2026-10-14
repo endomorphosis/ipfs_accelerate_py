@@ -1,0 +1,21 @@
+{
+  "logs_exported_in_this_summary": false,
+  "raw_failure_logs_retained_locally": true,
+  "runs": [
+    {
+      "cause": "Authored context-refusal fixture omitted production keyword arguments; corrected test stub.",
+      "failed": 1,
+      "passed": 58,
+      "production_defect": false,
+      "run": "focused-01"
+    },
+    {
+      "cause": "Exact archive-capability test allowlist omitted the new correctly bundled observation helper; test set updated and three helper binding-negative cases added.",
+      "failed": 1,
+      "passed": 623,
+      "production_defect": false,
+      "run": "focused-02"
+    }
+  ],
+  "schema": "source-request-attribution-retained-failures@1"
+}

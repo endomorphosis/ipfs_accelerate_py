@@ -1,0 +1,22 @@
+{
+  "checks": [
+    "real fixed codec selection joins rendered input",
+    "selected model byte mismatch refused",
+    "authored finalized treatment joins separate execution lock",
+    "authored native totals use frozen accounting",
+    "authored actual selected prompt bytes retained",
+    "missing helper observation stays unknown",
+    "missing source_view_config_unchanged prevents control integrity",
+    "missing source_edit_config_unchanged prevents control integrity",
+    "missing semantic_metadata_config_unchanged prevents control integrity",
+    "missing observed status prevents control integrity",
+    "different observed reasoning effort refused"
+  ],
+  "passed": 11,
+  "production_files_changed": false,
+  "provider_calls": 0,
+  "reader_sha256": "0af7025ed58a89e14db28ff14e97249c04db89b295dc48cedf9d3c2a5bc18e4e",
+  "schema": "metadata-treatment-finalized-authored-checks@1",
+  "scope": "Authored metadata and real pure codec fixture; not an executed benchmark trial.",
+  "test_sha256": "45fadc019df0941165fce92338205cd791baac59d2f7471eaae59177b914068b"
+}

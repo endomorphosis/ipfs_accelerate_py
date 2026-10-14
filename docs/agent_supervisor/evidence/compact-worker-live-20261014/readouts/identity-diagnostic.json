@@ -1,0 +1,124 @@
+{
+  "byte_observation": {
+    "owner_response_body_bytes": 19220,
+    "scope": "Canonical owner JSON response bodies only, including source and protocol metadata; excludes CLI rendering, commands, frame prefixes and conversation history. This is not total conversation payload.",
+    "source_slice_bytes": 4461
+  },
+  "causal_advantage_claimed": false,
+  "complete_usage_established": false,
+  "hidden_verifier_or_solution_contents_read": false,
+  "model_transcripts_read": false,
+  "native_shape": {
+    "coding_tool_call_events": 22,
+    "coding_unknown_tool_name_events": 22,
+    "goals": 2,
+    "planning_provider_calls": 1,
+    "tasks": 1
+  },
+  "native_shape_binding": {
+    "bytes": 7026,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/native-shape-identity-01.json",
+    "sha256": "2d124fab2a9fda345ceb9072d078b91d9e7cde886b70c9ead27b9eb1dbbb9cd1"
+  },
+  "official_reward": 1.0,
+  "provider_calls_by_diagnostic": 0,
+  "provider_invocations": [
+    {
+      "complete_usage_established": false,
+      "initial_rendered_model_prompt_bytes": 34233,
+      "initial_rendered_model_prompt_sha256": "6d15744554124b2069af8f6064b8afab0215598cbe7c4f1031dd9919ef980352",
+      "invocation_id": "5fcf7cf9b9b74cb7b07064c4aa57392b",
+      "native_reported_token_categories": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 1536,
+        "input_tokens": 15918,
+        "output_tokens": 7020,
+        "total_tokens": 24474
+      },
+      "native_usage_complete_observed": null,
+      "num_turns": 1,
+      "phase": "planning"
+    },
+    {
+      "complete_usage_established": false,
+      "initial_rendered_model_prompt_bytes": 78597,
+      "initial_rendered_model_prompt_sha256": "f6683222d82f19ffd23e4129b7b350a5ab8d5e73d68a7a68dce302ce9ad74bd3",
+      "invocation_id": "58b4cd57abff48f2bad3827160949bd4",
+      "native_reported_token_categories": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 1184000,
+        "input_tokens": 71747,
+        "output_tokens": 30543,
+        "total_tokens": 1286290
+      },
+      "native_usage_complete_observed": null,
+      "num_turns": 23,
+      "phase": "coding"
+    }
+  ],
+  "readout": {
+    "bytes": 17608,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-readout-identity-01.json",
+    "sha256": "19eef7a48bc570c1e65b59655077273356ba32b3c865d8dada4a012cf2afe3ec"
+  },
+  "receipt": {
+    "bytes": 277579,
+    "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/live-trials/grok-identity-02/receipt.json",
+    "sha256": "f5ea12674ed2083cc50797fabde98902d6b07ff95ab7f54c1aaab72ee0b8f135"
+  },
+  "reported_category_scope": "Native Grok final envelopes; fresh input, cached input, cache writes and output are disjoint here. These reported sums are not established complete or billed totals.",
+  "reported_category_sums": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 1185536,
+    "input_tokens": 87665,
+    "output_tokens": 37563,
+    "total_tokens": 1310764
+  },
+  "schema": "compact-source-identity-diagnostic@1",
+  "source_pages": {
+    "accepted_requests": 7,
+    "candidate_context": {
+      "delivered_bytes": 0,
+      "delivered_pages": 0,
+      "prepared_bytes": 0,
+      "prepared_pages": 0
+    },
+    "delivered_pages": 7,
+    "discovery": {
+      "delivered_pages": 1,
+      "delivered_rows": 5,
+      "prepared_pages": 1,
+      "prepared_rows": 5
+    },
+    "edit": {
+      "delivered_confirmation_pages": 1,
+      "delivered_mapping_pages": 1,
+      "prepared_confirmation_pages": 1,
+      "prepared_mapping_pages": 1
+    },
+    "original_expansion_requests": null,
+    "other_delivered_source_view_pages": 4,
+    "read_requests": null,
+    "source_kind_limitation": "The owner audit distinguishes discovery, candidate context and edit pages. Remaining source/view/catalog pages are not tagged by read versus working versus original expansion; those counts cannot be reconstructed from retained metadata.",
+    "working_requests": null
+  },
+  "timing": {
+    "durations_seconds": {
+      "agent_execution": 779.347821,
+      "agent_setup": 361.537198,
+      "environment_setup": 3.375082,
+      "verifier": 2.881835
+    },
+    "launcher_seconds": 1163.8005888309563,
+    "scope": "Supervisor phases overlap enclosing execution and must not be added to it.",
+    "supervisor_phases_seconds": {
+      "context_seconds": 5.146396553958766,
+      "doctor_seconds": 1.9143100730143487,
+      "initial_context_seconds": 16.53330885397736,
+      "planning_seconds": 149.7710339690093,
+      "post_publication_refresh_seconds": 17.392900189035572,
+      "prepare_seconds": 0.8317456960212439
+    }
+  },
+  "usage_completeness_limitation": "Both native usage_complete_observed fields are null."
+}

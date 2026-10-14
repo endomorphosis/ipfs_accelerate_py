@@ -61,8 +61,10 @@ fresh fenced candidate. The separate
 [worker mapped-edit mode](worker_source_views.md#edit-a-compact-span-through-the-coding-worker)
 now handles bounded successive supported spans through the real router and
 source socket, using the worker's existing file permissions. Local integration
-and a three-edit Docker probe with actual separate owner/worker UIDs pass; full runtime deployment and
-live token savings remain separate stages. The opt-in
+and a three-edit Docker probe with actual separate owner/worker UIDs pass. A
+[live full-supervisor trial](compact_worker_benchmark.md) now uses a confirmed
+mapping and passes the official verifier. The source-only comparison does not
+establish token savings. The opt-in
 [worker source reader](worker_source_views.md) now supplies task-scoped compact
 views and exact expansion using the same codec and isolated child lifecycle.
 
@@ -145,7 +147,7 @@ replacement of the original conversation content.
 | --- | --- | --- |
 | Restore an unchanged snapshot | Exact bytes from retained original blobs and deterministic view maps | Already qualified within the admitted inventory; retain explicit coverage frontiers |
 | Navigate a complete admitted repository | Complete stored inventory; path/pin discovery within the bounded coding-reader population | Page repository-wide path/symbol discovery into task-specific read scopes without sending every body or removing response bounds |
-| Preserve edits made while using compact views | Host mapping plus an opt-in worker read/map/write/confirm route supporting successive spans, including a three-edit cross-UID Docker probe; exact original files remain available | Qualify full runtime deployment and explicit population deltas for supported create/move/delete operations |
+| Preserve edits made while using compact views | Host mapping plus an opt-in worker read/map/write/confirm route supporting successive spans, including a three-edit cross-UID Docker probe and one confirmed mapping in a live full-supervisor task; exact original files remain available | Extend live task/edit coverage and qualify explicit population deltas for supported create/move/delete operations |
 | Execute a physically minified checkout | No such profile | Separate language/runtime/import/reflection/tooling validation and original-task acceptance |
 | Reduce total provider tokens | No qualified compact-source session benefit | Show displaced content and repeated reads, then compare complete native usage at equal official success |
 
@@ -667,7 +669,7 @@ for preferring this treatment in a benchmark.
 | 1: source inventory/restoration | Bounded repository manifest, exact blobs, view mappings and explicit coverage frontier | Cold restore is byte-identical for supported and passthrough entries; missing/tampered/stale blobs refuse |
 | 2: read-only disclosure | Qualified source/capsule operations through the actual coding interface | Current-source/owner checks, bounds, continuations and complete response accounting; unchanged required coverage |
 | 3: original-source editing | Preview navigation plus expansion and normal patch lifecycle | Original tests and accepted edit bytes survive refresh; unrelated source/trivia remains exact |
-| 4: optional mapped edits | Host adapter plus a bounded successive-span worker route with prepare/write/confirm and actual cross-UID Docker qualification | Untouched bytes preserved; hidden/crossing/stale/ambiguous edits refuse; actual postimage checked and candidate generation refreshed; full runtime deployment and file population changes remain separate qualifications |
+| 4: optional mapped edits | Host adapter plus a bounded successive-span worker route with prepare/write/confirm, cross-UID Docker qualification and one confirmed live full-supervisor mapping | Untouched bytes preserved; hidden/crossing/stale/ambiguous edits refuse; actual postimage checked and candidate generation refreshed; broader live edit coverage and file population changes remain separate qualifications |
 | 5: provider-bound census | Count complete candidate and baseline inputs with the same qualified counter | Strict improvement after every wrapper; counter failure/larger candidates retain original representation |
 | 6: matched complete sessions | Separately versioned treatments on representative tasks | Complete native usage and original official rewards, including all failures/expansions/repairs |
 
