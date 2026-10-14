@@ -241,7 +241,7 @@ The container route requires the full Codex semantic coding arm. Preparation
 freezes the choice into comparison controls and Harbor agent configuration;
 deployment, supervisor dispatch and the worker wrapper carry it to the coding
 router. Execute and collect use that frozen choice. The default remains
-`legacy`, and this policy cannot be combined with the older `--source-view-policy`
+`legacy`, and this policy cannot be combined with the `--source-view-advisory-policy`
 optional shell helper. Provider cooldown and admission behavior is unchanged.
 
 A selected repository policy requires a fresh archive matching the current
@@ -328,8 +328,8 @@ establish provider-token savings. See the
 [native repository tools contract](../../../ipfs_accelerate_py/agent_supervisor/runtime/README.md#native-repository-tools-for-coding-workers)
 for scope, failure recovery and resource limits.
 
-A separate source-representation experiment uses `--source-view-policy
-source-view-raw@1` as the matched control and `--source-view-policy
+A separate source-representation experiment uses `--source-view-advisory-policy
+source-view-raw@1` as the matched control and `--source-view-advisory-policy
 source-view-compact@1` as treatment. Both offer the same bounded Python helper
 and hash-checked symbol-edit protocol. Keep the semantic context profile,
 metadata representation, tool-output policy, model, resource limits and task
