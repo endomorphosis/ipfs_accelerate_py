@@ -26,7 +26,7 @@ Three deterministic qualifications preserve complete source observations and pen
 
 ## LAC-S11-024 Qualify complete source-local candidate context inventories
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
