@@ -81,7 +81,8 @@ class SourceLookupWorkerBroker:
     """Trusted launcher opt-in; no database, owner or CAS is constructed."""
 
     def __init__(self, *, server, canonical_repository, workspace, boundary, prompt,
-                 timeout_seconds=90, task_admission=None, worktree_admission=None):
+                 timeout_seconds=90, task_admission=None, worktree_admission=None,
+                 world_prelaunch_assignment=None):
         _need(type(self) is SourceLookupWorkerBroker and type(server) is QuackStateServer,
               "original native state owner required")
         _need(type(timeout_seconds) is int and 1 <= timeout_seconds <= MAX_SESSION_SECONDS,
@@ -109,6 +110,11 @@ class SourceLookupWorkerBroker:
             _need(self.repository == worktree_admission._canonical_repository
                   and self.workspace == worktree_admission._workspace,
                   "source worker roots differ from the native worktree admission")
+        self._world_prelaunch_assignment = self._original_world_prelaunch_assignment = world_prelaunch_assignment
+        self._world_prelaunch_prompt = prompt_bytes if world_prelaunch_assignment is not None else None
+        # This owner-only gate precedes all source proxy grant publication.
+        # Its coordinator fence must stay outside the server transaction lock.
+        self._require_world_prelaunch(server=server)
         self.boundary = Path(boundary).absolute()
         boundary_value, boundary_sha = guard._owner_boundary(self.boundary)
         self.owner_uid, self.worker_uid = boundary_value["owner_uid"], boundary_value["worker_uid"]
@@ -295,10 +301,28 @@ class SourceLookupWorkerBroker:
               "source worker native task admission changed")
         _need(self._worktree_admission is self._original_worktree_admission,
               "source worker native worktree admission changed")
+        self._require_world_prelaunch(server=self._server)
+        if self._world_prelaunch_assignment is not None:
+            return
         if self._worktree_admission is not None:
             self._worktree_admission.require_current()
         elif self._task_admission is not None:
             self._task_admission.require_current()
+
+    def _require_world_prelaunch(self, *, server):
+        """Use the exact original live gate; its public observation is inert."""
+        assignment = self._world_prelaunch_assignment
+        _need(assignment is self._original_world_prelaunch_assignment,
+              "source worker world prelaunch assignment changed")
+        if assignment is None:
+            return
+        from .repository_world_prelaunch import NativeRepositoryWorldPrelaunchAssignment
+        _need(type(assignment) is NativeRepositoryWorldPrelaunchAssignment,
+              "exact native world prelaunch assignment required")
+        NativeRepositoryWorldPrelaunchAssignment.require_for_broker(assignment,
+            server=server, canonical_repository=self.repository, workspace=self.workspace,
+            prompt=self._world_prelaunch_prompt,
+            task_admission=self._task_admission, worktree_admission=self._worktree_admission)
 
     def _context_current(self):
         _need(self._live() and protocol.canonical_json(self.descriptor) == self._descriptor_bytes,
@@ -521,7 +545,8 @@ class SourceLookupWorkerBroker:
 
 def start_source_lookup_worker_broker(*, server, canonical_repository, workspace, boundary,
                                     prompt, timeout_seconds=90, task_admission=None,
-                                    worktree_admission=None):
+                                    worktree_admission=None, world_prelaunch_assignment=None):
     return SourceLookupWorkerBroker(server=server, canonical_repository=canonical_repository,
         workspace=workspace, boundary=boundary, prompt=prompt, timeout_seconds=timeout_seconds,
-        task_admission=task_admission, worktree_admission=worktree_admission)
+        task_admission=task_admission, worktree_admission=worktree_admission,
+        world_prelaunch_assignment=world_prelaunch_assignment)
