@@ -1,0 +1,24 @@
+{
+  "all_archive_members_match_manifest": true,
+  "archive": {
+    "bytes": 1411388356,
+    "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-preparation/runtime-01/runtime.tar.gz",
+    "sha256": "13497334d574d8b916df55c3a9b649f90dd8bc14ba56056bdd7c077a3333a17a"
+  },
+  "credentials_inspected": false,
+  "current_source_capabilities_match": true,
+  "elapsed_seconds": 11.16210284200497,
+  "file_count": 27521,
+  "manifest": {
+    "bytes": 6219339,
+    "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-preparation/runtime-01/manifest.json",
+    "sha256": "41e7edb4803c2f70cbbd522d42074346aaeda2ef433a70295d1c1635805d1c06"
+  },
+  "model_calls": 0,
+  "observed_at_utc": "2026-10-14T03:37:31.457259+00:00",
+  "provider_calls": 0,
+  "schema": "capsule-budget-runtime-verification@1",
+  "source_head": "recorded_separately_by_bundle_and_freeze",
+  "uncompressed_bytes": 4072178464,
+  "verifier_or_solution_contents_read": false
+}

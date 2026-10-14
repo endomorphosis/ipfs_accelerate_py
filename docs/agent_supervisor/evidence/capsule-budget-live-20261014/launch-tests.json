@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/tests/test_campaign_scripts.py",
+    "-v"
+  ],
+  "docker_calls": 0,
+  "elapsed_seconds": 0.09420896996743977,
+  "exit_code": 0,
+  "fixture_scope": "Authored orchestration guards, no benchmark preparation or launch",
+  "provider_calls": 0,
+  "runtime_builds_by_tests": 0,
+  "schema": "capsule-budget-orchestration-tests@1",
+  "source_sha256": {
+    "bundle-command.json": "cfabcaf4a550c00417c23cfbd1ffd4208e582bfc59d98e9969c763168c3aba98",
+    "campaign_common.py": "9cdc8c69bbdacd5eb75838e8b2fcae42e4282aa11bfd1db086f05234a7f10486",
+    "live-environment.json": "0446fb5c85268c1778350f519c4bf66911ab61c42a790e12eec8f7ba57756ca8",
+    "prepare_pair.py": "f32da7fa56a5511a4e0cfccedc3361e83b78420d61ff0155cf6e11f92d32648a",
+    "recipe.json": "9c3bda868b85d13f3d15c728114c7b410201338d4091c3e0e644880e6a9d57aa",
+    "run_locked_trial.py": "8e5b2b71210dfaaadda75a0f48891f55a819cded5d3973ea0c0259ecf5fcd317",
+    "tests/test_campaign_scripts.py": "ee069fefb9161dab47c7d59e9319de23f773989e29bc660661af4229cf0a1bea",
+    "verify_runtime.py": "6b900b2c954d0f2f4d774b565a51570d4abb0159c9b8728134b37f4010f576f6"
+  },
+  "sources_unchanged": true
+}

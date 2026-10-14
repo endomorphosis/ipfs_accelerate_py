@@ -5,7 +5,24 @@ while delegating to canonical implementations in
 ``ipfs_accelerate_py.mcp_server.mcplusplus`` where available.
 """
 
-from .. import _missing_dependency_stub
+try:
+    from .. import _missing_dependency_stub
+except ImportError:  # parent package does not re-export the stub helper
+    try:
+        from ipfs_accelerate_py.mcp_server.compatibility import (
+            _missing_dependency_stub,
+        )
+    except ImportError:  # standalone/vendored loading (e.g. file-based module loaders)
+
+        def _missing_dependency_stub(symbol_name: str):
+            """Local mirror of mcp_server.compatibility._missing_dependency_stub."""
+
+            def _unavailable(*args, **kwargs):
+                raise RuntimeError(
+                    f"{symbol_name} is unavailable in this environment"
+                )
+
+            return _unavailable
 
 # Task queue compatibility layer (canonical implementation lives under
 # ipfs_accelerate_py.mcp_server.mcplusplus.task_queue).

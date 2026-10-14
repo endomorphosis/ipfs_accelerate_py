@@ -1,5 +1,6 @@
 """Pinned router dispatch preserves actual CLI status, effort and usage."""
 from pathlib import Path
+import json
 import subprocess
 from types import SimpleNamespace
 
@@ -32,11 +33,18 @@ def test_codex_router_forwards_reasoning_effort_without_shell_interpolation(monk
 
 
 @pytest.mark.parametrize("exit_code", [0, 1])
-def test_runner_keeps_usage_and_refuses_partial_cli_failure(tmp_path, monkeypatch, capsys, exit_code):
+@pytest.mark.parametrize("observer_error", [False, True])
+def test_runner_keeps_usage_and_refuses_partial_cli_failure(tmp_path, monkeypatch, capsys, exit_code, observer_error):
     from ipfs_accelerate_py import llm_router
     from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation import intelligence_index
     from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
+    from ipfs_accelerate_py.agent_supervisor.runtime import context_delivery_accounting
+
+    if observer_error:
+        def unavailable(_):
+            raise ValueError("private observer error must not replace provider status")
+        monkeypatch.setattr(context_delivery_accounting, "observe_invocation", unavailable)
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     monkeypatch.chdir(tmp_path)
@@ -61,6 +69,24 @@ def test_runner_keeps_usage_and_refuses_partial_cli_failure(tmp_path, monkeypatc
         assert output and receipt["usage"]["prompt_tokens"] == 15
     printed = capsys.readouterr().out
     assert '"prompt_tokens": 15' in printed and '"completion_tokens": 4' in printed
+    delivered = json.loads(printed)
+    accounting = delivered["context_delivery_observation"]
+    assert accounting["completion_authority"] is False
+    assert accounting["provider_ingestion_verified"] is False
+    assert accounting["raw_content_exported"] is False
+    assert accounting["total_token_savings_measured"] is False
+    assert "private observer error" not in printed
+    assert "repair" not in json.dumps(accounting)
+    if observer_error:
+        assert accounting["status"] == "unavailable"
+        assert accounting["reason"] == "observer_unavailable"
+    else:
+        assert accounting["status"] == delivered.get("status")
+        assert accounting["model_prompt"] == {
+            "sha256": delivered["model_prompt_sha256"],
+            "bytes": delivered["model_prompt_bytes"],
+            "count_scope": "rendered_user_prompt_only",
+        }
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "nonsecret-test-marker")
     with pytest.raises(ValueError, match="database authority"):
         runner.run(prompt="repair", provider="codex_cli", model="pinned", timeout=30, max_output_tokens=512)

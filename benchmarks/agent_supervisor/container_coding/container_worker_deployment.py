@@ -34,8 +34,10 @@ except (OSError,ValueError,ImportError,RuntimeError):
 """
 
 OWNER_MONITOR = r"""
-import signal,subprocess
+import json,signal,subprocess,time
 process=None
+worker_waited=False
+worker_cleanup_succeeded=False
 def interrupted(signum,frame):
  raise InterruptedError('owner monitor interrupted')
 for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,interrupted)
@@ -49,6 +51,7 @@ try:
  guard=globals().get("proof_query_guard")
  if guard is not None:guard.note_spawned(process)
  code=process.wait()
+ worker_waited=True
 except BaseException:
  if process is not None:
   try:process.terminate()
@@ -60,6 +63,7 @@ finally:
  for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,signal.SIG_IGN)
  try:
   cleanup=subprocess.run(['/usr/bin/sudo','-n','-u','benchmarkworker','--','/opt/ipfs-supervisor/bin/worker-entry','--cleanup'],cwd='/',stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,start_new_session=True,timeout=15)
+  worker_cleanup_succeeded=cleanup.returncode==0
   if cleanup.returncode:code=1
  finally:
   try:
@@ -72,12 +76,36 @@ finally:
    finally:
     source_broker=globals().get("worker_source_broker")
     if source_broker is not None:source_broker.close()
+# Retired worker observations cannot authorize another child or completion.
+# Refresh only after native wait, isolated cleanup and every broker retirement.
+source_broker=globals().get("worker_source_broker")
+refresh_deadline=globals().get("owner_candidate_round_deadline")
+if worker_waited and worker_cleanup_succeeded and type(code) is int and code>0 and source_broker is not None and refresh_deadline is not None:
+ observation=None
+ refresh_flags={'proof_authority':False,'execution_authority':False,'completion_authority':False,'retry_authority':False,'settlement_authority':False,'automatic_retry_admitted':False,'model_inference_calls':0,'provider_calls':0,'source_obligations_discharged':0}
+ try:
+  # Cleanup must finish, but advisory candidate analysis remains interruptible.
+  for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,interrupted)
+  if type(code) is not int or process.returncode!=code or process.poll()!=code:
+   raise ValueError('worker exit is not settled')
+  if time.monotonic()>=refresh_deadline:
+   observation={'schema':'owner-candidate-refresh-observation@1','status':'skipped','reason_code':'deadline_exhausted',**refresh_flags}
+  else:
+   from ipfs_accelerate_py.agent_supervisor.runtime.owner_candidate_round_checkpoint import persist_failed_worker_candidate_context
+   observation=persist_failed_worker_candidate_context(source_broker=source_broker,prior_returncode=code,absolute_deadline=refresh_deadline)
+ except Exception:
+  observation={'schema':'owner-candidate-refresh-observation@1','status':'failed','reason_code':'refresh_failed',**refresh_flags}
+ try:
+  if observation is not None:print('[owner-candidate-refresh] '+json.dumps(observation,sort_keys=True,allow_nan=False),flush=True)
+ except Exception:
+  pass
 raise SystemExit(code)
 """
 
 OWNER_ENTRY = (
     r"""#!/opt/ipfs-supervisor/venv/bin/python -I
-import json,os,pathlib,sys
+import json,os,pathlib,sys,time
+owner_candidate_round_started=time.monotonic()
 root=pathlib.Path('/opt/ipfs-supervisor')
 boundary=json.loads((root/'container-boundary.json').read_text())
 if os.getuid()!=boundary['owner_uid'] or os.geteuid()!=boundary['owner_uid']:raise SystemExit('owner identity required')
@@ -98,6 +126,14 @@ for base,dirs,files in os.walk(cwd,followlinks=False):
   if q.is_symlink() or not q.is_file() or q.stat().st_uid not in (1000,1001) or q.stat().st_nlink!=1:raise SystemExit('candidate input is not one allocated regular file')
   if q.stat().st_uid==1000:q.chmod(0o440 if q==cwd/'.git' else (0o770 if q.stat().st_mode&0o111 else 0o660))
 sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
+# The fixed lease includes allocation checks, ownership setup and formalization.
+from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import _argument,MAX_SESSION_SECONDS
+owner_candidate_round_deadline=None
+try:
+ owner_candidate_round_timeout=int(_argument(list(sys.argv[1:]),'--timeout','90'))
+ if 1<=owner_candidate_round_timeout<=MAX_SESSION_SECONDS:owner_candidate_round_deadline=owner_candidate_round_started+owner_candidate_round_timeout
+except (TypeError,ValueError,OverflowError):
+ pass
 from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import prepare_container_source_formalization_dispatch
 handoff=prepare_container_source_formalization_dispatch(argv=list(sys.argv[1:]),boundary=root/'container-boundary.json',workspace=cwd)
 os.dup2(handoff['stdin_fd'],0,inheritable=True);os.close(handoff['stdin_fd'])
@@ -196,6 +232,7 @@ parser.add_argument('--purpose',choices=['planning','coding'],default='coding')
 parser.add_argument('--semantic-repository',type=pathlib.Path)
 parser.add_argument('--semantic-transport-schema',choices=['supervisor-semantic-router-input@1','supervisor-semantic-router-input@2'],default='supervisor-semantic-router-input@1')
 parser.add_argument('--semantic-metadata-view',choices=['legacy','common-bindings@1','common-bindings-instruction@1'],default='legacy')
+parser.add_argument('--semantic-working-set',choices=['legacy','capsule-references@1'],default='legacy')
 parser.add_argument('--semantic-metadata-census-only',action='store_true')
 parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion@1'],default='legacy')
 parser.add_argument('--tool-output-policy',choices=['legacy','artifact-preview@1','artifact-preview@2'],default='legacy')
@@ -227,6 +264,7 @@ parser.add_argument('--numerical-obligation-descriptor',type=pathlib.Path)
 parser.add_argument('--numerical-obligation-descriptor-sha256')
 parser.add_argument('--source-lookup-descriptor',type=pathlib.Path)
 parser.add_argument('--source-lookup-descriptor-sha256')
+parser.add_argument('--grok-coding-max-turns',type=int,default=128)
 parser.add_argument('--source-view-profile',default='disabled',choices=('disabled','identity@1','python-whitespace@1','python-comments@1'))
 parser.add_argument('--source-edit-mode',default='disabled',choices=('disabled','mapped-span@1','mapped-span@2'))
 parser.add_argument('--source-view-descriptor',type=pathlib.Path)
@@ -246,12 +284,15 @@ source_lookup_values=(args.source_lookup_descriptor,args.source_lookup_descripto
 if any(value is not None for value in source_lookup_values) and (not all(source_lookup_values) or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('exact source lookup descriptor requires isolated router coding')
 source_view_values=(args.source_view_descriptor,args.source_view_descriptor_sha256)
 if args.source_view_profile!='disabled' and any(value!='legacy' for value in (args.source_view_advisory_policy,args.repository_source_policy,args.source_input_policy,args.query_reference_policy)):raise SystemExit('signed source views cannot combine with advisory or projected source policies')
+if not 1<=args.grok_coding_max_turns<=128:raise SystemExit('Grok coding turn bound must be 1 through 128')
+if args.grok_coding_max_turns!=128 and (args.provider!='grok_cli' or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('nondefault coding turns require isolated Grok model-router coding')
 if args.source_edit_mode!='disabled' and (args.source_view_profile=='disabled' or args.preflight or args.semantic_metadata_census_only):raise SystemExit('source editing requires selected coding views')
 if args.source_view_profile!='disabled' or any(value is not None for value in source_view_values):
  if args.source_view_profile=='disabled' or not all(source_view_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values):raise SystemExit('exact source descriptor requires isolated semantic coding')
 if any(value is not None for value in numerical_obligation_values) and (not all(numerical_obligation_values) or not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact numerical obligation descriptor requires owner formalization coding')
 if any(formalization_values) and (not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact owner formalization handoff requires semantic router coding')
 if args.semantic_metadata_view!='legacy' and (args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('metadata view requires original semantic router coding')
+if args.semantic_working_set!='legacy' and (args.source_view_profile=='disabled' or args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.semantic_metadata_view!='legacy' or args.semantic_metadata_census_only or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('working set requires original semantic router coding with source retrieval')
 if args.semantic_metadata_census_only and args.semantic_metadata_view not in ('common-bindings@1','common-bindings-instruction@1'):raise SystemExit('metadata census requires common bindings')
 if args.semantic_transport_schema!='supervisor-semantic-router-input@1' and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('controller dictionary transport requires semantic router coding')
 if args.tool_output_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('tool output policy requires semantic Codex router coding')
@@ -323,6 +364,7 @@ else:
  if args.semantic_repository is not None:sys.argv+=['--semantic-repository',str(args.semantic_repository)]
  if args.semantic_transport_schema!='supervisor-semantic-router-input@1':sys.argv+=['--semantic-transport-schema',args.semantic_transport_schema]
  if args.semantic_metadata_view!='legacy':sys.argv+=['--semantic-metadata-view',args.semantic_metadata_view]
+ if args.semantic_working_set!='legacy':sys.argv+=['--semantic-working-set',args.semantic_working_set]
  if args.semantic_metadata_census_only:sys.argv+=['--semantic-metadata-census-only']
  if args.coding_reply_mode!='legacy':sys.argv+=['--coding-reply-mode',args.coding_reply_mode]
  if args.tool_output_policy!='legacy':sys.argv+=['--tool-output-policy',args.tool_output_policy]
@@ -335,6 +377,7 @@ else:
  if args.source_formalization_handoff is not None:sys.argv+=['--source-formalization-handoff',str(args.source_formalization_handoff),'--source-formalization-handoff-sha256',args.source_formalization_handoff_sha256]
  if args.numerical_obligation_descriptor is not None:sys.argv+=['--numerical-obligation-descriptor',str(args.numerical_obligation_descriptor),'--numerical-obligation-descriptor-sha256',args.numerical_obligation_descriptor_sha256]
  if args.source_lookup_descriptor is not None:sys.argv+=['--source-lookup-descriptor',str(args.source_lookup_descriptor),'--source-lookup-descriptor-sha256',args.source_lookup_descriptor_sha256]
+ if args.grok_coding_max_turns!=128:sys.argv+=['--grok-coding-max-turns',str(args.grok_coding_max_turns)]
  if args.source_view_profile!='disabled':sys.argv+=['--source-view-profile',args.source_view_profile,'--source-view-descriptor',str(args.source_view_descriptor),'--source-view-descriptor-sha256',args.source_view_descriptor_sha256]
  if args.source_edit_mode!='disabled':sys.argv+=['--source-edit-mode',args.source_edit_mode]
  raise SystemExit(run_with_child_custody(main))

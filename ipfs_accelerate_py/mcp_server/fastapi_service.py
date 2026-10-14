@@ -16,6 +16,17 @@ from .server import create_server
 
 logger = logging.getLogger(__name__)
 
+try:
+    # FastAPI resolves endpoint annotations from the module globals of the
+    # module defining the handler. The handlers in create_fastapi_app()
+    # annotate `request: Request`; without a module-level binding the name
+    # stays an unresolved ForwardRef and FastAPI misreads it as a required
+    # query parameter (422) and then fails dependency solving (500). The
+    # local import inside create_fastapi_app() does not repair that.
+    from fastapi import Request
+except ImportError:  # FastAPI unavailable — the fallback standalone app is used.
+    Request = Any  # type: ignore[assignment,misc]
+
 
 def _profile_g_rest_binding(http_method: str, path: str) -> tuple[str, dict[str, Any]] | None:
     """Resolve a normative Profile G REST path to its JSON-RPC method."""

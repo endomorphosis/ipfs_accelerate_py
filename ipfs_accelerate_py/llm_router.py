@@ -5290,6 +5290,32 @@ def _grok_cli_error(stdout: str, stderr: str) -> LLMRouterError:
     return LLMRouterError(message or "Grok CLI failed")
 
 
+def _grok_cli_has_incomplete_native_outcome(payload: object) -> bool:
+    """Reject explicit native stops without treating response text as a signal.
+
+    Legacy JSON may omit a recognized stop reason; absence is not invented
+    completion evidence. Conflicting aliases remain unknown in observation,
+    but a known incomplete alias must not be hidden by the other alias.
+    """
+    if type(payload) is not dict:
+        return False
+    from .cli_runtime.grok_native_usage import native_grok_observation
+
+    candidates = [payload]
+    if "stopReason" in payload and "stop_reason" in payload:
+        candidates.extend({key: value for key, value in payload.items() if key != omitted}
+                          for omitted in ("stopReason", "stop_reason"))
+    for candidate in candidates:
+        outcome = native_grok_observation(candidate, exit_code=0)
+        reason = outcome["native_grok_reason_code"]
+        if (outcome["native_grok_error_observed"]
+                or reason not in {"unknown", "end_turn", "other_stop"}
+                or (reason == "other_stop"
+                    and outcome["native_grok_stop_reason"] in {"tool_use", "pause_turn"})):
+            return True
+    return False
+
+
 def _redact_grok_cli_command(command: Sequence[str], prompt: str) -> list[str]:
     redacted: list[str] = []
     for value in command:
@@ -8277,6 +8303,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 if payload is not None:
                     if str(payload.get("type") or "").lower() == "error":
                         raise _grok_cli_error(raw, "")
+                    if _grok_cli_has_incomplete_native_outcome(payload):
+                        raise LLMRouterError("Grok CLI native response is incomplete or failed")
                     text = payload.get("text")
                     if isinstance(text, str):
                         return _clean_grok_cli_output(text)
@@ -8510,6 +8538,12 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 raise LLMRouterError("Grok CLI streaming response is incomplete or invalid")
             if payload is not None and str(payload.get("type") or "").lower() == "error":
                 raise _grok_cli_error(proc.stdout or "", proc.stderr or "")
+            if (not stream_progress and response_validator is None
+                    and _grok_cli_has_incomplete_native_outcome(payload)):
+                # Keep the original native usage/outcome recorded above. A
+                # successful process exit cannot turn a bounded/incomplete
+                # generation into successful response text.
+                raise LLMRouterError("Grok CLI native response is incomplete or failed")
 
             if trace_enabled:
                 trace_path = ""

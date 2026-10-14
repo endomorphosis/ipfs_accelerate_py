@@ -30561,6 +30561,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         provider_process = None
         provider_process_returned = False
         provider_child_custody = None
+        provider_deadline: float | None = None
         child_reported_router_failure = None
         # A no-change gate is valid for one implementation attempt only.
         self._implementation_no_change_policy_gates.clear()
@@ -30609,6 +30610,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         task_execution_receipt_path: Path | None = None
         task_execution_receipt: dict[str, Any] = {}
         provider_dispatched = False
+        failed_provider_lifecycle_retained = False
         seed_replayable_proposal_ids: tuple[str, ...] = ()
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
@@ -30983,7 +30985,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             }
                     else:
                         def invoke_provider() -> subprocess.CompletedProcess[str]:
-                            nonlocal provider_dispatched, provider_process_returned, provider_child_custody, child_reported_router_failure
+                            nonlocal provider_dispatched, provider_process_returned, provider_child_custody, child_reported_router_failure, provider_deadline
                             # Fail closed if gate identity drifted.
                             if not provider_gate.get("provider_authorized"):
                                 raise RuntimeError(
@@ -31040,8 +31042,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
                             if self._database_attempt_authority is not None:
                                 provider_child_custody = self._begin_database_provider_child_custody()
+                            provider_deadline = time.monotonic() + timeout_policy.max_timeout_seconds
                             provider_completed = run_process_group_stream(
                                 command,
+                                absolute_deadline=provider_deadline,
                                 cwd=worktree_path,
                                 stdout=log_fh,
                                 input_text=prompt,
@@ -31474,6 +31478,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                             command=command,
                                             base_prompt=prompt,
                                             allow_provider_rescue=bool(command),
+                                            provider_deadline=provider_deadline,
                                             replayable_consumed_proposal_ids=(
                                                 seed_replayable_proposal_ids
                                             ),
@@ -31821,53 +31826,98 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     reusable=False,
                 )
             elif not protected_path_violation:
-                release_reason = (
-                    "provider_capacity_exhausted"
-                    if provider_failure.get("exhausted", False)
-                    else "implementation_command_failed"
-                )
-                pool_failure_release = self._release_pooled_worktree_lease(
-                    worktree_path,
-                    reason=release_reason,
-                )
-                if pool_failure_release.get("attempted", False):
-                    lifecycle_finalize = dict(
-                        pool_failure_release.get("lifecycle_finalize") or {}
+                if (not provider_failure.get("exhausted", False)
+                        and provider_dispatched and provider_process_returned):
+                    validation_result = {
+                        "attempted": False, "passed": False,
+                        "returncode": returncode, "results": [],
+                        "reason": "implementation_provider_failed",
+                    }
+                    failure_evidence = {
+                        "reason": "implementation_provider_failed",
+                        "returncode": returncode,
+                        "baseline_ref": baseline_ref,
+                        "provider_dispatched": True,
+                        "provider_process_returned": True,
+                        "validation_attempted": False,
+                        "completion_authority": False,
+                        "retry_authority": False,
+                        "proof_authority": False,
+                    }
+                    failed_provider_lifecycle_retained = bool(
+                        self._database_attempt_authority is not None
+                        and not self._database_provider_children_quiesced(
+                            provider_child_custody
+                        )
                     )
-                    cleanup_result = {
-                        "cleaned": bool(
-                            pool_failure_release.get("released", False)
-                            and (
-                                not lifecycle_finalize
-                                or lifecycle_finalize.get("finalized", False)
-                            )
-                        ),
-                        "reason": "failed_implementation_pool_lease_released",
-                        "pooled": bool(pool_failure_release.get("pooled", False)),
-                        "pool_release": pool_failure_release,
-                    }
-                    # Release already finalized the captured lease/fence.
-                    # Looking up this pooled path again can see no record or
-                    # a different lane's newly acquired ownership.
-                    cleanup_result["lifecycle_finalize"] = lifecycle_finalize or {
-                        "finalized": False, "reason": "pool_release_lifecycle_unverified",
-                    }
-                else:
-                    # A non-pooled failed checkout remains available for
-                    # diagnostics, but the provider process no longer owns it.
-                    # Retaining its nonterminal claim would fence cleanup for
-                    # the full lease and make a capacity deferral collide with
-                    # its own same-attempt retry.
-                    cleanup_result = {
-                        "cleaned": False,
-                        "reason": "failed_implementation_worktree_preserved",
-                        "pooled": False,
-                        "pool_release": pool_failure_release,
-                        "lifecycle_finalize": self._finalize_worktree_lifecycle(
-                            worktree_path,
-                            reason="failed_implementation_provider_exited",
-                        ),
-                    }
+                    if failed_provider_lifecycle_retained:
+                        failed_preservation_result = {
+                            "preserved": False, "retained": worktree_path.exists(),
+                            "reason": "provider_child_custody_unverified",
+                            "provider_failure": failure_evidence,
+                            "cleanup_result": {"cleaned": False,
+                                "reason": "provider_child_custody_unverified"},
+                        }
+                    else:
+                        failed_preservation_result = self._preserve_failed_provider_worktree(
+                            worktree_path, branch_name, task, attempt,
+                            failure_evidence, baseline_ref=baseline_ref,
+                        )
+                    if failed_preservation_result:
+                        if (failed_preservation_result.get("preserved") is not True
+                                or failed_preservation_result.get("cleanup_uncertain") is True):
+                            failed_provider_lifecycle_retained = True
+                        commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
+                        implementation_commit = str(failed_preservation_result.get("preserved_commit") or "")
+                        cleanup_result = dict(failed_preservation_result["cleanup_result"])
+                if not failed_preservation_result:
+                    release_reason = (
+                        "provider_capacity_exhausted"
+                        if provider_failure.get("exhausted", False)
+                        else "implementation_command_failed"
+                    )
+                    pool_failure_release = self._release_pooled_worktree_lease(
+                        worktree_path,
+                        reason=release_reason,
+                    )
+                    if pool_failure_release.get("attempted", False):
+                        lifecycle_finalize = dict(
+                            pool_failure_release.get("lifecycle_finalize") or {}
+                        )
+                        cleanup_result = {
+                            "cleaned": bool(
+                                pool_failure_release.get("released", False)
+                                and (
+                                    not lifecycle_finalize
+                                    or lifecycle_finalize.get("finalized", False)
+                                )
+                            ),
+                            "reason": "failed_implementation_pool_lease_released",
+                            "pooled": bool(pool_failure_release.get("pooled", False)),
+                            "pool_release": pool_failure_release,
+                        }
+                        # Release already finalized the captured lease/fence.
+                        # Looking up this pooled path again can see no record or
+                        # a different lane's newly acquired ownership.
+                        cleanup_result["lifecycle_finalize"] = lifecycle_finalize or {
+                            "finalized": False, "reason": "pool_release_lifecycle_unverified",
+                        }
+                    else:
+                        # A non-pooled failed checkout remains available for
+                        # diagnostics, but the provider process no longer owns it.
+                        # Retaining its nonterminal claim would fence cleanup for
+                        # the full lease and make a capacity deferral collide with
+                        # its own same-attempt retry.
+                        cleanup_result = {
+                            "cleaned": False,
+                            "reason": "failed_implementation_worktree_preserved",
+                            "pooled": False,
+                            "pool_release": pool_failure_release,
+                            "lifecycle_finalize": self._finalize_worktree_lifecycle(
+                                worktree_path,
+                                reason="failed_implementation_provider_exited",
+                            ),
+                        }
         except subprocess.TimeoutExpired as timeout_exc:
             returncode = 124
             if protected_path_snapshot is not None:
@@ -33094,7 +33144,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["completion_receipt_degraded"] = (
                 completion_receipt_degraded
             )
-        if not merge_result.get("queued"):
+        if failed_provider_lifecycle_retained:
+            result["lifecycle_finalize"] = {
+                "finalized": False, "reason": str(cleanup_result.get("reason")
+                    or "provider_failure_checkpoint_preservation_failed"),
+            }
+        elif not merge_result.get("queued"):
             prior_lifecycle_finalize = (
                 cleanup_result.get("lifecycle_finalize")
                 if isinstance(cleanup_result, Mapping)
@@ -33113,7 +33168,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 else dict(prior_lifecycle_finalize)
                 if (isinstance(prior_lifecycle_finalize, Mapping)
                     and isinstance(cleanup_result.get("pool_release"), Mapping)
-                    and cleanup_result["pool_release"].get("attempted") is True
                     and cleanup_result["pool_release"].get("released") is True)
                 else self._finalize_worktree_lifecycle(
                     worktree_path,
@@ -38094,6 +38148,64 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 check=False,
             )
 
+    def _preserve_failed_provider_worktree(
+        self,
+        worktree_path: Path,
+        branch_name: str,
+        task: PortalTask,
+        attempt: int,
+        provider_failure: Mapping[str, Any],
+        *,
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Retain failed child edits, without validation or replay authority.
+
+        Preservation errors must never enter setup-error cleanup. Only an
+        observed clean baseline takes the historical no-change release path.
+        """
+        try:
+            dirty = self._strict_dirty_worktree_paths(worktree_path)
+            head = self._resolved_commit_ref(worktree_path, "HEAD")
+            baseline = self._resolved_commit_ref(worktree_path, baseline_ref)
+            if not head or not baseline:
+                raise RuntimeError("failed provider baseline is unavailable")
+            if not dirty and head == baseline:
+                return {}
+            return self._preserve_interrupted_worktree(
+                worktree_path, branch_name, task, attempt,
+                evidence=provider_failure, rescue_suffix="provider-failed",
+                event_type="provider_failed_worktree_preserved",
+                evidence_field="provider_failure", baseline_ref=baseline_ref,
+                retain_on_failure=True,
+            )
+        except Exception as exc:
+            # No fall-through to pooled reset or failed-setup cleanup. A
+            # previous successful rescue-ref write remains diagnostic only.
+            # An existing same-name ref might predate this attempt's failed
+            # write. Without a completed binding check it is not a checkpoint.
+            preserved_commit = ""
+            result = {
+                "task_id": task.task_id, "attempt": attempt,
+                "branch": branch_name, "worktree_path": str(worktree_path),
+                "preserved": bool(preserved_commit),
+                "retained": worktree_path.exists(),
+                "reason": "provider_failure_checkpoint_preservation_failed",
+                "error_type": type(exc).__name__,
+                "rescue_branch": "",
+                "preserved_commit": preserved_commit,
+                "implementation_commit": preserved_commit,
+                "commit_result": {"committed": False,
+                    "reason": "provider_failure_checkpoint_preservation_failed"},
+                "cleanup_result": {"cleaned": False,
+                    "reason": "provider_failure_checkpoint_preservation_failed"},
+                "provider_failure": dict(provider_failure),
+            }
+            try:
+                self._record_event("provider_failed_worktree_retained", result)
+            except Exception as event_exc:
+                result["retention_event_error_type"] = type(event_exc).__name__
+            return result
+
     def _preserve_failed_validation_worktree(
         self,
         worktree_path: Path,
@@ -38356,6 +38468,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         event_type: str,
         evidence_field: str,
         baseline_ref: str = "",
+        retain_on_failure: bool = False,
     ) -> dict[str, Any]:
         started_at = utc_now()
         pruned_seeded_context = self._drop_unchanged_seeded_worktree_context(
@@ -38383,7 +38496,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ["branch", "-f", rescue_branch, preserved_commit],
                 cwd=self.repo_root,
             )
-        cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+        if retain_on_failure and preserved_commit:
+            if self._resolved_commit_ref(self.repo_root, rescue_branch) != preserved_commit:
+                raise RuntimeError("failed provider rescue reference differs")
+        cleanup_result = (
+            {"cleaned": False, "reason": ("provider_failure_checkpoint_retained"
+                if preserved_commit else "provider_failure_checkpoint_unavailable"),
+             "retained": worktree_path.exists()}
+            if retain_on_failure
+            else self._cleanup_merged_worktree(worktree_path, branch_name)
+        )
         result = {
             "task_id": task.task_id,
             "attempt": attempt,
@@ -38400,7 +38522,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "pruned_seeded_context": pruned_seeded_context,
             evidence_field: dict(evidence),
         }
+        if retain_on_failure:
+            result["retained"] = worktree_path.exists()
+            if not preserved_commit:
+                result["reason"] = "provider_failure_checkpoint_unavailable"
+        # For failed providers, persist the rescue identity before cleanup;
+        # failure to record it must leave the original checkout intact.
         self._record_event(event_type, result)
+        if retain_on_failure and preserved_commit:
+            try:
+                result["cleanup_result"] = self._cleanup_merged_worktree(worktree_path, branch_name)
+            except Exception as exc:
+                # The checkpoint and its event are already durable. Cleanup
+                # may have removed the checkout or released a pooled lease;
+                # retain that known commit but never infer lifecycle custody.
+                result["cleanup_uncertain"] = True
+                result["cleanup_result"] = {
+                    "cleaned": False,
+                    "reason": "provider_failure_checkpoint_cleanup_unknown",
+                    "error_type": type(exc).__name__,
+                }
+            result["retained"] = worktree_path.exists()
         return result
 
     @staticmethod
@@ -46242,6 +46384,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         command: Sequence[str] = (),
         base_prompt: str = "",
         allow_provider_rescue: bool = True,
+        provider_deadline: float | None = None,
         replayable_consumed_proposal_ids: Sequence[str] = (),
     ) -> dict[str, Any]:
         """Attempt bounded same-attempt rescue after failure review.
@@ -46252,6 +46395,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         2. Stage declared dirty/ignored outputs and revalidate once.
         3. If still failing with guide_rescue signal, run one focused
            provider repair pass on the preserved worktree, then revalidate.
+
+        Provider rescue spends only the remaining absolute monotonic deadline
+        captured by the primary launch. Missing budget or owner-bound native
+        dispatch blocks that provider pass, while deterministic rescue remains
+        available.
         """
 
         from ..validation.implementation_auto_rescue import (
@@ -46275,6 +46423,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         expected = task_declared_output_paths(task)
         validation_commands = tuple(getattr(task, "validation", ()) or ())
         protected_provider_command = False
+        provider_rescue_blocked_reason = ""
         if command:
             try:
                 protected_provider_command = bool(
@@ -46284,6 +46433,36 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 # Ambiguous sealed authority is protected too. It must never
                 # be converted into an unsealed invocation with a new prompt.
                 protected_provider_command = True
+
+        def provider_rescue_budget() -> tuple[float | None, str]:
+            # A second database-bound child needs fresh owner dispatch and
+            # native custody, which this legacy inline path does not provide.
+            if getattr(self, "_database_attempt_authority", None) is not None:
+                return None, "database_provider_rescue_requires_owner_dispatch"
+            if protected_provider_command:
+                return None, "sealed_provider_rescue_requires_owner_dispatch"
+            if provider_deadline is None:
+                return None, "provider_rescue_deadline_missing"
+            if (type(provider_deadline) not in (int, float)
+                    or not -sys.float_info.max <= provider_deadline <= sys.float_info.max):
+                return None, "provider_rescue_deadline_invalid"
+            remaining = provider_deadline - time.monotonic()
+            if not math.isfinite(remaining) or remaining <= 0:
+                return None, "provider_rescue_deadline_exhausted"
+            return remaining, ""
+
+        def record_provider_block(reason: str) -> None:
+            nonlocal provider_rescue_blocked_reason
+            if reason and reason != provider_rescue_blocked_reason:
+                provider_rescue_blocked_reason = reason
+                self._record_event("implementation_auto_rescue_provider_blocked", {
+                    "task_id": task.task_id, "attempt": int(attempt), "reason": reason,
+                })
+
+        def with_provider_block(record: dict[str, Any]) -> dict[str, Any]:
+            if provider_rescue_blocked_reason:
+                record["auto_rescue"]["provider_rescue_blocked_reason"] = provider_rescue_blocked_reason
+            return record
 
         for _step in range(4):
             present = self._expected_outputs_present_on_disk(
@@ -46302,6 +46481,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     for item in (review.get("missing_expected_outputs") or ())
                     if str(item).strip()
                 )
+            _remaining, budget_block = provider_rescue_budget()
+            if command and allow_provider_rescue:
+                record_provider_block(budget_block)
             plan = plan_automatic_implementation_rescue(
                 validation_result=result,
                 expected_outputs=expected,
@@ -46315,6 +46497,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     allow_provider_rescue
                     and command
                     and not protected_provider_command
+                    and not budget_block
                 ),
                 expected_outputs_present_on_disk=present,
                 dirty_in_scope_paths=dirty,
@@ -46405,7 +46588,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         result.get("reason")
                         or "auto_rescue_materialize_and_stage_passed"
                     )
-                    return result
+                    return with_provider_block(result)
                 continue
 
             if plan.action is AutoRescueAction.STRIP_DENIED_HELPERS:
@@ -46476,7 +46659,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         result.get("reason")
                         or "auto_rescue_strip_denied_helpers_passed"
                     )
-                    return result
+                    return with_provider_block(result)
                 continue
 
             if plan.action is AutoRescueAction.STAGE_AND_REVALIDATE:
@@ -46545,7 +46728,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         result.get("reason")
                         or "auto_rescue_stage_and_revalidate_passed"
                     )
-                    return result
+                    return with_provider_block(result)
                 continue
 
             if plan.action in {
@@ -46554,7 +46737,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             }:
                 if not command or not allow_provider_rescue:
                     break
-                provider_passes += 1
                 rescue_prompt = build_inline_provider_rescue_prompt(
                     base_prompt=base_prompt,
                     validation_result=result,
@@ -46587,18 +46769,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         },
                     )
                     break
-                self._record_event(
-                    "implementation_auto_rescue_provider_started",
-                    {
-                        "task_id": task.task_id,
-                        "attempt": int(attempt),
-                        "plan": plan.to_record(),
-                        "failed_commands": list(plan.failed_commands),
-                        "base_prompt_id": base_prompt_id,
-                        "rescue_prompt_id": rescue_prompt_id,
-                        "strategy_changed": True,
-                    },
-                )
                 with _open_private_implementation_log(log_path, "a") as log_fh:
                     log_fh.write(
                         "\n[auto-rescue] inline_provider_rescue start\n"
@@ -46616,8 +46786,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 ),
                             )
                         )
+                        remaining, budget_block = provider_rescue_budget()
+                        if budget_block:
+                            record_provider_block(budget_block)
+                            break
+                        provider_start_details = {
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            "plan": plan.to_record(),
+                            "failed_commands": list(plan.failed_commands),
+                            "base_prompt_id": base_prompt_id,
+                            "rescue_prompt_id": rescue_prompt_id,
+                            "strategy_changed": True,
+                        }
+                        self._record_event("implementation_auto_rescue_provider_prepared", provider_start_details)
+                        # Prompt/environment construction and durable event
+                        # writes also consume the original provider lease.
+                        remaining, budget_block = provider_rescue_budget()
+                        if budget_block:
+                            record_provider_block(budget_block)
+                            break
+                        def provider_started(process: subprocess.Popen[Any]) -> None:
+                            self._record_event("implementation_auto_rescue_provider_started", {
+                                **provider_start_details, "provider_pid": process.pid,
+                            })
+                        provider_passes += 1
                         completed = run_process_group_stream(
                             list(command),
+                            absolute_deadline=provider_deadline,
                             cwd=workspace_path,
                             stdout=log_fh,
                             input_text=rescue_prompt,
@@ -46626,6 +46822,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             timeout_seconds=min(
                                 float(self.implementation_timeout),
                                 3600.0,
+                                remaining,
                             ),
                             progress_timeout_seconds=None,
                             max_timeout_seconds=min(
@@ -46638,8 +46835,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                     or self.implementation_timeout
                                 ),
                                 7200.0,
+                                remaining,
                             ),
                             progress_paths=(),
+                            on_started=provider_started,
                             on_progress=None,
                         )
                         log_fh.write(
@@ -46659,6 +46858,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 "error": str(exc)[-1000:],
                             },
                         )
+                        if isinstance(exc, subprocess.TimeoutExpired) and getattr(
+                            exc, "timeout_reason", None
+                        ) == "absolute_deadline":
+                            record_provider_block("provider_rescue_deadline_exhausted")
                         break
                 self._stage_declared_candidate_outputs(workspace_path, task)
                 result.pop("failure_review", None)
@@ -46835,7 +47038,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             "last_action": plan.action.value,
                         },
                     )
-                    return result
+                    return with_provider_block(result)
                 break
 
         result = dict(result)
@@ -46846,6 +47049,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "provider_rescue_blocked_by_prompt_binding": (
                 protected_provider_command
             ),
+            **({"provider_rescue_blocked_reason": provider_rescue_blocked_reason}
+               if provider_rescue_blocked_reason else {}),
             "succeeded": False,
         }
         result["auto_rescue_terminal"] = True
@@ -65703,7 +65908,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "Prefer existing repository patterns and implement every expected output without stubs or placeholders.",
             "When a compact execution or goal packet is present, advance its shared evidence as one cohesive change.",
             "Run the listed validation commands when practical.",
-            "The daemon commits and merges only after its validation gate passes.",
+            "The daemon may checkpoint unfinished candidates in rescue commits. It merges or marks work complete only after the required validation and completion gates pass.",
             "Leave generated artifacts and shared dependency paths alone.",
             "Do not mark backlog metadata complete unless the task explicitly requires it.",
             "The final response must list changed files and validation results.",

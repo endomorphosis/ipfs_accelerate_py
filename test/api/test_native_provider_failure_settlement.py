@@ -5,6 +5,7 @@ import shlex
 import signal
 import subprocess
 import sys
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -28,6 +29,51 @@ def _repository(path):
     subprocess.run(["git", "add", "."], cwd=path, check=True)
     subprocess.run(["git", "commit", "-qm", "fixture"], cwd=path, check=True)
     return subprocess.check_output(["git", "branch", "--show-current"], cwd=path, text=True).strip()
+
+
+def _assert_failed_checkpoint(bridge, attempt, portal, finished, events):
+    """Real custody may settle failure while retaining unaccepted source work."""
+    retained = finished["failed_preservation_result"]
+    commit = retained["preserved_commit"]
+    assert commit and finished["implementation_commit"] == commit
+    assert retained["preserved"] is True
+    assert finished["validation_result"]["attempted"] is False
+    assert finished["validation_result"]["passed"] is False
+    assert finished["board_completion"]["complete"] is False
+    assert finished["merge_result"]["merged"] is False
+    assert subprocess.check_output(["git", "show", commit + ":result.py"],
+        cwd=portal.repo_root, text=True) == "VALUE = 1\n"
+    assert subprocess.check_output(["git", "rev-parse", retained["rescue_branch"]],
+        cwd=portal.repo_root, text=True).strip() == commit
+    state = json.loads(bridge._native_provider_state(bridge._paths(attempt))[0])
+    assert state["last_implementation_commit"] == commit
+    assert bridge._native_failed_checkpoint_matches(finished, state, events)
+    # A fresh hash or matching source commit does not authorize completion or
+    # replace the native result/state/event join with claimant-authored fields.
+    for mutation in ("state", "commit", "event", "duplicate", "task", "baseline",
+                     "validation", "merge", "complete", "retry", "proof"):
+        result_copy, state_copy, event_copy = deepcopy((finished, state, list(events)))
+        if mutation == "state":
+            state_copy["last_implementation_commit"] = "f" * 40
+        elif mutation == "commit":
+            result_copy["failed_preservation_result"]["preserved_commit"] = "f" * 40
+        elif mutation == "event":
+            event_copy = [e for e in event_copy if e.get("type") != "provider_failed_worktree_preserved"]
+        elif mutation == "duplicate":
+            event_copy += [e for e in event_copy if e.get("type") == "provider_failed_worktree_preserved"]
+        elif mutation == "task":
+            result_copy["failed_preservation_result"]["task_id"] = "foreign"
+        elif mutation == "baseline":
+            result_copy["failed_preservation_result"]["provider_failure"]["baseline_ref"] = "f" * 40
+        elif mutation == "validation":
+            result_copy["validation_result"]["passed"] = True
+        elif mutation == "merge":
+            result_copy["merge_result"]["merged"] = True
+        elif mutation == "complete":
+            result_copy["board_completion"]["complete"] = True
+        else:
+            result_copy["failed_preservation_result"]["provider_failure"][mutation + "_authority"] = True
+        assert not bridge._native_failed_checkpoint_matches(result_copy, state_copy, event_copy), mutation
 
 
 def _authored_router_postdecode(path, *, repository, source_path, replacement, task_id="DQP-T001"):
@@ -201,9 +247,6 @@ def test_actual_router_timeout_settles_native_failure_without_retry(tmp_path, mo
         assert daemon.claim_next() is None
         assert (tmp_path / "repository/result.py").read_text() == "VALUE = 0\n"
         assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path / "repository", text=True) == ""
-        if partial_edit and not pooled:
-            candidates = list((tmp_path / "worktrees").glob("*/result.py"))
-            assert len(candidates) == 1 and candidates[0].read_text() == "VALUE = 1\n"
         assert len(portals) == 1
         observation = failures[0].result["native_provider_custody_observation"]
         assert observation["checks"] == [
@@ -218,9 +261,13 @@ def test_actual_router_timeout_settles_native_failure_without_retry(tmp_path, mo
         from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import _accepted_source_events
         events, _ = _accepted_source_events(bridge._paths(attempt).events)
         finished = [item for item in events if item.get("type") == "implementation_finished"]
-        assert len(finished) == 1 and finished[0]["implementation_commit"] == ""
+        assert len(finished) == 1
+        if partial_edit:
+            _assert_failed_checkpoint(bridge, attempt, portals[0], finished[0], events)
+        else:
+            assert finished[0]["implementation_commit"] == ""
         assert finished[0]["lifecycle_finalize"]["finalized"] is True
-        if pooled:
+        if pooled and not partial_edit:
             cleanup = finished[0]["cleanup_result"]
             original = cleanup["pool_release"]["lifecycle_finalize"]
             assert original["finalized"] is True
@@ -268,8 +315,6 @@ def test_completed_cli_postdecode_failure_settles_without_accepting_partial_edit
         assert (tmp_path / "repository/result.py").read_text() == "VALUE = 0\n"
         assert subprocess.check_output(["git", "status", "--porcelain"],
             cwd=tmp_path / "repository", text=True) == ""
-        if not pooled:
-            assert (workspace / "result.py").read_text() == "VALUE = 1\n"
         logs = list(bridge._paths(attempt).root.rglob("*.log"))
         rows = [json.loads(line) for path in logs for line in path.read_text().splitlines()
                 if line.startswith('{"') and 'router-implementation-invocation@1' in line]
@@ -304,14 +349,10 @@ def test_completed_cli_postdecode_failure_settles_without_accepting_partial_edit
         events, _ = _accepted_source_events(bridge._paths(attempt).events)
         finished = [item for item in events if item.get("type") == "implementation_finished"]
         assert len(finished) == 1
-        assert finished[0]["implementation_commit"] == ""
+        _assert_failed_checkpoint(bridge, attempt, portals[0], finished[0], events)
         assert finished[0]["lifecycle_finalize"]["finalized"] is True
         if pooled:
-            cleanup = finished[0]["cleanup_result"]
-            original = cleanup["pool_release"]["lifecycle_finalize"]
-            assert original["finalized"] is True
-            assert cleanup["lifecycle_finalize"] == original
-            assert finished[0]["lifecycle_finalize"]["fence"] == original["fence"]
+            assert not portals[0]._worktree_pool_leases
     finally:
         daemon.close()
 
@@ -580,14 +621,16 @@ def test_disabled_subreaper_never_proves_absence(monkeypatch):
     assert PortalImplementationDaemon._database_provider_children_quiesced(custody) is False
 
 
-def test_pooled_release_failure_cannot_reload_or_settle_another_owner(tmp_path, monkeypatch):
-    daemon, bridge, portals = _native_chain(tmp_path, monkeypatch, pooled=True, partial_edit=True)
+@pytest.mark.parametrize("partial_edit", [False, True])
+def test_pooled_release_failure_cannot_reload_or_settle_another_owner(tmp_path, monkeypatch, partial_edit):
+    daemon, bridge, portals = _native_chain(tmp_path, monkeypatch, pooled=True, partial_edit=partial_edit)
     factory = bridge.portal_factory
     released = []
     def guarded_factory(paths, alias):
         native = factory(paths, alias)
         original_release = native._release_pooled_worktree_lease
         original_finalize = native._finalize_worktree_lifecycle
+        original_exact_finalize = native._finalize_exact_worktree_lifecycle
         def release(*args, **kwargs):
             result = original_release(*args, **kwargs)
             assert result["released"] is True
@@ -597,7 +640,17 @@ def test_pooled_release_failure_cannot_reload_or_settle_another_owner(tmp_path, 
         def finalize(*args, **kwargs):
             assert not released, "released pooled path must never be looked up as this attempt's owner"
             return original_finalize(*args, **kwargs)
-        monkeypatch.setattr(native, "_release_pooled_worktree_lease", release)
+        def exact_finalize(*args, **kwargs):
+            result = original_exact_finalize(*args, **kwargs)
+            if kwargs.get("reason") == "pool_release_cleaned":
+                assert result["finalized"] is True
+                released.append(True)
+                return {"finalized": False, "reason": "lifecycle_finalize_race"}
+            return result
+        if partial_edit:
+            monkeypatch.setattr(native, "_finalize_exact_worktree_lifecycle", exact_finalize)
+        else:
+            monkeypatch.setattr(native, "_release_pooled_worktree_lease", release)
         monkeypatch.setattr(native, "_finalize_worktree_lifecycle", finalize)
         return native
     bridge.portal_factory = guarded_factory

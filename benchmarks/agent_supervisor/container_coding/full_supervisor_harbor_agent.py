@@ -5,6 +5,12 @@ Installation is setup time, measured by Harbor separately for both harnesses.
 """
 from __future__ import annotations
 
+from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
+    DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns, grok_coding_selection,
+    require_grok_coding_archive, grok_coding_runtime_matches,
+    grok_coding_not_applicable_provider_free,
+)
+
 import asyncio
 import json
 from pathlib import Path
@@ -69,6 +75,10 @@ from .terminal_capsule_selection_policy import (
 from .terminal_planning_policy import (
     DEFAULT_PLANNING_MODE, validate_planning_mode,
     planning_observation, require_planning_archive,
+)
+from .terminal_semantic_working_set_policy import (
+    DEFAULT_SEMANTIC_WORKING_SET, SEMANTIC_WORKING_SETS, validate_semantic_working_set,
+    semantic_working_set_selection, semantic_working_set_observation, require_semantic_working_set_archive,
 )
 from .terminal_source_edit_policy import (
     DEFAULT_SOURCE_EDIT_MODE, SOURCE_EDIT_MODES, validate_source_edit_mode,
@@ -358,6 +368,8 @@ class FullSupervisorAgent(BaseAgent):
                  source_input_policy: str = DEFAULT_SOURCE_INPUT_POLICY,
                  query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+                 semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
+                 grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                  capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                  source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -411,6 +423,15 @@ class FullSupervisorAgent(BaseAgent):
             arm=arm, provider=selected_provider["provider"])
         self.semantic_metadata_view = validate_semantic_metadata_view(semantic_metadata_view,
             arm=arm, transport_schema=self.semantic_transport_schema, provider=selected_provider["provider"])
+        self.semantic_working_set = validate_semantic_working_set(semantic_working_set, arm=arm,
+            source_view_profile=self.source_view_profile, transport_schema=self.semantic_transport_schema,
+            metadata_view=self.semantic_metadata_view)
+        self._frozen_semantic_working_set = self.semantic_working_set
+        self.grok_coding_max_turns = validate_grok_coding_max_turns(
+            grok_coding_max_turns, provider=selected_provider["provider"])
+        self._frozen_grok_coding_max_turns = self.grok_coding_max_turns
+        if self.grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS and metadata_census_only:
+            raise ValueError("nondefault coding turns require generation, not metadata census")
         if type(metadata_census_only) is not bool:
             raise ValueError("explicit Boolean metadata census selection required")
         if metadata_census_only and self.source_edit_mode != DEFAULT_SOURCE_EDIT_MODE:
@@ -493,6 +514,27 @@ class FullSupervisorAgent(BaseAgent):
                 raise ValueError("bounded capsules support one independent signed task")
         return value
 
+    def _checked_grok_coding_max_turns(self):
+        value = validate_grok_coding_max_turns(
+            getattr(self, "grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        if value != DEFAULT_GROK_CODING_MAX_TURNS and getattr(self, "metadata_census_only", False):
+            raise ValueError("nondefault coding turns require generation, not metadata census")
+        if value != getattr(self, "_frozen_grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS):
+            raise ValueError("prepared Grok coding turn bound changed")
+        return value
+
+    def _checked_semantic_working_set(self):
+        mode = validate_semantic_working_set(getattr(self, "semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET),
+            arm=self.arm, source_view_profile=getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
+            transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+            metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+        if mode != DEFAULT_SEMANTIC_WORKING_SET and getattr(self, "metadata_census_only", False):
+            raise ValueError("semantic working set requires a coding worker")
+        if mode != getattr(self, "_frozen_semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET):
+            raise ValueError("prepared semantic working set changed")
+        return mode
+
     def _checked_source_edit_mode(self, profile):
         mode = validate_source_edit_mode(getattr(self, "source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
             arm=self.arm, source_view_profile=profile)
@@ -559,6 +601,10 @@ class FullSupervisorAgent(BaseAgent):
             transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
             provider=selected_provider["provider"])
         require_semantic_metadata_archive(manifest, metadata_view)
+        working_set = self._checked_semantic_working_set()
+        require_semantic_working_set_archive(manifest, working_set)
+        grok_turns = self._checked_grok_coding_max_turns()
+        require_grok_coding_archive(manifest, grok_turns)
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
         require_capsule_selection_archive(manifest, capsule_selection)
@@ -658,6 +704,10 @@ class FullSupervisorAgent(BaseAgent):
             transport_schema=transport,
             provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         require_semantic_metadata_archive(manifest, metadata_view)
+        working_set = self._checked_semantic_working_set()
+        require_semantic_working_set_archive(manifest, working_set)
+        grok_turns = self._checked_grok_coding_max_turns()
+        require_grok_coding_archive(manifest, grok_turns)
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
         require_capsule_selection_archive(manifest, capsule_selection)
@@ -706,6 +756,10 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--provider-profile", provider_profile]
         if source_edit != DEFAULT_SOURCE_EDIT_MODE:
             argv += ["--source-edit-mode", source_edit]
+        if working_set != DEFAULT_SEMANTIC_WORKING_SET:
+            argv += ["--semantic-working-set", working_set]
+        if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
+            argv += ["--grok-coding-max-turns", str(grok_turns)]
         if planning_mode != DEFAULT_PLANNING_MODE:
             argv += ["--planning-mode", planning_mode]
         if numerical_profile is not None:
@@ -781,6 +835,8 @@ class FullSupervisorAgent(BaseAgent):
                             **source_view_observation(source_view, source_policy),
                             **source_edit_observation(source_edit),
                             **semantic_context_selection(semantic_profile),
+                            **semantic_working_set_observation(working_set),
+                            **grok_coding_selection(grok_turns),
                             **numerical_observation(numerical_profile, self.arm),
                             **planning_observation(planning_mode),
                             **_intent_selection(requirement_contract, planning_mode=planning_mode),
@@ -828,6 +884,18 @@ class FullSupervisorAgent(BaseAgent):
                         for key, value in expected_budget.items())
                     # A treatment mismatch does not erase provider usage. The
                     # outer collector separately refuses a complete matched receipt.
+                if working_set != DEFAULT_SEMANTIC_WORKING_SET:
+                    expected_working_set = semantic_working_set_observation(working_set)
+                    context.metadata["semantic_working_set_runtime_declared_matches"] = all(
+                        type(report.get(key)) is type(value) and report.get(key) == value
+                        for key, value in expected_working_set.items())
+                if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
+                    context.metadata["grok_coding_runtime_declared_matches"] = (
+                        type(report.get("grok_coding_max_turns")) is int
+                        and report["grok_coding_max_turns"] == grok_turns)
+                    context.metadata["grok_coding_runtime_policy_matches"] = grok_coding_runtime_matches(report, grok_turns)
+                    context.metadata["grok_coding_not_applicable_provider_free"] = (
+                        grok_coding_not_applicable_provider_free(report, grok_turns))
                 usage = measured_usage(report)
                 populate_harbor_usage(context, usage)
                 context.metadata.update(task_completed=report["task_completed"], usage=usage,

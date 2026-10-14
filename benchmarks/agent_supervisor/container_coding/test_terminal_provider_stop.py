@@ -223,6 +223,18 @@ def test_failed_planning_is_retained_with_explicit_stop_and_cleanup(planning_fai
     assert stop["retry_authority"] is stop["automatic_replay_allowed"] is False
 
 
+def test_failed_planning_retains_context_inventory_without_completion_claim(planning_failure_report):
+    observed = planning_failure_report["context_delivery_observation"]
+    assert observed["status"] == "observed"
+    assert observed["supplied_invocation_count"] == 1
+    assert observed["provider_ingestion_verified"] is False
+    assert observed["total_token_savings_measured"] is False
+    assert observed["raw_content_exported"] is False
+    assert observed["completion_authority"] is False
+    assert observed["join_coverage"]["per_tool_provider_token_attribution_available"] is False
+    assert planning_failure_report["task_completed"] is False
+
+
 def test_closed_session_without_counters_remains_unknown_accounting():
     from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent import measured_usage
     value = measured_usage({"provider_invocations": [failed_receipt()]})
