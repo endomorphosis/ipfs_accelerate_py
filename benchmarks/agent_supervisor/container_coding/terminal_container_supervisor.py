@@ -1424,6 +1424,16 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "reason": "observer_unavailable", "counts": None, "observation_only": True,
                 "proof_authority": False, "execution_authority": False, "completion_authority": False,
             }
+        try:
+            from .terminal_context_delivery_observation import collect as collect_context_delivery
+            report["context_delivery_observation"] = collect_context_delivery(report=report)
+        except Exception:
+            report["context_delivery_observation"] = {
+                "schema": "terminal-context-delivery-observation@1", "status": "unavailable",
+                "reason": "observer_unavailable", "observation_only": True,
+                "completion_authority": False, "provider_ingestion_verified": False,
+                "total_token_savings_measured": False, "raw_content_exported": False,
+            }
         report["seconds"] = time.monotonic() - started
         _write(report_path, report)
     return report
