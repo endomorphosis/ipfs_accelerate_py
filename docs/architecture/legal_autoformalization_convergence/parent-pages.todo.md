@@ -4,7 +4,7 @@ Three deterministic qualifications preserve complete supplied populations and or
 
 ## LAC-S9-011 Qualify bounded parent Parquet page preflight
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
