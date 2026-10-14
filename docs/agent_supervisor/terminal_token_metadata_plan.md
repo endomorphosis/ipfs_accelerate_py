@@ -748,3 +748,90 @@ wiring and benchmark observations. The datasets and kit commits and actual
 import origins stayed pinned and clean. An early fixture socket-path error
 and an overly broad Lean assertion are retained in the run history alongside
 their corrected results; they are not hidden as successful runs.
+
+
+## October 14: preserve original requirements and read a fresh candidate generation
+
+The sealed source-broker factory now captures the original requirements before
+registering the first child. Native-only launches explicitly retain that
+selection; public-instruction launches replay the existing native loader and
+retain its complete admitted block. That separate block can contain the full
+Terminal Bench instruction, IntentIR prerequisites/prohibitions and inventory
+advisories. Retaining stdin alone would omit it. Partial public-instruction
+arguments refuse, and capture failure retires the newly opened service.
+
+`owner_candidate_round_prompt` prepares an immutable, owner-local candidate
+envelope from the live failed-worker snapshot and the retained requirement
+handle. The envelope preserves the complete native prompt, including its
+suffix, and the complete public block. It names baseline identities separately
+from the candidate generation, source hashes, producer hashes and artifact
+references. Its summary retains full coverage, pending-obligation counts and
+unsupported frontiers. The complete artifacts stay available separately;
+there is no automatic insertion of up to 16 MiB into model input. Oversized
+summaries or combined prompts refuse rather than truncate required text.
+
+Public requirements are checked against their original signed artifact,
+canonical commit and sources. Historical reconstruction only checks the
+previously admitted bytes; it never admits the edited working tree. The live
+snapshot independently rechecks candidate source and producer freshness.
+There is no deserializer that turns a checkpoint dictionary into one of these
+owner handles.
+
+Doctor residual launches have a separate context containing acceptance and
+security constraints, open obligations and their own call/round budget.
+Those are not captured by this new prompt preparation. The original source
+service and Doctor route remain available, but candidate requirement capture
+is explicitly unavailable for that selection. A native-only recapture cannot
+erase that refusal. Separately, the ordinary router refuses the reserved
+candidate-envelope family even when passed as a raw prompt, preventing an
+advisory preparation from silently becoming a model dispatch.
+
+`WorkerCandidateRoundBroker` creates a separate read session from an exact live
+`OwnerCandidateRoundContext`. Its new descriptor retains the baseline binding
+and adds candidate generation, snapshot digest, prior session/descriptor,
+round identity and candidate semantic/scope IDs. Its socket, request ledger,
+child registration and cursor admission are fresh. Session expiry is clipped
+to the original deadline. A source cursor from the earlier session or another
+candidate reader cannot be used here, including when both readers retain the
+same immutable source snapshot.
+
+The standalone `worker_candidate_round_client` runs with Python `-I` and uses
+the existing authenticated socket and wire validators. It permits only
+explicitly generation-pinned working-source and candidate-artifact reads.
+Baseline discovery/read, baseline capsule evidence, mapped edits and numerical
+baseline obligations are excluded. Ordinary source clients reject this new
+descriptor. Source changes invalidate the session instead of silently moving
+it to a later generation. Existing native candidate artifacts are reused,
+including their unresolved proof obligations; no model or theorem prover is
+called to serve a page.
+
+The native pipeline qualification uses sealed initial stdin, a real first
+child that edits source and fails, then a distinct registered Python `-I`
+reader. That second process loads the real descriptor, exchanges socket
+frames and pages the exact retained source, summary, capsules and formal
+artifacts. It observes `SelectionMin` in the emitted Lean binding after an
+`argmax` to `argmin` edit, preserves canonical source and leaves Lean
+`prepared_not_built`. Page budgets and continuations use the actual transport
+limits. PID ancestry, hashes, modes and source freshness are checked; only
+the local host's missing cross-UID/path boundary is authored. This is not a
+Docker or live-model run.
+
+These APIs prepare a prompt and admit advisory reads to an independently
+registered child. They do not authorize or automatically launch another coding
+worker. The prepared prompt remains `dispatch_usable=False`. Remaining work is
+the one-use owner launch admission, a candidate-specific formalization handoff,
+a candidate reply grammar and round-to-invocation accounting under the existing
+task/attempt and cumulative budget. Doctor, finite-proof and numerical contexts
+need their own compatible candidate contracts before inclusion. There is no
+accepted candidate proof-index publication or new token-saving measurement.
+
+Source pins, results and earlier corrected qualification failures are recorded
+in [qualification.json](evidence/candidate-admission-20261014/qualification.json).
+
+The final frozen-source qualification passed all 669 tests across 19 modules
+in 537.11 seconds, with no failures or skips. It covers candidate preparation,
+the real-process reader, existing source and candidate clients, failed-worker
+snapshots/checkpoints, public instructions, router contracts and worker wiring.
+Source hashes, pinned datasets/kit commits and their actual import origins
+remained unchanged. The run made no live model calls and did not run Docker,
+training, Lean or a new Terminal Bench comparison.

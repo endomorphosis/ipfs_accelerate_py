@@ -414,6 +414,23 @@ def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
     return advisory + prompt, advisory
 
 
+def _refuse_candidate_preparation(prompt):
+    """Prepared candidate envelopes need their own admission before dispatch.
+
+    An owner-local preparation must not silently become an ordinary untyped
+    prompt merely because its caller omits the baseline semantic route.
+    """
+    if type(prompt) is not str:
+        return
+    try:
+        envelope, _ = json.JSONDecoder().raw_decode(prompt.lstrip())
+    except (ValueError, RecursionError):
+        return
+    if (type(envelope) is dict and type(envelope.get("schema")) is str
+            and envelope["schema"].startswith("supervisor-owner-candidate-router-input@")):
+        raise ValueError("candidate round prompt requires independent dispatch admission")
+
+
 def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int,
         reasoning_effort: str = "high", container_boundary: Path | None = None,
         container_boundary_sha256: str = "", purpose: str = "coding",
@@ -440,6 +457,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         public_instruction_artifact: Path | None = None, public_instruction_sha256: str = "",
         public_instruction_task_cid: str = "", budget_profile: str | None = None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
+    _refuse_candidate_preparation(prompt)
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
     from ipfs_accelerate_py.llm_router import generate_text, get_llm_provider
