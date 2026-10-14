@@ -1,0 +1,196 @@
+"""Real signed Terminal selection reaches the public coding-worker boundary.
+
+These tests use real Git, signatures, native semantic producers and compiled
+evidence. They dispatch no provider, target program, training or container.
+"""
+from copy import deepcopy
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+
+from benchmarks.agent_supervisor.container_coding.test_terminal_signed_semantic_scope import make_case, admit
+from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as prep
+from benchmarks.agent_supervisor.container_coding.test_terminal_task_profile import git
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
+    ContextCompiler, build_text_context_references, render_context_capsule,
+)
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import content_identity
+from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
+from ipfs_accelerate_py.agent_supervisor.runtime import router_public_instruction as instruction
+from ipfs_accelerate_py.agent_supervisor.runtime import semantic_router_translation as codec
+from ipfs_accelerate_py.agent_supervisor.runtime import terminal_task_profile as profiles
+from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import prepare_semantic_context
+from ipfs_accelerate_py.agent_supervisor.runtime.terminal_semantic_scope import replay_terminal_semantic_scope
+
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def compiled(case, artifact):
+    refs = build_text_context_references(artifact.read_text(), reference_prefix="semantic-context",
+        kind="semantic-context", path=artifact.relative_to(case.root).as_posix(),
+        repository_id="repo:authored", tree_id="tree:authored", required=True, chunk_bytes=2048)
+    context = ContextCompiler(ContextBudget(max_input_tokens=32768, max_items=128,
+        max_item_bytes=16384, max_serialized_bytes=262144)).compile(
+        repository_id="repo:authored", tree_id="tree:authored", objective_id=case.task.task_key,
+        objective_revision="sha256:authored-task", policy_id="policy:authored", policy_revision="sha256:authored-policy",
+        caller="supervisor:authored", stage="implementation", goal={"id":case.task.task_key},
+        authority={"mode":"candidate_only", "completion_authority":False},
+        scope={"allowed_paths":case.prepared["spec"]["scope_paths"]},
+        acceptance={"criteria":["Public validation remains pending"]}, evidence=refs)
+    return render_context_capsule(context.capsule)
+
+
+@pytest.fixture
+def selected(tmp_path):
+    case = make_case(tmp_path)
+    initial = prep.initial_context(state=case.state)
+    # Match public worker storage: remove inherited group-write permissions.
+    case.root.chmod(0o755)
+    (case.root / ".runtime").chmod(0o755)
+    graph, admission = admit(case)
+    case.task, case.admission = graph.tasks[0], admission
+    context = instruction.prepare_public_instruction_context(repository=case.root, admission=admission,
+        task_cid=case.task.task_cid, source_path=profiles.INSTRUCTION,
+        expected_source_sha256=sha((case.root/profiles.INSTRUCTION).read_bytes()))
+    descriptor = json.loads((case.root/initial["descriptor"]["artifact"]).read_text())
+    artifact = case.root/descriptor["metadata"]["Semantic context artifact"]
+    workspace = tmp_path/"allocated"
+    git(case.root, "worktree", "add", "--detach", "-q", str(workspace))
+    case.context, case.artifact, case.workspace = context, artifact, workspace
+    case.request = dict(artifact=Path(context["artifact"]), expected_sha256=context["sha256"],
+        task_cid=case.task.task_cid, prompt=compiled(case, artifact), workspace=workspace,
+        repository=case.root)
+    return case
+
+
+def repin(case, payload):
+    payload["context_cid"] = content_identity({key:value for key,value in payload.items() if key!="context_cid"})
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()+b"\n"
+    path = case.request["artifact"].with_name(sha(raw)+".json")
+    path.write_bytes(raw);path.chmod(0o444)
+    return {**case.request, "artifact":path, "expected_sha256":sha(raw)}
+
+
+def test_owner_selects_version_five_and_worker_receipt_binds_complete_and_selected_populations(selected):
+    case = selected
+    payload = json.loads(case.request["artifact"].read_text())
+    assert payload["schema"] == instruction.SCOPED_SCHEMA
+    assert payload["terminal_task_profile"] == case.declared
+    assert len(payload["manifest"]["payload"]["sources"]) == 73
+    block, receipt = instruction.load_public_instruction(**case.request)
+    assert case.prepared["query"] in block
+    assert receipt["schema"] == instruction.SCOPED_INCLUSION_SCHEMA
+    assert receipt["source_freshness_verified"] is True and receipt["historical_replay"] is False
+    scope = receipt["terminal_semantic_scope"]
+    assert scope["schema"] == instruction.SCOPE_INCLUSION_SCHEMA
+    assert (scope["full_count"],scope["selected_count"],scope["frontier_count"]) == (73,5,68)
+    assert scope["required_count"] == 4 and scope["program_count"] == 2
+    expected = replay_terminal_semantic_scope(case.prepared)
+    assert scope["scope_observation_cid"] == content_identity(expected)
+    assert scope["profile_sha256"] == sha(profiles.task_profile_bytes(case.declared))
+    assert scope["semantic_payload_sha256"] == sha(case.artifact.read_bytes())
+    assert not {"selected_paths","selected_sources","input_paths","sources","raw_sources"} & set(scope)
+    for key in ("native_claim_verified","native_allocation_verified","process_identity_verified",
+                "proof_authority","execution_authority","completion_authority","omission_authority"):
+        assert scope[key] is False
+
+
+def test_live_and_historical_worker_checks_use_public_keys_without_private_owner_state(selected, monkeypatch):
+    case = selected
+    def private_owner_read(*args, **kwargs):
+        pytest.fail("public worker replay must not read private owner state")
+    monkeypatch.setattr(local, "_manifest", private_owner_read)
+    monkeypatch.setattr(local, "load_local_profile", private_owner_read)
+    monkeypatch.setattr(local, "verify_local_benchmark_admission", private_owner_read)
+    block, live = instruction.load_public_instruction(**case.request)
+    (case.root/profiles.PROFILE).write_bytes(b"subsequent unrelated source state\n")
+    (case.root/"module_069.py").write_bytes(b"def after_capture(): return 7\n")
+    git(case.root, "worktree", "remove", "--force", str(case.workspace))
+    historical_block, historical = instruction.load_public_instruction(**{
+        **case.request,"workspace":None,"require_current_source":False})
+    assert historical_block == block
+    assert historical["terminal_semantic_scope"] == live["terminal_semantic_scope"]
+    assert historical["historical_replay"] is True and historical["source_freshness_verified"] is False
+    with pytest.raises(ValueError): instruction.load_public_instruction(**case.request)
+
+
+@pytest.mark.parametrize("checkout,path", [
+    ("root","module_069.py"),("workspace","module_069.py"),
+    ("root","module_000.py"),("workspace",profiles.SMOKE),("root",profiles.PROFILE),
+])
+def test_changed_selected_omitted_or_support_original_refuses_current_worker_handoff(selected, checkout, path):
+    case = selected
+    target = getattr(case,checkout)/path
+    target.write_bytes(target.read_bytes()+b"\n")
+    with pytest.raises(ValueError): instruction.load_public_instruction(**case.request)
+
+
+@pytest.mark.parametrize("historical",[False,True])
+@pytest.mark.parametrize("mutation",["downgrade","declaration","missing_declaration","signature"])
+def test_repinned_public_artifact_cannot_downgrade_or_replace_signed_selection(selected, historical, mutation):
+    case = selected
+    payload = json.loads(case.request["artifact"].read_text())
+    if mutation == "downgrade":
+        payload["schema"] = instruction.SCHEMA
+        payload.pop("terminal_task_profile")
+    elif mutation == "declaration":
+        payload["terminal_task_profile"]["semantic_scope"]["program_paths"] = [case.selected[0]]
+        payload["terminal_task_profile"]["semantic_scope"]["required_input_paths"] = case.selected
+    elif mutation == "missing_declaration": payload.pop("terminal_task_profile")
+    else:
+        payload["manifest"]["payload"]["sources"]["module_069.py"]["sha256"] = "0"*64
+        payload["manifest_cid"] = content_identity(payload["manifest"])
+    request = repin(case,payload)
+    if historical: request.update(require_current_source=False,workspace=None)
+    with pytest.raises(ValueError): instruction.load_public_instruction(**request)
+
+
+def test_scoped_artifact_requires_compiled_semantic_evidence_even_with_correct_task_alias(selected):
+    request = {**selected.request, "prompt":json.dumps({"objective_id":selected.task.task_key},separators=(",",":"))}
+    with pytest.raises(ValueError): instruction.load_public_instruction(**request)
+
+
+@pytest.mark.parametrize("mutation",["population","program","required"])
+def test_valid_independent_semantic_producer_cannot_change_reviewed_scope(selected, mutation):
+    case = selected
+    paths = profiles.task_profile_semantic_inputs(case.declared)
+    required = profiles.task_profile_semantic_required_paths(case.declared)
+    program = list(case.selected)
+    if mutation == "population":
+        paths.remove(case.selected[1]);paths.append("module_002.py")
+        program[1] = "module_002.py"
+    elif mutation == "program": program = program[:1]
+    else: required.remove(profiles.PROFILE)
+    output = case.root/".runtime"/("different-scope-"+mutation)
+    prepare_semantic_context(repository=case.root,paths=paths,required_raw_paths=required,
+        program_paths=program,objective="Inspect the selected functions",task_id=case.task.task_key,
+        output=output,worker_query=case.prepared["query"],worker_max_bytes=32768)
+    prompt = compiled(case,output/"worker-context.json")
+    # The existing producer verifier accepts this internally valid alternative.
+    codec.encode_semantic_router_prompt(prompt=prompt,repository=case.root)
+    with pytest.raises(ValueError,match="signed declaration"):
+        instruction.load_public_instruction(**{**case.request,"prompt":prompt})
+
+
+def test_omitted_source_change_during_semantic_replay_fails_the_closing_complete_population_check(selected, monkeypatch):
+    original = codec._verified_semantic
+    def changed_after_verified(*args,**kwargs):
+        result = original(*args,**kwargs)
+        (selected.workspace/"module_069.py").write_bytes(b"def stale_during_replay(): return 0\n")
+        return result
+    monkeypatch.setattr(codec,"_verified_semantic",changed_after_verified)
+    with pytest.raises(ValueError,match="stale"):
+        instruction.load_public_instruction(**selected.request)
+
+
+def test_scoped_public_source_must_be_the_signed_instruction_support(selected):
+    case = selected
+    with pytest.raises(ValueError,match="complete signed task declaration"):
+        instruction.prepare_public_instruction_context(repository=case.root,admission=case.admission,
+            task_cid=case.task.task_cid,source_path=case.selected[1],
+            expected_source_sha256=sha((case.root/case.selected[1]).read_bytes()))

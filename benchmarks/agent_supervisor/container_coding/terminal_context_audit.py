@@ -35,7 +35,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement", "terminal_semantic_scope_dispatch_rechecked")
 
 
 def _sha(raw: bytes) -> str:
@@ -46,6 +46,34 @@ def _same_json(left, right) -> bool:
     """Compare typed canonical values: false is distinct from zero."""
     options = dict(sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     return json.dumps(left, **options) == json.dumps(right, **options)
+
+
+def _terminal_scope_inclusion(value):
+    """Validate bounded signed-selection observations, never native grants."""
+    identities = ("manifest_cid", "declaration_cid", "frontier_cid", "scope_observation_cid",
+                  "scope_cid", "semantic_root_cid")
+    digests = ("profile_sha256", "semantic_payload_sha256")
+    counts = ("selected_count", "full_count", "frontier_count", "selected_source_bytes",
+              "max_files", "max_source_bytes", "required_count", "program_count")
+    flags = ("native_claim_verified", "native_allocation_verified", "process_identity_verified",
+             "proof_authority", "execution_authority", "completion_authority", "omission_authority")
+    if (type(value) is not dict or set(value) != {"schema", *identities, *digests, *counts, *flags}
+            or value["schema"] != "terminal-signed-semantic-worker-inclusion@1"
+            or any(value[key] is not False for key in flags)
+            or any(type(value[key]) is not int for key in counts)
+            or value["max_files"] != 64 or value["max_source_bytes"] != 1_000_000
+            or not 4 <= value["selected_count"] <= 64
+            or not value["selected_count"] <= value["full_count"] <= 255
+            or value["frontier_count"] != value["full_count"] - value["selected_count"]
+            or not 0 <= value["selected_source_bytes"] <= 1_000_000
+            or not 3 <= value["required_count"] <= value["selected_count"]
+            or not 1 <= value["program_count"] <= value["selected_count"] - 3
+            or value["required_count"] + value["program_count"] < value["selected_count"]):
+        raise ValueError("invalid signed Terminal semantic scope inclusion")
+    for key in identities:
+        _identity(value[key])
+    for key in digests:
+        _digest(value[key])
 
 
 def _base(status="unknown", reason="observation_unavailable") -> dict:
@@ -314,7 +342,7 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
         _identity(residual["task_cid"])
     if instruction is not None:
         if (not isinstance(instruction, dict)
-                or instruction.get("schema") not in {"supervisor-public-instruction-inclusion@1", "supervisor-public-instruction-inclusion@2"}
+                or instruction.get("schema") not in {"supervisor-public-instruction-inclusion@1", "supervisor-public-instruction-inclusion@2", "supervisor-public-instruction-inclusion@5"}
                 or any(instruction.get(k) is not True for k in
                        ("manifest_signature_verified", "verbatim_utf8", "source_freshness_verified"))
                 or any(instruction.get(k) is not False for k in
@@ -323,6 +351,14 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
         for key in ("artifact_sha256", "source_sha256", "block_sha256"):
             _digest(instruction[key])
         _identity(instruction["task_cid"])
+        if instruction["schema"] == "supervisor-public-instruction-inclusion@5":
+            if not translated or result.get("terminal_semantic_scope_dispatch_rechecked") is not True:
+                raise ValueError("signed Terminal scope lacks its compiled dispatch replay")
+            _terminal_scope_inclusion(instruction.get("terminal_semantic_scope"))
+            if instruction["terminal_semantic_scope"]["manifest_cid"] != instruction["manifest_cid"]:
+                raise ValueError("signed Terminal scope belongs to another manifest")
+        elif "terminal_semantic_scope" in instruction:
+            raise ValueError("signed Terminal scope requires its versioned instruction receipt")
         if instruction["schema"] == "supervisor-public-instruction-inclusion@2":
             requirements = instruction.get("intent_requirements")
             if (not isinstance(requirements, dict) or requirements.get("admission_graph_verified") is not True
@@ -340,6 +376,9 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                     raise ValueError("invalid intent requirement identity population")
                 for requirement_id in requirements[key]:
                     _identity(requirement_id)
+    if ("terminal_semantic_scope_dispatch_rechecked" in result
+            and (instruction is None or instruction.get("schema") != "supervisor-public-instruction-inclusion@5")):
+        raise ValueError("signed Terminal dispatch replay requires its versioned instruction receipt")
     reply = result.get("coding_reply_contract")
     metadata = result.get("semantic_metadata_view")
     if metadata is not None:
@@ -489,6 +528,10 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             checks["public_instruction_" + field] = observed[field] == instruction[field]
         if instruction["schema"] == "supervisor-public-instruction-inclusion@2":
             checks["public_instruction_intent_requirements"] = observed.get("intent_requirements") == instruction["intent_requirements"]
+        if instruction["schema"] == "supervisor-public-instruction-inclusion@5":
+            checks["public_instruction_terminal_semantic_scope"] = _same_json(
+                observed.get("terminal_semantic_scope"), instruction.get("terminal_semantic_scope"))
+            checks["terminal_semantic_scope_dispatch_observed"] = receipt.get("terminal_semantic_scope_dispatch_rechecked") is True
     if translated or instruction is not None:
         checks.update(router_prompt_sha256=_sha(router_prompt.encode()) == receipt["router_prompt_sha256"],
             router_prompt_bytes=len(router_prompt.encode()) == receipt["router_prompt_bytes"])

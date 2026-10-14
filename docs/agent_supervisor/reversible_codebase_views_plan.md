@@ -837,3 +837,47 @@ The next integration steps are:
 No checkpoint, embedding population, model-manager registration, DuckDB/DuckLake
 inventory or foreign worktree is rewritten by this context-selection increment.
 It supplies a bounded context path for later controlled experiments.
+
+## Signed worker selection handoff, 2026-10-13
+
+The [coding-router handoff](terminal_worker_signed_scope.md) now uses the existing
+public signed-instruction channel to verify the actual compiled selected context.
+Its explicit instruction artifact and inclusion receipt `@5` bind the terminal
+profile `@4`, complete manifest and semantic producer population. The worker
+replays complete originals in canonical and allocated checkouts and repeats the
+join immediately before generation, after provider initialization and descriptor
+checks. Historical model-input audit reproduces the bounded inclusion summary
+from retained evidence. The complete signed task paths and required profile
+remain present; no displaced provider tokens are assumed.
+
+Fresh runtime archive compatibility now pins the profile/scope owners and their
+preparation/consumer chain, with explicit feature versions. Rebuild and pin the
+complete deployment before live qualification. The archive source inventory
+proves listed byte compatibility, not full installed worker execution.
+
+This closes a public-signature/compiled-selection seam in the coding route.
+Actual native source-broker adoption still needs authenticated cross-process
+attempt/claim derivation, nominated allocation attachment, a reviewed transition
+from owner-only allocation modes to the existing group-writable worker candidate,
+and the independent 32-path transport bound. The selected semantic view service
+can discover/read its own admitted subset; ordinary provider tools still see the
+allocated checkout. Keep these meanings separate when measuring source adoption.
+
+The fresh [parallel survey](evidence/terminal-worker-signed-scope-20261013/parallel-work-survey.json)
+found compact worker edits, usage-growth telemetry and provider-free declared
+contract planning at `b606929cdc0ba00902c027994795239a34e50433`, outside the queried
+main and without its matching remote branch at that observation. This is not a
+claim of absence under every GitHub ref. Preserve and reconcile that existing
+stack, including overlapping audit/preparation changes and its authored cross-UID
+Docker evidence, before token experiments. Keep the older repository compiler's
+policy/schema collision as its own integration issue. Published native Codex
+formal-JSON transport and LegalIR actor-ranking progress are retained upstream.
+
+The [new qualification](evidence/terminal-worker-signed-scope-20261013/README.md)
+keeps host tests, authored provider/UID seams, historical reconstruction and
+archive checks distinct from a launched model child, native claim authority or
+official task reward. Reuse existing independent IR/dimension/schema/task assets
+and indexes. Next qualify native source adoption and the deployed worker, then
+combine the existing telemetry with the fixed-trace census and repeated matched
+native/no-index/indexed comparisons above. Count all planning, coding, refresh,
+expansion, repair and failed-attempt usage at matched official success.
