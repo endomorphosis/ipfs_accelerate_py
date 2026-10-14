@@ -30,6 +30,9 @@ from ipfs_accelerate_py.agent_supervisor.semantic_state.intent_world_snapshot im
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
 from .terminal_task_profile import task_profile_index_paths
+from .terminal_capsule_selection_policy import (
+    DEFAULT_CAPSULE_BUDGET, capsule_budget_limit, capsule_budget_options, validate_capsule_budget,
+)
 from .terminal_program_population import (
     EMPTY_INDEX_SCHEMA, qualify_terminal_population, terminal_program_partition,
     verify_empty_terminal_population,
@@ -212,13 +215,17 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
                             numerical_selection_config: Path | None = None,
                             numerical_selection_timeout_seconds: float = 180.,
                             numerical_selection_budget_profile: str | None = None,
-                            retrieval_ranked_capsules: bool = False) -> dict:
+                            retrieval_ranked_capsules: bool = False,
+                            capsule_budget: str = DEFAULT_CAPSULE_BUDGET) -> dict:
     import duckdb
     from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index import (
         CodeVectorIndexSnapshot, CodeVectorSearchResult,
     )
 
     started = time.monotonic()
+    capsule_budget = validate_capsule_budget(capsule_budget, arm="full")
+    if prepared.get("capsule_budget", DEFAULT_CAPSULE_BUDGET) != capsule_budget:
+        raise ValueError("initial capsule budget differs from frozen preparation")
     root = Path(prepared["repository"]).resolve(strict=True)
     if type(retrieval_ranked_capsules) is not bool:
         raise ValueError("retrieval-ranked capsule selection requires a boolean opt-in")
@@ -393,16 +400,25 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
             capsule_kwargs["program_paths"] = vector_paths
         timings["retrieval_persistence"] = time.monotonic() - stage
         stage = time.monotonic()
+    from .terminal_semantic_context_policy import semantic_context_options, semantic_context_objective
+    context_profile = prepared.get("semantic_context_profile", "legacy-bounded@1")
+    context_options = semantic_context_options(context_profile)
+    if capsule_budget != DEFAULT_CAPSULE_BUDGET:
+        context_options["worker_capsule_limit"] = min(context_options["worker_capsule_limit"], capsule_budget_limit(capsule_budget))
+    program_options = ({"program_paths": partition["program_paths"], "defer_task_data": any(
+        row["role"] == "task_data" for row in partition["support_hashes"].values())}
+        if partition is not None else {"program_paths": sorted(signed_scope["selected_paths"] if signed_scope is not None else prepared["worker_inputs"])}
+        if context_profile != "legacy-bounded@1" else {})
+    if retrieval_ranked_capsules and context_profile != "legacy-bounded@1":
+        raise ValueError("retrieval capsule selection cannot combine with indexed semantic context profiles")
     semantic = prepare_semantic_context(repository=root,
         paths=(signed_scope["selected_paths"] if signed_scope is not None else prepared["worker_inputs"]),
         # Native semantic objectives are trimmed, printable descriptive text.
         # Normalize whitespace only here; the public query remains byte-exact
         # in retrieval, required raw input, planner constraints and hashes.
-        required_raw_paths=required_raw_paths, objective=" ".join(prepared["query"].split()), task_id=alias,
-        output=output / "semantic", max_symbols=1024, worker_query=prepared["query"], worker_max_bytes=32768,
-        **({"program_paths": partition["program_paths"], "defer_task_data": any(
-            row["role"] == "task_data" for row in partition["support_hashes"].values())}
-            if partition is not None else {}), **capsule_kwargs)
+        required_raw_paths=required_raw_paths, objective=(" ".join(prepared["query"].split()) if context_profile == "legacy-bounded@1" else semantic_context_objective(context_profile, prepared["query"])), task_id=alias,
+        output=output / "semantic", max_symbols=1024, worker_query=prepared["query"],
+        **context_options, **program_options, **capsule_kwargs)
     metadata = {"Semantic context artifact": (output / "semantic/worker-context.json").relative_to(root).as_posix(),
                 "Semantic context sha256": semantic["worker_payload_sha256"], "Semantic context refresh": "true"}
     semantic_payload, view, get_block = _semantic_view(root, metadata, alias)
@@ -448,6 +464,9 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "model_revision": model_revision, "execution_authority": False, "completion_authority": False}
     if retrieval_ranked_capsules:
         descriptor["capsule_selection"] = "verified-retrieval-symbol-rank@1"
+    descriptor.update(capsule_budget_options(capsule_budget))
+    if context_profile != "legacy-bounded@1":
+        descriptor["semantic_context_profile"] = context_profile
     if public_profile is not None:
         descriptor["public_task_index_scope"] = {"task_source_paths": vector_paths,
             "instruction_only": False, "source_semantics_verified": False}
@@ -479,6 +498,12 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "execution_authority": False, "completion_authority": False}
     if retrieval_ranked_capsules:
         result["capsule_selection"] = descriptor["capsule_selection"]
+    if context_profile != "legacy-bounded@1":
+        result.update(semantic_context_profile=context_profile,
+            worker_capsules=semantic["worker_capsules"],
+            worker_payload_bytes=semantic["compact_bytes"],
+            worker_projection=semantic["worker_projection"])
+    result.update(capsule_budget_options(capsule_budget))
     if empty_population:
         result.update({key: retrieval[key] for key in (
             "retrieval_schema", "source_population_cid", "disposition", "embedding_calls")})
@@ -566,12 +591,27 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
                       if prepared.get("task_profile") is not None else None)
     if descriptor.get("public_task_index_scope") != expected_scope or result.get("public_task_index_scope") != expected_scope:
         raise ValueError("initial public task index scope differs")
+    from .terminal_semantic_context_policy import semantic_context_options
+    capsule_budget = validate_capsule_budget(prepared.get("capsule_budget", DEFAULT_CAPSULE_BUDGET), arm="full")
+    context_profile = prepared.get("semantic_context_profile", "legacy-bounded@1")
+    if (descriptor.get("semantic_context_profile", "legacy-bounded@1") != context_profile
+            or result.get("semantic_context_profile", "legacy-bounded@1") != context_profile):
+        raise ValueError("initial semantic context differs from the frozen selection profile")
+    if (descriptor.get("capsule_budget", DEFAULT_CAPSULE_BUDGET) != capsule_budget
+            or result.get("capsule_budget", DEFAULT_CAPSULE_BUDGET) != capsule_budget):
+        raise ValueError("initial capsule budget differs from frozen preparation")
     alias, metadata = descriptor["task_alias"], descriptor["metadata"]
     semantic, view, get_block = _semantic_view(root, metadata, alias)
     if signed_scope is not None and validate_terminal_semantic_payload(prepared, semantic) != signed_scope:
         raise ValueError("initial selected semantic sources differ from signed scope")
     capsule_selection = state / "capsule-selection.json"
     capsule_policy = semantic.get("worker_projection", {})
+    observed_capsule_limit = capsule_policy.get("max_capsules", 8)
+    if (type(observed_capsule_limit) is not int
+            or observed_capsule_limit != min(
+                semantic_context_options(prepared.get("semantic_context_profile", "legacy-bounded@1"))["worker_capsule_limit"],
+                capsule_budget_limit(capsule_budget))):
+        raise ValueError("initial capsule budget differs from frozen preparation or verified projection")
     declared_capsules = descriptor.get("capsule_selection")
     if ("capsule_selection" in descriptor or "capsule_selection" in result
             or capsule_policy.get("selector") == "verified-retrieval-symbol-rank@1"):
@@ -590,6 +630,21 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
             raise ValueError("capsules differ from selected native retrieval")
     elif "retrieval" in capsule_policy:
         raise ValueError("retrieval-ranked capsules lack their selected native retrieval")
+    from .terminal_semantic_context_policy import semantic_context_options, semantic_context_objective
+    expected_policy = semantic_context_options(prepared.get("semantic_context_profile", "legacy-bounded@1"))
+    if capsule_budget != DEFAULT_CAPSULE_BUDGET:
+        expected_policy["worker_capsule_limit"] = min(expected_policy["worker_capsule_limit"], capsule_budget_limit(capsule_budget))
+    projection = semantic.get("worker_projection") or {}
+    if declared_capsules is None and any(projection.get(field) != expected_policy[key] for field, key in (
+            ("selector", "worker_selector"), ("max_capsules", "worker_capsule_limit"),
+            ("max_bytes", "worker_max_bytes"))):
+        raise ValueError("initial semantic context differs from the frozen selection profile")
+    if projection.get("query") != prepared["query"]:
+        raise ValueError("initial semantic query differs from its literal public instruction")
+    if (prepared.get("semantic_context_profile", "legacy-bounded@1") != "legacy-bounded@1"
+            and semantic.get("objective") != semantic_context_objective(
+                prepared["semantic_context_profile"], prepared["query"])):
+        raise ValueError("initial semantic objective differs from its literal public instruction")
     retrieval = json.loads(load_code_retrieval_context(repository=root,
         artifact=metadata["Code retrieval artifact"], expected_sha256=metadata["Code retrieval sha256"], task_id=alias))
     indexed = _read(root, descriptor["index"])
@@ -856,6 +911,8 @@ def bind_admitted_context(*, state: Path, prepared: dict, admission: dict, verif
         result["terminal_semantic_scope"] = descriptor["terminal_semantic_scope"]
     if "capsule_selection" in descriptor:
         result["capsule_selection"] = descriptor["capsule_selection"]
+    if "capsule_budget" in descriptor:
+        result["capsule_budget"] = descriptor["capsule_budget"]
     if descriptor.get("codebase_autoencoder") is not None:
         result["codebase_autoencoder"] = descriptor["codebase_autoencoder"]
         result["codebase_autoencoder_catalog"] = descriptor["codebase_autoencoder_catalog"]

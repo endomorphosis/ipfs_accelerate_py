@@ -63,6 +63,30 @@ def _version(monkeypatch):
     monkeypatch.setattr(subprocess, "run", run)
 
 
+@pytest.mark.parametrize("profile,limit", [("indexed-default@1", 8), ("indexed-compact@1", 2)])
+@pytest.mark.parametrize("budget,budget_limit", [("legacy", 8), ("one-capsule@1", 1), ("two-capsules@1", 2)])
+def test_indexed_capsule_profile_reaches_real_initial_context_and_refuses_drift(original, profile, limit, budget, budget_limit):
+    root, instruction, state = original
+    with (root / "bottle.py").open("a") as stream:
+        stream.write("\n".join(f"def helper_{i}(value):\n    return value + {i}\n" for i in range(12)))
+    prepared = prep.prepare(repository=root, instruction=instruction, state=state,
+        semantic_context_profile=profile, capsule_budget=budget)
+    receipt = prep.initial_context(state=state, capsule_budget=budget)
+    limit = min(limit, budget_limit)
+    loaded = initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
+    projection = loaded["semantic"]["worker_projection"]
+    assert projection["selector"] == "duckdb-query-symbol-name@1"
+    assert projection["max_capsules"] == limit
+    assert receipt["semantic_context_profile"] == profile
+    assert 0 < receipt["worker_capsules"] <= limit
+    assert receipt["worker_payload_bytes"] <= 32768
+    assert loaded["semantic"]["raw_sources"][prep.INSTRUCTION] == instruction.read_text()
+    changed = dict(prepared, semantic_context_profile=(
+        "indexed-default@1" if profile == "indexed-compact@1" else "indexed-compact@1"))
+    with pytest.raises(ValueError, match="frozen selection profile"):
+        initial.load_initial_context(state=state, prepared=changed, require_empty_owner=True)
+
+
 def _ranked_prepared(original):
     """Explicit public profile supplies the independently signed partition."""
     from benchmarks.agent_supervisor.container_coding.test_terminal_task_profile import profile

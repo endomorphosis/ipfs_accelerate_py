@@ -1,0 +1,110 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.legal_autoformalization_foundations.scheduler_config@1",
+  "taskboard_path": "docs/architecture/legal_autoformalization_convergence/foundations.todo.md",
+  "objectives_path": "docs/architecture/legal_autoformalization_convergence/foundations.objectives.md",
+  "plan_path": "docs/architecture/legal_autoformalization_convergence/FOUNDATIONS_PLAN.md",
+  "validator_path": "scripts/validate_legal_autoformalization_foundations_board.py",
+  "task_prefix": "## LAC-S2-",
+  "goal_prefix": "LACF-G",
+  "board_namespace": "legal-autoformalization-foundations-20261013",
+  "merge_target_branch": "agent/legal-autoformalization-convergence-bootstrap-20261013",
+  "max_lanes": 3,
+  "strict_task_sharding": false,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "retry_budget_guardrail_enabled": true,
+  "dependency_guardrail_enabled": true,
+  "reconciliation_guardrail_enabled": true,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 15,
+  "check_interval_seconds": 15,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 120,
+  "max_restarts": 2,
+  "max_task_attempts": 3,
+  "implementation_retry_budget": 2,
+  "validation_retry_budget": 2,
+  "merge_retry_budget": 3,
+  "implementation_timeout_seconds": 1800,
+  "implementation_max_timeout_seconds": 2400,
+  "implementation_log_stall_seconds": 600,
+  "worktree_submodule_paths": [],
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.7",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-6.1-sol",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "medium",
+    "max_concurrency": 3,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false,
+    "primary_executable": "/home/barberb/.local/bin/grok"
+  },
+  "source_binding": {
+    "accelerator_required_ancestor": "7bf7c1f506fa442f1cbaa1dcd505850d82dad170",
+    "accelerator_required_branch": "agent/legal-autoformalization-convergence-bootstrap-20261013",
+    "bootstrap_task_source": "legacy-markdown",
+    "read_only_external_sources_manifest": "config/legal_autoformalization_foundations_sources.json"
+  },
+  "runtime_paths": {
+    "root": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02",
+    "state": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02/state",
+    "worktrees": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02/worktrees",
+    "merge_queue": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02/merge_queue",
+    "logs": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02/logs",
+    "evidence": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-02/evidence"
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "lac-foundations-0",
+      "strict_shard_remainder": 0
+    },
+    {
+      "index": 1,
+      "name": "lac-foundations-1",
+      "strict_shard_remainder": 1
+    },
+    {
+      "index": 2,
+      "name": "lac-foundations-2",
+      "strict_shard_remainder": 2
+    }
+  ],
+  "initial_projection": {
+    "task_count": 3,
+    "completed_task_ids": [
+      "LAC-S2-006"
+    ],
+    "ready_task_ids": [
+      "LAC-S2-005",
+      "LAC-S2-010"
+    ],
+    "goal_count": 4,
+    "root_goal_id": "LACF-G000"
+  },
+  "protected_paths": [
+    "config/legal_autoformalization_foundations_scheduler.json",
+    "config/legal_autoformalization_foundations_sources.json",
+    "docs/architecture/legal_autoformalization_convergence/foundations.todo.md",
+    "docs/architecture/legal_autoformalization_convergence/foundations.objectives.md",
+    "docs/architecture/legal_autoformalization_convergence/FOUNDATIONS_PLAN.md",
+    "scripts/legal_autoformalization_foundations.py",
+    "scripts/legal_autoformalization_capabilities.py",
+    "scripts/validate_legal_autoformalization_foundations_board.py",
+    "scripts/run_legal_autoformalization_supervisor.py",
+    "data/legal_autoformalization_foundations/LAC-S2-005/archive/qualifier-17641fe5d9/result.json"
+  ],
+  "execution_generation": {
+    "index": 2,
+    "prior_runtime_root": "data/agent_supervisor/legal_autoformalization_foundations/runtime/generation-01",
+    "prior_wrapper_receipt": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-foundations-20261013-01/runtime/20261013T093938Z-712bad02dac9/receipt.json",
+      "sha256": "4b262660b14f686565d0fc59f1828f6fb90e1c28acae9bd88937201d7235ddb4"
+    },
+    "archived_prior_005_result": "data/legal_autoformalization_foundations/LAC-S2-005/archive/qualifier-17641fe5d9/result.json",
+    "reason": "Preserve first qualified 005 recipe and all failed 010 attempts; qualify explicit pinned import/test-option environment and retained failure diagnostics. Capability006 and sources manifest stay unchanged."
+  }
+}

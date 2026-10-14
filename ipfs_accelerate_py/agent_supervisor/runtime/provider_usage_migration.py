@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Final, Iterable, Mapping, Optional, Sequence
 
 from ipfs_accelerate_py.endpoint_usage import UsageVector
+from ipfs_accelerate_py.endpoint_usage.admission import validate_admission_revision
 from ipfs_accelerate_py.endpoint_usage.schema import LimitWindow, WindowKind
 
 from .provider_execution import (
@@ -338,9 +339,21 @@ class ConsumerCallContext:
     estimated_input_tokens: int = 0
     estimated_output_tokens: int = 0
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    admission_revision: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "consumer_id", ConsumerId(self.consumer_id))
+        revision = self.admission_revision
+        try:
+            if not isinstance(revision, str):
+                raise ValueError("admission_revision must be text")
+            if revision:
+                validate_admission_revision(revision)
+        except (TypeError, ValueError):
+            raise ProviderUsageMigrationError(
+                "admission_revision must be a stable endpoint admission identity",
+                reason_codes=("invalid_admission_revision",),
+            ) from None
         for name in (
             "repository_id",
             "state_id",
@@ -520,6 +533,13 @@ def build_request_lineage_envelope(
     window = LimitWindow(kind=WindowKind.LIFETIME)
 
     def budget(*_args: Any, **dimensions: int) -> SupervisorUsageBudget:
+        # These are request-local declarations, inherited unchanged through
+        # this generated lineage. Aggregate run/provider limits remain with
+        # the configured coordinator; omission must not erase token bounds.
+        if context.estimated_input_tokens:
+            dimensions["input_tokens"] = context.estimated_input_tokens
+        if context.estimated_output_tokens:
+            dimensions["output_tokens"] = context.estimated_output_tokens
         return SupervisorUsageBudget.of(window=window, currency="USD", **dimensions)
 
     base = {
@@ -530,6 +550,7 @@ def build_request_lineage_envelope(
         "policy_revision": context.policy_revision,
         "catalog_revision": context.catalog_revision,
         "usage_revision": context.usage_revision,
+        "admission_revision": context.admission_revision,
         "supervisor_run_id": "",
         "goal_id": "",
         "objective_id": "",
@@ -646,6 +667,7 @@ def build_bridge_request(
         endpoint_scope_id=scope.endpoint_scope_id,
         catalog_revision=scope.catalog_revision,
         usage_revision=scope.usage_revision,
+        admission_revision=scope.admission_revision,
         estimated=UsageVector.of(**estimated_kwargs),
         request_id=scope.request_id,
         attempt=scope.attempt,
@@ -808,6 +830,7 @@ def build_consumer_call_context(
     policy_revision: str = "policy:supervisor@1",
     catalog_revision: str = "catalog:rev-1",
     usage_revision: str = "usage:rev-1",
+    admission_revision: str = "",
     supervisor_run_id: str = "",
     goal_id: str = "",
     objective_id: str = "",
@@ -849,6 +872,7 @@ def build_consumer_call_context(
         policy_revision=policy_revision,
         catalog_revision=catalog_revision,
         usage_revision=usage_revision,
+        admission_revision=admission_revision,
         supervisor_run_id=run,
         goal_id=goal,
         objective_id=objective,
@@ -888,8 +912,11 @@ def dispatch_migrated_provider_call(
     """Route one provider call through the gateway (or preserve off-mode path).
 
     ``invoke`` is the existing consumer-side call (subprocess adapter, router,
-    or injected test double). The migration never retries side-effecting work:
-    a single invoke occurs per dispatch.
+    or injected test double). A supplied gateway with its own invoker owns
+    execution instead. The gateway is reused, including its replay state;
+    migration never invokes both dispatch owners or retries side-effecting work.
+    Replayed operational receipts do not retain generated text. Consumers that
+    need output replay must use their existing output cache separately.
     """
 
     resolved_mode = resolve_usage_mode(mode)
@@ -923,6 +950,7 @@ def dispatch_migrated_provider_call(
         modality=context.modality,
         side_effect_boundary=side_effect_boundary,
         operation=side_effect_raw or "text.generate",
+        mode=resolved_mode.value,
         cancelled=cancelled,
         metadata={
             **dict(context.metadata),
@@ -950,7 +978,11 @@ def dispatch_migrated_provider_call(
             "endpoint": context.endpoint_scope_id,
             "status": "ok",
             "output_kind": context.expected_output_kind,
-            "units": UsageVector.of(requests=max(1, context.estimated_requests)).to_dict(),
+            # This callback returns text, not a complete provider usage record.
+            # Preserve every reserved dimension as a conservative estimate;
+            # a requests-only observation would refund all token reservations.
+            "units": bridge.estimated.to_dict(),
+            "settlement_basis": "estimated_ceiling",
         }
         usage, reset = extract_child_usage_metadata(child_payload)
         if usage:
@@ -959,52 +991,12 @@ def dispatch_migrated_provider_call(
             observation["reset"] = dict(reset)
         return observation
 
-    active_gateway = gateway or ProviderExecutionGateway(invoker=_invoker)
-    if gateway is not None and gateway is not active_gateway:
-        pass  # pragma: no cover - defensive
-    # Prefer the caller's gateway when provided; otherwise the simulated one
-    # above already has the invoker bound.
-    if gateway is not None:
-        # Re-bind invoker only when the gateway has no invoker of its own.
-        if getattr(gateway, "_invoker", None) is None:
-            active_gateway = ProviderExecutionGateway(
-                coordinator=getattr(gateway, "_coordinator", None),
-                invoker=_invoker,
-                owner_id=getattr(gateway, "_owner_id", "supervisor-provider-execution"),
-                reservation_ttl_ms=getattr(gateway, "_reservation_ttl_ms", 60_000),
-            )
-        else:
-            # Wrap existing invoker: still a single side-effect path.
-            original = gateway._invoker
-
-            def _wrapped(req: ProviderExecutionRequest) -> Mapping[str, Any]:
-                if invoked["done"]:
-                    raise ProviderUsageMigrationError(
-                        "migration refuses to retry side-effecting provider work",
-                        reason_codes=("side_effect_retry_forbidden",),
-                    )
-                invoked["done"] = True
-                # Existing gateway invoker owns the remote call; still capture text
-                # from the consumer invoke path for return compatibility.
-                text = invoke()
-                invoked["text"] = str(text if text is not None else "")
-                raw = original(req)
-                if not isinstance(raw, Mapping):
-                    raise ProviderUsageMigrationError(
-                        "gateway invoker must return a mapping",
-                        reason_codes=("invalid_observation",),
-                    )
-                return dict(raw)
-
-            active_gateway = ProviderExecutionGateway(
-                coordinator=getattr(gateway, "_coordinator", None),
-                invoker=_wrapped,
-                owner_id=getattr(gateway, "_owner_id", "supervisor-provider-execution"),
-                reservation_ttl_ms=getattr(gateway, "_reservation_ttl_ms", 60_000),
-            )
-
+    active_gateway = gateway if gateway is not None else ProviderExecutionGateway()
     try:
-        execution = active_gateway.execute(request)
+        if active_gateway.has_invoker:
+            execution = active_gateway.execute(request)
+        else:
+            execution = active_gateway.execute(request, invoker=_invoker)
     except ProviderExecutionError as exc:
         raise ProviderUsageMigrationError(
             str(exc),
@@ -1013,7 +1005,7 @@ def dispatch_migrated_provider_call(
 
     # Observe/shadow may continue without a hard receipt; assist/enforce require it.
     receipt: Optional[SupervisorUsageReceipt] = None
-    if execution.phase is ProviderExecutionPhase.SETTLED:
+    if execution.phase in {ProviderExecutionPhase.SETTLED, ProviderExecutionPhase.REPLAYED}:
         receipt = consume_usage_receipt(execution, expected_request_id=context.request_id)
     elif mode_requires_receipt(resolved_mode):
         if execution.phase in {
@@ -1052,6 +1044,10 @@ def dispatch_migrated_provider_call(
     if not text and isinstance(execution.observation, Mapping):
         # Gateway-only invoker paths may not populate consumer text.
         text = str(execution.observation.get("text") or "")
+    reason_codes = execution.reason_codes
+    if not invoked["done"] and not text:
+        # Do not refill a metadata-only replay by issuing another physical call.
+        reason_codes += ("generated_text_unavailable",)
 
     # When the child path produced no structured usage under enforce, attach a
     # typed non-meterable admission under the reviewed ceiling.
@@ -1082,7 +1078,7 @@ def dispatch_migrated_provider_call(
         execution_result=execution,
         usage_receipt=receipt,
         non_meterable=non_meterable,
-        reason_codes=execution.reason_codes,
+        reason_codes=reason_codes,
     )
 
 

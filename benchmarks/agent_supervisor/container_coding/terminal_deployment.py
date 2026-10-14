@@ -686,6 +686,221 @@ def runtime_environment() -> dict[str, str]:
     }
 
 
+# System package configuration has its own finite allowance; the native npm
+# installer retains its separate shared deadline below. Harbor allows cleanup.
+CODEX_SYSTEM_DEPENDENCIES_TIMEOUT_SEC = 300
+CODEX_SYSTEM_DEPENDENCIES_EXEC_TIMEOUT_SEC = 330
+CODEX_INSTALL_TIMEOUT_SEC = 180
+CODEX_INSTALL_EXEC_TIMEOUT_SEC = 210
+# Independently hashed official npm @openai/codex@0.160.0-linux-x64 payloads;
+# the package's registry SHA512 integrity and SHA1 were verified before hashing.
+CODEX_X86_64_SHA256 = {
+    "codex": "12eb3e81114588aca3b7998f4f19e8997b056aca08e57a7ca7c8a3ec8c652aad",
+    "codex-code-mode-host": "37cab1584302611e9936902219640ab5e7a79fcfccd2504c6e85ea8cb97d0e10",
+}
+
+
+def native_codex_install_script(root: str = ROOT) -> str:
+    """Install on Linux arm64/x64 with system Node >=16 and isolated npm settings.
+
+    The compatibility prefix retains the existing native-bundle/cache layout.
+    Child commands share one deadline and are fenced inside the container before
+    the longer Harbor exec deadline. Reports contain phases/counts, never npm
+    output or inherited environment. Unsupported system Node fails explicitly.
+    """
+    from .terminal_setup_cache_advice import CODEX_PINS_V2, CODEX_VERSIONS, POLICY_V2
+    if CODEX_VERSIONS[POLICY_V2] != CODEX_VERSION:
+        raise ValueError("native installer needs independent current arm64 binary pins")
+    return ("root_value=" + repr(root) + "\nexpected_version=" + repr(CODEX_VERSION)
+            + "\ninstall_timeout=" + repr(CODEX_INSTALL_TIMEOUT_SEC)
+            + "\nexpected_native_hashes=" + repr({"aarch64": CODEX_PINS_V2,
+                                                    "x86_64": CODEX_X86_64_SHA256}) + "\n" + r'''
+import hashlib,itertools,json,os,pathlib,platform,re,select,shutil,signal,stat,subprocess,time
+started=time.monotonic()
+deadline=started+install_timeout
+stage='initialize'
+commands_completed=0
+node_version=None
+npm_version=None
+interruption_received=False
+class InstallFailure(Exception):
+ def __init__(self,reason):self.reason=reason
+def interrupted(signum,frame):
+ global interruption_received
+ interruption_received=True
+previous_handlers={sig:signal.signal(sig,interrupted) for sig in (signal.SIGTERM,signal.SIGINT)}
+def check_deadline():
+ if interruption_received:raise InstallFailure('interrupted')
+ if time.monotonic()>=deadline:raise InstallFailure('timeout')
+def exit_status(process):
+ # Keep the group leader unreaped until every process-group signal is sent.
+ return os.waitid(os.P_PID,process.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+def stop(process):
+ # Always fence the process group, including children left by an exited leader.
+ try:
+  try:os.killpg(process.pid,signal.SIGTERM)
+  except ProcessLookupError:pass
+  until=time.monotonic()+0.5
+  while exit_status(process) is None and time.monotonic()<until:time.sleep(0.01)
+ finally:
+  try:
+   try:os.killpg(process.pid,signal.SIGKILL)
+   except ProcessLookupError:pass
+  finally:process.wait(timeout=2)
+def run(command,*,limit=10):
+ global commands_completed
+ check_deadline()
+ remaining=min(limit,deadline-time.monotonic())
+ if remaining<=0:raise InstallFailure('timeout')
+ end=time.monotonic()+remaining
+ process=subprocess.Popen(command,cwd=work,env=child_env,stdin=subprocess.DEVNULL,
+     stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+ output=bytearray()
+ pipe_open=True
+ try:
+  check_deadline()
+  os.set_blocking(process.stdout.fileno(),False)
+  while pipe_open or exit_status(process) is None:
+   check_deadline()
+   remaining=end-time.monotonic()
+   if remaining<=0:raise InstallFailure('timeout')
+   if pipe_open:
+    ready,_,_=select.select([process.stdout],[],[],min(remaining,0.1))
+    if ready:
+     chunk=os.read(process.stdout.fileno(),8192)
+     if not chunk:pipe_open=False
+     elif len(output)+len(chunk)>65536:raise InstallFailure('output_limit')
+     else:output.extend(chunk)
+   else:time.sleep(min(remaining,0.05))
+  status=exit_status(process)
+  if status.si_code!=os.CLD_EXITED or status.si_status!=0:raise InstallFailure('command_failed')
+  check_deadline()
+  commands_completed+=1
+ finally:
+  try:stop(process)
+  finally:process.stdout.close()
+ check_deadline()
+ return bytes(output)
+def directory(path):
+ if path.is_symlink():raise InstallFailure('unsafe_install_path')
+ path.mkdir(mode=0o700,exist_ok=True)
+ info=path.stat()
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.geteuid():
+  raise InstallFailure('unsafe_install_path')
+def bounded_json(path):
+ if path.is_symlink() or not path.is_file() or path.stat().st_size>65536:
+  raise InstallFailure('invalid_package_metadata')
+ try:return json.loads(path.read_bytes())
+ except (ValueError,UnicodeError):raise InstallFailure('invalid_package_metadata')
+def native_hash(path):
+ check_deadline()
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ with os.fdopen(fd,'rb') as stream:
+  before=os.fstat(stream.fileno())
+  if (not stat.S_ISREG(before.st_mode) or before.st_nlink!=1
+      or not 0<before.st_size<=512*1024**2):raise InstallFailure('native_bundle_invalid')
+  digest=hashlib.sha256()
+  size=0
+  while chunk:=stream.read(1024*1024):
+   check_deadline()
+   size+=len(chunk)
+   if size>before.st_size:raise InstallFailure('native_bundle_invalid')
+   digest.update(chunk)
+  after=os.fstat(stream.fileno())
+  fields=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns')
+  if size!=before.st_size or any(getattr(before,k)!=getattr(after,k) for k in fields):
+   raise InstallFailure('native_bundle_invalid')
+  return digest.hexdigest()
+try:
+ stage='system-platform'
+ architecture={'aarch64':'aarch64','arm64':'aarch64','x86_64':'x86_64','amd64':'x86_64'}.get(platform.machine().lower())
+ if platform.system()!='Linux' or architecture is None:
+  raise InstallFailure('unsupported_system_architecture')
+ check_deadline()
+ stage='initialize'
+ root=pathlib.Path(root_value)
+ home=root/'home'
+ if home.is_symlink() or not home.is_dir() or home.stat().st_uid!=os.geteuid():
+  raise InstallFailure('unsafe_install_path')
+ # This fresh private cwd excludes task-local and user-global .npmrc files.
+ work=home/'.native-codex-install'
+ work.mkdir(mode=0o700)
+ for name in ('user.npmrc','global.npmrc'):
+  (work/name).write_text('')
+ prefix=home
+ for name in ('.nvm','versions','node','system'):
+  prefix=prefix/name
+  directory(prefix)
+ if any(prefix.iterdir()):raise InstallFailure('install_prefix_not_empty')
+ system_path='/usr/local/bin:/usr/bin:/bin'
+ child_env={'HOME':str(home),'PATH':system_path,'LANG':'C.UTF-8',
+     'NPM_CONFIG_USERCONFIG':str(work/'user.npmrc'),
+     'NPM_CONFIG_GLOBALCONFIG':str(work/'global.npmrc'),
+     'NPM_CONFIG_CACHE':str(work/'cache'),
+     'NPM_CONFIG_UPDATE_NOTIFIER':'false'}
+ stage='system-node'
+ node=shutil.which('node',path=system_path)
+ npm=shutil.which('npm',path=system_path)
+ if node is None or npm is None:raise InstallFailure('system_node_npm_required')
+ node_version=run([node,'--version']).decode('ascii').strip()
+ match=re.fullmatch(r'v(\d+)\.(\d+)\.(\d+)',node_version)
+ if match is None or int(match[1])<16:raise InstallFailure('system_node_16_required')
+ stage='system-npm'
+ npm_version=run([npm,'--version']).decode('ascii').strip()
+ if re.fullmatch(r'\d+\.\d+\.\d+',npm_version) is None:
+  raise InstallFailure('invalid_npm_version')
+ stage='npm-install'
+ run([npm,'install','--global','--prefix',str(prefix),
+      '--registry=https://registry.npmjs.org/','--userconfig='+str(work/'user.npmrc'),
+      '--globalconfig='+str(work/'global.npmrc'),'--cache='+str(work/'cache'),
+      '--ignore-scripts','--audit=false','--fund=false','--progress=false',
+      '--update-notifier=false','--loglevel=error','--fetch-retries=1',
+      '--fetch-retry-factor=1','--fetch-retry-mintimeout=1000',
+      '--fetch-retry-maxtimeout=1000','--fetch-timeout=30000',
+      '@openai/codex@'+expected_version],limit=install_timeout)
+ stage='package-verify'
+ package=prefix/'lib/node_modules/@openai/codex'
+ metadata=bounded_json(package/'package.json')
+ if not isinstance(metadata,dict) or metadata.get('name')!='@openai/codex' or metadata.get('version')!=expected_version:
+  raise InstallFailure('package_version_mismatch')
+ matches=list(itertools.islice(package.glob('node_modules/@openai/codex-*/vendor/*/bin/codex'),2))
+ if len(matches)!=1:raise InstallFailure('native_bundle_ambiguous')
+ vendor=matches[0].parent
+ members=list(itertools.islice(vendor.iterdir(),33))
+ if len(members)!=2 or {p.name for p in members}!={'codex','codex-code-mode-host'}:
+  raise InstallFailure('native_bundle_incomplete')
+ for path in members:
+  if path.is_symlink() or not path.is_file() or not path.stat().st_mode&0o111:
+   raise InstallFailure('native_bundle_invalid')
+ hashes={name:native_hash(vendor/name)
+         for name in ('codex','codex-code-mode-host')}
+ if hashes!=expected_native_hashes[architecture]:
+  raise InstallFailure('native_bundle_hash_mismatch')
+ stage='native-version'
+ native_version=run([str(vendor/'codex'),'--version']).decode('ascii').strip()
+ if native_version!='codex-cli '+expected_version:raise InstallFailure('native_version_mismatch')
+ stage='native-code-mode-host'
+ run([str(vendor/'codex-code-mode-host'),'--help'])
+ stage='complete'
+ report={'schema':'native-codex-install@1','completed':True,
+     'codex_version':expected_version,'node_version':node_version,'npm_version':npm_version,
+     'installer':'system-node-npm','nvm_bootstrap_used':False,
+     'install_prefix':'home/.nvm/versions/node/system','commands_completed':commands_completed,
+     'deadline_seconds':install_timeout,'architecture':architecture,
+     'independent_native_hashes_checked':True,
+     'independent_arm64_hashes_checked':architecture=='aarch64',
+     'native_sha256':hashes,'provider_calls':0}
+except Exception as exc:
+ report={'schema':'native-codex-install@1','completed':False,'phase':stage,
+     'reason':exc.reason if isinstance(exc,InstallFailure) else 'installer_error',
+     'commands_completed':commands_completed,'deadline_seconds':install_timeout,'provider_calls':0}
+finally:
+ for sig,previous in previous_handlers.items():signal.signal(sig,previous)
+print(json.dumps(report,sort_keys=True))
+raise SystemExit(0 if report['completed'] else 1)
+''')
+
+
 def native_codex_exposure_script(root: str = ROOT) -> str:
     """Expose and execute-check the complete pinned vendor bin directory as root."""
     return "root_value=" + repr(root) + "\nexpected_version=" + repr(CODEX_VERSION) + "\n" + r'''
@@ -982,10 +1197,14 @@ async def deploy_supervisor(
     setup_cache_selection: dict | None = None,
     isolated_uv_bootstrap: bool = False,
     provider: str = "codex_cli",
+    repository_source_policy: str = "legacy",
 ) -> dict:
     """Use actual Harbor exec/upload APIs; does not call any model or verifier."""
     if provider not in {"codex_cli", "grok_cli"}:
         raise ValueError("explicit supported container provider required")
+    if repository_source_policy != "legacy":
+        from .terminal_repository_source_policy import validate_repository_source_policy
+        validate_repository_source_policy(repository_source_policy, arm="full", provider=provider)
     if provider == "grok_cli" and (install_codex or setup_cache_selection is not None or auth_json is None):
         raise ValueError("Grok deployment requires its auth file, no Codex install and no Codex cache policy")
     if auth_json is not None:
@@ -997,6 +1216,9 @@ async def deploy_supervisor(
     manifest = json.loads((Path(archive_dir) / "manifest.json").read_text())
     if setup_cache_selection is not None and manifest.get("numerical_selection_384") is not None:
         raise ValueError("setup cache is not qualified for learned numerical selection")
+    if repository_source_policy != "legacy":
+        from .terminal_repository_source_policy import require_repository_source_archive
+        require_repository_source_archive(manifest, repository_source_policy, archive=Path(archive_dir) / "runtime.tar.gz")
     if install_codex:
         require_runtime_cli_version(manifest)
     output = Path(output)
@@ -1054,6 +1276,15 @@ async def deploy_supervisor(
         "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends z3 cvc5 bubblewrap ripgrep curl ca-certificates procps sudo",
         timeout=600,
     )
+    if install_codex:
+        await execute(
+            "codex-system-dependencies",
+            f"timeout --signal=TERM --kill-after=5s {CODEX_SYSTEM_DEPENDENCIES_TIMEOUT_SEC}s "
+            "env DEBIAN_FRONTEND=noninteractive "
+            "apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=30 "
+            "-o Acquire::https::Timeout=30 install -y --no-install-recommends nodejs npm",
+            timeout=CODEX_SYSTEM_DEPENDENCIES_EXEC_TIMEOUT_SEC,
+        )
     # Native supervisor contracts use Python 3.12 (including hashable
     # mappingproxy defaults); keep the original task interpreter untouched.
     if type(isolated_uv_bootstrap) is not bool:
@@ -1134,17 +1365,17 @@ print(duckdb.__version__,platform)
     environment.default_user = "supervisor"
     try:
         if install_codex:
-            from harbor.agents.installed.codex import Codex
-
-            codex = Codex(
-                logs_dir=output / "codex-install", model_name="gpt-6.1-sol", version=CODEX_VERSION
+            await execute(
+                "codex-install",
+                PYTHON + " -I -c " + shlex.quote(native_codex_install_script()),
+                user="supervisor", env=runtime_environment(),
+                timeout=CODEX_INSTALL_EXEC_TIMEOUT_SEC,
             )
-            await asyncio.wait_for(codex.install(environment), timeout=600)
             await execute("codex-native-expose", "python3 -I -c " + shlex.quote(native_codex_exposure_script()))
             version = (
                 await execute(
                     "codex-version",
-                    "if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex --version",
+                    "codex --version",
                     user="supervisor",
                     env=runtime_environment(),
                 )
@@ -1187,6 +1418,13 @@ print(duckdb.__version__,platform)
             )
         ).stdout
     )
+    repository_probe = None
+    if repository_source_policy != "legacy":
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_probe import validate_probe
+        observed = await execute("repository-source-runtime-probe", PYTHON
+            + " -P -m ipfs_accelerate_py.agent_supervisor.runtime.repository_source_probe",
+            user="supervisor", env=runtime_environment(), timeout=75)
+        repository_probe = validate_probe(json.loads(observed.stdout))
     await execute(
         "empty-native-start",
         PYTHON
@@ -1219,6 +1457,8 @@ print(duckdb.__version__,platform)
         "runtime_environment": runtime_environment(),
         "python": PYTHON,
         "imports": imported,
+        **({"repository_source_policy": repository_source_policy,
+            "repository_source_runtime_probe": repository_probe} if repository_probe is not None else {}),
         "steps": steps,
         "codex_installed": install_codex,
         "provider": provider,

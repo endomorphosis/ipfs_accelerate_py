@@ -1,0 +1,17 @@
+[
+  "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+  "-m",
+  "pytest",
+  "-q",
+  "--color=no",
+  "-o",
+  "log_cli=false",
+  "--junitxml=/home/barberb/lift_coding/artifacts/bounded-context-growth-20261014/doctor-routing-01/junit.xml",
+  "test/api/test_terminal_doctor_dispatch.py",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_policy.py",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py",
+  "test/api/test_doctor_candidate_runner.py",
+  "test/api/test_doctor_contract_candidate_runner.py"
+]

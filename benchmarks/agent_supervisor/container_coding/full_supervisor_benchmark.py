@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -31,6 +32,26 @@ from .terminal_coding_reply_policy import (
     DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES, validate_coding_reply_mode,
     coding_reply_selection, require_coding_reply_archive,
 )
+from .terminal_source_input_policy import (
+    DEFAULT_SOURCE_INPUT_POLICY, SOURCE_INPUT_POLICIES, validate_source_input_policy,
+    source_input_selection, require_source_input_archive, source_input_dispatch_observation,
+)
+from .terminal_query_reference_policy import (
+    DEFAULT_QUERY_REFERENCE_POLICY, QUERY_REFERENCE_POLICIES, validate_query_reference_policy,
+    query_reference_selection, require_query_reference_archive, query_reference_dispatch_observation,
+)
+from .terminal_repository_source_policy import (
+    DEFAULT_REPOSITORY_SOURCE_POLICY, REPOSITORY_SOURCE_POLICIES, validate_repository_source_policy,
+    repository_source_selection, require_repository_source_archive, repository_source_dispatch_observation,
+)
+from .terminal_source_view_policy import (
+    DEFAULT_SOURCE_VIEW_POLICY, SOURCE_VIEW_POLICIES, validate_source_view_advisory_policy,
+    source_view_advisory_selection, require_source_view_advisory_archive, source_view_dispatch_observation,
+)
+from .terminal_tool_output_policy import (
+    DEFAULT_TOOL_OUTPUT_POLICY, TOOL_OUTPUT_POLICIES, validate_tool_output_policy,
+    tool_output_selection, require_tool_output_archive, tool_output_dispatch_observation,
+)
 from .terminal_semantic_metadata_policy import (
     DEFAULT_SEMANTIC_METADATA_VIEW, SEMANTIC_METADATA_VIEWS, validate_semantic_metadata_view,
     semantic_metadata_selection, semantic_metadata_observation, require_semantic_metadata_archive,
@@ -38,6 +59,8 @@ from .terminal_semantic_metadata_policy import (
 from .terminal_capsule_selection_policy import (
     DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS, validate_capsule_selection,
     capsule_selection_options, capsule_selection_observation, require_capsule_selection_archive,
+    DEFAULT_CAPSULE_BUDGET, CAPSULE_BUDGETS, validate_capsule_budget,
+    capsule_budget_options, capsule_budget_observation, require_capsule_budget_archive,
 )
 from .terminal_planning_policy import (
     DEFAULT_PLANNING_MODE, PLANNING_MODES, validate_planning_mode,
@@ -51,6 +74,10 @@ from .terminal_source_view_policy import (
     DEFAULT_SOURCE_VIEW_PROFILE, SOURCE_VIEW_PROFILES, validate_source_view_profile,
     source_view_selection, source_view_observation, require_source_view_archive,
     validate_source_view_policy,
+)
+from .terminal_semantic_context_policy import (
+    DEFAULT_SEMANTIC_CONTEXT_PROFILE, SEMANTIC_CONTEXT_PROFILES,
+    validate_semantic_context_profile, semantic_context_selection, require_semantic_context_archive,
 )
 from .terminal_numerical_policy import (
     PROFILES as NUMERICAL_PROFILES, validate_numerical_profile, numerical_selection,
@@ -239,25 +266,51 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                setup_cache_selection: dict | None = None, task_name: str = TASK,
                task_profile: dict | None = None, provider_profile: str | None = None,
                semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
+               tool_output_policy: str = DEFAULT_TOOL_OUTPUT_POLICY,
+               source_view_advisory_policy: str = DEFAULT_SOURCE_VIEW_POLICY,
+               repository_source_policy: str = DEFAULT_REPOSITORY_SOURCE_POLICY,
+               source_input_policy: str = DEFAULT_SOURCE_INPUT_POLICY,
+               query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
+               capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
                source_view_policy: dict | None = None,
                source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
+               semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
                numerical_formalization_profile: str | None = None,
                planning_mode: str = DEFAULT_PLANNING_MODE,
                model_revision: str = "") -> dict:
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract,
         task_profile=task_profile)
+    validate_semantic_context_profile(semantic_context_profile, arm=arm)
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
+    validate_capsule_budget(capsule_budget, arm=arm)
+    if capsule_budget != DEFAULT_CAPSULE_BUDGET:
+        from .terminal_task_profile import MULTITASK_SCHEMA
+        if isinstance(task_profile, dict) and task_profile.get("schema") == MULTITASK_SCHEMA:
+            raise ValueError("bounded capsules support one independent signed task")
     validate_source_view_profile(source_view_profile, arm=arm)
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
+    from .terminal_source_view_policy import validate_source_context_combination
+    validate_source_context_combination(source_view_profile=source_view_profile,
+        source_view_advisory_policy=source_view_advisory_policy, repository_source_policy=repository_source_policy,
+        source_input_policy=source_input_policy, query_reference_policy=query_reference_policy,
+        capsule_selection=capsule_selection, semantic_context_profile=semantic_context_profile)
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
+    validate_tool_output_policy(tool_output_policy, arm=arm, provider=selected_provider["provider"])
+    validate_source_view_advisory_policy(source_view_advisory_policy, arm=arm, provider=selected_provider["provider"])
+    validate_repository_source_policy(repository_source_policy, arm=arm, provider=selected_provider["provider"],
+        source_view_advisory_policy=source_view_advisory_policy)
+    validate_source_input_policy(source_input_policy, arm=arm, provider=selected_provider["provider"],
+        semantic_metadata_view=semantic_metadata_view)
+    validate_query_reference_policy(query_reference_policy, arm=arm, provider=selected_provider["provider"],
+        semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
     if arm not in {"full", "no-index"}:
         raise ValueError("unknown supervisor ablation")
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
@@ -275,12 +328,19 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    "model_revision": model_revision if arm == "full" else "",
                    **semantic_transport_selection(semantic_transport_schema),
                    **coding_reply_selection(coding_reply_mode),
+                   **tool_output_selection(tool_output_policy),
+                   **source_view_advisory_selection(source_view_advisory_policy),
+                   **repository_source_selection(repository_source_policy),
+                   **source_input_selection(source_input_policy),
+                   **query_reference_selection(query_reference_policy),
                    **numerical_selection(numerical_formalization_profile),
                    **planning_selection(planning_mode),
                    **semantic_metadata_selection(semantic_metadata_view),
                    **capsule_selection_options(capsule_selection),
+                   **capsule_budget_options(capsule_budget),
                    **source_view_selection(source_view_profile, source_view_policy),
-                   **source_edit_selection(source_edit_mode)},
+                   **source_edit_selection(source_edit_mode),
+                   **semantic_context_selection(semantic_context_profile)},
     }]
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
@@ -325,29 +385,55 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             setup_cache_policy: str | None = None, task_name: str = TASK,
             task_profile: Path | None = None, provider_profile: str | None = None,
             semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
+            tool_output_policy: str = DEFAULT_TOOL_OUTPUT_POLICY,
+            source_view_advisory_policy: str = DEFAULT_SOURCE_VIEW_POLICY,
+            repository_source_policy: str = DEFAULT_REPOSITORY_SOURCE_POLICY,
+            source_input_policy: str = DEFAULT_SOURCE_INPUT_POLICY,
+            query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
             coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
+            capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
             source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
             source_view_policy: dict | None = None,
                source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
+            semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
             numerical_formalization_profile: str | None = None,
             planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract)
+    validate_semantic_context_profile(semantic_context_profile, arm=arm)
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
+    validate_capsule_budget(capsule_budget, arm=arm)
     validate_source_view_profile(source_view_profile, arm=arm)
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
+    from .terminal_source_view_policy import validate_source_context_combination
+    validate_source_context_combination(source_view_profile=source_view_profile,
+        source_view_advisory_policy=source_view_advisory_policy, repository_source_policy=repository_source_policy,
+        source_input_policy=source_input_policy, query_reference_policy=query_reference_policy,
+        capsule_selection=capsule_selection, semantic_context_profile=semantic_context_profile)
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
+    validate_tool_output_policy(tool_output_policy, arm=arm, provider=selected_provider["provider"])
+    validate_source_view_advisory_policy(source_view_advisory_policy, arm=arm, provider=selected_provider["provider"])
+    validate_repository_source_policy(repository_source_policy, arm=arm, provider=selected_provider["provider"],
+        source_view_advisory_policy=source_view_advisory_policy)
+    validate_source_input_policy(source_input_policy, arm=arm, provider=selected_provider["provider"],
+        semantic_metadata_view=semantic_metadata_view)
+    validate_query_reference_policy(query_reference_policy, arm=arm, provider=selected_provider["provider"],
+        semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
     validate_semantic_metadata_view(semantic_metadata_view, arm=arm,
         transport_schema=semantic_transport_schema, provider=selected_provider["provider"])
     from harbor.models.job.config import JobConfig
     dataset = dataset.resolve(strict=True)
     task = _task_path(dataset, task_name)
     selected_task_profile = _load_task_profile(task_profile, task=task)
+    if capsule_budget != DEFAULT_CAPSULE_BUDGET:
+        from .terminal_task_profile import MULTITASK_SCHEMA
+        if isinstance(selected_task_profile, dict) and selected_task_profile.get("schema") == MULTITASK_SCHEMA:
+            raise ValueError("bounded capsules support one independent signed task")
     validate_planning_mode(planning_mode, task_profile=selected_task_profile)
     archive = archive.resolve(strict=True)
     output = output.absolute()
@@ -362,10 +448,17 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_runtime_provider_profile(manifest, provider_profile)
     require_semantic_transport_archive(manifest, semantic_transport_schema)
     require_coding_reply_archive(manifest, coding_reply_mode)
+    require_tool_output_archive(manifest, tool_output_policy)
+    require_source_view_advisory_archive(manifest, source_view_advisory_policy)
+    require_repository_source_archive(manifest, repository_source_policy, archive=archive / "runtime.tar.gz")
+    require_source_input_archive(manifest, source_input_policy)
+    require_query_reference_archive(manifest, query_reference_policy)
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
     require_capsule_selection_archive(manifest, capsule_selection)
+    require_capsule_budget_archive(manifest, capsule_budget)
     require_source_view_archive(manifest, source_view_profile, resource_profile)
     require_source_edit_archive(manifest, source_edit_mode)
+    require_semantic_context_archive(manifest, semantic_context_profile)
     require_numerical_archive(manifest, numerical_formalization_profile)
     require_planning_archive(manifest, planning_mode)
     if selected_provider["provider"] == "grok_cli":
@@ -417,11 +510,18 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         setup_cache_selection=setup_cache_selection, task_name=task_name, task_profile=selected_task_profile,
         semantic_transport_schema=semantic_transport_schema,
         coding_reply_mode=coding_reply_mode,
+        tool_output_policy=tool_output_policy,
+        source_view_advisory_policy=source_view_advisory_policy,
+        repository_source_policy=repository_source_policy,
+        source_input_policy=source_input_policy,
+        query_reference_policy=query_reference_policy,
         semantic_metadata_view=semantic_metadata_view,
         capsule_selection=capsule_selection,
+        capsule_budget=capsule_budget,
         source_view_profile=source_view_profile,
         source_edit_mode=source_edit_mode,
         source_view_policy=source_view_policy,
+        semantic_context_profile=semantic_context_profile,
         numerical_formalization_profile=numerical_formalization_profile,
         planning_mode=planning_mode,
         **({"provider_profile": provider_profile} if provider_profile is not None else {}))
@@ -453,10 +553,17 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **({"provider_profile": selected_provider["id"]} if provider_profile is not None else {}),
               **semantic_transport_selection(semantic_transport_schema),
               **coding_reply_selection(coding_reply_mode),
+              **tool_output_selection(tool_output_policy),
+              **source_view_advisory_selection(source_view_advisory_policy),
+              **repository_source_selection(repository_source_policy),
+              **source_input_selection(source_input_policy),
+              **query_reference_selection(query_reference_policy),
               **semantic_metadata_observation(semantic_metadata_view),
               **capsule_selection_observation(capsule_selection),
+              **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view_profile, source_view_policy),
               **source_edit_observation(source_edit_mode),
+              **semantic_context_selection(semantic_context_profile),
               **numerical_observation(numerical_formalization_profile, arm),
               **planning_observation(planning_mode),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
@@ -475,7 +582,126 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     return result
 
 
+def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
+    """Join retained selection receipts to the separate exact-input audit.
+
+    This read-only observation does not rerun the source audit or measure usage.
+    A valid legacy fallback remains a completed requested-arm attempt; only
+    verified common-bindings inputs count as an effective metadata treatment.
+    """
+    validate_semantic_metadata_view(requested_mode)
+    report = report if type(report) is dict else {}
+    declaration = report.get("semantic_metadata_view")
+    declared = declaration.get("requested_mode") if type(declaration) is dict else None
+    declared_matches = (declared == requested_mode if requested_mode != "legacy"
+                        else declaration is None or declared == "legacy")
+    problems = [] if declared_matches else ["requested_mode_report_mismatch"]
+    if report.get("unreceipted_provider_attempt"):
+        problems.append("unreceipted_provider_attempt")
+    population = report.get("provider_invocations")
+    if type(population) is not list or len(population) > 4096:
+        problems.append("provider_invocation_population_unavailable_or_unbounded")
+        population = []
+    if any(type(row) is not dict for row in population):
+        problems.append("malformed_provider_invocation")
+    coding = [row for row in population if type(row) is dict and row.get("phase") == "coding"]
+    audit = report.get("context_input_audit")
+    audit = audit if type(audit) is dict else {}
+    audit_rows, matches = audit.get("invocations"), audit.get("matches")
+    audit_rows = audit_rows if type(audit_rows) is list and len(audit_rows) <= 16 else []
+    matches = matches if type(matches) is list and len(matches) <= 512 else []
+    identities = [row.get("invocation_id") for row in coding]
+    valid_id = lambda value: type(value) is str and 0 < len(value) <= 4096
+    valid_hash = lambda value: type(value) is str and re.fullmatch("[0-9a-f]{64}", value) is not None
+    valid_bytes = lambda value: type(value) is int and 0 < value <= 2_000_000
+    distinct = all(valid_id(value) for value in identities) and len(set(identities)) == len(identities)
+    audit_ids = [row.get("invocation_id") for row in audit_rows if type(row) is dict]
+    audit_population = (distinct and len(audit_rows) == len(coding) == len(audit_ids)
+        and all(valid_id(value) for value in audit_ids) and set(audit_ids) == set(identities)
+        and len(set(audit_ids)) == len(audit_ids)
+        and audit.get("status") == "verified_all_observed_model_inputs"
+        and audit.get("all_observed_coding_inputs_verified") is True
+        and type(audit.get("coding_receipts_seen")) is int and audit["coding_receipts_seen"] == len(coding)
+        and type(audit.get("usable_coding_receipts")) is int and audit["usable_coding_receipts"] == len(coding)
+        and audit.get("read_errors") == [])
+    if not coding:
+        problems.append("no_observed_coding_receipts")
+    elif not distinct:
+        problems.append("coding_invocation_identities_missing_or_duplicate")
+    observations = []
+    for row in coding:
+        identity = row.get("invocation_id")
+        selection = row.get("semantic_metadata_view")
+        selection = selection if type(selection) is dict else {}
+        mode, fallback = selection.get("selected_mode"), selection.get("fallback_reason")
+        valid_selection = (selection.get("schema") == "supervisor-semantic-metadata-selection@1"
+            and type(mode) is str and mode in {"legacy", "common-bindings@1"}
+            and selection.get("candidate_only") is True
+            and selection.get("token_proxy") == "utf8-bytes-ceil-div4@1"
+            and all(selection.get(key) is False for key in (
+                "source_freshness_verified", "program_semantics_proved", "omission_authority",
+                "proof_authority", "execution_authority", "completion_authority", "publication_authority"))
+            and all(valid_hash(selection.get(key)) for key in (
+                "view_receipt_sha256", "native_complete_sha256", "candidate_complete_sha256", "selected_complete_sha256"))
+            and all(valid_bytes(selection.get(key)) for key in (
+                "native_complete_bytes", "candidate_complete_bytes", "selected_complete_bytes"))
+            and all(type(selection.get(prefix + "_complete_proxy_tokens")) is int
+                and selection[prefix + "_complete_proxy_tokens"] == (selection[prefix + "_complete_bytes"] + 3) // 4
+                for prefix in ("native", "candidate", "selected")))
+        if valid_selection:
+            smaller = selection["candidate_complete_bytes"] < selection["native_complete_bytes"] and (
+                (selection["candidate_complete_bytes"] + 3) // 4 < (selection["native_complete_bytes"] + 3) // 4)
+            prefix = "candidate" if mode == "common-bindings@1" else "native"
+            valid_selection = (smaller == (mode == "common-bindings@1")
+                and fallback == (None if smaller else "complete_input_not_smaller_under_bytes_and_proxy")
+                and selection["selected_complete_sha256"] == selection[prefix + "_complete_sha256"]
+                and selection["selected_complete_bytes"] == selection[prefix + "_complete_bytes"])
+        bound = (valid_selection and valid_hash(row.get("model_prompt_sha256"))
+            and valid_bytes(row.get("model_prompt_bytes"))
+            and selection["selected_complete_sha256"] == row["model_prompt_sha256"]
+            and selection["selected_complete_bytes"] == row["model_prompt_bytes"])
+        per_audit = [item for item in audit_rows if type(item) is dict and item.get("invocation_id") == identity]
+        per_matches = [item for item in matches if type(item) is dict and item.get("invocation_id") == identity]
+        def verified_match(item):
+            checks = item.get("model_input_checks")
+            return (item.get("model_input_verified") is True
+                and item.get("model_prompt_sha256") == row.get("model_prompt_sha256")
+                and type(item.get("model_prompt_bytes")) is int
+                and item.get("model_prompt_bytes") == row.get("model_prompt_bytes")
+                and type(checks) is dict and checks.get("semantic_metadata_selection_receipt") is True
+                and all(value is True for value in checks.values()))
+        verified = (bound and audit_population and len(per_audit) == 1
+            and per_audit[0].get("model_input_verified") is True
+            and per_audit[0].get("status") == "verified_exact_model_input"
+            and bool(per_matches) and all(verified_match(item) for item in per_matches))
+        row_problems = []
+        if not valid_selection: row_problems.append("metadata_selection_missing_or_invalid")
+        elif not bound: row_problems.append("selected_input_binding_mismatch")
+        if not verified: row_problems.append("retained_exact_input_audit_not_correlated")
+        observations.append({"invocation_id": identity if valid_id(identity) else None,
+            "selected_mode": mode if type(mode) is str and mode in {"legacy", "common-bindings@1"} else None,
+            "fallback_reason": fallback if fallback in (None, "complete_input_not_smaller_under_bytes_and_proxy") else "unrecognized",
+            "selection_receipt_matches_model_input": bool(bound),
+            "retained_exact_input_audit_verified": bool(verified), "problems": row_problems})
+    modes = sorted({row["selected_mode"] for row in observations if row["selected_mode"] is not None})
+    bound = bool(observations) and all(row["selection_receipt_matches_model_input"] for row in observations)
+    verified = (not problems and bound
+        and all(row["retained_exact_input_audit_verified"] for row in observations))
+    status = ("verified_treatment" if modes == ["common-bindings@1"] else
+              "verified_fallback" if modes == ["legacy"] else "verified_mixed_selection") if verified else "unverified"
+    return {"schema": "terminal-semantic-metadata-dispatch-observation@1", "requested_mode": requested_mode,
+        "requested_mode_matches_report": declared_matches, "coding_receipts_seen": len(coding),
+        "invocations": observations, "selected_modes": modes,
+        "fallback_reasons": sorted({row["fallback_reason"] for row in observations if row["fallback_reason"] is not None}),
+        "all_selection_receipts_bound_to_model_inputs": bound,
+        "all_coding_inputs_verified_by_retained_audit": verified,
+        "effective_treatment_observed": verified and modes == ["common-bindings@1"],
+        "status": status, "problems": problems, "source_audit_rerun": False,
+        "provider_usage_modified": False, "token_savings_established": False}
+
+
 def collect(output: Path, *, task_name: str | None = None) -> dict:
+    from .terminal_provider_stop import provider_stop_observation
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
@@ -497,6 +723,43 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     configured_reply_mode = validate_coding_reply_mode(
         config["agents"][0].get("kwargs", {}).get("coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
         arm=prepared["arm"])
+    tool_output = validate_tool_output_policy(
+        prepared.get("tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    configured_tool_output = validate_tool_output_policy(
+        config["agents"][0].get("kwargs", {}).get("tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY),
+        arm=prepared["arm"])
+    source_view_advisory = validate_source_view_advisory_policy(
+        prepared.get("source_view_advisory_policy", DEFAULT_SOURCE_VIEW_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    configured_source_view_advisory = validate_source_view_advisory_policy(
+        config["agents"][0].get("kwargs", {}).get("source_view_advisory_policy", DEFAULT_SOURCE_VIEW_POLICY),
+        arm=prepared["arm"])
+    repository_source = validate_repository_source_policy(
+        prepared.get("repository_source_policy", DEFAULT_REPOSITORY_SOURCE_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"], source_view_advisory_policy=source_view_advisory)
+    configured_repository_source = validate_repository_source_policy(
+        config["agents"][0].get("kwargs", {}).get("repository_source_policy", DEFAULT_REPOSITORY_SOURCE_POLICY),
+        arm=prepared["arm"], provider=resolve_provider_profile(config["agents"][0].get("kwargs", {}).get(
+            "provider_profile"))["provider"], source_view_advisory_policy=configured_source_view_advisory)
+    source_input = validate_source_input_policy(
+        prepared.get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"],
+        semantic_metadata_view=prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+    query_reference = validate_query_reference_policy(
+        prepared.get("query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"],
+        semantic_metadata_view=prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+        source_input_policy=prepared.get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
+    configured_source_input = validate_source_input_policy(
+        config["agents"][0].get("kwargs", {}).get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY),
+        arm=prepared["arm"], semantic_metadata_view=config["agents"][0].get("kwargs", {}).get(
+            "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+    configured_query_reference = validate_query_reference_policy(
+        config["agents"][0].get("kwargs", {}).get("query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY),
+        arm=prepared["arm"], semantic_metadata_view=config["agents"][0].get("kwargs", {}).get(
+            "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+        source_input_policy=config["agents"][0].get("kwargs", {}).get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
     transport = validate_semantic_transport_schema(
         prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=prepared["arm"])
     configured_transport = validate_semantic_transport_schema(
@@ -513,11 +776,23 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
         prepared.get("capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=prepared["arm"])
     configured_capsules = validate_capsule_selection(
         config["agents"][0].get("kwargs", {}).get("capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=prepared["arm"])
+    capsule_budget = validate_capsule_budget(
+        prepared.get("capsule_budget", DEFAULT_CAPSULE_BUDGET), arm=prepared["arm"])
+    configured_capsule_budget = validate_capsule_budget(
+        config["agents"][0].get("kwargs", {}).get("capsule_budget", DEFAULT_CAPSULE_BUDGET), arm=prepared["arm"])
     source_view = validate_source_view_profile(
         prepared.get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=prepared["arm"])
     configured_source_view = validate_source_view_profile(
         config["agents"][0].get("kwargs", {}).get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
         arm=prepared["arm"])
+    from .terminal_source_view_policy import validate_source_context_combination
+    for signed_profile, advisory, repository_policy, input_policy, reference_policy in (
+            (source_view, source_view_advisory, repository_source, source_input, query_reference),
+            (configured_source_view, configured_source_view_advisory, configured_repository_source,
+             configured_source_input, configured_query_reference)):
+        validate_source_context_combination(source_view_profile=signed_profile,
+            source_view_advisory_policy=advisory, repository_source_policy=repository_policy,
+            source_input_policy=input_policy, query_reference_policy=reference_policy)
     source_edit = validate_source_edit_mode(prepared.get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
         arm=prepared["arm"], source_view_profile=source_view)
     configured_source_edit = validate_source_edit_mode(
@@ -526,6 +801,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     source_policy, source_policy_unchanged, source_policy_present = _source_view_policy_state(
         prepared, config, source_view=source_view, configured_source_view=configured_source_view,
         current_config_sha256=_hash(output / "config.json"))
+    semantic_profile = validate_semantic_context_profile(
+        prepared.get("semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE), arm=prepared["arm"])
+    configured_semantic_profile = validate_semantic_context_profile(
+        config["agents"][0].get("kwargs", {}).get("semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE),
+        arm=prepared["arm"])
     selection = {key: prepared.get(key, value) for key, value in _intent_selection(None).items()}
     configured_selection = _intent_selection(config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"),
         planning_mode=configured_planning)
@@ -535,6 +815,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
         native = json.loads(path.read_text())
         report_path = path.parent / "agent/supervisor-result.json"
         report = json.loads(report_path.read_text()) if report_path.is_file() else None
+        provider_stop = provider_stop_observation(report) if type(report) is dict else None
         durations = {}
         for field in ("environment_setup", "agent_setup", "agent_execution", "verifier"):
             phase = native.get(field) or {}
@@ -545,15 +826,57 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                        "reward": (native.get("verifier_result") or {}).get("rewards"),
                        "exception_type": (native.get("exception_info") or {}).get("exception_type"),
                        "durations_seconds": durations, "agent_context": native.get("agent_result"),
-                       "supervisor": report})
+                       "native_agent_execution_started": bool((native.get("agent_execution") or {}).get("started_at")),
+                       "supervisor": report,
+                       **({"provider_stop": provider_stop} if provider_stop is not None else {}),
+                       **({"source_input_dispatch": source_input_dispatch_observation(report, source_input)}
+                          if source_input != DEFAULT_SOURCE_INPUT_POLICY else {}),
+                       **({"query_reference_dispatch": query_reference_dispatch_observation(report, query_reference)}
+                          if query_reference != DEFAULT_QUERY_REFERENCE_POLICY else {}),
+                       **({"repository_source_dispatch": repository_source_dispatch_observation(report, repository_source)}
+                          if repository_source != DEFAULT_REPOSITORY_SOURCE_POLICY else {}),
+                       **({"source_view_dispatch": source_view_dispatch_observation(report, source_view_advisory)}
+                          if source_view_advisory != DEFAULT_SOURCE_VIEW_POLICY else {}),
+                       **({"tool_output_dispatch": tool_output_dispatch_observation(report, tool_output)}
+                          if tool_output != DEFAULT_TOOL_OUTPUT_POLICY else {}),
+                       **({"semantic_metadata_dispatch": _metadata_dispatch_observation(report, metadata_view)}
+                          if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW else {}),
+                       **({"semantic_context_profile_matches": isinstance(report, dict)
+                           and report.get("semantic_context_profile") == semantic_profile}
+                          if semantic_profile != DEFAULT_SEMANTIC_CONTEXT_PROFILE else {})})
     unchanged = _task_hashes(task) == prepared["task_input_sha256"]
+    budget_runtime_matches = None
+    if capsule_budget != DEFAULT_CAPSULE_BUDGET and trials:
+        expected_budget = capsule_budget_observation(capsule_budget)
+        reported_budgets = [trial["supervisor"] for trial in trials]
+        if all(type(report) is dict for report in reported_budgets):
+            budget_runtime_matches = all(
+                all(type(report.get(key)) is type(value) and report.get(key) == value
+                    for key, value in expected_budget.items())
+                for report in reported_budgets)
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
               "task": task.name, **profile,
               **({"provider_profile": prepared["provider_profile"]} if "provider_profile" in prepared else {}),
               **semantic_transport_selection(transport),
               **coding_reply_selection(reply_mode),
+              **tool_output_selection(tool_output),
+              **source_view_advisory_selection(source_view_advisory),
+              **repository_source_selection(repository_source),
+              **source_input_selection(source_input),
+              **query_reference_selection(query_reference),
+              **({"source_input_config_unchanged": configured_source_input == source_input}
+                 if "source_input_policy" in prepared or "source_input_policy" in config["agents"][0].get("kwargs", {}) else {}),
+              **({"query_reference_config_unchanged": configured_query_reference == query_reference}
+                 if "query_reference_policy" in prepared or "query_reference_policy" in config["agents"][0].get("kwargs", {}) else {}),
+              **({"repository_source_config_unchanged": configured_repository_source == repository_source}
+                 if "repository_source_policy" in prepared or "repository_source_policy" in config["agents"][0].get("kwargs", {}) else {}),
+              **({"source_view_advisory_config_unchanged": configured_source_view_advisory == source_view_advisory}
+                 if "source_view_advisory_policy" in prepared or "source_view_advisory_policy" in config["agents"][0].get("kwargs", {}) else {}),
+              **({"tool_output_config_unchanged": configured_tool_output == tool_output}
+                 if "tool_output_policy" in prepared or "tool_output_policy" in config["agents"][0].get("kwargs", {}) else {}),
               **semantic_metadata_observation(metadata_view),
               **capsule_selection_observation(capsule_selection),
+              **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view, source_policy),
               **source_edit_observation(source_edit),
               **({"source_edit_config_unchanged": configured_source_edit == source_edit}
@@ -564,6 +887,13 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                  if "source_view_profile" in prepared or "source_view_profile" in config["agents"][0].get("kwargs", {}) else {}),
               **({"capsule_selection_config_unchanged": configured_capsules == capsule_selection}
                  if "capsule_selection" in prepared or "capsule_selection" in config["agents"][0].get("kwargs", {}) else {}),
+              **semantic_context_selection(semantic_profile),
+              **({"semantic_context_config_unchanged": configured_semantic_profile == semantic_profile}
+                 if "semantic_context_profile" in prepared or "semantic_context_profile" in config["agents"][0].get("kwargs", {}) else {}),
+              **({"capsule_budget_config_unchanged": configured_capsule_budget == capsule_budget}
+                 if "capsule_budget" in prepared or "capsule_budget" in config["agents"][0].get("kwargs", {}) else {}),
+              **({"capsule_budget_runtime_declared_matches": budget_runtime_matches}
+                 if capsule_budget != DEFAULT_CAPSULE_BUDGET else {}),
               **numerical_observation(numerical_profile, prepared["arm"]),
               **planning_observation(planning_mode),
               **({"planning_mode_config_unchanged": configured_planning == planning_mode}
@@ -586,8 +916,32 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and configured_numerical == numerical_profile and configured_planning == planning_mode
                   and configured_metadata_view == metadata_view
                   and configured_capsules == capsule_selection
+                  and configured_capsule_budget == capsule_budget
+                  and (capsule_budget == DEFAULT_CAPSULE_BUDGET or budget_runtime_matches is True)
                   and configured_source_view == source_view and source_policy_unchanged
-                  and configured_source_edit == source_edit,
+                  and configured_source_edit == source_edit
+                  and configured_source_input == source_input
+                  and (source_input == DEFAULT_SOURCE_INPUT_POLICY or
+                       trials[0]["source_input_dispatch"]["effective_input_observed"] is True)
+                  and configured_query_reference == query_reference
+                  and (query_reference == DEFAULT_QUERY_REFERENCE_POLICY or
+                       trials[0]["query_reference_dispatch"]["effective_input_observed"] is True)
+                  and configured_repository_source == repository_source
+                  and (repository_source == DEFAULT_REPOSITORY_SOURCE_POLICY or
+                       trials[0]["repository_source_dispatch"]["effective_repository_tools_observed"] is True)
+                  and configured_source_view_advisory == source_view_advisory
+                  and (source_view_advisory == DEFAULT_SOURCE_VIEW_POLICY or
+                       trials[0]["source_view_dispatch"]["effective_advisory_observed"] is True)
+                  and configured_tool_output == tool_output
+                  and (tool_output == DEFAULT_TOOL_OUTPUT_POLICY or
+                       trials[0]["tool_output_dispatch"]["effective_advisory_observed"] is True)
+                  and configured_numerical == numerical_profile
+                  and configured_metadata_view == metadata_view
+                  and (metadata_view == DEFAULT_SEMANTIC_METADATA_VIEW or
+                       trials[0]["semantic_metadata_dispatch"]["requested_mode_matches_report"] is True)
+                  and configured_semantic_profile == semantic_profile
+                  and (semantic_profile == DEFAULT_SEMANTIC_CONTEXT_PROFILE
+                       or trials[0].get("semantic_context_profile_matches") is True),
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
               "intent_action_384": prepared.get("intent_action_384"),
@@ -598,7 +952,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     return result
 
 
-def execute(output: Path, *, task_name: str | None = None) -> dict:
+def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
@@ -624,8 +978,55 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         arm=prepared["arm"], provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
     if reply_mode != config["agents"][0].get("kwargs", {}).get("coding_reply_mode", DEFAULT_CODING_REPLY_MODE):
         raise ValueError("prepared coding reply selection changed")
+    tool_output = validate_tool_output_policy(
+        prepared.get("tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    configured_tool_output = validate_tool_output_policy(
+        config["agents"][0].get("kwargs", {}).get("tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY),
+        arm=prepared["arm"])
+    source_view_advisory = validate_source_view_advisory_policy(
+        prepared.get("source_view_advisory_policy", DEFAULT_SOURCE_VIEW_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    configured_source_view_advisory = validate_source_view_advisory_policy(
+        config["agents"][0].get("kwargs", {}).get("source_view_advisory_policy", DEFAULT_SOURCE_VIEW_POLICY),
+        arm=prepared["arm"])
+    repository_source = validate_repository_source_policy(
+        prepared.get("repository_source_policy", DEFAULT_REPOSITORY_SOURCE_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"], source_view_advisory_policy=source_view_advisory)
+    configured_repository_source = validate_repository_source_policy(
+        config["agents"][0].get("kwargs", {}).get("repository_source_policy", DEFAULT_REPOSITORY_SOURCE_POLICY),
+        arm=prepared["arm"], provider=resolve_provider_profile(config["agents"][0].get("kwargs", {}).get(
+            "provider_profile"))["provider"], source_view_advisory_policy=configured_source_view_advisory)
+    source_input = validate_source_input_policy(
+        prepared.get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"],
+        semantic_metadata_view=prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+    query_reference = validate_query_reference_policy(
+        prepared.get("query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"],
+        semantic_metadata_view=prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+        source_input_policy=prepared.get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
+    configured_source_input = validate_source_input_policy(
+        config["agents"][0].get("kwargs", {}).get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY),
+        arm=prepared["arm"], semantic_metadata_view=config["agents"][0].get("kwargs", {}).get(
+            "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+    configured_query_reference = validate_query_reference_policy(
+        config["agents"][0].get("kwargs", {}).get("query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY),
+        arm=prepared["arm"], semantic_metadata_view=config["agents"][0].get("kwargs", {}).get(
+            "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+        source_input_policy=config["agents"][0].get("kwargs", {}).get("source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
     transport = validate_semantic_transport_schema(
         prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=prepared["arm"])
+    if source_input != configured_source_input:
+        raise ValueError("prepared source input policy selection changed")
+    if query_reference != configured_query_reference:
+        raise ValueError("prepared query reference policy selection changed")
+    if repository_source != configured_repository_source:
+        raise ValueError("prepared repository source policy selection changed")
+    if source_view_advisory != configured_source_view_advisory:
+        raise ValueError("prepared source view policy selection changed")
+    if tool_output != configured_tool_output:
+        raise ValueError("prepared tool output policy selection changed")
     if transport != config["agents"][0].get("kwargs", {}).get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA):
         raise ValueError("prepared semantic transport selection changed")
     metadata_view = validate_semantic_metadata_view(
@@ -641,13 +1042,27 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         prepared.get("capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=prepared["arm"])
     configured_capsules = validate_capsule_selection(
         config["agents"][0].get("kwargs", {}).get("capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=prepared["arm"])
+    capsule_budget = validate_capsule_budget(
+        prepared.get("capsule_budget", DEFAULT_CAPSULE_BUDGET), arm=prepared["arm"])
+    configured_capsule_budget = validate_capsule_budget(
+        config["agents"][0].get("kwargs", {}).get("capsule_budget", DEFAULT_CAPSULE_BUDGET), arm=prepared["arm"])
     if capsule_selection != configured_capsules:
         raise ValueError("prepared capsule selection changed")
+    if capsule_budget != configured_capsule_budget:
+        raise ValueError("prepared capsule budget changed")
     source_view = validate_source_view_profile(
         prepared.get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=prepared["arm"])
     configured_source_view = validate_source_view_profile(
         config["agents"][0].get("kwargs", {}).get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
         arm=prepared["arm"])
+    from .terminal_source_view_policy import validate_source_context_combination
+    for signed_profile, advisory, repository_policy, input_policy, reference_policy in (
+            (source_view, source_view_advisory, repository_source, source_input, query_reference),
+            (configured_source_view, configured_source_view_advisory, configured_repository_source,
+             configured_source_input, configured_query_reference)):
+        validate_source_context_combination(source_view_profile=signed_profile,
+            source_view_advisory_policy=advisory, repository_source_policy=repository_policy,
+            source_input_policy=input_policy, query_reference_policy=reference_policy)
     source_edit = validate_source_edit_mode(prepared.get("source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
         arm=prepared["arm"], source_view_profile=source_view)
     configured_source_edit = validate_source_edit_mode(
@@ -662,6 +1077,13 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         current_config_sha256=_hash(output / "config.json"))
     if not source_policy_unchanged:
         raise ValueError("prepared source view policy changed")
+    semantic_profile = validate_semantic_context_profile(
+        prepared.get("semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE), arm=prepared["arm"])
+    configured_semantic_profile = validate_semantic_context_profile(
+        config["agents"][0].get("kwargs", {}).get("semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE),
+        arm=prepared["arm"])
+    if semantic_profile != configured_semantic_profile:
+        raise ValueError("prepared semantic context profile selection changed")
     if _task_hashes(task) != prepared["task_input_sha256"]:
         raise ValueError("original task changed")
     if _hash(Path(prepared["archive"]) / "runtime.tar.gz") != prepared["archive_sha256"]:
@@ -670,10 +1092,18 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         raise ValueError("runtime dependency manifest changed")
     current_manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
     require_coding_reply_archive(current_manifest, reply_mode)
+    require_tool_output_archive(current_manifest, tool_output)
+    require_source_view_advisory_archive(current_manifest, source_view_advisory)
+    require_repository_source_archive(current_manifest, repository_source,
+        archive=Path(prepared["archive"]) / "runtime.tar.gz")
+    require_source_input_archive(current_manifest, source_input)
+    require_query_reference_archive(current_manifest, query_reference)
     require_semantic_metadata_archive(current_manifest, metadata_view)
     require_capsule_selection_archive(current_manifest, capsule_selection)
+    require_capsule_budget_archive(current_manifest, capsule_budget)
     require_source_view_archive(current_manifest, source_view,
         config["agents"][0].get("kwargs", {}).get("resource_profile"))
+    require_semantic_context_archive(current_manifest, semantic_profile)
     require_numerical_archive(current_manifest, numerical_profile)
     require_planning_archive(current_manifest, planning_mode)
     require_source_edit_archive(current_manifest, source_edit)
@@ -699,10 +1129,92 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     return result
 
 
+def execute(output: Path, *, task_name: str | None = None,
+            provider_backoff_directory: Path | None = None, provider_max_wait_seconds=0) -> dict:
+    """Admit fresh work through shared cooldown; dispatched trials never replay."""
+    from .terminal_provider_backoff import ProviderBackoff, BackoffStateError
+    from .terminal_provider_stop import provider_stop_observation
+    output = Path(output).absolute()
+    # Check the one-shot boundary before touching any recovery state.
+    if (output / 'invocation.json').exists():
+        raise FileExistsError('trial already invoked; prepare a fresh trial')
+    prepared = json.loads((output / 'preparation.json').read_text())
+    selected = resolve_provider_profile(prepared.get('provider_profile'))
+    provider = selected['provider']
+    try:
+        gate = ProviderBackoff(provider_backoff_directory)
+        permit = gate.acquire_with_wait(provider, max_wait_seconds=provider_max_wait_seconds)
+    except (BackoffStateError, OSError) as error:
+        result = {'schema': 'terminal-provider-deferral@1', 'state': 'provider_deferred',
+                  'provider': provider, 'reason': 'provider_admission_unavailable',
+                  'error_type': type(error).__name__, 'retry_after_seconds': None,
+                  'provider_calls': 0, 'containers_launched': 0, 'trial_invoked': False,
+                  'automatic_replay_allowed': False}
+        _json(output / 'provider-deferral.json', result)
+        return result
+    if not permit.allowed:
+        result = {'schema': 'terminal-provider-deferral@1', 'state': 'provider_deferred',
+                  **permit.observation(), 'provider_calls': 0, 'containers_launched': 0,
+                  'trial_invoked': False}
+        result['schema'] = 'terminal-provider-deferral@1'
+        _json(output / 'provider-deferral.json', result)
+        return result
+    result = None
+    try:
+        # Full preparation and source validation happens AFTER any waiting.
+        result = _execute_once(output, task_name=task_name)
+        trials = result.get('trials', [])
+        single_trial = type(trials) is list and len(trials) == 1 and type(trials[0]) is dict
+        exact_trial = single_trial and trials[0].get('exact_trial_task_matches') is True
+        report = trials[0].get('supervisor') if single_trial else {}
+        report = report if type(report) is dict else {}
+        stop = provider_stop_observation(report)
+        rows = report.get('provider_invocations', [])
+        receipts_bound = (type(rows) is list and bool(rows) and len(rows) <= 1024
+                     and all(type(row) is dict and row.get('status') in {'provider_returned', 'failed'}
+                             and row.get('schema') == 'router-implementation-invocation@1'
+                             and type(row.get('invocation_id')) is str and 0 < len(row['invocation_id']) <= 256
+                             and row.get('model') == selected['model']
+                             and row.get('provider') == provider for row in rows)
+                     and len({row['invocation_id'] for row in rows}) == len(rows))
+        outcome_unknown = (bool(report.get('unreceipted_provider_attempt'))
+                           or (bool(rows) and not receipts_bound)
+                           or (single_trial and trials[0].get('native_agent_execution_started') is True
+                               and not receipts_bound)
+                           or (bool(trials) and not single_trial))
+        recovered = (exact_trial and receipts_bound and not outcome_unknown
+                     and all(row['status'] == 'provider_returned' for row in rows))
+        result['provider_admission'] = permit.observation()
+        result['provider_backoff'] = gate.settle(permit, stop=stop, provider_succeeded=recovered,
+                                               outcome_unknown=outcome_unknown)
+        _json(output / 'receipt.json', result)
+        return result
+    except BaseException as error:
+        if (output / 'invocation.json').exists():
+            try:
+                gate.mark_unsettled(permit)
+            except Exception as persistence_error:
+                error.add_note('Provider admission blocker could not be persisted: '
+                               + type(persistence_error).__name__)
+        raise
+    finally:
+        # Unsettled recovery retains its persisted marker. After a crash or
+        # failed receipt collection, another process cannot assume availability.
+        try:
+            if not permit._settled and not (output / 'invocation.json').exists():
+                gate.abandon_before_dispatch(permit)
+        finally:
+            permit.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=("prepare", "execute", "collect"))
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--provider-backoff-directory", type=Path,
+                        help="Shared host provider cooldown state; execute only")
+    parser.add_argument("--provider-max-wait-seconds", type=float, default=0,
+                        help="Bounded pre-dispatch wait, 0..60 seconds; default returns a deferral")
     parser.add_argument("--dataset", type=Path)
     parser.add_argument("--task", help="Dataset task name; prepare defaults to fix-code-vulnerability")
     parser.add_argument("--task-profile", type=Path,
@@ -714,6 +1226,16 @@ def main():
         help="Explicit signed single-task planning route; frozen by preparation")
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, help="Explicit coding-context transport; planning remains unchanged")
+    parser.add_argument("--source-input-policy", choices=SOURCE_INPUT_POLICIES,
+        default=DEFAULT_SOURCE_INPUT_POLICY, help="Frozen explicit raw/compact code input and optional AST references")
+    parser.add_argument("--query-reference-policy", choices=QUERY_REFERENCE_POLICIES,
+        default=DEFAULT_QUERY_REFERENCE_POLICY, help="Frozen reference to the exact required inline instruction")
+    parser.add_argument("--repository-source-policy", choices=REPOSITORY_SOURCE_POLICIES,
+        default=DEFAULT_REPOSITORY_SOURCE_POLICY, help="Opt-in matched repository MCP tools; frozen by preparation")
+    parser.add_argument("--source-view-advisory-policy", choices=SOURCE_VIEW_POLICIES,
+        default=DEFAULT_SOURCE_VIEW_POLICY, help="Opt-in matched raw/compact source view; frozen by preparation")
+    parser.add_argument("--tool-output-policy", choices=TOOL_OUTPUT_POLICIES,
+        default=DEFAULT_TOOL_OUTPUT_POLICY, help="Opt-in coding output previews; frozen by preparation")
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
         default=DEFAULT_CODING_REPLY_MODE, help="Explicit coding acknowledgment contract; frozen by preparation")
     parser.add_argument("--semantic-metadata-view", choices=SEMANTIC_METADATA_VIEWS,
@@ -721,12 +1243,17 @@ def main():
         help="Experimental readable coding metadata view; planning unchanged and selection frozen by preparation")
     parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
         help="Experimental source-bound capsule ranking; requires an explicit public task profile and is frozen by preparation")
+    parser.add_argument("--capsule-budget", choices=CAPSULE_BUDGETS, default=DEFAULT_CAPSULE_BUDGET,
+        help="Experimental maximum capsule count; full indexed arm only and frozen by preparation")
     parser.add_argument("--source-view-profile", choices=SOURCE_VIEW_PROFILES, default=DEFAULT_SOURCE_VIEW_PROFILE,
         help="Opt-in read-only coding source views; full indexed arm only and frozen by preparation")
     parser.add_argument("--source-edit-mode", choices=SOURCE_EDIT_MODES, default=DEFAULT_SOURCE_EDIT_MODE,
         help="Opt-in mapped source edit proposals; requires full arm and source views; frozen by preparation")
     parser.add_argument("--source-view-policy", type=Path,
         help="Explicit shared source view recipe JSON file; frozen by preparation")
+    parser.add_argument("--semantic-context-profile", choices=SEMANTIC_CONTEXT_PROFILES,
+        default=DEFAULT_SEMANTIC_CONTEXT_PROFILE,
+        help="Frozen semantic capsule selection; select identically except for a matched context ablation")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
     parser.add_argument("--numerical-formalization-profile", choices=NUMERICAL_PROFILES,
         help="Opt-in source-bound numerical obligations; frozen equally for both arms, consumed only by full")
@@ -741,22 +1268,38 @@ def main():
     args = parser.parse_args()
     if args.operation != "prepare" and args.planning_mode != DEFAULT_PLANNING_MODE:
         parser.error("planning mode is frozen during prepare; collect/execute cannot select it")
+    if args.operation != 'execute' and (args.provider_backoff_directory is not None or args.provider_max_wait_seconds != 0):
+        parser.error('provider admission options apply only to execute')
     if args.operation != "prepare" and args.numerical_formalization_profile is not None:
         parser.error("numerical formalization is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
         parser.error("semantic transport is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.source_input_policy != DEFAULT_SOURCE_INPUT_POLICY:
+        parser.error("source input policy is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.query_reference_policy != DEFAULT_QUERY_REFERENCE_POLICY:
+        parser.error("query reference policy is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.repository_source_policy != DEFAULT_REPOSITORY_SOURCE_POLICY:
+        parser.error("repository source policy is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.source_view_advisory_policy != DEFAULT_SOURCE_VIEW_POLICY:
+        parser.error("source view policy is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.tool_output_policy != DEFAULT_TOOL_OUTPUT_POLICY:
+        parser.error("tool output policy is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.coding_reply_mode != DEFAULT_CODING_REPLY_MODE:
         parser.error("coding reply mode is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
         parser.error("semantic metadata view is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_selection != DEFAULT_CAPSULE_SELECTION:
         parser.error("capsule selection is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.capsule_budget != DEFAULT_CAPSULE_BUDGET:
+        parser.error("capsule budget is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE:
         parser.error("source view profile is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.source_edit_mode != DEFAULT_SOURCE_EDIT_MODE:
         parser.error("source edit mode is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.source_view_policy is not None:
         parser.error("source view policy is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.semantic_context_profile != DEFAULT_SEMANTIC_CONTEXT_PROFILE:
+        parser.error("semantic context profile is frozen by preparation; collect/execute cannot select it")
     if args.operation == "prepare":
         if args.dataset is None or args.archive is None:
             parser.error("prepare requires --dataset and --archive")
@@ -769,16 +1312,29 @@ def main():
                          task_profile=args.task_profile, provider_profile=args.provider_profile,
                          semantic_transport_schema=args.semantic_transport_schema,
                          coding_reply_mode=args.coding_reply_mode,
+                         tool_output_policy=args.tool_output_policy,
+                         source_view_advisory_policy=args.source_view_advisory_policy,
+                         repository_source_policy=args.repository_source_policy,
+                         source_input_policy=args.source_input_policy,
+                         query_reference_policy=args.query_reference_policy,
                          semantic_metadata_view=args.semantic_metadata_view,
+                         semantic_context_profile=args.semantic_context_profile,
                          capsule_selection=args.capsule_selection,
+                         capsule_budget=args.capsule_budget,
                          source_view_profile=args.source_view_profile,
                          source_edit_mode=args.source_edit_mode,
                          source_view_policy=_load_source_view_policy(args.source_view_policy),
                          numerical_formalization_profile=args.numerical_formalization_profile,
                          planning_mode=args.planning_mode)
+    elif args.operation == 'execute':
+        result = execute(args.output, task_name=args.task,
+                         provider_backoff_directory=args.provider_backoff_directory,
+                         provider_max_wait_seconds=args.provider_max_wait_seconds)
     else:
-        result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)
+        result = collect(args.output, task_name=args.task)
     print(json.dumps(result, sort_keys=True, indent=2))
+    if result.get('state') == 'provider_deferred':
+        raise SystemExit(75)
 
 
 if __name__ == "__main__":

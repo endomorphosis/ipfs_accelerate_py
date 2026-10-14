@@ -18,7 +18,9 @@ from ..semantic_state.intent_world_snapshot import (
     persist_intent_world_snapshot,
 )
 from ..task_sources.intent_repository import IntentRepository
-from .semantic_context_runtime import load_semantic_worker_context, prepare_semantic_context
+from .semantic_context_runtime import (
+    INDEXED_SELECTOR, load_semantic_worker_context, prepare_semantic_context,
+)
 
 
 def prepare_supervised_task_context(
@@ -38,8 +40,10 @@ def prepare_supervised_task_context(
     semantic_defer_task_data: bool = False,
     semantic_max_symbols: int = 256,
     semantic_context_input_tokens: int = 8192,
-    semantic_worker_query: str = "",
+    semantic_worker_query: str | None = None,
+    semantic_worker_capsule_limit: int = 8,
     semantic_worker_max_bytes: int = 32768,
+    semantic_worker_selector: str = INDEXED_SELECTOR,
     security_source_program_config=None,
     intent_code_effect_instruction=None,
     intent_code_effect_intent_advice=None,
@@ -50,6 +54,8 @@ def prepare_supervised_task_context(
     This operation reads a file-backed native intent owner. A caller-owned
     database transaction must use the lower-level capture API with explicit
     transaction ownership instead of this preparation convenience boundary.
+    By default the native title drives a bounded, source-replayed DuckDB
+    selection. An explicit empty worker query retains full legacy context.
     """
     if not isinstance(intent, IntentRepository):
         raise TypeError("intent must be an IntentRepository")
@@ -100,6 +106,10 @@ def prepare_supervised_task_context(
         or not title.strip()
     ):
         raise ValueError("task context requires a native task alias and declared title/objective")
+    worker_query = title if semantic_worker_query is None else semantic_worker_query
+    program_paths = semantic_program_paths
+    if worker_query and semantic_worker_selector == INDEXED_SELECTOR and program_paths is None:
+        program_paths = tuple(sorted(set(paths)))
     semantic = prepare_semantic_context(
         repository=root,
         paths=paths,
@@ -109,9 +119,11 @@ def prepare_supervised_task_context(
         output=output / "semantic",
         max_symbols=semantic_max_symbols,
         context_input_tokens=semantic_context_input_tokens,
-        worker_query=semantic_worker_query,
+        worker_query=worker_query,
+        worker_capsule_limit=semantic_worker_capsule_limit,
         worker_max_bytes=semantic_worker_max_bytes,
-        program_paths=semantic_program_paths,
+        worker_selector=semantic_worker_selector,
+        program_paths=program_paths,
         defer_task_data=semantic_defer_task_data,
     )
     blocks = output / "semantic/blocks"

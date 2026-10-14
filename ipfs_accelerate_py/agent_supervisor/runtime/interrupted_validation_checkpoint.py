@@ -63,7 +63,7 @@ def workspace_is_fresh(workspace: Path) -> bool:
 
 def _changed_paths(workspace: Path) -> tuple[str, ...]:
     completed = subprocess.run(
-        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        ["git", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
         cwd=workspace,
         check=False,
         capture_output=True,

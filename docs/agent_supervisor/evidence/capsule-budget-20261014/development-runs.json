@@ -1,0 +1,294 @@
+[
+  {
+    "artifact_sha256": {
+      "command.json": "44b6e5372c789d85dad3f2efcd8f1dd8efe9c68142f630a88dd28c8175f122d3",
+      "exit.json": "97e6c243b41a783f2e1f5ad961e3aba0f92e73f0f58e51a2c14b260dd24341ae",
+      "junit.xml": "7eead8fa814d763def42131531d8cf8b084977f166d05545b277245c388fce9b"
+    },
+    "changed_sources": [],
+    "elapsed_seconds": 0.3153405929915607,
+    "errors": 2,
+    "exit_code": 2,
+    "failures": 0,
+    "note": "Two test modules used relative imports without a package; corrected to repository imports.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/census-01",
+    "run": "census-01",
+    "source_unchanged": true,
+    "testcase_records": 2,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "a2b9f570944167cf702a582ee0d7c31a0420e8e5bf04b8c590423dfbc855a2aa",
+      "exit.json": "3986566b5d2f9e3a495aca06419bdbe6c4ea095404ffdbf9a37a987d1618cd61",
+      "junit.xml": "72bfc7eb9603e06315832054441fa3008759d057c8aa0d384f0edf7fd3cf4dca"
+    },
+    "changed_sources": [],
+    "elapsed_seconds": 30.129995230934583,
+    "errors": 0,
+    "exit_code": 1,
+    "failures": 2,
+    "note": "Fixture expected two required raw inputs but the signed task profile correctly adds a third; checked exact required paths instead.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/census-02",
+    "run": "census-02",
+    "source_unchanged": true,
+    "testcase_records": 143,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "1183d247fb2f7f2dee0fedbeeae5f1a0eb6901983eef39d44f58b5f24cf2301e",
+      "exit.json": "b833c2b3e09c8b4cf9ee918bc0689d097a44105a730096957856f61a01ba1969",
+      "junit.xml": "460462d646633e42f82908167b27ce7d61867aecf0fb662f024ddcea342b8c93"
+    },
+    "changed_sources": [
+      "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py"
+    ],
+    "elapsed_seconds": 50.87581648293417,
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "note": "Superseded by the single final frozen run; not added to its count.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/census-03",
+    "run": "census-03",
+    "source_unchanged": false,
+    "testcase_records": 2,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "57d1201d4a46fd05963b89e4346a9fa5b1e7c308d36025b11960e387853166f7",
+      "exit.json": "33856392890e32089dcb44f7db7673efb54e4fae368b6990f511f6899d38fac5",
+      "junit.xml": "72ddae142c561564173b6a322bd8904813d79e9670a0996c66219a7b16b1736e"
+    },
+    "changed_sources": [
+      "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_retrieval.py"
+    ],
+    "elapsed_seconds": 61.440626092022285,
+    "errors": 0,
+    "exit_code": 1,
+    "failures": 3,
+    "note": "Fixture counted functions as full capsules, omitting the module capsule.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/inner-budget-01",
+    "run": "inner-budget-01",
+    "source_unchanged": false,
+    "testcase_records": 14,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "cdefd9dfdb44cb910dd99ed5309e9bd58865cad133f3b73f57e4a6a2c1d0aafa",
+      "exit.json": "8296bd0b1a69d67c4ac545b09f890081b43670b5b38fffd14fa2a993319eef14",
+      "junit.xml": "06f1e8041de8486ba9d057a7ef46288c314ff65673b75398dcf47d0abd174ee9"
+    },
+    "changed_sources": [
+      "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_outer.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_retrieval.py"
+    ],
+    "elapsed_seconds": 169.7164858529577,
+    "errors": 0,
+    "exit_code": 1,
+    "failures": 3,
+    "note": "Fixture combined semantic and vector counts; separated five semantic capsules from four function vectors.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/inner-budget-02",
+    "run": "inner-budget-02",
+    "source_unchanged": false,
+    "testcase_records": 75,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "a8b2d593b7a0d41d7e82f277f860f56968d7dabd81ab822bb2e54ee81fae6a41",
+      "exit.json": "fce7566e1a544925a3c502d0ac4bf48a910a2e55ce7775d321675625b8ba7d36",
+      "junit.xml": "94dbf0e26a8ef8493176a9117d6ba2bac561d6543e870a211d1cedec41d76bf0"
+    },
+    "changed_sources": [
+      "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_census.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_policy.py"
+    ],
+    "elapsed_seconds": 68.35427311004605,
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "note": "Superseded by the single final frozen run; not added to its count.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/inner-budget-03",
+    "run": "inner-budget-03",
+    "source_unchanged": false,
+    "testcase_records": 14,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "85d405a002e9d1b71aeb978370366c99524921ad5241c9a3d99225ed86976a69",
+      "exit.json": "69f3810ae416d679619998415b363ec3dcab93b1f50a44f67d40cdde874b4699",
+      "junit.xml": "a72550d88996b0564c2eeb4eddc72aecb185b9da1b411f7b871c2c4fa23774c0"
+    },
+    "changed_sources": [],
+    "elapsed_seconds": 0.2209858240094036,
+    "errors": 0,
+    "exit_code": 4,
+    "failures": 0,
+    "note": "Invocation referenced the test file before it existed at the expected path; no tests ran.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/outer-01",
+    "run": "outer-01",
+    "source_unchanged": true,
+    "testcase_records": 0,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "5805257b6abfb3d0afa5febf43c31b4f81c06fbd12b60ec13f2bff3f465d5b4a",
+      "exit.json": "83c6be19018d8c1a61e1d59880042b035abbcb651b7ce2f95eb0784ad5a64fec",
+      "junit.xml": "16f3d8211f5b7f4ea60d1c6d21cf360847aaf4b161c640cb15894de2ce7244a0"
+    },
+    "changed_sources": [
+      "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_context.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_retrieval.py"
+    ],
+    "elapsed_seconds": 51.92305063793901,
+    "errors": 0,
+    "exit_code": 1,
+    "failures": 1,
+    "note": "Provider-process guard also intercepted ldconfig during cleanup import; loaded cleanup before installing the guard.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/outer-02",
+    "run": "outer-02",
+    "source_unchanged": false,
+    "testcase_records": 200,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "54a988f9d9cfb43d99e4ba4efcc9b737a725454c8207a380a7b39f95b3bd5fe3",
+      "exit.json": "8064b46570ea6bbb538f0e395c42deec7de2e890fbcee376d446a44399619be4",
+      "junit.xml": "81d4d039ef33fd5a4a1f2114cd8b5b103d32589e5164e18b4ecf1450bbc2f14c"
+    },
+    "changed_sources": [],
+    "elapsed_seconds": 53.98248839308508,
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "note": "Superseded by the single final frozen run; not added to its count.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/outer-03",
+    "run": "outer-03",
+    "source_unchanged": true,
+    "testcase_records": 200,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "ab04e1f10c71b5d2dcb5f969487f04dcc78904b43299d398ca49031612fd8c34",
+      "exit.json": "120e9c8e820c205bffeb29065521d4e222f10a34d02c9ad18e3e19fc7dcbc923",
+      "junit.xml": "7ab8262bc552279afd641bbac26f5df3edabab282bb53744d9fae6b8b13603c5"
+    },
+    "changed_sources": [
+      "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_context.py"
+    ],
+    "elapsed_seconds": 51.72344741690904,
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "note": "Superseded by the single final frozen run; not added to its count.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/outer-04",
+    "run": "outer-04",
+    "source_unchanged": false,
+    "testcase_records": 206,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "5ceb0293b01c9af0997861a48217e70a9d7a742eceeab5028e0e848a811546c7",
+      "exit.json": "82e2861c6e3eeb7e09567c745fa41442430beb01031514e8ff279a6b28a94e16",
+      "junit.xml": "80a65b7e5f7ff269b08642bcc034f87f41bf8b8cede62f432cba3ba6d85a8b69"
+    },
+    "changed_sources": [],
+    "elapsed_seconds": 15.901443117996678,
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "note": "Superseded by the single final frozen run; not added to its count.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/outer-multitask-01",
+    "run": "outer-multitask-01",
+    "source_unchanged": true,
+    "testcase_records": 11,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "c1ff06b7b26eb2722978705430a8a85e162a653471bc1cd6d31955824edae7a5",
+      "exit.json": "ce151b9fe08980e778527d8cfcf7041b0891d54d108750a64a3d677129ec1e59",
+      "junit.xml": "c68a7c4320e70550e5cd5c725fa6e2389e6c505c73c7beb4188e4e1b171fe6a6"
+    },
+    "changed_sources": [],
+    "elapsed_seconds": 15.347968706046231,
+    "errors": 3,
+    "exit_code": 1,
+    "failures": 0,
+    "note": "Fixture omitted the module capsule from its full-population count.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/retrieval-01",
+    "run": "retrieval-01",
+    "source_unchanged": true,
+    "testcase_records": 3,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "2bba28eda69c3c06de5b63dd6ec182a6c767454fc1a4b4dd34e29b806505e76b",
+      "exit.json": "45669f1c6b6d94f4b27e8601d04b4c954ac84c9a1a9e33714df653ec23019c64",
+      "junit.xml": "4f737f4e7b3cb70b536a4a218ae8046179c5db2ccdfe6c2903432a58fc7b049f"
+    },
+    "changed_sources": [],
+    "elapsed_seconds": 22.468295561964624,
+    "errors": 0,
+    "exit_code": 1,
+    "failures": 3,
+    "note": "Fixture expected cap8 to select eight capsules under the native byte limit; increased this retrieval-only fixture budget equally across all arms. Pipeline census retains 32,768 bytes.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/retrieval-02",
+    "run": "retrieval-02",
+    "source_unchanged": true,
+    "testcase_records": 3,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "03891756d338951bb58998385e612eea87b1051aeb70ebfa6335c9c32e35325c",
+      "exit.json": "90cea9a72aa2ce166941f516a1c7c5b7a61be65b51a86fd0bb68ea7474e16b38",
+      "junit.xml": "ab3a6052bc56b3e1cdb64749a4233d877def4871e45754a80b81adbb56b28adc"
+    },
+    "changed_sources": [
+      "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_context.py"
+    ],
+    "elapsed_seconds": 33.58558303595055,
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "note": "Superseded by the single final frozen run; not added to its count.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/retrieval-03",
+    "run": "retrieval-03",
+    "source_unchanged": false,
+    "testcase_records": 3,
+    "timeout": false
+  },
+  {
+    "artifact_sha256": {
+      "command.json": "dfa77c9a70964eaed5f1118f7a6fa8812a5b9ff4c2bc687f8a191716d951399b",
+      "exit.json": "a51829f865c60441aad4e8239614779b5ade04c41a5a38d23e9ca163b0621588",
+      "junit.xml": "359dea7cbfbfe16025630b74fff2168a46e796aeee9f5ae19f32ceb819f51560"
+    },
+    "changed_sources": [
+      "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_outer.py"
+    ],
+    "elapsed_seconds": 34.13865455996711,
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "note": "Superseded by the single final frozen run; not added to its count.",
+    "retained_local_artifact": "/home/barberb/lift_coding/artifacts/capsule-budget-20261014/retrieval-04",
+    "run": "retrieval-04",
+    "source_unchanged": false,
+    "testcase_records": 3,
+    "timeout": false
+  }
+]

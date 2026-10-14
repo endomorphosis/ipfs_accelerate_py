@@ -135,6 +135,44 @@ def test_component_diagnostic_failure_preserves_exact_dispatch(allocated, provid
     assert marker not in json.dumps(receipt)
 
 
+@pytest.mark.parametrize("diagnostic_available", [True, False])
+def test_native_token_selection_omits_unselected_translation_census(
+        allocated, provider, monkeypatch, diagnostic_available):
+    from benchmarks.agent_supervisor.container_coding import terminal_context_audit as audit
+
+    repository, workspace, prompt, _ = allocated
+    _, observed = provider
+    if not diagnostic_available:
+        def unavailable(**_kwargs):
+            raise ValueError("unavailable candidate diagnostic")
+        monkeypatch.setattr(codec, "census_semantic_router_prompt", unavailable)
+    counter = runner.PromptTokenCounter(provider="codex_cli", model="pinned",
+        tokenizer_id="authored", tokenizer_revision="tie", special_token_policy="none",
+        count_tokens=lambda _: 1)
+
+    _, receipt = _run(repository, prompt, prompt_token_counter=counter)
+
+    assert receipt["prompt_selection"]["selected_representation"] == "native"
+    assert receipt["semantic_translation"] is None
+    assert "semantic_prompt_components" not in receipt
+    assert receipt["completion_authority"] is False
+    expected, _ = runner.render_model_prompt(prompt=prompt, purpose="coding", workspace=workspace)
+    assert len(observed) == 1 and observed[0][0] == expected
+    parsed = audit._receipt({**receipt, "phase": "coding"}, workspace.parent)
+    reconstructed, _, checks = audit._model_projection(
+        rendered=prompt, receipt=parsed, repository=repository)
+    assert reconstructed == expected and all(checks.values())
+    assert "semantic_prompt_components" not in checks
+    # Auditors must continue refusing a candidate census attached to native
+    # input, even when the candidate diagnostic was itself unavailable.
+    forged = {**receipt, "phase": "coding", "semantic_prompt_components": {
+        "schema": "supervisor-semantic-prompt-component-census@1",
+        "status": "unavailable", "raw_content_exported": False,
+    }}
+    with pytest.raises(ValueError, match="requires its translated input"):
+        audit._receipt(forged, workspace.parent)
+
+
 @pytest.mark.parametrize("transport_schema,purpose", [
     ("supervisor-semantic-router-input@999", "coding"),
     ("supervisor-semantic-router-input@2", "planning"),

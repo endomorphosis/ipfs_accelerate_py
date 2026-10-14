@@ -176,6 +176,24 @@ def test_real_process_concurrently_drains_stderr_and_stdout_without_raw_export(t
     assert "done" not in repr(result)
 
 
+def test_callbacks_keep_count_only_summary_and_final_result_retains_usage_history(tmp_path):
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import LEGACY_SCHEMA, SCHEMA
+    from ipfs_accelerate_py.cli_runtime.grok_stream_usage import MAX_COUNT, MAX_USAGE_EVENTS, USAGE_FIELDS
+    frame = encoded({"type": "usage", "stopReason": "tool_use", "messageId": "private-id",
+                     "usage": dict.fromkeys(USAGE_FIELDS, MAX_COUNT)})
+    events = frame * (MAX_USAGE_EVENTS + 1) + encoded({"type": "text", "data": "done"}, end())
+    snapshots = []
+    result = authored(tmp_path, f"import os\nos.write(1, {events!r})\n", callback=snapshots.append)
+    assert result.progress["schema"] == SCHEMA
+    assert result.progress["usage_observations"]["retained_events"] == MAX_USAGE_EVENTS
+    assert result.progress["usage_observations"]["omitted_events"] == 1
+    assert snapshots[-1]["event_counts"]["usage"] == MAX_USAGE_EVENTS + 1
+    assert all(snapshot["schema"] == LEGACY_SCHEMA and "usage_observations" not in snapshot
+               for snapshot in snapshots)
+    assert all(len(json.dumps(snapshot)) < 4096 for snapshot in snapshots)
+    assert result.response_text == "done"
+
+
 def test_end_event_then_running_process_times_out_and_direct_child_is_reaped(tmp_path):
     result = authored(tmp_path, "import os,time\nfrom pathlib import Path\n"
         "Path('pid').write_text(str(os.getpid()))\n"

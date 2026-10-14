@@ -16,6 +16,472 @@ The container comparison explicitly pins `codex_cli` / `gpt-6.1-sol` in both
 the supervisor arm and native Codex baseline. That matched-model profile does
 not exercise the general supervisor's Grok route or its fallback.
 
+Full-supervisor Codex deployment installs the pinned CLI through a source-owned
+installer with a private npm configuration and cache. Distribution Node.js and
+npm have a separate 300-second system dependency deadline, with TERM followed
+by KILL after five seconds and a 330-second Harbor execution allowance. APT
+retains one retry and 30-second HTTP/HTTPS network timeouts. Node.js must be
+version 16 or newer. Unsupported versions fail before authentication or model execution.
+The installer supports Linux ARM64 and x86-64, with independently pinned hashes
+for both native executables. The native installer retains its separate shared
+180-second deadline and 210-second Harbor execution allowance, bounded downloads
+and output, and process-group cleanup on timeout or cancellation. A failed
+system dependency step stops deployment before native installation or credential
+transfer; it does not consume or extend the native installer deadline.
+It checks package and executable versions before exposing the protected runtime.
+Setup receipts contain versions, hashes and phase results without npm output or
+inherited environment values. A failed setup remains a failed campaign attempt;
+recovery uses a fresh preparation and retains the original failure.
+
+For a lossless metadata comparison, hold `semantic_context_profile` and the
+selected capsule population constant and vary `semantic_metadata_view` between
+`legacy` and `common-bindings@1`. Opt-in trial receipts include
+`semantic_metadata_dispatch`, which correlates each observed selection receipt
+with the retained exact-input audit. Only `effective_treatment_observed: true`
+establishes that every observed coding input used the factored representation.
+A valid legacy fallback remains a completed attempt in the requested treatment
+arm, with its provider usage included. Missing or conflicting observations do
+not qualify. Compare repeated trials using native total-token counts and official
+task success; prompt bytes and local tokenizer counts alone do not establish
+end-to-end savings.
+
+Native Codex receipts also include `interaction_telemetry` by default. This
+passive collector records bounded tool input/output sizes, pairing status,
+elapsed time between recorded events, and changes between adjacent cumulative
+usage checkpoints. It exports no tool arguments, outputs, or call identifiers.
+The first checkpoint has an unknown baseline; repeated snapshots add no usage,
+and malformed or decreasing counters interrupt the observation sequence. These
+checkpoints are not provider requests, and co-occurring tool events do not
+establish per-tool token costs. String byte counts measure decoded UTF-8;
+structured payloads use canonical JSON. Recorded elapsed time is not measured
+tool execution latency.
+
+Receipts retain at most 128 tool pairs and 256 usage checkpoints, with explicit
+omission counts; the diagnostic pass examines at most 100,000 records from an existing
+32 MB bounded rollout. Oversized payload measurements stay unknown. Native
+aggregate usage remains separate from these diagnostic observations. A resumed
+session, malformed record, invalid latest cumulative snapshot, or counter reset
+cannot inherit an earlier completion signal. Fresh runtime archives are required
+to qualify the new observations in live trials.
+
+For an explicit output-preview experiment, prepare the full Codex arm with
+`--tool-output-policy artifact-preview@1`. The default is `legacy`; default
+configuration and planning inputs retain their existing bytes. The selected
+coding advisory offers a bounded local output-artifact helper, with exact
+retrieval available when more context is needed. Native CLI tools retain their
+normal behavior. The selection is frozen into preparation and requires an
+archive containing the current helper, policy, and invocation/audit sources.
+
+`--tool-output-policy artifact-preview@2` selects an experimental compact helper
+response. Its coding advisory requests `--response-format compact`; capture and
+page responses use version-two schemas while internal capture receipts retain
+version one. Compact responses carry one exact replay encoding and omit
+retrieval hashes for streams already shown in full. The existing
+`artifact-preview@1` selection retains its original helper response format.
+For commands expected to return little output, the advisory favors ordinary
+native tools so wrapper instructions and metadata do not outweigh the output.
+
+The first version-one pilot did not show a token-saving benefit. Compact output
+is a follow-up experiment, and smaller helper responses alone do not establish
+lower provider usage. The default remains `legacy`; neither preview policy
+intercepts native tools or guarantees that the worker adopts the helper.
+
+A selected policy does not establish worker adoption or token savings. Check
+the coding invocation's policy receipt and observed helper use separately from
+the declared benchmark selection, and include any retrieval overhead in a
+matched repeated comparison. Native provider token totals and official task
+success remain the outcome measures; preview bytes alone are insufficient.
+
+The opt-in helper requires Linux process and file primitives. Each explicit
+capture runs argv once without stdin or a TTY, and enforces capture, store, and
+time limits. Stdout and stderr remain separate byte streams; their original
+interleaving is not reconstructed. SIGTERM/SIGINT cleanup is bounded; SIGKILL
+or deliberate process-group escape remains covered by the existing worker and
+container cleanup boundary. Native interactive tools remain available.
+
+Complete captures support exact retrieval during that coding invocation. The
+runner removes the temporary artifact store afterward and retains content-free
+counts and binding hashes. These artifacts do not form a persistent proof
+cache. Missing usage or incomplete cleanup remains explicit in qualification.
+
+A repository package experiment qualifies whole-tree retention and restoration
+on the reviewed public COPY inputs:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_repository_view_experiment \
+  --dataset /path/to/terminal-bench-2 --output /path/to/new-repository-view-evidence
+```
+
+It packages every reviewed input, deletes the disposable source copy, restores
+original and compact trees, and compares their bytes, paths and modes. Paired
+API reads, guarded edits and refreshed reads use identical file selections.
+An authored fixture checks actual changed behavior and batched additions,
+deletions and renames. Public benchmark source receives syntax probes only and
+is never executed. Stale revisions, damaged blobs and incorrect manifest hashes
+must be rejected. The original dataset remains unchanged.
+
+Counts distinguish full synthetic read/edit request-response traffic from
+host-side package blobs and mapping storage. Optional local tokenizer counts
+are proxies; model reasoning, provider framing, planning, retries and conversation
+history are outside this offline measurement. No provider or container runs,
+official rewards or live worker adoption are implied. Coverage is the complete
+reviewed fixture tree, not the hidden container filesystem. Pass-through-only
+inputs remain visible in results and cannot establish compression benefit.
+
+This is the repository round-trip foundation. The local CLI and revision
+contract are documented in [runtime/README.md](../../../ipfs_accelerate_py/agent_supervisor/runtime/README.md#reversible-repository-views).
+The worker integration now exposes repository reads and guarded canonical
+symbol edits through an invocation-scoped MCP server, with datasets-owned
+index refresh. Its scripted transport qualification runs against the same
+reviewed public inputs:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_repository_tools_experiment \
+  --dataset /path/to/terminal-bench-2 --output /path/to/new-repository-tools-evidence
+```
+
+Each original/compact arm starts a real stdio server, discovers its tools,
+checks its native index, reads the reviewed files, performs an authored syntax
+edit, and verifies stale-generation and external-edit refusal followed by
+refresh. The final canonical sources must match across arms. The report counts
+actual JSON-RPC request/response bytes and optional local tokenizer proxies,
+including setup separately and in the total. It also breaks transmissions down
+by setup, status, list, symbols, read, edit, refresh, cache inventory, context
+query and capsule expansion, with
+request and response bytes/counts and local token proxies reported separately.
+Phase totals and operation totals are two partitions of the same traffic;
+they must reconcile and must not be added together. Failed exchanges retain
+observed request/response prefixes; completeness flags distinguish them from a
+complete exchange. Failed token counting makes token totals unknown. Only content-free qualification
+data is retained; source-bearing messages stay in memory. No public benchmark
+source is executed, and no provider or container is started.
+
+The repository server also offers `repository_context_query` for bounded
+lexical symbol/path lookup and `repository_capsule_expand` for selected native
+semantic capsules. Both use the same generation and source tree as repository
+reads and guarded edits. Query results contain candidate handles; expansion
+returns the native capsule and admission records together with the original
+source bindings needed for a read or edit. A capsule is structural evidence:
+its presence does not prove behavior, replace required original source, or
+establish a trained codebase IR or complete intent/formal/codebase IR alignment.
+
+An authored experiment compares four ways to locate the same capability:
+reading all fixture files, using the existing native symbol lookup and reading
+the target file, using context candidate references and reading the target
+file, and additionally expanding the selected capsule before that read:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_repository_capsule_experiment \
+  --output /path/to/new-capsule-evidence
+```
+
+All four arms use original source, then perform the same guarded edit, reject old
+generation/root handles, restore every original byte and refresh. The real
+stdio server uses the datasets native DuckDB producer; the experiment
+revalidates returned capsule identities and checks the persisted native head
+after closing the server. It runs no source code, provider or container.
+`lookup` counters are a subset of full protocol totals. All subsequent
+qualification traffic, including refused stale operations, remains charged in
+the total. The existing symbol lookup supplies a targeted baseline, and the
+context-only arm isolates the extra cost of full expansion. Capsule metadata
+can outweigh source saved on this small fixture;
+the report does not infer provider-token savings or task success from either
+outcome. The public source experiment above keeps its existing matched
+original/compact workflow and performs zero context queries or expansions.
+
+The context-compiler experiment follows native retrieval through a planning
+input, a question-scoped expansion and a diagnostic retry:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_repository_context_experiment \
+  --output /path/to/new-context-evidence
+```
+
+It compares three native capsule bodies in the initial input with visible
+capsule references followed by one requested expansion. Both arms retain the
+same complete authored Intent, Security and UI constraints, including their
+unresolved statuses, and receive the same question and diagnostic. A fixed
+fixture rule must return the same source-bound inspection decision. The report
+counts each actual rendered initial input and transmitted delta, including
+question and retry costs. Host-only preparation, native rereads and compiler
+receipts are not model transmissions. `--tokenizer-cache` accepts the existing
+verified local tokenizer ranks; absent or failed counting leaves token totals
+unknown while preserving byte counts. Reports retain only checks, counts and
+hashes. This exercises the native owner and context compiler without a model,
+provider, container, solver, training job or target-code execution; it does not
+establish provider savings, official task success or learned multi-IR alignment.
+
+The actual task-proposal consumer has a separate authored qualification:
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m \
+  benchmarks.agent_supervisor.container_coding.terminal_repository_planning_experiment \
+  --output /tmp/repository-planning-consumer \
+  --tokenizer-cache /path/to/verified-local-o200k-ranks
+```
+
+Run it serially under an isolated resource-scheduler ledger with live pressure
+checks. It uses the real task-board parser, reviewed native Intent ledger,
+repository session/index, context compiler, provider routing seam and proposal
+validator. The transport callback is an authored stub; no provider, container,
+target program, solver or training job runs. Arms send native references, one
+expanded capsule, or all three expanded capsules. A two-call comparison counts
+the entire prompt again on the second stateless invocation. It therefore makes
+no assumption that a provider retains the invariant core or accepts delta-only
+input. The same complete required evidence must reach every arm, and content-free
+reports record independent rendered-byte/token checks and proposal equality.
+The local tokenizer proxy omits provider envelopes; fixed proposal equality is
+not model task success. See the planning package README for configuration,
+source-fence limits and explicit unavailable domain statuses.
+
+Use `--repository-source-policy repository-source-raw@1` or
+`--repository-source-policy repository-source-compact@1` when preparing a
+`full_supervisor_benchmark` trial, or on an otherwise configured coding router.
+The container route requires the full Codex semantic coding arm. Preparation
+freezes the choice into comparison controls and Harbor agent configuration;
+deployment, supervisor dispatch and the worker wrapper carry it to the coding
+router. Execute and collect use that frozen choice. The default remains
+`legacy`, and this policy cannot be combined with the `--source-view-advisory-policy`
+optional shell helper. Provider cooldown and admission behavior is unchanged.
+
+A selected repository policy requires a fresh archive matching the current
+Accelerate runtime and datasets owner implementation. Preparation, execution
+and deployment check the compressed archive digest and actual packaged source
+bytes against current implementation hashes, rather than trusting the declared
+source inventory alone. A bounded streaming member check rejects missing,
+duplicate or noncanonical paths, unsupported member types and differing sizes
+or modes. Required source bodies are hashed without extracting them; unrelated
+model bodies are streamed past without being retained or individually hashed
+by this source compatibility check.
+
+Deployment runs an
+installed-runtime stdio probe as the supervisor account, using disposable
+authored source and cache files. It checks initialization, the tool inventory,
+compact reads, a guarded canonical edit and refreshed native symbol, stale
+generation refusal, explicit cache coverage and complete private-state cleanup.
+The probe executes no target code, calls no provider and retains no
+source-bearing messages. This installed-runtime check does not demonstrate
+that a live worker chooses the tools.
+
+Collected opt-in trials include `repository_source_dispatch`. Its
+`effective_repository_tools_observed` field requires every observed coding
+invocation to join the retained exact-input audit and native tool configuration
+to valid server usage, actual successful reads and complete cleanup; uncertain
+edits do not qualify. Without a tokenizer binding, the compact arm requires
+actual compact reads. With a binding, it instead requires a closed selection
+summary matching successful-read counters, at least one complete measured
+comparison and no unmeasured fallbacks. All-original measured choices can
+qualify observed policy use without establishing token savings.
+Planning remains outside the repository-tool policy. Missing initialization,
+zero-call workers, unavailable observations and failed provider attempts remain
+in the reported population. A configured policy alone cannot qualify tool use,
+task completion or token savings.
+
+Actual `__pycache__` and `.pytest_cache` directories no longer prevent native
+index refresh. Their complete originals remain in the bounded package, with
+separate digest-bound `native_index.retained_opaque_cache` summary in status.
+Their contents, including any Python source placed there, receive no native
+indexing or proof coverage. Cache changes still invalidate old source views;
+refresh after running tests. Other native exclusions remain refused, even
+inside cache trees, and cache bytes count toward the same package limits.
+
+Status now exposes only retained-cache counts and an inventory digest. Exact
+path metadata is available through `repository_cache_inventory`, using the
+current generation, expected inventory digest and pages of at most 100 entries.
+Root markers let a client reconstruct the complete original inventory. Cache
+changes fence pages just as they fence reads; all package bytes and native
+coverage remain retained. Internal full receipts remain available without
+sending their entry population to the worker by default.
+
+An authored cache-budget experiment measures repeated summary status replies
+and explicit inventory pagination through a real local stdio server:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_repository_cache_budget_experiment \
+  --output /path/to/new-cache-budget-evidence --cache-files 0 --cache-files 128
+```
+
+It verifies exact inventory reconstruction, source/cache freshness and rejection
+of old generation and digest handles after refresh. Every transmitted page and
+repeated status is counted in the operation breakdown. Reconstructed inventory
+bytes are a separate in-memory diagnostic, not additional transmitted bytes.
+Optional `--tokenizer-cache` uses an existing local proxy counter; no provider,
+container or target code runs.
+
+For token-aware repository reads, the coding router's existing
+`--prompt-tokenizer-artifact` and `--prompt-tokenizer-sha256` options bind the
+same local descriptor into the server. Compact requests use compact source only
+when its complete reply frame has strictly fewer local tokens. Ties, failed
+read-time counts and replies above the counter bound return original source;
+explicit original requests remain original. No descriptor means the existing
+byte-based compact policy. This option loads no remote assets and does not
+establish equivalence with a provider tokenizer. The retained content-free
+selection summary distinguishes measured choices from fallbacks; detailed
+per-read selection records are removed with private invocation state. The
+scripted public and cache-budget experiments measure wire traffic independently
+and do not enable this optional selection merely by using a proxy counter.
+
+Local tests cover real pytest cache creation followed by stdio refresh, reads
+and editing. Live model adoption and official Terminal Bench results for this
+policy remain unqualified; local transport/tokenizer measurements cannot
+establish provider-token savings. See the
+[native repository tools contract](../../../ipfs_accelerate_py/agent_supervisor/runtime/README.md#native-repository-tools-for-coding-workers)
+for scope, failure recovery and resource limits.
+
+A separate source-representation experiment uses `--source-view-advisory-policy
+source-view-raw@1` as the matched control and `--source-view-advisory-policy
+source-view-compact@1` as treatment. Both offer the same bounded Python helper
+and hash-checked symbol-edit protocol. Keep the semantic context profile,
+metadata representation, tool-output policy, model, resource limits and task
+inputs fixed. These policies require a fresh runtime archive; `legacy` remains
+the default until provider-token and task-success evidence justifies changing it.
+
+The helper indexes explicit visible Python paths, renders an AST-equivalent
+view, and maps an edited definition back into its canonical file. Original
+identifiers, strings and docstrings remain. An unchanged-AST round trip preserves
+all original bytes; an accepted edit preserves bytes outside the selected
+definition, checks the expected whole-file hash, validates syntax, and returns a
+refreshed view in the selected format. Cooperating edits are serialized. The
+hash check rejects stale snapshots; unrelated editors still need to coordinate
+writes. AST equality does not prove behavioral equivalence under source
+inspection or other reflective behavior, and edited programs need their normal
+tests and acceptance checks.
+
+The initial edit scope is unambiguous top-level functions/classes and direct
+class members with a supported standalone layout. Whole-module replacement,
+renames, nested functions, conditional definitions, non-Python files, hidden
+paths and symlinks are unsupported. Normal tools remain available for required
+original detail. This is a source view over the original checkout, not a
+persistent obfuscated copy or a whole-repository compiler. Provider-owned tools
+are not intercepted. Invocation receipts distinguish the advertised policy
+from observed helper operations; local operation counts are advisory evidence,
+not a security attestation or task acceptance authority.
+
+Run the offline qualification on reviewed Terminal Bench public inputs with:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_source_view_experiment \
+  --dataset /path/to/terminal-bench-2 --output /path/to/new-evidence-directory
+```
+
+It copies the reviewed `llm-inference-batching-scheduler` and `tune-mjcf` inputs,
+checks exact no-op round trips, exercises guarded edits and stale rejection,
+and counts complete request/response traffic for matched read/edit/refresh
+cycles. Public-input edits are harmless probes on disposable copies; an authored
+fixture separately checks a deliberate behavior change. It does not read task
+solutions or hidden verifier contents, solve the public tasks, run a provider,
+or produce official rewards. A cached local tokenizer supplies proxy counts
+when available; no tokenizer is downloaded. Smaller views can lose their token
+advantage once index, mapping and edit overhead is included. Only paired live
+trials with complete native usage and official rewards can establish practical
+benefit. Include failed trials and workers that do not adopt the helper.
+The indexed payload contains selected capsules, admissions, required raw support
+and the context pack. Optional program raw source is already omitted. Some
+capsule facets retain normalized AST projections, with nested definitions
+elided by the producer; this is not another full copy of the repository. The
+helper experiment adds guidance, and live totals include initial context and
+later helper traffic. Measure component costs before choosing a replacement.
+
+The separate `--source-input-policy` experiment puts verified code views in the
+actual coding input, regardless of helper adoption. Its four opt-in settings
+keep source selection fixed:
+
+| Policy | Source rendering | Normalized facet AST in provider input |
+| --- | --- | --- |
+| `source-input-raw@1` | Raw selected source | Retained |
+| `source-input-compact@1` | Compact selected source | Retained |
+| `source-input-ast-ref-raw@1` | Raw selected source | Bound reference |
+| `source-input-ast-ref-compact@1` | Compact selected source | Bound reference |
+
+Compare the first two to isolate rendering, and the raw policies to isolate AST
+replacement. Also include `legacy` to account for the added view instructions
+and binding overhead. Compact rendering can be unprofitable. A compact arm must
+include at least one actual compact view; empty or all-fallback treatments fail
+before the provider call. Indexed selection can nominate only small constants,
+so unsupported or unprofitable tasks must remain in the results.
+
+Canonical capsules, CIDs, proof obligations, admissions and required raw sources
+remain intact. A separately versioned provider presentation replaces only
+allowlisted facet AST slots; retained source and producer evidence reproduce
+the exact original transport. A selected module or class read includes nested
+bodies that its normalized facet projection can elide; both rendering arms
+receive that same source scope, and its added cost remains in the measurement.
+Historical replay uses retained blocks and the bound renderer/Python version
+after the allocated worktree is removed. Operational dispatch checks the complete captured source
+manifest against both canonical and allocated files, including a final check
+before the provider call. These checks establish representation and freshness,
+not program correctness. Exact current source remains required before editing.
+
+The source block is bounded to eight selected views and 32 KiB including framing,
+and 4 MiB of retained source, with the existing 256,000-byte complete-input cap.
+Legacy remains the default. The additive settings compose with metadata
+factoring and native tokenizer fallback. AST-reference v1 explicitly rejects
+metadata factoring and tokenizer selection; it never silently drops treatment.
+Preparation freezes the setting and requires an archive containing matching
+runtime sources. Existing provider cooldowns and resource limits still apply.
+
+Run a model-free comparison of full captured coding inputs with:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_source_input_experiment \
+  --dataset /path/to/terminal-bench-2 --output /path/to/new-input-evidence-directory
+```
+
+This uses the real producer, DuckDB selection, router and retained-evidence
+audit, with a local provider stub. It records complete-input bytes and optional
+local tokenizer proxy counts across legacy and the four settings, checks stale
+source rejection, and replays after worktree removal. It does not execute
+benchmark source or measure model reasoning, later tool calls, provider tokens,
+task success or official reward. Signed supervisor planning and container setup
+are outside this qualification. Live comparisons require fresh frozen sources,
+positive inclusion, complete native usage, official rewards and unchanged
+resource/backoff controls.
+
+`--query-reference-policy required-instruction-ref@1` tests a separate source
+of repeated text: the worker query can contain exactly the instruction already
+present in required raw support. This opt-in provider presentation replaces that
+one query slot with a versioned reference to the still-inline required value.
+It requires a unique, nonempty, byte-identical match with a verified source
+manifest. It does not trim, summarize or reinterpret the instruction. Canonical
+capsules, source text, selection, admissions and proof obligations stay intact.
+
+The reference codec restores the exact original transport and checks its hash.
+Receipts bind the allowed slot, required source, original and candidate bytes,
+and codec identity. They stay outside the model input. A candidate that does
+not reduce transport bytes is refused before dispatch; complete-input tokenizer
+proxies and native usage must still be measured separately. Source freshness is
+checked immediately before dispatch, including when a configured tokenizer
+selects native input. Such a fallback records `query_reference_selected: false`
+and cannot qualify as an observed reference treatment.
+
+Legacy remains the default. Version one supports native semantic transports
+with the existing Doctor, public instruction, workspace, helper and coding reply
+wrappers. Runtime combinations with metadata factoring or source-input views
+are explicitly unsupported. Preparation freezes the policy and requires a
+current source-bound archive. Retained input audits reconstruct the complete
+input and bind the complete invocation receipt; a changed receipt cannot reuse
+an earlier successful audit. Representation checks establish exact restoration
+and inclusion, without granting new proof or execution authority.
+
+Run the paired public-input qualification with:
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_query_reference_experiment \
+  --dataset /path/to/terminal-bench-2 --output /path/to/new-query-evidence-directory
+```
+
+It uses the same reviewed batching and MJCF inputs, real producer and DuckDB
+selection, and a captured local provider boundary. The comparison includes
+the workspace and ordinary-completion reply wrappers, checks unchanged literal
+instruction and selection, and retains exact replay evidence after temporary
+worktree removal. Ineligible attempts remain in the results. This measures
+complete coding-input bytes and optional local tokenizer proxies; provider
+usage, later tool traffic and official task rewards require a fresh live run.
+The native reply schema is a separate provider argument. Its bytes and hash are
+recorded separately and must match across arms; provider framing is unmeasured.
+Live trials retain failures and fallbacks under the existing serial resource
+limits and shared provider cooldowns.
+
 Other public Terminal-Bench tasks can use the source-bound task profiles in
 [TERMINAL_SUITE_PROFILES.md](TERMINAL_SUITE_PROFILES.md). The first broader full
 supervisor pilot records two official passes and one native-execution timeout,
@@ -121,6 +587,87 @@ actual worker context; unsupported Doctor repairs abstain. Official reward,
 native completion, cleanup, and all observed provider usage remain separate
 measurements. See [INDEXED_ABLATIONS.md](INDEXED_ABLATIONS.md) for the larger
 planned matrix and unmeasured parallel-worker comparisons.
+
+### Provider cooldown and recovery
+
+`full_supervisor_benchmark execute` enables provider admission by default for
+both Codex and Grok profiles. It shares private state between processes of the
+same OS user under
+`${XDG_STATE_HOME:-$HOME/.local/state}/ipfs_accelerate_py/terminal-provider-backoff`.
+The scope is provider-wide, so switching models cannot bypass a stop. Use
+`--provider-backoff-directory /path/to/private-state` for an isolated campaign;
+all cooperating launchers must use that same directory. Other entry points,
+including direct router calls and `native_codex_baseline`, do not use this gate.
+
+A retained rate-limit failure starts a 60-second cooldown, doubling on failed
+recovery attempts to a one-hour local cap, with bounded positive jitter.
+Structured relative reset hints can extend the wait to seven days. Longer
+hints require an operator reset; they are never shortened into an early retry.
+Text from a prompt, tool result, or free-form exception cannot set a delay.
+The gate does not estimate quota capacity or issue proactive provider requests.
+
+While blocked, execution writes `provider-deferral.json`, returns
+`state: provider_deferred`, and exits with status **75** before invoking Harbor
+or creating `invocation.json`. `--provider-max-wait-seconds N` optionally waits
+up to 60 seconds before fresh work; the default returns immediately. Waiting
+holds no state lock and rechecks the current cooldown. After expiry, exactly
+one new trial holds the provider's recovery lock through its execution.
+Other launchers defer. A verified provider return clears availability; it does
+not establish task success, benchmark reward, or complete token accounting.
+
+Planning and coding calls can modify a checkout before failing, so failed
+trials are never automatically replayed or routed to another model/provider.
+Already admitted healthy trials may finish. Billing, authentication, quota,
+invalid stop metadata, and unverified recovery results require explicit
+operator intervention. A crashed recovery probe remains blocked even after its
+OS lock is released. Caught post-dispatch collection errors and failed state
+commits also leave a durable uncertainty marker. Missing provider receipts
+after recorded agent execution block admission; setup-only
+failures without evidence of a provider attempt do not create a new cooldown.
+State corruption or unavailable storage prevents new admission; no
+cross-process durability can be guaranteed
+if the filesystem cannot persist either the state or its fallback marker.
+
+After resolving the provider or interrupted-trial problem, reset the shared
+gate explicitly, then prepare a fresh trial:
+
+```bash
+PYTHONPATH=. python -m benchmarks.agent_supervisor.container_coding.terminal_provider_backoff reset \
+  --provider codex_cli
+```
+
+For an isolated directory, add `--directory /path/to/private-state`. Reset
+refuses an active recovery probe and requires readable, valid state. Preserve
+and repair corrupt state before resetting; do not discard failed trial
+receipts. Native session closure and `usage_accounting_complete` remain
+separate observations: missing token counters stay `null`. CPU/memory
+admission and external-pressure backoff still apply independently.
+
+Offline regressions cover typed provider failures, the real native adapter
+with an authored local CLI, the public benchmark CLI with an authored Harbor
+fixture, and 32-process recovery contention. These checks establish dispatch
+and recovery behavior without claiming a live provider benchmark or token
+savings. Run the provider tests together with router diagnostics and the
+existing Harbor, task-binding, and benchmark-comparison suites.
+
+For a matched capsule-budget experiment, prepare two `--arm full` trials with
+`--semantic-context-profile indexed-default@1` and
+`--semantic-context-profile indexed-compact@1`. Both use current-source DuckDB
+selection and a 32 KiB payload bound; their capsule limits are eight and two.
+Indexed profiles use a short objective bound to the public instruction's SHA-256.
+The complete instruction remains required raw context and the exact retrieval
+query. This avoids repeating long instructions inside the objective and context
+pack while preserving the payload limit and literal task requirements.
+Capsule counts are ceilings: the byte limit can reduce both profiles to the
+same count. Check retained counts before treating a task as a budget comparison.
+The historical default `legacy-bounded@1` retains lexical selection. These
+profiles do not change vector retrieval, intent transport, model settings, or
+task instructions. Use one fresh archive and identical task/resource settings
+for both trials. Configuration, archive sources, and the observed runtime
+profile are checked before a comparison receipt can be complete. Input audits
+may use up to 30 seconds of the remaining cleanup allowance; missing or timed
+out audits remain unknown. Provider usage across all turns and official reward
+remain necessary to assess total tokens per solved task.
 
 Both supervisor model-coding routes now receive the original public instruction
 verbatim through an owner-selected, signed source binding, in addition to the

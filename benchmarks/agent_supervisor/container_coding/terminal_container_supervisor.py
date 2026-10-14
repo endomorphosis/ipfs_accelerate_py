@@ -492,10 +492,18 @@ def _final_context_audit(report: dict, *, state: Path, deadline: float) -> None:
     if report.get("arm") != "full":
         return
     try:
-        from benchmarks.agent_supervisor.container_coding.terminal_context_audit import collect_terminal_context_audit
+        from .terminal_source_view_observation import provider_free_coding_application_observed
+        if provider_free_coding_application_observed(report):
+            from .terminal_context_audit import _base
+            report["context_input_audit"] = _base(
+                status="not_applicable", reason="provider_free_doctor_materialization_observed")
+            return
+        from benchmarks.agent_supervisor.container_coding.terminal_context_audit import (
+            MAX_AUDIT_SECONDS, collect_terminal_context_audit,
+        )
         report["context_input_audit"] = collect_terminal_context_audit(
             state=state, receipts=report.get("provider_invocations", []), workspace_root=WORKTREES,
-            timeout_seconds=max(0, min(3.0, deadline - time.monotonic() - 1.0)))
+            timeout_seconds=max(0, min(MAX_AUDIT_SECONDS, deadline - time.monotonic() - 1.0)))
     except Exception as error:
         # Observation failure must never suppress provider accounting or the
         # final report. STOP and worker cleanup have already been attempted.
@@ -691,8 +699,15 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         source_edit_mode: str = "disabled",
         source_view_policy: dict | None = None,
         capsule_selection: str = "lexical-query-symbol-name@1",
+        semantic_context_profile: str = "legacy-bounded@1",
+        capsule_budget: str = "legacy",
         metadata_census_only: bool = False,
         coding_reply_mode: str = "legacy",
+        tool_output_policy: str = "legacy",
+        source_view_advisory_policy: str = "legacy",
+        repository_source_policy: str = "legacy",
+        source_input_policy: str = "legacy",
+        query_reference_policy: str = "legacy",
         resource_profile: str | None = None,
         model_snapshot: Path | None = None, model_revision="",
         security_initializer: Path | None = None, canonical_cve_export: Path | None = None,
@@ -719,8 +734,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     from .terminal_capsule_selection_policy import (
         DEFAULT_CAPSULE_SELECTION, validate_capsule_selection, capsule_selection_observation,
+        DEFAULT_CAPSULE_BUDGET, validate_capsule_budget, capsule_budget_options, capsule_budget_observation,
     )
     validate_capsule_selection(capsule_selection, arm=arm)
+    validate_capsule_budget(capsule_budget, arm=arm)
     from .terminal_source_view_policy import (
         validate_source_view_profile, validate_source_view_policy, source_view_observation,
     )
@@ -728,14 +745,44 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     from .terminal_source_edit_policy import validate_source_edit_mode, source_edit_observation
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
+    from .terminal_source_view_policy import validate_source_context_combination
+    validate_source_context_combination(source_view_profile=source_view_profile,
+        source_view_advisory_policy=source_view_advisory_policy, repository_source_policy=repository_source_policy,
+        source_input_policy=source_input_policy, query_reference_policy=query_reference_policy,
+        capsule_selection=capsule_selection, semantic_context_profile=semantic_context_profile)
     if source_view_profile != "disabled" and metadata_census_only:
         raise ValueError("source view qualification requires the coding worker route")
+    from .terminal_semantic_context_policy import validate_semantic_context_profile, semantic_context_selection
+    validate_semantic_context_profile(semantic_context_profile, arm=arm)
     if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (arm != "full"
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
         raise ValueError("metadata view requires the original full semantic arm")
     provider_selection = resolve_provider_profile(provider_profile)
+    from .terminal_source_input_policy import validate_source_input_policy, source_input_selection
+    validate_source_input_policy(source_input_policy, arm=arm, provider=provider_selection["provider"],
+        semantic_metadata_view=semantic_metadata_view)
+    if metadata_census_only and source_input_policy != "legacy":
+        raise ValueError("source input policy requires an executed coding route")
+    from .terminal_query_reference_policy import validate_query_reference_policy, query_reference_selection
+    validate_query_reference_policy(query_reference_policy, arm=arm, provider=provider_selection["provider"],
+        semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
+    if metadata_census_only and query_reference_policy != "legacy":
+        raise ValueError("query reference policy requires an executed coding route")
+    from .terminal_repository_source_policy import validate_repository_source_policy, repository_source_selection
+    validate_repository_source_policy(repository_source_policy, arm=arm, provider=provider_selection["provider"],
+        source_view_advisory_policy=source_view_advisory_policy)
+    if metadata_census_only and repository_source_policy != "legacy":
+        raise ValueError("repository source policy requires an executed coding route")
+    from .terminal_source_view_policy import validate_source_view_advisory_policy, source_view_advisory_selection
+    validate_source_view_advisory_policy(source_view_advisory_policy, arm=arm, provider=provider_selection["provider"])
+    if metadata_census_only and source_view_advisory_policy != "legacy":
+        raise ValueError("source view policy requires an executed coding route")
+    from .terminal_tool_output_policy import validate_tool_output_policy, tool_output_selection
+    validate_tool_output_policy(tool_output_policy, arm=arm, provider=provider_selection["provider"])
+    if metadata_census_only and tool_output_policy != "legacy":
+        raise ValueError("tool output policy requires an executed coding route")
     if type(metadata_census_only) is not bool:
         raise ValueError("explicit Boolean metadata census selection required")
     if metadata_census_only and planning_mode != "model":
@@ -789,6 +836,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             raise ValueError("bounded canonical public task profile required")
         generic_profile = validate_task_profile(json.loads(task_profile.read_text()),
             instruction=instruction.read_text())
+        if capsule_budget != DEFAULT_CAPSULE_BUDGET:
+            from .terminal_task_profile import MULTITASK_SCHEMA
+            if generic_profile["schema"] == MULTITASK_SCHEMA:
+                raise ValueError("bounded capsules support one independent signed task")
         if any(value is not None for value in (
                 security_initializer, canonical_cve_export, canonical_cve_manifest_sha256)):
             raise ValueError("generic benchmark tasks do not authorize training on task inputs")
@@ -813,9 +864,16 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               **planning_selection(planning_mode),
               **semantic_transport_selection(semantic_transport_schema),
               **capsule_selection_observation(capsule_selection),
+              **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view_profile, source_view_policy),
               **source_edit_observation(source_edit_mode),
+              **semantic_context_selection(semantic_context_profile),
               **coding_reply_selection(coding_reply_mode),
+              **tool_output_selection(tool_output_policy),
+              **source_view_advisory_selection(source_view_advisory_policy),
+              **repository_source_selection(repository_source_policy),
+              **source_input_selection(source_input_policy),
+              **query_reference_selection(query_reference_policy),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
               "work_cutoff_seconds": timeout_seconds - reserved_cleanup_seconds,
@@ -936,6 +994,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 intent_projection_request_sha256=intent_projection_request_sha256,
                 disable_intent_autoencoder=disable_intent_autoencoder,
                 intent_requirement_contract=intent_requirement_contract,
+                **semantic_context_selection(semantic_context_profile),
+                **capsule_budget_options(capsule_budget),
                 **({"provider_profile": provider_profile} if provider_profile is not None else {}),
                 **({"planning_mode": planning_mode} if planning_mode != "model" else {}),
                 **({"task_profile": generic_profile} if generic_profile is not None else {}),
@@ -949,6 +1009,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             try:
                 report["initial_context"] = preparation.initial_context(state=state,
                     **({"capsule_selection": capsule_selection} if capsule_selection != DEFAULT_CAPSULE_SELECTION else {}),
+                    **capsule_budget_options(capsule_budget),
                     model_snapshot=model_snapshot, model_revision=model_revision,
                     **({"numerical_formalization_profile": numerical_formalization_profile}
                        if numerical_formalization_profile is not None else {}),
@@ -972,6 +1033,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                         canonical_cve_manifest_sha256=canonical_cve_manifest_sha256)))
                 if report["initial_context"].get("capsule_selection", DEFAULT_CAPSULE_SELECTION) != capsule_selection:
                     raise ValueError("initial context capsule selection differs from explicit benchmark treatment")
+                if report["initial_context"].get("capsule_budget", DEFAULT_CAPSULE_BUDGET) != capsule_budget:
+                    raise ValueError("initial context capsule budget differs from explicit benchmark treatment")
             finally:
                 report["phases"]["initial_context_seconds"] = time.monotonic() - before
         phase = "planning"
@@ -1002,6 +1065,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                                               model_revision=model_revision)
                 if context.get("capsule_selection", DEFAULT_CAPSULE_SELECTION) != capsule_selection:
                     raise ValueError("admitted context capsule selection differs from explicit benchmark treatment")
+                if context.get("capsule_budget", DEFAULT_CAPSULE_BUDGET) != capsule_budget:
+                    raise ValueError("admitted context capsule budget differs from explicit benchmark treatment")
             finally:
                 report["phases"]["context_seconds"] = time.monotonic() - before
             report["context"] = context
@@ -1057,8 +1122,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         # Candidate routes carry no provider timeout. Check the same work
         # deadline without charging them the model route's unused reserve.
         provider_free_candidate = report["implementation_route"] in {"doctor_candidate", "doctor_contract_candidate"}
-        if source_view_profile != "disabled" and report["implementation_route"] != "model_router":
-            raise ValueError("source view profile requires the model router implementation")
         implementation_budget = (budget["implementation_seconds"] if reserved_phases else
                                  remaining() if provider_free_candidate else
                                  min(coding_timeout_seconds(resource_profile), remaining(25)))
@@ -1076,7 +1139,29 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             **({"source_view_profile": source_view_profile} if source_view_profile != "disabled" else {}),
             **({"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {}),
             **({"source_view_policy": source_view_policy} if source_view_policy is not None else {}),
+            **({"tool_output_policy": tool_output_policy} if tool_output_policy != "legacy" else {}),
+            **({"source_view_advisory_policy": source_view_advisory_policy} if source_view_advisory_policy != "legacy" else {}),
+            **({"repository_source_policy": repository_source_policy} if repository_source_policy != "legacy" else {}),
+            **({"source_input_policy": source_input_policy} if source_input_policy != "legacy" else {}),
+            **({"query_reference_policy": query_reference_policy} if query_reference_policy != "legacy" else {}),
             **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}))
+        if provider_free_candidate:
+            # Keep the requested treatment in the report and signed controls;
+            # no model context, view or edit broker was dispatched on this route.
+            report["coding_control_application"] = {
+                "schema": "terminal-coding-control-application@1",
+                "status": "not_applicable_provider_free",
+                "implementation_route": report["implementation_route"],
+                "requested": {"semantic_transport_schema": semantic_transport_schema,
+                    "semantic_metadata_view": semantic_metadata_view,
+                    "coding_reply_mode": coding_reply_mode,
+                    "source_view_profile": source_view_profile,
+                    "source_edit_mode": source_edit_mode,
+                    "source_view_policy": source_view_policy},
+                "model_coding_dispatched": False,
+                "token_savings_established": False,
+                "completion_authority": False,
+            }
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
             implementation += ["--provider", provider_selection["provider"]]
         if reserved_phases and not provider_free_candidate:
@@ -1271,6 +1356,15 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "phase": "coding", "usage": None,
                 "reason": "implementation_may_have_dispatched_without_a_final_router_receipt",
             }
+        try:
+            from .terminal_provider_stop import provider_stop_observation
+            provider_stop = provider_stop_observation(report)
+            if provider_stop is not None:
+                report["provider_stop"] = provider_stop
+        except Exception:
+            # Failed attempts and cleanup remain durable if optional stop
+            # metadata is invalid. The launcher rederives before dispatch.
+            report["provider_stop_unavailable"] = True
         if metadata_census_only:
             try:
                 from .terminal_live_census_provenance import audit_planning_usage
@@ -1356,11 +1450,27 @@ def main():
     from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy
     parser.add_argument("--source-view-policy-json", dest="source_view_policy",
         type=lambda value: SourceViewPolicy.from_json(value).to_dict())
-    from .terminal_capsule_selection_policy import DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS
+    from .terminal_capsule_selection_policy import (
+        DEFAULT_CAPSULE_SELECTION, CAPSULE_SELECTIONS, DEFAULT_CAPSULE_BUDGET, CAPSULE_BUDGETS)
     parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
         help="Retrieval ranking requires an explicit public task profile with a signed program/support partition")
+    from .terminal_semantic_context_policy import DEFAULT_SEMANTIC_CONTEXT_PROFILE, SEMANTIC_CONTEXT_PROFILES
+    parser.add_argument("--semantic-context-profile", default=DEFAULT_SEMANTIC_CONTEXT_PROFILE,
+                        choices=SEMANTIC_CONTEXT_PROFILES)
+    parser.add_argument("--capsule-budget", choices=CAPSULE_BUDGETS, default=DEFAULT_CAPSULE_BUDGET,
+        help="Explicit maximum capsules selected for the full indexed arm")
     parser.add_argument("--metadata-census-only", action="store_true")
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES
+    from .terminal_tool_output_policy import DEFAULT_TOOL_OUTPUT_POLICY, TOOL_OUTPUT_POLICIES
+    parser.add_argument("--tool-output-policy", choices=TOOL_OUTPUT_POLICIES, default=DEFAULT_TOOL_OUTPUT_POLICY)
+    from .terminal_repository_source_policy import DEFAULT_REPOSITORY_SOURCE_POLICY, REPOSITORY_SOURCE_POLICIES
+    parser.add_argument("--repository-source-policy", choices=REPOSITORY_SOURCE_POLICIES, default=DEFAULT_REPOSITORY_SOURCE_POLICY)
+    from .terminal_source_view_policy import DEFAULT_SOURCE_VIEW_POLICY, SOURCE_VIEW_POLICIES
+    parser.add_argument("--source-view-advisory-policy", choices=SOURCE_VIEW_POLICIES, default=DEFAULT_SOURCE_VIEW_POLICY)
+    from .terminal_source_input_policy import DEFAULT_SOURCE_INPUT_POLICY, SOURCE_INPUT_POLICIES
+    parser.add_argument("--source-input-policy", choices=SOURCE_INPUT_POLICIES, default=DEFAULT_SOURCE_INPUT_POLICY)
+    from .terminal_query_reference_policy import DEFAULT_QUERY_REFERENCE_POLICY, QUERY_REFERENCE_POLICIES
+    parser.add_argument("--query-reference-policy", choices=QUERY_REFERENCE_POLICIES, default=DEFAULT_QUERY_REFERENCE_POLICY)
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
         default=DEFAULT_CODING_REPLY_MODE)
     parser.add_argument("--resource-profile", choices=PROFILES)

@@ -15,6 +15,7 @@ SCHEMA = "terminal-benchmark-declared-controls@1"
 NUMERICAL_SCHEMA = "terminal-benchmark-declared-controls@2"
 PLANNING_SCHEMA = "terminal-benchmark-declared-controls@3"
 SOURCE_EDIT_SCHEMA = "terminal-benchmark-declared-controls@4"
+CAPSULE_BUDGET_SCHEMA = "terminal-benchmark-declared-controls@5"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 JOB_KEYS = ("n_attempts", "n_concurrent_trials", "retry", "timeout_multiplier",
             "agent_timeout_multiplier", "agent_setup_timeout_multiplier",
@@ -93,8 +94,12 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "capsule_budget", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode", "semantic_context_profile", "tool_output_policy", "source_view_advisory_policy", "repository_source_policy", "source_input_policy", "query_reference_policy"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
+        from .terminal_source_view_policy import validate_source_context_combination
+        validate_source_context_combination(**{key: kwargs[key] for key in (
+            "source_view_profile", "source_view_advisory_policy", "repository_source_policy",
+            "source_input_policy", "query_reference_policy", "capsule_selection", "semantic_context_profile") if key in kwargs})
         if "source_edit_mode" in kwargs:
             from .terminal_source_edit_policy import validate_source_edit_mode
             validate_source_edit_mode(kwargs["source_edit_mode"], arm=kwargs.get("arm"),
@@ -111,6 +116,14 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
             from .terminal_source_view_policy import validate_source_view_policy, DEFAULT_SOURCE_VIEW_PROFILE
             validate_source_view_policy(kwargs["source_view_policy"],
                 profile=kwargs.get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=kwargs.get("arm"))
+        if "capsule_budget" in kwargs:
+            from .terminal_capsule_selection_policy import validate_capsule_budget
+            selected_budget = validate_capsule_budget(kwargs["capsule_budget"], arm=kwargs.get("arm"))
+            if selected_budget != "legacy":
+                from .terminal_task_profile import MULTITASK_SCHEMA
+                profile = kwargs.get("task_profile")
+                if isinstance(profile, dict) and profile.get("schema") == MULTITASK_SCHEMA:
+                    raise ValueError("bounded capsules support one independent signed task")
         if "capsule_selection" in kwargs:
             from .terminal_capsule_selection_policy import validate_capsule_selection
             validate_capsule_selection(kwargs["capsule_selection"], arm=kwargs.get("arm"))
@@ -120,6 +133,27 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if "semantic_transport_schema" in kwargs:
             from .terminal_semantic_transport_policy import validate_semantic_transport_schema
             validate_semantic_transport_schema(kwargs["semantic_transport_schema"], arm=kwargs.get("arm"))
+        if "source_input_policy" in kwargs:
+            from .terminal_source_input_policy import validate_source_input_policy
+            validate_source_input_policy(kwargs["source_input_policy"], arm=kwargs.get("arm"),
+                provider=selected["provider"], semantic_metadata_view=kwargs.get("semantic_metadata_view", "legacy"))
+        if "query_reference_policy" in kwargs:
+            from .terminal_query_reference_policy import validate_query_reference_policy
+            validate_query_reference_policy(kwargs["query_reference_policy"], arm=kwargs.get("arm"),
+                provider=selected["provider"], semantic_metadata_view=kwargs.get("semantic_metadata_view", "legacy"),
+                source_input_policy=kwargs.get("source_input_policy", "legacy"))
+        if "repository_source_policy" in kwargs:
+            from .terminal_repository_source_policy import validate_repository_source_policy
+            validate_repository_source_policy(kwargs["repository_source_policy"], arm=kwargs.get("arm"),
+                provider=selected["provider"], source_view_advisory_policy=kwargs.get("source_view_advisory_policy", "legacy"))
+        if "source_view_advisory_policy" in kwargs:
+            from .terminal_source_view_policy import validate_source_view_advisory_policy
+            validate_source_view_advisory_policy(kwargs["source_view_advisory_policy"], arm=kwargs.get("arm"),
+                                        provider=selected["provider"])
+        if "tool_output_policy" in kwargs:
+            from .terminal_tool_output_policy import validate_tool_output_policy
+            validate_tool_output_policy(kwargs["tool_output_policy"], arm=kwargs.get("arm"),
+                                        provider=selected["provider"])
         if "coding_reply_mode" in kwargs:
             from .terminal_coding_reply_policy import validate_coding_reply_mode
             validate_coding_reply_mode(kwargs["coding_reply_mode"], arm=kwargs.get("arm"),
@@ -130,6 +164,9 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
             validate_semantic_metadata_view(kwargs["semantic_metadata_view"], arm=kwargs.get("arm"),
                 transport_schema=kwargs.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
                 provider=selected["provider"])
+        if "semantic_context_profile" in kwargs:
+            from .terminal_semantic_context_policy import validate_semantic_context_profile
+            validate_semantic_context_profile(kwargs["semantic_context_profile"], arm=kwargs.get("arm"))
         if "task_profile" in kwargs:
             from .terminal_task_profile import validate_task_profile
             validate_task_profile(kwargs["task_profile"])
@@ -201,6 +238,12 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
     if source_edit != DEFAULT_SOURCE_EDIT_MODE:
         controls["schema"] = SOURCE_EDIT_SCHEMA
         controls.setdefault("experimental_controls_sha256", {})["source_edit_mode"] = _digest(source_edit)
+    from .terminal_capsule_selection_policy import DEFAULT_CAPSULE_BUDGET, validate_capsule_budget
+    capsule_budget = validate_capsule_budget(agent.get("kwargs", {}).get("capsule_budget", DEFAULT_CAPSULE_BUDGET),
+        arm=agent.get("kwargs", {}).get("arm"))
+    if capsule_budget != DEFAULT_CAPSULE_BUDGET:
+        controls["schema"] = CAPSULE_BUDGET_SCHEMA
+        controls.setdefault("experimental_controls_sha256", {})["capsule_budget"] = _digest(capsule_budget)
     controls["sha256"] = _digest(controls)
     return controls
 
@@ -211,7 +254,14 @@ def validate_controls(value):
             "agent_controls_sha256", "sha256"}
     if not isinstance(value, dict):
         return False
-    if value.get("schema") == SOURCE_EDIT_SCHEMA:
+    if value.get("schema") == CAPSULE_BUDGET_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict or "capsule_budget" not in experiment
+                or set(experiment) - {"capsule_budget", "source_edit_mode", "planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())):
+            return False
+    elif value.get("schema") == SOURCE_EDIT_SCHEMA:
         keys.add("experimental_controls_sha256")
         experiment = value.get("experimental_controls_sha256")
         if (type(experiment) is not dict or "source_edit_mode" not in experiment

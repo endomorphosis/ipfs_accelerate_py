@@ -75,6 +75,45 @@ _SINGLE_MEMBER_AUDIO_PROVIDERS: Final = frozenset(
     }
 )
 
+# Operational claims affect whether work may share a physical execution.  Other
+# provenance (task IDs, tracing labels, etc.) remains subscriber-local.
+_ADMISSION_CLAIM_FIELDS: Final = (
+    "stage", "resource_class", "required_capabilities", "memory_bytes",
+    "gpu_memory_bytes", "disk_bytes", "process_slots", "timeout_ms",
+    "input_sealed", "trace_identity", "expected_trace_identity",
+    "checkpoint_key", "tokenizer_identity", "expected_tokenizer_identity",
+    "exclusive_authorities", "network_allowlist", "requires_network",
+    "requires_gpu", "requires_prover", "mutates_tokenizer",
+    "mutates_checkpoint", "claimed_resource_kinds", "resource_profile",
+)
+
+
+def _admission_claims(provenance: Mapping[str, Any]) -> dict[str, Any]:
+    return {name: provenance[name] for name in _ADMISSION_CLAIM_FIELDS if name in provenance}
+
+
+def _exclusive_batch_claims(claims: Mapping[str, Any]) -> bool:
+    stage = claims.get("stage")
+    if (
+        claims.get("exclusive_authorities")
+        or claims.get("mutates_tokenizer")
+        or claims.get("mutates_checkpoint")
+    ):
+        return True
+    if isinstance(stage, str):
+        from .resource_scheduler import stage_admission_profile
+
+        return bool(stage_admission_profile(stage).exclusive_authorities)
+    return False
+
+
+def _claim_strings(value: Any, name: str) -> tuple[str, ...]:
+    if not isinstance(value, (tuple, list)):
+        raise ValueError(f"{name} must be a sequence of strings")
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"{name} must contain non-empty strings")
+    return tuple(dict.fromkeys(item.strip() for item in value))
+
 
 def _canonical(value: Any) -> Any:
     """Return a deterministic JSON-safe value without exposing object reprs."""
@@ -215,6 +254,8 @@ class ProviderBatchKey:
     sample_rate: int = 0
     channels: int = 0
     tenant_policy_digest: str = field(default_factory=lambda: _digest({}))
+    admission_claims_digest: str = field(default_factory=lambda: _digest({}))
+    usage_scope_id: str = ""
 
     def __post_init__(self) -> None:
         for name in ("provider_id", "route", "model", "operation"):
@@ -222,6 +263,11 @@ class ProviderBatchKey:
             if not value:
                 raise ValueError(f"{name} must not be empty")
             object.__setattr__(self, name, value)
+        if (not isinstance(self.usage_scope_id, str)
+                or len(self.usage_scope_id.encode("utf-8")) > 512
+                or any(ord(char) < 32 or ord(char) == 127 for char in self.usage_scope_id)):
+            raise ValueError("usage_scope_id must be bounded scope text")
+        object.__setattr__(self, "usage_scope_id", self.usage_scope_id.strip())
         for name in ("voice", "locale", "codec"):
             object.__setattr__(self, name, str(getattr(self, name)).strip())
         reference_hash = str(self.reference_hash).strip().lower()
@@ -237,6 +283,7 @@ class ProviderBatchKey:
             "policy_digest",
             "tenant_policy_digest",
             "generation_digest",
+            "admission_claims_digest",
         ):
             value = str(getattr(self, name)).lower()
             if len(value) != 64:
@@ -265,6 +312,8 @@ class ProviderBatchKey:
             "policy_digest": self.policy_digest,
             "tenant_policy_digest": self.tenant_policy_digest,
             "generation_digest": self.generation_digest,
+            "admission_claims_digest": self.admission_claims_digest,
+            "usage_scope_id": self.usage_scope_id,
         }
 
 
@@ -293,6 +342,7 @@ class ProviderBatchRequest:
     priority: int = 0
     provenance: Mapping[str, Any] = field(default_factory=dict)
     cancellation_token: Any = field(default=None, compare=False, repr=False)
+    usage_scope_id: str = ""
 
     def __post_init__(self) -> None:
         request_id = str(self.request_id).strip()
@@ -304,6 +354,11 @@ class ProviderBatchRequest:
             if not value:
                 raise ValueError(f"{name} must not be empty")
             object.__setattr__(self, name, value)
+        if (not isinstance(self.usage_scope_id, str)
+                or len(self.usage_scope_id.encode("utf-8")) > 512
+                or any(ord(char) < 32 or ord(char) == 127 for char in self.usage_scope_id)):
+            raise ValueError("usage_scope_id must be bounded scope text")
+        object.__setattr__(self, "usage_scope_id", self.usage_scope_id.strip())
         for name in ("voice", "locale", "codec"):
             object.__setattr__(self, name, str(getattr(self, name)).strip())
         reference_hash = str(self.reference_hash).strip().lower()
@@ -363,6 +418,8 @@ class ProviderBatchRequest:
             policy_digest=_digest(self.policy),
             tenant_policy_digest=_digest(self.tenant_policy),
             generation_digest=_digest(self.generation_settings),
+            admission_claims_digest=_digest(_admission_claims(self.provenance)),
+            usage_scope_id=self.usage_scope_id,
         )
 
     @property
@@ -516,6 +573,12 @@ class ProviderBatchResult(Mapping[str, Any]):
     execution_ms: int = 0
     provenance: Mapping[str, Any] = field(default_factory=dict)
     singleflight_shared: bool = False
+    physical_usage: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.physical_usage, Mapping):
+            raise ValueError("physical_usage must be a mapping")
+        object.__setattr__(self, "physical_usage", _canonical(self.physical_usage))
 
     @property
     def successful(self) -> bool:
@@ -537,6 +600,7 @@ class ProviderBatchResult(Mapping[str, Any]):
             "execution_ms": self.execution_ms,
             "provenance": _canonical(self.provenance),
             "singleflight_shared": self.singleflight_shared,
+            "physical_usage": _canonical(self.physical_usage),
         }
 
     def __getitem__(self, key: str) -> Any:
@@ -567,6 +631,7 @@ class ProviderBatchResult(Mapping[str, Any]):
             "execution_ms",
             "provenance",
             "singleflight_shared",
+            "physical_usage",
         }
         unknown = sorted(str(key) for key in value if key not in allowed)
         if unknown:
@@ -588,6 +653,7 @@ class ProviderBatchResult(Mapping[str, Any]):
                 value.get("provenance") if isinstance(value.get("provenance"), Mapping) else {}
             ),
             singleflight_shared=bool(value.get("singleflight_shared", False)),
+            physical_usage=value.get("physical_usage", {}),
         )
 
 
@@ -599,13 +665,19 @@ class ProviderBatchAdmissionGrant:
     after a launch failure).  This is deliberately opaque: callers can bind a
     :class:`resource_scheduler.ResourceAdmissionLease`, a provider semaphore,
     or another reclaimable capacity grant without coupling this module to its
-    implementation.
+    implementation.  A refused grant with ``retryable=False`` completes its
+    members as failures; live pressure refusals retain the default retry policy.
     """
 
     admitted: bool
     release: Callable[[], Any] | None = field(default=None, repr=False)
     reason: str = ""
     lease: Any = field(default=None, repr=False)
+    retryable: bool = True
+    before_dispatch: Callable[[Sequence[ProviderBatchRequest]], None] | None = field(default=None, repr=False)
+    after_dispatch: Callable[[Sequence[ProviderBatchRequest], Any, BaseException | None], None] | None = field(default=None, repr=False)
+    usage_receipt: Mapping[str, Any] = field(default_factory=dict)
+    allow_fallback: bool = True
     _released: bool = field(default=False, init=False, repr=False)
     _release_lock: threading.Lock = field(
         default_factory=threading.Lock,
@@ -623,11 +695,13 @@ class ProviderBatchAdmissionGrant:
                 admitted=bool(getattr(decision, "admitted", decision)),
                 reason=str(getattr(decision, "reason", "") or ""),
                 lease=lease,
+                retryable=bool(getattr(decision, "retryable", True)),
             )
         return cls(
             admitted=bool(getattr(value, "admitted", value)),
             reason=str(getattr(value, "reason", "") or ""),
             lease=getattr(value, "lease", None),
+            retryable=bool(getattr(value, "retryable", True)),
         )
 
     def release_once(self) -> None:
@@ -651,6 +725,7 @@ class ProviderBatchMemberEvidence:
     provenance_digest: str
     result_digest: str
     singleflight_shared: bool = False
+    execution_fingerprint: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -662,6 +737,7 @@ class ProviderBatchMemberEvidence:
             "provenance_digest": self.provenance_digest,
             "result_digest": self.result_digest,
             "singleflight_shared": self.singleflight_shared,
+            **({"execution_fingerprint": self.execution_fingerprint} if self.execution_fingerprint else {}),
         }
 
 
@@ -932,6 +1008,8 @@ class ResourceSchedulerBatchAdmission:
     Token demand is summed across the unique execution groups while context and
     model-memory requirements are maxima/shared load costs.  The adapter is
     intentionally callable so it can be passed directly as ``admission=``.
+    Resource claims must match across members; they also participate in batch
+    and single-flight identity so a subscriber cannot weaken another's claims.
     """
 
     def __init__(
@@ -963,13 +1041,11 @@ class ResourceSchedulerBatchAdmission:
         self.gpu_memory_bytes = _positive_integer(
             gpu_memory_bytes, "gpu_memory_bytes", allow_zero=True
         )
-        self.required_capabilities = tuple(
-            str(item).strip() for item in required_capabilities if str(item).strip()
-        )
-        self.network_allowlist = tuple(
-            str(item).strip() for item in network_allowlist if str(item).strip()
-        )
-        self.requires_network = bool(requires_network)
+        self.required_capabilities = _claim_strings(required_capabilities, "required_capabilities")
+        self.network_allowlist = _claim_strings(network_allowlist, "network_allowlist")
+        if not isinstance(requires_network, bool):
+            raise ValueError("requires_network must be a boolean")
+        self.requires_network = requires_network
 
     @staticmethod
     def _sample(source: Any, provider_id: str = "") -> Any:
@@ -988,42 +1064,96 @@ class ResourceSchedulerBatchAdmission:
     ) -> ProviderBatchAdmissionGrant:
         from .resource_scheduler import LaneResourceRequirements
 
-        provenance: dict[str, Any] = {}
-        for request in requests:
-            if isinstance(request.provenance, Mapping):
-                provenance.update(dict(request.provenance))
-        requirement = LaneResourceRequirements(
-            lane_id=f"provider-batch:{uuid.uuid4().hex}",
-            stage=str(provenance.get("stage") or "inference"),
-            resource_class=self.resource_class,
-            required_capabilities=self.required_capabilities,
-            provider_id=key.provider_id,
-            requires_provider=True,
-            context_tokens=max((request.context_limit for request in requests), default=0),
-            token_budget=sum(request.token_budget for request in requests),
-            quota_units=1,
-            memory_bytes=self.memory_bytes,
-            gpu_memory_bytes=self.gpu_memory_bytes,
-            process_slots=1,
-            fairness_key=key.provider_id,
-            input_sealed=bool(provenance.get("input_sealed", True)),
-            trace_identity=str(provenance.get("trace_identity") or ""),
-            expected_trace_identity=str(provenance.get("expected_trace_identity") or ""),
-            checkpoint_key=str(provenance.get("checkpoint_key") or ""),
-            tokenizer_identity=str(provenance.get("tokenizer_identity") or ""),
-            expected_tokenizer_identity=str(
-                provenance.get("expected_tokenizer_identity") or ""
-            ),
-            exclusive_authorities=tuple(provenance.get("exclusive_authorities") or ()),
-            network_allowlist=self.network_allowlist
-            or tuple(provenance.get("network_allowlist") or ()),
-            requires_network=self.requires_network
-            or bool(provenance.get("requires_network", False)),
-            requires_gpu=bool(provenance.get("requires_gpu", False)),
-            mutates_tokenizer=bool(provenance.get("mutates_tokenizer", False)),
-            mutates_checkpoint=bool(provenance.get("mutates_checkpoint", False)),
-            claimed_resource_kinds=("provider", "token"),
-        )
+        if not requests:
+            return ProviderBatchAdmissionGrant(
+                admitted=False, reason="empty_provider_batch", retryable=False,
+            )
+        if any(request.batch_key != key for request in requests):
+            return ProviderBatchAdmissionGrant(
+                admitted=False, reason="incompatible_resource_claims", retryable=False,
+            )
+        claims = _admission_claims(requests[0].provenance)
+        if len(requests) > 1 and _exclusive_batch_claims(claims):
+            return ProviderBatchAdmissionGrant(
+                admitted=False, reason="exclusive_batch_members", retryable=False,
+            )
+        try:
+            for name in (
+                "input_sealed", "requires_network", "requires_gpu", "requires_prover",
+                "mutates_tokenizer", "mutates_checkpoint",
+            ):
+                if name in claims and not isinstance(claims[name], bool):
+                    raise ValueError(f"{name} must be a boolean")
+            for name in (
+                "stage", "resource_class", "trace_identity", "expected_trace_identity",
+                "checkpoint_key", "tokenizer_identity", "expected_tokenizer_identity",
+                "resource_profile",
+            ):
+                if name in claims and not isinstance(claims[name], str):
+                    raise ValueError(f"{name} must be a string")
+            for name in (
+                "memory_bytes", "gpu_memory_bytes", "disk_bytes", "process_slots", "timeout_ms",
+            ):
+                if name in claims:
+                    _positive_integer(claims[name], name, allow_zero=name != "process_slots")
+            for name in (
+                "required_capabilities", "exclusive_authorities", "network_allowlist",
+                "claimed_resource_kinds",
+            ):
+                if name in claims:
+                    claims[name] = _claim_strings(claims[name], name)
+            if "resource_class" in claims and claims["resource_class"] != self.resource_class:
+                return ProviderBatchAdmissionGrant(
+                    admitted=False, reason="resource_class_mismatch", retryable=False,
+                )
+            requested_network = claims.get("network_allowlist", self.network_allowlist)
+            if self.network_allowlist and not set(requested_network).issubset(self.network_allowlist):
+                return ProviderBatchAdmissionGrant(
+                    admitted=False, reason="network_allowlist_mismatch", retryable=False,
+                )
+            requirement = LaneResourceRequirements(
+                lane_id=f"provider-batch:{uuid.uuid4().hex}",
+                stage=claims.get("stage", "inference"),
+                resource_class=self.resource_class,
+                required_capabilities=tuple(dict.fromkeys((
+                    *self.required_capabilities, *claims.get("required_capabilities", ()),
+                ))),
+                provider_id=key.provider_id,
+                requires_provider=True,
+                context_tokens=max((request.context_limit for request in requests), default=0),
+                token_budget=sum(request.token_budget for request in requests),
+                quota_units=1,
+                memory_bytes=max(self.memory_bytes, claims.get("memory_bytes", 0)),
+                gpu_memory_bytes=max(self.gpu_memory_bytes, claims.get("gpu_memory_bytes", 0)),
+                disk_bytes=claims.get("disk_bytes", 0),
+                process_slots=claims.get("process_slots", 1),
+                fairness_key=key.provider_id,
+                timeout_ms=claims.get("timeout_ms", 0),
+                input_sealed=claims.get("input_sealed", True),
+                trace_identity=claims.get("trace_identity", ""),
+                expected_trace_identity=claims.get("expected_trace_identity", ""),
+                checkpoint_key=claims.get("checkpoint_key", ""),
+                tokenizer_identity=claims.get("tokenizer_identity", ""),
+                expected_tokenizer_identity=claims.get("expected_tokenizer_identity", ""),
+                exclusive_authorities=claims.get("exclusive_authorities", ()),
+                network_allowlist=requested_network,
+                requires_network=self.requires_network
+                or claims.get("requires_network", False),
+                requires_gpu=claims.get("requires_gpu", False),
+                requires_prover=claims.get("requires_prover", False),
+                mutates_tokenizer=claims.get("mutates_tokenizer", False),
+                mutates_checkpoint=claims.get("mutates_checkpoint", False),
+                claimed_resource_kinds=tuple(dict.fromkeys((
+                    "provider", "token", *claims.get("claimed_resource_kinds", ()),
+                ))),
+                resource_profile=claims.get("resource_profile", ""),
+            )
+        except (TypeError, ValueError):
+            # Invalid immutable input cannot heal while sitting in the queue.
+            # Keep diagnostic text content-free; never echo caller claim values.
+            return ProviderBatchAdmissionGrant(
+                admitted=False, reason="invalid_resource_claims", retryable=False,
+            )
         decision, lease = self.scheduler.acquire(
             requirement,
             budget=self.budget,
@@ -1035,12 +1165,14 @@ class ResourceSchedulerBatchAdmission:
             return ProviderBatchAdmissionGrant(
                 admitted=False,
                 reason=str(getattr(decision, "reason", "") or ""),
+                retryable=bool(getattr(decision, "retryable", True)),
             )
         return ProviderBatchAdmissionGrant(
             admitted=bool(getattr(decision, "admitted", False)),
             reason=str(getattr(decision, "reason", "") or ""),
             lease=lease,
             release=lambda: self.scheduler.release(lease, reason="provider_batch_completed"),
+            retryable=bool(getattr(decision, "retryable", True)),
         )
 
 
@@ -1063,6 +1195,7 @@ class ProviderBatchScheduler:
         self.config = config or ProviderBatchSchedulerConfig()
         self._default_dispatch = dispatch
         self._providers = dict(providers or {})
+        self._pinned_dispatches: dict[str, ProviderBatchDispatch] = {}
         self._capacity_supplier = capacity_supplier
         self._admission = admission
         self._fallback = fallback
@@ -1119,6 +1252,48 @@ class ProviderBatchScheduler:
     def __enter__(self) -> "ProviderBatchScheduler":
         return self
 
+    @property
+    def admission(self) -> ProviderAdmission | None:
+        """The configured owner; callers may inspect but cannot replace it."""
+        return self._admission
+
+    def dispatch_callback_for(self, provider_id: str) -> ProviderBatchDispatch:
+        """Return the currently configured callback for this exact provider.
+
+        This is an observational lookup; it neither registers a callback nor
+        promises that another thread cannot subsequently change registration.
+        """
+        with self._condition:
+            return self._resolve_dispatch(provider_id)
+
+    def pin_dispatch_callback(self, provider_id: str, dispatch: ProviderBatchDispatch) -> None:
+        """Permanently bind one provider to its configured callable before use.
+
+        Repeating the same pin is harmless. First pins refuse queued/running
+        subscribers or previous physical calls, so configuration cannot change
+        the execution contract of work already admitted by this scheduler.
+        Other providers and the default callback retain their existing policy.
+        """
+        provider = str(provider_id).strip()
+        if not provider or not callable(dispatch):
+            raise ValueError("provider id and callable dispatch are required")
+        with self._condition:
+            if self._closed:
+                raise RuntimeError("provider batch scheduler is closed")
+            if self._resolve_dispatch(provider) is not dispatch:
+                raise ValueError("provider dispatch differs from the callback being pinned")
+            pinned = self._pinned_dispatches.get(provider)
+            if pinned is not None:
+                if pinned is not dispatch:
+                    raise ValueError("provider dispatch is already pinned to another callback")
+                return
+            if (any(subscriber.request.provider_id == provider
+                    for subscriber in self._request_subscribers.values())
+                    or self._active_by_provider.get(provider, 0) > 0
+                    or self._provider_calls_by_id.get(provider, 0) > 0):
+                raise ValueError("provider dispatch must be pinned before queued or physical work")
+            self._pinned_dispatches[provider] = dispatch
+
     def __exit__(self, *_args: Any) -> None:
         self.shutdown(wait=True)
 
@@ -1129,12 +1304,17 @@ class ProviderBatchScheduler:
         with self._condition:
             if self._closed:
                 raise RuntimeError("provider batch scheduler is closed")
+            pinned = self._pinned_dispatches.get(provider)
+            if pinned is not None and pinned is not dispatch:
+                raise ValueError("provider dispatch is permanently pinned to another callback")
             self._providers[provider] = dispatch
 
     def submit(
         self, request: ProviderBatchRequest | Mapping[str, Any]
     ) -> Future[ProviderBatchResult]:
-        normalized = ProviderBatchRequest.from_value(request)
+        # Detach the queued claims from mutable mappings reachable through the
+        # caller's otherwise frozen request object.
+        normalized = replace(ProviderBatchRequest.from_value(request))
         now = self._clock_ms()
         future: Future[ProviderBatchResult] = Future()
         deadline = now + normalized.timeout_ms if normalized.timeout_ms else 0
@@ -1282,6 +1462,53 @@ class ProviderBatchScheduler:
         with self._condition:
             return tuple(self._receipts)
 
+    def validate_result_receipt(
+        self, request: ProviderBatchRequest, result: ProviderBatchResult,
+    ) -> ProviderBatchEvidenceReceipt:
+        """Validate a text result against this scheduler's native history.
+
+        Serialized receipts, provenance claims, and hashes supplied by the
+        caller do not establish issuance. History is bounded: evicted receipts
+        require reconciliation, never a fresh provider call. This method only
+        validates evidence; it neither authorizes work nor creates a charge.
+        """
+        if not isinstance(request, ProviderBatchRequest) or not isinstance(request.payload, str):
+            raise ValueError("receipt validation requires an immutable text batch request")
+        if not isinstance(result, ProviderBatchResult):
+            raise ValueError("receipt validation requires a native batch result")
+        with self._condition:
+            receipt = next((
+                item for item in self._receipts if item.evidence_id == result.receipt_id
+            ), None)
+            if (receipt is None or receipt._producer_seal is not _PROVIDER_BATCH_RECEIPT_SEAL
+                    or receipt.schema != PROVIDER_BATCH_RECEIPT_SCHEMA
+                    or receipt.content_digest != _digest(receipt._unsigned_dict())):
+                raise ValueError("result has no intact native receipt in this scheduler history")
+            if (result.request_id != request.request_id or result.provider_id != request.provider_id
+                    or receipt.provider_id != request.provider_id or receipt.batch_id != result.batch_id
+                    or receipt.compatibility_digest != request.batch_key.digest):
+                raise ValueError("result receipt belongs to another provider, batch, or request")
+            matches = tuple(item for item in receipt.members if item.request_id == request.request_id)
+            if len(matches) != 1:
+                raise ValueError("result receipt does not identify exactly one logical subscriber")
+            member = matches[0]
+            if (member.execution_fingerprint != request.execution_fingerprint
+                    or member.execution_id != result.execution_id or not member.execution_id
+                    or member.status is not result.status
+                    or type(result.token_budget) is not int or type(result.timeout_ms) is not int
+                    or member.token_budget != result.token_budget or result.token_budget != request.token_budget
+                    or member.timeout_ms != result.timeout_ms or result.timeout_ms != request.timeout_ms
+                    or type(result.singleflight_shared) is not bool
+                    or member.singleflight_shared != result.singleflight_shared
+                    or member.provenance_digest != _digest(request.provenance)
+                    or member.provenance_digest != _digest(result.provenance)
+                    or member.result_digest != _digest({
+                        "status": result.status.value, "output": result.output,
+                        "error": result.error, "physical_usage": _canonical(result.physical_usage),
+                    })):
+                raise ValueError("result or request differs from its issued logical member evidence")
+            return receipt
+
     def partial_cancellation_evidence(
         self,
     ) -> tuple[ProviderBatchEvidenceReceipt, ...]:
@@ -1416,6 +1643,32 @@ class ProviderBatchScheduler:
             else:
                 self._queues.pop(key, None)
 
+    def _refuse_groups(self, groups: Sequence[_ExecutionGroup], reason: str) -> None:
+        """Complete an immutable refusal without provider dispatch or fallback."""
+        now = self._clock_ms()
+        self._expire_subscribers(now)
+        for group in groups:
+            group.accepting_subscribers = False
+            group.completed = True
+            if self._singleflight.get(group.fingerprint) is group:
+                self._singleflight.pop(group.fingerprint, None)
+            for subscriber in tuple(group.subscribers):
+                if subscriber.request.request_id not in self._request_subscribers:
+                    continue
+                self._set_member_result(subscriber, ProviderBatchResult(
+                    request_id=subscriber.request.request_id,
+                    status=ProviderBatchStatus.FAILED,
+                    error=f"resource admission refused: {reason}",
+                    provider_id=subscriber.request.provider_id,
+                    execution_id=group.execution_id,
+                    token_budget=subscriber.request.token_budget,
+                    timeout_ms=subscriber.request.timeout_ms,
+                    queue_wait_ms=max(0, now - subscriber.submitted_at_ms),
+                    provenance=subscriber.request.provenance,
+                    singleflight_shared=len(group.subscribers) > 1,
+                ))
+        self._condition.notify_all()
+
     def _coordinator(self) -> None:
         while True:
             with self._condition:
@@ -1451,6 +1704,8 @@ class ProviderBatchScheduler:
                 self._counters["admission_deferrals"] += 1
                 continue
             max_size = self._effective_size(key.provider_id, capacity)
+            if _exclusive_batch_claims(_admission_claims(queue[0].representative.provenance)):
+                max_size = 1
             oldest = queue[0].queued_at_ms
             if len(queue) < max_size and now - oldest < self.config.batch_window_ms:
                 continue
@@ -1541,6 +1796,11 @@ class ProviderBatchScheduler:
                         member_count=len(requests),
                     )
                     self._release_admission(admission_grant)
+                    if not admission_grant.retryable:
+                        self._refuse_groups(groups, reason)
+                        if not queue:
+                            self._queues.pop(key, None)
+                        return True
                     for group in reversed(groups):
                         queue.appendleft(group)
                     self._counters["admission_deferrals"] += 1
@@ -1594,7 +1854,9 @@ class ProviderBatchScheduler:
         return False
 
     def _resolve_dispatch(self, provider_id: str) -> ProviderBatchDispatch:
-        dispatch = self._providers.get(provider_id, self._default_dispatch)
+        dispatch = self._pinned_dispatches.get(
+            provider_id, self._providers.get(provider_id, self._default_dispatch),
+        )
         if dispatch is None:
             raise RuntimeError(f"no dispatch registered for provider {provider_id}")
         return dispatch
@@ -1631,6 +1893,7 @@ class ProviderBatchScheduler:
                 groups,
                 requests,
                 started_at_ms,
+                admission_grant,
             )
         except BaseException as exc:
             # The normal path materializes provider errors per member.  This
@@ -1667,18 +1930,20 @@ class ProviderBatchScheduler:
                             ),
                         )
                     group.completed = True
-                if incomplete:
-                    self._active_batches = max(0, self._active_batches - 1)
-                    self._active_by_provider[key.provider_id] = max(
-                        0,
-                        self._active_by_provider.get(key.provider_id, 0) - 1,
-                    )
-                    self._counters["completed_batches"] += 1
-                    self._condition.notify_all()
+                self._condition.notify_all()
         finally:
             # A provider exception, malformed batch result, cancellation, or
-            # receipt failure must never leak GPU/provider capacity.
-            self._release_admission(admission_grant)
+            # receipt failure must never leak GPU/provider capacity. A batch
+            # stays active through cleanup: flush and shutdown(wait=True) must
+            # not finish while its native or endpoint release is still running.
+            try:
+                self._release_admission(admission_grant)
+            finally:
+                with self._condition:
+                    self._active_batches -= 1
+                    self._active_by_provider[key.provider_id] -= 1
+                    self._counters["completed_batches"] += 1
+                    self._condition.notify_all()
 
     def _run_admitted_batch(
         self,
@@ -1687,11 +1952,38 @@ class ProviderBatchScheduler:
         groups: list[_ExecutionGroup],
         requests: tuple[ProviderBatchRequest, ...],
         _selected_at_ms: int,
+        admission_grant: ProviderBatchAdmissionGrant,
     ) -> None:
         outputs: tuple[Any, ...]
         dispatch_error: BaseException | None = None
+        lifecycle_failed = False
         call_started = self._clock_ms()
         try:
+            with self._condition:
+                # Admission and worker launch may wait.  Work cancelled or
+                # expired during that wait must not start consuming a provider.
+                self._expire_subscribers(call_started)
+                live_pairs = []
+                for group, request in zip(groups, requests):
+                    if any(item.request.request_id in self._request_subscribers for item in group.subscribers):
+                        live_pairs.append((group, request))
+                    else:
+                        group.accepting_subscribers = False
+                        group.completed = True
+                        self._running_fingerprints.discard(group.fingerprint)
+                        if self._singleflight.get(group.fingerprint) is group:
+                            self._singleflight.pop(group.fingerprint, None)
+                if not live_pairs:
+                    self._condition.notify_all()
+                    return
+                groups = [group for group, _request in live_pairs]
+                requests = tuple(request for _group, request in live_pairs)
+            if admission_grant.before_dispatch is not None:
+                try:
+                    admission_grant.before_dispatch(requests)
+                except BaseException:
+                    lifecycle_failed = True
+                    raise
             with self._condition:
                 self._counters["provider_calls"] += 1
                 self._counters["physical_executions"] += len(groups)
@@ -1704,7 +1996,20 @@ class ProviderBatchScheduler:
                 if len(groups) > 1:
                     self._counters["batched_executions"] += len(groups)
                     self._counters["provider_calls_avoided"] += len(groups) - 1
-            raw = self._resolve_dispatch(key.provider_id)(requests)
+            raw = None
+            callback_error = None
+            try:
+                raw = self._resolve_dispatch(key.provider_id)(requests)
+            except BaseException as exc:
+                callback_error = exc
+            if admission_grant.after_dispatch is not None:
+                try:
+                    admission_grant.after_dispatch(requests, raw, callback_error)
+                except BaseException:
+                    lifecycle_failed = True
+                    raise
+            if callback_error is not None:
+                raise callback_error
             outputs = self._normalize_outputs(requests, raw)
         except BaseException as exc:  # provider boundary; materialize per member
             dispatch_error = exc
@@ -1729,6 +2034,8 @@ class ProviderBatchScheduler:
                 isinstance(output, BaseException)
                 and self._fallback is not None
                 and self.config.fallback_on_dispatch_error
+                and admission_grant.allow_fallback
+                and not lifecycle_failed
             ):
                 try:
                     output = self._fallback(group.representative)
@@ -1776,17 +2083,20 @@ class ProviderBatchScheduler:
                             execution_ms=duration,
                             provenance=subscriber.request.provenance,
                             singleflight_shared=len(group.subscribers) > 1,
+                            physical_usage=_canonical(admission_grant.usage_receipt),
                         ),
                     )
                 )
         receipt = self._build_receipt(batch_id, key, result_entries, call_started, completed_at_ms)
         with self._condition:
+            # Inline Future callbacks may validate immediately on delivery.
+            # Publish the native receipt before completing any member Future.
+            self._receipts.append(receipt)
             for subscriber, result in result_entries:
                 self._set_member_result(subscriber, replace(result, receipt_id=receipt.evidence_id))
             for group in groups:
                 self._running_fingerprints.discard(group.fingerprint)
                 group.completed = True
-            self._receipts.append(receipt)
             self._record_overlap_receipt(
                 batch_id=batch_id,
                 provider_id=key.provider_id,
@@ -1803,9 +2113,6 @@ class ProviderBatchScheduler:
                 ),
                 member_count=len(result_entries),
             )
-            self._active_batches -= 1
-            self._active_by_provider[key.provider_id] -= 1
-            self._counters["completed_batches"] += 1
             self._counters["total_execution_ms"] += duration
             current = self._adaptive_sizes.get(key.provider_id, self.config.max_batch_size)
             if _requires_single_member_batch(key.provider_id):
@@ -1859,9 +2166,11 @@ class ProviderBatchScheduler:
                         "status": result.status.value,
                         "output": result.output,
                         "error": result.error,
+                        "physical_usage": _canonical(result.physical_usage),
                     }
                 ),
                 singleflight_shared=result.singleflight_shared,
+                execution_fingerprint=subscriber.request.execution_fingerprint,
             )
             for subscriber, result in entries
         )

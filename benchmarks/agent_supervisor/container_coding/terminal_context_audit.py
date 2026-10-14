@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -29,13 +30,14 @@ MAX_RECEIPTS = 16
 MAX_DEPTH = 32
 MAX_REQUEST_BYTES = 65_536
 MAX_RESULT_BYTES = 262_144
+MAX_AUDIT_SECONDS = 30.0
 RECEIPT_FIELDS = (
     "schema", "phase", "invocation_id", "purpose", "workspace",
     "prompt_sha256", "prompt_bytes", "native_prompt_sha256", "native_prompt_bytes",
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement", "terminal_semantic_scope_dispatch_rechecked", "semantic_prompt_components")
+TRANSLATION_FIELDS = ('router_prompt_sha256', 'router_prompt_bytes', 'semantic_translation', 'doctor_residual_context', 'public_instruction', 'coding_reply_contract', 'semantic_metadata_view', 'semantic_metadata_native_coding_reply_contract', 'source_formalization_context', 'source_view_retrieval', 'representation_displacement', 'terminal_semantic_scope_dispatch_rechecked', 'semantic_prompt_components', 'tool_output_policy', 'source_view_advisory_policy', 'repository_source_policy', 'source_input_policy', 'source_input_view', 'source_input_dispatched', 'query_reference_policy', 'query_reference_view', 'query_reference_selected', 'query_reference_dispatched', 'query_reference_provider_attempted')
 
 
 def _semantic_prompt_components(value):
@@ -140,6 +142,50 @@ def _terminal_scope_inclusion(value):
         _identity(value[key])
     for key in digests:
         _digest(value[key])
+
+
+def source_input_audit_binding_sha256(item: dict) -> str:
+    """Bind a successful audit to its complete bounded coding receipt projection.
+
+    This digest is an audit join key, not evidence of successful reconstruction
+    by itself. Keep it outside the boolean model-input checks.
+    """
+    if (type(item) is not dict or item.get("schema") != "router-implementation-invocation@1"
+            or item.get("phase") != "coding" or item.get("purpose") != "coding"
+            or item.get("provider") != "codex_cli" or item.get("source_input_view") is None
+            or type(item.get("source_input_dispatched")) is not bool):
+        raise ValueError("source input audit binding requires an explicit coding receipt")
+    projection = {key: item[key] for key in RECEIPT_FIELDS}
+    projection.update({key: item[key] for key in TRANSLATION_FIELDS if key in item})
+    projection["provider"] = item["provider"]
+    raw = json.dumps({"schema": "terminal-source-input-audit-binding@1", "receipt": projection},
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    if len(raw) > MAX_REQUEST_BYTES:
+        raise ValueError("source input audit binding exceeds receipt bound")
+    return _sha(raw)
+
+
+def query_reference_audit_binding_sha256(item: dict) -> str:
+    """Bind a successful audit to its complete bounded coding receipt projection.
+
+    This digest is an audit join key, not evidence of successful reconstruction
+    by itself. Keep it outside the boolean model-input checks.
+    """
+    if (type(item) is not dict or item.get("schema") != "router-implementation-invocation@1"
+            or item.get("phase") != "coding" or item.get("purpose") != "coding"
+            or item.get("provider") != "codex_cli" or item.get("query_reference_view") is None
+            or type(item.get("query_reference_dispatched")) is not bool
+            or type(item.get("query_reference_provider_attempted")) is not bool
+            or type(item.get("query_reference_selected")) is not bool):
+        raise ValueError("query reference audit binding requires an explicit coding receipt")
+    projection = {key: item[key] for key in RECEIPT_FIELDS}
+    projection.update({key: item[key] for key in TRANSLATION_FIELDS if key in item})
+    projection["provider"] = item["provider"]
+    raw = json.dumps({"schema": "terminal-query-reference-audit-binding@1", "receipt": projection},
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    if len(raw) > MAX_REQUEST_BYTES:
+        raise ValueError("query reference audit binding exceeds receipt bound")
+    return _sha(raw)
 
 
 def _base(status="unknown", reason="observation_unavailable") -> dict:
@@ -378,8 +424,34 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
             raise ValueError("semantic component census requires its translated input")
         _semantic_prompt_components(result["semantic_prompt_components"])
     instruction = result.get("public_instruction")
+    source_input = result.get("source_input_view")
+    query_reference = result.get("query_reference_view")
+    if query_reference is not None or result.get("query_reference_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.query_reference_policy import validate_bound_receipt
+        validate_bound_receipt(result.get("query_reference_policy"), query_reference,
+            semantic_metadata_view="legacy" if result.get("semantic_metadata_view") is None else "common-bindings@1",
+            source_input_policy=result.get("source_input_policy", "legacy"))
+        if (item.get("provider") != "codex_cli" or type(result.get("query_reference_selected")) is not bool
+                or type(result.get("query_reference_dispatched")) is not bool
+                or type(result.get("query_reference_provider_attempted")) is not bool
+                or result["query_reference_selected"] is not translated
+                or result["query_reference_dispatched"] and (not result["query_reference_selected"]
+                    or not result["query_reference_provider_attempted"])):
+            raise ValueError("invalid query reference coding selection")
+        result["provider"] = item["provider"]
+    if source_input is not None or result.get("source_input_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_input_policy import validate_bound_receipt
+        validate_bound_receipt(result.get("source_input_policy"), source_input,
+            semantic_metadata_view="legacy" if result.get("semantic_metadata_view") is None else "common-bindings@1")
+        if item.get("provider") != "codex_cli":
+            raise ValueError("source input requires the Codex coding route")
+        result["provider"] = item["provider"]
+        if type(result.get("source_input_dispatched")) is not bool:
+            raise ValueError("source input requires explicit provider boundary observation")
+        if source_input["factor_ast"] and not translated:
+            raise ValueError("source input AST references require semantic transport")
     router_bytes = result.get("router_prompt_bytes", result["native_prompt_bytes"])
-    if translated or instruction is not None:
+    if translated or instruction is not None or source_input is not None or query_reference is not None:
         _digest(result["router_prompt_sha256"])
         if type(router_bytes) is not int or not 0 < router_bytes <= 262_144:
             raise ValueError("invalid translated input byte count")
@@ -398,12 +470,12 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                 != "supervisor-semantic-router-input@1"):
             raise ValueError("invalid semantic transport version")
         _identity(translation["translation_cid"])
-    elif instruction is None and (router_bytes != result["native_prompt_bytes"]
+    elif instruction is None and source_input is None and query_reference is None and (router_bytes != result["native_prompt_bytes"]
           or result.get("router_prompt_sha256", result["native_prompt_sha256"]) != result["native_prompt_sha256"]):
         raise ValueError("unexplained router projection")
     residual = result.get("doctor_residual_context")
     if residual is not None:
-        if (not translated or not isinstance(residual, dict)
+        if ((not translated and source_input is None and query_reference is None) or not isinstance(residual, dict)
                 or residual.get("schema") != "doctor-residual-router-context@1"
                 or residual.get("candidate_only") is not True):
             raise ValueError("invalid Doctor residual receipt")
@@ -450,6 +522,21 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
             and (instruction is None or instruction.get("schema") != "supervisor-public-instruction-inclusion@5")):
         raise ValueError("signed Terminal dispatch replay requires its versioned instruction receipt")
     reply = result.get("coding_reply_contract")
+    if result.get("repository_source_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_policy import validate_binding as validate_repository_binding
+        if item.get("provider") != "codex_cli" or result.get("source_view_advisory_policy") is not None:
+            raise ValueError("repository source tools require an exclusive Codex coding route")
+        validate_repository_binding(result["repository_source_policy"], workspace=workspace)
+    if result.get("source_view_advisory_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import validate_binding as validate_source_binding
+        if item.get("provider") != "codex_cli":
+            raise ValueError("source view guidance requires the Codex coding route")
+        validate_source_binding(result["source_view_advisory_policy"], workspace=workspace)
+    if result.get("tool_output_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.tool_output_policy import validate_binding
+        if item.get("provider") != "codex_cli":
+            raise ValueError("tool output guidance requires the Codex coding route")
+        validate_binding(result["tool_output_policy"], workspace=workspace)
     metadata = result.get("semantic_metadata_view")
     if metadata is not None:
         if (not translated or result["semantic_translation"]["schema"] != "supervisor-semantic-router-encoding@1"
@@ -563,6 +650,41 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             if _semantic_prompt_components(census):
                 checks["semantic_prompt_components"] = _same_json(census,
                     census_semantic_router_prompt(encoded=encoded))
+    source_input = receipt.get("source_input_view")
+    query_reference = receipt.get("query_reference_view")
+    if query_reference is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.query_reference_policy import validate_bound_receipt
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_query_reference import project_semantic_query_reference
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation import replay_semantic_router_prompt_for_audit
+        validate_bound_receipt(receipt.get("query_reference_policy"), query_reference,
+            semantic_metadata_view="legacy" if receipt.get("semantic_metadata_view") is None else "common-bindings@1",
+            source_input_policy=receipt.get("source_input_policy", "legacy"))
+        if repository is None:
+            raise ValueError("query reference requires retained canonical source blocks")
+        reference_encoded = encoded if translated else replay_semantic_router_prompt_for_audit(
+            prompt=rendered, repository=repository, transport_schema=query_reference["source_transport_schema"])
+        projected = project_semantic_query_reference(provider_prompt=reference_encoded.provider_prompt)
+        checks["query_reference_projection"] = _same_json(projected.receipt, query_reference)
+        checks["query_reference_selection"] = receipt.get("query_reference_selected") is translated
+        checks["query_reference_dispatch"] = receipt.get("query_reference_dispatched") is translated
+        checks["query_reference_provider_attempted"] = receipt.get("query_reference_provider_attempted") is True
+        if translated:
+            router_prompt = projected.provider_prompt
+    if source_input is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_input_policy import validate_bound_receipt
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_input_view import replay_source_input_view_for_audit
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation import replay_semantic_router_prompt_for_audit
+        validate_bound_receipt(receipt.get("source_input_policy"), source_input,
+            semantic_metadata_view="legacy" if receipt.get("semantic_metadata_view") is None else "common-bindings@1")
+        if repository is None:
+            raise ValueError("source input requires retained canonical source blocks")
+        source_encoded = encoded if translated else replay_semantic_router_prompt_for_audit(
+            prompt=rendered, repository=repository, transport_schema=source_input["source_transport_schema"])
+        projected = replay_source_input_view_for_audit(encoded=source_encoded, repository=repository, receipt=source_input)
+        router_prompt = projected.provider_prompt if translated else rendered + projected.block
+        checks["source_input_projection"] = True
+        checks["source_input_positive_inclusion"] = True
+        checks["source_input_dispatched"] = receipt.get("source_input_dispatched") is True
     source_views = receipt.get("source_view_retrieval")
     source_guidance = None
     if source_views is not None:
@@ -593,7 +715,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
     residual = receipt.get("doctor_residual_context")
     if residual is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.doctor_residual_context import load_doctor_residual_advisory
-        if not translated or repository is None:
+        if (not translated and source_input is None and query_reference is None) or repository is None:
             raise ValueError("Doctor residual requires a canonical semantic repository")
         advisory, observed = load_doctor_residual_advisory(artifact=Path(residual["artifact"]),
             expected_sha256=residual["artifact_sha256"], repository=repository,
@@ -621,11 +743,26 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             checks["public_instruction_terminal_semantic_scope"] = _same_json(
                 observed.get("terminal_semantic_scope"), instruction.get("terminal_semantic_scope"))
             checks["terminal_semantic_scope_dispatch_observed"] = receipt.get("terminal_semantic_scope_dispatch_rechecked") is True
-    if translated or instruction is not None:
+    if translated or instruction is not None or source_input is not None or query_reference is not None:
         checks.update(router_prompt_sha256=_sha(router_prompt.encode()) == receipt["router_prompt_sha256"],
             router_prompt_bytes=len(router_prompt.encode()) == receipt["router_prompt_bytes"])
     model, advisory = render_model_prompt(prompt=router_prompt, purpose="coding",
-        workspace=Path(receipt["workspace"]), semantic_transport=translated)
+        workspace=Path(receipt["workspace"]), semantic_transport=translated,
+        tool_output_binding=receipt.get("tool_output_policy"),
+        source_view_binding=receipt.get("source_view_advisory_policy"),
+        repository_source_binding=receipt.get("repository_source_policy"))
+    if receipt.get("repository_source_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime import repository_source_mcp
+        source = Path(repository_source_mcp.__file__).read_bytes()
+        checks["repository_source_helper_source"] = _sha(source) == receipt["repository_source_policy"]["helper_sha256"]
+    if receipt.get("source_view_advisory_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime import code_source_view
+        source = Path(code_source_view.__file__).read_bytes()
+        checks["source_view_helper_source"] = _sha(source) == receipt["source_view_advisory_policy"]["helper_sha256"]
+    if receipt.get("tool_output_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime import tool_output_artifact
+        source = Path(tool_output_artifact.__file__).read_bytes()
+        checks["tool_output_helper_source"] = _sha(source) == receipt["tool_output_policy"]["helper_sha256"]
     reply = receipt.get("coding_reply_contract")
     if reply is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.coding_reply_contract import apply_coding_reply_contract
@@ -663,7 +800,10 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             raise ValueError("metadata audit differs from reconstructed native transport")
         candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
         candidate, candidate_advisory = render_model_prompt(prompt=candidate_router, purpose="coding",
-            workspace=Path(receipt["workspace"]), semantic_transport=True)
+            workspace=Path(receipt["workspace"]), semantic_transport=True,
+            tool_output_binding=receipt.get("tool_output_policy"),
+            source_view_binding=receipt.get("source_view_advisory_policy"),
+            repository_source_binding=receipt.get("repository_source_policy"))
         if candidate_advisory != advisory:
             raise ValueError("metadata audit changed workspace advisory")
         if reply is not None:
@@ -1012,7 +1152,7 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
                     model, advisory, checks = _model_projection(rendered=rendered, receipt=receipt,
                         repository=Path(prepared["repository"]) if prepared.get("repository") else None,
                         formalization=formalization)
-                    result["matches"].append({"capsule_id": observed["capsule_id"],
+                    match = {"capsule_id": observed["capsule_id"],
                         "invocation_id": receipt["invocation_id"],
                         "workspace_sha256": _sha(receipt["workspace"].encode()),
                         "native_prompt_sha256": observed["native_prompt_sha256"],
@@ -1020,7 +1160,12 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
                         "model_prompt_sha256": _sha(model.encode()), "model_prompt_bytes": len(model.encode()),
                         "workspace_advisory_sha256": _sha(advisory.encode()),
                         "workspace_advisory_bytes": len(advisory.encode()),
-                        "model_input_checks": checks, "model_input_verified": all(checks.values())})
+                        "model_input_checks": checks, "model_input_verified": all(checks.values())}
+                    if match["model_input_verified"] and receipt.get("source_input_view") is not None:
+                        match["source_input_audit_binding_sha256"] = source_input_audit_binding_sha256(receipt)
+                    if match["model_input_verified"] and receipt.get("query_reference_view") is not None:
+                        match["query_reference_audit_binding_sha256"] = query_reference_audit_binding_sha256(receipt)
+                    result["matches"].append(match)
             except Exception as error:
                 result["read_errors"].append({"kind": "capsule", "error_type": type(error).__name__})
     finally:
@@ -1050,9 +1195,17 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
 
 
 def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
-        workspace_root: Path, timeout_seconds: float = 3.0) -> dict:
-    """Run in a time-bounded child; collection failure cannot affect completion."""
+        workspace_root: Path, timeout_seconds: float = MAX_AUDIT_SECONDS) -> dict:
+    """Run in a bounded child, with the caller's remaining cleanup allowance.
+
+    The default is a ceiling rather than a reserved allocation. Owners with an
+    enclosing deadline must pass their remaining time after cleanup reserves.
+    Invalid or exhausted budgets never launch a child or affect completion.
+    """
     started = time.monotonic()
+    if (type(timeout_seconds) not in (int, float)
+            or (type(timeout_seconds) is float and not math.isfinite(timeout_seconds))):
+        return _base(reason="audit_budget_invalid")
     if timeout_seconds < .1:
         return _base(reason="audit_budget_unavailable")
     try:
@@ -1063,7 +1216,10 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
             fields = (*RECEIPT_FIELDS, *TRANSLATION_FIELDS)
             # The child must verify ordinary completion against the recorded
             # provider. Never infer a missing provider from the selected mode.
-            if row.get("coding_reply_contract") is not None:
+            if (row.get("coding_reply_contract") is not None or row.get("tool_output_policy") is not None
+                    or row.get("source_view_advisory_policy") is not None or row.get("source_input_view") is not None
+                    or row.get("repository_source_policy") is not None
+                    or row.get("query_reference_view") is not None):
                 fields += ("provider",)
             metadata = row.get("semantic_metadata_view")
             if (type(metadata) is dict
@@ -1084,7 +1240,7 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
         # that worker-controlled directory to the trusted module search path.
         process = subprocess.run([sys.executable, "-B", "-P", "-m", __name__, "--state", str(state),
             "--workspace-root", str(workspace_root)], input=request, capture_output=True,
-            timeout=min(10.0, timeout_seconds), check=False,
+            timeout=min(MAX_AUDIT_SECONDS, timeout_seconds), check=False,
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
         if process.returncode or len(process.stdout) > MAX_RESULT_BYTES:
             return _base(reason="audit_process_unavailable")

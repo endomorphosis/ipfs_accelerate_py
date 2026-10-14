@@ -53,12 +53,21 @@ def immutable_bundle_capsule_reader(bundle, *, root_cid):
 
 def select_worker_capsules(*, bundle, view, provider, symbols, sources, required,
                           worker_query, worker_capsule_limit, worker_max_bytes,
-                          worker_ranked_symbol_ids=None):
+                          worker_ranked_symbol_ids=None, ranked_symbol_ids=None):
     from ..semantic_state.capsules import admit_capsule
 
     read_capsule = immutable_bundle_capsule_reader(bundle, root_cid=view.root.root_cid)
     candidates = list(symbols)
-    if worker_query:
+    if ranked_symbol_ids is not None and worker_ranked_symbol_ids is not None:
+        raise ValueError("indexed and verified retrieval rankings cannot be combined")
+    if ranked_symbol_ids is not None:
+        by_id = {symbol.stable_id: symbol for symbol in candidates}
+        if (not worker_query or len(by_id) != len(candidates)
+                or len(ranked_symbol_ids) != len(candidates)
+                or set(ranked_symbol_ids) != set(by_id)):
+            raise ValueError("indexed ranking must cover the exact current symbol population")
+        candidates = [by_id[identity] for identity in ranked_symbol_ids]
+    elif worker_query:
         terms = set(re.findall(r"[a-z][a-z0-9_]+", worker_query.lower()))
         candidates.sort(key=lambda symbol: (
             -len(terms.intersection(re.findall(r"[a-z][a-z0-9_]+",

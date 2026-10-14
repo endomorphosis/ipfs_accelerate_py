@@ -1,0 +1,14 @@
+[
+  "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+  "-m",
+  "pytest",
+  "-q",
+  "--color=no",
+  "-o",
+  "log_cli=false",
+  "--junitxml=/home/barberb/lift_coding/artifacts/bounded-context-growth-20261014/grok-usage-tests-02/junit.xml",
+  "test/api/test_grok_stream_usage.py",
+  "test/api/test_grok_stream_capture.py",
+  "test/api/test_grok_stream_router.py",
+  "test/api/test_router_implementation_runner.py"
+]

@@ -243,7 +243,10 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
                         coding_reply_mode: str = "legacy", semantic_metadata_view: str = "legacy",
                         source_view_profile: str = "disabled", source_view_policy: dict | None = None,
-                        source_edit_mode: str = "disabled") -> list[str]:
+                        source_edit_mode: str = "disabled",
+                        tool_output_policy: str = "legacy", source_view_advisory_policy: str = "legacy",
+                        repository_source_policy: str = "legacy",
+                        source_input_policy: str = "legacy", query_reference_policy: str = "legacy") -> list[str]:
     """Closed choice that the admitted launch signs before any worker starts."""
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
     validate_semantic_transport_schema(semantic_transport_schema)
@@ -257,20 +260,55 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
     from .terminal_source_edit_policy import validate_source_edit_mode
     validate_source_edit_mode(source_edit_mode, source_view_profile=source_view_profile)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile)
+    from .terminal_source_view_policy import validate_source_context_combination
+    validate_source_context_combination(source_view_profile=source_view_profile,
+        source_view_advisory_policy=source_view_advisory_policy, repository_source_policy=repository_source_policy,
+        source_input_policy=source_input_policy, query_reference_policy=query_reference_policy)
+    provider_free_candidate = doctor is not None and doctor.get("route") in {
+        "doctor_candidate", "doctor_contract_candidate"}
+    # These controls describe the model fallback, not the independently checked
+    # Doctor candidate. Validate their combinations, but do not let them veto a
+    # provider-free route. The driver records that they were not applied.
     if source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE and (semantic_repository is None
-            or doctor is not None and doctor.get("route") != "model_router"):
+            or doctor is not None and doctor.get("route") != "model_router" and not provider_free_candidate):
         raise ValueError("source views require a semantic model-router coding route")
+    from .terminal_source_input_policy import validate_source_input_policy
+    validate_source_input_policy(source_input_policy, semantic_metadata_view=semantic_metadata_view)
+    if source_input_policy != "legacy" and not provider_free_candidate and (semantic_repository is None
+            or doctor is not None and doctor.get("route") != "model_router"):
+        raise ValueError("source input policy requires a semantic model-router coding route")
+    from .terminal_query_reference_policy import validate_query_reference_policy
+    validate_query_reference_policy(query_reference_policy, semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
+    if query_reference_policy != "legacy" and not provider_free_candidate and (semantic_repository is None
+            or doctor is not None and doctor.get("route") != "model_router"):
+        raise ValueError("query reference policy requires a semantic model-router coding route")
+    from .terminal_repository_source_policy import validate_repository_source_policy
+    validate_repository_source_policy(repository_source_policy, source_view_advisory_policy=source_view_advisory_policy)
+    if repository_source_policy != "legacy" and not provider_free_candidate and (semantic_repository is None
+            or doctor is not None and doctor.get("route") != "model_router"):
+        raise ValueError("repository source policy requires a semantic model-router coding route")
+    from .terminal_source_view_policy import validate_source_view_advisory_policy
+    validate_source_view_advisory_policy(source_view_advisory_policy)
+    if source_view_advisory_policy != "legacy" and not provider_free_candidate and (semantic_repository is None
+            or doctor is not None and doctor.get("route") != "model_router"):
+        raise ValueError("source view policy requires a semantic model-router coding route")
+    from .terminal_tool_output_policy import validate_tool_output_policy
+    validate_tool_output_policy(tool_output_policy)
+    if tool_output_policy != "legacy" and not provider_free_candidate and (semantic_repository is None
+            or doctor is not None and doctor.get("route") != "model_router"):
+        raise ValueError("tool output policy requires a semantic model-router coding route")
     if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (semantic_repository is None
             or semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA
-            or doctor is not None and doctor.get("route") != "model_router"):
+            or doctor is not None and doctor.get("route") != "model_router" and not provider_free_candidate):
         raise ValueError("metadata view requires the original semantic model-router coding route")
     if coding_reply_mode != DEFAULT_CODING_REPLY_MODE and (semantic_repository is None
-            or doctor is not None and doctor.get("route") != "model_router"):
+            or doctor is not None and doctor.get("route") != "model_router" and not provider_free_candidate):
         raise ValueError("ordinary completion requires a semantic model-router coding route")
     if (semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA
-            and (semantic_repository is None or doctor is not None and doctor.get("route") != "model_router")):
+            and (semantic_repository is None or doctor is not None and doctor.get("route") != "model_router"
+                 and not provider_free_candidate)):
         raise ValueError("controller dictionary transport requires a semantic model-router coding route")
     if doctor is not None and doctor.get("route") == "doctor_contract_candidate":
         if doctor.get("status") != "candidate_ready" or doctor.get("provider_calls") != 0:
@@ -289,6 +327,11 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
             *(["--semantic-repository", str(semantic_repository)] if semantic_repository is not None else []),
             *(["--semantic-transport-schema", semantic_transport_schema]
               if semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA else []),
+            *(["--tool-output-policy", tool_output_policy] if tool_output_policy != "legacy" else []),
+            *(["--source-view-advisory-policy", source_view_advisory_policy] if source_view_advisory_policy != "legacy" else []),
+            *(["--repository-source-policy", repository_source_policy] if repository_source_policy != "legacy" else []),
+            *(["--source-input-policy", source_input_policy] if source_input_policy != "legacy" else []),
+            *(["--query-reference-policy", query_reference_policy] if query_reference_policy != "legacy" else []),
             *(["--coding-reply-mode", coding_reply_mode]
               if coding_reply_mode != DEFAULT_CODING_REPLY_MODE else []),
             *(["--semantic-metadata-view", semantic_metadata_view]

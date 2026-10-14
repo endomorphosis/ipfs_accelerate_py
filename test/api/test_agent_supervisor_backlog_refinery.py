@@ -3299,6 +3299,66 @@ def test_backlog_refinery_keeps_block_when_dependency_guardrail_still_active(tmp
     assert strategy["dependency_guardrail_findings"][0]["source_task_id"] == "AUTO-001"
 
 
+def test_reconciliation_guardrail_records_accept_boolean_cleanup_skip_flags():
+    for skipped in (True, False, None):
+        cleanup = {"attempted": False, "skipped": skipped,
+                   "reason": "non_leader_board_maintenance_lane"}
+        assert backlog_refinery.reconciliation_guardrail_records(cleanup_result=cleanup) == []
+        assert cleanup["skipped"] is skipped
+        assert backlog_refinery.resolved_reconciliation_guardrail_keys(
+            cleanup_result=cleanup,
+        ) == set()
+
+
+def test_reconciliation_guardrail_records_preserve_dirty_cleanup_records():
+    dirty = {"reason": "dirty_worktree", "path": "/tmp/dirty-worker",
+             "branch": "implementation/auto-001-attempt-1",
+             "dirty_redundancy": {"reason": "content_not_in_target"},
+             "status_short": [" M src/runtime.py"]}
+    for skipped in ([dirty, False, {"reason": "active_process"}], (dirty,)):
+        records = backlog_refinery.reconciliation_guardrail_records(
+            cleanup_result={"attempted": True, "skipped": skipped},
+        )
+        assert len(records) == 1
+        assert records[0]["kind"] == "dirty_backlogged_worktree"
+        assert records[0]["candidate_count"] == 1
+        assert records[0]["reason"] == "content_not_in_target"
+        assert records[0]["samples"][0]["path"] == dirty["path"]
+
+
+def test_reconciliation_guardrail_skipped_cleanup_retains_existing_dirty_blocker(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state/strategy.json"
+    discovery_dir = repo / "data/agent_supervisor/discovery"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    findings = backlog_refinery.record_reconciliation_guardrail_findings(
+        todo_path=todo_path, strategy_path=strategy_path, discovery_dir=discovery_dir,
+        cleanup_result={"attempted": True, "skipped": [{
+            "reason": "dirty_worktree", "path": "/tmp/dirty-worker",
+            "branch": "implementation/auto-001-attempt-1",
+            "dirty_redundancy": {"reason": "content_not_in_target"},
+            "status_short": [" M src/runtime.py"],
+        }]}, task_prefix="AUTO-", repo_root=repo,
+    )
+    assert len(findings) == 1
+    board_before = todo_path.read_text(encoding="utf-8")
+    strategy_before = strategy_path.read_text(encoding="utf-8")
+    for skipped in (True, False):
+        cleanup = {"attempted": False, "skipped": skipped,
+                   "reason": "non_leader_board_maintenance_lane"}
+        assert backlog_refinery.record_reconciliation_guardrail_findings(
+            todo_path=todo_path, strategy_path=strategy_path, discovery_dir=discovery_dir,
+            cleanup_result=cleanup, task_prefix="AUTO-", repo_root=repo,
+        ) == []
+        assert release_completed_guardrail_blocks(
+            todo_path=todo_path, strategy_path=strategy_path,
+            cleanup_result=cleanup, task_prefix="AUTO-",
+        ) == []
+        assert todo_path.read_text(encoding="utf-8") == board_before
+        assert strategy_path.read_text(encoding="utf-8") == strategy_before
+
+
 def test_backlog_refinery_retires_clean_reconciliation_guardrail_and_refiles_regression(
     tmp_path,
 ):
@@ -4163,11 +4223,6 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
         "are bounded diagnostic and repair scope" not in todo_text
     )
     assert (
-        "- Outputs: wallet_interface/ui/src/WorldIdPanel.tsx, "
-        "data/agent_supervisor/discovery, "
-        "wallet_interface/ui/tests/world-id-ux.spec.ts" in todo_text
-    )
-    assert (
         "- Validation: npm --prefix wallet_interface/ui test -- "
         "--runInBand tests/world-id-ux.spec.ts" in todo_text
     )
@@ -4181,7 +4236,12 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
     assert retry_budget_repair_validation_paths(repair_task) == (
         "wallet_interface/ui/tests/world-id-ux.spec.ts",
     )
-    assert repair_task.outputs[-1] == ("wallet_interface/ui/tests/world-id-ux.spec.ts")
+    # A runnable validation command needs only source and exact failed-test scope;
+    # the diagnostic discovery directory is not itself a repair output.
+    assert list(repair_task.outputs) == [
+        "wallet_interface/ui/src/WorldIdPanel.tsx",
+        "wallet_interface/ui/tests/world-id-ux.spec.ts",
+    ]
     discovery_text = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
     assert "- Failed test paths: wallet_interface/ui/tests/world-id-ux.spec.ts" in discovery_text
 
@@ -4247,7 +4307,12 @@ def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):
     )
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "Resolve validation retry-budget failure for AUTO-001" in todo_text
-    assert "- Validation: test -f " in todo_text
+    repair_task = parse_task_file(todo_path, "## AUTO-")[1]
+    # Pre-dispatch labels are diagnostics, so retain the source task's real
+    # validation obligation instead of downgrading it to discovery-file existence.
+    assert list(repair_task.validation) == ["pytest tests/test_runtime.py"]
+    assert list(repair_task.outputs) == ["src/runtime.py"]
+    assert "- Validation: test -f " not in todo_text
     discovery_text = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
     assert "Validation attempted: `False`" in discovery_text
     assert "no_required_validation_declared" in discovery_text

@@ -1,0 +1,20 @@
+{
+  "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "78ec4d9b4ebe3fa57075b99191a326655dbbc70669b343bc5b84a4b4b837ceaf",
+  "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "f92679d11c62e1be8c261c589504e77d96411f56a5937830fa0d0f4fd61c5be6",
+  "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "12e407ecf7b82924c37901d14bc43d3f4ea8080b438fabaf1d1e3f92dab6d875",
+  "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "56a57bd6a752603538c9ba31ea15d88d144c0b6908f35f79e823f6467b3694c3",
+  "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "af47ead606516d8ecbbef21057268eef7310231f16bb1fc6a04d3b435a439c7e",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_policy.py": "3fe63fba56989fe6b99d48547de0a647f6a4059cea505229c0a1a6a6db9a46a6",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py": "86e57a36f1647dfef035336287a0144ac3b05f5d32661e7c9162a99146c052d4",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py": "eb6f9a666e3308617fc4d58db3aea365559b2594781e9a3d3ab73f1a54df13f5",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py": "5ab3372ad9e5ed5571b962722deee7eed0ad8dcb0828a6d9ee800c8723303e45",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "2ba6ded010b7e63488a038331e6262226406d167b14eada4fc7e5637c400524c",
+  "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e0ece5a1661ff0594cf64bb04478c4c918ce3098436e4ad2286788a5eb4c3356",
+  "ipfs_accelerate_py/cli_runtime/grok_stream_usage.py": "eb1ed9eba823d7927623e917e6e196621b10352a8548e743a6a0cdbb2211b71a",
+  "test/api/test_doctor_candidate_runner.py": "5100b06f68fcfd514fb8d3cf65174556e19c97864791f68893afbd02d7f064ca",
+  "test/api/test_doctor_contract_candidate_runner.py": "dae9bc9013246e485c498858236317d5dd425846b389e632aa6e4f5e04404146",
+  "test/api/test_grok_stream_router.py": "39880b8229d80ce54acb35f0aa47fd293f15235842ff82691acd58af990105c8",
+  "test/api/test_grok_stream_usage.py": "3909cb10cd6d4508d9d325beaef7444e46dae7d11061af2ea106116cffaaa6de",
+  "test/api/test_router_implementation_runner.py": "aaa9e229bf758fa4175d7316268f39fa0a407be53e7d30a62553c3a75f393910",
+  "test/api/test_terminal_doctor_dispatch.py": "e5c1c6a7c57a25b4f3a6a090d5ba0943361c122b8ab1853abd7281f6500c484c"
+}

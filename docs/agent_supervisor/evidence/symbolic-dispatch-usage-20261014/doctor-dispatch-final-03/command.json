@@ -1,0 +1,11 @@
+[
+  "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+  "-m",
+  "pytest",
+  "-q",
+  "--color=no",
+  "-o",
+  "log_cli=false",
+  "--junitxml=/home/barberb/lift_coding/artifacts/bounded-context-growth-20261014/doctor-dispatch-final-03/junit.xml",
+  "test/api/test_terminal_doctor_dispatch.py"
+]

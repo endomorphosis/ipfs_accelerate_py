@@ -51,7 +51,7 @@ def _offline_counter(monkeypatch):
     return lambda text: len(encoding.encode(text, disallowed_special=()))
 
 
-def _prepare_case(directory, count, mode, monkeypatch):
+def _prepare_case(directory, count, mode, monkeypatch, *, capsule_budget="legacy"):
     directory.mkdir()
     root, state, instruction = directory / "repository", directory / "state", directory / "instruction.md"
     root.mkdir()
@@ -72,8 +72,10 @@ def _prepare_case(directory, count, mode, monkeypatch):
         outputs=[dict(path="labels.py", effect="modify", media_type="text/x-python")])
     prepared = prep.prepare(repository=root, instruction=instruction, state=state, task_profile=task_profile,
         disable_intent_autoencoder=True, provider_profile="codex-gpt-6.1-sol-0.160.0@1",
+        **({"capsule_budget": capsule_budget} if capsule_budget != "legacy" else {}),
         **({"planning_mode": mode} if mode != "model" else {}))
-    initial = prep.initial_context(state=state)
+    initial = prep.initial_context(state=state,
+        **({"capsule_budget": capsule_budget} if capsule_budget != "legacy" else {}))
     calls = []
     request = PromptWorkflowRequest.from_dict(prepared["request"])
     scan = DirectoryScanReceipt.from_dict(prepared["scan"])

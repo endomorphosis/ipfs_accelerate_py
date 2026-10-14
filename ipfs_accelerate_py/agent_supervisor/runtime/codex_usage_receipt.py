@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 import stat
 
+from .codex_interaction_telemetry import build_interaction_telemetry, validated_cumulative_usage
+
 
 _OUTPUT_INDICATORS = {
     "permission_denied": re.compile(r"permission denied", re.I),
@@ -166,6 +168,8 @@ def _tool_diagnostics(records, *, completed: bool, malformed: int) -> dict:
         if not isinstance(payload, dict):
             continue
         kind = payload.get("type")
+        if not isinstance(kind, str):
+            continue
         if kind in {"function_call", "custom_tool_call"}:
             calls += 1
             text = _tool_text(payload.get("arguments" if kind == "function_call" else "input"))
@@ -260,6 +264,9 @@ def recover_codex_usage(*, home: Path, thread_id: str, workspace: Path) -> dict 
         usage = None
         completed = False
         completion_event_seen = False
+        latest_usage_snapshot_valid = None
+        counter_regression_observed = False
+        previous_valid_usage = None
         count = 0
         records = []
         malformed = 0
@@ -271,10 +278,14 @@ def recover_codex_usage(*, home: Path, thread_id: str, workspace: Path) -> dict 
                 malformed += 1
                 growth.record_gap()
                 continue
-            if not isinstance(record, dict):
+            if not isinstance(record, dict) or type(record.get("type")) is not str:
                 malformed += 1
                 growth.record_gap()
                 continue
+            # A second metadata boundary makes exact thread attribution
+            # ambiguous, even when the first line matched the requested cwd.
+            if record.get("type") == "session_meta":
+                return None
             records.append(record)
             payload = record.get("payload", {})
             if not isinstance(payload, dict):
@@ -283,31 +294,44 @@ def recover_codex_usage(*, home: Path, thread_id: str, workspace: Path) -> dict 
                 continue
             if record.get("type") == "turn_context":
                 completed = False
-            if (record.get("type") == "response_item" and payload.get("type") in {
-                    "function_call", "custom_tool_call", "function_call_output", "custom_tool_call_output"}):
+            if record.get("type") in ("event_msg", "response_item") and not isinstance(payload.get("type"), str):
+                malformed += 1
+                growth.record_gap()
+                continue
+            if record.get("type") == "response_item" and (
+                    payload.get("type") in ("function_call", "custom_tool_call", "function_call_output", "custom_tool_call_output")
+                    or payload.get("type") == "message" and payload.get("role") == "user"):
                 completed = False
             if record.get("type") != "event_msg" or not isinstance(payload, dict):
                 continue
             if payload.get("type") == "task_complete":
                 completed = completion_event_seen = True
-            elif payload.get("type") in {"task_started", "turn_started", "turn_aborted", "task_aborted", "user_message"}:
+            elif payload.get("type") in ("task_started", "turn_started", "turn_aborted", "task_aborted", "user_message"):
                 completed = False
             if payload.get("type") == "token_count":
                 completed = False
-                info = payload.get("info") or {}
+                info = payload.get("info")
                 growth.observe(info)
-                if not isinstance(info, dict):
+                # Native quota updates may carry no cumulative snapshot.
+                if info is None or (type(info) is dict and "total_token_usage" not in info):
                     continue
-                value = info.get("total_token_usage")
-                if not isinstance(value, dict):
-                    continue
-                selected = {key: value[key] for key in (
-                    "input_tokens", "cached_input_tokens", "cache_write_input_tokens",
-                    "output_tokens", "reasoning_output_tokens", "total_tokens",
-                ) if type(value.get(key)) is int and value[key] >= 0}
-                if selected:
+                selected, _ = validated_cumulative_usage(payload)
+                latest_usage_snapshot_valid = selected is not None
+                if selected is not None:
+                    if previous_valid_usage is not None and any(
+                            selected[key] < previous_valid_usage[key]
+                            for key in selected.keys() & previous_valid_usage.keys()):
+                        counter_regression_observed = True
+                    previous_valid_usage = selected
                     usage = selected
                     count += 1
+                elif type(info) is dict and type(info.get("total_token_usage")) is dict and usage is None:
+                    # Preserve individually valid sparse failure observations,
+                    # but never label an explicit partial snapshot complete.
+                    usage = {key: value for key, value in info["total_token_usage"].items()
+                             if key in ("input_tokens", "cached_input_tokens", "cache_write_input_tokens",
+                                        "output_tokens", "reasoning_output_tokens", "total_tokens")
+                             and type(value) is int and 0 <= value < (1 << 63)} or None
         # Preserve useful failure observations even when a provider never
         # emits token_count. Absent categories stay absent (never zero).
         # Retain the previous numeric observation when the
@@ -316,16 +340,21 @@ def recover_codex_usage(*, home: Path, thread_id: str, workspace: Path) -> dict 
         completed = (completed and malformed == 0
                      and (growth.observed == 0 or growth.last_snapshot_valid is True)
                      and growth.sequence_consistent())
+        complete = (completed and malformed == 0 and latest_usage_snapshot_valid is not False
+                    and not counter_regression_observed)
         matches.append({
                 "schema": "native-codex-cumulative-usage@1", "thread_id": thread_id,
                 "rollout_sha256": hashlib.sha256(raw).hexdigest(),
                 "usage": usage or {}, "usage_available": usage is not None,
                 "observed_token_count_records": count,
                 "usage_growth": growth.receipt(),
-                "tool_diagnostics": _tool_diagnostics(records, completed=completed, malformed=malformed),
-                "task_complete_observed": completed,
+                "latest_usage_snapshot_valid": latest_usage_snapshot_valid,
+                "counter_regression_observed": counter_regression_observed,
+                "tool_diagnostics": _tool_diagnostics(records, completed=complete, malformed=malformed),
+                "interaction_telemetry": build_interaction_telemetry(
+                    records, completed=complete, malformed=malformed),
                 "task_complete_event_observed": completion_event_seen,
-                "billing_total_verified": False,
+                "task_complete_observed": complete, "billing_total_verified": False,
                 "cache_included_in_input": True, "dollar_cost": None,
             })
     return matches[0] if len(matches) == 1 else None
