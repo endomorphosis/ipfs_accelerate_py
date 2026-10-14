@@ -39,6 +39,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_token_budget.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/local_prompt_tokenizer.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_session.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_symbol.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_index.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_capsules.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_context_compiler.py",
@@ -346,7 +347,8 @@ def _valid_digest(value):
 def _usage_observation(value):
     """Reject impossible aggregate populations; unknown counters stay unknown."""
     selection = value.get("token_selection") if type(value) is dict else None
-    base_fields = set(value) - {"token_selection"} if type(value) is dict else set()
+    retrieval = value.get("retrieval_observation") if type(value) is dict else None
+    base_fields = set(value) - {"token_selection", "retrieval_observation"} if type(value) is dict else set()
     shape = (type(value) is dict and base_fields in (_USAGE_FIELDS, _USAGE_FIELDS | {"store_cleanup_error"})
              and type(value.get("status")) is str
              and value["status"] in {"observed", "not_observed", "unavailable"}
@@ -385,10 +387,25 @@ def _usage_observation(value):
                                    and selection["compact_selected"] == value["compact_reads"])
         except (ValueError, TypeError, KeyError):
             pass
+    retrieval_valid = False
+    if retrieval is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_mcp import validate_retrieval_observation
+        try:
+            validate_retrieval_observation(retrieval, tool_calls=value["tool_calls"], errors=value["errors"])
+            # Query, expansion, read and refresh successes describe disjoint
+            # calls. One global error can instead be a failed initialization.
+            retrieval_valid = bool(valid and value["status"] != "unavailable"
+                and value["successful_reads"] + value["refreshes"]
+                    + retrieval["successful_queries"] + retrieval["successful_expansions"]
+                    <= value["tool_calls"] - max(0, value["errors"] - (1 - value["initializations"])))
+        except (ValueError, TypeError, KeyError):
+            pass
     return {"server_audit_valid": bool(valid), "server_audit_status": value.get("status") if shape else "unavailable",
             "store_cleanup_complete": cleanup,
             **({"token_selection_summary_valid": selection_valid,
                 "token_selection": selection if selection_valid else None} if selection is not None else {}),
+            **({"retrieval_observation_valid": retrieval_valid,
+                "retrieval_observation": retrieval if retrieval_valid else None} if retrieval is not None else {}),
             **{key: value[key] if valid else None for key in _COUNTERS}}
 
 
@@ -487,6 +504,10 @@ def repository_source_dispatch_observation(report, value):
             and native.get("codex_repository_source_config_sha256") == binding["config_sha256"])
         usage = _usage_observation(binding.get("usage") if type(binding) is dict else None)
         initialized = usage["server_audit_valid"] and usage["initializations"] == 1
+        retrieval = usage.get("retrieval_observation")
+        capsule_retrieval = bool(exact and configured and initialized and usage["store_cleanup_complete"]
+            and usage.get("retrieval_observation_valid") and retrieval["complete"]
+            and retrieval["capsules_returned"] > 0)
         read = bool(initialized and usage["successful_reads"] and usage["returned_bytes"])
         compact = bool(read and usage["compact_reads"])
         tokenizer_bound = bool(binding_valid and "tokenizer" in binding["config"])
@@ -503,6 +524,7 @@ def repository_source_dispatch_observation(report, value):
             "policy_binding_valid": binding_valid, "retained_exact_input_audit_verified": exact,
             "native_tools_configured": configured, **usage,
             "server_initialized": bool(initialized), "actual_reads_observed": read,
+            **({"capsule_retrieval_observed": capsule_retrieval} if "retrieval_observation_valid" in usage else {}),
             "compact_reads_observed": compact,
             **({"local_token_selection_observed": token_selection_observed} if tokenizer_bound else {}),
             "confirmed_canonical_edit_observed": bool(exact and configured and initialized and usage["canonical_edits"]),

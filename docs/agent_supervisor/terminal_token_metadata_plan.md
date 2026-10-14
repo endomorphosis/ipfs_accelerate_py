@@ -5,7 +5,12 @@ Bench supervisor run, while retaining the planning session and `llm_router`.
 Database metadata should let the supervisor reuse established facts, formal
 results should identify which obligations remain, and semantic capsules should
 give the model the relevant current evidence without repeating its bookkeeping.
-Minification is a representation step within that workflow.
+Minification is a representation step within that workflow. The semantic world
+model should maintain current task knowledge outside the model conversation;
+the context compiler should project only what the next decision requires.
+The [world-model integration sequence](#semantic-world-model-integration-sequence-2026-10-14)
+below distinguishes the existing components from their remaining worker-loop
+integration and measurement gates.
 
 The [October 13 complete-context comparison](context_projection_pair.md) now
 measures the existing lossless metadata projection with identical source reads.
@@ -46,10 +51,15 @@ separate from a live model's tool choices and complete-run token savings.
 
 For repository-wide source views, separate three requirements: exact original
 restoration, preservation of accepted edits, and measured complete-run tokens.
-The current JSON/metadata codecs restore their transports; they do not transform
-the executable repository to and from an editable minified state. A historical
-read-only Python preview exists in retained snapshots, but its sidecar stores
-removal hashes rather than removed bytes and has no inverse/edit mapper.
+The JSON/metadata codecs restore their transports. The newer repository source
+package also captures bounded whole-tree snapshots, retaining original bytes
+and exporting original or compact trees. Validated revision operations and the
+indexed definition read/edit workflow preserve canonical editing. See the
+[current source-view qualification](compact_worker_benchmark.md#follow-up-indexed-definition-reads-in-the-worker-edit-loop).
+Arbitrary edits to a multilingual compact checkout still have no general
+lossless inverse. A historical read-only Python preview used only removal
+hashes; that older limitation should not be attributed to the newer retained
+original-source package.
 The [repository-wide compact-view plan](reversible_codebase_views_plan.md)
 specifies exact source custody, bounded source access, original-source editing
 first and an optional mapped-edit profile later. A reversible view is useful
@@ -86,6 +96,7 @@ from one pair. General planning remains enabled.
 | DuckDB | Store current task/dependency/evidence indexes, accepted native records and capsule locators | A locator or timestamp does not establish source freshness |
 | Quack | Read state through the authenticated current native owner | Use a qualified typed operation; the generic gateway remains unqualified |
 | DuckLake | Retain observational history for revision/delta comparisons and experiment accounting | Historical facts need current task/source checks before operational reuse |
+| Semantic world model | Maintain current task state, dependencies, observed transitions, reusable outcomes and unresolved questions | Learned predictions remain distinct from observations and independently checked facts |
 | Formal systems | Reuse checked receipts and determine remaining supported obligations | Revalidate source, dependencies and assumptions; retain all six native verdicts |
 | Semantic capsules | Present current task-specific evidence and residual work compactly | Required code, constraints, scope and uncertainty must remain available |
 | Minification | Share identical metadata or encode exact reversible representations | Verify restoration; input bytes are not total provider tokens |
@@ -410,6 +421,249 @@ at a time, and retain every attempt and its native usage.
    with the same metadata view. Retain refresh failures and embedding costs as
    part of each attempt. Keep new training out of the first metadata-only
    comparison.
+
+## Semantic world model integration sequence (2026-10-14)
+
+The objective is to reduce repeated reasoning, repeated discovery and repeated
+provider context while preserving official task success. Whole-tree source
+restoration supports fidelity and editing; a smaller source representation
+affects only the source that the model actually receives. Both capabilities
+are useful, but neither establishes a complete-run token reduction.
+
+The existing [source comparison](compact_worker_benchmark.md) illustrates the
+cost distribution: an inspected 78,597-byte initial coding prompt contained
+2,588 bytes of raw source and 40,012 bytes of native context. The 12,008 capsule
+bytes were nested within translated semantics and must not be added again.
+One compact-source trial reported more native tokens than its baseline despite
+smaller broker traffic. Usage completeness and single-trial variability limit
+that observation. The newer 62.2% request/reply byte reduction for one authored
+definition read likewise measures one operation, not the entire conversation.
+
+### Reuse the current components
+
+| Component inspected | Existing behavior | Integration work still required |
+| --- | --- | --- |
+| [RepositoryWorldState and deterministic deltas](../../ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py) | Bounded references for repository graphs, source changes, tests/proofs, resources, capabilities and unknown dimensions | Feed actual Terminal Bench actions and observations into successive planning states; current reference search found exports and procedure experiments rather than the worker-loop connection |
+| [Transition contracts](../../ipfs_accelerate_py/agent_supervisor/procedure_compiler/transition_model.py) | Predictions, observations, uncertainty and calibration remain distinct | Connect real action outcomes; qualify any learned predictor on held-out transitions |
+| [Semantic preparation](../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py) | Initial source/capsule preparation and a persisted `context_prepared` record | Maintain ongoing state after reads, edits, tests and failures; a preparation row alone does not do this |
+| [Existing ContextCompiler](../../ipfs_accelerate_py/agent_supervisor/context/context_compiler.py) | Bounded compilation, required coverage, retry deltas and prefix contracts | Compile the actual next provider input from current world state and verify its complete token count |
+| [DeltaTaskPacket](../../ipfs_accelerate_py/agent_supervisor/prompt/delta_task_packet.py) | Task/tree/plan/evidence identities, impacted symbols, residual obligations, validation requirements and deterministic-first admission; now connected to the opt-in in-process world packet route below | Qualify serialized transport, replay and a production Terminal Bench caller |
+| [Program-world context adapter](../../ipfs_accelerate_py/agent_supervisor/context/program_world_context.py) | Selects material identities using supplied costs; caches prefix identity bytes | Resolve admitted material bodies and measure final provider text; identity reuse is not evidence of provider prefix retention |
+| [World database](../../ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_database.py) | Advisory DuckDB records and observational DuckLake history | Query these records through their current owners to drive selection, reuse and invalidation |
+| [Source broker](../../ipfs_accelerate_py/agent_supervisor/runtime/repository_source_mcp.py) | Current query, expansion, definition read, guarded edit and refresh | Attach observations to the task world and account for which model-facing context each operation replaces |
+
+These are source observations, not qualification of a complete world-model
+worker. Reuse the existing supervisor, context compiler, owner, model router
+and admission mechanisms. Preserve the distinct source, semantic, execution
+and completion authorities described by the existing architecture plans.
+
+### State and IR responsibilities
+
+The world model needs both a factual state and an optional predictive layer.
+The factual state records what was observed or independently checked, the
+dependencies of that evidence, what changed and what remains unknown. A
+prediction estimates an action's likely effect, cost or useful next observation;
+it cannot update the factual state until an actual observation is admitted.
+
+| Input | Contribution to the current task world |
+| --- | --- |
+| IntentIR | Requested behavior, constraints and acceptance obligations |
+| CodebaseIR | Current symbols, dependencies, supported effects/contracts, source correspondence and unsupported frontiers |
+| SecurityIR | Applicable trust boundaries, security properties and associated evidence or unresolved checks |
+| UI/UX IR | Applicable interaction flows, user-visible behavior and accessibility constraints |
+| Environment observations | Filesystem/toolchain state, commands and test outcomes, available tools, resource pressure and provider availability |
+| Formal systems | Scoped checked results, assumptions, counterexamples and obligations requiring further work |
+
+Join these inputs through exact task/source/property identities and versioned
+adapters. Record each family's coverage as observed, unavailable, unsupported
+or explicitly out of task scope. Structural Codebase capsules do not establish
+that every other IR family participated. Current semantic payload observations
+and optional result-side advice do not yet establish that combined coverage.
+
+Facts retain source generation, task/intent revision, dependency identities,
+evidence references, assumptions and freshness. A proof cache key additionally
+binds the property, logic/encoding, checker and environment relevant to that
+proof. A similar embedding, matching symbol name or successful historical test
+does not discharge a current obligation. Keep complete evidence in the owner
+and storage layers; expose a readable scoped result and retrieval handle when
+that is sufficient for the model's decision.
+
+### Implementation phases and acceptance gates
+
+1. **Join current observations into one task world.** Project already admitted
+   source, plan, environment, evidence and obligation records into the existing
+   `RepositoryWorldState`. Bind the world projection to its authoritative
+   snapshot and task revision. Add bounded action observation hooks around
+   repository operations and completed command/test outcomes. Record proposed,
+   executed, observed and independently checked outcomes separately. Acceptance:
+   an authored worker edit and test produce a successor world with exact source
+   and result bindings; restart reconstructs the same current knowledge.
+
+2. **Compile a small, self-contained decision context.** Adapt the world state
+   into `DeltaTaskPacketRequest` and the existing `ContextCompiler`. Include
+   the current objective, permitted effects/files, relevant established facts,
+   unresolved obligations, a necessary code slice, material uncertainty and
+   required validation. Retrieve optional capsule detail on demand. Count the
+   complete rendered provider input, including guidance, tool schemas and
+   reference overhead. If required material cannot fit, report overflow or
+   decompose the work through the existing planner. Acceptance: a fresh worker
+   can choose and perform the next action without an unstated prior transcript,
+   and every required item is included or available through an admitted rule.
+
+3. **Connect a real provider decision boundary.** The current daemon explicitly
+   renders `result.reconstructed_capsule` for a stateless retry and records
+   `stateless_retry_full_reconstruction` with `provider_retained_parent=False`.
+   Keep that fallback until the replacement is qualified. For stateless calls,
+   send a newly compiled current-state context with enough meaning to stand
+   alone. For retained sessions, send deltas only after verifying the session
+   retains the exact parent and compatible task/policy/source bindings. An
+   opaque CID cannot teach an otherwise stateless model its missing contents.
+   Acceptance: actual dispatch receipts bind the exact delivered bytes, parent
+   disposition and measured usage. Do not claim control over a native coding
+   CLI's internal history until its provider adapter exposes and qualifies that
+   boundary. Preserve the existing planning session and router initially.
+
+4. **Reuse outcomes and suppress repeated unsuccessful work.** Connect the
+   existing deterministic-first packet decision to current proof/test/procedure
+   reuse and residual obligations. Store a bounded failure signature and its
+   dependencies so an unchanged failed action is not repeatedly proposed.
+   Invalidate affected facts after edits, including dependent imports/contracts;
+   unknown dependency effects require conservative invalidation. Direct shell
+   changes require source reconciliation. Acceptance: valid reuse avoids the
+   corresponding reasoning or check without dropping validation requirements;
+   source/environment/assumption drift prevents stale reuse and permits a new
+   attempt only with changed evidence or an explicit existing escalation path.
+
+5. **Add learned CodebaseIR and world-transition ranking as a separate arm.**
+   Reuse source-bound embeddings/checkpoints first. Train only admitted changed
+   units under a bounded adaptation budget when the experiment can measure its
+   benefit. Learn retrieval order, likely affected symbols, likely failure modes
+   or which observation resolves a remaining question. Pin the source population,
+   objective, encoder, decoder, tokenizer and checkpoint lineage; use held-out
+   questions/transitions and a model-disabled control. Acceptance: measured
+   selection quality and complete-run cost improve without losing required
+   coverage. Reconstruction quality alone is not formal correctness. A
+   repository-trained latent is not directly understood by a hosted coding LLM;
+   a grounded decoder, readable capsule or retrieval tool must bridge it.
+
+6. **Run the matched Terminal Bench experiment and promote measured wins.**
+   First use paired arms differing only in the current-world decision context,
+   keeping the qualified indexed source view, capsule budget, planning policy,
+   model and resource limits fixed. Separately compare original versus compact
+   source reads and deterministic versus learned selection. Report cold scan/
+   training and warm reuse independently. Register repetitions and keep every
+   failed, deferred or missing attempt. Acceptance: complete native accounting
+   and official reward establish the preregistered success/token/cost criteria
+   across repeated task-matched runs. Do not promote from source bytes, capsule
+   counts, storage size or authored test counts alone.
+
+### Reversible codebase views within this loop
+
+The supported direction is retained original snapshot to compact view plus
+mapping, followed by guarded edits against canonical source and a successor
+snapshot. Exact restoration uses retained bytes: comments and formatting
+cannot be recovered from a representation that discarded them without a
+sidecar or another exact source copy. Keep execution, tests, paths and public
+interfaces grounded in canonical source. Exporting a whole compact tree is an
+optional navigation facility; it does not mean the model receives that tree.
+
+Broader mapped edits need separate language-specific qualification for aliases,
+imports, decorators, reflection, generated files and unsupported syntax. Use
+short worker handles only with a generation-bound owner mapping and usable
+expansion; include the mapping's delivery cost. Do not assume that shorter
+identifiers, fewer bytes or a smaller archive imply fewer tokenizer tokens or
+less reasoning. The existing guarded definition workflow supplies an immediate
+source access path while these broader profiles remain bounded.
+
+### Resource and failure behavior
+
+Share the current resource admission and provider cooldown mechanisms. Bound
+world-state materialization, graph queries, retained generations, capsule pages,
+training batches and proof jobs. Under external memory/CPU/disk pressure, pause
+optional adaptation and prefetch, release reconstructible projections and
+reduce concurrent work. Persist enough admitted state to resume safely. A
+resource limit must not silently remove required evidence or convert unknown
+work to completion. Rate-limit deferral preserves the task/packet identity and
+retry deadline; it must not start repeated replacement provider sessions.
+
+Required integration tests cover cold reconstruction; forgotten or foreign
+provider parents; omitted required constraints; stale cross-file dependencies;
+unsupported dynamic behavior; changed proof assumptions; corrupt checkpoints;
+out-of-scope edits; exact original fallback; identical-failure suppression;
+resource-pressure backoff; rate-limit recovery; and interruption after a side
+effect but before its receipt. Qualify one complete action-observation-context
+cycle before expanding the loop to more IR families or learned predictions.
+
+### First implemented boundary
+
+The opt-in [repository world packet adapter](../../ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py)
+now connects an issued source context to existing delta-packet admission and
+the coding runner's actual provider boundary. It preserves every selected
+context body, the exact task and explicit residual/validation requirements,
+rejects omitted or transformed content, and rechecks source freshness before
+dispatch. The task text, task ID and effect/path scope must be bound into the
+context when it is compiled; preparation rejects a different instruction or
+scope attached afterward. A supplied world projection must have compatible task/source bindings;
+the adapter does not create or independently refresh its authoritative owner.
+Missing world coverage is explicit. The worker receives a self-contained packet
+without relying on provider parent retention.
+
+This is a first slice of phases 2 and 3 with a local authored cycle for phase 1.
+It does not complete world-owner observation ingestion, restart reconstruction,
+combined IR adapters, deterministic result reuse, learned prediction or the
+matched Terminal Bench experiment. Its in-process API remains opt-in. The
+Terminal Bench audit refuses this mode until a frozen transport/replay contract
+can reconstruct the exact delivered input. Complete-run savings remain unknown.
+
+[Local qualification](evidence/world-packet-20261014/qualification.json) records
+277 passing tests: 68 new packet/dispatch/cycle cases and 209 existing regression
+cases. The cycle uses real native indexing, a real child MCP read and guarded
+edit, a real Python command check, source refresh and a successor dispatch.
+Both provider responses and world-owner declarations are authored. The stale
+first packet is refused after the edit. Packet bodies were 11,876 and 13,577
+bytes; these are wire-size observations without a matched token-savings baseline.
+Tests also cover late source drift, task/scope mismatches, omitted requirements,
+token-budget enforcement, timeout/rate-limit failure receipts and tool cleanup.
+Tests ran serially with one native CPU slot and offline model assets; the report
+pins dependency commits and records source and JUnit hashes.
+
+### Native intent and validation observation bridge
+
+The next boundary uses the existing `capture_intent_world_snapshot` and
+`observe_local_intent_requirements` owners. A source-bound required reference
+joins the selected native task specification, signed public-check observations,
+applicable requirements and unavailable world components. The task context
+compiler and packet builder retain that reference; the prepared packet repeats
+the live owner check immediately before dispatch. This prevents a newer failed
+check, changed task revision or changed admission from reusing an old passing
+observation even when the source bytes match.
+
+Validation execution remains in `run_local_task_validations`, which records
+signed command results through the native intent repository. The bridge reads
+and verifies those results; it adds no command runner or catalog. A generic
+caller-supplied validation result is not promoted to signed check evidence.
+Source-session tree hashes and the validation owner's inventory identity remain
+distinct and are checked against the same workspace. Missing accepted tree,
+policy, contract and other world authorities remain unavailable instead of
+being replaced by source-session hashes.
+
+The first capture API supports independently owned local intent databases.
+Native Quack owner transport, durable observation reconstruction, joined IR
+families and matched live Terminal Bench experiments remain outstanding.
+
+[Native intent qualification](evidence/intent-world-20261014/qualification.json)
+records 193 passing tests: 31 focused cases and 162 regressions. The end-to-end
+cycle uses a real native intent database, three signed validation commands,
+a child MCP query/read/guarded edit, two source generations and two authored
+provider dispatches. It refuses the stale source packet and a formerly passing
+packet after a newer failed observation, even after exact source restoration.
+The task remains in progress; check evidence does not grant completion authority.
+Tests also cover dropped or changed required evidence, forged observations,
+admission mutation, mixed owner snapshots, resource denial, cancellation and
+capture-size limits. Runs were serial with one native CPU slot and offline
+model assets. The report records dependency pins, JUnit/source hashes, corrected
+fixture attempts and a documentation-only source correction. Recapture overhead
+and complete live-provider token savings remain unmeasured.
 
 ## Decide success from the complete run
 

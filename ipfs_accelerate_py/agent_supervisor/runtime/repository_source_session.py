@@ -326,17 +326,56 @@ class RepositorySourceSession:
             self._current()
             return dict(self._identity(), operation="symbols", symbols=rows)
 
-    def read(self, *, generation: int, path: str, representation: str | None = None) -> dict:
+    def read(self, *, generation: int, path: str, representation: str | None = None,
+             symbol_id: str | None = None) -> dict:
         with self._lock:
             self._generation(generation)
             self._current()
+            representation = self.representation if representation is None else representation
+            if symbol_id is not None:
+                return self._read_symbol(path, symbol_id, representation)
             result = views.read_repository_file(
                 self._package, expected_manifest_sha256=self._capture_receipt["manifest_sha256"],
-                path=path, representation=self.representation if representation is None else representation)
+                path=path, representation=representation)
             self._current()
             identity = self._identity()
             identity["representation"] = result["representation"]
             return dict(result, **identity)
+
+    def _read_symbol(self, path, symbol_id, representation):
+        """Resolve native identity against retained original bytes, under lock."""
+        from .repository_source_symbol import render_indexed_symbol
+
+        path = views._relative(path)
+        if type(representation) is not str or representation not in {"original", "compact"}:
+            _fail("invalid_representation")
+        try:
+            row = self._index.symbol(symbol_id=symbol_id)
+        except Exception as error:
+            if getattr(error, "preserves_index", False) is not True:
+                self._refresh_required = True
+            raise
+        if type(row) is not dict or row.get("symbol_id") != symbol_id:
+            self._refresh_required = True
+            _fail("indexed_symbol_source_differs")
+        # A caller's mismatched path is a bounded refusal, not index corruption.
+        if row["path"] != path:
+            _fail("symbol_path_differs")
+        retained = views.read_repository_file(
+            self._package, expected_manifest_sha256=self._capture_receipt["manifest_sha256"],
+            path=path, representation="original")
+        data = (retained["content"].encode("utf-8") if retained["encoding"] == "utf-8"
+                else base64.b64decode(retained["content"], validate=True))
+        try:
+            result = render_indexed_symbol(path, data, row, representation)
+        except SourceViewError as error:
+            if error.code == "indexed_symbol_source_differs":
+                self._refresh_required = True
+            raise
+        self._current()
+        identity = self._identity()
+        identity["representation"] = result["representation"]
+        return dict(result, **identity)
 
     def _context_call(self, operation, *, generation, max_bytes, **arguments):
         """Join bounded native context to the same generation used for edits."""
@@ -434,7 +473,8 @@ class RepositorySourceSession:
                 os.close(state_fd)
 
     def replace_symbol(self, *, generation: int, path: str, symbol: str,
-                       expected_sha256: str, replacement: str) -> dict:
+                       expected_sha256: str, replacement: str,
+                       representation: str | None = None) -> dict:
         with self._lock:
             self._generation(generation)
             self._capacity()  # Never mutate if the next generation cannot fit.
@@ -456,7 +496,10 @@ class RepositorySourceSession:
                     _fail("replacement_limit")
             except UnicodeError:
                 _fail("invalid_replacement")
-            edit_format = "compact" if self.representation == "compact" else "raw"
+            representation = self.representation if representation is None else representation
+            if type(representation) is not str or representation not in {"original", "compact"}:
+                _fail("invalid_representation")
+            edit_format = "compact" if representation == "compact" else "raw"
             proposed_sha256 = self._preflight_edit(path, symbol, expected_sha256, replacement, edit_format)
             self._current()
             try:

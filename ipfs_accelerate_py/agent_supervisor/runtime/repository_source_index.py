@@ -317,35 +317,68 @@ class NativeRepositoryIndex:
             _require(len(query_bytes) <= MAX_QUERY_BYTES, "invalid_symbol_query")
             if path is not None:
                 view._relative(path)
-            root, manifest, head, reservation, _receipt = self._current
+            return self._symbol_rows(path=path, query=query)[:limit]
+
+    def symbol(self, *, symbol_id: str) -> dict:
+        """Resolve an exact current native identity without list truncation.
+
+        A stable identity can survive a source edit. The caller must separately
+        bind this row to its current generation and original source digest.
+        Unknown identities are bounded optional refusals, never cached rows.
+        """
+        from ipfs_datasets_py.logic.software_contracts.content import validate_cid
+
+        with self._lock:
+            self._check_owner()
+            _require(self._current is not None, "index_not_current")
             try:
-                _check_materialization(root, manifest)
-                observed = self._index.observe_current(root, expected_head=head, **self._controls(reservation))
-                native = self._join(observed, manifest, root)
-                rows = []
-                for symbol in native.semantic_state.symbols:
-                    if path is not None and symbol.module_path != path:
-                        continue
-                    if query.casefold() not in (symbol.qualified_name + " " + symbol.module_path).casefold():
-                        continue
-                    entry = manifest["entries"].get(symbol.module_path)
-                    _require(entry is not None and entry["kind"] == "file", "symbol_source_outside_package")
-                    rows.append(dict(symbol_id=symbol.stable_id, path=symbol.module_path,
-                        name=symbol.qualified_name, kind=str(symbol.kind), source_sha256=entry["original_sha256"],
-                        source_cid=symbol.source_cid, version_cid=symbol.version_cid,
-                        edit_handle_available=False,
-                        span=symbol.span.to_dict() if symbol.span is not None else None))
-                rows.sort(key=lambda row: (row["path"], row["name"], row["symbol_id"]))
-                # Observe again before releasing results; no stale cached row is
-                # a successful response if the source/head moved during assembly.
-                self._index.observe_current(root, expected_head=head, **self._controls(reservation))
-                _check_materialization(root, manifest)
-                return rows[:limit]
-            except Exception as error:
+                if type(symbol_id) is not str or not 0 < len(symbol_id) <= 256:
+                    raise ValueError("invalid identity")
+                validate_cid(symbol_id)
+            except ValueError as error:
+                raise RepositorySourceIndexError("invalid_symbol_id", preserves_index=True) from error
+            rows = self._symbol_rows(symbol_id=symbol_id)
+            if not rows:
+                raise RepositorySourceIndexError("symbol_unavailable", preserves_index=True)
+            if len(rows) != 1:
                 self._current = self._capsules = None
-                if isinstance(error, RepositorySourceIndexError):
-                    raise
-                raise RepositorySourceIndexError("native_index_query_failed") from error
+                raise RepositorySourceIndexError("ambiguous_native_symbol_identity")
+            return rows[0]
+
+    def _symbol_rows(self, *, path=None, query="", symbol_id=None):
+        """Assemble fresh native rows while the owner's lock is held."""
+        root, manifest, head, reservation, _receipt = self._current
+        try:
+            _check_materialization(root, manifest)
+            observed = self._index.observe_current(root, expected_head=head, **self._controls(reservation))
+            native = self._join(observed, manifest, root)
+            rows = []
+            for symbol in native.semantic_state.symbols:
+                if symbol_id is not None and symbol.stable_id != symbol_id:
+                    continue
+                if path is not None and symbol.module_path != path:
+                    continue
+                if query.casefold() not in (symbol.qualified_name + " " + symbol.module_path).casefold():
+                    continue
+                entry = manifest["entries"].get(symbol.module_path)
+                _require(entry is not None and entry["kind"] == "file", "symbol_source_outside_package")
+                rows.append(dict(symbol_id=symbol.stable_id, path=symbol.module_path,
+                    name=symbol.qualified_name, kind=str(symbol.kind), source_sha256=entry["original_sha256"],
+                    source_cid=symbol.source_cid, version_cid=symbol.version_cid,
+                    edit_handle_available=False,
+                    span=symbol.span.to_dict() if symbol.span is not None else None))
+            rows.sort(key=lambda row: (row["path"], row["name"], row["symbol_id"]))
+            # Exact lookup and list queries share both fences. Even a missing
+            # identity is only an optional refusal after source/head integrity
+            # is established, including changes during result assembly.
+            self._index.observe_current(root, expected_head=head, **self._controls(reservation))
+            _check_materialization(root, manifest)
+            return rows
+        except Exception as error:
+            self._current = self._capsules = None
+            if isinstance(error, RepositorySourceIndexError):
+                raise
+            raise RepositorySourceIndexError("native_index_query_failed") from error
 
     def context_query(self, query: str, *, limit: int = 8, max_bytes: int = 32768) -> dict:
         """Return bounded lexical candidate handles, with explicit omissions."""

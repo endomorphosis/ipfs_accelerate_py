@@ -1,0 +1,81 @@
+{
+  "base_commit": "e4b8c4bba2fc7d5b7484b9021cbb9a5bcfc5e7d4",
+  "containers_launched": 0,
+  "datasets_commit": "0897aa1d4252e175477addac5417028241de596a",
+  "distinct_passed_tests": 793,
+  "external_provider_calls": 0,
+  "finished_at": "2026-10-14T05:38:13.573883+00:00",
+  "junit_artifact_root": "/home/barberb/lift_coding/artifacts/token-efficiency-next-20261014",
+  "kit_commit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "limits": [
+    "Native local indexes and actual stdio child processes; provider responses are authored.",
+    "The combined suite reused five AST test seals; all five passed against a fresh dedicated cache.",
+    "The interrupted exploratory batch is excluded. All completed relevant runs passed.",
+    "Capsule census measures initial UTF-8 prompt bytes, not provider tokens or whole-session cost.",
+    "Existing runtime archive is stale; live comparison needs a fresh archive, task image and provider readiness."
+  ],
+  "live_provider_token_savings_measured": false,
+  "live_terminal_bench_reward_measured": false,
+  "remaining_skipped_tests": 0,
+  "schema": "capsule-comparison-retrieval-qualification@1",
+  "test_identity_normalization": "remove optional leading test. package prefix from JUnit classname",
+  "test_runs": {
+    "capsule_baseline": {
+      "errors": 0,
+      "failures": 0,
+      "junit": "baseline/terminal/results.xml",
+      "passed": 157,
+      "sha256": "27348eb0d80f157474306572f898dd6037168dc2fe04695f20bbf214e995de6d",
+      "skipped": 0,
+      "tests": 157
+    },
+    "combined": {
+      "errors": 0,
+      "failures": 0,
+      "junit": "final/results.xml",
+      "passed": 630,
+      "sha256": "ec114e30e7109f9f9424e910e5e5374de0c3c1f5fff0cc44c51670f214a93bd6",
+      "skipped": 5,
+      "tests": 635
+    },
+    "focused_context": {
+      "errors": 0,
+      "failures": 0,
+      "junit": "baseline/focused-context/results.xml",
+      "passed": 1,
+      "sha256": "2440f374a6cb14445fb9e521af9725bee7e2d89d63fe87a0b03665cea1b489b3",
+      "skipped": 0,
+      "tests": 1
+    },
+    "fresh_mcp": {
+      "errors": 0,
+      "failures": 0,
+      "junit": "final/mcp-fresh-results.xml",
+      "passed": 5,
+      "sha256": "79abcb68ee6f1e36eadd95b65045f07ad2abb8e1d22d9da2dad8149e4be26307",
+      "skipped": 0,
+      "tests": 5
+    }
+  },
+  "tested_python_sources_unchanged": true,
+  "tested_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_capsule_budget_comparison.py": "a05c579273e4ad3a142b77441032927dda98f63fa27f101926d08e45dd7dd8a7",
+    "benchmarks/agent_supervisor/container_coding/terminal_capsule_budget_matrix.py": "fa208155f6a7807a3acbf69a428c727e1356c81839fcab1ec6f8b1360db8361a",
+    "benchmarks/agent_supervisor/container_coding/terminal_repository_source_policy.py": "903e55a86237b72cd1fde1662182ae9fe0e6391db633811c7609c3bc00590769",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "af47ead606516d8ecbbef21057268eef7310231f16bb1fc6a04d3b435a439c7e",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_comparison.py": "a12d1dbf4b19be9452a53176c8c2bbeb8221ae18b293f987722415beafe4af8a",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_matrix.py": "f1ec0fd8bec347cd8205c3bc6ef614964fbcc499df8fe412a7850be6408bcbbe",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_outer.py": "d4278070e8a6522c979e35c80e90cf89d1e26e7cb6650e271b51d49ca887c648",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_repository_capsule_experiment.py": "38b09134a50b12665d3e10cea597071dd811f3bde3dd82afe01702747be42fa7",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_repository_source_policy.py": "675ab4884f5c268ea45a3a9c63430e831f05a0a2ac95cc912a5980c4aa7549f7",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_mcp.py": "31ff7249d4fda1b3c3247241bb54f2d390ec874aa4dfca59f5073e24f249ec53",
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_policy.py": "bc814bc94f2a93f538f66c7f511a072864c9bab502d061981928b0ad3c693922",
+    "test/api/test_repository_source_capsules.py": "25054fcbec2d9285defe68e70c0f5279e8aae24bc739eb96ea1c4294d4aaebe0",
+    "test/api/test_repository_source_context_stdio.py": "bd217ffded815e60c511e9008b37a81a81e4fda848dfc53c4b62a52de9537abc",
+    "test/api/test_repository_source_mcp.py": "b0d62af834e1ac1fa0d1258f2943a8d702ed7cb800507a0d3fa6e7482bfceaf8",
+    "test/api/test_repository_source_policy.py": "5a23188d0783d5a382eb3b562875069b8f76ac50258642f4b2627aa50cf13e38",
+    "test/api/test_repository_source_retrieval_observation.py": "d17f6d142f7c079083dc868eba8d9b8961ad6681fa6ba1d4aef6b003dcdce744",
+    "test/api/test_repository_source_router.py": "d5836ffec7aede47dbc6ef29a9287915c25b3490f59223aa50009f3bb82856b8"
+  },
+  "training_executed": false
+}
