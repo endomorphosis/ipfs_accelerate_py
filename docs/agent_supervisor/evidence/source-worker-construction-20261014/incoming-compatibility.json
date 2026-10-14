@@ -1,0 +1,22 @@
+{
+  "all_listed_datasets_sources_match_incoming_git_objects": true,
+  "complete_dependency_closure_established": false,
+  "datasets_execution_revision": "4b50ae4aac65da9166bd3b24608f32ba7e9fb23d",
+  "decision": "Preserve incoming gitlink after finishing fixed-checkout qualification; no tested listed source changes. The embedded pin does not replace the explicitly selected execution checkout.",
+  "incoming_accelerator_main": "c91c42512c6c0f25af2cef61b33d2f2b31ea6032",
+  "incoming_native_engine_fixes_qualified": false,
+  "incoming_parent": "e21d6e7b41f14f3994b0fd8556bfcd341d9e888c",
+  "kit_execution_revision": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "listed_accelerator_source_changes": 0,
+  "listed_datasets_sources_compared": 51,
+  "new_tests_executed": 0,
+  "reviewed_base": "e21d6e7b41f14f3994b0fd8556bfcd341d9e888c",
+  "runtime_imports_executed": 0,
+  "schema": "source-worker-construction-incoming-compatibility@1",
+  "sole_delta": {
+    "after": "8fd82826e8ee935270457acfeee185054eb44aed",
+    "before": "904f885c180eb9dfcdef80199f708125428d3859",
+    "mode": "160000",
+    "path": "ipfs_datasets_py"
+  }
+}

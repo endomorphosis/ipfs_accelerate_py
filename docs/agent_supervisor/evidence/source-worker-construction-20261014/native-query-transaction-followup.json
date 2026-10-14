@@ -1,0 +1,46 @@
+{
+  "schema": "source-worker-native-query-followup-design@1",
+  "proposed_only": true,
+  "implemented": false,
+  "tests_executed": 0,
+  "providers_invoked": 0,
+  "models_invoked": 0,
+  "permission_changes": 0,
+  "authority_granted": false,
+  "reviewed_base": "e21d6e7b41f14f3994b0fd8556bfcd341d9e888c",
+  "scope": "Detach native source.get CAS replay; retain original owner/grant/reader. Separate from broker-construction qualification.",
+  "observed_seams": [
+    "task_sources/typed_state_owner.py:7245-7272: source.get rejects handler-local transaction_active, locks _transaction_lock, validates grant/service, then executes under that lock.",
+    "runtime/current_source_lookup.py:338-405: execute checks payload/cursors/native task/full source, calls _load at359, builds bytes, closes native/source checks and publishes cursors before the gateway's final grant check.",
+    "task_sources/duckdb_state.py:681: native wrapper and sqlite3.Connection expose in_transaction; no BEGIN probe.",
+    "task_sources/typed_state_owner.py:5548-5569; runtime/quack_state_server.py:4570-4576: initial native bind constructs CurrentSourceLookup under SERVER, including constructor _load. Separate future seam."
+  ],
+  "path_prefix": "ipfs_accelerate_py/agent_supervisor/",
+  "proposed_flow": [
+    "Use a short-held private busy guard: refuse reentry/concurrent reader mutation without holding it across callbacks. Serialized tickets/receipts remain inert.",
+    "Under original SERVER, reject handler transaction_active and active original SQLite/DuckDB connection.in_transaction; decline unsupported adapters. Recheck after replay. No BEGIN/COMMIT/ROLLBACK or SQL writes; retain bounded lock acquisition.",
+    "Detach _payload; retain original gateway/server/lock/connection/service/store/CAS objects, owner/source binding bytes, generation/fence/task revision/body, request/limits/paths/bounds and grant/peer/session/request identities. Reuse _assert_current_source_binding and _authorize_source_grant.",
+    "Release SERVER for retained _load only; keep SQL/native connection use under SERVER. CAS callbacks may enter coordinator fences outside SERVER. Check original reader/config/store before and after replay; no replacement owner/client/CAS.",
+    "Reacquire original SERVER; reject changed retained identities, bindings, live grant/session or transaction state. Join inventory/selected source to admitted bytes, complete committed population and exact working bytes/mode. Close native/task/source/grant checks after supported CAS/clock callbacks, with no subsequent CAS replay.",
+    "Stage response/cursors privately; final grant/expiry, generation/task body, full-source and selected-file checks precede predecessor consumption, successor publication and reply. Serialize registry mutation under original SERVER; reject stale/substituted state. Publication must follow gateway closing authorization."
+  ],
+  "unchanged_contracts": {
+    "payload": "supervisor-current-source-request@1 exact schema,binding_cid,raw_path_hex,source_cid,offset,max_bytes,continuation; canonical JSON <=8192B; canonical CIDs/safe lowercase path hex; exact int offset 0..128MiB and max_bytes 1..16384 <=host slice bound.",
+    "continuations": "Reuse _continuations and supervisor-source-continuation@1 CID over binding/grant/path/source/offset/max_bytes. Offset0 requires None; later offsets require issued (grant_id,cursor). Millisecond expiry pruning, grant.expires_at, capacity <4096, one-use predecessor/cross-grant refusal stay. No stateless acceptance/new DB.",
+    "bytes": "Reuse _content, conservative halving and _count_response fixed point: response_bytes=canonical typed envelope+LF; response_wire_bytes adds3 for four-byte framing. Preserve UTF8/base64/empty source, slice CID/frontier. Later broker/transport refusal retains incurred valid backend accounting.",
+    "sdk": "TypedStateOwnerConnection.source_get remains standalone/source-only, checked by validate_source_response. Schemas/read_only/false proof/edit/omission/completion authority stay; no command/training/allocation/permission grant.",
+    "bind_once": "Initial bind is separate. Retain original reader/connection/binding and consumed-after-failure admission/allocation markers; no truncation/rebind/replacement owner."
+  },
+  "acceptance_plan": [
+    "Reuse test/api/test_current_source_lookup.py::_case and test_current_source_worktree_allocation.py::_allocation_case. Target native execute->_load. CAS callbacks assert SERVER unowned before real task/allocation coordinator checks; nested source.get promptly refuses without retiring outer winner.",
+    "Mutate selected/omitted bytes/modes, inventory/CAS/store/service, binding, generation/task body, grant/session/expiry during replay/closing. Require no reply/cursor publication, retained original reader and no fallback.",
+    "Test SQLite/native DuckDB active transactions before/after replay, connection/lock substitution, bounded busy failure and concurrent reads/cursors. One duplicate cursor wins; expiry/manufactured/cross-grant refusals, capacity and offset0 stay bounded.",
+    "Verify multichunk UTF8/base64/empty responses and exact byte/wire/max-envelope accounting; reuse channel incurred-byte controls after valid backend refusal. Shutdown/client-close/grant revoke during replay must clean original transport without orphan reader/grant."
+  ],
+  "limits": [
+    "Sequential checks confer no writer lease, transactional snapshot or universal monkeypatch guarantee.",
+    "SDK owner/task/body checks do not supply coordinator claims, allocation custody or nomination. Preserve actual native parents; equal CIDs/observations confer none.",
+    "Host fixtures/authored deployment metadata do not qualify deployed worker UID, cross-process permission custody or coding-child admission. Caller/runtime cleanup stays explicit.",
+    "Initial bind remains separate. No complete usage, token savings, model gains, live proof or execution authority."
+  ]
+}

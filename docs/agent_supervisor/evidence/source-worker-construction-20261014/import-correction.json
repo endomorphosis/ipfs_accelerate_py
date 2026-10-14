@@ -1,0 +1,13 @@
+{
+  "exact_diff": "--- retained-first-source\n+++ corrected-source\n@@ -9,6 +9,7 @@\n \n import hashlib\n from dataclasses import asdict\n+import json\n import os\n from pathlib import Path\n import socket\n",
+  "failed_attempt": "qualification-01/commands.json",
+  "failed_attempt_status_preserved": true,
+  "followup_attempt": "qualification-02/commands.json",
+  "new_production_path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+  "new_production_sha256": "d837c3a59e7cbce3fb285fbb0037f5aa6f8a4597193278da6f9518a922a6c570",
+  "old_production_sha256": "dae1d521a540cb287d2e7d7b74ffaae70d416f88be53e1810298a4d70154b8cd",
+  "old_production_snapshot": "docs/agent_supervisor/evidence/source-worker-construction-20261014/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py.snapshot.txt",
+  "reason": "import_stdlib_json_for_frozen_owner_binding_decode",
+  "schema": "source-worker-construction-import-correction@1",
+  "test_changes_for_correction": false
+}

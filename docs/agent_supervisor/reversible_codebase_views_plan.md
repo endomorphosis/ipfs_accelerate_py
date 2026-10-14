@@ -1257,3 +1257,23 @@ candidate-launcher and reporting work while implementing the explicit native
 delegation and wrapper/child handoff; their separate worker broker cannot be
 substituted for retained native task/allocation handles. Qualify those joins and
 actual signed compiled-context adoption before measuring a deployed token trial.
+
+## Source session construction, 2026-10-14
+
+The [constructor boundary](source_lookup_worker.md#construct-the-source-session-before-publishing-endpoints)
+retains original owner/source/CAS witnesses and copied inputs before either
+canonical replay. Both replays run outside SERVER. Native fences and detached
+source, allocation, nomination and protected-path checks follow before issuing a
+proxy grant, then again after the real client opens and before endpoints are
+published. Early refusal issues no proxy; late refusal revokes only the new
+proxy and closes its transport while preserving consumed native source binding.
+
+The [constructor regression phase](evidence/source-worker-construction-20261014/README.md)
+keeps the unpatched control, source snapshots, callback drift refusals and late
+cleanup checks separate. This is an owner-side boundary with authored deployment
+metadata, rather than separate worker-UID or native coding-child qualification.
+Initial native source binding and privileged source-query transactions still
+need their own callback review. Preserve the planned permission delegation,
+cross-process provenance and independent compiled-context joins. Existing IR
+families, schema/version, decoder tasks and 8D/384D/768D assets retain their own
+reconstruction, registry and teacher-promotion gates.

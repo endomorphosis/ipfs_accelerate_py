@@ -1,0 +1,33 @@
+{
+  "additional_pytest_invocations": 0,
+  "argv": [
+    "/usr/bin/python3",
+    "-B",
+    "docs/agent_supervisor/evidence/source-worker-construction-20261014/release_checker.py"
+  ],
+  "diagnostic": "shared-ref observations differ",
+  "documentation_outputs_created": false,
+  "exit_code": 1,
+  "files": [
+    {
+      "bytes": 28449,
+      "path": "docs/agent_supervisor/evidence/source-worker-construction-20261014/documentation-preflight-01/release_checker.py.snapshot.txt",
+      "sha256": "50ec15fe412d8af4d2bdee72856cb9ac867f10b51d7921fb7b132e5877508df6"
+    },
+    {
+      "bytes": 1692,
+      "path": "docs/agent_supervisor/evidence/source-worker-construction-20261014/documentation-preflight-01/stderr.log",
+      "sha256": "410f70592a848ce2393308c7dbbfd69bcc301f6d3a5c622d03fee4edd68cc54d"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/source-worker-construction-20261014/documentation-preflight-01/stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "first_tool_run_had_same_diagnostic": true,
+  "runtime_or_test_sources_changed": false,
+  "schema": "source-worker-construction-documentation-preflight@1",
+  "status": "expected_ref_order_failure",
+  "this_record_is_reproduction_of_first_preflight": true
+}

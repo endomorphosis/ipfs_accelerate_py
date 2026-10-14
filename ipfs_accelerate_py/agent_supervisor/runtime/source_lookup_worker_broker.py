@@ -8,6 +8,8 @@ checkouts. Sequential checks do not provide a filesystem writer lease.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import asdict
+import json
 import os
 from pathlib import Path
 import socket
@@ -176,33 +178,44 @@ class SourceLookupWorkerBroker:
                       "native source response profile exceeds worker envelope reserve")
                 source = self._service
                 self._cas = source._store.cas
-                self._canonical = native.CurrentSourceLookup(self.repository, cas=self._cas,
-                    expected_inventory_cid=source._inventory_cid, request=source._request, limits=source._limits,
+                borrowed = (server, gateway, source, self._connection, self._owner_lock, self._cas)
+                paths = tuple(source._paths)
+                _need(1 <= len(paths) <= 32, "source worker admitted path population exceeds profile")
+                canonical_arguments = dict(cas=self._cas,
+                    expected_inventory_cid=source._inventory_cid,
+                    request=native.SourceInventoryRequest(**asdict(source._request)),
+                    limits=native.SourceInventoryLimits(**asdict(source._limits)),
                     task_cid=self._binding["task_cid"], task_revision=self._binding["task_revision"],
                     expected_task_body_cid=self._binding["expected_task_body_cid"],
-                    context_cid=self._binding["context_cid"], allowed_paths=source._paths,
+                    context_cid=self._binding["context_cid"], allowed_paths=paths,
                     max_response_bytes=self._binding["max_response_bytes"], max_slice_bytes=self._binding["max_slice_bytes"])
-                self._canonical.check_native(self._connection, gateway.identity)
-                _need(1 <= len(source._paths) <= 32, "source worker admitted path population exceeds profile")
-                retained = self._canonical._load()
-                by_path = {item.entry.raw_path_hex: item for item in retained.entries}
-                refs = []
-                for name in source._paths:
-                    item = by_path.get(name)
-                    _need(item is not None and item.data is not None
-                          and item.entry.git_mode in ("100644", "100755"),
-                          "source worker scope contains a nonregular or unavailable file")
-                    refs.append(dict(raw_path_hex=name, source_cid=item.source_cid,
-                        size_bytes=len(item.data), git_mode=item.entry.git_mode))
-                self._source_refs_bytes = protocol.canonical_json(refs)
-                self._source_pairs = tuple((ref["raw_path_hex"], ref["source_cid"]) for ref in refs)
-                gateway._assert_current_source_binding(source)
-                source.check_native(self._connection, gateway.identity)
-                self._canonical.check_native(self._connection, gateway.identity)
-                source._check_source()
+            # Both canonical initialization and explicit refs replay call the
+            # retained CAS. Keep SERVER released so callbacks may enter COOR.
+            canonical = native.CurrentSourceLookup(self.repository, **canonical_arguments)
+            self._canonical = canonical
+            self._canonical_binding_bytes = canonical_json_bytes(canonical.binding(json.loads(self._owner_bytes)))
+            self._original_refs = (*borrowed[:5], canonical, borrowed[5])
+            retained = canonical._load()
+            by_path = {item.entry.raw_path_hex: item for item in retained.entries}
+            refs = []
+            for name in paths:
+                item = by_path.get(name)
+                _need(item is not None and item.data is not None
+                      and item.entry.git_mode in ("100644", "100755"),
+                      "source worker scope contains a nonregular or unavailable file")
+                refs.append(dict(raw_path_hex=name, source_cid=item.source_cid,
+                    size_bytes=len(item.data), git_mode=item.entry.git_mode))
+            self._source_refs_bytes = protocol.canonical_json(refs)
+            self._source_pairs = tuple((ref["raw_path_hex"], ref["source_cid"]) for ref in refs)
+            self._task_current()
+            self._construction_boundary_current(boundary_sha)
+            with self._owner_lock:
+                self._current_source_owner()
+                self._native_source_custody_current()
+                self._source_refs_current(refs)
                 self._canonical._check_source()
-                self._canonical_binding_bytes = canonical_json_bytes(self._canonical.binding(gateway.identity))
-                self._original_refs = (server, gateway, source, self._connection, self._owner_lock, self._canonical, self._cas)
+                self._service._check_source()
+                self._current_source_owner()
                 token, self._grant = server.issue_typed_client_grant_record(
                     client_id="source-worker-proxy:" + session, process_birth_id=typed.kernel_process_birth_id(),
                     peer_pid=os.getpid(), allowed_operations=("source.get",),
@@ -219,6 +232,14 @@ class SourceLookupWorkerBroker:
             with self._owner_lock:
                 self._current_owner()
             self._task_current()
+            self._construction_boundary_current(boundary_sha)
+            with self._owner_lock:
+                self._current_owner()
+                self._native_source_custody_current()
+                self._source_refs_current(refs)
+                self._canonical._check_source()
+                self._service._check_source()
+                self._current_owner()
             owner, now = protocol.process_identity(os.getpid()), time.monotonic_ns()
             self._listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self._listener.bind(str(self.socket_path))
@@ -257,7 +278,8 @@ class SourceLookupWorkerBroker:
     def extra_argv(self):
         return [protocol.DESCRIPTOR_FLAG, str(self.descriptor_path), protocol.DIGEST_FLAG, self.descriptor_sha256]
 
-    def _current_owner(self):
+    def _current_source_owner(self):
+        """Check original source custody without granting any proxy authority."""
         current = (self._server, self._gateway, self._service, self._connection,
                    self._owner_lock, self._canonical, self._cas)
         _need(all(left is right for left, right in zip(current, self._original_refs))
@@ -288,6 +310,10 @@ class SourceLookupWorkerBroker:
               "source worker custody or routing changed")
         self._service.check_native(self._connection, gateway.identity)
         self._canonical.check_native(self._connection, gateway.identity)
+
+    def _current_owner(self):
+        self._current_source_owner()
+        gateway = self._gateway
         active = gateway._require_active_grant(self._grant, peer_identity=(
             self._grant.peer_pid, self._grant.peer_uid, self._grant.peer_start_time_ticks))
         _need(active.grant_id == self._original_grant_id, "source proxy grant changed")
@@ -360,37 +386,8 @@ class SourceLookupWorkerBroker:
         """
         with self._owner_lock:
             self._current_owner()
-            self._spawn_policy_current()
-            if self._task_admission is not None:
-                self._task_admission._native()
-            if self._worktree_admission is not None:
-                allocation = self._worktree_admission
-                fixed, record, _identity, _binding = allocation._observe()
-                stable = record.to_dict()
-                renewal = tuple(stable.pop(key) for key in ("fence", "updated_at", "expires_at"))
-                _need(fixed == allocation._fixed_files
-                      and protocol.canonical_json(stable) == allocation._lifecycle_bytes
-                      and all(current >= prior for current, prior in zip(renewal, allocation._renewal)),
-                      "source worker allocation custody changed after launch fences")
-                if self._spawn_allocation_nomination is not None:
-                    allocation._require_nominated_join()
-            elif self._spawn_task_nomination is not None:
-                retained = self._spawn_task_nomination
-                _need(type(retained) is tuple and len(retained) == 7,
-                      "source worker original task nomination is invalid")
-                scope, frozen, expected, paths, source, binding_bytes, cas = retained
-                value = scope.observation()
-                _need(source is self._service and cas is self._cas
-                      and binding_bytes == self._binding_bytes
-                      and canonical_json_bytes(value) == frozen and value["scope_cid"] == expected
-                      and paths == self._service._paths
-                      and paths == tuple(row["raw_path_hex"] for row in value["selected"]),
-                      "source worker nominated task binding changed after launch fences")
-            refs = self.descriptor["source_refs"]
-            _need(protocol.canonical_json(refs) == self._source_refs_bytes
-                  and self._source_pairs == tuple((row["raw_path_hex"], row["source_cid"]) for row in refs)
-                  and self._service._paths == tuple(row["raw_path_hex"] for row in refs),
-                  "source worker original selected refs changed")
+            self._native_source_custody_current()
+            self._source_refs_current(self.descriptor["source_refs"])
             self._canonical._check_source()
             self._service._check_source()
             if selected is not None:
@@ -398,6 +395,48 @@ class SourceLookupWorkerBroker:
                 self._service._working_file(selected.entry, selected.data)
             self._current_owner()
             self._spawn_policy_current()
+
+    def _native_source_custody_current(self):
+        """Detached checks under SERVER after the caller's native claim fence."""
+        self._spawn_policy_current()
+        if self._task_admission is not None:
+            self._task_admission._native()
+        if self._worktree_admission is not None:
+            allocation = self._worktree_admission
+            fixed, record, _identity, _binding = allocation._observe()
+            stable = record.to_dict()
+            renewal = tuple(stable.pop(key) for key in ("fence", "updated_at", "expires_at"))
+            _need(fixed == allocation._fixed_files
+                  and protocol.canonical_json(stable) == allocation._lifecycle_bytes
+                  and all(current >= prior for current, prior in zip(renewal, allocation._renewal)),
+                  "source worker allocation custody changed after native fences")
+            if self._spawn_allocation_nomination is not None:
+                allocation._require_nominated_join()
+        elif self._spawn_task_nomination is not None:
+            retained = self._spawn_task_nomination
+            _need(type(retained) is tuple and len(retained) == 7,
+                  "source worker original task nomination is invalid")
+            scope, frozen, expected, paths, source, binding_bytes, cas = retained
+            value = scope.observation()
+            _need(source is self._service and cas is self._cas
+                  and binding_bytes == self._binding_bytes
+                  and canonical_json_bytes(value) == frozen and value["scope_cid"] == expected
+                  and paths == self._service._paths
+                  and paths == tuple(row["raw_path_hex"] for row in value["selected"]),
+                  "source worker nominated task binding changed after native fences")
+
+    def _source_refs_current(self, refs):
+        _need(protocol.canonical_json(refs) == self._source_refs_bytes
+              and self._source_pairs == tuple((row["raw_path_hex"], row["source_cid"]) for row in refs)
+              and self._service._paths == tuple(row["raw_path_hex"] for row in refs),
+              "source worker original selected refs changed")
+
+    def _construction_boundary_current(self, expected_sha256):
+        _need(self.owner_uid == self._pinned_owner_uid == os.getuid() == os.geteuid() == os.getgid()
+              and self.worker_uid == self._pinned_worker_uid
+              and guard._owner_boundary(self.boundary)[1] == expected_sha256,
+              "source worker construction boundary changed")
+        self._parent_current()
 
     def require_before_spawn(self):
         """Prepare this live session once; return no serialized launch authority.

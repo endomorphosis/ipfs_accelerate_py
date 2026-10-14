@@ -84,6 +84,34 @@ public descriptor or protected endpoint refuses reuse. This version supports
 one existing source binding per gateway lifetime; it does not discover another
 owner or silently rebind a task.
 
+## Construct the source session before publishing endpoints
+
+The broker captures the original owner, gateway, source reader, connection,
+lock and CAS under SERVER before invoking caller-backed replay. It retains the
+original binding/owner bytes and copies the admitted request, limits, paths and
+bounds. Canonical reader initialization and the second source-reference replay
+then run outside SERVER, allowing a retained-CAS callback to enter the native
+coordinator without reversing the claim lock order.
+
+Before issuing a source proxy grant, the broker repeats the native task,
+allocation and nomination fence outside SERVER, checks the protected boundary
+and parent, then closes original custody and complete source populations under
+SERVER. These detached checks cannot adopt a replacement source or CAS. The
+broker opens its genuine typed proxy client outside SERVER and repeats the
+closing checks, including the exact active proxy grant, before binding its
+public socket, writing the descriptor or starting the serving thread.
+
+A pre-grant refusal creates no proxy or public endpoint. A refusal after client
+opening revokes that exact new proxy and closes its transport; the original
+native reader, task/allocation markers and bind-once state remain retained. This
+does not create another owner or CAS, rebind source, launch a coding child or
+grant proof/execution/completion authority. The
+[constructor evidence](evidence/source-worker-construction-20261014/README.md)
+keeps first/second replay checks and late client cleanup separate from actual
+worker-UID admission. Initial native reader binding and privileged `source.get`
+transactions remain separate callback boundaries. The checks provide no
+filesystem writer lease.
+
 ## Check before launch and before registration
 
 `require_before_spawn()` checks the original broker, descriptor and endpoint,
@@ -138,9 +166,11 @@ Neither result supplies proof, execution, completion, edit or omission authority
 The [delivery regression evidence](evidence/source-worker-delivery-fences-20261014/README.md)
 keeps the unpatched lock-order control and new callback/refusal cases separate.
 These are owner-side reads; they do not authenticate a worker peer or activate
-the deployed coding handoff. Constructor replay and the privileged native
-`source.get` gateway still have their separate lock/transaction contracts. This
-increment does not establish universal callback safety. The source checks remain
+the deployed coding handoff. That delivery phase does not qualify constructor
+replay; the separate constructor section above describes its closing checks.
+Initial native binding and the privileged `source.get` gateway retain their
+separate lock/transaction contracts. These increments do not establish universal
+callback safety. The source checks remain
 sequential and provide no filesystem writer lease.
 
 ## Nominated scope and managed allocation
