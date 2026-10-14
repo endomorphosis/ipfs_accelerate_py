@@ -48,7 +48,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S8R1-044 Qualify bounded producer-lineage observations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
