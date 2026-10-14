@@ -48,7 +48,7 @@ Three deterministic qualifications preserve complete source populations, origina
 
 ## LAC-S10R1-044 Qualify complete parent sentence candidate inventories
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
