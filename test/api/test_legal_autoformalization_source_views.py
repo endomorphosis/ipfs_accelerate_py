@@ -137,6 +137,42 @@ def test_qualification_binds_imports_and_clears_ambient_pytest_flags(frozen, mon
     assert observed["environment_policy"]["PYTEST_ADDOPTS"] == ""
     assert observed["environment_policy"]["IPFS_AUTO_INSTALL"] == "false"
     assert observed["environment_policy"]["IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS"] == "0"
+    assert observed["environment_policy"]["PYTHONNOUSERSITE"] == "1"
+    assert observed["environment_policy"]["PYTHONPYCACHEPREFIX"] == ""
+    assert observed["ephemeral_options"]["python_cache_prefix"] == "empty temporary directory"
+
+
+def test_qualification_uses_explicit_dependency_roots_after_datasets(frozen):
+    datasets, _, cfg = frozen
+    root = datasets.parent / "site-packages"
+    root.mkdir()
+    job = cfg["jobs"]["LAC-S8-044"]
+    job["runtime_dependencies"] = {"schema": driver.dependencies.SCHEMA, "roots": [str(root)]}
+    policy = driver.execution_environment_policy(datasets, job)
+    assert policy["PYTHONPATH"].split(__import__("os").pathsep) == [str(datasets), str(root)]
+    assert policy["PYTHONNOUSERSITE"] == "1"
+    assert policy["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+
+
+def test_explicit_pytest_configuration_is_source_pinned(frozen):
+    datasets, sources, cfg = frozen
+    config = datasets / "pytest.ini"
+    config.write_text("[pytest]\naddopts = --strict-markers\n")
+    subprocess.run(["git", "add", "pytest.ini"], cwd=datasets, check=True, capture_output=True)
+    subprocess.run(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                    "commit", "-qm", "Bind pytest config"], cwd=datasets, check=True, capture_output=True)
+    cfg["datasets"]["commit"] = driver.git(datasets, "rev-parse", "HEAD")
+    cfg["jobs"]["LAC-S8-044"]["pytest_config"] = "pytest.ini"
+    cfg["immutable_inputs"].append({"path": "pytest.ini", "sha256": driver.identity(config)["sha256"]})
+    sources.write_text(json.dumps(cfg))
+    assert driver.materialize("LAC-S8-044", sources)["valid"]
+    result = driver.read_json(driver.output("LAC-S8-044"))
+    assert "-c" in result["test_execution"]["command"]
+    assert any(row["repository_path"] == "pytest.ini" for row in result["bindings"]["inputs"])
+    cfg["immutable_inputs"][-1]["sha256"] = "0" * 64
+    sources.write_text(json.dumps(cfg))
+    with pytest.raises(ValueError, match="source pin differs"):
+        driver.bindings("LAC-S8-044", sources)
 
 
 def test_resealed_receipt_cannot_hide_different_execution_environment(frozen):
@@ -318,14 +354,19 @@ def test_envelope_tampering_and_resealed_stream_boundaries_are_refused(damage):
         driver.unpack_real_input_report(packed)
 
 
-def test_real_input_executes_in_pinned_root_and_refuses_changed_outcome(frozen):
+def test_real_input_executes_in_pinned_root_and_refuses_changed_outcome(frozen, monkeypatch):
     datasets, _, cfg = frozen
     package = datasets / "ipfs_datasets_py/logic/autoformal"
     package.mkdir(parents=True)
     for directory in (package, package.parent, package.parent.parent):
         (directory / "__init__.py").write_text("")
     owner = package / "legal_entity_index_intake.py"
-    owner.write_text("def census_parquet(path, **kwargs):\n    return {'fixture_rows': 3}\n")
+    monkeypatch.setenv("PYTHONPYCACHEPREFIX", "/unrelated/ambient/cache")
+    owner.write_text("def census_parquet(path, **kwargs):\n"
+        "    import sys\n    from pathlib import Path\n"
+        "    assert sys.dont_write_bytecode and sys.pycache_prefix != '/unrelated/ambient/cache'\n"
+        "    assert Path(sys.pycache_prefix).is_dir() and not any(Path(sys.pycache_prefix).iterdir())\n"
+        "    return {'fixture_rows': 3}\n")
     raw = datasets / "fictional-index.bin"
     raw.write_bytes(b"fictional fixture, not parquet")
     job = dict(cfg["jobs"]["LAC-S8-044"])
@@ -698,10 +739,33 @@ def test_producer_lineage_receives_regenerated_complete_ordered_provenance(froze
         "expected_producer_witness_manifest_sha256":driver.sha(driver.wire(json.loads(witness.read_text()))),
         "expected_producer_lineage_sha256":driver.sha(driver.wire(expected))}
     master = datasets / "master.json"
+    # The native environment intentionally disables ambient user-site imports.
+    # Bind the actual existing Arrow fixture dependencies explicitly instead.
+    import os
+    import sys
+    import tempfile
+    dependency_root = str(Path(pa.__file__).resolve().parent.parent)
+    probe = {"action": "observe", "roots": [dependency_root],
+             "distributions": ["pyarrow", "numpy", "cloudpickle"],
+             "modules": ["pyarrow.parquet"], "datasets": str(datasets)}
+    dependency_policy = driver.execution_environment_policy(datasets, {
+        "runtime_dependencies": {"schema": driver.dependencies.SCHEMA, "roots": [dependency_root]}})
+    with tempfile.TemporaryDirectory() as temporary:
+        environment = driver.isolated_child_environment(datasets, {
+            "runtime_dependencies": {"schema": driver.dependencies.SCHEMA, "roots": [dependency_root]}}, temporary)
+        observed = subprocess.run([sys.executable, "-B", str(Path(driver.dependencies.__file__)),
+            json.dumps(probe)], cwd=datasets, env=environment,
+            capture_output=True, text=True, check=True, timeout=60)
+    runtime_dependencies = {"schema": driver.dependencies.SCHEMA, "roots": [dependency_root],
+                            "observation": json.loads(observed.stdout)}
+    dependency_manifest = datasets / "runtime-dependencies.json"
+    dependency_manifest.write_bytes(driver.wire(runtime_dependencies))
     def job():
         master.write_bytes(driver.wire(body))
         pin = driver.identity(master)
-        return {"real_input":{"spec":{"kind":"producer_lineage","path":pin["path"],
+        return {"runtime_dependencies": runtime_dependencies,
+                "runtime_dependencies_reference": driver.identity(dependency_manifest),
+                "real_input":{"spec":{"kind":"producer_lineage","path":pin["path"],
             "file_bytes":pin["bytes"],"file_sha256":pin["sha256"]}}}
     result = driver.run_real_input(datasets, job())
     assert result == {"schema":"legal-source-views-real-input/v1","kind":"producer_lineage","report":expected}

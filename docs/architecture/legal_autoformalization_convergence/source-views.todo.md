@@ -4,7 +4,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S8-011 Qualify independently pinned versioned document views
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
@@ -26,7 +26,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S8-024 Qualify complete versioned comparison occurrence inventories
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
@@ -48,7 +48,7 @@ Three bounded deterministic qualifications against committed production source. 
 
 ## LAC-S8-044 Qualify bounded producer-lineage observations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
