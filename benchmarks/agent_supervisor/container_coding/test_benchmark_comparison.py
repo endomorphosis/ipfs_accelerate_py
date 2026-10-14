@@ -344,12 +344,31 @@ def test_bounded_stream_usage_survives_comparison_without_replacing_final_accoun
     assert observed["tokens"]["total_tokens"] == 42  # Only the separate final-envelope contract.
     assert "private" not in json.dumps(observed)
     # Existing receipts lack event history; accepting them must not invent it.
-    legacy = dict(progress, schema="native-grok-stream-progress@1")
-    legacy.pop("usage_observations")
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import grok_stream_progress_summary
+    legacy = grok_stream_progress_summary(progress)
     invocation["native_grok_progress"] = legacy
     historical, = _invocations({"provider_invocations": [invocation]})
     assert historical["native_grok_progress"] == legacy
     assert "usage_observations" not in historical["native_grok_progress"]
+
+
+def test_terminal_rejection_survives_comparison_without_creating_native_usage():
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _invocations
+    parser = GrokStreamParser()
+    parser.feed(b'{"type":"max_turns_reached"}\n'
+                b'{"type":"end","stopReason":"max_turn_requests","sessionId":null,"message":"PRIVATE"}\n')
+    progress = parser.snapshot()
+    row = {"invocation_id": "rejected-end", "phase": "coding", "status": "failed",
+           "provider": "grok_cli", "native_grok_progress": progress}
+    observed, = _invocations({"provider_invocations": [row]})
+    assert observed["native_grok_progress"] == progress
+    assert observed["native_grok_progress"]["terminal_rejection"]["reason"] == "unknown_end_fields"
+    assert observed["native_task_complete_observed"] is None
+    assert all(value is None for value in observed["tokens"].values())
+    assert "PRIVATE" not in json.dumps(observed)
+    row["native_grok_progress"]["terminal_rejection"]["raw_end"] = "PRIVATE"
+    assert _invocations({"provider_invocations": [row]})[0]["native_grok_progress"] is None
 
 
 def test_symbolic_coding_does_not_invent_provider_calls_or_learned_proof(tmp_path):

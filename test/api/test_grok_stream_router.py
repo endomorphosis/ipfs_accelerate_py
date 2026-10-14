@@ -121,6 +121,25 @@ def test_error_with_end_marker_preserves_failure_without_native_usage(provider, 
     assert observation["native_grok_progress"]["response_usable"] is False
 
 
+def test_rejected_end_shape_survives_router_metadata_without_raw_values(provider, tmp_path):
+    argv = command(tmp_path, [{"type": "max_turns_reached"},
+        end(stopReason="max_turn_requests", sessionId=None, requestId="PRIVATE_IDENTIFIER")],
+        suffix="sys.exit(1)\n")
+    with pytest.raises(llm_router.LLMRouterError):
+        provider.generate("private prompt", timeout=3, grok_cli_cmd=argv, grok_stream_progress=True)
+    observation = get_last_cli_observation("grok_cli")
+    progress = observation["native_grok_progress"]
+    assert progress["schema"] == "native-grok-stream-progress@3"
+    assert progress["response_usable"] is False
+    rejection = progress["terminal_rejection"]
+    assert rejection["reason"] == "invalid_end_field_shape"
+    assert rejection["rejected_fields"] == ["sessionId"]
+    assert rejection["field_shapes"]["sessionId"] == "null"
+    assert rejection["field_shapes"]["requestId"] == "string"
+    assert "PRIVATE_IDENTIFIER" not in json.dumps(progress)
+    assert "native_grok_usage_observed" not in observation
+
+
 @pytest.mark.parametrize("frames", [
     [{"type": "text", "data": "partial only"}],
     [{"type": "text", "data": "answer"}, end(), end()],

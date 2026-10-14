@@ -20,7 +20,8 @@ from typing import Callable, Mapping, Sequence
 from .grok_stream_usage import GrokUsageEventObserver, validate_grok_usage_events
 
 LEGACY_SCHEMA = "native-grok-stream-progress@1"
-SCHEMA = "native-grok-stream-progress@2"
+USAGE_SCHEMA = "native-grok-stream-progress@2"
+SCHEMA = "native-grok-stream-progress@3"
 MAX_FRAME_BYTES = 256 * 1024
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 CALLBACK_INTERVAL_SECONDS = 5.0
@@ -33,6 +34,15 @@ _TERMINALS = frozenset({"end", "error", "max_turns_reached"})
 _END_FIELDS = frozenset({"type", "stopReason", "sessionId", "requestId", "usage", "num_turns",
                          "modelUsage", "usage_is_incomplete", "total_cost_usd", "total_cost_usd_ticks",
                          "cost_is_partial"})
+_TERMINAL_SHAPE_FIELDS = _END_FIELDS | {"stop_reason", "subtype", "is_error", "message", "text",
+                                      "thought", "cancellationCategory"}
+_JSON_SHAPES = frozenset({"missing", "null", "boolean", "integer", "number", "string", "object", "array", "other"})
+_TERMINAL_REJECTIONS = frozenset({"not_end_event", "duplicate_end_trailer", "prior_payload_unavailable",
+    "unknown_prior_reason", "second_final_envelope", "unknown_end_fields", "end_reason_mismatch",
+    "invalid_end_field_shape", "missing_frozen_fields", "conflicting_frozen_fields"})
+_TERMINAL_STOP_REASONS = frozenset({"end_turn", "stop", "max_tokens", "max_turn_requests", "refusal",
+    "cancelled", "tool_use", "pause_turn", "stop_sequence", "EndTurn", "MaxTokens", "MaxTurnRequests",
+    "Refusal", "Cancelled", "unknown"})
 _REASONS = frozenset({"end_turn", "max_turns", "max_tokens", "refusal", "cancelled",
                       "structured_output_retries", "execution_error", "process_error",
                       "schema_rejected", "timeout", "other_stop", "unknown"})
@@ -56,14 +66,52 @@ def _number(value):
     return type(value) in (int, float) and 0 <= value <= _MAX_COUNT and math.isfinite(value)
 
 
+def _validate_terminal_rejection(value):
+    """Copy one fixed vocabulary diagnostic, without provider names or values."""
+    keys = {"schema", "reason", "frame_ordinal", "elapsed_seconds", "event_type", "prior_terminal_type",
+            "prior_reason_code", "incoming_reason_code", "incoming_stop_reason", "field_shapes",
+            "prior_field_shapes", "unexpected_fields", "unknown_field_count", "rejected_fields",
+            "observation_only", "raw_provider_data_exported", "completion_authority"}
+    if (type(value) is not dict or set(value) != keys or value["schema"] != "native-grok-terminal-rejection@1"
+            or value["observation_only"] is not True or value["raw_provider_data_exported"] is not False
+            or value["completion_authority"] is not False):
+        raise ValueError("invalid Grok terminal rejection fields")
+    for key, allowed in (("reason", _TERMINAL_REJECTIONS), ("event_type", _EVENTS),
+            ("prior_terminal_type", _TERMINALS), ("prior_reason_code", _REASONS),
+            ("incoming_reason_code", _REASONS), ("incoming_stop_reason", _TERMINAL_STOP_REASONS)):
+        if type(value[key]) is not str or value[key] not in allowed:
+            raise ValueError("invalid Grok terminal rejection vocabulary")
+    if (type(value["frame_ordinal"]) is not int or not 1 <= value["frame_ordinal"] <= _MAX_COUNT
+            or type(value["unknown_field_count"]) is not int or not 0 <= value["unknown_field_count"] <= MAX_FRAME_BYTES
+            or not _number(value["elapsed_seconds"])):
+        raise ValueError("invalid Grok terminal rejection counters")
+    for key in ("field_shapes", "prior_field_shapes"):
+        shapes = value[key]
+        if (type(shapes) is not dict or set(shapes) != _TERMINAL_SHAPE_FIELDS
+                or any(type(shape) is not str or shape not in _JSON_SHAPES for shape in shapes.values())):
+            raise ValueError("invalid Grok terminal rejection shapes")
+    for key, allowed in (("unexpected_fields", _TERMINAL_SHAPE_FIELDS - _END_FIELDS),
+                         ("rejected_fields", _END_FIELDS)):
+        fields = value[key]
+        if (type(fields) is not list or len(fields) > len(allowed)
+                or any(type(field) is not str or field not in allowed for field in fields)
+                or fields != sorted(set(fields))):
+            raise ValueError("invalid Grok terminal rejection field list")
+    return {**value, "field_shapes": dict(value["field_shapes"]),
+            "prior_field_shapes": dict(value["prior_field_shapes"]),
+            "unexpected_fields": list(value["unexpected_fields"]), "rejected_fields": list(value["rejected_fields"])}
+
+
 def validate_grok_stream_progress(value: object) -> dict:
     """Copy one closed diagnostic snapshot; reject extra fields and authority."""
     if type(value) is not dict:
         raise ValueError("invalid Grok progress fields")
     schema = value.get("schema")
-    if type(schema) is not str or schema not in {LEGACY_SCHEMA, SCHEMA}:
+    if type(schema) is not str or schema not in {LEGACY_SCHEMA, USAGE_SCHEMA, SCHEMA}:
         raise ValueError("invalid Grok progress schema")
     keys = _KEYS if schema == LEGACY_SCHEMA else _KEYS | {"usage_observations"}
+    if schema == SCHEMA:
+        keys |= {"terminal_rejection"}
     if set(value) != keys:
         raise ValueError("invalid Grok progress fields")
     for key, expected in _CONSTANTS.items():
@@ -108,11 +156,24 @@ def validate_grok_stream_progress(value: object) -> dict:
         raise ValueError("inconsistent Grok progress completion")
     # Historical receipts have unknown event values; never synthesize zero rows.
     result = {key: dict(item) if type(item) is dict else item for key, item in value.items()}
-    if schema == SCHEMA:
+    if schema != LEGACY_SCHEMA:
         result["usage_observations"] = validate_grok_usage_events(value["usage_observations"],
             observed_events=value["event_counts"]["usage"], frames=value["frames"],
             duration_seconds=value["duration_seconds"], final_event_seconds=value["final_event_seconds"],
             events_after_final=value["events_after_final"])
+    if schema == SCHEMA:
+        rejection = value["terminal_rejection"]
+        if rejection is not None:
+            rejection = _validate_terminal_rejection(rejection)
+            if (not value["stream_tainted"] or value["events_after_final"] < 1
+                    or rejection["prior_terminal_type"] != terminal
+                    or rejection["prior_reason_code"] != value["final_reason_code"]
+                    or not value["frames"] - value["events_after_final"] < rejection["frame_ordinal"] <= value["frames"]
+                    or value["event_counts"][rejection["event_type"]] < 1
+                    or value["final_event_seconds"] is None or value["duration_seconds"] is None
+                    or not value["final_event_seconds"] <= rejection["elapsed_seconds"] <= value["duration_seconds"]):
+                raise ValueError("inconsistent Grok terminal rejection observation")
+        result["terminal_rejection"] = rejection
     return result
 
 
@@ -125,6 +186,7 @@ def grok_stream_progress_summary(value: object) -> dict:
     """
     result = validate_grok_stream_progress(value)
     result.pop("usage_observations", None)
+    result.pop("terminal_rejection", None)
     result["schema"] = LEGACY_SCHEMA
     return validate_grok_stream_progress(result)
 
@@ -168,6 +230,7 @@ class GrokStreamParser:
         self._usage_observer = GrokUsageEventObserver()
         self._state = {**_CONSTANTS, **dict.fromkeys(_COUNTERS, 0), **dict.fromkeys(_TIMES),
                        **dict.fromkeys(_BOOLS, False), "returncode": None, "timeout_phase": "none",
+                       "terminal_rejection": None,
                        "final_event_type": None, "final_reason_code": "unknown", "event_counts": dict.fromkeys(_EVENTS, 0),
                        "tool_name_counts": dict.fromkeys(_TOOLS, 0), "tool_status_counts": dict.fromkeys(_STATUSES, 0)}
 
@@ -194,6 +257,35 @@ class GrokStreamParser:
         self._inc("discarded_text_bytes", len(self._text))
         self._text.clear()
 
+    def _reject_end_trailer(self, reason, event, rejected_fields=()):
+        # Retain the first rejection only. Provider-defined keys, values, text,
+        # identifiers, usage counters and error messages never enter this row.
+        if self._state["terminal_rejection"] is None:
+            def shapes(payload):
+                payload = payload if type(payload) is dict else {}
+                names = {type(None): "null", bool: "boolean", int: "integer", float: "number",
+                         str: "string", dict: "object", list: "array"}
+                return {key: names.get(type(payload[key]), "other") if key in payload else "missing"
+                        for key in sorted(_TERMINAL_SHAPE_FIELDS)}
+            from .grok_native_usage import native_grok_observation
+            kind, stop = event.get("type"), event.get("stopReason")
+            bucket = kind if type(kind) is str and kind in _EVENTS else (
+                "auto_compact" if type(kind) is str and len(kind) <= 128 and kind.startswith("auto_compact_") else "unknown")
+            self._state["terminal_rejection"] = _validate_terminal_rejection({
+                "schema": "native-grok-terminal-rejection@1", "reason": reason,
+                "frame_ordinal": self._state["frames"], "elapsed_seconds": self._state["last_event_seconds"],
+                "event_type": bucket,
+                "prior_terminal_type": self._state["final_event_type"],
+                "prior_reason_code": self._state["final_reason_code"],
+                "incoming_reason_code": native_grok_observation(event, exit_code=0)["native_grok_reason_code"],
+                "incoming_stop_reason": stop if type(stop) is str and stop in _TERMINAL_STOP_REASONS else "unknown",
+                "field_shapes": shapes(event), "prior_field_shapes": shapes(self._final_payload),
+                "unexpected_fields": sorted(set(event) & (_TERMINAL_SHAPE_FIELDS - _END_FIELDS)),
+                "unknown_field_count": len(set(event) - _TERMINAL_SHAPE_FIELDS),
+                "rejected_fields": sorted(rejected_fields), "observation_only": True,
+                "raw_provider_data_exported": False, "completion_authority": False})
+        return False
+
     def _accept_end_trailer(self, event):
         """Keep one protocol end marker; never convert a native failure to success.
 
@@ -203,39 +295,53 @@ class GrokStreamParser:
         Diagnostics retain the first terminal's type/time and count the trailer
         as an event after it. All other post-terminal records still taint.
         """
-        if (self._end_trailer_seen or self._final_payload is None
-                or event.get("type") != "end" or self._state["final_reason_code"] == "unknown"):
-            return False
+        if event.get("type") != "end":
+            return self._reject_end_trailer("not_end_event", event)
+        if self._end_trailer_seen:
+            return self._reject_end_trailer("duplicate_end_trailer", event)
+        if self._final_payload is None:
+            return self._reject_end_trailer("prior_payload_unavailable", event)
+        if self._state["final_reason_code"] == "unknown":
+            return self._reject_end_trailer("unknown_prior_reason", event)
         if set(event) == {"type"}:
             self._end_trailer_seen = True
             return True
-        if self._state["final_event_type"] == "end" or not set(event) <= _END_FIELDS:
-            return False
+        if self._state["final_event_type"] == "end":
+            return self._reject_end_trailer("second_final_envelope", event)
+        if not set(event) <= _END_FIELDS:
+            return self._reject_end_trailer("unknown_end_fields", event)
         from .grok_native_usage import native_grok_observation
         reason = native_grok_observation(event, exit_code=0)["native_grok_reason_code"]
         if reason in {"unknown", "end_turn"} or reason != self._state["final_reason_code"]:
-            return False
+            return self._reject_end_trailer("end_reason_mismatch", event)
+        invalid_fields = []
         for key in ("usage", "modelUsage"):
             if key in event and type(event[key]) is not dict:
-                return False
+                invalid_fields.append(key)
         for key in ("usage_is_incomplete", "cost_is_partial"):
             if key in event and type(event[key]) is not bool:
-                return False
+                invalid_fields.append(key)
         for key in ("sessionId", "requestId"):
             if key in event and type(event[key]) is not str:
-                return False
+                invalid_fields.append(key)
         for key in ("num_turns", "total_cost_usd_ticks"):
             if key in event and (type(event[key]) is not int or not 0 <= event[key] <= _MAX_COUNT):
-                return False
+                invalid_fields.append(key)
         if "total_cost_usd" in event and not _number(event["total_cost_usd"]):
-            return False
+            invalid_fields.append("total_cost_usd")
+        if invalid_fields:
+            return self._reject_end_trailer("invalid_end_field_shape", event, invalid_fields)
         # Never replace frozen identity/spend with conflicting or absent data,
         # nor manufacture a combined envelope from two rows. JSON equality is
         # type-sensitive even in nested counters (unlike Python's True == 1).
-        for key in _END_FIELDS - {"type", "stopReason"}:
-            if key in self._final_payload and (key not in event or
-                    json.dumps(event[key], sort_keys=True) != json.dumps(self._final_payload[key], sort_keys=True)):
-                return False
+        frozen = (_END_FIELDS - {"type", "stopReason"}) & set(self._final_payload)
+        missing = frozen - set(event)
+        if missing:
+            return self._reject_end_trailer("missing_frozen_fields", event, missing)
+        conflicts = [key for key in frozen
+                     if json.dumps(event[key], sort_keys=True) != json.dumps(self._final_payload[key], sort_keys=True)]
+        if conflicts:
+            return self._reject_end_trailer("conflicting_frozen_fields", event, conflicts)
         self._final_payload = event
         self._end_trailer_seen = True
         return True

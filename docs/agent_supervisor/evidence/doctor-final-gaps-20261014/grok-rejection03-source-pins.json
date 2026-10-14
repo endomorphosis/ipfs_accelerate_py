@@ -1,0 +1,28 @@
+{
+  "base_commit": "3ee0d2901b9b61234ebb3efb150513e505ada6ac",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "287dd6e4869052472bc37c80853a0c3ac9e0cb02aa83fb46fe37e420c59dee7c",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/diagnostic_bridge_contract.py": "ec13f500fab51e13dacc81bea07eabeca7d134807a7826e74d0186db26b59237",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/diagnostic_custody_contract.py": "6c847721cf37d44ce622aceaf80d25077debaeaf9d43880c854d2a4b945d0736",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/diagnostic_grok_progress_contract.py": "5231b6dde3ca479ca03d17f0cb74f99420ed17c6b27cbb18ece576d70326ca04",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/diagnostic_grok_usage_contract.py": "7e908afa1956dcaa83eb4844d649a01b6c24aa3c11b7f02b2dd38364a7ea2e91",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/diagnostic_runner_contract.py": "c1fca837796dfec38c2e05e7f40a4a79998159ff494f1d059b1440c9b8323ad3",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/extract_reader_contracts.py": "19a5342ac9cd549a42e1f4cc8c8bc89b2195a9ca8967203f5d21de5ffd988e96",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/read_pilot.py": "6c892c1c85a44fb0ae9bff4eb0a552893f5267a882bd0313421b35ddb6a00d03",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/run-bundle.py": "15f17dc7413b01515fe6e240cfaed16d776d553d784dc797368a5b5e188ab1c4",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/run.py": "c3772f2981374b08fe574f7991c56b003556efd845e527fd1386c25109c86603",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/safe_diagnostics.py": "11b015c53623218e8559802a89b59292adfdae0a9dbf3a2f461922d80ca24e7a",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/test_read_pilot.py": "295bbd6201c006d971d23f8142f5f4ce0fd64f1edf1846480fcb6133e6e97446",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/test_safe_diagnostics.py": "ce955e5bdf00fc77b30d2b168b7e59f8978cb6140e243d9dbb236d1e21a899da",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py": "f348220071fd98413dc4046c703591b1a334e1448938509f522865330a5fd5ab",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "606c63c97c402c2bfca065c82d5619957840cc8634e7320f159540664288493c",
+    "test/api/test_candidate_dispatch_context.py": "3c4d8b3ba5a607da3ea100dfd7adce9d82bd64c04e551d61d0160c6ef6ce64f8",
+    "test/api/test_doctor_candidate_dispatch.py": "d52f443a060d84e081c08f8d18061342d45dedc55aae6aef41592c20a586292c",
+    "test/api/test_grok_nonstream_outcome.py": "a9eb81007646deb9e6bb8138a71439ba788d41b5f308b66cf6c24f21e1ea1787",
+    "test/api/test_grok_stream_capture.py": "d0e77f56d5c19f334f58fe8bb920f229a33565787d4686f44439dd10eecc9951",
+    "test/api/test_grok_stream_router.py": "773ae16858378f5bcc3ebad05dae9a0210526c2d75ff66453fd0f2f89807af2a",
+    "test/api/test_grok_stream_usage.py": "83e40adb35d026b4f7e5afa75fbd55859773566ec233b99a9214a370e8ee6796",
+    "test/api/test_grok_terminal_rejection.py": "bfd05ffa9d54434b648e8c93366eb53276e70496efe8f129a119cc0e94cb1c0a",
+    "test/api/test_router_implementation_runner.py": "366e101b87a5929d1c957ef032b851bbfc3de20e20e8df9003bb632e29ff119e"
+  }
+}

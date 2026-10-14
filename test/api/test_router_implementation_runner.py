@@ -328,6 +328,30 @@ def test_grok_progress_is_prefixed_advisory_and_final_metadata_survives_tls(
     assert not execution_observation(advisory)["task_execution_observed"]
 
 
+def test_terminal_rejection_survives_actual_runner_receipt_without_promoting_usage(
+        grok_progress_workspace, monkeypatch, capsys):
+    import json
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation
+    parser = GrokStreamParser()
+    parser.feed(b'{"type":"max_turns_reached"}\n'
+                b'{"type":"end","stopReason":"max_turn_requests","sessionId":null}\n')
+    snapshot = parser.snapshot()
+    def generate(prompt, **kwargs):
+        set_last_cli_observation("grok_cli", {"exit_code": 1, "native_grok_progress": snapshot})
+        raise RuntimeError("PRIVATE provider failure")
+    monkeypatch.setattr(grok_progress_workspace, "generate_text", generate)
+    with pytest.raises(RuntimeError):
+        _run_grok_progress()
+    final = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert final["native_grok_progress"] == snapshot
+    assert final["native_grok_progress"]["terminal_rejection"]["reason"] == "invalid_end_field_shape"
+    assert final["status"] == "failed"
+    assert final["native_rollout_usage"] is None
+    assert final["completion_authority"] is False
+    assert "PRIVATE" not in json.dumps(final)
+
+
 def test_grok_planning_does_not_enable_or_export_coding_progress(grok_progress_workspace, monkeypatch, capsys):
     import json
     from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation

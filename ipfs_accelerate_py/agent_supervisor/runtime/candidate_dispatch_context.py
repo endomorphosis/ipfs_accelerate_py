@@ -28,6 +28,10 @@ DOCTOR_OBSERVATION_SCHEMA = "supervisor-candidate-dispatch-observation@2"
 HANDOFF_FLAGS = ("--candidate-dispatch-handoff", "--candidate-dispatch-handoff-sha256")
 MAX_HANDOFF_BYTES = 256 * 1024
 MAX_LIFETIME_NS = 90 * 1_000_000_000
+# Doctor preparation/revalidation can exceed the ordinary publication window.
+# Its explicit owner policy already bounds the entire original coding attempt;
+# the descriptor and that unchanged deadline still constrain every dispatch.
+MAX_DOCTOR_LIFETIME_NS = 1800 * 1_000_000_000
 FLAGS = dict(proof_authority=False, formalization_authority=False,
     execution_authority=False, completion_authority=False, settlement_authority=False,
     baseline_evidence_applicable=False, source_semantics_verified=False,
@@ -147,8 +151,10 @@ def prepare_candidate_dispatch_handoff(*, snapshot, prompt, source_broker, admis
         and descriptor_raw == canonical_json(source_broker.descriptor)
         and _sha(descriptor_raw) == source_broker.descriptor_sha256,
         "candidate source descriptor publication changed")
+    doctor_selected = admitted["schema"] == "supervisor-owner-candidate-dispatch-admission@2"
+    lifetime = MAX_DOCTOR_LIFETIME_NS if doctor_selected else MAX_LIFETIME_NS
     issued = time.monotonic_ns()
-    expires = min(issued + MAX_LIFETIME_NS, source_broker.descriptor["expires_monotonic_ns"],
+    expires = min(issued + lifetime, source_broker.descriptor["expires_monotonic_ns"],
                   source_broker._deadline_ns, admitted["deadline_monotonic_ns"])
     _need(type(expires) is int and expires - issued > 1_000_000_000,
           "candidate handoff has insufficient original deadline")
@@ -169,7 +175,7 @@ def prepare_candidate_dispatch_handoff(*, snapshot, prompt, source_broker, admis
         producer_binding_sha256=metadata["producer_binding_sha256"], admission=admitted,
         prompt_observation=prompt_metadata, issued_monotonic_ns=issued, expires_monotonic_ns=expires,
         **FLAGS)
-    if admitted["schema"] == "supervisor-owner-candidate-dispatch-admission@2":
+    if doctor_selected:
         from .candidate_doctor_dispatch import prepare_doctor_dispatch_projection
         body.update(schema=DOCTOR_SCHEMA,
             doctor=prepare_doctor_dispatch_projection(prompt=prompt, admission=admitted))
@@ -265,7 +271,8 @@ def validate_candidate_dispatch_context(*, prompt, repository, workspace, bounda
             for key, expected in admitted["launch_settings"].items())
         and type(admitted.get("deadline_monotonic_ns")) is int,
         "candidate launch settings or admission differ")
-    _need(type(issued) is int and type(expires) is int and 0 < expires-issued <= MAX_LIFETIME_NS
+    lifetime = MAX_DOCTOR_LIFETIME_NS if doctor_selected else MAX_LIFETIME_NS
+    _need(type(issued) is int and type(expires) is int and 0 < expires-issued <= lifetime
         and issued <= time.monotonic_ns() < expires
         and expires <= min(current["expires_monotonic_ns"], admitted["deadline_monotonic_ns"]),
         "candidate handoff expired or exceeds original deadline")

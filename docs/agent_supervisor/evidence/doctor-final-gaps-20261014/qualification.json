@@ -1,0 +1,141 @@
+{
+  "all_test_cases_distinct": true,
+  "base_runtime_commit": "3ee0d2901b9b61234ebb3efb150513e505ada6ac",
+  "current_source_pins_match_qualified_runs": true,
+  "dependencies": {
+    "ipfs_datasets_py": {
+      "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+      "tracked_status": ""
+    },
+    "ipfs_kit_py": {
+      "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+      "tracked_status": ""
+    }
+  },
+  "developmental_runs": [
+    {
+      "counts": {
+        "error": 1,
+        "failed": 1
+      },
+      "label": "handoff-red01",
+      "qualification": false,
+      "reason": "Expected old-lifetime failure plus a secondary owner-retirement fixture error; corrected fixture and production lifetime are qualified in green01."
+    },
+    {
+      "counts": {
+        "passed": 182
+      },
+      "label": "grok-rejection01",
+      "qualification": false,
+      "reason": "Developmental subset, superseded by final seven-module qualification."
+    },
+    {
+      "counts": {
+        "passed": 387
+      },
+      "label": "grok-rejection02",
+      "qualification": false,
+      "reason": "Snapshot changed during run: an unexercised handoff test changed its future-issuance margin. Final frozen rerun is grok-rejection03."
+    }
+  ],
+  "distribution_pins": {
+    "bases": {
+      "metadata_sha256": "dec42e7aaeaa33bb2e6e0290d86ebf1c2400cb096bfd3258257dbbe93215b918",
+      "version": "0.3.0"
+    },
+    "multiformats": {
+      "metadata_sha256": "983d90687bea02cf1244f730d9b1575c4633c76f60a2177b6a19e4de7b3f101b",
+      "version": "0.3.1.post4"
+    },
+    "multiformats-config": {
+      "metadata_sha256": "bc1354b0aac1e441ea030cd6d149dcd1738a21add13c47255ab2bbc69892c754",
+      "version": "0.3.1"
+    },
+    "typing-validation": {
+      "metadata_sha256": "75c9b28c8f307a5b5d67022412095a31a1adb0b5baeec9cc10883190b5bca8b5",
+      "version": "1.2.12"
+    }
+  },
+  "failed": 0,
+  "fresh_container_qualification_included": false,
+  "fresh_live_run_after_these_fixes": false,
+  "historical_live_results_reclassified": false,
+  "limitations": [
+    "Late-worker reproduction uses an authored 95-second guard-clock advance and provider/UID doubles, with the real second child/router/source-broker path.",
+    "The C live result narrows the timing predicate, but does not identify its exact failed timestamp conjunct.",
+    "The original C end payload is unavailable. New closed rejection observations require a fresh live run to explain that provider sequence.",
+    "Public behavioral/performance validation is planned, not implemented.",
+    "Final coding-token usage, complete native usage and billing totals remain unknown for the capped live runs."
+  ],
+  "live_provider_calls": 0,
+  "maximum_doctor_attempts": 2,
+  "original_deadline_renewed": false,
+  "passed": 393,
+  "runs": [
+    {
+      "junit": "grok-rejection03.xml",
+      "label": "grok-rejection03",
+      "modules": [
+        "test/api/test_grok_terminal_rejection.py",
+        "test/api/test_grok_stream_capture.py",
+        "test/api/test_grok_stream_usage.py",
+        "test/api/test_grok_stream_router.py",
+        "test/api/test_grok_nonstream_outcome.py",
+        "test/api/test_router_implementation_runner.py",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py"
+      ],
+      "passed": 387,
+      "result": "grok-rejection03-result.json",
+      "seconds": 51.826118280994706,
+      "selector": null,
+      "source_pins": "grok-rejection03-source-pins.json"
+    },
+    {
+      "junit": "handoff-green01.xml",
+      "label": "handoff-green01",
+      "modules": [
+        "test/api/test_doctor_candidate_dispatch.py",
+        "test/api/test_candidate_dispatch_context.py",
+        "test/api/test_doctor_candidate_input_audit.py"
+      ],
+      "passed": 6,
+      "result": "handoff-green01-result.json",
+      "seconds": 208.00191650306806,
+      "selector": "grok8-late-worker or lifetime_cannot or ordinary_handoff_cannot or native_candidate_handoff_is_separate or exact_doctor_retention_and_replay",
+      "source_pins": "handoff-green01-source-pins.json"
+    }
+  ],
+  "schema": "doctor-final-gaps-qualification@1",
+  "skipped": 0,
+  "source_pin_count": 24,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "287dd6e4869052472bc37c80853a0c3ac9e0cb02aa83fb46fe37e420c59dee7c",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/diagnostic_bridge_contract.py": "ec13f500fab51e13dacc81bea07eabeca7d134807a7826e74d0186db26b59237",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/diagnostic_custody_contract.py": "6c847721cf37d44ce622aceaf80d25077debaeaf9d43880c854d2a4b945d0736",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/diagnostic_grok_progress_contract.py": "5231b6dde3ca479ca03d17f0cb74f99420ed17c6b27cbb18ece576d70326ca04",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/diagnostic_grok_usage_contract.py": "7e908afa1956dcaa83eb4844d649a01b6c24aa3c11b7f02b2dd38364a7ea2e91",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/diagnostic_runner_contract.py": "c1fca837796dfec38c2e05e7f40a4a79998159ff494f1d059b1440c9b8323ad3",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/extract_reader_contracts.py": "19a5342ac9cd549a42e1f4cc8c8bc89b2195a9ca8967203f5d21de5ffd988e96",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/read_pilot.py": "6c892c1c85a44fb0ae9bff4eb0a552893f5267a882bd0313421b35ddb6a00d03",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/run-bundle.py": "15f17dc7413b01515fe6e240cfaed16d776d553d784dc797368a5b5e188ab1c4",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/run.py": "c3772f2981374b08fe574f7991c56b003556efd845e527fd1386c25109c86603",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/safe_diagnostics.py": "11b015c53623218e8559802a89b59292adfdae0a9dbf3a2f461922d80ca24e7a",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/test_read_pilot.py": "295bbd6201c006d971d23f8142f5f4ce0fd64f1edf1846480fcb6133e6e97446",
+    "docs/agent_supervisor/evidence/doctor-repaired-live-20261014/test_safe_diagnostics.py": "ce955e5bdf00fc77b30d2b168b7e59f8978cb6140e243d9dbb236d1e21a899da",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py": "f348220071fd98413dc4046c703591b1a334e1448938509f522865330a5fd5ab",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "606c63c97c402c2bfca065c82d5619957840cc8634e7320f159540664288493c",
+    "test/api/test_candidate_dispatch_context.py": "3c4d8b3ba5a607da3ea100dfd7adce9d82bd64c04e551d61d0160c6ef6ce64f8",
+    "test/api/test_doctor_candidate_dispatch.py": "d52f443a060d84e081c08f8d18061342d45dedc55aae6aef41592c20a586292c",
+    "test/api/test_doctor_candidate_input_audit.py": "1377cfe7ff5ecc257f6b08e9570a866f8f41527e70836692a40e76fcb5e0ecd4",
+    "test/api/test_grok_nonstream_outcome.py": "a9eb81007646deb9e6bb8138a71439ba788d41b5f308b66cf6c24f21e1ea1787",
+    "test/api/test_grok_stream_capture.py": "d0e77f56d5c19f334f58fe8bb920f229a33565787d4686f44439dd10eecc9951",
+    "test/api/test_grok_stream_router.py": "773ae16858378f5bcc3ebad05dae9a0210526c2d75ff66453fd0f2f89807af2a",
+    "test/api/test_grok_stream_usage.py": "83e40adb35d026b4f7e5afa75fbd55859773566ec233b99a9214a370e8ee6796",
+    "test/api/test_grok_terminal_rejection.py": "bfd05ffa9d54434b648e8c93366eb53276e70496efe8f129a119cc0e94cb1c0a",
+    "test/api/test_router_implementation_runner.py": "366e101b87a5929d1c957ef032b851bbfc3de20e20e8df9003bb632e29ff119e"
+  },
+  "terminal_acceptance_rules_relaxed": false
+}

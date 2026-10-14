@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "seconds": 48.73697493399959,
+  "source_pins_unchanged": true,
+  "stderr": {
+    "bytes": 4500,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/bundle.stderr",
+    "sha256": "6cca09b216bc3b1a1beaabc966b5e0948fb0805e23932645e12049b4a11d7134"
+  },
+  "stdout": {
+    "bytes": 103,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/bundle.stdout",
+    "sha256": "ea429df67ef053e77ecae01f47ebb885bd9d50c1a142707d0affdee3695d19bc"
+  },
+  "step": "bundle"
+}

@@ -113,6 +113,44 @@ def test_native_candidate_handoff_is_separate_from_baseline_and_preserves_all_re
         prepared.handoff.sha256 = "f" * 64
 
 
+def test_ordinary_handoff_cannot_self_select_doctor_lifetime(dispatch_case):
+    case = dispatch_case
+    value = case.prepared.handoff.metadata
+    assert module.MAX_LIFETIME_NS == 90_000_000_000
+    expires = min(value["admission"]["deadline_monotonic_ns"],
+                  case.prepared.source_broker.descriptor["expires_monotonic_ns"])
+    assert expires-value["issued_monotonic_ns"] > module.MAX_LIFETIME_NS
+    path = case.prepared.handoff.path
+    original = path.read_bytes()
+    request = dict(case.request)
+    try:
+        # Keeping schema1 cannot extend its 90-second publication window.
+        value["expires_monotonic_ns"] = expires
+        raw = module.canonical_json(value)
+        path.chmod(0o640); path.write_bytes(raw); path.chmod(0o440)
+        request["handoff_sha256"] = sha(raw)
+        with pytest.raises(ValueError, match="expired or exceeds"):
+            module.validate_candidate_dispatch_context(**request)
+        # Changing schema names still requires the complete Doctor policy and
+        # captured constraints; metadata cannot authorize the longer window.
+        value.update(schema=module.DOCTOR_SCHEMA, doctor={})
+        value["admission"]["schema"] = "supervisor-owner-candidate-dispatch-admission@2"
+        wire = json.loads(request["prompt"])
+        wire.update(schema="supervisor-owner-candidate-router-input@2",
+            doctor_context={}, doctor_advisory="invented advice")
+        request["prompt"] = module.canonical_json(wire).decode()
+        value.update(provider_input_sha256=sha(request["prompt"].encode()),
+            provider_input_bytes=len(request["prompt"].encode()))
+        value["admission"]["candidate_prompt_sha256"] = value["provider_input_sha256"]
+        raw = module.canonical_json(value)
+        path.chmod(0o640); path.write_bytes(raw); path.chmod(0o440)
+        request["handoff_sha256"] = sha(raw)
+        with pytest.raises(ValueError, match="closed Doctor candidate handoff projection"):
+            module.validate_candidate_dispatch_context(**request)
+    finally:
+        path.chmod(0o640); path.write_bytes(original); path.chmod(0o440)
+
+
 @pytest.mark.parametrize("change", ["source", "support", "deleted", "canonical", "prompt", "settings",
     "digest", "mode", "symlink", "descriptor", "expired", "symbolic_pin", "population"])
 def test_handoff_refuses_drift_rebinding_or_unprotected_files(dispatch_case, change, monkeypatch):

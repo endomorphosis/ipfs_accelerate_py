@@ -54,6 +54,11 @@ from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.llm_allocation import intelligence_index
 from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation
 prompt=sys.stdin.buffer.read().decode(); second=config['attempt']==2
+if second and config.get('dispatch_clock_advance_ns'):
+    from time import monotonic_ns as native_monotonic_ns
+    from ipfs_accelerate_py.agent_supervisor.runtime import candidate_dispatch_context as dispatch_gate
+    dispatch_gate.time=SimpleNamespace(monotonic_ns=lambda:
+        native_monotonic_ns()+config['dispatch_clock_advance_ns'])
 protocol=candidate if second else source
 protocol.transport.os=SimpleNamespace(**{name:getattr(os,name) for name in dir(os)
     if name not in {'getuid','geteuid','access'}},getuid=lambda:config['worker_uid'],
@@ -166,19 +171,22 @@ def _config(broker, launch, imports, attempt):
 def doctor_dispatch_case(doctor_service, monkeypatch, tmp_path, request):
     service, doctor_request = doctor_service
     selected = getattr(request, "param", "codex_cli")
-    provider, turns = selected if isinstance(selected, tuple) else (selected, 128)
+    selected = selected if isinstance(selected, tuple) else (selected, 128)
+    provider, turns = selected[:2]
+    timeout = selected[2] if len(selected) > 2 else 180
+    dispatch_clock_advance_ns = selected[3]*1_000_000_000 if len(selected) > 3 else 0
     extra = ["--doctor-residual-artifact", str(doctor_request["artifact"]),
         "--doctor-residual-sha256", doctor_request["expected_sha256"],
         "--doctor-residual-task-cid", doctor_request["task_cid"]]
     original = _prepared(service, extra)
     request.addfinalizer(original.close)
     argv = ["--provider", provider, "--model", "grok-4.7" if provider == "grok_cli" else "gpt-6.1-sol",
-        "--timeout", "180", "--max-output-tokens", "128", "--semantic-repository", str(original.repository),
+        "--timeout", str(timeout), "--max-output-tokens", "128", "--semantic-repository", str(original.repository),
         "--source-view-profile", original._binding["profile"], *extra]
     if turns != 128:
         argv.extend(("--grok-coding-max-turns", str(turns)))
     launch = owner.capture_original_coding_launch(source_broker=original, argv=argv,
-        absolute_deadline=time.monotonic()+179, doctor_coding_policy="doctor-coding-two-attempts@1")
+        absolute_deadline=time.monotonic()+timeout-1, doctor_coding_policy="doctor-coding-two-attempts@1")
     imports = [str(Path(owner.__file__).resolve().parents[3])]
     imports += [str(Path(importlib.util.find_spec(name).origin).resolve().parents[1])
         for name in ("ipfs_datasets_py", "ipfs_kit_py")]
@@ -207,13 +215,16 @@ def doctor_dispatch_case(doctor_service, monkeypatch, tmp_path, request):
         descriptor_sha256=broker.descriptor_sha256, descriptor_path=broker.descriptor_path,
         launch_settings=launch.launch_settings)
     case = SimpleNamespace(original=original, launch=launch, retired=retired, prepared=prepared,
-        request=args, first_receipt=first_receipt, imports=imports, tmp_path=tmp_path)
+        request=args, first_receipt=first_receipt, imports=imports, tmp_path=tmp_path,
+        dispatch_clock_advance_ns=dispatch_clock_advance_ns)
     try:
         yield case
     finally:
         child = prepared.source_broker._process
         if child is not None and child.poll() is None:
             child.kill(); child.wait(timeout=5)
+        if child is not None and launch._state.second_retirement is None:
+            owner.retire_coding_worker(launch=launch, process=child, source_broker=prepared.source_broker)
         prepared.close()
         prepared.handoff.close()
 
@@ -237,6 +248,41 @@ def test_doctor_handoff_preserves_exact_constraints_and_policy(doctor_dispatch_c
     assert wire["doctor_context"] == dict(schema="supervisor-doctor-candidate-context-binding@1",
         sha256=sha(gate.canonical_json(projection["context"])), bytes=len(gate.canonical_json(projection["context"])))
     assert observed["doctor_candidate_dispatch"]["source_files"] > observed["source_files"]
+
+
+def test_doctor_lifetime_cannot_exceed_original_deadline_descriptor_or_absolute_ceiling(
+        doctor_dispatch_case, monkeypatch):
+    case = doctor_dispatch_case
+    path = case.prepared.handoff.path
+    original = case.prepared.handoff.metadata_bytes
+    metadata = case.prepared.handoff.metadata
+    admitted_deadline = metadata["admission"]["deadline_monotonic_ns"]
+    descriptor_deadline = case.prepared.source_broker.descriptor["expires_monotonic_ns"]
+    assert metadata["expires_monotonic_ns"] == min(admitted_deadline, descriptor_deadline)
+    assert gate.MAX_DOCTOR_LIFETIME_NS == 1800_000_000_000
+    for change in ("original_expired", "descriptor_expired", "beyond_original", "beyond_descriptor",
+                   "excessive_lifetime", "future_issuance", "missing_policy", "wrong_policy"):
+        value, request = copy.deepcopy(metadata), dict(case.request)
+        with monkeypatch.context() as patch:
+            if change in ("original_expired", "descriptor_expired"):
+                now = (admitted_deadline if change == "original_expired" else descriptor_deadline)+1
+                patch.setattr(gate, "time", SimpleNamespace(monotonic_ns=lambda: now))
+            elif change == "beyond_original": value["expires_monotonic_ns"] = admitted_deadline+1
+            elif change == "beyond_descriptor": value["expires_monotonic_ns"] = descriptor_deadline+1
+            elif change == "excessive_lifetime":
+                value["issued_monotonic_ns"] = value["expires_monotonic_ns"]-gate.MAX_DOCTOR_LIFETIME_NS-1
+            elif change == "future_issuance": value["issued_monotonic_ns"] = time.monotonic_ns()+30_000_000_000
+            elif change == "missing_policy": value["doctor"].pop("coding_policy")
+            else: value["doctor"]["coding_policy"]["deadline_monotonic_ns"] += 1
+            try:
+                raw = gate.canonical_json(value)
+                path.chmod(0o640); path.write_bytes(raw); path.chmod(0o440)
+                request["handoff_sha256"] = sha(raw)
+                with pytest.raises(ValueError):
+                    gate.validate_candidate_dispatch_context(**request)
+            finally:
+                path.chmod(0o640); path.write_bytes(original); path.chmod(0o440)
+    assert gate.validate_candidate_dispatch_context(**case.request)["doctor_candidate_dispatch"]["original_obligations_preserved"]
 
 
 def test_doctor_worker_refuses_rehashed_context_policy_and_dependency_changes(doctor_dispatch_case):
@@ -275,7 +321,8 @@ def test_doctor_worker_refuses_rehashed_context_policy_and_dependency_changes(do
     assert gate.validate_candidate_dispatch_context(**case.request)["doctor_candidate_dispatch"]["original_obligations_preserved"]
 
 
-@pytest.mark.parametrize("doctor_dispatch_case", ["codex_cli", "grok_cli", ("grok_cli", 8)], indirect=True)
+@pytest.mark.parametrize("doctor_dispatch_case", ["codex_cli", "grok_cli", ("grok_cli", 8),
+    pytest.param(("grok_cli", 8, 600, 95), id="grok8-late-worker")], indirect=True)
 @pytest.mark.parametrize("drift", [False, True])
 def test_two_native_router_children_and_late_doctor_preflight(doctor_dispatch_case, monkeypatch, drift):
     case = doctor_dispatch_case
@@ -289,7 +336,14 @@ def test_two_native_router_children_and_late_doctor_preflight(doctor_dispatch_ca
             case.launch.launch_settings["grok_coding_max_turns"])
         config = _config(broker, case.launch, case.imports, 2)
         config.update(handoff=str(prepared.handoff.path), handoff_sha256=prepared.handoff.sha256,
-            timeout=int(command[command.index("--timeout")+1]))
+            timeout=int(command[command.index("--timeout")+1]),
+            dispatch_clock_advance_ns=case.dispatch_clock_advance_ns)
+        if case.dispatch_clock_advance_ns:
+            value = prepared.handoff.metadata
+            advanced = time.monotonic_ns()+case.dispatch_clock_advance_ns
+            assert value["issued_monotonic_ns"]+90_000_000_000 < advanced
+            assert advanced < min(broker.descriptor["expires_monotonic_ns"],
+                value["admission"]["deadline_monotonic_ns"])
         if drift:
             config["drift_after_preflight"] = prepared.handoff.metadata["doctor"]["context"]["unchanged_inventory_paths"][0]
         with output_path.open("wb") as out, error_path.open("wb") as err:
@@ -309,6 +363,8 @@ def test_two_native_router_children_and_late_doctor_preflight(doctor_dispatch_ca
     assert receipt["candidate_round_preflight"]["requests"] == 1
     assert receipt["candidate_round_preflight"]["provider_input_bytes"] == 0
     assert receipt["candidate_round_dispatch"]["doctor_candidate_dispatch"]["proposal_budget"] == case.launch.doctor_coding_policy["proposal_budget"]
+    assert prepared.handoff.metadata["expires_monotonic_ns"] <= min(
+        broker.descriptor["expires_monotonic_ns"], case.launch.doctor_coding_policy["deadline_monotonic_ns"])
     if drift:
         assert receipt["failure_phase"] == "candidate_dispatch_context"
     else:

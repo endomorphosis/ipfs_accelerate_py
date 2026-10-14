@@ -1157,3 +1157,27 @@ All recorded current source pins match their qualified runs. Tests also confirm
 explicit eight-turn propagation through two native child/router paths and the
 installed worker parser, using provider/UID doubles. The live second-child cause
 remains unknown and requires fresh container evidence.
+
+The [fresh repaired diagnostic run](evidence/doctor-repaired-live-20261014/README.md)
+now verifies the sole observed coding input and retains previously lost closed
+child-error observations. Official reward remains zero. Both coding children
+started and exited 1, but only one coding router receipt was retained; the
+22,214-token subtotal covers planning alone. The new candidate error reaches
+the handoff lifetime/current-clock/original-deadline predicate in the frozen
+runtime. Its exact failed conjunct remains unknown because timestamps were not
+exported. Grok's terminal/end sequence still taints the stream, so final coding
+usage remains unavailable. These results qualify the audit and diagnostic
+improvements live, while narrowing the remaining continuation and accounting
+gaps. They do not establish savings or a completed benchmark task.
+
+The subsequent [lifetime and rejection-diagnostic qualification](evidence/doctor-final-gaps-20261014/README.md)
+passed 393 distinct cases with all 24 recorded source hashes and dependency pins
+unchanged. An authored second-worker test reproduced the ordinary 90-second
+handoff expiry after a 95-second guard-clock advance. Typed Doctor handoffs now
+remain usable within a 1,800-second ceiling and the unchanged original deadline
+and descriptor; ordinary handoffs retain 90 seconds. Grok progress now records
+closed rejection reasons and field types without changing terminal acceptance
+or exporting provider text. Historical progress schemas remain supported, and
+unknown native usage remains unknown. No new live run has exercised these final
+changes. Public behavioral/performance validation and live final-usage recovery
+remain open; the earlier live scores and token observations are unchanged.
