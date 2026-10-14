@@ -48,7 +48,7 @@ Three deterministic qualifications preserve complete supplied populations and or
 
 ## LAC-S9-044 Qualify complete producer chains with page evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Priority: P0
