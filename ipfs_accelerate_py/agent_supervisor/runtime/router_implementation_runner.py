@@ -622,6 +622,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         world_task_packet: PreparedRepositoryWorldPacket | None = None,
         world_packet_artifact_dir: Path | None = None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
+    if world_task_packet is not None:
+        from .repository_world_packet import PreparedRepositoryWorldPacket
+        if type(world_task_packet) is not PreparedRepositoryWorldPacket:
+            raise ValueError("world task dispatch requires an exact prepared repository packet")
+        PreparedRepositoryWorldPacket.require_provider_dispatch(world_task_packet)
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
     from ipfs_accelerate_py.llm_router import generate_text, get_llm_provider
@@ -802,7 +807,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     world_packet_receipt = None
     if world_task_packet is not None:
         failure_phase = "world_task_packet"
-        world_packet_receipt = world_task_packet.validate_current(workspace=root, task_text=prompt)
+        world_packet_receipt = PreparedRepositoryWorldPacket.validate_current(world_task_packet, workspace=root, task_text=prompt)
         router_prompt = world_task_packet.prompt
     if semantic_repository is not None:
         semantic_repository = Path(semantic_repository).resolve(strict=True)
@@ -1369,7 +1374,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             receipt["terminal_semantic_scope_dispatch_rechecked"] = True
         if world_task_packet is not None:
             failure_phase = "world_task_packet_currentness"
-            current_packet = world_task_packet.validate_current(workspace=root, task_text=prompt)
+            PreparedRepositoryWorldPacket.require_provider_dispatch(world_task_packet)
+            current_packet = PreparedRepositoryWorldPacket.validate_current(world_task_packet, workspace=root, task_text=prompt)
             if current_packet != world_packet_receipt:
                 raise ValueError("world task packet changed before provider dispatch")
             receipt["world_task_packet"]["dispatch_rechecked"] = True

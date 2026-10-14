@@ -231,7 +231,12 @@ def replay_repository_world_packet(data: bytes, *, expected_sha256: str) -> Repl
         _require(set(artifact) == _ARTIFACT_FIELDS and artifact["schema"] == ARTIFACT_SCHEMA
                  and artifact["mode"] == "historical_only", "artifact_schema")
         recipe = artifact["recipe"]
-        _require(type(recipe) is dict and set(recipe) == _RECIPE_FIELDS, "recipe_schema")
+        _require(type(recipe) is dict and set(recipe) in
+                 (_RECIPE_FIELDS, _RECIPE_FIELDS | {"validation_profile"}), "recipe_schema")
+        if "validation_profile" in recipe:
+            _require(type(recipe["validation_profile"]) is str
+                     and recipe["validation_profile"] == "read_only_observation@1",
+                     "validation_profile")
         _require(type(artifact["packet_receipt"]) is dict, "packet_receipt_schema")
         with public_replay_without_metadata():
             capsule = ContextCapsule.from_dict(artifact["capsule"])
