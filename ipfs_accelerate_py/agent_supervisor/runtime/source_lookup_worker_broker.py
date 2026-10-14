@@ -13,6 +13,7 @@ from pathlib import Path
 import socket
 import stat
 import struct
+import subprocess
 import threading
 import time
 import uuid
@@ -30,6 +31,7 @@ MAX_TOTAL_RESPONSE_BYTES = 524288
 MAX_SESSION_SECONDS = 1800
 MAX_RESPONSE_BYTES = 32768
 AUDIT_SCHEMA = "supervisor-source-worker-session@1"
+_POPEN_TYPE = subprocess.Popen
 _PUBLIC_FIELDS = ("raw_path_hex", "source_cid", "slice_cid", "encoding", "content",
     "offset", "end_offset", "source_bytes", "source_complete", "next_continuation",
     "unresolved_frontier", "working_source_verified", "source_check_profile",
@@ -88,6 +90,13 @@ class SourceLookupWorkerBroker:
               "bounded source worker session required")
         self._task_admission = self._original_task_admission = task_admission
         self._worktree_admission = self._original_worktree_admission = worktree_admission
+        self._spawn_task_nomination = getattr(task_admission, "_nominated_source_scope", None)
+        self._spawn_allocation_nomination = getattr(worktree_admission, "_nominated_source_scope", None)
+        self._spawn_original_policy = (task_admission, worktree_admission,
+                                       self._spawn_task_nomination, self._spawn_allocation_nomination)
+        self._spawn_prepared = self._original_spawn_prepared = None
+        self._spawn_preparing = self._spawning = self._spawn_consumed = False
+        self._spawn_lock = threading.RLock()
         if task_admission is not None:
             from .current_source_task_admission import NativeSourceTaskAdmission
             _need(type(task_admission) is NativeSourceTaskAdmission
@@ -295,10 +304,111 @@ class SourceLookupWorkerBroker:
               "source worker native task admission changed")
         _need(self._worktree_admission is self._original_worktree_admission,
               "source worker native worktree admission changed")
+        self._spawn_policy_current()
         if self._worktree_admission is not None:
-            self._worktree_admission.require_current()
+            if self._spawn_allocation_nomination is not None:
+                return self._worktree_admission.require_nominated_source_scope()
+            return self._worktree_admission.require_current()
         elif self._task_admission is not None:
-            self._task_admission.require_current()
+            if self._spawn_task_nomination is not None:
+                return self._task_admission.require_nominated_source_scope()
+            return self._task_admission.require_current()
+
+    def _spawn_policy_current(self):
+        """Original nomination presence cannot be removed to select a legacy lane."""
+        policy = (self._task_admission, self._worktree_admission,
+                  self._spawn_task_nomination, self._spawn_allocation_nomination)
+        _need(type(self._spawn_original_policy) is tuple and len(self._spawn_original_policy) == len(policy)
+              and all(actual is original for actual, original in zip(policy, self._spawn_original_policy)),
+              "source worker original launch policy changed")
+        for handle, retained in ((self._task_admission, self._spawn_task_nomination),
+                                 (self._worktree_admission, self._spawn_allocation_nomination)):
+            if handle is not None:
+                _need(handle._nominated_source_scope is retained
+                      and handle._original_nominated_source_scope is retained,
+                      "source worker original nomination join changed")
+
+    def _spawn_current(self):
+        """Close native/CAS callbacks before exact source and endpoint checks."""
+        self._spawn_policy_current()
+        self._context_current()
+        before = self._task_current()
+        with self._owner_lock:
+            self._current_owner()
+        # CAS methods may enter native coordinator observers. Replay outside
+        # SERVER, then close both owner and source state below.
+        self._canonical._load()
+        self._service._load()
+        # Nominated observers may replay CAS and run coordinator clocks. Enter
+        # these outside SERVER, then close with detached checks only.
+        after = self._task_current()
+        _need(canonical_json_bytes(before) == canonical_json_bytes(after),
+              "source worker native launch state changed during retained replay")
+        self._context_current()
+        with self._owner_lock:
+            self._current_owner()
+            self._spawn_policy_current()
+            if self._task_admission is not None:
+                self._task_admission._native()
+            if self._worktree_admission is not None:
+                allocation = self._worktree_admission
+                fixed, record, _identity, _binding = allocation._observe()
+                stable = record.to_dict()
+                renewal = tuple(stable.pop(key) for key in ("fence", "updated_at", "expires_at"))
+                _need(fixed == allocation._fixed_files
+                      and protocol.canonical_json(stable) == allocation._lifecycle_bytes
+                      and all(current >= prior for current, prior in zip(renewal, allocation._renewal)),
+                      "source worker allocation custody changed after launch fences")
+                if self._spawn_allocation_nomination is not None:
+                    allocation._require_nominated_join()
+            elif self._spawn_task_nomination is not None:
+                retained = self._spawn_task_nomination
+                _need(type(retained) is tuple and len(retained) == 7,
+                      "source worker original task nomination is invalid")
+                scope, frozen, expected, paths, source, binding_bytes, cas = retained
+                value = scope.observation()
+                _need(source is self._service and cas is self._cas
+                      and binding_bytes == self._binding_bytes
+                      and canonical_json_bytes(value) == frozen and value["scope_cid"] == expected
+                      and paths == self._service._paths
+                      and paths == tuple(row["raw_path_hex"] for row in value["selected"]),
+                      "source worker nominated task binding changed after launch fences")
+            refs = self.descriptor["source_refs"]
+            _need(protocol.canonical_json(refs) == self._source_refs_bytes
+                  and self._source_pairs == tuple((row["raw_path_hex"], row["source_cid"]) for row in refs)
+                  and self._service._paths == tuple(row["raw_path_hex"] for row in refs),
+                  "source worker original selected refs changed")
+            self._canonical._check_source()
+            self._service._check_source()
+            self._current_owner()
+            self._spawn_policy_current()
+        return canonical_json_bytes(dict(native=after,
+            descriptor_sha256=_sha(self._descriptor_bytes), source_binding_sha256=_sha(self._binding_bytes),
+            canonical_binding_sha256=_sha(self._canonical_binding_bytes),
+            source_refs_sha256=_sha(self._source_refs_bytes)))
+
+    def require_before_spawn(self):
+        """Prepare this live session once; return no serialized launch authority.
+
+        The trusted caller retains its literal Popen and child cleanup duties.
+        These sequential checks do not admit a command, provider or worker UID.
+        """
+        with self._spawn_lock:
+            _need(not self._spawn_preparing and not self._spawning,
+                  "source worker launch preparation reentry refused")
+            _need(not self._spawn_consumed and not self._registered.is_set()
+                  and self._process is None and self._spawn_prepared is None
+                  and self._original_spawn_prepared is None,
+                  "source worker launch preparation is already consumed")
+            self._spawn_preparing = True
+            try:
+                current = self._spawn_current()
+                prepared = (self, self._original_refs, self._original_task_admission,
+                            self._original_worktree_admission, self._spawn_task_nomination,
+                            self._spawn_allocation_nomination, self._original_client, current)
+                self._spawn_prepared = self._original_spawn_prepared = prepared
+            finally:
+                self._spawn_preparing = False
 
     def _context_current(self):
         _need(self._live() and protocol.canonical_json(self.descriptor) == self._descriptor_bytes,
@@ -332,12 +442,68 @@ class SourceLookupWorkerBroker:
             or self._process is not None and self._process.poll() is not None)
 
     def note_spawned(self, process):
+        _need(type(self._spawn_original_policy) is tuple and len(self._spawn_original_policy) == 4,
+              "source worker original launch policy is unavailable")
+        if self._spawn_original_policy[0] is not None or self._spawn_original_policy[1] is not None:
+            return self._note_native_spawned(process)
         _need(not self._closed and not self._registered.is_set() and process.poll() is None,
               "source worker requires one live spawned child")
         child = protocol.process_identity(process.pid)
         _need(child["parent_pid"] == os.getpid(), "source worker child belongs to another owner")
         self._child, self._process = child, process
         self._registered.set()
+
+    def _note_native_spawned(self, process):
+        with self._spawn_lock:
+            # Duplicate and callback attempts must not retire a winning session.
+            _need(not self._spawn_preparing and not self._spawning,
+                  "source worker birth registration reentry refused")
+            _need(not self._spawn_consumed and not self._registered.is_set()
+                  and self._process is None, "source worker child registration is already consumed")
+            _need(type(process) is _POPEN_TYPE and getattr(process, "_child_created", False) is True
+                  and type(getattr(process, "pid", None)) is int and process.pid > 0
+                  and hasattr(process, "_waitpid_lock") and hasattr(process, "returncode"),
+                  "source worker requires an actual initialized subprocess.Popen")
+            self._spawning = self._spawn_consumed = True
+            self._process = process
+            try:
+                prepared = self._spawn_prepared
+                _need(type(prepared) is tuple and len(prepared) == 8
+                      and prepared is self._original_spawn_prepared
+                      and prepared[0] is self and prepared[1] is self._original_refs
+                      and prepared[2] is self._original_task_admission
+                      and prepared[3] is self._original_worktree_admission
+                      and prepared[4] is self._spawn_task_nomination
+                      and prepared[5] is self._spawn_allocation_nomination
+                      and prepared[6] is self._original_client,
+                      "source worker requires its original successful launch preparation")
+                _need(not self._closed and process.poll() is None, "source worker spawned child is not live")
+                child = protocol.process_identity(process.pid)
+                _need(child["parent_pid"] == os.getpid()
+                      and os.readlink("/proc/" + str(process.pid) + "/cwd") == str(self.workspace),
+                      "source worker child birth or allocated cwd differs")
+                self._child = child
+                current = self._spawn_current()
+                final = protocol.process_identity(process.pid)
+                _need(final == child and final["parent_pid"] == os.getpid()
+                      and process.poll() is None
+                      and os.readlink("/proc/" + str(process.pid) + "/cwd") == str(self.workspace),
+                      "source worker child birth or cwd changed during registration")
+                _need(prepared is self._spawn_prepared is self._original_spawn_prepared
+                      and current == prepared[7], "source worker prepared launch state changed after birth")
+                self._registered.set()
+            except BaseException as error:
+                # The actual child remains retained and belongs to the caller.
+                # Never admit, retry, or downgrade a refused post-birth session.
+                self._registered.clear()
+                try:
+                    self.close()
+                except BaseException as cleanup_error:
+                    if hasattr(error, "add_note"):
+                        error.add_note("source worker cleanup failed: " + type(cleanup_error).__name__)
+                raise
+            finally:
+                self._spawning = False
 
     def _peer(self, channel):
         _need(self._registered.wait(timeout=2) and self._live(), "source worker is inactive")

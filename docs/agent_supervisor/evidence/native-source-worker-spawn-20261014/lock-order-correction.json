@@ -1,0 +1,34 @@
+{
+  "corrected_source_binding": {
+    "bytes": 42011,
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+    "sha256": "29023a1bddcba90bf23496cb2293611d4c95d7d3c82b382d52d708e0dfa75e13"
+  },
+  "counts_not_reused_as_final_qualification": true,
+  "interrupted_attempt": "qualification-01",
+  "interrupted_collected_tests": 272,
+  "interrupted_exit_code": 1,
+  "interrupted_junit": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 238
+  },
+  "interrupted_seconds": 804.628,
+  "interrupted_source_before_after_equal": true,
+  "new_bindings": 218,
+  "new_suites": 12,
+  "original_commands_sha256": "9f966fda17187ace290aa74f50b0f8baf2935664353e20cd8310e9dbb77644c6",
+  "original_frozen_inputs_path": "docs/agent_supervisor/evidence/native-source-worker-spawn-20261014/qualification-01/frozen-inputs",
+  "original_logs_and_snapshots_modified": false,
+  "original_roster_and_inventory_reconstructed_from_retained_report_and_verified_against_original_sha256": true,
+  "original_source_binding": {
+    "bytes": 41878,
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+    "repository": "accelerator",
+    "sha256": "5b2fa2277067e03014e2712dc0837c61d92285649bd412687174630f73e035ee"
+  },
+  "reason": "Move the two middle CAS replays outside SERVER because callbacks can enter COOR; preserve surrounding native/owner/current-source closing checks.",
+  "runner_change": "Snapshot the additional lock-order test; original runner remains in qualification-01 snapshots.",
+  "schema": "native-source-worker-spawn-lock-correction@1"
+}

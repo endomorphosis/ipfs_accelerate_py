@@ -1,0 +1,28 @@
+{
+  "corrected_source_binding": {
+    "bytes": 14056,
+    "path": "test/api/test_native_source_worker_spawn.py",
+    "sha256": "3db84d7e29d4dfed037fd7c9ef84b2f2b675dbec6ee96ff4a79ddc577c54a54b"
+  },
+  "original_attempt": "qualification-02",
+  "original_collected_tests": 276,
+  "original_commands_sha256": "932e717d136bc3a7ede36bb4f6b92b4f3a5d99c33262ef7f19c0d80d36461188",
+  "original_junit": {
+    "errors": 0,
+    "failures": 1,
+    "skipped": 0,
+    "tests": 276
+  },
+  "original_seconds": 1045.527,
+  "original_source_binding": {
+    "bytes": 13979,
+    "path": "test/api/test_native_source_worker_spawn.py",
+    "repository": "accelerator",
+    "sha256": "b2bd1e69f4546901f2df51cd54a1f5efdb46d6a5a72d57e0d605d16fe44cdc70"
+  },
+  "prior_raw_evidence_modified": false,
+  "production_source_sha256": "29023a1bddcba90bf23496cb2293611d4c95d7d3c82b382d52d708e0dfa75e13",
+  "reason": "Legacy no-handles fixture serves its own original SOURCE; use that fixture payload and expected bytes instead of native-task SOURCE.",
+  "runtime_production_source_unchanged": true,
+  "schema": "native-source-worker-spawn-fixture-correction@1"
+}

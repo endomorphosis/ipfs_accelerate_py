@@ -1,0 +1,11 @@
+{
+  "matching_owned_cwd": "/home/barberb/lift_coding/.worktrees/native-source-worker-handoff-20261014",
+  "matching_private_seal_database": "/tmp/native-source-worker-spawn-qualification-01-c5oo5urf/seal.duckdb",
+  "observed_at_utc": "2026-10-14T04:45:08.444222+00:00",
+  "owned_pytest_pid": 486722,
+  "qualification": "qualification-01",
+  "reason": "Static peer review identified callback COOR entry during middle CAS loads under SERVER; preserve first attempt and qualify lock-order correction before publication.",
+  "schema": "native-source-worker-spawn-qualification-interruption@1",
+  "signal": "SIGINT",
+  "source_files_modified_before_interruption": false
+}

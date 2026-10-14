@@ -1,0 +1,322 @@
+{
+  "base_revision": "83ad1ca1a43ae53d3642efe8799d25a9df8cebf3",
+  "current_qualification": {
+    "attempt": "qualification-02",
+    "current_working_broker": {
+      "bytes": 42011,
+      "comparison_note": "This is the separately frozen qualification candidate; unchanged Git-object comparisons below are base-to-incoming only.",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "sha256": "29023a1bddcba90bf23496cb2293611d4c95d7d3c82b382d52d708e0dfa75e13"
+    },
+    "incoming_acceptance_test_included_in_current_run": false,
+    "incoming_diff_paths_intersect_listed_accelerator_bindings": [],
+    "listed_bindings": 218,
+    "phase": "docs/agent_supervisor/evidence/native-source-worker-spawn-20261014",
+    "repository_counts": {
+      "accelerator": 167,
+      "datasets_execution_checkout": 51
+    },
+    "source_inventory_sha256": "bf2f870a178907d8d770d0a2d36fd3a6e32b32d5a5f185587ca8d303ebe0e6de",
+    "status_at_review": "running"
+  },
+  "decision": "No change to existing source routes/import wiring found in the exact net diff. The declaration API may be reconciled after the current qualification passes, without claiming that its new tests or checker command were qualified here.",
+  "exact_existing_path_checks": [
+    {
+      "base_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+      "bytes": 27415,
+      "incoming_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+      "sha256": "195c2c3d5c7173702ab2252b7cbf522fd51bff072e677759f99f7aa15c2e2373",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "5fd963f94a3273afffd5f24ac28c42f314efcef0",
+      "bytes": 25857,
+      "incoming_git_blob": "5fd963f94a3273afffd5f24ac28c42f314efcef0",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+      "sha256": "eece603dcd9f72d28d9aa572934fd23785f87602ecb36d8c0c2e2d97e0712df5",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "e3be439af7a835beaca8a7a675fa59a94c4765d3",
+      "bytes": 30908,
+      "incoming_git_blob": "e3be439af7a835beaca8a7a675fa59a94c4765d3",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+      "sha256": "4597ee652dc5818ff990abf668b31fa2b84a0c14e626c490c29b86ee5af74916",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "a0bfbe776b0be69c9d1853addd75f0c8ed4ba808",
+      "bytes": 31581,
+      "incoming_git_blob": "a0bfbe776b0be69c9d1853addd75f0c8ed4ba808",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "sha256": "9689548701f833b3c7acd8b91a17cd21cfc114c4d0e3588efb191c2c1488893f",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "d39ca51386dd311726195aeb45af40d605fd45e5",
+      "bytes": 22699,
+      "incoming_git_blob": "d39ca51386dd311726195aeb45af40d605fd45e5",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_client.py",
+      "sha256": "330ab86a0faad1fbdb87653be98403a6fdf39437c7828507e3bc24d7d5204a1e",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "d7977c6dd9a3865da0d80c093852d16245310fb4",
+      "bytes": 70458,
+      "incoming_git_blob": "d7977c6dd9a3865da0d80c093852d16245310fb4",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "e710477b1beb3be347c878096013c56a4aba9db50d9e94368d5204d0a709d078",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "b95c1fabcfe6891b6d72710b24457ebe009e0afe",
+      "bytes": 35515,
+      "incoming_git_blob": "b95c1fabcfe6891b6d72710b24457ebe009e0afe",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "c8ef9c0285e8dbaa99e0f3b6b0ac4b3131e4c10b0bea9d912632ca64062d28b2",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "2181d8dc1da4668db8c6bb94d7a91812bfbc0a1c",
+      "bytes": 26518,
+      "incoming_git_blob": "2181d8dc1da4668db8c6bb94d7a91812bfbc0a1c",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+      "sha256": "8ffd274c62e66449c2864256879e478315252e379df724c05767961975fa17aa",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "ec4cf689cef0ab15a154f00a1194e27ca4dcb483",
+      "bytes": 12111,
+      "incoming_git_blob": "ec4cf689cef0ab15a154f00a1194e27ca4dcb483",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_semantic_scope.py",
+      "sha256": "d5ef1435776d8aee797d5399f462502c31f8ec57b1199c37d909fdf00dc65fcf",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "0d0aeb3dae917a7c2c671d1ea4423f6b8402f015",
+      "bytes": 101,
+      "incoming_git_blob": "0d0aeb3dae917a7c2c671d1ea4423f6b8402f015",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/__init__.py",
+      "sha256": "769f7f939206593882af4bc689c005f0eb61d8e7456cb7ccb873b300927299db",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "429cb36f5eefb62bbcff99dd7dd8bc6b63bb256c",
+      "bytes": 240435,
+      "incoming_git_blob": "429cb36f5eefb62bbcff99dd7dd8bc6b63bb256c",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+      "sha256": "884a7f5c83bb3214f4df9e4c40b54553b3ee69d38d5c71ec029de1df269188f9",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "fe1dc2fecaa138bf049024b7b27df75a2d08e40d",
+      "bytes": 116093,
+      "incoming_git_blob": "fe1dc2fecaa138bf049024b7b27df75a2d08e40d",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "78ea93c0d204b9029b6397457b5f49f33ec1ccb60e42571e668fcb05ba3b407b",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "dcebc7fef637bfa35d89f6423f45d2274e04ba3f",
+      "bytes": 81653,
+      "incoming_git_blob": "dcebc7fef637bfa35d89f6423f45d2274e04ba3f",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_plan_admission.py",
+      "sha256": "dd3aba11ec9e75cd6845a3b14f2c1eff5079a9dba6557c5e575f388557651f00",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "8671043d6697410587b751051a8411a882b61260",
+      "bytes": 315155,
+      "incoming_git_blob": "8671043d6697410587b751051a8411a882b61260",
+      "path": "ipfs_accelerate_py/agent_supervisor/validation/validation_scheduler.py",
+      "sha256": "102ca6af09089b5eee62a72f5452e243d69814adeea7529488446f42904ef8a4",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "b49eb581604513afab3e6c826a5d842e45a0c67f",
+      "bytes": 3250459,
+      "incoming_git_blob": "b49eb581604513afab3e6c826a5d842e45a0c67f",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "e199003a7a54d4f012e0c5dc5057d0ec9f23889d45b2e07e552758d4c459fcd8",
+      "unchanged": true
+    },
+    {
+      "base_git_blob": "ee726c9ffc1a5b5124882f7936f33a4ec2d39613",
+      "bytes": 491002,
+      "incoming_git_blob": "ee726c9ffc1a5b5124882f7936f33a4ec2d39613",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "sha256": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7",
+      "unchanged": true
+    }
+  ],
+  "exact_net_diff": [
+    {
+      "base_bytes": 2823,
+      "base_git_blob": "9a3edc9bb51982893cc80cbe1dd0a3d1117beed2",
+      "base_sha256": "f315fd23577b40ebb72ece5dcb5afb70b5cc77c0c5ad6edfd4fa11590d9358a4",
+      "bytes": 3506,
+      "incoming_git_blob": "03c83599c5f1e678b96ede65b341ac9205374ce6",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/README.md",
+      "sha256": "72cb0bc3e2e935cfef1780036f85c2bf0903091c1d0d7479a675fc61b188f04b",
+      "status": "M"
+    },
+    {
+      "bytes": 8652,
+      "incoming_git_blob": "e6fd55f62e625636c8f6024fd485fd9027f06396",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/acceptance_bindings.py",
+      "sha256": "b826710542512219f6df52fbfc94f3cb1e0210c05d161d95d45608142dd668bd",
+      "status": "A"
+    },
+    {
+      "bytes": 12396,
+      "incoming_git_blob": "4843898f00b4a23fa1b6c2f87cf1975569b55f6c",
+      "path": "test/api/test_agent_supervisor_acceptance_bindings.py",
+      "sha256": "74bf2732ac214a27b93799b248a02fc0a97c23fa3fc97eb3e8f8a5264deee511",
+      "status": "A"
+    }
+  ],
+  "existing_production_route_and_import_wiring_changed": false,
+  "implementation_findings": [
+    "The new explicit API requires an exact prior plan root, one criterion producer, advisory evidence containing the exact claim key, unused validation/evidence keys, matching mirrored text and producer-ancestor goal coverage.",
+    "The implementation creates replacement schema-v1 graph records, preserves existing acceptance text/checks, rewrites parent/goal/task dependency CIDs together, and returns immutable identity crosswalk maps.",
+    "Exact schema-v1 goal/task record types are required; schema-v2 lifecycle and validation DAG revision ownership is explicitly refused rather than inferred.",
+    "The result marks declaration_only true and checker_executed, evidence_authenticated, criterion_satisfied, admitted and Lean_admitted false.",
+    "No native source reader/broker/allocation/task-admission integration is added by this diff. The new module imports graph contracts, and only its new test imports the new binding function among the inspected code roots."
+  ],
+  "incoming_parent_revision": "83ad1ca1a43ae53d3642efe8799d25a9df8cebf3",
+  "incoming_revision": "03ac03773453addf87e47f68549e1dfc59c9a6c7",
+  "new_module_imports_static": [
+    {
+      "level": 0,
+      "module": "__future__",
+      "names": [
+        "annotations"
+      ]
+    },
+    {
+      "level": 0,
+      "module": "dataclasses",
+      "names": [
+        "dataclass",
+        "replace"
+      ]
+    },
+    {
+      "level": 0,
+      "module": "types",
+      "names": [
+        "MappingProxyType"
+      ]
+    },
+    {
+      "level": 0,
+      "module": "typing",
+      "names": [
+        "Mapping"
+      ]
+    },
+    {
+      "level": 1,
+      "module": "prompt_workflow",
+      "names": [
+        "EvidenceAuthority",
+        "PromptEvidenceRecord",
+        "PromptGoalGraph",
+        "PromptGoalRecord",
+        "PromptTaskRecord",
+        "PromptValidationRecord",
+        "prompt_workflow_cid"
+      ]
+    }
+  ],
+  "review_mode": "read_only_git_objects_and_static_ast_plus_this_new_metadata_file",
+  "reviewed_at_utc": "2026-10-14T04:52:14.984540+00:00",
+  "schema": "native-source-worker-spawn-incoming-acceptance-binding-review@1",
+  "scope_limits": {
+    "checker_command_executed": false,
+    "current_qualification_source_changed": false,
+    "fetch_or_ref_mutation": false,
+    "foreign_worktree_modified": false,
+    "future_use_requires": [
+      "Separate reviewed execution authority for the declared checker command.",
+      "Authenticated actual checker evidence and validation results.",
+      "Existing IR/proof/validation/prompt admission through their original owners.",
+      "Separate source lookup, signed profile, compiled context and native child adoption where used."
+    ],
+    "imports_executed": false,
+    "merged_or_published_by_this_review": false,
+    "new_proof_or_execution_or_completion_authority": false,
+    "production_source_modified": false,
+    "provider_or_model_invoked": false,
+    "pytest_collection_executed": false,
+    "qualified_leaf_preserved": "The incoming API/test are outside the current source-bound leaf; any merge must retain the separately completed native-spawn qualification and label these tests unexecuted unless separately run.",
+    "tests_executed": false,
+    "token_savings_established": false,
+    "training_or_checkpoint_or_embedding_or_model_manager_or_duckdb_ducklake_assets_changed": false
+  },
+  "scoped_function_reference_search": {
+    "limitation": "Only this exact revision and these roots were inspected; no absence under all refs is claimed.",
+    "literal": "bind_acceptance_checker",
+    "matches": [
+      "03ac03773453addf87e47f68549e1dfc59c9a6c7:ipfs_accelerate_py/agent_supervisor/prompt/README.md:54:`acceptance_bindings.bind_acceptance_checker()` creates a new immutable",
+      "03ac03773453addf87e47f68549e1dfc59c9a6c7:ipfs_accelerate_py/agent_supervisor/prompt/acceptance_bindings.py:59:def bind_acceptance_checker(",
+      "03ac03773453addf87e47f68549e1dfc59c9a6c7:test/api/test_agent_supervisor_acceptance_bindings.py:7:    AcceptanceBindingError, bind_acceptance_checker,",
+      "03ac03773453addf87e47f68549e1dfc59c9a6c7:test/api/test_agent_supervisor_acceptance_bindings.py:46:    return bind_acceptance_checker(graph, **arguments)"
+    ],
+    "revision": "03ac03773453addf87e47f68549e1dfc59c9a6c7",
+    "roots": [
+      "ipfs_accelerate_py",
+      "test",
+      "benchmarks"
+    ]
+  },
+  "static_test_inventory": {
+    "actual_checker_command_executed": false,
+    "checker_argv_is_declaration_only": true,
+    "collected_with_pytest": false,
+    "coverage_limits": [
+      "No authored schema-v2 rejection case appears among these eight test functions.",
+      "The advisory-binding negative admission assertion is authored test code; no runtime result is claimed by this review."
+    ],
+    "executed": false,
+    "function_count": 8,
+    "functions": [
+      {
+        "function": "test_complete_hierarchy_and_task_cids_are_rebound_without_other_acceptance_changes",
+        "static_parameter_expansion": 1
+      },
+      {
+        "function": "test_stale_or_missing_identity_refuses_without_mutating_graph",
+        "static_parameter_expansion": 3
+      },
+      {
+        "function": "test_validation_and_evidence_keys_cannot_silently_replace_existing_records",
+        "static_parameter_expansion": 1
+      },
+      {
+        "function": "test_ambiguous_producer_or_mismatched_mirrored_text_is_not_bound",
+        "static_parameter_expansion": 1
+      },
+      {
+        "function": "test_advisory_binding_cannot_upgrade_authority_or_satisfy_native_admission",
+        "static_parameter_expansion": 1
+      },
+      {
+        "function": "test_matching_criterion_outside_producer_ancestry_refuses",
+        "static_parameter_expansion": 1
+      },
+      {
+        "function": "test_both_parent_and_child_mirrors_bind_to_the_same_descendant_producer",
+        "static_parameter_expansion": 1
+      },
+      {
+        "function": "test_existing_checks_and_evidence_survive_binding_and_goal_dependency_rewrite",
+        "static_parameter_expansion": 1
+      }
+    ],
+    "methods": "AST structure only; parameter expressions were not evaluated and the test module was not imported.",
+    "qualified_by_current_native_spawn_run": false,
+    "static_parameter_expanded_cases": 10
+  }
+}

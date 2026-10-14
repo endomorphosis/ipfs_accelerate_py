@@ -54,6 +54,7 @@ session = start_source_lookup_worker_broker(
 )
 
 # Within the supervisor's existing child-custody and credential-scrub lifecycle:
+session.require_before_spawn()
 child = subprocess.Popen(
     [owner_entry, *ordinary_coding_arguments, *session.extra_argv],
     cwd=allocated_worktree,
@@ -82,6 +83,41 @@ are checked again around each native read. A changed gateway, source binding,
 public descriptor or protected endpoint refuses reuse. This version supports
 one existing source binding per gateway lifetime; it does not discover another
 owner or silently rebind a task.
+
+## Check before launch and before registration
+
+`require_before_spawn()` checks the original broker, descriptor and endpoint,
+current native task/allocation handles and complete canonical and allocated
+source. If a historical nomination is retained, it repeats that exact live join.
+CAS replay runs outside SERVER so a callback can enter the coordinator; the
+closing native and physical source checks follow that replay.
+The trusted launcher calls this method immediately before its literal `Popen`.
+The method does not select an executable, authorize a provider command or replace
+the launcher's credential and child-cleanup policy.
+
+For sessions carrying native task or allocation handles, `note_spawned()` requires
+that successful preparation. It accepts the actual `subprocess.Popen` object,
+observes a live direct-child birth and checks its allocated working directory.
+It repeats current native and source checks after birth, then rechecks the same
+kernel identity before enabling peer reads. A PID dictionary, serialized
+observation or unrelated process cannot replace the launched child. Reentry,
+second registration and stale prepared state refuse. Legacy sessions without
+native handles retain their existing registration path.
+
+A prelaunch refusal must prevent `Popen`. A closing refusal happens after a
+child exists: the session closes and revokes its proxy grant, remains unregistered,
+and retains the actual child for the launcher's cleanup responsibility. The
+launcher must terminate/reap that child and its workers even when registration
+raises. Broker closure cleans up its transport and grant; it does not terminate
+the child. These sequential checks do not exclude filesystem writers or undo
+effects that a child performed before a closing refusal.
+
+The [native spawn qualification](evidence/native-source-worker-spawn-20261014/README.md)
+uses real inert direct children with native claim, nomination and allocation
+fixtures. It does not qualify a worker UID, a provider child or deployed Terminal
+adoption. The deployment wrapper has a distinct parent process, and its
+group-writable candidate permission transition changes the retained allocation
+witnesses. Both need their own explicit admission.
 
 ## Nominated scope and managed allocation
 

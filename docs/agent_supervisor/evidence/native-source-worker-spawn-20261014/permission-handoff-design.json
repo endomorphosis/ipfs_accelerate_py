@@ -1,0 +1,198 @@
+{
+  "schema": "native-source-worker-permission-handoff-design@1",
+  "proposed_only": true,
+  "implementation_in_this_artifact": false,
+  "tests_executed_for_this_artifact": 0,
+  "model_calls": 0,
+  "provider_calls": 0,
+  "training_steps": 0,
+  "permission_changes_performed": 0,
+  "native_worker_uid_qualification_established": false,
+  "terminal_coding_deployment_qualified": false,
+  "proof_authority": false,
+  "execution_authority": false,
+  "completion_authority": false,
+  "token_savings_established": false,
+  "existing_assets_reused_without_retraining": true,
+  "design_basis": {
+    "published_base": "83ad1ca1a43ae53d3642efe8799d25a9df8cebf3",
+    "scope": "Future permission and process handoff composed with the existing native nomination, allocation and broker contracts; this file is a plan, not a capability or an executed qualification receipt.",
+    "references": [
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+        "symbols": ["_directory", "_read", "NativeSourceWorktreeAllocation._retained", "NativeSourceWorktreeAllocation._observe", "NativeSourceWorktreeAllocation.require_current", "NativeSourceWorktreeAllocation.bind_nominated_current_source_lookup", "NativeSourceWorktreeAllocation.require_nominated_source_scope"],
+        "observed_constraints": [
+          "_directory accepts an exact owner-UID directory with no group/world write bits and retains device, inode, UID and actual mode; literal 0700 is a fixture provisioning choice, not the only accepted safe mode.",
+          "The retained allocation includes canonical repository, workspace, worktree root, attempt root, attempt directory, canonical Git controls and lifecycle store identities.",
+          "_read requires bounded owner regular files with one link and no group/world write; its immutable witness includes device, inode, UID, mode, link count, size, mtime, ctime and SHA256.",
+          "The linked .git marker, registered gitdir/commondir/HEAD, sealed Portal projection/binding and lifecycle ownership must remain the original custody chain.",
+          "Normal same-lease lifecycle renewal is allowed with monotone fence and timestamps. A new task, owner birth, branch, lease identity or Git registration cannot be silently substituted."
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+        "symbols": ["NativeSourceTaskAdmission", "NativeSourceTaskAdmission.require_current", "NativeSourceTaskAdmission.bind_nominated_current_source_lookup", "NativeSourceTaskAdmission.require_nominated_source_scope"],
+        "observed_constraints": [
+          "An actual QuackStateServer, ProcessSerializedDatabaseCoordinator, seven-field native claim, owner-UID kernel daemon peer and original active grant are required.",
+          "A nomination is independently replayed against the complete retained inventory. Source selection is not task authority, allocation authority, proof or completion.",
+          "A published reader remains consumed after failure. Its original task/nomination join cannot be reconstructed from serialized observations."
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+        "symbols": ["SourceLookupWorkerBroker.require_before_spawn", "SourceLookupWorkerBroker.note_spawned", "SourceLookupWorkerBroker._task_current", "SourceLookupWorkerBroker._peer", "SourceLookupWorkerBroker.close"],
+        "observed_constraints": [
+          "The owner keeps the original native server, source reader, CAS, handles and source-only proxy grant. Public descriptors carry metadata, not the private credential.",
+          "Native preparation and birth registration retain the original live objects and bytes, full source populations and independently captured nomination presence.",
+          "Native registration requires an actual initialized original Popen, a live direct child with the allocated CWD and stable kernel birth. This does not establish a worker UID, command, provider or compiled-context grant.",
+          "The public endpoint independently verifies SO_PEERCRED worker UID and descendant birth. A same-owner inert child qualification does not qualify separate-UID access.",
+          "The clean committed-source profile checks both canonical and allocated populations; an edit to any tracked original invalidates current-source retrieval until a separately authorized new source generation exists.",
+          "Nomination permits at most 64 selected files and a sum of 1000000 original bytes counted per selected path; the worker broker admits at most 32 paths, including supports. It must refuse rather than truncate a larger nomination."
+        ]
+      },
+      {
+        "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+        "symbols": ["OWNER_ENTRY", "OWNER_MONITOR", "WORKER_ENTRY", "install_worker_boundary"],
+        "observed_constraints": [
+          "The current owner entry traverses only the allocated candidate and chmods its root to 3770, subdirectories to 2770, owner files to 660 or executable 770, and its .git marker to 440.",
+          "Those group-write modes violate the allocation directory predicate. Even a safe chmod after capture changes a retained mode/ctime witness.",
+          "Deployment creates worker UID 1001 in the supervisor group; the owner is UID 1000. Actual deployed groups and access must be observed independently.",
+          "The literal sudo Popen is a direct child of the owner wrapper. Its original Quack state owner is another process and cannot treat that Popen as its own direct child.",
+          "Owner-private state/authentication paths remain protected. The worker receives no capabilities, uses no-new-privileges, and has a scrubbed environment."
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/container_worker_boundary.py",
+        "symbols": ["verify_container_worker_boundary"],
+        "observed_constraints": [
+          "A root-controlled deployment manifest, exact container/image/namespaces and separate nonroot worker identity are required.",
+          "Worktree roots and their ancestors must be unwritable by the worker. Owner-private paths must be exact, owner-only and inaccessible to the worker.",
+          "The boundary does not turn signed semantic selection into a physical restriction of provider filesystem tools."
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_dispatch.py",
+        "symbols": ["OwnerFiniteProofQueryDispatchBroker._attempt_authority", "require_finite_proof_query_worker_dispatch", "require_finite_proof_query_isolated_worker_dispatch", "_DispatchGuard.note_spawned"],
+        "observed_constraints": [
+          "The existing protocol demonstrates a private owner socket, actual kernel daemon/wrapper peers, exact native claim binding, prelaunch preparation and actual Popen acknowledgement.",
+          "Attempt authority is derived from the genuine bootstrapped daemon argv and existing protected sidecars. The runtime run-lease coordinator is a separate authority.",
+          "This is an architecture pattern to reuse for a source handoff, not an existing source-worker capability or a reason to claim finite-proof authorization for source retrieval."
+        ]
+      }
+    ]
+  },
+  "increments": [
+    {
+      "id": "read_only_provisioning_before_capture",
+      "priority": 1,
+      "proposed_behavior": [
+        "Choose an explicit root/deployer-approved read-only provisioning profile before capturing the allocation. Establish only the exact traversal and read permissions needed by the selected worker UID/group.",
+        "Keep every allocation directory free of group/world writes. Candidate/worktree-parent 0750 and regular source 0640 or executable 0750 are candidate examples, not unconditional allowed modes; select them only after actual owner/group and ancestor access qualification.",
+        "Provision the linked .git marker as an owner regular, single-link, group-readable and unwritable file before capture. Pin its complete resulting witness, including ctime, without rebasing a previously issued handle.",
+        "Leave canonical Git write control, Portal projections, lifecycle records/indexes, native claim sidecars, CAS custody and private credentials under owner control. Worker read access to a source file must not imply access to these private authorities.",
+        "Pass the actual captured allocation and task handles into the existing broker. Use the existing before-spawn and actual-birth checks around a trusted caller's literal Popen.",
+        "A read-only worker slice can qualify authenticated retrieval and traversal; it cannot qualify coding edits, restricted filesystem scope, provider dispatch or Terminal task completion."
+      ],
+      "explicit_effects": ["Owner-authorized bounded pre-capture directory/file mode provisioning only", "No broad recursive permission repair", "No rebind of an issued allocation", "No new model or decoder assets"],
+      "refusals": ["Missing or mismatched deployer/UID/group/ancestor identity", "Symlink, hardlink, unexpected owner or writable authority ancestor", "Mode change after allocation capture", "Worker access to private authority", "Serialized allocation/task/scope substituted for live handles"],
+      "acceptance": [
+        "Observe actual deployed owner and worker UID/GID/groups, namespace identity, no-new-privileges and capability state; authored host metadata does not qualify this criterion.",
+        "From the real worker UID, demonstrate traversal and selected source retrieval through the public socket, plus denial of canonical Git writes, task/claim mutation, lifecycle/Portal control writes and private credential reads.",
+        "Retain the exact pre-capture owner/group/mode/device/inode and file witnesses, actual native claim/lease/grant receipts and final source equality.",
+        "Show that an unselected path remains unavailable through the broker. Report broad filesystem visibility separately; do not claim the nomination prevents direct filesystem reads.",
+        "Test selected and omitted source drift, changed ancestors/markers, revoked grants and expired native/allocation leases before launch and before reply delivery.",
+        "Use an inert real child first; distinguish real separate-UID socket authentication from same-UID ancestry probes. Stop and reap the actual child and retire only its exact broker endpoints/grant."
+      ]
+    },
+    {
+      "id": "sealed_writable_delegation",
+      "priority": 2,
+      "proposed_behavior": [
+        "Create a separate sealed owner-issued delegation tied to the original allocation, native task/claim, reviewed actor UID/GID, root-controlled deployment profile and exact source generation.",
+        "Retain the original allocation's before-state witnesses permanently. Add distinct after-state witnesses for only the explicitly delegated workspace tree and linked .git marker; do not overwrite _directories, _fixed_files or original custody.",
+        "Record exact before/after device, inode, UID, GID, mode, links, size, mtime, ctime and content digest where applicable. Require the original marker bytes and Git registration identity to survive the authorized transition.",
+        "Keep canonical repository/Git controls, Portal binding/projection, lifecycle store/index, attempt sidecars, CAS layout, owner grants and private endpoints outside the writable delegation.",
+        "Specify exactly which actor may write which paths and modes, including sticky/setgid behavior and worker-created files. An allocation-ownership observation and group membership do not themselves grant edit authority.",
+        "Use an explicit one-use state progression from owner-controlled to transition-prepared to delegated or refused. A partial permission transition must retain its failure evidence and consume its attempt; never silently recapture, normalize or fall back to the legacy guard.",
+        "Keep the legacy allocation guard strict. Any delegated checking path must require the exact separate sealed object and original live custody, with a versioned observation that distinguishes ownership from writable delegation.",
+        "Terminate the old clean-current-source grant when authorized editing invalidates that source generation. Rebind new inventory, nomination, context and grants only through independently admitted generation/acceptance transitions; do not relabel stale CAS as current code."
+      ],
+      "state_and_generation_boundaries": {
+        "states": ["owner_controlled", "transition_prepared", "delegated", "refused_consumed", "retired"],
+        "required_identities": ["original allocation CID and live handle", "exact native task revision/body/claim", "actor UID/GID and kernel birth", "deployment profile digest", "source inventory and nomination CID", "source/edit generation", "original and delegated physical witnesses"],
+        "new_authority_in_this_plan": false,
+        "checks_are_sequential_not_writer_exclusion": true
+      },
+      "acceptance": [
+        "Demonstrate that the legacy guard rejects current 3770/2770 transitions, and that only the explicit exact delegation profile can accept its narrowly authorized after-state.",
+        "Refuse wrong UID/GID, missing sticky/setgid constraints, changed marker bytes/inode, replaced Git registrations, symlinks, hardlinks, unauthorized traversal paths and group-write leakage into any owner control.",
+        "Test source/control mutation during the transition, partial chmod failure, duplicate/reentrant/concurrent transitions, renewal rollback, actor death and claim/grant loss.",
+        "Prove old source grants cannot serve a modified generation. Test failed validation and rejected successor inventories without granting execution or completion.",
+        "Retain source/edit-generation maps and exact original reconstruction assets; independently test reversible source fidelity and semantic reconstruction instead of conflating them.",
+        "Document ownership and cleanup of worker-created files, exact-child termination/reap, retired grants/endpoints and partial transitions. Refusal must not trigger broad deletion or silent permission restoration."
+      ]
+    },
+    {
+      "id": "authenticated_cross_process_birth_handoff",
+      "priority": 3,
+      "proposed_behavior": [
+        "Reuse the existing finite-proof private dispatch pattern for a separately versioned source protocol between the original Quack owner, the genuine native daemon and its exact owner wrapper.",
+        "Derive existing process-serialized attempt authority from observed bootstrapped daemon argv, protected sidecars and kernel peer birth. Never use a sender-selected path or the runtime run-lease coordinator as a substitute.",
+        "Prepare the live source/allocation/delegation/context join before the wrapper's literal sudo Popen. Keep the authenticated owner channel across acknowledgement.",
+        "After Popen, independently observe wrapper birth, its actual direct sudo child and the selected worker descendant UID/birth/CWD. A JSON PID, descriptor, claim label or old birth observation cannot register a new coding child.",
+        "Retain a sealed worker-child admission from the actual authenticated handoff, then let the broker verify peers only beneath that retained birth. Preserve existing direct-owner registration as its separate original mode.",
+        "Require closing native claim/grant, allocation/delegation, endpoint, source and context checks after CAS and clock callbacks. Acquire COOR before SERVER; do not invoke callback-bearing CAS loads while holding SERVER.",
+        "Before-birth refusal prevents Popen. After-birth refusal consumes the handoff, revokes the source grant and closes endpoints while preserving the actual caller's terminate/reap duty; no model fallback or re-registration."
+      ],
+      "acceptance": [
+        "Run an actual original Quack owner plus genuine process-serialized native daemon and separately observed wrapper/worker processes; no authored listener/bootstrap metadata may satisfy this full criterion.",
+        "Reject unrelated owner-UID peers, copied process records, PID/birth substitution, wrong cwd, wrong worker UID/group, ambiguous daemon argv/sidecars, missing active claim/grant and broadened descendant roots.",
+        "Retain exact literal argv and effective scrubbed environment/FD handoff identities without publishing private credentials. Command admission remains a separate existing gate.",
+        "Test claim/lease/grant, source generation and context drift between preparation, Popen, acknowledgement and source reply; test callback lock order and duplicate/concurrent/reentrant attempts.",
+        "Exercise acknowledged success and pre/post-birth failure with actual child cleanup and bounded timeout. Preserve incurred backend costs when a later fence refuses delivery.",
+        "Keep inert-process, separate-UID retrieval, coding-provider dispatch and official task validation as separate qualified stages with exact denominators."
+      ]
+    },
+    {
+      "id": "signed_terminal_context_adoption",
+      "priority": 4,
+      "proposed_behavior": [
+        "Join the complete signed Terminal profile @4 inventory to independently retained native inventory/nomination identities; preserve all signed inputs while enforcing the explicit semantic selection.",
+        "Bind actual compiled semantic payload, required raw supports, public instruction @5, selected roles/hashes/lengths and context identity to the same current task/allocation/source generation.",
+        "Keep archive capabilities, public signed observations and native live claim/allocation/delegation handles distinct. No serialized signed observation substitutes for a native capability.",
+        "Preserve the 32-path worker profile explicitly when selecting a source nomination; retain omitted frontier accountability rather than truncating a 64-file declaration.",
+        "Reuse existing embeddings, checkpoints, inventories, DuckDB/DuckLake lineages and proof-cache provenance. Retain family/schema/version/decoder-task/dimension separation for IntentIR, CodebaseIR, SecurityIR, LegalIR and UI/UX IR.",
+        "Propagate only independently checked semantic/proof results to planning. A source round trip, learned reconstruction, cached formula, low training loss or process handoff does not prove code behavior or task completion."
+      ],
+      "references": [
+        {"path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_semantic_scope.py", "symbols": ["replay_terminal_semantic_scope", "validate_terminal_semantic_payload"]},
+        {"path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py", "symbols": ["prepare_public_instruction_context", "load_public_instruction"]},
+        {"path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py", "symbols": ["_source_lookup_broker_observation", "run"]},
+        {"path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py", "symbols": ["initial_context", "context", "plan"]}
+      ],
+      "acceptance": [
+        "Reject signed-profile downgrade, omitted-source drift, scope/role/hash/required-support mismatch and context/revision/generation replay before provider dispatch.",
+        "Verify existing legacy schemas and decoder lanes remain compatible and unsupported learned lanes refuse explicitly.",
+        "Retain separate reconstruction fidelity, semantic validity, finite proof coverage, provider usage and official task-success measurements.",
+        "Use repeated complete matched-success sessions for token-benefit claims; retain complete usage and failure denominators. This design contains no measured token benefit."
+      ]
+    }
+  ],
+  "qualification_provenance": {
+    "future_required_records": ["exact source Git revisions and bound object hashes", "immutable raw commands/stdout/stderr/JUnit per attempt", "actual deployment/image/container/namespace and UID/GID observations", "real kernel parent/birth/CWD observations", "owner-controlled physical file/dir witnesses", "native claim/grant/lease and lifecycle/Portal bindings", "source inventory/nomination/context/edit generation identities", "cleanup/refusal and backend-cost records"],
+    "historical_receipts_are_current_authority": false,
+    "authored_host_seams_must_remain_labeled": true,
+    "full_dynamic_toolchain_or_import_closure_inferred": false,
+    "new_test_results_claimed_by_this_design": false,
+    "source_currentness_is_sequential_not_atomic": true
+  },
+  "deployment_limits": [
+    "The current Terminal wrapper does not retain the original Quack owner objects; native cross-process wiring remains required.",
+    "The current writable candidate permission transition is incompatible with the original allocation's retained mode/ctime custody.",
+    "The current source reader requires a clean committed generation and is not a continuing live source service after arbitrary coding edits.",
+    "No physical filesystem confinement follows from semantic selection, nomination, source lookup or this plan.",
+    "A declared future deployment profile is not a verified root/UID/group/namespace boundary or a source-edit grant.",
+    "No decoder training, model publication, checkpoint registration, legal semantic acceptance, new formal proof, Docker qualification, provider invocation or official benchmark success is established here.",
+    "Implementation must reconcile existing upstream launcher work before modifying router or wrapper paths; this plan reuses existing broker and dispatch interfaces rather than creating another launcher."
+  ]
+}

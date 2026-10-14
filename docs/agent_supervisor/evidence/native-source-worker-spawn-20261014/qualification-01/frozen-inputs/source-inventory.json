@@ -1,0 +1,870 @@
+[
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/context_projection_trace_comparison.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/source_view_trace_comparison.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_intent_action_readiness.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_native_progress.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_benchmark_shared_source_policy.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_full_supervisor_grok_readiness_setup.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_numerical_obligation_worker_wiring.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_source_policy_observation_join.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_selection_policy.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_readiness.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_retrieval_observation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "conftest.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "docs/agent_supervisor/evidence/current-source-worktree-admission-20261012/qualification_runner.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "docs/agent_supervisor/evidence/native-source-worker-spawn-20261014/qualification_runner.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "docs/agent_supervisor/evidence/native-source-worker-spawn-20261014/source-inventory.json"
+  },
+  {
+    "repository": "accelerator",
+    "path": "docs/agent_supervisor/evidence/native-source-worker-spawn-20261014/targets.json"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/__init__.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/container_worker_boundary.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/context_selection_observation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup_cli.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_candidate_runner.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/intent_384_advisor.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_code_view_inventory.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_scope.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_client.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edit_candidate.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_edits.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_artifacts.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_context_client.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_selection.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_database.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/scheduling_contracts.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/worktree.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/validation/proposal_validation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/cli_runtime/cli_metadata.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/cli_runtime/grok_native_usage.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/llm_router.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/mcp_server/mcplusplus/kubo_cid.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "ipfs_accelerate_py/testing/pytest_ast_seal.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "pytest.ini"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/causal_federation/test_bootstrap_runtime.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/causal_federation/test_typed_state_owner.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/conftest.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/semantic_state/test_semantic_context_runtime.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_agent_supervisor_database_portal_bridge.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_agent_supervisor_worktree_lifecycle.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_context_selection_observation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_context_selection_preparation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_current_source_lookup.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_current_source_lookup_cli.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_current_source_lookup_transport.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_current_source_task_admission.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_current_source_worktree_allocation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_native_nominated_source_allocation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_native_nominated_source_allocation_custody.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_native_nominated_source_scope.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_native_source_worker_spawn.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_native_source_worker_spawn_custody.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_numerical_obligation_client.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_numerical_obligation_router.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_repository_code_view_inventory.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_repository_source_inventory.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_repository_source_scope.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_reversible_source_view.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_semantic_router_integration.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_semantic_router_translation.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_shared_source_view_policy.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_source_formalization_context.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_source_formalization_router.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_source_lookup_worker_channel.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_source_lookup_worker_router.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_source_policy_worker_selection.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_source_view_edit_adversarial.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_source_view_edit_candidate.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_source_view_edit_formal_refresh.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_source_view_edits.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_source_view_policy_serialization.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_worker_candidate_context.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_worker_candidate_context_admission.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_worker_candidate_context_broker.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_worker_candidate_context_client.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_worker_source_broker.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_worker_source_client.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_worker_source_discovery_transport.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_worker_source_views.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_worker_source_working_broker.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_worker_source_working_client.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/api/test_worker_source_working_views.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/common/fixtures.py"
+  },
+  {
+    "repository": "accelerator",
+    "path": "test/conftest.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/__init__.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/autoformal/tree_pin.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/backends/smt/compiler.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/families/registry.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/formalization/autoencoder/intent_action_checkpoint_384.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_384.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_training_v2.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/formalization/autoencoder/structured_source_384.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/intent_ir/decoder.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/intent_ir/formalize/action_contracts.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/intent_ir/formalize/rich_grammar.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/intent_ir/schema.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/ir_core/canonical.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/ir_core/schema_registry.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/legal_ir/canonical_contracts.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/security_ir/model.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/cache.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/content.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/python_frontend.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/pytest_analysis.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/bindings.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/merkle.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_verification/numerical_source.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_verification/program.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_verification/source_adapters.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/software_verification/syntax_bridge.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/syntax_core/ast.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/syntax_core/signatures.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/ui_ux_ir/decoder.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/logic/ui_ux_ir/schema.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_production.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_formula_codec.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_family_evaluator.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py"
+  },
+  {
+    "repository": "datasets_execution_checkout",
+    "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_latent_formula.py"
+  }
+]

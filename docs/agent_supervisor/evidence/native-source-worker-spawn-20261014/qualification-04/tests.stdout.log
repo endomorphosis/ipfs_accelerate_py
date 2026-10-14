@@ -1,0 +1,15 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: /tmp/native-source-worker-spawn-qualification-04-21v9r5in/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/native-source-worker-handoff-20261014
+configfile: pytest.ini
+collecting ... collected 1 item
+
+test/api/test_native_source_worker_spawn.py::test_original_broker_without_native_handles_retains_legacy_birth_registration PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/native-source-worker-handoff-20261014/docs/agent_supervisor/evidence/native-source-worker-spawn-20261014/qualification-04/junit.xml -
+============================= slowest 10 durations =============================
+1.92s call     test/api/test_native_source_worker_spawn.py::test_original_broker_without_native_handles_retains_legacy_birth_registration
+
+(2 durations < 0.005s hidden.  Use -vv to show these durations.)
+============================== 1 passed in 23.89s ==============================

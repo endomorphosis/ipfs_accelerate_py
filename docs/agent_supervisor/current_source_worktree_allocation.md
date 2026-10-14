@@ -241,6 +241,13 @@ Terminal scope adoption, reconstruction accuracy or token savings.
 
 ## Remaining production handoff and qualification
 
+The native broker now has an explicit
+[before-spawn and closing registration gate](source_lookup_worker.md#check-before-launch-and-before-registration)
+for the retained task/allocation handles. This supplies a direct-owner launch
+boundary covered by inert-child controls; it does not admit the deployed
+Terminal wrapper or its group-writable candidate transition. An allocation
+observation still cannot replace that live broker or child lifecycle.
+
 Allocation ownership is separate from an `AdmittedBenchmarkRuntime` bootstrap
 receipt, a compiled worker context and the actual remote coding process birth.
 The normal Terminal daemon allocates and launches coding in a different process

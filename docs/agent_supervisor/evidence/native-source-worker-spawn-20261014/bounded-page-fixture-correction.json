@@ -1,0 +1,26 @@
+{
+  "corrected_source_binding": {
+    "bytes": 14345,
+    "path": "test/api/test_native_source_worker_spawn.py",
+    "sha256": "085320d248ca632fafebae58b54722fff35c0e3576f1232fd422b149f6dd3707"
+  },
+  "original_attempt": "qualification-03",
+  "original_junit": {
+    "errors": 0,
+    "failures": 1,
+    "skipped": 0,
+    "tests": 276
+  },
+  "original_seconds": 1115.85,
+  "original_source_binding": {
+    "bytes": 14056,
+    "path": "test/api/test_native_source_worker_spawn.py",
+    "repository": "accelerator",
+    "sha256": "3db84d7e29d4dfed037fd7c9ef84b2f2b675dbec6ee96ff4a79ddc577c54a54b"
+  },
+  "prior_raw_evidence_modified": false,
+  "production_source_sha256": "29023a1bddcba90bf23496cb2293611d4c95d7d3c82b382d52d708e0dfa75e13",
+  "production_source_unchanged": true,
+  "reason": "The legacy reader returns a bounded page of heavily escaped source, not necessarily the whole file. Request64bytes and check exact returned prefix, total length and continuation.",
+  "schema": "native-source-worker-spawn-bounded-page-fixture-correction@1"
+}

@@ -1,0 +1,60 @@
+{
+  "decision": "Preserve active broad integration of already committed capsule budget and per-turn telemetry. Isolate native broker launch gates; do not duplicate router or Terminal launcher changes.",
+  "foreign_files_modified": false,
+  "foreign_refs_mutated": false,
+  "foreign_tests_executed": false,
+  "known_gaps": [
+    "OWNER_ENTRY permission transition changes pinned workspace/Git marker witnesses",
+    "Existing original Quack owner and Terminal wrapper have different direct-child parents",
+    "No production coding-child/native nomination adoption qualified by host seams"
+  ],
+  "observed_at_utc": "2026-10-14T04:17:52.706300+00:00",
+  "observed_parent_base": "839ef8a9acb2e3ec98c1f94a20e8f8c7d491e481",
+  "owned_execution_base": "83ad1ca1a43ae53d3642efe8799d25a9df8cebf3",
+  "records": [
+    {
+      "allocation_module": {
+        "matches_published_base": false,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+        "sha256": "bb9a242e92ec3057c927dec0be350dbe73eec2be1e7fd0c66234bb1d77fd19a7"
+      },
+      "branch": "codex/supervisor-token-growth-20261013",
+      "contains_growth_progress": true,
+      "contains_published_allocation": false,
+      "head": "eff8ef3eccf0f6551f18a7c9eee24c2874d25795",
+      "head_after_read": "eff8ef3eccf0f6551f18a7c9eee24c2874d25795",
+      "head_stable_during_observation": true,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+      "scope": "read_only_local_metadata",
+      "status": ""
+    },
+    {
+      "allocation_module": {
+        "matches_published_base": true,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+        "sha256": "4597ee652dc5818ff990abf668b31fa2b84a0c14e626c490c29b86ee5af74916"
+      },
+      "branch": "integration/all-worktrees-20261014",
+      "contains_growth_progress": true,
+      "contains_published_allocation": true,
+      "head": "a47edf60bd077fa7e754b0965dfdfbea4a9d127f",
+      "head_after_read": "a47edf60bd077fa7e754b0965dfdfbea4a9d127f",
+      "head_stable_during_observation": true,
+      "path": "/home/barberb/lift_coding_worktrees/merge-all-accelerate-20261014",
+      "scope": "read_only_local_metadata",
+      "status": ""
+    },
+    {
+      "branch": "integration/all-worktrees-20261014",
+      "head": "0c5daa25f4d979acc8bd14c4c798d741e035400d",
+      "head_after_read": "0c5daa25f4d979acc8bd14c4c798d741e035400d",
+      "head_stable_during_observation": true,
+      "parent_gitlinks": "160000 commit 83ad1ca1a43ae53d3642efe8799d25a9df8cebf3\texternal/ipfs_accelerate\n160000 commit 1f9fac75490660b24a475f7b1ef472595ce8e1ec\texternal/ipfs_datasets\n160000 commit 40c98c71b95be750509ffdb21e7e5494d91b4e79\texternal/ipfs_kit\n",
+      "path": "/home/barberb/lift_coding_worktrees/merge-all-root-20261014",
+      "scope": "read_only_local_metadata",
+      "status": "M  external/ipfs_datasets\n"
+    }
+  ],
+  "schema": "native-source-worker-spawn-parallel-survey@1",
+  "whole_git_ref_absence_claim": false
+}
