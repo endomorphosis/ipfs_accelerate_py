@@ -1422,6 +1422,20 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             if receipt["native_provider_outcome"]["stop_reason"] != "unknown":
                 receipt["usage"]["stop_reason"] = receipt["native_provider_outcome"]["stop_reason"]
         receipt["seconds"] = time.monotonic() - started
+        try:
+            from .context_delivery_accounting import observe_invocation
+            receipt["context_delivery_observation"] = observe_invocation(receipt)
+        except Exception:
+            # Accounting is a derived observation. It must not replace a
+            # provider failure, change its counters, or prevent publication.
+            receipt["context_delivery_observation"] = {
+                "schema": "supervisor-context-delivery-invocation@1",
+                "status": "unavailable", "reason": "observer_unavailable",
+                "observation_only": True, "completion_authority": False,
+                "provider_ingestion_verified": False,
+                "total_token_savings_measured": False,
+                "raw_content_exported": False,
+            }
         print(json.dumps(receipt, sort_keys=True), flush=True)
         if previous is None:
             os.environ.pop("ipfs_accelerate_py_CODEX_SANDBOX", None)

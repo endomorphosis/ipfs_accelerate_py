@@ -9,6 +9,7 @@ import re
 import stat
 
 from .codex_interaction_telemetry import build_interaction_telemetry, validated_cumulative_usage
+from .native_context_delivery import build_native_context_delivery, unavailable_native_context_delivery
 
 
 _OUTPUT_INDICATORS = {
@@ -342,6 +343,13 @@ def recover_codex_usage(*, home: Path, thread_id: str, workspace: Path) -> dict 
                      and growth.sequence_consistent())
         complete = (completed and malformed == 0 and latest_usage_snapshot_valid is not False
                     and not counter_regression_observed)
+        telemetry = build_interaction_telemetry(records, completed=complete, malformed=malformed)
+        try:
+            delivery = build_native_context_delivery(records, telemetry=telemetry)
+        except Exception:
+            # Optional fingerprints must not suppress original native usage or
+            # change its arithmetic, completion and isolation observations.
+            delivery = unavailable_native_context_delivery(telemetry)
         matches.append({
                 "schema": "native-codex-cumulative-usage@1", "thread_id": thread_id,
                 "rollout_sha256": hashlib.sha256(raw).hexdigest(),
@@ -351,8 +359,8 @@ def recover_codex_usage(*, home: Path, thread_id: str, workspace: Path) -> dict 
                 "latest_usage_snapshot_valid": latest_usage_snapshot_valid,
                 "counter_regression_observed": counter_regression_observed,
                 "tool_diagnostics": _tool_diagnostics(records, completed=complete, malformed=malformed),
-                "interaction_telemetry": build_interaction_telemetry(
-                    records, completed=complete, malformed=malformed),
+                "interaction_telemetry": telemetry,
+                "native_context_delivery": delivery,
                 "task_complete_event_observed": completion_event_seen,
                 "task_complete_observed": complete, "billing_total_verified": False,
                 "cache_included_in_input": True, "dollar_cost": None,
