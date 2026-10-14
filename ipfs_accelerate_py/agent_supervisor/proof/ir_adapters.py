@@ -667,6 +667,117 @@ _SECTION_ALIASES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
     }
 )
 
+# These are semantic collections emitted by the native serializers, rather
+# than metadata or alternate spellings of the shared sections above.  This
+# adapter does not yet map them.  Accepting an envelope containing them would
+# otherwise silently normalize a native declaration to an empty or partial
+# shared declaration.  Keep the lists family-specific; arbitrary producer
+# metadata is not a declaration and must not trigger this guard.
+#
+# Sources: logic/intent_ir/schema.py (intent-ir/v1),
+# logic/security_ir/model.py (security-ir/v1), logic/ui_ux_ir/schema.py,
+# logic/legal_ir/{canonical_contracts,extended_contracts}.py and
+# optimizers/logic_theorem_optimizer/modal_ir.py in ipfs_datasets_py.
+_NATIVE_SEMANTIC_FIELDS: Final[Mapping[IRFamily, tuple[str, ...]]] = MappingProxyType(
+    {
+        IRFamily.INTENT: (
+            "statements", "actions", "control_edges", "entry_action_ids", "terminal_action_ids",
+        ),
+        IRFamily.LEGAL: ("rules", "statements", "frame_candidates", "modal_ir"),
+        IRFamily.SECURITY: (
+            "principals", "assets", "trust_zones", "channels", "resources", "policies",
+            "state_machines", "extensions",
+        ),
+        IRFamily.UI: (
+            "components", "entry_components", "terminal_outcomes", "composition_edges",
+            "layout_regions", "layout_constraints", "design_token_refs", "state_variables",
+            "states", "events", "transitions", "guards", "effects", "ux_tasks", "journeys",
+            "success_failure_recovery", "feedback_contracts", "accessibility", "localization",
+            "input_modality_requirements", "output_modality_requirements", "modality_alternatives",
+            "device_capability_requirements", "adaptive_variants", "data_bindings",
+            "content_references", "program_bindings", "intent_ir_bindings", "invocation_bindings",
+            "mcp_idl_bindings", "formal_constraint_refs", "proof_obligation_refs", "initial_states",
+            "extensions",
+        ),
+    }
+)
+_FORMALIZATION_NATIVE_FAMILIES: Final[frozenset[IRFamily]] = frozenset(
+    {IRFamily.FORMALIZATION, IRFamily.INTENT, IRFamily.LEGAL, IRFamily.SECURITY, IRFamily.UI}
+)
+
+
+def _section_source(payload: Mapping[str, Any], section: str) -> tuple[str, Any]:
+    """Identify the one section/alias the existing normalizer consumes."""
+
+    source = payload.get(section)
+    if source is not None:
+        return section, source
+    for alias in _SECTION_ALIASES.get(section, ()):
+        if alias in payload:
+            return alias, payload[alias]
+    return "", None
+
+
+def _semantic_field_present(value: Any) -> bool:
+    """Only absence or an actually empty collection may be ignored.
+
+    Falsy scalar values are malformed native collections, not empty ones.
+    They still require refusal if the normalizer would discard the field.
+    """
+
+    if value is None:
+        return False
+    if isinstance(value, (Mapping, Sequence)) and not isinstance(value, (str, bytes, bytearray)):
+        return bool(value)
+    return True
+
+
+def _unmapped_semantic_fields(artifact: VerifiedIRArtifact) -> tuple[str, ...]:
+    """Name known semantic data that this adapter would leave unconsumed.
+
+    This is a refusal boundary, not a transcoder, source reviewer or trust
+    upgrade.  Empty native collections remain harmless, and a symbol/view
+    registry containing only identity/metadata is not a semantic collection.
+    """
+
+    payload = artifact.payload
+    fields = {
+        name for name in _NATIVE_SEMANTIC_FIELDS.get(artifact.family, ())
+        if _semantic_field_present(payload.get(name))
+    }
+    nested: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    if artifact.family in _FORMALIZATION_NATIVE_FAMILIES:
+        fields.update(
+            name for name in ("formulas", "cross_view_links")
+            if _semantic_field_present(payload.get(name))
+        )
+        nested = (("symbol_table", ("symbols",)), ("view_registry", ("views",)))
+    if artifact.family is IRFamily.LEGAL:
+        nested += (
+            ("frame_logic", ("triples", "selected_frame", "neo4j_node_labels", "neo4j_relationship_types")),
+        )
+    for parent, children in nested:
+        source = payload.get(parent)
+        if isinstance(source, Mapping):
+            fields.update(
+                f"{parent}.{child}" for child in children
+                if _semantic_field_present(source.get(child))
+            )
+        elif _semantic_field_present(source):
+            fields.add(parent)
+
+    # Canonical and alias sections may coexist.  The existing precedence
+    # consumes only one, including when an empty canonical section shadows a
+    # nonempty alias.  Never accept the discarded semantic records, even if
+    # they happen to duplicate the selected records.
+    for section, aliases in _SECTION_ALIASES.items():
+        consumed, _ = _section_source(payload, section)
+        fields.update(
+            name for name in (section, *aliases)
+            if name != consumed and _semantic_field_present(payload.get(name))
+        )
+    return tuple(sorted(fields))
+
 
 class BaseIRAdapter:
     """Deterministic normalizer shared by all five IR families."""
@@ -702,17 +813,22 @@ class BaseIRAdapter:
                 required=required,
             )
 
+        unmapped = _unmapped_semantic_fields(artifact)
+        if unmapped:
+            return self._failure(
+                artifact,
+                IRFailureCode.UNSUPPORTED,
+                "unmapped semantic fields: " + ", ".join(unmapped),
+                required=required,
+                details=unmapped,
+            )
+
         normalized_sections: dict[str, tuple[NormalizedIRNode, ...]] = {}
         seen: dict[str, NormalizedIRNode] = {}
         node_count = 0
         try:
             for section, node_kind in _SECTION_KINDS:
-                source = artifact.payload.get(section)
-                if source is None:
-                    for alias in _SECTION_ALIASES.get(section, ()):
-                        if alias in artifact.payload:
-                            source = artifact.payload[alias]
-                            break
+                _, source = _section_source(artifact.payload, section)
                 if source is None:
                     source = ()
                 if isinstance(source, Mapping) and section == "result_authority":
@@ -893,6 +1009,7 @@ class BaseIRAdapter:
         reason: str,
         *,
         required: bool,
+        details: tuple[str, ...] = (),
     ) -> IRAdapterResult:
         return IRAdapterResult(
             status=IRAdapterStatus(code.value),
@@ -902,6 +1019,7 @@ class BaseIRAdapter:
                 required=required,
                 artifact_id=artifact.reference.artifact_id,
                 provider_id=self.adapter_id,
+                details=details,
             ),
         )
 
