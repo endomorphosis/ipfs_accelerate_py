@@ -1,0 +1,173 @@
+{
+  "archive_built": false,
+  "base_commit": "e4b8c4bba2fc7d5b7484b9021cbb9a5bcfc5e7d4",
+  "bounds": {
+    "active_native_query_interrupt": false,
+    "capture_admission_memory_mb": 256,
+    "capture_cooperative_deadline_seconds": 30,
+    "concurrent_native_test_suites": 1,
+    "hard_process_rss_containment": false,
+    "native_cpu_slots": 1,
+    "native_outer_lock_wait_deadline": true,
+    "native_thread_environment": 1,
+    "offline_model_assets": true,
+    "reference_default_max_bytes": 32768,
+    "reference_hard_max_bytes": 65536
+  },
+  "commands": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/commands.txt",
+  "commands_sha256": "44a3884f6b39ddb23a8ca52d1387b675389699787fbb2c71fd4f84c06dbfde03",
+  "cycle": {
+    "authored_provider_calls": 2,
+    "full_session_token_savings": null,
+    "live_provider_calls": 0,
+    "native_quack_listener": true,
+    "native_signed_command_checks": 3,
+    "native_source_generations": 2,
+    "native_tcp_task_count": 1,
+    "native_typed_attempt": true,
+    "newer_owner_observation_dispatches_refused": 1,
+    "provider_environment_scrubbed": true,
+    "real_child_mcp": true,
+    "stale_source_dispatches_refused": 1,
+    "task_completed": false
+  },
+  "date": "2026-10-14",
+  "dependencies": [
+    {
+      "clean": true,
+      "commit": "0897aa1d4252e175477addac5417028241de596a",
+      "name": "ipfs_datasets_py",
+      "path": "/home/barberb/lift_coding_worktrees/token-efficiency-datasets-pin-20261014",
+      "retained_worktree_locked": true
+    },
+    {
+      "clean": true,
+      "commit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+      "name": "ipfs_kit_py",
+      "path": "/home/barberb/lift_coding_worktrees/token-efficiency-kit-pin-20261014",
+      "retained_worktree_locked": true
+    }
+  ],
+  "dependency_restoration": "Recreated the removed datasets worktree at the exact prior 0897aa1d commit and locked active qualification worktrees.",
+  "distinct_tests_passed": 230,
+  "errors": 0,
+  "failed": 0,
+  "implementation_and_test_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_intent_world.py": "0a722587e82a1c73aada8fb30790db73043dc936171119ebd2c9dc47c3666238",
+    "test/api/semantic_state/test_intent_world_snapshot.py": "a90f09cfadda2fda649031dd822d383a65ba1f55240ca3f6552d4649116119f4",
+    "test/api/test_agent_supervisor_local_planning_admission.py": "5635419e9d1282ed3b64bd12e9b4f25cf047582d7a31c92554e20bab13f75e39",
+    "test/api/test_intent_requirement_observation.py": "a9168bae145dcd1d85dc6df66999752107b3a6ecfb199bc4882156b50a57678e",
+    "test/api/test_intent_requirement_observation_native.py": "91916f830e9c86e9f0bc252c2737b350fe460cb4c36d276f8556c993c5f55f9d",
+    "test/api/test_repository_context_compiler.py": "1e8480d18a6b39e0372678dc2534201f44a71fd7ad80c1d1eadd1d201993d8a9",
+    "test/api/test_repository_intent_world.py": "90d9951e212a9e0eab6c7c35ff8a61164e9634210d7623c7841bb0d2e1dfcc15",
+    "test/api/test_repository_intent_world_cycle.py": "1c97a638272b028969d59a5e1a2bf1798fca7b5b3ba7d4c49d5fc4fcf6b268cb",
+    "test/api/test_repository_intent_world_native.py": "b0fec191b58d8ffa6e1907303fa1a2b996440c278b6565506c90cd0eb1c5166e",
+    "test/api/test_repository_intent_world_native_cycle.py": "26a411e5737d32bfa559adf618e33b71ab3c99f1d7b6c07ee8ad9dfd014d0c42",
+    "test/api/test_repository_world_cycle.py": "0b9bc89c3d7b3d9d02cf765861e88f0607ec0fb38cde7f4a81459975fd03ad85",
+    "test/api/test_repository_world_dispatch.py": "7423f0925e6247dae225b8b2e159db0a5bf789766df2ad8b18c66c7ccf1d9a7c",
+    "test/api/test_repository_world_intent_binding.py": "4b5a96061a56a341a0b75b1baa5ef836aac17d0bfb3852bf5fe6e3b7f3071fa3",
+    "test/api/test_repository_world_packet.py": "889c9f24679ff30b023d75dfc07095c9eed60135062a5a88ed6817ff655b5d69"
+  },
+  "limitations": [
+    "The API retains an actual in-process native QuackStateServer and exclusive connection; standalone remote-client capture, portable packet transport and durable restart reconstruction remain unqualified.",
+    "Only signed native intent/check evidence is joined. Missing accepted world authorities remain unavailable; this grants no proof, execution or completion authority.",
+    "Source-session and native intent inventory identities remain separate; exact workspace joins do not prove semantic equivalence.",
+    "Freshness and deadlines are cooperative. Native observer resource waits and active queries are not forcibly interrupted; no owner/source lock is held across provider execution.",
+    "Capture leaves native task data unchanged, while owner readiness may restore its private attach-token file.",
+    "The global event watermark conservatively invalidates on unrelated owner changes. Repeated capture latency and memory overhead have not been benchmarked.",
+    "Resource denial and cancellation use fault injection; this run does not establish operating-system OOM stress containment.",
+    "Provider responses and fixture token counters are authored. Live Terminal Bench success and complete-session token savings remain unmeasured.",
+    "Combined IR joins, learned world prediction and deterministic result reuse remain future work."
+  ],
+  "live_provider_calls": 0,
+  "live_terminal_bench_run": false,
+  "native_probe": {
+    "duckdb_version": "1.5.5",
+    "passes_health_check": true,
+    "reason_code": "import_only_insufficient"
+  },
+  "prior_attempts": [
+    {
+      "duration_seconds": 24.471,
+      "errors": 0,
+      "failed": 1,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/cycle/results.xml",
+      "junit_sha256": "d772be41ff5cc706859b5bf094853796fede710b66e1975d32bc599581346502",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/cycle/pytest.log",
+      "name": "cycle",
+      "passed": 0,
+      "resolution": "Native dispatch correctly refused inherited database authority. The authored in-process provider harness now applies the existing daemon provider_subprocess_environment scrub, with owner validation through the retained private server object.",
+      "skipped": 0,
+      "superseded_by": "native-final"
+    },
+    {
+      "duration_seconds": 34.34,
+      "errors": 0,
+      "failed": 1,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/focused/results.xml",
+      "junit_sha256": "9f6e7901ccf6a03bfb16a1139d99ea109048abd93cbdd19d8be3c8c5d08df009",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/focused/pytest.log",
+      "name": "focused",
+      "passed": 1,
+      "resolution": "Corrected freshness assertion: repeated identical checks may share an evidence digest. Distinct native run/result IDs and increasing event order establish newer observation identity.",
+      "skipped": 0,
+      "superseded_by": "native-final"
+    },
+    {
+      "duration_seconds": 77.018,
+      "errors": 0,
+      "failed": 2,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/focused-final/results.xml",
+      "junit_sha256": "7700a208f59c54082a87bc092063926678a2f6f672f30f50da63a7f494632a01",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/focused-final/pytest.log",
+      "name": "focused-final",
+      "passed": 15,
+      "resolution": "Corrected transaction fixture assertions for native DuckDBConnectionPolicyError and DuckDBRow integer values. The real native dispatch cycle passed in this run.",
+      "skipped": 0,
+      "superseded_by": "native-final"
+    }
+  ],
+  "provider_usage_measured": false,
+  "recapture_overhead_benchmarked": false,
+  "runs": [
+    {
+      "duration_seconds": 79.757,
+      "errors": 0,
+      "failed": 0,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/native-final/results.xml",
+      "junit_sha256": "296b1d6d3e838d5b3d28cae302dc665cd6557d7b20d21a5372e7a47de1a415de",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/native-final/pytest.log",
+      "name": "native-final",
+      "passed": 17,
+      "skipped": 0,
+      "source_manifest": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/native-final/source-hashes.json",
+      "source_manifest_sha256": "e796b54e4f39706123a5d04423f87abb818584c54346aa46e36ae76e36924f42",
+      "sources_unchanged_during_run": true
+    },
+    {
+      "duration_seconds": 414.285,
+      "errors": 0,
+      "failed": 0,
+      "fresh_ast_seal": true,
+      "junit": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/regression/results.xml",
+      "junit_sha256": "4343906bfb6df5fe4314c128041e85fae6091d05d14ac66a23e2460daf7ae2ab",
+      "log": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/regression/pytest.log",
+      "name": "regression",
+      "passed": 213,
+      "skipped": 0,
+      "source_manifest": "/home/barberb/lift_coding/artifacts/token-efficiency-quack-world-20261014/regression/source-hashes.json",
+      "source_manifest_sha256": "6b681e3b75a8063032b3bedae2ead367a84707914350abf14d6b3f80d5e0025d",
+      "sources_unchanged_during_run": true
+    }
+  ],
+  "schema": "repository-native-quack-world-qualification@1",
+  "scope": "Opt-in in-process live native Quack owner capture feeding required source context and world-packet dispatch.",
+  "skipped": 0,
+  "sources_unchanged_in_each_final_run": true,
+  "total_session_token_savings": null,
+  "worktree": "/home/barberb/lift_coding_worktrees/token-efficiency-next-20261014"
+}
