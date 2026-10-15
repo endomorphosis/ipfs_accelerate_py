@@ -1419,3 +1419,57 @@ admission, retained input audit and replay after cleanup/later source edits run
 natively; provider responses and public-check execution are authored fixtures.
 Five forged receipt variants are refused. These are representation measurements,
 with zero live provider calls and no inferred token savings.
+
+The fresh Docker trial used commit `cef1bb3764aa2ea9ed453a2feec5c240cca2dc54`
+through `llm_router`, with the prior Grok profile, eight-turn cap, two-attempt
+policy, declared planning and resource allocation. Its selected second input
+fell from a reconstructed legacy 91,842 bytes to 83,991 bytes: 7,851 bytes,
+or 8.55%. The two input observations agree with in-container accounting.
+The closed reader validates selection arithmetic and receipt joins; it does not
+independently replay the live owner's private retained input.
+
+| Observed native usage | Previous trial | Projection trial | Change |
+| --- | ---: | ---: | ---: |
+| First coding invocation | 269,557 | 312,698 | +43,141 |
+| Second coding invocation | 41,127 | 38,573 | −2,554 |
+| Observed subtotal | 310,684 | 351,271 | +40,587 |
+| Official reward | 0 | 0 | 0 |
+
+The second invocation used 6.21% fewer observed tokens in this pair, while the
+subtotal increased 13.06%. Neither observation establishes a causal effect from
+one run per revision. These native subtotals include cached input; reasoning
+output is reported separately and is not added again. Full usage completeness
+and billing remain unverified. The first prompt's byte length stayed at 67,380;
+its byte identity was not independently compared. Both first invocations hit
+the eight-turn cap with exit 1 and an untainted final usage envelope. The new
+first invocation generated 12,632 output tokens versus 6,538 before, with higher
+subsequent input/cache counts. The closed stream observations show ten tool
+calls in each run but do not identify the tool-result histories responsible for
+that difference. A smaller second prompt therefore did not reduce this run's
+overall observed usage.
+
+The second invocation returned exit 0 after one turn, while retaining the same
+workspace generation as the first round. Both rounds passed public structural
+and eigenpair checks, but public performance remained `timing_unstable` and
+inconclusive. The task is incomplete and official reward remains zero. Native
+supervision took 675.34 seconds (previously 461.32); whole execution took 907.67
+seconds (previously 816.65). Our offline qualification tests had finished before
+the new live execution. The exact trial container is absent after collection, retained
+artifacts are preserved, and no services were changed.
+
+The next bounded first-input experiment is the existing
+`capsule-references@1` working-set profile against `legacy` on the same qualified
+revision. It defers only allowlisted capsule provenance using authenticated,
+hash-bound retrieval. The previous closed census measured just 6,395 bytes of
+capsule values within the 67,380-byte complete first input, before reference and
+instruction overhead. Raw source, other semantic fields and required formal
+evidence remain outside that profile. The existing census-only path does not
+support working-set mode; qualify a capturing-provider measurement or an
+additive working-set census before that ablation. Larger reductions require
+finer field accounting and an explicit owner-selected disclosure contract with
+authenticated artifact paging. Existing capsule retrieval cannot authorize
+dropping arbitrary required world-model or formalization evidence.
+
+[Qualification, closed live results, and next-step source analysis](evidence/candidate-prompt-projection-20261015/manifest.json)
+retain both development failures and the final evidence without replacing prior
+results or upgrading missing usage into a verified total.

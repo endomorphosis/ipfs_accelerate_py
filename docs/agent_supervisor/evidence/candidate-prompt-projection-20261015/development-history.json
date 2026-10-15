@@ -1,0 +1,26 @@
+{
+  "codec_dev01": {
+    "passed": 81,
+    "qualification": "codec-dev01-result.json",
+    "superseded_by": "codec-final01-result.json"
+  },
+  "complete_run_token_savings_claimed": false,
+  "live_provider_calls": 0,
+  "native_dev01": {
+    "reason": "Public validation timing feedback uses finite JSON floats; initial codec wrongly reused the formal-IR float prohibition.",
+    "source_pins_unchanged": true,
+    "status": "failed",
+    "superseded_by": "native-final01-result.json"
+  },
+  "provider_token_usage_verified": false,
+  "raw_content_exported": false,
+  "router_dev01": {
+    "change": "Added closed XML measurement property; did not alter running selected tests.",
+    "changed_unselected_test_at_completion": "test/api/test_candidate_prompt_projection_native.py",
+    "passed": 166,
+    "production_and_selected_test_pins_unchanged_at_completion": true,
+    "source_pins_unchanged": false,
+    "superseded_by": "router-final01-result.json"
+  },
+  "schema": "candidate-projection-development-history@1"
+}
