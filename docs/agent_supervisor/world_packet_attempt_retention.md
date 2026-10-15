@@ -125,6 +125,10 @@ complete native receipt and verified output can satisfy that conditional core
 while the new durable gate still rejects a missing terminal record. The
 collector does not modify the core report to hide that distinction.
 
+The [supervisor benchmark session accounting](world_benchmark_session_accounting.md)
+path consumes these records through a pinned projection and reconciles native
+usage before Harbor export or comparison aggregation.
+
 ## Qualification
 
 The frozen final suites pass 352 distinct tests: 82 journal cases, 25 runner

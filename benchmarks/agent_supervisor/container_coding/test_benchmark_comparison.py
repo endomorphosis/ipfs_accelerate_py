@@ -40,7 +40,9 @@ def _baseline(tmp_path):
                 "reward": {"reward": 1},
                 "seconds": {"agent_execution": 12},
                 "raw_usage": {
-                    "sessions": [{"session_id": "session", "task_complete_observed": True}],
+                    "sessions": [{"session_id": "session", "task_complete_observed": True,
+                        "usage": {"input_tokens": 100, "cached_input_tokens": 80,
+                                  "output_tokens": 10, "total_tokens": 110}}],
                     "usage": {
                         "input_tokens": 100,
                         "cached_input_tokens": 80,
@@ -57,10 +59,17 @@ def _invocation(identity="call"):
     return {
         "invocation_id": identity,
         "provider": "codex_cli",
+        "model": "pinned-model",
         "phase": "planning",
         "status": "provider_returned",
         "native_rollout_usage": {
             "schema": "native-codex-cumulative-usage@1",
+            "usage_available": True,
+            "thread_id": hashlib.sha256(identity.encode()).hexdigest()[:32],
+            "rollout_sha256": hashlib.sha256(("authored-rollout:" + identity).encode()).hexdigest(),
+            "observed_token_count_records": 1,
+            "latest_usage_snapshot_valid": True,
+            "counter_regression_observed": False,
             "cache_included_in_input": True,
             "task_complete_observed": True,
             "usage": {
@@ -77,16 +86,183 @@ def _invocation(identity="call"):
 
 def _grok_invocation(identity="grok-call", complete=None):
     return {
-        "invocation_id": identity, "phase": "coding", "provider": "grok_cli", "status": "provider_returned",
+        "invocation_id": identity, "phase": "coding", "provider": "grok_cli", "model": "pinned-model", "status": "provider_returned",
         "native_rollout_usage": {
             "schema": "native-grok-final-usage@1", "usage_available": True,
             "usage_complete_observed": complete, "task_complete_observed": True,
             "totals_scope": "native_final_envelope", "cache_included_in_input": False,
+            "usage_observation_sha256": hashlib.sha256(("authored-envelope:" + identity).encode()).hexdigest(),
+            "observed_final_usage_records": 1,
             "billing_total_verified": False, "dollar_cost": None,
             "usage": {"input_tokens": 10, "cached_input_tokens": 30, "cache_write_input_tokens": 0,
                       "output_tokens": 2, "total_tokens": 42},
         },
     }
+
+
+def _resumed_snapshot(previous, identity="resumed", *, records=2, total=44):
+    """Authored coherent snapshots; no provider observation is implied."""
+    resumed = _invocation(identity)
+    native = resumed["native_rollout_usage"]
+    native["thread_id"] = previous["native_rollout_usage"]["thread_id"]
+    native["observed_token_count_records"] = records
+    native["usage"].update(input_tokens=total - 4, cached_input_tokens=30,
+                           output_tokens=4, total_tokens=total)
+    return resumed
+
+
+def test_resumed_session_snapshots_are_selected_once_within_trial(tmp_path):
+    first = _invocation("first-snapshot")
+    first.update(status="failed", error_type="ResponseDecodeError")
+    resumed = _resumed_snapshot(first)
+    receipt = _receipt(tmp_path, "resumed-one-trial.json", SUPERVISOR, [{
+        "trial": "resumed", "reward": {"reward": 1}, "supervisor": {
+            "provider_invocations": [first, resumed]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    assert row["provider_calls"] == 2 and len(row["invocations"]) == 2
+    assert row["invocations"][0]["status"] == "failed"
+    assert row["tokens"]["total_tokens"] == row["known_token_subtotals"]["total_tokens"] == 44
+    assert row["usage_accounting"]["native_usage_accounting"]["native_session_count"] == 1
+    totals = result["arm_totals"]["full"]
+    assert totals["tokens"]["total_tokens"] == 44
+    assert totals["observed_efficiency"]["total_tokens_per_official_pass"] == 44
+
+
+def test_resumed_session_is_reconciled_across_failed_and_passed_trials(tmp_path):
+    first = _invocation("failed-snapshot")
+    first.update(status="failed", error_type="TimeoutExpired")
+    resumed = _resumed_snapshot(first)
+    receipt = _receipt(tmp_path, "resumed-two-trials.json", SUPERVISOR, [
+        {"trial": "failed", "reward": {"reward": 0}, "supervisor": {"provider_invocations": [first]}},
+        {"trial": "passed", "reward": {"reward": 1}, "supervisor": {"provider_invocations": [resumed]}},
+    ], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    totals = result["arm_totals"]["full"]
+    assert totals["trials"] == 2 and totals["observed_official_passes"] == 1
+    assert [row["tokens"]["total_tokens"] for row in result["rows"][1:]] == [22, 44]
+    assert totals["tokens"]["total_tokens"] == totals["known_token_subtotals"]["total_tokens"] == 44
+    assert totals["usage_accounting"]["native_usage_accounting"]["supplied_invocation_count"] == 2
+    assert totals["session_usage_attribution_to_trial_verified"] is False
+    assert result["unsuccessful_attempt_costs"]["full"]["trials"] == 1
+
+
+@pytest.mark.parametrize("across_trials", [False, True])
+def test_regressing_shared_session_withholds_aggregate_usage(tmp_path, across_trials):
+    first = _invocation("later-record")
+    first["native_rollout_usage"]["observed_token_count_records"] = 3
+    resumed = _resumed_snapshot(first, records=2)
+    trials = ([{"trial": "one", "supervisor": {"provider_invocations": [first, resumed]}}]
+              if not across_trials else [
+                  {"trial": "one", "supervisor": {"provider_invocations": [first]}},
+                  {"trial": "two", "supervisor": {"provider_invocations": [resumed]}}])
+    receipt = _receipt(tmp_path, "regression.json", SUPERVISOR, trials, "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    totals = result["arm_totals"]["full"]
+    assert totals["trials"] == len(trials)
+    assert totals["tokens"]["total_tokens"] is None
+    assert totals["known_token_subtotals"]["total_tokens"] is None
+    session, = totals["usage_accounting"]["native_usage_accounting"]["sessions"]
+    assert session["status"] == "conflict"
+    assert "native_snapshot_record_regression" in session["reasons"]
+
+
+@pytest.mark.parametrize("missing", ["thread_id", "rollout_sha256", "observed_token_count_records", "model"])
+def test_sparse_legacy_invocation_keeps_observation_without_qualified_total(tmp_path, missing):
+    invocation = _invocation()
+    (invocation if missing == "model" else invocation["native_rollout_usage"]).pop(missing)
+    receipt = _receipt(tmp_path, "sparse.json", SUPERVISOR, [{
+        "trial": "sparse", "reward": {"reward": 1}, "supervisor": {"provider_invocations": [invocation]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    assert row["invocations"][0]["known_token_subtotals"]["total_tokens"] == 22
+    assert row["tokens"]["total_tokens"] is None
+    assert result["arm_totals"]["full"]["observed_efficiency"]["total_tokens_per_official_pass"] is None
+    assert "MUST NOT APPEAR" not in json.dumps(result)
+
+
+def test_baseline_shared_session_across_trials_withholds_totals(tmp_path):
+    baseline = _baseline(tmp_path)
+    value = json.loads(baseline.read_text())
+    duplicate = copy.deepcopy(value["trials"][0])
+    duplicate.update(trial="reused-session", reward={"reward": 0})
+    value["trials"].append(duplicate)
+    value["trial_count"] = 2
+    baseline.write_text(json.dumps(value))
+    result = collect(baseline=baseline, supervisors=[])
+    totals = result["arm_totals"]["native-codex"]
+    assert totals["trials"] == 2 and totals["observed_official_passes"] == 1
+    assert totals["tokens"]["total_tokens"] is None
+    assert totals["known_token_subtotals"]["total_tokens"] is None
+    assert "native_baseline_session_overlap_unresolved" in totals["native_usage_unavailable_reasons"]
+    assert totals["observed_efficiency"]["total_tokens_per_official_pass"] is None
+
+
+@pytest.mark.parametrize("across_trials", [False, True])
+def test_baseline_counter_sums_are_bounded_with_raw_observations_retained(tmp_path, across_trials):
+    maximum = (1 << 63) - 1
+    baseline = _baseline(tmp_path)
+    value = json.loads(baseline.read_text())
+    original = value["trials"][0]
+    counts = {"input_tokens": maximum, "cached_input_tokens": 0,
+              "output_tokens": 0, "total_tokens": maximum}
+    original["raw_usage"]["usage"] = dict(counts)
+    original["raw_usage"]["sessions"][0]["usage"] = dict(counts)
+    if across_trials:
+        second = copy.deepcopy(original)
+        second["trial"] = "independent-overflow-trial"
+        second["raw_usage"]["sessions"][0]["session_id"] = "independent-session"
+        value["trials"].append(second)
+        value["trial_count"] = 2
+    else:
+        second = copy.deepcopy(original["raw_usage"]["sessions"][0])
+        second["session_id"] = "independent-session"
+        original["raw_usage"]["sessions"].append(second)
+    baseline.write_text(json.dumps(value))
+    result = collect(baseline=baseline, supervisors=[])
+    totals = result["arm_totals"]["native-codex"]
+    assert all(item is None for item in totals["tokens"].values())
+    assert all(item is None for item in totals["known_token_subtotals"].values())
+    assert "native_baseline_counter_bound" in totals["native_usage_unavailable_reasons"]
+    assert totals["observed_efficiency"]["total_tokens_per_official_pass"] is None
+    assert totals["trials"] == (2 if across_trials else 1)
+    for row in result["rows"]:
+        accounting = row["baseline_usage_accounting"]
+        assert accounting["reported_counter_observations"] == counts
+        assert all(session["tokens"] == counts for session in accounting["sessions"])
+        if across_trials:
+            assert row["tokens"] == counts
+        else:
+            assert all(item is None for item in row["known_token_subtotals"].values())
+            assert "native_baseline_counter_bound" in accounting["reasons"]
+
+
+@pytest.mark.parametrize("mutation", ["top_counter", "missing_session_count", "duplicate_session", "top_completion",
+                                      "unknown_session_identity", "missing_session_inventory"])
+def test_baseline_contradictory_or_sparse_session_census_is_not_a_total(tmp_path, mutation):
+    baseline = _baseline(tmp_path)
+    value = json.loads(baseline.read_text())
+    native = value["trials"][0]["raw_usage"]
+    if mutation == "top_counter": native["usage"]["total_tokens"] = 220
+    elif mutation == "missing_session_count": native["sessions"][0].pop("usage")
+    elif mutation == "duplicate_session": native["sessions"].append(copy.deepcopy(native["sessions"][0]))
+    elif mutation == "unknown_session_identity": native["sessions"][0]["session_id"] = "unidentified:rollout.jsonl"
+    elif mutation == "missing_session_inventory": native.pop("sessions")
+    else:
+        native["task_complete_observed"] = True
+        native["sessions"][0].pop("task_complete_observed")
+    baseline.write_text(json.dumps(value))
+    result = collect(baseline=baseline, supervisors=[])
+    row = result["rows"][0]
+    assert row["tokens"]["total_tokens"] is None
+    accounting = row["baseline_usage_accounting"]
+    assert accounting["reported_counter_observations"]["total_tokens"] == (220 if mutation == "top_counter" else 110)
+    if mutation != "top_completion":
+        assert all(value is None for value in row["known_token_subtotals"].values())
+    totals = result["arm_totals"]["native-codex"]
+    assert totals["tokens"]["total_tokens"] is None
+    assert totals["observed_efficiency"]["total_tokens_per_official_pass"] is None
+    assert "Session observations involving unsuccessful attempts" in markdown(result)
 
 
 def test_observed_efficiency_includes_failed_attempts_and_deduplicates_receipts(tmp_path):
@@ -104,16 +280,16 @@ def test_observed_efficiency_includes_failed_attempts_and_deduplicates_receipts(
     efficiency = totals["observed_efficiency"]
     assert totals["trials"] == 3 and totals["observed_official_passes"] == 2
     assert totals["tokens"]["total_tokens"] == 66
-    assert totals["reported_cost_usd"] == 1.5
+    assert totals["reported_cost_usd"] is None
     assert efficiency["total_tokens_per_official_pass"] == 33
-    assert efficiency["reported_cost_usd_per_official_pass"] == 0.75
+    assert efficiency["reported_cost_usd_per_official_pass"] is None
     assert efficiency["token_ratio_unavailable_reasons"] == []
-    assert efficiency["cost_ratio_unavailable_reasons"] == []
+    assert efficiency["cost_ratio_unavailable_reasons"] == ["incomplete_reported_provider_cost"]
     assert efficiency["numerator_scope"] == "all_retained_attempts_in_aggregate"
     assert efficiency["cache_included_in_input"] is True
     assert efficiency["causal_claim"] is False and efficiency["billing_total_verified"] is False
     assert result["unsuccessful_attempt_costs"]["full"]["tokens"]["total_tokens"] == 22
-    assert "| Supervisor: full indexed context | 3 | 2 | 0 | 0 | 33.000 | 0.750 |" in markdown(result)
+    assert "| Supervisor: full indexed context | 3 | 2 | 0 | 0 | 33.000 | unknown |" in markdown(result)
     assert "do not establish causal token savings or verified billing" in markdown(result)
 
 
@@ -154,9 +330,12 @@ def test_observed_efficiency_refuses_unknown_denominators_and_incomplete_numerat
     totals = result["arm_totals"]["full"]
     efficiency = totals["observed_efficiency"]
     assert efficiency["token_ratio_unavailable_reasons"] == ([token_reason] if token_reason else [])
-    assert efficiency["cost_ratio_unavailable_reasons"] == ([cost_reason] if cost_reason else [])
+    expected_cost_reasons = ([cost_reason] if cost_reason else [])
+    if "incomplete_reported_provider_cost" not in expected_cost_reasons:
+        expected_cost_reasons.append("incomplete_reported_provider_cost")
+    assert efficiency["cost_ratio_unavailable_reasons"] == expected_cost_reasons
     assert efficiency["total_tokens_per_official_pass"] == (None if token_reason else 22)
-    assert efficiency["reported_cost_usd_per_official_pass"] == (None if cost_reason else 0.25)
+    assert efficiency["reported_cost_usd_per_official_pass"] is None
     assert totals["known_token_subtotals"]["total_tokens"] == (22 if gap == "missing_total" else 44)
     assert "Total tokens / official pass" in markdown(result)
 
@@ -189,9 +368,12 @@ def test_observed_efficiency_preserves_mixed_provider_total_and_cache_semantics(
     result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
     row = result["rows"][1]
     efficiency = result["arm_totals"]["full"]["observed_efficiency"]
-    assert row["tokens"] == dict(input_tokens=30, cached_input_tokens=45, output_tokens=4, total_tokens=64)
+    assert row["tokens"] == dict(input_tokens=None, cached_input_tokens=45, output_tokens=4, total_tokens=64)
+    assert row["usage_accounting"]["normalized_tokens"]["input_tokens_including_cache"] == 60
     assert efficiency["total_tokens_per_official_pass"] == 64  # Native totals, without adding cache twice.
-    assert efficiency["reported_cost_usd_per_official_pass"] == 0  # Explicit zero is a known cost.
+    # A native cost field has no established additive or cumulative scope.
+    assert efficiency["reported_cost_usd_per_official_pass"] is None
+    assert row["invocations"][0]["observed_reported_cost_usd"] == 0
     assert efficiency["cache_included_in_input"] is None
     assert [call["cache_included_in_input"] for call in row["invocations"]] == [True, False]
     assert [call["token_count_scope"] for call in row["invocations"]] == [
@@ -203,6 +385,7 @@ def test_native_baseline_efficiency_uses_all_failed_session_costs(tmp_path):
     receipt = json.loads(baseline.read_text())
     failed = copy.deepcopy(receipt["trials"][0])
     failed.update(trial="failed-native", reward={"reward": 0})
+    failed["raw_usage"]["sessions"][0]["session_id"] = "distinct-failed-session"
     receipt["trials"].append(failed)
     receipt["trial_count"] = 2
     for trial in receipt["trials"]:
@@ -267,8 +450,8 @@ def test_grok_counter_or_completeness_contract_gaps_do_not_create_totals(tmp_pat
     result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
     row = result["rows"][1]
     assert all(value is None for value in row["tokens"].values())
-    assert row["native_usage_complete_observed"] is None
-    assert row["known_token_subtotals"]["input_tokens"] == 10
+    assert row["native_usage_complete_observed"] is not True
+    assert row["invocations"][0]["known_token_subtotals"]["input_tokens"] == 10
     assert all(f"≥ {value} (observed)" not in markdown(result) for value in (10, 30, 2, 42, 43))
 
 
@@ -300,7 +483,8 @@ def test_unidentified_legacy_receipt_does_not_inherit_codex_contract(tmp_path):
     row = collect(baseline=_baseline(tmp_path), supervisors=[receipt])["rows"][1]
     assert row["native_usage_complete_observed"] is None
     assert row["tokens"]["total_tokens"] is None
-    assert row["known_token_subtotals"]["total_tokens"] == 22
+    assert row["known_token_subtotals"]["total_tokens"] is None
+    assert row["invocations"][0]["known_token_subtotals"]["total_tokens"] == 22
 
 
 def test_stream_progress_survives_comparison_without_becoming_usage_or_completion():
@@ -446,6 +630,7 @@ def test_interrupted_or_legacy_usage_is_only_an_observed_subtotal(tmp_path, comp
     coding = _invocation("interrupted-coding")
     coding.update(phase="coding", status="failed", error_type="TimeoutExpired", timeout_seconds=45)
     coding["native_rollout_usage"]["usage"]["total_tokens"] = 244688
+    coding["native_rollout_usage"]["usage"]["input_tokens"] = 244686
     coding["native_rollout_usage"]["dollar_cost"] = 0.75
     if completion is None:
         coding["native_rollout_usage"].pop("task_complete_observed")
@@ -453,6 +638,7 @@ def test_interrupted_or_legacy_usage_is_only_an_observed_subtotal(tmp_path, comp
         coding["native_rollout_usage"]["task_complete_observed"] = completion
     planning = _invocation("planning")
     planning["native_rollout_usage"]["usage"]["total_tokens"] = 21244
+    planning["native_rollout_usage"]["usage"]["input_tokens"] = 21242
     planning["native_rollout_usage"]["dollar_cost"] = 0.25
     receipt = _receipt(tmp_path, "interrupted.json", SUPERVISOR, [{
         "trial": "interrupted", "reward": {"reward": 0},
@@ -472,12 +658,13 @@ def test_interrupted_or_legacy_usage_is_only_an_observed_subtotal(tmp_path, comp
     assert call["known_token_subtotals"]["total_tokens"] == 244688
     assert call["error_type"] == "TimeoutExpired" and call["timeout_seconds"] == 45
     assert row["reported_cost_usd"] is None
-    assert row["known_reported_cost_subtotal_usd"] == 1
+    assert row["known_reported_cost_subtotal_usd"] is None
+    assert [item["observed_reported_cost_usd"] for item in row["invocations"]] == [0.25, 0.75]
     costs = result["unsuccessful_attempt_costs"]["full"]
     assert costs["tokens"]["total_tokens"] is None
     assert costs["known_token_subtotals"]["total_tokens"] == 265932
     assert costs["unknown_token_trials"]["total_tokens"] == 1
-    assert costs["reported_cost_usd"] is None and costs["known_reported_cost_subtotal_usd"] == 1
+    assert costs["reported_cost_usd"] is None and costs["known_reported_cost_subtotal_usd"] is None
     assert result["arm_totals"]["full"]["tokens"]["total_tokens"] is None
     assert row["runtime_archive_sha256"] == "a" * 64
     assert len(result["comparison_source_sha256"]) == 64

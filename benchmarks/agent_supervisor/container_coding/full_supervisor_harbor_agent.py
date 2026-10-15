@@ -92,69 +92,15 @@ from .terminal_provider_stop import provider_stop_observation
 
 
 def measured_usage(report: dict) -> dict:
-    """Count observed native totals once, retaining provider-specific semantics."""
-    from .native_usage_accounting import native_usage_contract
+    """Reconcile supplied native sessions before exporting Harbor counters.
 
-    rows = report.get("provider_invocations", [])
-    unique = {}
-    for row in rows:
-        identity = row.get("invocation_id")
-        if not isinstance(identity, str) or not identity:
-            raise ValueError("provider invocation identity is unavailable")
-        if identity in unique and unique[identity] != row:
-            raise ValueError("conflicting provider receipts")
-        unique[identity] = row
-    known = bool(unique) and not report.get("unreceipted_provider_attempt")
-    result = {}
-    for key in ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens"):
-        values = [(row.get("native_rollout_usage") or {}).get("usage", {}).get(key)
-                  for row in unique.values()]
-        result[key] = sum(values) if known and all(type(v) is int and v >= 0 for v in values) else None
-    result["provider_calls"] = len(unique)
-    result["observed_complete_sessions"] = known and all(
-        (row.get("native_rollout_usage") or {}).get("task_complete_observed") is True
-        for row in unique.values()
-    ) if unique else False
-    contracts = [native_usage_contract(row, row.get("native_rollout_usage") or {})
-                 for row in unique.values()]
-    grok = any(row.get("provider") == "grok_cli"
-        or (row.get("native_rollout_usage") or {}).get("schema") == "native-grok-final-usage@1"
-        for row in unique.values())
-    cache_semantics = [contract[2] for contract in contracts]
-    result["cache_included_in_input"] = (cache_semantics[0] if cache_semantics
-        and all(type(value) is bool and value == cache_semantics[0] for value in cache_semantics)
-        else None)
-    result["source"] = "observed_native_final_totals" if grok else "observed_native_cumulative_totals"
-    if grok:
-        writes = [(row.get("native_rollout_usage") or {}).get("usage", {}).get("cache_write_input_tokens")
-                  for row in unique.values()]
-        result["cache_write_input_tokens"] = (sum(writes)
-            if known and all(type(value) is int and value >= 0 for value in writes) else None)
-        completeness = [(row.get("native_rollout_usage") or {}).get("usage_complete_observed")
-                        for row in unique.values()]
-        result["usage_complete_observed"] = (False if any(value is False for value in completeness)
-            else True if known and all(value is True for value in completeness) else None)
-    result["all_invocations_receipted"] = known
-    complete = [contract[0] for contract in contracts]
-    result["native_scoped_usage_complete_observed"] = (
-        False if any(value is False for value in complete)
-        else True if known and all(value is True for value in complete) else None)
-    scopes = {contract[1] for contract in contracts}
-    result["token_count_scope"] = next(iter(scopes)) if len(scopes) == 1 else None
-    if result["token_count_scope"] is None:
-        result["source"] = "observed_native_mixed_or_unknown_totals"
-    result["harbor_usage_exportable"] = (
-        result["native_scoped_usage_complete_observed"] is True
-        and result["token_count_scope"] is not None
-        and type(result["cache_included_in_input"]) is bool
-        and all(type(result.get(key)) is int and result[key] >= 0 for key in (
-            "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")))
-    # A native task_complete event can close a failed session with no token
-    # counters. Preserve that event separately from complete accounting.
-    result["usage_accounting_complete"] = result["harbor_usage_exportable"]
-    result["billing_total_verified"] = False
-    result["dollar_cost"] = None
-    return result
+    Distinct invocation IDs can refer to successive cumulative snapshots of
+    one Codex session. The shared accounting bridge selects that session once;
+    invocation counts remain separate from verified physical provider calls.
+    """
+    from .terminal_supervisor_usage_accounting import summarize_supervisor_usage
+
+    return summarize_supervisor_usage(report)
 
 
 def populate_harbor_usage(context: AgentContext, usage: dict) -> None:
@@ -166,18 +112,26 @@ def populate_harbor_usage(context: AgentContext, usage: dict) -> None:
     context.n_input_tokens = context.n_cache_tokens = context.n_output_tokens = None
     if usage.get("harbor_usage_exportable") is not True:
         return
-    value = usage["input_tokens"] if usage.get("cache_included_in_input") is True else None
-    if usage.get("cache_included_in_input") is False:
-        categories = [usage.get(key) for key in ("input_tokens", "cached_input_tokens",
-                                                "cache_write_input_tokens", "output_tokens", "total_tokens")]
-        if (all(type(item) is int and item >= 0 for item in categories)
-                and sum(categories[:4]) == categories[4]):
-            value = sum(categories[:3])
-    if value is None:
+    inputs, cached, outputs, total = [usage.get(key) for key in (
+        "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")]
+    if not all(type(item) is int and item >= 0 for item in (inputs, cached, outputs, total)):
+        return
+    if (usage.get("cache_included_in_input") is True
+            and usage.get("token_count_scope") == "native_session_cumulative"):
+        if cached > inputs or inputs + outputs != total:
+            return
+        value = inputs
+    elif (usage.get("cache_included_in_input") is False
+            and usage.get("token_count_scope") == "native_final_envelope"):
+        writes = usage.get("cache_write_input_tokens")
+        if type(writes) is not int or writes < 0 or inputs + cached + writes + outputs != total:
+            return
+        value = inputs + cached + writes
+    else:
         return
     context.n_input_tokens = value
-    context.n_cache_tokens = usage["cached_input_tokens"]
-    context.n_output_tokens = usage["output_tokens"]
+    context.n_cache_tokens = cached
+    context.n_output_tokens = outputs
 
 
 def security_asset_arguments(manifest: dict, arm: str) -> tuple[list[str], dict]:

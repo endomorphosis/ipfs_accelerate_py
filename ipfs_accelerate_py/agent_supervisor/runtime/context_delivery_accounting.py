@@ -365,7 +365,8 @@ def _validate_observation(row):
     _boolean(native["complete"], "native_complete", optional=True)
     _sha(native["session_id_sha256"], "native_session_hash", optional=True)
     _sha(native["artifact_sha256"], "native_artifact_hash", optional=True)
-    _count(native["observed_records"], "observed_records", optional=True, maximum=MAX_RECORDS)
+    _count(native["observed_records"], "observed_records", optional=True,
+           maximum=1 if native["schema"] == "native-grok-final-usage@1" else MAX_RECORDS)
     _need(type(native["reasons"]) is list and len(native["reasons"]) <= 16
           and all(type(v) is str and re.fullmatch(r"[a-z_]{1,80}", v) for v in native["reasons"]), "invalid_native_reasons")
     _need(native["reasons"] == sorted(set(native["reasons"])), "invalid_native_reasons")
@@ -376,7 +377,7 @@ def _validate_observation(row):
     _need(native["scope"] == expected_scope and native["identity_kind"] == expected_kind,
           "invalid_native_identity_scope")
     if native["complete"] is True:
-        _need(native["status"] == "complete" and not native["reasons"]
+        _need((codex or grok) and native["status"] == "complete" and not native["reasons"]
               and _coherence(native["schema"], native["counts"]) is True
               and native["artifact_sha256"] is not None and native["observed_records"] not in (None, 0)
               and row["provider"] == ("codex_cli" if codex else "grok_cli")
@@ -512,7 +513,16 @@ def summarize_invocations(rows, unreceipted_provider_attempt=None):
         conflict = bool(reasons)
         counts = dict.fromkeys(NORMALIZED_COUNTERS) if conflict else chosen["normalized_counts"]
         coherent = _coherence(chosen["schema"], chosen["counts"]) if chosen["schema"] else None
-        if coherent is not True:
+        # An unbound snapshot might be another observation of an identified
+        # session/envelope already in this population. Retain its raw counters
+        # above, but do not add them to even the known aggregate subtotal.
+        custody_complete = (chosen["artifact_sha256"] is not None and (
+            chosen["schema"] == "native-codex-cumulative-usage@1"
+            and chosen["session_id_sha256"] is not None
+            and chosen["observed_records"] not in (None, 0)
+            or chosen["schema"] == "native-grok-final-usage@1"
+            and chosen["observed_records"] == 1))
+        if coherent is not True or not custody_complete:
             counts = dict.fromkeys(NORMALIZED_COUNTERS)
         complete = False if conflict else chosen["complete"]
         sessions.append(dict(provider=provider, model=first["model"], identity_kind=kind,

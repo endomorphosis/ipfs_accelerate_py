@@ -198,7 +198,8 @@ def test_every_identified_session_must_complete(tmp_path):
 
 def test_synthesized_native_completion_flows_into_comparison(tmp_path):
     from benchmarks.agent_supervisor.container_coding.benchmark_comparison import BASELINE, collect
-    path = write_session(tmp_path, "a", [{"input_tokens": 8, "total_tokens": 11}])
+    path = write_session(tmp_path, "a", [{"input_tokens": 8, "cached_input_tokens": 2,
+                                         "output_tokens": 3, "total_tokens": 11}])
     receipt = tmp_path / "receipt.json"
     for complete in (False, True):
         if complete:
