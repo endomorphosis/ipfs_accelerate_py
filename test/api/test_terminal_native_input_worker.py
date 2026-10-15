@@ -206,7 +206,7 @@ def test_actual_full_driver_keeps_cold_preparation_planning_and_admission(superv
         return verify(*args, **kwargs)
 
     monkeypatch.setattr(driver, "verify_local_benchmark_admission", admitted)
-    monkeypatch.setattr(driver, "prepare_terminal_doctor_dispatch",
+    monkeypatch.setattr(doctor, "prepare_terminal_doctor_dispatch",
                         lambda **_: pytest.fail("model-only must not select a Doctor route"))
     result = driver.run(instruction=Path("/instruction"), state=state, arm="full",
                         semantic_native_input=True, doctor_dispatch_policy="model-only")

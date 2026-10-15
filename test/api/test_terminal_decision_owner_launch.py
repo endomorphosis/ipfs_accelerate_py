@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import fcntl
 import io
 import json
 import os
@@ -22,6 +23,7 @@ from benchmarks.agent_supervisor.container_coding import container_worker_deploy
 from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
 from benchmarks.agent_supervisor.container_coding import terminal_doctor_dispatch as doctor
 from test.api.test_terminal_prompt_tokenizer_forwarding import supervisor
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import _validation_memfd_create
 
 NOMINATION = {"semantic_decision_nomination_artifact": Path("/owner/explicit nomination.json"),
               "semantic_decision_nomination_sha256": "a" * 64}
@@ -76,11 +78,35 @@ def test_actual_signed_supervisor_binds_task_key_and_expected_nomination(supervi
     assert signed[0][signed[0].index("--semantic-decision-task-id") + 1] == "TASK"
 
 
+def _sealed_prompt(payload):
+    """Actual immutable fd for the current inherited-stdin monitor contract."""
+    assert type(payload) is bytes and len(payload) <= 256001
+    fd = _validation_memfd_create("authored-owner-prompt",
+        getattr(os, "MFD_CLOEXEC", 0x0001) | getattr(os, "MFD_ALLOW_SEALING", 0x0002))
+    try:
+        with os.fdopen(fd, "wb", closefd=False) as stream:
+            stream.write(payload)
+            stream.flush()
+        os.lseek(fd, 0, os.SEEK_SET)
+        seals = (getattr(fcntl, "F_SEAL_SEAL", 0x0001) | getattr(fcntl, "F_SEAL_SHRINK", 0x0002)
+                 | getattr(fcntl, "F_SEAL_GROW", 0x0004) | getattr(fcntl, "F_SEAL_WRITE", 0x0008))
+        fcntl.fcntl(fd, getattr(fcntl, "F_ADD_SEALS", 1033), seals)
+        assert fcntl.fcntl(fd, getattr(fcntl, "F_GET_SEALS", 1034)) & seals == seals
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
 @pytest.fixture
 def owner_entry(monkeypatch, capsys):
     parsed = ast.parse(deployment.OWNER_ENTRY)
-    assignments = {node.targets[0].id: index for index, node in enumerate(parsed.body)
-                   if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)}
+    assignments = {}
+    for index, node in enumerate(parsed.body):
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            # The current entry rebinds worker_arguments after sealed capture.
+            # This authored slice starts with its original literal argv input.
+            assignments.setdefault(node.targets[0].id, index)
     code = compile(ast.Module(body=parsed.body[assignments["worker_arguments"]:
                                assignments["proof_query_guard"]], type_ignores=[]),
                    "<owner-staging-and-routing>", "exec")
@@ -95,21 +121,34 @@ def owner_entry(monkeypatch, capsys):
             return SimpleNamespace(worker_arguments=("--semantic-decision-policy-artifact", "/canonical/policy.json"),
                                    prompt_bytes=kwargs["prompt_bytes"],
                                    receipt={"schema": "supervisor-semantic-decision-owner-binding@1"})
+        def handoff(**kwargs):
+            assert kwargs == {"argv": arguments, "boundary": Path("/opt/ipfs-supervisor/container-boundary.json"),
+                              "workspace": Path("/allocated")}
+            return {"argv": list(kwargs["argv"]), "stdin_fd": _sealed_prompt(payload)}
         def imported(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context":
+                assert fromlist == ("prepare_container_source_formalization_dispatch",)
+                return SimpleNamespace(prepare_container_source_formalization_dispatch=handoff)
             assert name == "ipfs_accelerate_py.agent_supervisor.runtime.semantic_decision_owner"
             return SimpleNamespace(prepare_decision_owner_dispatch=prepare)
         monkeypatch.setattr(sys, "argv", ["router-worker", *arguments])
         monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(payload)))
         monkeypatch.setattr(sys, "path", list(sys.path))
         namespace = {"__builtins__": {**vars(builtins), "__import__": imported},
-                     "sys": sys, "json": json, "root": Path("/opt/ipfs-supervisor"),
+                     "sys": sys, "os": os, "json": json, "root": Path("/opt/ipfs-supervisor"),
                      "cwd": Path("/allocated")}
-        if refuse:
-            with pytest.raises(SystemExit) as error:
+        original_stdin = os.dup(0)
+        try:
+            if refuse:
+                with pytest.raises(SystemExit) as error:
+                    exec(code, namespace)
+                assert error.value.code == 1
+            else:
                 exec(code, namespace)
-            assert error.value.code == 1
-        else:
-            exec(code, namespace)
+            assert os.pread(0, len(payload) + 1, 0) == payload
+        finally:
+            os.dup2(original_stdin, 0)
+            os.close(original_stdin)
         return namespace, list(calls), capsys.readouterr().out
     return execute
 
@@ -160,20 +199,25 @@ def _monitor(tmp_path, *, child_code=0, cleanup_code=0, payload=None, wait=False
         f" return types.SimpleNamespace(returncode={cleanup_code})\n"
         "subprocess.run=cleanup\n"
         f"command=[sys.executable,{str(child)!r},{str(target)!r}]\n"
-        + (f"owner_prompt_bytes={payload!r}\n" if payload is not None else "")
         + f"exec({deployment.OWNER_MONITOR!r})\n")
-    return subprocess.Popen([sys.executable, "-I", str(harness)], stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE), target, cleanup, popen_options
+    inherited_stdin = _sealed_prompt(payload) if payload is not None else None
+    try:
+        process = subprocess.Popen([sys.executable, "-I", str(harness)], stdin=inherited_stdin,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    finally:
+        if inherited_stdin is not None:
+            os.close(inherited_stdin)
+    return process, target, cleanup, popen_options
 
 
 @pytest.mark.parametrize("child_code,cleanup_code,expected", [(0, 0, 0), (7, 0, 7), (0, 1, 1)])
-def test_actual_monitor_replays_bytes_and_preserves_exit_and_cleanup(tmp_path, child_code, cleanup_code, expected):
+def test_actual_monitor_inherits_sealed_bytes_and_preserves_exit_and_cleanup(tmp_path, child_code, cleanup_code, expected):
     payload = "λ\r\nverbatim required suffix\r\n".encode()
     process, target, cleanup, options = _monitor(tmp_path, child_code=child_code,
                                                cleanup_code=cleanup_code, payload=payload)
     process.communicate(timeout=10)
     assert process.returncode == expected and target.read_bytes() == payload
-    assert cleanup.is_file() and json.loads(options.read_text())["stdin"] == subprocess.PIPE
+    assert cleanup.is_file() and "stdin" not in json.loads(options.read_text())
 
 
 def test_actual_default_monitor_does_not_replace_stdin(tmp_path):

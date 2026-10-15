@@ -68,11 +68,38 @@ def test_selection_requires_path_and_independent_pin_together(tmp_path, missing)
     assert not (tmp_path / "bundle").exists()
 
 
-def test_wheel_does_not_activate_a_new_model_runtime(tmp_path):
+@pytest.mark.parametrize("arch", ["aarch64", "x86_64"])
+def test_pinned_cpu_runtime_without_model_assets_roundtrips_and_leaves_plain_archive_unselected(tmp_path, arch):
+    wheel, pin = _wheel(tmp_path, arch)
+    selected = deployment.build_runtime_archive(output=tmp_path / "bundle", torch_cpu_wheel=wheel,
+        torch_cpu_wheel_sha256=pin, **_inputs(tmp_path))
+    plain = deployment.build_runtime_archive(output=tmp_path / "plain/bundle", **_inputs(tmp_path / "plain"))
+    binding = selected["torch_cpu_wheel"]
+    assert selected["torch_cpu_requirement"] == deployment.TORCH_CPU_REQUIREMENT
+    assert selected["model_snapshot_revision"] is None and selected["learned_requirements"] == []
+    assert selected["security_training_requirements"] == selected["security_inference_requirements"] == []
+    assert binding["sha256"] == pin and binding["bytes"] == wheel.stat().st_size
+    assert deployment.verify_torch_cpu_wheel_archive(tmp_path / "bundle/runtime.tar.gz", selected) == binding
+    with tarfile.open(tmp_path / "bundle/runtime.tar.gz") as archive:
+        member = archive.getmember(binding["path"])
+        assert member.isfile() and member.mode == 0o644
+        assert archive.extractfile(member).read() == wheel.read_bytes()
+        assert not any(name.startswith("models/") for name in archive.getnames())
+    assert plain.get("torch_cpu_wheel") is None and plain["torch_cpu_requirement"] == ""
+    assert plain["model_snapshot_revision"] is None and plain["learned_requirements"] == []
+    assert deployment.verify_torch_cpu_wheel_archive(tmp_path / "plain/bundle/runtime.tar.gz", plain) is None
+    assert [row for row in selected["files"] if row["path"] != binding["path"]] == plain["files"]
+
+
+@pytest.mark.parametrize("damage", ["missing-path", "missing-pin", "wrong-pin"])
+def test_standalone_cpu_runtime_still_requires_independent_exact_pair_before_output(tmp_path, damage):
     wheel, pin = _wheel(tmp_path)
-    with pytest.raises(ValueError, match="already selected"):
-        deployment.build_runtime_archive(output=tmp_path / "bundle", torch_cpu_wheel=wheel,
-            torch_cpu_wheel_sha256=pin, **_inputs(tmp_path))
+    with pytest.raises(ValueError):
+        deployment.build_runtime_archive(output=tmp_path / "bundle",
+            torch_cpu_wheel=None if damage == "missing-path" else wheel,
+            torch_cpu_wheel_sha256=None if damage == "missing-pin" else "0" * 64 if damage == "wrong-pin" else pin,
+            **_inputs(tmp_path))
+    assert not (tmp_path / "bundle").exists()
 
 
 @pytest.mark.parametrize("pin", ["0" * 64, "A" * 64, "not-a-pin", 123])

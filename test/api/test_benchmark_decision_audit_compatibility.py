@@ -85,7 +85,7 @@ def test_closed_export_profile_refuses_current_unsupported_dependency_families(r
 
 
 def test_typed_owner_sidecar_cannot_be_silently_dropped_from_closed_export():
-    with pytest.raises(ValueError, match="typed_lineage_export_not_supported"):
+    with pytest.raises(ValueError, match="typed_nomination_independent_expectation_required"):
         evidence._request([], {"semantic_decision_owner_bindings": [{"typed_nomination": {}}]})
 
 

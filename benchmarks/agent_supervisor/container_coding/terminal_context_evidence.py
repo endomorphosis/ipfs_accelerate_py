@@ -29,13 +29,19 @@ import zlib
 SCHEMA = "terminal-context-evidence-export@1"
 RECEIPT_SCHEMA = "terminal-context-evidence-export-receipt@1"
 PROFILE = "public-bottle-owner-packet-replay@1"
+TYPED_PROFILE = "public-bottle-typed-owner-packet-replay@1"
+TYPED_RETRIEVAL_PROFILE = "public-bottle-typed-owner-retrieval-packet-replay@1"
+TYPED_PROFILES = frozenset({TYPED_PROFILE, TYPED_RETRIEVAL_PROFILE})
+PROFILES = frozenset({PROFILE, *TYPED_PROFILES})
 MAX_FILES = 20_000
 MAX_CONTENT_BYTES = 256 * 1024 * 1024
 MAX_FILE_BYTES = 2_000_000
 MAX_SNAPSHOT_BYTES = 64_000_000
 MAX_MANIFEST_BYTES = 1024 * 1024
+MAX_TYPED_MANIFEST_BYTES = 4 * 1024 * 1024
 MAX_REQUEST_BYTES = 65_536
 MAX_ARCHIVE_BYTES = MAX_CONTENT_BYTES + MAX_FILES * 1024 + MAX_MANIFEST_BYTES + 10_240
+MAX_TYPED_ARCHIVE_BYTES = MAX_CONTENT_BYTES + MAX_FILES * 1024 + MAX_TYPED_MANIFEST_BYTES + 10_240
 MAX_PUBLIC_SOURCES = 512
 MAX_CAPSULES = 32
 MAX_RECEIPTS = 16
@@ -48,6 +54,23 @@ _CHILD_CLEANUP_SECONDS = .2
 def _require(ok, reason):
     if not ok:
         raise ValueError(reason)
+
+
+def _manifest_limit(profile):
+    _require(type(profile) is str and profile in PROFILES, "closed_export_profile_required")
+    return MAX_TYPED_MANIFEST_BYTES if profile in TYPED_PROFILES else MAX_MANIFEST_BYTES
+
+
+def _archive_limit(profile):
+    _require(type(profile) is str and profile in PROFILES, "closed_export_profile_required")
+    return MAX_TYPED_ARCHIVE_BYTES if profile in TYPED_PROFILES else MAX_ARCHIVE_BYTES
+
+
+def _read_manifest(path):
+    raw = _read(path, MAX_TYPED_MANIFEST_BYTES)
+    value = _json(raw)
+    _require(type(value) is dict and len(raw) <= _manifest_limit(value.get("profile")), "manifest_bound")
+    return value
 
 
 def _sha(raw):
@@ -292,12 +315,92 @@ def _git_public_closure(root, baseline, sources):
     return held
 
 
+def _typed_archive_witnesses(manifest, captured):
+    """Check typed transport joins; this does not replace native verification."""
+    _require("replay-request.json" in captured, "replay_request_required")
+    request = _json(captured["replay-request.json"])
+    if manifest["profile"] not in TYPED_PROFILES:
+        report = request.get("decision_report", {}) if type(request) is dict else {}
+        _require(type(report) is dict and _typed_profile(report) == PROFILE,
+                 "typed_profile_request_differs")
+        return
+    _require(type(request) is dict and set(request) == {"receipts", "decision_report"},
+             "typed_replay_request_required")
+    report = request["decision_report"]
+    _require(type(report) is dict and _typed_profile(report) == manifest["profile"],
+             "typed_profile_request_differs")
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_decision_usage import (
+        _dialogue_owner_key, _owner_binding_key, _valid_owner_binding,
+    )
+    dialogues = report.get("semantic_decision_dialogues", [])
+    _require(type(dialogues) is list and 0 < len(dialogues) <= MAX_RECEIPTS,
+             "typed_dialogue_population_required")
+    result = _json(captured.get("state/context-result.json", b"{}"))
+    reference = result.get("initial_context_descriptor") if type(result) is dict else None
+    descriptor_member = "repository/.runtime/terminal-initial-context/descriptor.json"
+    _require(type(reference) is dict and set(reference) == {"artifact", "sha256"}
+             and reference["artifact"] == ".runtime/terminal-initial-context/descriptor.json"
+             and descriptor_member in captured and _sha(captured[descriptor_member]) == reference["sha256"],
+             "independently_pinned_initial_descriptor_required")
+    required = {descriptor_member: "initial-context-descriptor"}
+    for owner in report["semantic_decision_owner_bindings"]:
+        _require(_valid_owner_binding(owner) and owner.get("nomination_sha256") ==
+                 report["semantic_decision_nomination_sha256"] and owner.get("task_id") ==
+                 report["semantic_decision_expected_task_id"], "typed_origin_independent_pin_differs")
+        commit = owner["typed_nomination"]
+        _require(type(commit) is dict and set(commit) == {"schema", "lineage_artifact", "lineage_sha256",
+                 "derived_nomination_artifact", "derived_nomination_sha256"}
+                 and commit["schema"] == "supervisor-semantic-typed-nomination-binding@1",
+                 "typed_sidecar_binding_required")
+        matched = {_encode(dialogue) for dialogue in dialogues if type(dialogue) is dict
+                   and _dialogue_owner_key(dialogue) == _owner_binding_key(owner)}
+        _require(len(matched) == 1, "unambiguous_typed_dialogue_owner_required")
+        dialogue = next(dialogue for dialogue in dialogues if type(dialogue) is dict
+                        and _dialogue_owner_key(dialogue) == _owner_binding_key(owner))
+        for digest_key, directory, role in (
+            ("lineage_sha256", "repository/.runtime/semantic-typed-nominations/", "typed-nomination-lineage"),
+            ("derived_nomination_sha256", "repository/.runtime/semantic-decision-nominations/", "typed-derived-nomination"),
+        ):
+            digest = commit.get(digest_key)
+            _require(type(digest) is str and re.fullmatch(r"[0-9a-f]{64}", digest),
+                     "typed_sidecar_digest_required")
+            member = directory + digest + ".json"
+            artifact_key = "lineage_artifact" if digest_key == "lineage_sha256" else "derived_nomination_artifact"
+            _require(commit[artifact_key] == "/app/" + member.removeprefix("repository/"),
+                     "typed_sidecar_digest_namespace_required")
+            _require(member in captured and _sha(captured[member]) == digest,
+                     "typed_sidecar_content_differs")
+            required[member] = role
+        lineage = _json(captured["repository/.runtime/semantic-typed-nominations/" + commit["lineage_sha256"] + ".json"])
+        if manifest["profile"] == TYPED_RETRIEVAL_PROFILE:
+            required.update(_typed_retrieval_witnesses(owner=owner, dialogue=dialogue,
+                lineage=lineage, captured=captured))
+        else:
+            _typed_lineage_contract(lineage, TYPED_PROFILE)
+        _require(type(lineage) is dict and type(lineage.get("origin_nomination_text")) is str,
+                 "typed_origin_witness_required")
+        origin = lineage["origin_nomination_text"].encode()
+        member = "typed-origins/" + report["semantic_decision_nomination_sha256"] + ".json"
+        _require(len(origin) <= 256_000 and _sha(origin) == report["semantic_decision_nomination_sha256"]
+                 and captured.get(member) == origin, "typed_origin_witness_differs")
+        required[member] = "typed-origin-nomination"
+    for dialogue in dialogues:
+        _require(type(dialogue) is dict and len({_encode(owner)
+                 for owner in report["semantic_decision_owner_bindings"]
+                 if _dialogue_owner_key(dialogue) == _owner_binding_key(owner)}) == 1,
+                 "unambiguous_typed_dialogue_owner_required")
+    witness_roles = {"typed-nomination-lineage", "typed-derived-nomination", "typed-origin-nomination",
+                     "initial-context-descriptor"}
+    if manifest["profile"] == TYPED_RETRIEVAL_PROFILE:
+        witness_roles.update({"launch-policy", "raw-retrieval", "retrieval-snapshot"})
+    observed = {row["path"]: row["role"] for row in manifest["files"] if row["role"] in witness_roles}
+    _require(observed == required, "typed_sidecar_inventory_differs")
+
+
 def _request(receipts, decision_report):
     from benchmarks.agent_supervisor.container_coding import terminal_context_audit as audit
     _require(type(receipts) is list and len(receipts) <= MAX_RECEIPTS
              and type(decision_report) is dict, "bounded_export_request_required")
-    _require(not decision_report.get("semantic_decision_typed_nomination_expected", False),
-             "typed_lineage_export_not_supported")
     _require(not any(type(row) is dict and "world_task_packet" in row for row in receipts),
              "world_packet_export_not_supported")
     _require(not any(type(row) is dict and row.get("source_formalization_context") is not None
@@ -309,8 +412,7 @@ def _request(receipts, decision_report):
     audit._bounded_request(value)
     owners = selected.get("semantic_decision_owner_bindings", [])
     _require(type(owners) is list, "bounded_owner_binding_population_required")
-    _require(not any(type(owner) is dict and "typed_nomination" in owner for owner in owners),
-             "typed_lineage_export_not_supported")
+    _typed_profile(selected)
     _require(len(_encode(value)) <= MAX_REQUEST_BYTES, "export_request_bound")
     # The existing bounded owner record contains hashes/counters, never reply text.
     def no_content(item):
@@ -326,6 +428,291 @@ def _request(receipts, decision_report):
                 no_content(child)
     no_content(value)
     return value
+
+
+def _typed_profile(report):
+    """Typed custody is selected only by independent pins and an all-typed owner set."""
+    owners = report.get("semantic_decision_owner_bindings", [])
+    _require(type(owners) is list and len(owners) <= MAX_RECEIPTS,
+             "bounded_owner_binding_population_required")
+    flag = report.get("semantic_decision_typed_nomination_expected", False)
+    _require(type(flag) is bool, "typed_nomination_expectation_boolean_required")
+    typed = [type(owner) is dict and "typed_nomination" in owner for owner in owners]
+    _require(not any(typed) or flag, "typed_nomination_independent_expectation_required")
+    if not flag:
+        return PROFILE
+    _require(bool(typed) and all(typed) and report.get("semantic_decision_owner_binding_expected") is True,
+             "complete_typed_owner_population_required")
+    _require(type(report.get("semantic_decision_nomination_sha256")) is str
+             and re.fullmatch(r"[0-9a-f]{64}", report["semantic_decision_nomination_sha256"])
+             and type(report.get("semantic_decision_expected_task_id")) is str
+             and 0 < len(report["semantic_decision_expected_task_id"].encode()) <= 512,
+             "independent_typed_nomination_pins_required")
+    dialogues = report.get("semantic_decision_dialogues", [])
+    _require(type(dialogues) is list and len(dialogues) <= MAX_RECEIPTS,
+             "bounded_typed_dialogue_population_required")
+    launches = [row.get("worker_launch") if type(row) is dict else None for row in dialogues]
+    retrieval = [type(launch) is dict and "retrieval_query_binding" in launch for launch in launches]
+    if any(retrieval):
+        _require(all(retrieval), "mixed_typed_retrieval_profiles_refused")
+        for launch in launches:
+            _retrieval_binding(launch["retrieval_query_binding"], report["semantic_decision_expected_task_id"])
+        return TYPED_RETRIEVAL_PROFILE
+    return TYPED_PROFILE
+
+
+def _retrieval_binding(value, task_id):
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_retrieval_query_reference import SemanticRetrievalQueryBinding
+    binding = SemanticRetrievalQueryBinding.from_dict(value)
+    _require(binding.task_id == task_id, "typed_retrieval_task_differs")
+    _artifact(Path("/app"), binding.artifact)
+    return binding
+
+
+def _typed_lineage_contract(lineage, profile, retrieval_binding=None):
+    """Bind the selected transport profile to the retained native revisions."""
+    revision = "2" if profile == TYPED_RETRIEVAL_PROFILE else "1"
+    _require(type(lineage) is dict and set(lineage) == {"schema", "origin_nomination_text", "typed_nomination"}
+             and lineage.get("schema") == "supervisor-semantic-typed-nomination-lineage@" + revision,
+             "typed_lineage_profile_differs")
+    value = lineage["typed_nomination"]
+    _require(type(value) is dict and set(value) == {"schema", "nomination", "launch_policy", "policy", "receipt"}
+             and value.get("schema") == "supervisor-semantic-typed-owner-nomination@" + revision
+             and type(value.get("receipt")) is dict
+             and value["receipt"].get("schema") == "supervisor-semantic-typed-owner-policy-receipt@" + revision,
+             "typed_lineage_profile_differs")
+    if profile == TYPED_RETRIEVAL_PROFILE:
+        _require(type(retrieval_binding) is dict
+                 and value["receipt"].get("retrieval_query_binding") == retrieval_binding
+                 and type(value["launch_policy"]) is dict
+                 and value["launch_policy"].get("schema") == "supervisor-semantic-decision-launch-policy@3"
+                 and value["launch_policy"].get("retrieval_query_binding") == retrieval_binding,
+                 "typed_retrieval_lineage_binding_differs")
+    else:
+        _require("retrieval_query_binding" not in value["receipt"]
+                 and type(value["launch_policy"]) is dict
+                 and value["launch_policy"].get("schema") in {
+                     "supervisor-semantic-decision-launch-policy@1", "supervisor-semantic-decision-launch-policy@2"}
+                 and "retrieval_query_binding" not in value["launch_policy"],
+                 "typed_lineage_profile_differs")
+    return value
+
+
+def _typed_retrieval_witnesses(*, owner, dialogue, lineage, captured):
+    """Verify only public transport commitments; native replay remains separate."""
+    binding = _retrieval_binding(dialogue["worker_launch"]["retrieval_query_binding"], owner["task_id"])
+    value = _typed_lineage_contract(lineage, TYPED_RETRIEVAL_PROFILE, binding.to_dict())
+    _, policy_member = _artifact(Path("/app"), owner["launch_policy_artifact"])
+    _require(policy_member == "repository/.runtime/semantic-decision-policies/" + owner["launch_policy_sha256"] + ".json"
+             and policy_member in captured and _sha(captured[policy_member]) == owner["launch_policy_sha256"],
+             "typed_retrieval_launch_policy_differs")
+    descriptor = _json(captured[policy_member])
+    _require(type(descriptor) is dict and set(descriptor) == {
+        "schema", "task_id", "parent_artifact", "parent_sha256", "policy", "retrieval_query_binding"}
+        and descriptor["schema"] == "supervisor-semantic-decision-launch-policy@3"
+        and descriptor["task_id"] == owner["task_id"]
+        and descriptor["parent_artifact"] == owner["parent_artifact"]
+        and descriptor["parent_sha256"] == owner["parent_sha256"]
+        and descriptor["retrieval_query_binding"] == binding.to_dict()
+        and _sha(_encode(descriptor["policy"])) == owner["policy_sha256"]
+        and _encode(descriptor) == _encode(value["launch_policy"]),
+        "typed_retrieval_launch_policy_differs")
+    _, raw_member = _artifact(Path("/app"), binding.artifact)
+    _require(raw_member in captured and _sha(captured[raw_member]) == binding.expected_sha256,
+             "typed_retrieval_raw_parent_differs")
+    payload = _json(captured[raw_member])
+    referenced = payload.get("schema") == "supervisor-code-retrieval-artifact@2" if type(payload) is dict else False
+    _require(type(payload) is dict and set(payload) == {"schema", "task_id", "query_text", "source_sha256", "result",
+        "snapshot_ref" if referenced else "snapshot"}
+        and payload["schema"] in {"supervisor-code-retrieval-context@1", "supervisor-code-retrieval-artifact@2"}
+        and payload["task_id"] == binding.task_id, "typed_retrieval_raw_parent_differs")
+    required = {policy_member: "launch-policy", raw_member: "raw-retrieval"}
+    if referenced:
+        reference = payload["snapshot_ref"]
+        _require(type(reference) is dict and set(reference) == {"path", "sha256", "bytes", "index_id"}
+                 and type(reference["bytes"]) is int and 0 < reference["bytes"] <= MAX_SNAPSHOT_BYTES,
+                 "typed_retrieval_snapshot_binding_required")
+        _, member = _artifact(Path("/app"), reference["path"])
+        _require(member in captured and len(captured[member]) == reference["bytes"]
+                 and _sha(captured[member]) == reference["sha256"], "typed_retrieval_snapshot_differs")
+        required[member] = "retrieval-snapshot"
+    return required
+
+
+def _capture_typed_lineage(*, repository, allocation, request, dialogue, prompt, capture):
+    """Run the native historical verifier before copying its closed public sidecars."""
+    from benchmarks.agent_supervisor.container_coding.semantic_decision_input_audit import (
+        audit_semantic_typed_nomination_lineage,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_decision_usage import (
+        _dialogue_owner_key, _owner_binding_key, _valid_owner_binding,
+    )
+    report = request["decision_report"]
+    _require(_typed_profile(report) in TYPED_PROFILES, "typed_profile_required")
+    owners = report["semantic_decision_owner_bindings"]
+    _require(all(_valid_owner_binding(owner) for owner in owners), "invalid_typed_owner_binding")
+    matches = {_encode(owner): owner for owner in owners
+               if _owner_binding_key(owner) == _dialogue_owner_key(dialogue)}
+    _require(len(matches) == 1, "unambiguous_typed_dialogue_owner_required")
+    owner = next(iter(matches.values()))
+    verified = audit_semantic_typed_nomination_lineage(native_prompt=prompt, owner_binding=owner,
+        dialogue=dialogue, repository=repository, workspace_root=allocation,
+        expected_origin_nomination_sha256=report["semantic_decision_nomination_sha256"],
+        expected_task_id=report["semantic_decision_expected_task_id"])
+    commit = owner["typed_nomination"]
+    for artifact_key, digest_key, directory, role in (
+        ("lineage_artifact", "lineage_sha256", "semantic-typed-nominations", "typed-nomination-lineage"),
+        ("derived_nomination_artifact", "derived_nomination_sha256", "semantic-decision-nominations", "typed-derived-nomination"),
+    ):
+        path, member = _artifact(repository, commit[artifact_key])
+        _require(member == "repository/.runtime/" + directory + "/" + commit[digest_key] + ".json",
+                 "typed_sidecar_digest_namespace_required")
+        raw = capture(path, member, expected=commit[digest_key], role=role)
+        if role == "typed-nomination-lineage":
+            lineage = _json(raw)
+            _typed_lineage_contract(lineage, _typed_profile(report),
+                (dialogue.get("worker_launch") or {}).get("retrieval_query_binding"))
+            origin = lineage["origin_nomination_text"].encode()
+    _require(len(origin) <= 256_000 and _sha(origin) == report["semantic_decision_nomination_sha256"],
+             "typed_origin_independent_pin_differs")
+    return owner, origin, verified
+
+
+def _block_population(repository, artifact):
+    """Bounded no-follow membership observation without reading unknown bytes."""
+    relative = PurePosixPath(artifact).parent / "blocks"
+    descriptor = os.open(repository, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in relative.parts:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        before = os.fstat(descriptor)
+        names = set()
+        with os.scandir(descriptor) as entries:
+            for entry in entries:
+                _require(len(names) < MAX_FILES and entry.name not in names
+                         and entry.is_file(follow_symlinks=False), "public_producer_block_population_refused")
+                names.add(entry.name)
+        after = os.fstat(descriptor)
+        _require(all(getattr(before, key) == getattr(after, key) for key in (
+            "st_dev", "st_ino", "st_mtime_ns", "st_ctime_ns")), "public_producer_block_inventory_changed")
+        return names
+    finally:
+        os.close(descriptor)
+
+
+
+def _capture_initial_semantic_preparation(*, repository, prepared, expected, parent, artifact, parent_sha256, repository_id, capture):
+    """Resolve the current slim context result's independently held descriptor.
+
+    Historical custody reads this one pinned public descriptor. Its world,
+    database, model and learner references are never followed or made fresh.
+    """
+    from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import content_identity
+    reference = expected.get("initial_context_descriptor")
+    _require(type(reference) is dict and set(reference) == {"artifact", "sha256"}
+             and reference["artifact"] == ".runtime/terminal-initial-context/descriptor.json"
+             and type(reference["sha256"]) is str and re.fullmatch(r"[0-9a-f]{64}", reference["sha256"]),
+             "independently_pinned_initial_descriptor_required")
+    path, member = _artifact(repository, reference["artifact"])
+    raw = capture(path, member, expected=reference["sha256"], role="initial-context-descriptor")
+    descriptor = _json(raw)
+    fields = {"schema", "request_cid", "scan_cid", "task_alias", "task_alias_is_declaration_only",
+        "manifest_cid", "public_query_sha256", "repository_id", "metadata", "semantic", "retrieval",
+        "world", "world_capture_cid", "world_artifact_kind", "index", "learned_embeddings",
+        "model_snapshot", "model_revision", "execution_authority", "completion_authority"}
+    optional = {"capsule_selection", "capsule_budget", "semantic_context_profile", "public_task_index_scope",
+        "terminal_semantic_scope", "codebase_autoencoder", "codebase_autoencoder_catalog",
+        "code_learning_assets_sha256", "security_autoencoder_advice", "source384_context",
+        "numerical_formalization", "numerical_selection_384", "model_manifest"}
+    _require(type(descriptor) is dict and fields <= set(descriptor) <= fields | optional
+             and descriptor["schema"] == "terminal-initial-indexed-planning@1"
+             and descriptor["task_alias_is_declaration_only"] is True
+             and descriptor["execution_authority"] is False and descriptor["completion_authority"] is False,
+             "closed_initial_descriptor_required")
+    semantic, metadata = descriptor["semantic"], descriptor["metadata"]
+    _require(type(semantic) is dict and type(metadata) is dict
+             and descriptor["task_alias"] == prepared["spec"]["task_key"] == parent["task_id"]
+             and descriptor["manifest_cid"] == content_identity(prepared["manifest"])
+             and descriptor["public_query_sha256"] == _sha(prepared["query"].encode())
+             and descriptor["repository_id"] == repository_id
+             and metadata.get("Semantic context artifact") == artifact
+             and metadata.get("Semantic context sha256") == parent_sha256
+             and semantic.get("worker_payload_sha256") == parent_sha256
+             and semantic.get("semantic_root_cid") == parent["semantic_root_cid"] == expected["semantic_root_cid"],
+             "initial_descriptor_native_parent_differs")
+    return semantic
+
+
+def _public_typed_blocks(*, repository, artifact, parent, parent_bytes, semantic_preparation, view):
+    """Reconstruct the exact public producer inventory, refusing orphan CAS bytes.
+
+    The native typed verifier includes every retained block in its proposal.
+    A directory snapshot alone is therefore insufficient as a privacy allowlist.
+    Only the sealed producer's direct root/index closure and exact deterministic
+    preparation sidecars belong to this historical export profile.
+    """
+    from ipfs_datasets_py.logic.software_contracts.semantic_state.api import _parse_sorted_pair_index
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_typed_source_context import _capture_blocks
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import _source_scope_payload
+    from ipfs_accelerate_py.agent_supervisor.runtime.context_selection_observation import (
+        verify_context_selection_observation,
+    )
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.wire import (
+        canonicalize_artifact, cid_for_bytes, cid_for_payload,
+    )
+    _require("candidate_snapshot_cid" not in (parent.get("worker_projection") or {}),
+             "indexed_candidate_typed_export_not_supported")
+    closure, closure_bytes = {}, 0
+    def retain(cid):
+        nonlocal closure_bytes
+        _require(type(cid) is str and PurePosixPath(cid).name == cid and cid not in {".", ".."},
+                 "producer_block_identity_required")
+        raw = view.get_block(cid)
+        previous = closure.get(cid)
+        closure_bytes += len(raw) - (len(previous) if previous is not None else 0)
+        closure[cid] = raw
+        _require(len(closure) <= MAX_FILES and closure_bytes <= MAX_CONTENT_BYTES,
+                 "export_content_bound")
+        return closure[cid]
+    retain(parent["semantic_root_cid"])
+    for field in ("symbol_fact_index_cid", "artifact_fact_index_cid", "semantic_link_index_cid",
+                  "symbol_node_index_cid", "capsule_index_cid", "analysis_limitation_index_cid"):
+        cid = getattr(view.root, field)
+        index = _parse_sorted_pair_index(cid, retain(cid))
+        for _, value in index.pairs:
+            retain(value)
+    retain(view.root.environment_binding_set_cid)
+    for binding in parent["manifest"].values():
+        _require(_sha(retain(binding["source_cid"])) == binding["sha256"],
+                 "retained_source_digest_differs")
+    scope = _source_scope_payload(parent["manifest"], parent.get("program_paths"))
+    _require(cid_for_payload(scope) == parent["scope_cid"], "producer_scope_differs")
+    extras = (scope, {"schema": "required-source-set@1", "sources": {
+        name: parent["manifest"][name] for name in parent["required_raw_paths"]}},
+        {"schema": "initial-context-scan@1", "scope_cid": parent["scope_cid"]})
+    for payload in extras:
+        cid, raw = cid_for_payload(payload), canonicalize_artifact(payload)
+        _require(retain(cid) == raw, "producer_preparation_sidecar_differs")
+    _require(type(semantic_preparation) is dict, "independent_semantic_preparation_required")
+    reference = semantic_preparation.get("context_selection_observation")
+    _require(type(reference) is dict and set(reference) == {
+        "schema", "artifact", "cid", "sha256", "bytes", "role"}
+        and reference["schema"] == "supervisor-context-selection-observation-ref@1"
+        and reference["artifact"] == "context-selection.json", "bound_selection_observation_required")
+    raw = retain(reference["cid"])
+    _require(len(raw) == reference["bytes"] and cid_for_bytes(raw) == reference["cid"],
+             "selection_observation_identity_differs")
+    verify_context_selection_observation(raw=raw, expected_sha256=reference["sha256"],
+        payload=parent, payload_bytes=parent_bytes, role=reference["role"])
+    # Reject unknown directory members before the native full-directory reader
+    # can bring any orphan/private block into a retained snapshot.
+    _require(_block_population(repository, artifact) == set(closure),
+             "public_producer_block_inventory_differs")
+    original = dict(_capture_blocks(repository, artifact, parent["semantic_root_cid"]))
+    _require(original == closure, "public_producer_block_inventory_differs")
+    return original
 
 
 def export_terminal_context_evidence(*, state: Path, receipts: list, workspace_root: Path,
@@ -347,17 +734,22 @@ def export_terminal_context_evidence(*, state: Path, receipts: list, workspace_r
     _require(allocation == Path("/opt/ipfs-supervisor/worktrees"), "original_workspace_namespace_required")
     _require(state.is_relative_to(Path("/opt/ipfs-supervisor/state")), "owner_state_namespace_required")
     request = _request(receipts, decision_report)
-    held, originals, roles = {}, {}, {}
+    profile = _typed_profile(request["decision_report"])
+    held, originals, roles, block_snapshots = {}, {}, {}, []
+    held_bytes = 0
     def capture(path, member, limit=MAX_FILE_BYTES, expected=None, role="semantic-cas"):
+        nonlocal held_bytes
         _relative(member)
         raw = _read(path, limit)
         _require(expected is None or _sha(raw) == expected, "held_artifact_digest_differs")
         _require(member not in held or held[member] == raw, "export_path_binding_conflict")
+        if member not in held:
+            held_bytes += len(raw)
         held[member] = raw
         _require(member not in roles or roles[member] == role, "export_role_conflict")
         roles[member] = role
         originals[str(path)] = (raw, limit)
-        _require(len(held) <= MAX_FILES and sum(map(len, held.values())) <= MAX_CONTENT_BYTES,
+        _require(len(held) <= MAX_FILES and held_bytes <= MAX_CONTENT_BYTES,
                  "export_content_bound")
         return raw
 
@@ -412,8 +804,12 @@ def export_terminal_context_evidence(*, state: Path, receipts: list, workspace_r
         policy_path, policy_member = _artifact(repository, launch["launch_policy_artifact"])
         descriptor = _json(capture(policy_path, policy_member, expected=launch["launch_policy_sha256"],
                                    role="launch-policy"))
-        _require(descriptor.get("schema") in {"supervisor-semantic-decision-launch-policy@2",
-                                              "supervisor-semantic-decision-launch-policy@3"},
+        schemas = ({"supervisor-semantic-decision-launch-policy@3"} if profile == TYPED_RETRIEVAL_PROFILE else
+                   {"supervisor-semantic-decision-launch-policy@1",
+                    "supervisor-semantic-decision-launch-policy@2"} if profile == TYPED_PROFILE else
+                   {"supervisor-semantic-decision-launch-policy@2",
+                    "supervisor-semantic-decision-launch-policy@3"})
+        _require(descriptor.get("schema") in schemas,
                  "task_text_packet_launch_required")
         wire, _, _, _, text, artifact = codec._prompt_parts(prompt)
         parent_path, parent_member = _artifact(repository, artifact)
@@ -433,6 +829,23 @@ def export_terminal_context_evidence(*, state: Path, receipts: list, workspace_r
             path, member = _artifact(repository, (blocks / cid).as_posix())
             return capture(path, member)
         view = IpfsDatasetsSemanticStateProvider().open_verified_view(parent["semantic_root_cid"], reader)
+        if profile in TYPED_PROFILES:
+            semantic_preparation = _capture_initial_semantic_preparation(repository=repository,
+                prepared=prepared, expected=expected, parent=parent, artifact=artifact,
+                parent_sha256=descriptor["parent_sha256"], repository_id=view.root.repository_id, capture=capture)
+            snapshot = _public_typed_blocks(repository=repository, artifact=artifact, parent=parent,
+                parent_bytes=held[parent_member], semantic_preparation=semantic_preparation, view=view)
+            for cid, original in snapshot.items():
+                _require(reader(cid) == original, "public_producer_block_changed")
+            block_snapshots.append((artifact, parent["semantic_root_cid"], snapshot))
+        if profile in TYPED_PROFILES:
+            owner, origin, _ = _capture_typed_lineage(repository=repository, allocation=allocation,
+                request=request, dialogue=dialogue, prompt=prompt, capture=capture)
+            origin_member = "typed-origins/" + _sha(origin) + ".json"
+            _require(origin_member not in held or held[origin_member] == origin, "typed_origin_conflict")
+            if origin_member not in held:
+                held_bytes += len(origin)
+            held[origin_member], roles[origin_member] = origin, "typed-origin-nomination"
         view.artifact_fact("artifact:snapshot-evidence")
         for capsule in parent["capsules"]:
             _require(view.capsule(capsule["stable_symbol_id"]).to_dict() == capsule,
@@ -470,16 +883,29 @@ def export_terminal_context_evidence(*, state: Path, receipts: list, workspace_r
             repository=repository, task_cid=retained["task_cid"], prompt=prompt, require_current_source=False)
     _require(public_manifest is not None, "authenticated_public_manifest_required")
     git = _git_public_closure(repository, public_manifest["baseline_commit"], public_manifest["sources"])
-    held.update(git)
+    for name, raw in git.items():
+        previous = held.get(name)
+        held_bytes += len(raw) - (len(previous) if previous is not None else 0)
+        held[name] = raw
     roles.update({name: "synthetic-git-head" if name.endswith("/HEAD") else "public-git-object"
                   for name in git})
-    held["replay-request.json"] = _encode(request)
+    request_raw = _encode(request)
+    previous = held.get("replay-request.json")
+    held_bytes += len(request_raw) - (len(previous) if previous is not None else 0)
+    held["replay-request.json"] = request_raw
     roles["replay-request.json"] = "replay-request"
-    _require(len(held) <= MAX_FILES and sum(map(len, held.values())) <= MAX_CONTENT_BYTES,
+    _require(len(held) <= MAX_FILES and held_bytes <= MAX_CONTENT_BYTES,
              "export_content_bound")
     for path, (raw, limit) in originals.items():
         _require(_read(path, limit) == raw, "export_origin_changed")
-    manifest = {"schema": SCHEMA, "profile": PROFILE,
+    if block_snapshots:
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_typed_source_context import _capture_blocks
+        for artifact, root_cid, original in block_snapshots:
+            _require(_block_population(repository, artifact) == set(original),
+                     "public_producer_block_inventory_changed")
+            _require(dict(_capture_blocks(repository, artifact, root_cid)) == original,
+                     "public_producer_block_inventory_changed")
+    manifest = {"schema": SCHEMA, "profile": profile,
                 "repository_origin": str(repository), "state_origin": str(state),
                 "workspace_root_origin": str(allocation),
                 "native_prompt_bindings": sorted(wanted),
@@ -487,12 +913,13 @@ def export_terminal_context_evidence(*, state: Path, receipts: list, workspace_r
                 "public_source_count": len(public_manifest["sources"]),
                 "files": [{"path": name, "role": roles[name], "bytes": len(raw), "sha256": _sha(raw)}
                           for name, raw in sorted(held.items())],
-                "content_bytes": sum(map(len, held.values())),
+                "content_bytes": held_bytes,
                 "provider_calls": 0, "current_source_freshness_claimed": False,
                 "private_state_tree_copied": False, "provider_transcripts_included": False,
                 "execution_authority": False, "completion_authority": False}
+    _typed_archive_witnesses(manifest, held)
     encoded = _encode(manifest)
-    _require(len(encoded) <= MAX_MANIFEST_BYTES, "export_manifest_bound")
+    _require(len(encoded) <= _manifest_limit(profile), "export_manifest_bound")
     archive = Path(str(state) + "-context-evidence.tar")
     _require(not archive.exists(), "fresh_evidence_archive_required")
     with tempfile.TemporaryDirectory(prefix="context-evidence-", dir=state.parent) as temp:
@@ -513,7 +940,7 @@ def export_terminal_context_evidence(*, state: Path, receipts: list, workspace_r
                     with (staging / name).open("rb") as source:
                         tar.addfile(info, source)
     archive.chmod(0o444)
-    _require(archive.stat().st_size <= MAX_ARCHIVE_BYTES, "export_archive_bound")
+    _require(archive.stat().st_size <= _archive_limit(profile), "export_archive_bound")
     with archive.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     return {"schema": RECEIPT_SCHEMA, "status": "exported", "artifact": str(archive),
@@ -521,7 +948,7 @@ def export_terminal_context_evidence(*, state: Path, receipts: list, workspace_r
             "manifest_sha256": _sha(encoded), "manifest_bytes": len(encoded),
             "file_count": len(held), "content_bytes": manifest["content_bytes"],
             "repository_origin": str(repository), "state_origin": str(state),
-            "workspace_root_origin": str(allocation), "profile": PROFILE,
+            "workspace_root_origin": str(allocation), "profile": profile,
             "provider_calls": 0, "execution_authority": False, "completion_authority": False}
 
 
@@ -558,7 +985,7 @@ def validate_evidence_receipt(receipt: dict, *, state: Path) -> dict:
               "execution_authority", "completion_authority"}
     _require(type(receipt) is dict and set(receipt) == fields
              and receipt["schema"] == RECEIPT_SCHEMA and receipt["status"] == "exported"
-             and receipt["profile"] == PROFILE, "closed_export_receipt_required")
+             and receipt["profile"] in PROFILES, "closed_export_receipt_required")
     _require(receipt["state_origin"] == str(state)
              and receipt["artifact"] == str(state) + "-context-evidence.tar"
              and receipt["repository_origin"] == "/app"
@@ -569,14 +996,14 @@ def validate_evidence_receipt(receipt: dict, *, state: Path) -> dict:
     for key in ("sha256", "manifest_sha256"):
         _require(type(receipt[key]) is str and re.fullmatch(r"[0-9a-f]{64}", receipt[key]),
                  "export_receipt_digest_required")
-    for key, maximum in (("bytes", MAX_ARCHIVE_BYTES), ("manifest_bytes", MAX_MANIFEST_BYTES),
+    for key, maximum in (("bytes", _archive_limit(receipt["profile"])), ("manifest_bytes", _manifest_limit(receipt["profile"])),
                          ("file_count", MAX_FILES), ("content_bytes", MAX_CONTENT_BYTES)):
         _require(type(receipt[key]) is int and 1 <= receipt[key] <= maximum,
                  "export_receipt_bound")
     return receipt
 
 
-def _allowed_member(name, role, size):
+def _allowed_member(name, role, size, *, profile=PROFILE):
     _relative(name)
     _require(type(size) is int and 0 <= size <= (MAX_SNAPSHOT_BYTES if role == "retrieval-snapshot"
                                                else MAX_FILE_BYTES), "export_leaf_bound")
@@ -591,11 +1018,21 @@ def _allowed_member(name, role, size):
              or (role in {"launch-policy", "semantic-parent", "semantic-cas", "raw-retrieval",
                           "retrieval-snapshot", "public-instruction", "task-context-bundle"}
                  and name.startswith("repository/.runtime/")))
+    if name.startswith(("repository/.runtime/semantic-typed-nominations/",
+                        "repository/.runtime/semantic-decision-nominations/")) or name == (
+                        "repository/.runtime/terminal-initial-context/descriptor.json"):
+        valid = False
+    if profile in TYPED_PROFILES:
+        valid = valid or any(role == selected and re.fullmatch(pattern, name) for selected, pattern in (
+            ("typed-nomination-lineage", r"repository/\.runtime/semantic-typed-nominations/[0-9a-f]{64}\.json"),
+            ("typed-derived-nomination", r"repository/\.runtime/semantic-decision-nominations/[0-9a-f]{64}\.json"),
+            ("typed-origin-nomination", r"typed-origins/[0-9a-f]{64}\.json"),
+            ("initial-context-descriptor", r"repository/\.runtime/terminal-initial-context/descriptor\.json")))
     _require(bool(valid), "export_member_scope_refused")
 
 
 def _verified_archive(*, archive: Path, expected_sha256: str, manifest_sha256: str):
-    raw = _read(archive, MAX_ARCHIVE_BYTES)
+    raw = _read(archive, MAX_TYPED_ARCHIVE_BYTES)
     _require(_sha(raw) == expected_sha256, "evidence_archive_digest_differs")
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as tar:
         members = []
@@ -607,16 +1044,18 @@ def _verified_archive(*, archive: Path, expected_sha256: str, manifest_sha256: s
         by_name = {m.name: m for m in members}
         _require(len(by_name) == len(members) and "manifest.json" in by_name,
                  "duplicate_or_missing_archive_member")
-        _require(by_name["manifest.json"].size <= MAX_MANIFEST_BYTES, "manifest_bound")
-        encoded = tar.extractfile(by_name["manifest.json"]).read(MAX_MANIFEST_BYTES + 1)
+        _require(by_name["manifest.json"].size <= MAX_TYPED_MANIFEST_BYTES, "manifest_bound")
+        encoded = tar.extractfile(by_name["manifest.json"]).read(MAX_TYPED_MANIFEST_BYTES + 1)
         _require(_sha(encoded) == manifest_sha256, "manifest_digest_differs")
         manifest = _json(encoded)
+        _require(type(manifest) is dict and len(encoded) <= _manifest_limit(manifest.get("profile"))
+                 and len(raw) <= _archive_limit(manifest.get("profile")), "manifest_or_archive_profile_bound")
         _require(set(manifest) == {"schema", "profile", "repository_origin", "state_origin",
             "workspace_root_origin", "native_prompt_bindings", "public_baseline_commit",
             "public_source_count", "files", "content_bytes", "provider_calls",
             "current_source_freshness_claimed", "private_state_tree_copied", "provider_transcripts_included",
             "execution_authority", "completion_authority"}
-                 and manifest.get("schema") == SCHEMA and manifest.get("profile") == PROFILE
+                 and manifest.get("schema") == SCHEMA and manifest.get("profile") in PROFILES
                  and manifest.get("repository_origin") == "/app"
                  and manifest.get("workspace_root_origin") == "/opt/ipfs-supervisor/worktrees"
                  and _absolute(manifest["state_origin"]).is_relative_to(Path("/opt/ipfs-supervisor/state"))
@@ -633,13 +1072,14 @@ def _verified_archive(*, archive: Path, expected_sha256: str, manifest_sha256: s
                  and manifest["content_bytes"] <= MAX_CONTENT_BYTES, "manifest_content_bound")
         captured = {"manifest.json": encoded}
         for name, row in expected.items():
-            _allowed_member(name, row.get("role"), row.get("bytes"))
+            _allowed_member(name, row.get("role"), row.get("bytes"), profile=manifest["profile"])
             _require(set(row) == {"path", "role", "bytes", "sha256"} and by_name[name].size == row["bytes"],
                      "manifest_file_binding_differs")
             content = tar.extractfile(by_name[name]).read(row["bytes"] + 1)
             _require(len(content) == row["bytes"] and _sha(content) == row["sha256"],
                      "exported_content_digest_differs")
             captured[name] = content
+    _typed_archive_witnesses(manifest, captured)
     return manifest, captured
 
 
@@ -674,8 +1114,8 @@ def replay_docker_argv(*, export: Path, image: str, auditor_path: str, output: P
              and output.resolve(strict=True) == output and output.is_dir()
              and not output.is_relative_to(export) and not export.is_relative_to(output)
              and not any(output.iterdir()), "canonical_separate_fresh_output_required")
-    manifest = _json(_read(export / "manifest.json", MAX_MANIFEST_BYTES))
-    _require(manifest.get("schema") == SCHEMA and manifest.get("profile") == PROFILE,
+    manifest = _read_manifest(export / "manifest.json")
+    _require(manifest.get("schema") == SCHEMA and manifest.get("profile") in PROFILES,
              "evidence_manifest_required")
     state = _absolute(manifest["state_origin"])
     _require(state.is_relative_to(Path("/opt/ipfs-supervisor/state")), "owner_state_namespace_required")
@@ -746,7 +1186,7 @@ def main():
         print(json.dumps(result, sort_keys=True))
     else:
         from benchmarks.agent_supervisor.container_coding.terminal_context_audit import audit_terminal_context
-        manifest = _json(_read(args.evidence / "manifest.json", MAX_MANIFEST_BYTES))
+        manifest = _read_manifest(args.evidence / "manifest.json")
         request = _json(_read(args.evidence / "replay-request.json", MAX_REQUEST_BYTES))
         for row in manifest["files"]:
             relative = _relative(row["path"])

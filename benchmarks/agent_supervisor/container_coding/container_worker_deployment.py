@@ -106,8 +106,8 @@ def semantic_decision_arguments(*,
     policy_supplied = semantic_decision_policy_artifact is not None or semantic_decision_policy_sha256 is not None
     nomination_supplied = (semantic_decision_nomination_artifact is not None
                            or semantic_decision_nomination_sha256 is not None)
-    if semantic_retrieval_query_reference and (not nomination_supplied or not disable_semantic_typed_nomination):
-        raise ValueError("retrieval query reference requires an owner nomination with typed nomination disabled")
+    if semantic_retrieval_query_reference and not nomination_supplied:
+        raise ValueError("retrieval query reference requires an independently pinned owner nomination")
     if (disable_semantic_typed_nomination or owner_binding) and not nomination_supplied:
         raise ValueError("typed nomination switches require an owner nomination")
     if policy_supplied and nomination_supplied:
@@ -218,16 +218,14 @@ def interrupted(signum,frame):
 for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,interrupted)
 code=1
 try:
- owner_input=globals().get("owner_prompt_bytes")
- process=subprocess.Popen(command,stdin=subprocess.PIPE) if owner_input is not None else subprocess.Popen(command)
+ process=subprocess.Popen(command)
  broker=globals().get("numerical_obligation_broker")
  if broker is not None:broker.note_spawned(process)
  source_broker=globals().get("worker_source_broker")
  if source_broker is not None:source_broker.note_spawned(process)
  guard=globals().get("proof_query_guard")
  if guard is not None:guard.note_spawned(process)
- if owner_input is None:code=process.wait()
- else:process.communicate(input=owner_input);code=process.returncode
+ code=process.wait()
  worker_waited=True
 except BaseException:
  if process is not None:
@@ -314,11 +312,18 @@ except (TypeError,ValueError,OverflowError):
 worker_arguments=sys.argv[1:]
 owner_prompt_bytes=None
 if any(part=='--semantic-native-input' or part.startswith('--semantic-native-input=') for part in worker_arguments) and any(part==flag or part.startswith(flag+'=') for part in worker_arguments for flag in ('--semantic-decision-policy-artifact','--semantic-decision-policy-sha256','--semantic-decision-nomination-artifact','--semantic-decision-nomination-sha256','--semantic-decision-task-id','--semantic-decision-typed-nomination','--semantic-decision-context-bundle-artifact','--semantic-decision-context-bundle-sha256','--semantic-decision-task-cid')):raise SystemExit('semantic native input excludes semantic decision policy and nomination')
+# Capture original stdin once through the existing bounded sealed handoff.
+from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import prepare_container_source_formalization_dispatch
+handoff=prepare_container_source_formalization_dispatch(argv=worker_arguments,boundary=root/'container-boundary.json',workspace=cwd)
+os.dup2(handoff['stdin_fd'],0,inheritable=True);os.close(handoff['stdin_fd'])
+worker_arguments=handoff['argv']
 if any(part==flag or part.startswith(flag+'=') for part in worker_arguments for flag in ('--semantic-decision-nomination-artifact','--semantic-decision-nomination-sha256','--semantic-decision-task-id','--semantic-decision-typed-nomination','--semantic-decision-context-bundle-artifact','--semantic-decision-context-bundle-sha256','--semantic-decision-task-cid')):
  sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
  from ipfs_accelerate_py.agent_supervisor.runtime.semantic_decision_owner import prepare_decision_owner_dispatch
  try:
-  dispatch=prepare_decision_owner_dispatch(arguments=worker_arguments,prompt_bytes=sys.stdin.buffer.read(256001),workspace=cwd)
+  owner_prompt_bytes=os.pread(0,256001,0)
+  dispatch=prepare_decision_owner_dispatch(arguments=worker_arguments,prompt_bytes=owner_prompt_bytes,workspace=cwd)
+  if dispatch.prompt_bytes!=owner_prompt_bytes:raise ValueError('owner dispatch changed native stdin')
  except Exception as error:
   print(json.dumps({'schema':'supervisor-semantic-decision-owner-refusal@1','error_type':type(error).__name__,'provider_called':False,'completion_authority':False}),flush=True)
   raise SystemExit(1)
@@ -327,25 +332,8 @@ if any(part==flag or part.startswith(flag+'=') for part in worker_arguments for 
  print(json.dumps(dispatch.receipt,sort_keys=True,allow_nan=False),flush=True)
 command=['/usr/bin/sudo','-n','-u','benchmarkworker','--',str(root/'bin/worker-entry'),*worker_arguments]
 proof_query_guard=None
-# Bind owner nominations before source handoff so every broker receives the
-# exact final native prompt and the worker receives only the admitted policy.
-from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import prepare_container_source_formalization_dispatch
-if owner_prompt_bytes is None:
- handoff=prepare_container_source_formalization_dispatch(argv=worker_arguments,boundary=root/'container-boundary.json',workspace=cwd)
-else:
- from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import _validation_memfd_create
- owner_input_fd=_validation_memfd_create('supervisor-decision-owner-prompt',getattr(os,'MFD_CLOEXEC',0x0001))
- try:
-  owner_input_view=memoryview(owner_prompt_bytes)
-  while owner_input_view:
-   owner_input_written=os.write(owner_input_fd,owner_input_view)
-   if owner_input_written<=0:raise OSError('owner prompt write made no progress')
-   owner_input_view=owner_input_view[owner_input_written:]
-  os.lseek(owner_input_fd,0,os.SEEK_SET)
-  handoff=prepare_container_source_formalization_dispatch(argv=worker_arguments,boundary=root/'container-boundary.json',workspace=cwd,input_fd=owner_input_fd)
- finally:
-  os.close(owner_input_fd)
-os.dup2(handoff['stdin_fd'],0,inheritable=True);os.close(handoff['stdin_fd'])
+# Brokers receive the owner-bound argv; the worker inherits the same sealed fd0.
+handoff={**handoff,'argv':worker_arguments}
 from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_broker import worker_source_argv
 command=['/usr/bin/sudo','-n','-u','benchmarkworker','--',str(root/'bin/worker-entry'),*worker_source_argv(handoff['argv'])]
 if any(part==flag or part.startswith(flag+'=') for part in sys.argv[1:] for flag in ('--finite-proof-query-context','--finite-proof-query-sha256','--finite-proof-query-context-cid')):
@@ -510,7 +498,7 @@ if decision_options and not all(decision_values):raise SystemExit('exact semanti
 if not 1<=args.semantic_decision_max_calls<=4 or (args.semantic_decision_max_total_input_tokens is not None and args.semantic_decision_max_total_input_tokens<1):raise SystemExit('bounded semantic decision budgets required')
 if not decision_options and (args.semantic_decision_max_calls!=3 or args.semantic_decision_max_total_input_tokens is not None):raise SystemExit('semantic decision budgets require an explicit policy')
 if decision_options and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(finite_values) or any(proof_query_values) or any(contract_values) or any(doctor_values) or semantic_options):raise SystemExit('semantic decision policy requires exclusive bound model coding')
-if decision_options and (args.provider!='codex_cli' or args.budget_profile is not None or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.semantic_metadata_view!='legacy' or args.semantic_working_set!='legacy' or args.semantic_metadata_census_only or args.coding_reply_mode!='legacy' or args.tool_output_policy!='legacy' or args.source_view_advisory_policy!='legacy' or args.repository_source_policy!='legacy' or args.source_input_policy!='legacy' or args.query_reference_policy!='legacy' or args.source_view_profile!='disabled' or args.source_edit_mode!='disabled' or any(source_view_values) or any(formalization_values) or any(numerical_obligation_values) or any(source_lookup_values)):raise SystemExit('semantic decision policy requires exclusive supported Codex model coding')
+if decision_options and (args.provider!='codex_cli' or args.budget_profile is not None or not 1<=args.timeout<=600 or args.preflight_sleep!=0 or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.semantic_metadata_view!='legacy' or args.semantic_working_set!='legacy' or args.semantic_metadata_census_only or args.coding_reply_mode!='legacy' or args.tool_output_policy!='legacy' or args.source_view_advisory_policy!='legacy' or args.repository_source_policy!='legacy' or args.source_input_policy!='legacy' or args.query_reference_policy!='legacy' or args.source_view_profile!='disabled' or args.source_edit_mode!='disabled' or any(source_view_values) or any(formalization_values) or any(numerical_obligation_values) or any(source_lookup_values)):raise SystemExit('semantic decision policy requires exclusive supported Codex model coding')
 if args.semantic_context_projection and args.semantic_slot_policy_revision!='closed-typed-identifiers@2':raise SystemExit('semantic context projection requires the versioned identifier policy')
 if semantic_options and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(finite_values) or any(proof_query_values) or any(contract_values) or any(doctor_values)):raise SystemExit('semantic context options require bound model coding')
 if any(value is not None for value in tokenizer_values) and not all(tokenizer_values):raise SystemExit('exact prompt tokenizer descriptor and digest required')

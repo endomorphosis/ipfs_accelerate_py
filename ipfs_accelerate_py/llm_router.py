@@ -8265,6 +8265,16 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 executable_name = Path(base_parts[0]).name.lower() if base_parts else ""
                 structured_cli = executable_name in {"grok", "agent"}
 
+            explicit_max_turns = "grok_max_turns" in kwargs
+            if explicit_max_turns:
+                from .cli_runtime.grok_turn_policy import (
+                    bind_explicit_grok_max_turns, validate_grok_max_turns,
+                )
+                requested_max_turns = validate_grok_max_turns(kwargs["grok_max_turns"])
+                if not structured_cli:
+                    raise ValueError("explicit grok_max_turns requires a structured Grok CLI command")
+                base_parts = bind_explicit_grok_max_turns(base_parts, requested_max_turns)
+
             response_format = kwargs.pop("response_format", None)
             stream_progress = kwargs.pop("grok_stream_progress", False)
             progress_callback = kwargs.pop("grok_progress_callback", None)
@@ -8365,7 +8375,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     )
                 ),
             )
-            if "--max-turns" not in cmd:
+            if not explicit_max_turns and "--max-turns" not in cmd:
                 cmd.extend(["--max-turns", str(max_turns)])
 
             permission_mode = str(

@@ -22,7 +22,7 @@ from benchmarks.agent_supervisor.container_coding import (
 )
 from harbor.models.job.config import JobConfig
 
-from test.api.test_terminal_timeout_configuration import (
+from test.api.test_current_terminal_archive_fixtures import (
     _authored_prepare_dataset,
     _timeout_runtime_archive,
 )
@@ -190,6 +190,7 @@ def _retained_trial(tmp_path, *, options, pin=True):
     native._json(output / "config.json", config)
     prepared = {
         "prepared": True, "dataset": str(dataset), "arm": "full",
+        "model": native.MODEL, "reasoning_effort": native.REASONING, "cli_version": native.CLI_VERSION,
         "config_sha256": native._hash(output / "config.json"),
         "task_input_sha256": native._task_hashes(task),
         "collector_source_sha256": native._hash(Path(supervisor.__file__)),
@@ -334,6 +335,10 @@ def test_existing_preparation_cli_operations_do_not_override_retained_prompt_sel
     monkeypatch.setattr(supervisor, operation, lambda output: observed.append(output) or {"operation": operation})
     monkeypatch.setattr(sys, "argv", ["benchmark", operation, "--output", str(tmp_path / "output"),
                                      "--semantic-slot-policy-revision", V2, "--semantic-context-projection"])
-    supervisor.main()
-    assert observed == [tmp_path / "output"]
-    assert json.loads(capsys.readouterr().out) == {"operation": operation}
+    with pytest.raises(SystemExit) as refused:
+        supervisor.main()
+    assert refused.value.code == 2
+    assert observed == []
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "prompt and decision options are frozen by preparation" in captured.err
