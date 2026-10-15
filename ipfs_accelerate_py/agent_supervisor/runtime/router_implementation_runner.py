@@ -255,6 +255,26 @@ def _source_broker_observation(*, path, digest, workspace, encoded, boundary_sha
     return observation
 
 
+def _working_set_preflight(*, view, descriptor_path, descriptor_sha256, workspace, source_receipt):
+    """Probe one exact capsule through the admitted, source-checked endpoint."""
+    from .worker_semantic_evidence_client import request_page, canonical_json as evidence_json
+    references = json.loads(view.provider_prompt)["working_set"]["capsule_references"]
+    if not references:
+        raise ValueError("selected working set has no retrievable capsule")
+    reference = references[0]
+    probe = request_page(descriptor_path, descriptor_sha256,
+        capsule_index=reference["capsule_index"], max_bytes=4096, workspace=workspace)
+    if (probe.get("ok") is not True
+            or probe["page"]["artifact_sha256"] != reference["capsule_sha256"]):
+        raise ValueError("selected working set evidence is unavailable")
+    probe_bytes = evidence_json(probe)
+    return dict(schema="supervisor-semantic-working-set-preflight@1", requests=1,
+        session_id=source_receipt["session_id"], capsule_index=reference["capsule_index"],
+        capsule_sha256=reference["capsule_sha256"],
+        response_bytes=len(probe_bytes), response_sha256=hashlib.sha256(probe_bytes).hexdigest(),
+        provider_input_bytes=0, source_freshness_checked=True, proof_authority=False)
+
+
 def _grok_progress_emitter(invocation_id: str):
     """Keep advisory progress outside native JSON receipt and custody parsers."""
     def emit(value):
@@ -541,6 +561,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         grok_coding_max_turns: int = 128,
         semantic_metadata_token_counter: SemanticMetadataTokenCounter | None = None,
         census_only: bool = False,
+        working_set_census_only: bool = False,
         coding_reply_mode: str = "legacy",
         doctor_residual_artifact: Path | None = None,
         doctor_residual_sha256: str = "", doctor_residual_task_cid: str = "",
@@ -556,7 +577,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     candidate_selected = any(value is not None for value in candidate_args)
     if candidate_selected:
         if (not all(candidate_args) or purpose != "coding" or semantic_repository is None
-                or container_boundary is None or not container_boundary_sha256 or census_only
+                or container_boundary is None or not container_boundary_sha256 or census_only or working_set_census_only
                 or source_formalization_handoff is not None or source_formalization_handoff_sha256 is not None
                 or numerical_obligation_descriptor is not None or numerical_obligation_descriptor_sha256 is not None
                 or source_lookup_descriptor is not None or source_lookup_descriptor_sha256 is not None
@@ -580,7 +601,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     failure_phase = "argument_validation"
     from .worker_source_client import PROFILES
     if (type(source_edit_mode) is not str or source_edit_mode not in {"disabled", "mapped-span@1", "mapped-span@2"}
-            or source_edit_mode != "disabled" and (source_view_profile == "disabled" or census_only)):
+            or source_edit_mode != "disabled" and (source_view_profile == "disabled" or census_only or working_set_census_only)):
         raise ValueError("source editing requires an enabled coding source session")
     source_args = (source_view_descriptor, source_view_descriptor_sha256)
     source_selected = any(value is not None for value in source_args)
@@ -605,7 +626,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     source_lookup_selected = any(value is not None for value in source_lookup_args)
     if source_lookup_selected:
         if (not all(source_lookup_args) or purpose != "coding" or container_boundary is None
-                or not container_boundary_sha256 or census_only):
+                or not container_boundary_sha256 or census_only or working_set_census_only):
             raise ValueError("exact source descriptor requires isolated coding dispatch")
     elif any(key in os.environ for key in (SOURCE_LOOKUP_DESCRIPTOR_ENV, SOURCE_LOOKUP_DESCRIPTOR_DIGEST_ENV)):
         raise ValueError("source descriptor environment requires explicit owner selection")
@@ -642,6 +663,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             raise ValueError("metadata token counter must match the pinned provider and model")
     if type(census_only) is not bool:
         raise ValueError("explicit Boolean census selection required")
+    if type(working_set_census_only) is not bool:
+        raise ValueError("explicit Boolean working-set census selection required")
+    if working_set_census_only and (census_only or semantic_working_set != "capsule-references@1"
+            or semantic_metadata_token_counter is not None):
+        raise ValueError("working-set census requires its separate explicit capsule reference profile")
     from .grok_coding_budget import validate_grok_coding_max_turns
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider, purpose=purpose)
     if grok_coding_max_turns != 128 and census_only:
@@ -728,9 +754,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             # verified transport before optional metadata projection and wrappers;
             # the existing model_prompt fields bind the actual final input.
             try:
-                from .semantic_router_translation import census_semantic_router_prompt
-                semantic_component_census = census_semantic_router_prompt(encoded=encoded)
+                from .semantic_router_translation import (census_semantic_router_prompt,
+                    DETAILED_COMPONENT_CENSUS_SCHEMA)
+                semantic_component_census = census_semantic_router_prompt(encoded=encoded,
+                    **({"census_schema": DETAILED_COMPONENT_CENSUS_SCHEMA} if working_set_census_only else {}))
             except Exception:
+                if working_set_census_only:
+                    raise ValueError("working-set component census unavailable") from None
                 # Diagnostic failure cannot change dispatch or expose source text
                 # through an exception. The encoder's validation above still rules.
                 semantic_component_census = {
@@ -960,6 +990,25 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if any(name in os.environ for name in (*DATABASE_PROGRAM_ENV_NAMES, *STATE_CREDENTIAL_ENV_NAMES,
                                            "IPFS_ACCELERATE_AGENT_STATE_OWNER_TOKEN")):
         raise ValueError("implementation inherited database authority")
+    if working_set_census_only:
+        failure_phase = "semantic_working_set"
+        current = _source_broker_observation(path=source_view_descriptor,
+            digest=source_view_descriptor_sha256, workspace=root, encoded=encoded,
+            boundary_sha256=container_boundary_sha256, profile=source_view_profile,
+            semantic_working_set=semantic_working_set)
+        if current != source_receipt:
+            raise ValueError("source descriptor changed before working-set census")
+        preflight = None
+        if working_set_receipt["selected_mode"] != "legacy":
+            preflight = _working_set_preflight(view=view, descriptor_path=source_view_descriptor,
+                descriptor_sha256=source_view_descriptor_sha256, workspace=root, source_receipt=source_receipt)
+        from .semantic_working_set_census import working_set_census_receipt
+        receipt = working_set_census_receipt(selection=selection, encoded=encoded, prompt=prompt, model=model,
+            workspace=root, provider=provider, components=semantic_component_census,
+            source_receipt=source_receipt, preflight=preflight, advisory=advisory,
+            boundary_sha256=container_boundary_sha256, reply=coding_reply_receipt,
+            formalization=formalization_receipt, doctor=residual_receipt, public=instruction_receipt)
+        return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     if census_only:
         failure_phase = "semantic_metadata_census"
         census = metadata_census
@@ -1216,24 +1265,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 raise ValueError("source descriptor changed before provider dispatch")
         if working_set_receipt is not None and working_set_receipt["selected_mode"] != "legacy":
             failure_phase = "semantic_working_set"
-            from .worker_semantic_evidence_client import request_page
-            references = json.loads(view.provider_prompt)["working_set"]["capsule_references"]
-            if not references:
-                raise ValueError("selected working set has no retrievable capsule")
-            reference = references[0]
-            probe = request_page(source_view_descriptor, source_view_descriptor_sha256,
-                capsule_index=reference["capsule_index"], max_bytes=4096, workspace=root)
-            if (probe.get("ok") is not True
-                    or probe["page"]["artifact_sha256"] != reference["capsule_sha256"]):
-                raise ValueError("selected working set evidence is unavailable")
-            from .worker_semantic_evidence_client import canonical_json as evidence_json
-            probe_bytes = evidence_json(probe)
-            receipt["semantic_working_set_preflight"] = dict(
-                schema="supervisor-semantic-working-set-preflight@1", requests=1,
-                session_id=source_receipt["session_id"], capsule_index=reference["capsule_index"],
-                capsule_sha256=reference["capsule_sha256"],
-                response_bytes=len(probe_bytes), response_sha256=hashlib.sha256(probe_bytes).hexdigest(),
-                provider_input_bytes=0, source_freshness_checked=True, proof_authority=False)
+            receipt["semantic_working_set_preflight"] = _working_set_preflight(view=view,
+                descriptor_path=source_view_descriptor, descriptor_sha256=source_view_descriptor_sha256,
+                workspace=root, source_receipt=source_receipt)
         if candidate_receipt is not None and candidate_receipt.get("schema") == "supervisor-candidate-dispatch-observation@2":
             failure_phase = "candidate_dispatch_context"
             # Candidate summary retrieval covers only the indexed inventory.
@@ -1425,6 +1459,8 @@ def main():
     parser.add_argument("--semantic-working-set", default="legacy", choices=["legacy", "capsule-references@1"])
     parser.add_argument("--semantic-metadata-census-only", action="store_true",
                         help="Check the complete metadata view and emit only census metadata before provider dispatch")
+    parser.add_argument("--semantic-working-set-census-only", action="store_true",
+                        help="Measure capsule-reference input with authenticated preflight and no provider allocation")
     parser.add_argument("--coding-reply-mode", default="legacy",
                         choices=["legacy", "ordinary-completion@1"])
     parser.add_argument("--doctor-residual-artifact", type=Path)
@@ -1462,6 +1498,7 @@ def main():
                         semantic_working_set=args.semantic_working_set,
                         grok_coding_max_turns=args.grok_coding_max_turns,
                         census_only=args.semantic_metadata_census_only,
+                        working_set_census_only=args.semantic_working_set_census_only,
                         coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,
                         doctor_residual_sha256=args.doctor_residual_sha256,

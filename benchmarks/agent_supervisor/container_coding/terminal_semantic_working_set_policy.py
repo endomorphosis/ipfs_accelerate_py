@@ -19,6 +19,7 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
     "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set_census.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence_client.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
