@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Callable
 if TYPE_CHECKING:
     from .semantic_metadata_view import SemanticMetadataTokenCounter
     from .repository_world_packet import PreparedRepositoryWorldPacket
+    from .repository_world_packet_presentation import PreparedRepositoryWorldPacketPresentation
 
 MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
 MAX_MODEL_PROMPT_BYTES = 256_000
@@ -395,7 +396,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "numerical_obligation_descriptor", "source_lookup_descriptor", "source_view_descriptor",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "terminal_semantic_scope_currentness",
-    "semantic_metadata_view", "world_task_packet", "world_task_packet_currentness",
+    "semantic_metadata_view", "world_task_packet", "world_task_packet_currentness", "world_task_presentation",
     "world_packet_artifact_retention",
     "semantic_metadata_census",
     "prompt_tokenizer", "prompt_selection",
@@ -421,6 +422,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "source_formalization_context.py",
     "numerical_obligation_client.py", "source_lookup_worker_client.py", "worker_source_client.py",
     "local_prompt_tokenizer.py", "repository_world_packet.py",
+    "repository_world_packet_presentation.py",
     "repository_world_packet_replay.py", "repository_world_invocation_replay.py",
     "repository_world_artifact_retention.py",
 })
@@ -588,6 +590,72 @@ def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
     return advisory + prompt, advisory
 
 
+@dataclass(frozen=True)
+class _WorldTaskPresentationSnapshot:
+    packet: object
+    packet_refs: tuple
+    presentation: object
+    presentation_refs: tuple
+    original_prompt: str
+    presented_prompt: str
+    sidecar_bytes: bytes
+    codec_receipt_bytes: bytes
+    metadata_bytes: bytes
+
+
+def _world_task_presentation_wire(value):
+    raw = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    if len(raw) > 16384:
+        raise ValueError("world task presentation receipt exceeds its bound")
+    return raw
+
+
+def _world_task_presentation_material(presentation, packet, *, expected=None):
+    """Pure original-reference/inverse checks, always before source closing fences."""
+    from .repository_world_packet import PreparedRepositoryWorldPacket, _ISSUED, _ISSUANCE_LOCK
+    from .repository_world_packet_presentation import (
+        MODE, RECEIPT_SCHEMA, PreparedRepositoryWorldPacketPresentation,
+    )
+    if type(packet) is not PreparedRepositoryWorldPacket or type(presentation) is not PreparedRepositoryWorldPacketPresentation:
+        raise ValueError("world task presentation requires exact original issued owners")
+    PreparedRepositoryWorldPacketPresentation._retained(presentation)
+    packet_refs = PreparedRepositoryWorldPacket._seal(packet)
+    with _ISSUANCE_LOCK:
+        original_packet = _ISSUED.get(packet)
+    if (original_packet is None or len(original_packet) != len(packet_refs)
+            or not all(a is b for a, b in zip(original_packet, packet_refs))
+            or any(key in packet.__dict__ for key in ("receipt", "validate_current", "_seal", "require_provider_dispatch"))):
+        raise ValueError("world task presentation original packet custody changed")
+    presentation_refs = PreparedRepositoryWorldPacketPresentation._seal_material(presentation)
+    codec = PreparedRepositoryWorldPacketPresentation.validate_original(presentation, packet.prompt)
+    codec_bytes = _world_task_presentation_wire(codec)
+    if codec["codec_supported"] is not True or codec["model_view_mode"] != MODE or codec["profile"] != MODE:
+        raise ValueError("world task presentation requires a supported lossless model view")
+    presented, sidecar = presentation.prompt, presentation.sidecar_bytes
+    metadata = dict(schema="router-world-task-presentation@1", profile=MODE, codec_receipt_schema=RECEIPT_SCHEMA,
+        model_view_mode=codec["model_view_mode"], codec_supported=True,
+        **{key: codec[key] for key in ("original_prompt_sha256", "original_prompt_bytes", "presented_prompt_sha256",
+            "presented_prompt_bytes", "sidecar_sha256", "sidecar_bytes")},
+        codec_receipt_sha256=hashlib.sha256(codec_bytes).hexdigest(), codec_receipt_bytes=len(codec_bytes),
+        inverse_verified=True, dispatch_rechecked=False, proof_authority=False, execution_authority=False,
+        completion_authority=False, omission_authority=False, provider_ingestion_verified=False,
+        total_token_savings_measured=False, source_freshness_verified=False)
+    metadata_bytes = _world_task_presentation_wire(metadata)
+    if expected is not None:
+        if (type(expected) is not _WorldTaskPresentationSnapshot or packet is not expected.packet
+                or presentation is not expected.presentation or packet.prompt is not expected.original_prompt
+                or presented is not expected.presented_prompt or sidecar is not expected.sidecar_bytes
+                or len(packet_refs) != len(expected.packet_refs)
+                or not all(a is b for a, b in zip(packet_refs, expected.packet_refs))
+                or len(presentation_refs) != len(expected.presentation_refs)
+                or not all(a is b for a, b in zip(presentation_refs, expected.presentation_refs))
+                or codec_bytes != expected.codec_receipt_bytes or metadata_bytes != expected.metadata_bytes):
+            raise ValueError("world task presentation captured material changed")
+        return expected
+    return _WorldTaskPresentationSnapshot(packet, packet_refs, presentation, presentation_refs,
+        packet.prompt, presented, sidecar, codec_bytes, metadata_bytes)
+
+
 def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int,
         reasoning_effort: str = "high", container_boundary: Path | None = None,
         container_boundary_sha256: str = "", purpose: str = "coding",
@@ -620,6 +688,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         prompt_tokenizer_artifact: Path | None = None, prompt_tokenizer_sha256: str = "",
         max_input_tokens: int | None = None,
         world_task_packet: PreparedRepositoryWorldPacket | None = None,
+        world_task_presentation: PreparedRepositoryWorldPacketPresentation | None = None,
         world_packet_artifact_dir: Path | None = None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
     if world_task_packet is not None:
@@ -627,6 +696,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if type(world_task_packet) is not PreparedRepositoryWorldPacket:
             raise ValueError("world task dispatch requires an exact prepared repository packet")
         PreparedRepositoryWorldPacket.require_provider_dispatch(world_task_packet)
+    if world_task_presentation is not None and world_task_packet is None:
+        raise ValueError("world task presentation requires an original provider-eligible packet")
+    if world_task_presentation is not None and world_packet_artifact_dir is not None:
+        raise ValueError("world task presentation cannot use original-only packet artifact retention")
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
     from ipfs_accelerate_py.llm_router import generate_text, get_llm_provider
@@ -655,6 +728,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if world_packet_artifact_dir is not None and (world_task_packet is None
             or not isinstance(world_packet_artifact_dir, Path)):
         raise ValueError("world artifact retention requires an exact live packet and host Path")
+    world_presentation_snapshot = None
+    if world_task_presentation is not None:
+        failure_phase = "world_task_presentation"
+        world_presentation_snapshot = _world_task_presentation_material(world_task_presentation, world_task_packet)
     from .worker_source_client import PROFILES
     if (type(source_edit_mode) is not str or source_edit_mode not in {"disabled", "mapped-span@1", "mapped-span@2"}
             or source_edit_mode != "disabled" and (source_view_profile == "disabled" or census_only)):
@@ -807,8 +884,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     world_packet_receipt = None
     if world_task_packet is not None:
         failure_phase = "world_task_packet"
+        if world_presentation_snapshot is not None:
+            failure_phase = "world_task_presentation"
+            _world_task_presentation_material(world_task_presentation, world_task_packet, expected=world_presentation_snapshot)
+            failure_phase = "world_task_packet"
         world_packet_receipt = PreparedRepositoryWorldPacket.validate_current(world_task_packet, workspace=root, task_text=prompt)
-        router_prompt = world_task_packet.prompt
+        router_prompt = (world_task_packet.prompt if world_presentation_snapshot is None
+                         else world_presentation_snapshot.presented_prompt)
     if semantic_repository is not None:
         semantic_repository = Path(semantic_repository).resolve(strict=True)
         if semantic_repository == root:
@@ -1199,6 +1281,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         from .repository_world_artifact_retention import unavailable_world_packet_artifacts
         receipt["world_packet_artifacts"] = unavailable_world_packet_artifacts(
             invocation_id=invocation, reason="retention_not_requested")
+        if world_presentation_snapshot is not None:
+            receipt["world_task_presentation"] = json.loads(world_presentation_snapshot.metadata_bytes)
     if semantic_component_census is not None:
         receipt["semantic_prompt_components"] = semantic_component_census
     if tool_output_binding is not None:
@@ -1373,12 +1457,17 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 raise ValueError("signed Terminal scope changed before provider dispatch")
             receipt["terminal_semantic_scope_dispatch_rechecked"] = True
         if world_task_packet is not None:
+            if world_presentation_snapshot is not None:
+                failure_phase = "world_task_presentation"
+                _world_task_presentation_material(world_task_presentation, world_task_packet, expected=world_presentation_snapshot)
             failure_phase = "world_task_packet_currentness"
             PreparedRepositoryWorldPacket.require_provider_dispatch(world_task_packet)
             current_packet = PreparedRepositoryWorldPacket.validate_current(world_task_packet, workspace=root, task_text=prompt)
             if current_packet != world_packet_receipt:
                 raise ValueError("world task packet changed before provider dispatch")
             receipt["world_task_packet"]["dispatch_rechecked"] = True
+            if world_presentation_snapshot is not None:
+                receipt["world_task_presentation"]["dispatch_rechecked"] = True
             if world_packet_artifact_dir is not None:
                 failure_phase = "world_packet_artifact_retention"
                 receipt["world_packet_artifacts"] = unavailable_world_packet_artifacts(
