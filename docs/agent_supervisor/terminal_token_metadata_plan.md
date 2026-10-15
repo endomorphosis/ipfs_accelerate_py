@@ -1530,3 +1530,47 @@ attempting deduplication. Its size alone does not establish redundancy. Larger
 reductions still require explicit source-bound selection of required evidence
 and accounted retrieval; arbitrary deletion and symbol renaming alone cannot
 establish reduced full-run token usage.
+
+## Reversible inline evidence and pack accounting (2026-10-15)
+
+The next projection above is implemented at `78c1494bfb` and qualified in a
+fresh public Docker census. Required intent/world, formalization and retrieval
+artifacts remain inline as typed objects; their original UTF-8 chunks and the
+complete original semantic transport reconstruct exactly. Unknown fields and
+ineligible bodies stay literal. The independent complete-input selector keeps
+the original whenever the candidate is larger. The new candidate is available
+only for measurement; ordinary generation remains unchanged.
+
+The extended `router-semantic-working-set-census@2` measures both candidates
+against the same original input. Direct router `@1` output is preserved, while
+the explicit container-owner census selects `@2`. The registered child and
+owner independently reproduce the full observation after source cleanup.
+
+| Complete first coding input | Bytes | Reduction |
+| --- | ---: | ---: |
+| Original | 67,201 | — |
+| Capsule references | 67,120 | 81 (0.12%) |
+| Inline evidence objects | 66,452 | 749 (1.11%) |
+
+These are separate representations of one prepared input, not a composition or
+an ablation against native Codex. Of 1,373 bytes of gross JSON-string overhead,
+624 bytes are replaced by inline structure and guidance. No model generation
+or official verification ran, so there is no new token score or task reward.
+The indexed profile consumed its pinned Source384 checkpoint; intent autoencoder
+inference was disabled. This does not qualify all IR checkpoints or prove the
+formalized behavior correct.
+
+The new pack census measures 6,266 bytes, including a 3,298-byte reference array
+and 1,918-byte inner contract. Fifteen known identifier slots cover five native
+identities and 763 serialized value bytes; equal IDs do not make their roles
+redundant. The next source-based design factors duplicate token estimates and
+identical reference envelope defaults with an exact inverse, preserving roles,
+requiredness and caveats. This is not yet implemented or measured. The larger
+history/tool-response cost also remains to be measured before claiming total
+token savings or enabling a paid ablation of these small byte reductions.
+
+All 178 runtime tests and 33 launcher/exporter tests passed with unchanged
+selected pins. The fresh run completed owner replay, worktree/worker cleanup,
+source-session accounting and two exact container-absence checks. Retained
+[closed evidence and next pack design](evidence/inline-evidence-census-20261015/README.md)
+include the final freeze check; private prompts and owner archives are excluded.

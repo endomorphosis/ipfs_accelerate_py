@@ -1,7 +1,7 @@
-# Measure capsule references before model allocation
+# Measure complete coding inputs before model allocation
 
 The router can now measure the complete `capsule-references@1` input without
-discovering, allocating or calling a model. This isolates a first-input cost
+discovering, allocating or calling an LLM provider. This isolates a first-input cost
 that was unchanged in the previous candidate-round projection experiment.
 The shipped container worker accepts and forwards the same explicit selection.
 
@@ -160,6 +160,77 @@ phase. The census took 29.572 seconds. The complete owned Docker lifecycle,
 including deployment, took 491.373 seconds. These nested, single-run timings are
 not a throughput comparison.
 
+## Inline evidence and pack census
+
+Runtime `78c1494bfb` adds an independent reversible candidate. It replaces
+escaped JSON summaries with complete typed evidence objects carried inline in
+the same input. Required constraints, reference metadata, unknown fields,
+public instructions, Doctor evidence and source content remain present.
+
+Inside an already admitted owner/source session, select:
+
+```text
+--semantic-working-set capsule-references@1
+--semantic-working-set-census-only
+--semantic-working-set-census-schema router-semantic-working-set-census@2
+```
+
+The declared-plan container owner's existing `--working-set-census-only` route
+now selects `@2`. Direct router calls retain the original `@1` default and
+output. Selecting `@2` outside census-only mode is rejected. These flags do not
+create admission or a source session. Generation dispatch for the new inline
+candidate remains disabled.
+
+The codec reconstructs complete required intent/world, source-formalization
+and code-retrieval artifacts from their native 6,144-byte UTF-8 chunks before
+parsing them. It validates identities, order, digests and byte counts; individual
+chunks can end inside a JSON string. Canonical finite floating point retrieval
+scores survive the round trip. Valid opaque, noncanonical and nonobject bodies
+stay literal; inconsistent known chunk contracts are rejected. The inverse
+reconstructs the exact original chunks and original semantic transport.
+
+Both candidate comparisons start from the same original complete input and
+retain identical wrappers. They are independent, not composed; their reductions
+cannot be added. Each selector retains the original when its candidate is not
+strictly smaller. The pure codec performs no file, network or model operations.
+Source freshness and admission remain owner checks; representation equality is
+not proof of program behavior.
+
+A fresh public `largest-eigenval` Docker run qualified both measurements:
+
+| Complete coding input | UTF-8 bytes | Reduction from original |
+| --- | ---: | ---: |
+| Original | 67,201 | — |
+| Capsule references | 67,120 | 81 (0.12%) |
+| Inline evidence objects | **66,452** | **749 (1.11%)** |
+
+Three evidence artifacts spanning four rows lost 1,373 bytes of JSON-string
+overhead but gained 624 bytes of replacement structure and guidance. The net
+749-byte reduction includes all coding wrappers. No constraints were omitted
+by this projection. This measures the first input; CLI system prompts, later
+tool responses and repeated history remain outside the measurement.
+
+The new closed pack census reconciles a 6,266-byte pack: 3,298 bytes of reference
+values, 1,918 of inner contract values, and other members and punctuation.
+Its six references contain 983 bytes of metadata members. Fifteen typed
+identifier slots refer to five native identities and occupy 763 serialized
+value bytes. These are overlapping measurements, not removable-byte estimates;
+different roles can legitimately refer to the same content.
+
+Qualification passed **178 runtime tests** and **33 launcher/exporter tests**.
+The fresh run used indexed preparation, pinned Source384 inference, retained
+declared planning, admission, the native worker boundary, exact owner replay
+and cleanup. Intent autoencoder inference was explicitly disabled in this
+profile. Source384 inference took 9.881 seconds; the census took 30.692 seconds
+within a 226.284-second owned Docker lifecycle. No planning or coding model
+generation ran, the official verifier was disabled, and token usage and reward
+remain unmeasured. The exact container was confirmed absent twice.
+
+[Closed results, qualification and provenance](evidence/inline-evidence-census-20261015/README.md)
+retain these observations and their limits. This is a bounded prompt
+representation experiment, not reversible executable-codebase minification or
+a native Codex versus supervisor efficacy comparison.
+
 ## Next measured optimization
 
 Use the closed `@2` component census to choose the next target. Its nested
@@ -167,16 +238,15 @@ partitions overlap; compare sibling shares rather than adding parent and child
 bytes. Keep each experiment source-bound and compare the complete rendered
 input, including reference and retrieval guidance overhead.
 
-1. Prototype inline typed JSON evidence artifacts with exact original-chunk
-   reconstruction. The measured 1,373 bytes of remaining JSON-string overhead
-   is only a gross ceiling (2.04% of this input), before replacement metadata.
-   Reuse native artifact/chunk bindings: intent/world spans two chunks, so
-   parsing each summary independently would be incorrect. Unknown or
-   noncanonical summaries must remain unchanged.
-2. Measure repeated content inside the 6,266-byte semantic pack and existing
-   reconstruction/worker-projection fields. Their size alone does not establish
-   redundancy. Extend authenticated references only for fields with a defined
-   exact inverse and no behavioral authority.
+1. Use the pack census to qualify exact factoring of duplicated token estimates
+   and identical reference envelope defaults. Preserve every role, requirement,
+   caveat and source obligation. The
+   [source-based design](evidence/inline-evidence-census-20261015/pack-factoring-design.md)
+   defines eligibility, inverse, fallback and tests; no saving is measured yet.
+2. Keep new candidates independent until their composition has its own exact
+   inverse and complete-input selection. Include instructions and dictionary
+   overhead. A later token comparison must also count retrieval exposure,
+   subsequent tool results and history, rather than extrapolating from bytes.
 3. For larger reductions in intent/world, retrieval or formalization evidence,
    design an owner-selected disclosure contract before changing model input.
    Preserve required constraints and unknown fields, bind all pages to the

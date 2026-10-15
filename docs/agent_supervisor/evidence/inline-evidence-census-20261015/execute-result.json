@@ -1,0 +1,17 @@
+{
+  "exact_container_absence_observations": [
+    true,
+    true
+  ],
+  "exit_code": 0,
+  "frozen_inputs_unchanged": true,
+  "observation": {
+    "bytes": 36761,
+    "path": "/home/barberb/lift_coding/artifacts/inline-evidence-census-20261015/live/actual-public-census-01.json",
+    "sha256": "0f941d348256182ee9b803c39f60bde0de211ee5c0049a3a6aabf836e9a99412"
+  },
+  "outer_failure": null,
+  "qualified": true,
+  "seconds": 227.59313280903734,
+  "step": "execute"
+}

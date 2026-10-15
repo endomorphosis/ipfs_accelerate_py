@@ -1,0 +1,20 @@
+{
+  "base_commit": "2e6aaecb50f8376a7f3ef33c4e8a1f2c93c79b77",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "c42ec3ec9e90b5383473c56831678b16169ac043585ea6d1a94f79611ee1ca7a",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "a536c932da23556898b69d15162fe471584e980b6f768189aa60bceef1729cc5",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py": "a3ce1df53dcdea483ec017cca893e7fd8fe2a59fd08aa87c70b4bb54d44e29ab",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census_observation.py": "1d38f1b0033fea475126f8cfe10e1f7e345f9ace8bae47c2d90f50439a205497",
+    "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_census_worker_wiring.py": "78381e042c5c3d7286917fcbe362843d75df7abb002dc2e986d9e8e327ec96ba",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py": "6ac3e3aca2d48974eca90927ef5a4416cd6cb39d5405aa370ce01c97ae530a0b",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_driver.py": "1672f73d2c1b0ddf1264941475bb9247eb5b60a13232a175f4fd248c7f4c48a3",
+    "ipfs_accelerate_py/agent_supervisor/runtime/inline_evidence_projection.py": "996b23429b5b0264afe467ccdd1f25cb65f99416e52adc90ad8e2c0bcf15cff4",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "6b8085d141a7b91e612ae5334a04eb9c8bfce6a08101edb920f6632a377bf67c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_pack_census.py": "310ed69e1c15d4e24c293ae1d79c010af4269ab339c421d18fe9e6806f13064d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set_census.py": "450d112d5886bd205382f051a523c4f59930a9c6aa226cc011486a419b544234",
+    "test/api/test_inline_evidence_projection.py": "027fe5f9dc4cd99a7455f22acc58cd31bd9192bbbbde93e6ef0292c45cef1876",
+    "test/api/test_semantic_pack_census.py": "95c89e8f827874ca4e92c9296cfab10603646dd0cfac4223bd6d0e8159d23a7e",
+    "test/api/test_semantic_working_set_census_dispatch.py": "910a24a08a8419e338f5ae689826beb43727f0c08fc003f8a143c1123d4410f5",
+    "test/api/test_terminal_working_set_census_replay.py": "78e5c8fcc6e140504c3f8da5aab6869b9c097caa786d3df26cf6d9a9420b7dae"
+  }
+}
