@@ -390,3 +390,45 @@ this source reader. Keep required facts inline until actual model-access and
 omission experiments qualify the change. Compare complete rendered inputs and
 all native planning/coding/lookup/continuation/repair usage, including refusals
 and unknown usage, against official rewards before claiming lower total tokens.
+
+
+## Publish the initial native source reader
+
+Initial binding now separates private reader configuration from retained-CAS
+replay. The gateway captures its original SERVER lock, connection and identity,
+then configures the exact candidate with copied request/limits, physical source
+store and scope witnesses. A short-held busy marker refuses overlapping binds
+or source reads before they wait for SERVER. An early gate checks the
+original connection before ready/native SQL and coordinator fences on the
+respective server/task/allocation routes. It must have an inactive transaction;
+refusal never rolls back a borrowed transaction.
+
+The original reader's inventory replay runs outside SERVER. Existing task and
+allocation binders contribute their retained native fences outside SERVER, then
+closing checks revalidate original owner/candidate/server custody, native task
+rows and complete current source before publication on the original connection.
+A private literal publication witness lets task/allocation finally paths retain
+only the candidate this attempt published. A replacement gateway reader cannot
+be adopted. Publication consumes the binding even if a later assertion raises;
+a refusal before publication installs no reader for this attempt and preserves
+any competing genuine reader. Its native markers stay empty, and retry requires
+the gateway still to be unbound. Direct gateway/server calls do not gain native
+task or allocation authority from detached metadata.
+
+The [initial-binding evidence](evidence/source-initial-binding-20261015/README.md)
+keeps its unpatched control, original target snapshot, complete task-admission
+module and current regression result separate from earlier source-query and
+broker phases. No proxy grant, endpoint or coding child is created by this
+binder. Public binding/response schemas and existing source budgets remain
+unchanged; the publication witness is not a serialized admission capability.
+
+After detached native fences, the source-binding phase samples its final clock
+outside SERVER and supplies that finite sample to closing task/grant and
+allocation checks. Existing native fences and default clock callbacks retain
+their contracts. These lease observations remain sequential. Reentry through
+the supported CAS seam does not establish safety for every arbitrary clock/native
+callback, exclude filesystem writers or guarantee atomic delivery-time expiry.
+This owner-side boundary supplies no separate worker-UID, native coding-child,
+proof, execution, completion or measured token-saving result. Explicit permission
+delegation, daemon/wrapper/child provenance and independently admitted signed
+compiled context remain required before a deployed native worker trial.

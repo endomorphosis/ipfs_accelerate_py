@@ -1297,3 +1297,43 @@ Reuse the existing independent IR family/schema/task and 8D/384D/768D assets;
 this source query change supplies no learned reconstruction or token-saving
 result. Fresh encoder-conditioned evaluation and native ModelManager custody
 still gate teacher promotion.
+
+
+## Initial native source binding, 2026-10-15
+
+The [initial publication boundary](source_lookup_worker.md#publish-the-initial-native-source-reader)
+now configures the literal reader under original SERVER custody and releases
+SERVER for retained-CAS inventory replay. Existing task/allocation binders add
+their actual native fences before closing original-object, native-row and full
+current-source checks. A private one-attempt witness pins only that candidate's
+publication. Post-publication refusal preserves consumed task/allocation joins;
+it cannot adopt another gateway reader or authorize a rebind. Before publication,
+a refused attempt publishes no reader of its own and leaves its native markers
+empty. A competing genuine reader is preserved, and retry requires the gateway
+still to be unbound. An early original-transaction
+gate precedes ready/native SQL and coordinator fences on the relevant routes;
+this path neither repairs nor rolls back a borrowed native transaction.
+
+The [regression phase](evidence/source-initial-binding-20261015/README.md)
+retains its unpatched lock-order control and target-roster expansion separately
+from current qualification. The complete task-admission test module is included
+because its binder changes, without inflating the existing 279-source inventory.
+Prior query/constructor/delivery manifests stay immutable Git evidence; prior
+API-test counts are not added to this phase. A finite final clock sample runs
+outside SERVER after detached native fences and is supplied to closing
+task/grant and allocation checks. Existing fence/default clock callbacks retain
+their own contracts. Sequential lease observations provide no filesystem writer
+exclusion, universal callback safety or atomic delivery-time expiry guarantee.
+
+Next qualify native worker permission delegation and daemon/wrapper/child
+provenance with the independent signed profile and compiled-context joins.
+Preserve parallel candidate continuation and its separate broker rather than
+substituting it for native task/allocation handles. Keep CodebaseIR, IntentIR,
+SecurityIR, LegalIR and UI/UXIR assets separate by family, schema/version,
+decoder task and 8D/384D/768D size, reusing existing checkpoints and embeddings.
+Fresh encoder-conditioned semantic and legal-text reconstruction, checkpoint
+lineage and ModelManager custody still gate distillation; failed fresh LegalIR
+panels and disabled latent conditioning do not become a qualified teacher.
+This source-binding work performs no training, model upload or reconstruction
+quality evaluation. Measure complete planning/coding/retrieval/refresh/repair
+sessions at matched official success before claiming token savings.

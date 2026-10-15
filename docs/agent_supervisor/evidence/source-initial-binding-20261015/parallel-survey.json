@@ -1,0 +1,92 @@
+{
+  "cached_accelerator_origin_main": "55c42dd740d75c3ba04d6991c90cf0aa0dccd8a9",
+  "cached_parent_origin_main": "da570995fcb156d4a64078abf1bb6d7a10645ef3",
+  "findings": [
+    "No branch-only commit on the five initial-binding paths and no modified instance of those paths was found in the six named worktrees at this observation.",
+    "The query replay, constructor, delivery-fence and signed closing-check branches are ancestors of cached main. Their native guards are already published reuse, not unmerged competing implementations.",
+    "Candidate dispatch/reporting contain a separate WorkerSourceBroker coding-continuation path; this survey did not find an equivalent native initial source-reader binding transaction there.",
+    "The maintained source-worker guide separates detached constructor/query/delivery replay from initial native reader publication; task and allocation admission still provide the retained native objects to reuse.",
+    "The current increment can reuse the real deferred allocation fixture and retained source-query tests while adding only initial publication fences. Worker permission delegation and native coding-child adoption remain separate work."
+  ],
+  "foreign_worktrees_modified": false,
+  "git_refs_mutated": false,
+  "limitations": [
+    "No network query or fetch; cached refs do not establish universal GitHub absence.",
+    "No product imports, tests, owner creation, child launch, provider, model, solver or training execution.",
+    "No claim of measured whole-session token savings or learned semantic reconstruction."
+  ],
+  "observed_at_utc": "2026-10-15T00:03:23.070780+00:00",
+  "relevant_source_paths": [
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py"
+  ],
+  "reviewed_documents": [
+    {
+      "bytes": 23313,
+      "path": "docs/agent_supervisor/source_lookup_worker.md",
+      "revision": "55c42dd740d75c3ba04d6991c90cf0aa0dccd8a9",
+      "sha256": "faf7621d3f52184f33353fd4b31a8d849ebaef88747ca695fbafa0759e1a9702"
+    },
+    {
+      "bytes": 16597,
+      "path": "docs/agent_supervisor/current_source_task_admission.md",
+      "revision": "55c42dd740d75c3ba04d6991c90cf0aa0dccd8a9",
+      "sha256": "650b8bde28ddaf7bfb87a94af00d8941e68300577ffec9339e0d2bba4dd61b09"
+    },
+    {
+      "bytes": 15803,
+      "path": "docs/agent_supervisor/current_source_worktree_allocation.md",
+      "revision": "55c42dd740d75c3ba04d6991c90cf0aa0dccd8a9",
+      "sha256": "5603e11e3cdbdfc5492fb9807d5cb9c832aa65c3c66f81d370bb783116a39361"
+    }
+  ],
+  "reviewed_worktrees": [
+    {
+      "branch_only_relevant_commits": [],
+      "head": "79f089c6f28f28f3f5adade4979aed115a039223",
+      "head_is_ancestor_of_cached_origin_main": false,
+      "name": "supervisor-candidate-dispatch-20261014",
+      "relevant_working_changes": []
+    },
+    {
+      "branch_only_relevant_commits": [],
+      "head": "259b3ae686337830211893f7e585b66ecf1601e9",
+      "head_is_ancestor_of_cached_origin_main": false,
+      "name": "supervisor-candidate-reporting-20261014",
+      "relevant_working_changes": []
+    },
+    {
+      "branch_only_relevant_commits": [],
+      "head": "55c42dd740d75c3ba04d6991c90cf0aa0dccd8a9",
+      "head_is_ancestor_of_cached_origin_main": true,
+      "name": "source-query-replay-20261014",
+      "relevant_working_changes": []
+    },
+    {
+      "branch_only_relevant_commits": [],
+      "head": "bbcc1350141120b454a9d5e7648b48cf315047c9",
+      "head_is_ancestor_of_cached_origin_main": true,
+      "name": "source-worker-construction-20261014",
+      "relevant_working_changes": []
+    },
+    {
+      "branch_only_relevant_commits": [],
+      "head": "e21d6e7b41f14f3994b0fd8556bfcd341d9e888c",
+      "head_is_ancestor_of_cached_origin_main": true,
+      "name": "router-source-delivery-fences-20261014",
+      "relevant_working_changes": []
+    },
+    {
+      "branch_only_relevant_commits": [],
+      "head": "cb104896f55a28352feb8cd35c4b9991144c933a",
+      "head_is_ancestor_of_cached_origin_main": true,
+      "name": "router-signed-scope-closing-20261014",
+      "relevant_working_changes": []
+    }
+  ],
+  "schema": "source-initial-binding-parallel-survey@1",
+  "scope": "cached local Git refs, relevant named worktrees, five initial-binding source paths, and three maintained source-custody documents"
+}

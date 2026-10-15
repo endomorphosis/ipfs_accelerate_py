@@ -5498,6 +5498,8 @@ class TypedStateOwnerGateway:
         self._current_source_lookup: Any | None = None
         self._current_source_read_guard = threading.Lock()
         self._current_source_read_active: object | None = None
+        self._current_source_bind_active: object | None = None
+        self._current_source_lookup_publication: tuple | None = None
         self._current_source_lookup_binding: bytes | None = None
         self._current_source_lookup_owner: bytes | None = None
         self._current_source_lookup_connection: Any | None = None
@@ -5547,28 +5549,112 @@ class TypedStateOwnerGateway:
                 "EAAEF binding requires a live server-owned gateway"
             )
 
-    def bind_current_source_lookup(self, **configuration: Any) -> dict[str, Any]:
-        """Bind one host-admitted source reader to this existing owner."""
-        from ..runtime.current_source_lookup import CurrentSourceLookup
+    def bind_current_source_lookup(self, *, _binding_attempt=None, _server_guard=None,
+                                   **configuration: Any) -> dict[str, Any]:
+        """Configure privately, replay CAS off SERVER, then publish once."""
+        from ..runtime.current_source_lookup import CurrentSourceLookup, _SourceBindingAttempt
 
-        with self._transaction_lock:
-            self._require_live_server_binding()
-            if self._current_source_lookup is not None:
-                raise TypedStateOwnerAuthorizationError("current source lookup is already bound")
-            service = CurrentSourceLookup(**configuration)
-            service.check_native(self._connection, self.identity)
-            binding = service.binding(self.identity)
-            if type(binding) is not dict:
-                raise TypedStateOwnerProtocolError("current source binding must be an object")
-            body = canonical_json_bytes(binding)
-            owner = canonical_json_bytes(dict(self.identity))
-            self._require_live_server_binding()
-            self._current_source_lookup = service
-            self._current_source_lookup_binding = body
-            self._current_source_lookup_owner = owner
-            self._current_source_lookup_connection = self._connection
-            self._assert_current_source_binding(service)
-            return json.loads(body)
+        attempt = _SourceBindingAttempt() if _binding_attempt is None else _binding_attempt
+        if type(attempt) is not _SourceBindingAttempt or attempt._started or attempt._published is not None:
+            raise TypedStateOwnerAuthorizationError("source binding attempt is already consumed")
+        guard, ticket = self._current_source_read_guard, object()
+        with guard:
+            if self._current_source_read_active is not None or self._current_source_bind_active is not None:
+                raise TypedStateOwnerProtocolError("current source binding is busy")
+            self._current_source_bind_active = ticket
+        lock = self._transaction_lock
+        service = None
+        try:
+            if not lock.acquire(timeout=5):
+                raise TypedStateOwnerProtocolError("current source owner is busy")
+            try:
+                self._require_live_server_binding()
+                connection, identity = self._connection, self.identity
+                owner = canonical_json_bytes(dict(identity))
+                checks = attempt._checks
+                attempt._started = True
+
+                def current():
+                    if (self._transaction_lock is not lock or self._connection is not connection
+                            or self.identity is not identity or canonical_json_bytes(dict(identity)) != owner
+                            or self._current_source_read_guard is not guard
+                            or self._current_source_bind_active is not ticket
+                            or self._current_source_read_active is not None
+                            or attempt._checks is not checks or attempt._started is not True
+                            or attempt._published is not None
+                            or any(value is not None for value in (
+                                self._current_source_lookup, self._current_source_lookup_binding,
+                                self._current_source_lookup_owner, self._current_source_lookup_connection,
+                                self._current_source_lookup_publication))):
+                        raise TypedStateOwnerAuthorizationError("original unbound source owner changed")
+                    if getattr(connection, "in_transaction", None) is not False:
+                        raise TypedStateOwnerAuthorizationError("source binding requires an inactive native transaction")
+                    self._require_live_server_binding()
+                    if _server_guard is not None:
+                        _server_guard()
+                    if service is not None:
+                        if (service._store is not store or service._store.cas is not cas
+                                or service._guard is not input_guard or store.guard is not input_guard
+                                or service._request is not request or service._limits is not limits
+                                or service._root != root or service._scope_bytes != scope
+                                or service._continuations is not registry or registry
+                                or service._active_read is not None
+                                or canonical_json_bytes(service.binding(identity)) != body):
+                            raise TypedStateOwnerAuthorizationError("original source binding candidate changed")
+                        input_guard()
+
+                current()
+                service = CurrentSourceLookup._binding_candidate(**configuration)
+                store, cas, root = service._store, service._store.cas, service._root
+                input_guard, request, limits = service._guard, service._request, service._limits
+                scope, registry = service._scope_bytes, service._continuations
+                body = canonical_json_bytes(service.binding(identity))
+                current()
+            finally:
+                lock.release()
+
+            service._replay_binding()
+            # Reject owner/input/transaction drift before native callbacks can
+            # use the original connection. Never repair a borrowed transaction.
+            if not lock.acquire(timeout=5):
+                raise TypedStateOwnerProtocolError("current source owner is busy")
+            try:
+                current()
+            finally:
+                lock.release()
+            for unlocked, _locked in checks:
+                unlocked()
+            closing_time = int(time.time() * 1000)
+
+            if not lock.acquire(timeout=5):
+                raise TypedStateOwnerProtocolError("current source owner is busy")
+            try:
+                current()
+                # Task checks precede allocation's detached final observation.
+                # These callbacks enter no coordinator fence or retained CAS.
+                for _unlocked, locked in reversed(checks):
+                    locked(closing_time)
+                current()
+                service.check_native(connection, identity)
+                service._check_source()
+                current()
+                # This literal witness is installed before assertions that may
+                # raise. Native finally paths consume this attempt only; they
+                # never discover/adopt a replacement gateway reader.
+                publication = (attempt, self, connection, owner, service, body, cas, root)
+                self._current_source_lookup = service
+                self._current_source_lookup_binding = body
+                self._current_source_lookup_owner = owner
+                self._current_source_lookup_connection = connection
+                self._current_source_lookup_publication = attempt._published = publication
+                self._assert_current_source_binding(service)
+                return json.loads(body)
+            finally:
+                lock.release()
+        finally:
+            with guard:
+                if self._current_source_bind_active is ticket:
+                    self._current_source_bind_active = None
 
     def _assert_current_source_binding(self, service: Any) -> None:
         from ..runtime.current_source_lookup import CurrentSourceLookup
@@ -5604,7 +5690,7 @@ class TypedStateOwnerGateway:
         guard = self._current_source_read_guard
         ticket = object()
         with guard:
-            if self._current_source_read_active is not None:
+            if self._current_source_read_active is not None or self._current_source_bind_active is not None:
                 raise TypedStateOwnerProtocolError("current source read is busy")
             self._current_source_read_active = ticket
         state, service = None, None

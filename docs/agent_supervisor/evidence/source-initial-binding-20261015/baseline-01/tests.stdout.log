@@ -1,0 +1,133 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/barberb/.local/bin/python
+cachedir: /tmp/sib-f34ecd45/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/source-initial-binding-20261015
+configfile: pytest.ini
+collecting ... collected 1 item
+
+test/api/test_source_initial_binding.py::test_initial_binding_cas_callback_reenters_native_fences_after_server_release[allocation] FAILED [100%]
+
+=================================== FAILURES ===================================
+_ test_initial_binding_cas_callback_reenters_native_fences_after_server_release[allocation] _
+test/api/test_source_initial_binding.py:83: in test_initial_binding_cas_callback_reenters_native_fences_after_server_release
+    binding = initial_bind(case, route)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_source_initial_binding.py:33: in initial_bind
+    return case.guard.bind_current_source_lookup(**case.source_binding)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:333: in bind_current_source_lookup
+    return self._bind_source_lookup(cas=cas, arguments=dict(
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:373: in _bind_source_lookup
+    result = binder(repository=self._workspace, cas=cas, **arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:232: in bind_current_source_lookup
+    return self._bind_current_source_lookup(repository=repository, cas=cas,
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:252: in _bind_current_source_lookup
+    self._server.bind_current_source_lookup(repository=repository, cas=cas,
+ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py:4576: in bind_current_source_lookup
+    return self._command_gateway.bind_current_source_lookup(**configuration)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py:5558: in bind_current_source_lookup
+    service = CurrentSourceLookup(**configuration)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py:206: in __init__
+    restored = self._load()
+               ^^^^^^^^^^^^
+test/api/test_source_initial_binding.py:64: in replay
+    return original_load(reader)
+           ^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py:242: in _load
+    result = load_source_inventory(cas=self._store.cas, expected_inventory_cid=self._inventory_cid,
+ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py:342: in load_source_inventory
+    return _replay(store, cid, store.get(cid), request, limits)
+                               ^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py:180: in get
+    value = self.cas.get(_cid(cid))
+            ^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_source_initial_binding.py:75: in cas_get
+    assert not original_lock._is_owned(), DIAGNOSTIC
+E   AssertionError: initial source binding CAS replay must release SERVER
+E   assert not True
+E    +  where True = <built-in method _is_owned of _thread.RLock object at 0xe85318639280>()
+E    +    where <built-in method _is_owned of _thread.RLock object at 0xe85318639280> = <locked _thread.RLock object owner=255457177663264 count=3 at 0xe85318639280>._is_owned
+---------------------------- Captured stderr setup -----------------------------
+2026-10-15 00:02:08,144 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:08,568 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:08,604 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:08,677 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:08,759 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:08,841 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:08,877 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:08,964 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:09,001 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:09,038 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - capability admitted status=compatible fingerprint=sha256:abababababababababababababababababababababababababababababababab
+2026-10-15 00:02:09,039 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:09,134 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - control-plane schema migration complete before ready
+2026-10-15 00:02:09,139 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:09,263 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - state-owner ready server_id=server:3f3d8eee-aaf3-4194-b084-ddea23d5242c listen_uri=quack:127.0.0.1:43357
+2026-10-15 00:02:09,340 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/daemon-lane/source-admission.execution.shard-0001-of-0002.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:09,451 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:09,633 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:09,665 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:09,683 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:09,769 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:09,784 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:09,873 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:10,126 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:10,168 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:10,183 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:10,294 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:10,310 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:10,366 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:10,449 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:10,492 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:10,534 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 capability admitted status=compatible fingerprint=sha256:abababababababababababababababababababababababababababababababab
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 control-plane schema migration complete before ready
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4359 state-owner ready server_id=server:3f3d8eee-aaf3-4194-b084-ddea23d5242c listen_uri=quack:127.0.0.1:43357
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/daemon-lane/source-admission.execution.shard-0001-of-0002.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+----------------------------- Captured stderr call -----------------------------
+2026-10-15 00:02:10,588 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:10,632 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-15 00:02:10,684 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/sib-f34ecd45/pytest-temp/test_initial_binding_cas_callb0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/.worktrees/source-initial-binding-20261015/docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/junit.xml -
+============================= slowest 10 durations =============================
+3.09s setup    test/api/test_source_initial_binding.py::test_initial_binding_cas_callback_reenters_native_fences_after_server_release[allocation]
+0.18s call     test/api/test_source_initial_binding.py::test_initial_binding_cas_callback_reenters_native_fences_after_server_release[allocation]
+0.14s teardown test/api/test_source_initial_binding.py::test_initial_binding_cas_callback_reenters_native_fences_after_server_release[allocation]
+=========================== short test summary info ============================
+FAILED test/api/test_source_initial_binding.py::test_initial_binding_cas_callback_reenters_native_fences_after_server_release[allocation]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+============================== 1 failed in 21.20s ==============================

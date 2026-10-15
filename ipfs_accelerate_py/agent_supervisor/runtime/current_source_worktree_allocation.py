@@ -20,7 +20,7 @@ import time
 from ipfs_datasets_py.logic.software_contracts.content import cid_for_structured
 from ..merge import worktree_lifecycle as lifecycle
 from ..task_sources.control_plane_contracts import canonical_json_bytes
-from .current_source_lookup import CurrentSourceLookup
+from .current_source_lookup import CurrentSourceLookup, _SourceBindingAttempt
 from .current_source_task_admission import NativeSourceTaskAdmission
 
 SCHEMA = "supervisor-native-source-worktree-allocation@1"
@@ -195,7 +195,7 @@ class NativeSourceWorktreeAllocation:
               "native allocation original nomination join changed")
         self._task_admission._retained()
 
-    def _observe(self):
+    def _observe(self, *, _checked_at=None):
         from ..todo_daemon.implementation_daemon import DatabaseImplementationDaemon, DatabaseTaskAttempt
         from ..todo_daemon.database_portal_bridge import DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
         self._retained()
@@ -242,7 +242,8 @@ class NativeSourceWorktreeAllocation:
         _need(birth is not None and birth == record.owner and birth.start_time_ticks == admission._peer[2]
               and os.stat("/proc/" + str(birth.pid)).st_uid == admission._peer[1]
               and record.created_at <= record.updated_at < record.expires_at
-              and record.expires_at > time.time(), "allocation lifecycle owner or live lease differs")
+              and record.expires_at > (time.time() if _checked_at is None else _checked_at),
+              "allocation lifecycle owner or live lease differs")
         index_path = self._store.task_index_path_for(canonical_task_cid=record.canonical_task_cid,
             task_id=record.task_id, attempt=record.attempt)
         index_witness, index_raw = _read(index_path)
@@ -351,16 +352,30 @@ class NativeSourceWorktreeAllocation:
             max_slice_bytes=max_slice_bytes), nomination=(scope, expected_scope_cid))
 
     def _bind_source_lookup(self, *, cas, arguments, nomination=None):
-        """Share whole-operation serialization and published-reader custody."""
+        """Serialize allocation custody and retain only our literal publication."""
         with self._lock:
             _need(not self._binding and self._lookup is None, "allocation source binding is already consumed")
             self._binding = True
+            attempt = _SourceBindingAttempt()
             try:
+                with self._server._lock:
+                    self._retained()
+                    self._task_admission._require_source_binding_transaction()
                 self.require_current()
-                # Retain the task binder's own serialization across its empty
-                # precondition and publication. A competing task bind cannot
-                # publish a reader which this attempt then accidentally adopts.
-                # SERVER is released before any native claim fence is entered.
+
+                def unlocked():
+                    self.require_current()
+
+                def locked(checked_at_ms):
+                    self._retained()
+                    fixed, record, _identity, _binding = self._observe(_checked_at=checked_at_ms / 1000)
+                    stable = record.to_dict()
+                    renewal = tuple(stable.pop(key) for key in ("fence", "updated_at", "expires_at"))
+                    _need(fixed == self._fixed_files and _wire(stable) == self._lifecycle_bytes
+                          and all(a >= b for a, b in zip(renewal, self._renewal)),
+                          "allocation custody changed after source binding fences")
+
+                attempt._add_checks(unlocked, locked)
                 with self._task_admission._lock:
                     with self._server._lock:
                         _need(not self._task_admission._binding_in_progress
@@ -370,22 +385,23 @@ class NativeSourceWorktreeAllocation:
                     try:
                         binder = (self._task_admission.bind_current_source_lookup if nomination is None
                                   else self._task_admission.bind_nominated_current_source_lookup)
-                        result = binder(repository=self._workspace, cas=cas, **arguments)
+                        result = binder(repository=self._workspace, cas=cas,
+                            _binding_attempt=attempt, **arguments)
                     finally:
-                        with self._server._lock:
-                            service = self._task_admission._source
-                            if (type(service) is CurrentSourceLookup and service._root == self._workspace
-                                    and self._task_admission._gateway._current_source_lookup is service):
-                                self._lookup, self._lookup_refs = service, (service, cas, service._root)
-                                self._lookup_bytes = self._task_admission._source_bytes
-                                service._native_source_worktree_allocation = self
-                                if nomination is not None:
-                                    # The task binder's finally has already retained
-                                    # its attempted join, including after publication
-                                    # failures. Never roll back or adopt another reader.
-                                    captured = (*nomination, self._task_admission._nominated_source_scope,
-                                                service, self._lookup_bytes, cas)
-                                    self._nominated_source_scope = self._original_nominated_source_scope = captured
+                        publication = attempt._published
+                        if publication is not None:
+                            _need(publication[0] is attempt
+                                  and publication[1] is self._task_admission._gateway
+                                  and publication[1]._current_source_lookup_publication is publication,
+                                  "original allocation source publication witness changed")
+                            service, body, original_cas, root = publication[4:]
+                            self._lookup, self._lookup_refs = service, (service, original_cas, root)
+                            self._lookup_bytes = body
+                            service._native_source_worktree_allocation = self
+                            if nomination is not None:
+                                captured = (*nomination, self._task_admission._nominated_source_scope,
+                                            service, body, original_cas)
+                                self._nominated_source_scope = self._original_nominated_source_scope = captured
                 self.require_current()
                 with self._server._lock:
                     self.require_source_binding(server=self._server, service=self._lookup)

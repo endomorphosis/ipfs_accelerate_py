@@ -154,6 +154,22 @@ def _count_response(result, request_id):
     raise CurrentSourceLookupError("response byte accounting failed")
 
 
+class _SourceBindingAttempt:
+    """Private one-attempt custody; serialized observations cannot replace it."""
+
+    __slots__ = ("_checks", "_started", "_published")
+
+    def __init__(self):
+        self._checks = ()
+        self._started = False
+        self._published = None
+
+    def _add_checks(self, unlocked, locked):
+        _require(not self._started and self._published is None,
+                 "source binding attempt is already consumed")
+        self._checks += ((unlocked, locked),)
+
+
 class CurrentSourceLookup:
     """Host-admitted public path scope on the existing source store and owner."""
 
@@ -161,6 +177,25 @@ class CurrentSourceLookup:
                  limits=SourceInventoryLimits(), task_cid, task_revision,
                  expected_task_body_cid, context_cid, allowed_paths,
                  max_response_bytes=16384, max_slice_bytes=4096):
+        self._configure(repository, cas=cas, expected_inventory_cid=expected_inventory_cid,
+            request=request, limits=limits, task_cid=task_cid, task_revision=task_revision,
+            expected_task_body_cid=expected_task_body_cid, context_cid=context_cid,
+            allowed_paths=allowed_paths, max_response_bytes=max_response_bytes,
+            max_slice_bytes=max_slice_bytes)
+        self._replay_binding()
+
+    @classmethod
+    def _binding_candidate(cls, **configuration):
+        """Configure the literal candidate without entering retained CAS."""
+        _require(cls is CurrentSourceLookup, "exact source reader type required")
+        service = cls.__new__(cls)
+        service._configure(**configuration)
+        return service
+
+    def _configure(self, repository, *, cas, expected_inventory_cid, request,
+                   limits=SourceInventoryLimits(), task_cid, task_revision,
+                   expected_task_body_cid, context_cid, allowed_paths,
+                   max_response_bytes=16384, max_slice_bytes=4096):
         self._guard = _input_guard(request, limits)
         self._request = SourceInventoryRequest(**asdict(request))
         self._limits = SourceInventoryLimits(**asdict(limits))
@@ -202,6 +237,9 @@ class CurrentSourceLookup:
         self._binding = None
         self._continuations = {}
         self._active_read = None
+
+    def _replay_binding(self):
+        """Replay original retained source before publication, without SERVER."""
         self._check_source()
         restored = self._load()
         _require(set(self._paths).issubset(e.entry.raw_path_hex for e in restored.entries),

@@ -1,0 +1,474 @@
+{
+  "already_present": [
+    "Original native task/claim/grant admission, independent nomination replay, Portal/worktree/lifecycle custody and exact one-use reader publication are separate existing owners. Preserve their literal retained objects and fail-closed joins.",
+    "SourceLookupWorkerBroker already retains the original typed owner/CAS/source-only proxy, exact public descriptor, canonical and allocated source fences, actual Popen preparation/registration, SO_PEERCRED worker UID and descendant birth checks, incurred validated native bytes and exact cleanup.",
+    "WorkerSourceBroker is an existing, different semantic-view broker wired through OWNER_ENTRY/OWNER_MONITOR; it creates no typed native source.get authority. Do not merge these broker identities or implement another source-view launcher.",
+    "The deployed worker entry already has separate nonroot UID, root-controlled boundary, capabilities/no-new-privileges checks, a scrubbed environment and protected owner authorities. Their implementations exist; current native source host fixtures do not execute and qualify that complete chain.",
+    "Signed profile replay, required raw supports/program roles, canonical context chunks, task bundle selection, owner sealed prompt handoff and router dispatch rechecks already exist. Reuse their independent checks instead of trusting serialized verified flags."
+  ],
+  "asset_preservation": {
+    "dimensions": [
+      8,
+      384,
+      768
+    ],
+    "families": [
+      "codebase_ir",
+      "security_ir",
+      "legal_ir",
+      "intent_ir",
+      "ui_ux_ir"
+    ],
+    "identity_axes": [
+      "family",
+      "dimension",
+      "schema/version",
+      "decoder task/output format",
+      "token/span limits",
+      "checkpoint",
+      "encoder/tokenizer",
+      "inventory/database/Hugging Face repository"
+    ],
+    "rule": "Preserve existing embeddings, source spans, inventories, separate DuckDB/DuckLake owners, checkpoints and registrations/repositories. This bridge does not load, merge, rename, upload, train, distill, benchmark or promote any model or decoder asset."
+  },
+  "concrete_gaps": [
+    {
+      "id": "permission-transition",
+      "next_scope": "First qualify only a read-only profile provisioned by the deployer before allocation capture, with exact traversal/group reads and unchanged protected controls. Do not enable writable source edits in this bridge.",
+      "observation": "OWNER_ENTRY performs 3770/2770 directory and 660/770 source provisioning after the native allocation can have been captured. _directory rejects group/world writes, and even an otherwise safe later chmod changes retained mode/ctime custody. Existing handles cannot be normalized, recaptured or patched to accept it."
+    },
+    {
+      "id": "process-parentage",
+      "next_scope": "Reuse the existing private finite-proof dispatch architecture for an explicitly source-scoped authenticated handoff; do not accept finite-proof authorization as source authority and do not broaden the legacy direct-child lane.",
+      "observation": "The original Quack owner, bootstrapped native daemon, owner wrapper and wrapper-launched sudo/worker are different roles. _note_native_spawned requires a Popen direct child of the current broker owner. The wrapper cannot serialize a Popen/PID to make that child belong to the Quack process."
+    },
+    {
+      "id": "independent-context-join",
+      "next_scope": "Require an owner-derived correspondence retaining all distinct identities, derived from existing admitted live context/compiled artifact and signed source replay. A caller-selected mapping, a digest-shaped native CID, task equality alone or a copied accepted Boolean cannot establish the join.",
+      "observation": "The native descriptor has owner-admitted context_cid/repository_id/source_binding_cid. The source formalization handoff separately pins a task bundle artifact+SHA and actual prompt/evidence bytes; signed Terminal scope separately authenticates full inputs and selected roles. The router deliberately does not alias these identifiers. The reviewed files do not show one source-specific owner admission that independently joins all three to the same native generation and authenticated wrapper child."
+    }
+  ],
+  "created_at_utc": "2026-10-15T00:14:43+00:00",
+  "current_qualification_results_added": 0,
+  "effects_of_this_artifact": {
+    "checkpoints_or_embeddings_modified": 0,
+    "children_launched": 0,
+    "compiled_context_native_join_qualified": false,
+    "completion_authority": false,
+    "database_or_cas_mutations": 0,
+    "docker_actions": 0,
+    "execution_authority": false,
+    "filesystem_writer_exclusion_claimed": false,
+    "git_ref_or_index_mutations": 0,
+    "models_loaded": 0,
+    "native_worker_uid_qualification_established": false,
+    "permission_changes": 0,
+    "product_modules_imported": 0,
+    "proof_authority": false,
+    "provider_calls": 0,
+    "runtime_files_modified": 0,
+    "semantic_reconstruction_gain_measured": false,
+    "solver_calls": 0,
+    "terminal_benchmark_result_established": false,
+    "test_files_modified": 0,
+    "tests_executed": 0,
+    "total_token_savings_measured": false,
+    "training_steps": 0
+  },
+  "followup_regressions_planned_not_authored": [
+    "Correct pre-capture read-only permissions and real worker traversal/socket read; denial of private grants, canonical Git/lifecycle/Portal writes; report direct filesystem visibility independently from broker selection.",
+    "Existing post-capture 3770/2770 transitions refuse without repair; symlink/hardlink/replaced marker, changed parent/namespace/group, stale before-state and partial provisioning refuse.",
+    "Wrong native context/bundle/prompt/compiler/required support/program partition, omitted signed input drift, stale context generation and caller-minted correspondence refuse.",
+    "Wrong genuine daemon argv/sidecar/bootstrap grant, wrong wrapper birth/command, foreign Popen parent, wrong worker UID/birth/cwd, dead peer and expired acknowledgement refuse.",
+    "Native claim/grant/allocation loss and source/context mutation at each explicitly supported CAS or clock callback before prepare, after birth and before reply publication refuse; retain incurred validated native bytes.",
+    "One-use/duplicate/nested/concurrent handoff admission, exact cleanup and bounded actual-child termination/reap. No new callback under SERVER or grant custody locks is implied safe by unrelated passing tests."
+  ],
+  "implemented": false,
+  "later_writable_delegation_not_in_next_increment": {
+    "generation_rule": "Editing invalidates the old clean-committed source generation. Admit successor inventory/nomination/context/grants through existing authorized transitions; no continuing source.get grant over arbitrary dirty source and no implied physical filesystem confinement.",
+    "implemented": false,
+    "rule": "Preserve the prior permission-handoff-design proposal. Writable coding needs a separately reviewed owner-issued delegation that retains both original and explicitly authorized after-state witnesses. Do not weaken legacy _directory/_read or rewrite retained custody to match chmod."
+  },
+  "minimal_gating_regression": {
+    "baseline_rule": "First establish the existing behavior at the actual new composition point. An absent source-specific integration/API is an explicit unsupported-path result, not a fabricated authorization bypass or a passing safety test. Preserve raw baseline before implementing the gate.",
+    "description": "Compose a real native task/claim/allocation and genuine signed public source scope with two independently valid compiled context selections for the same task/source baseline. Bind expected context A through its actual owner admission, supply prompt/bundle B or a missing owner correspondence at the source launch gate, and require refusal before child preparation/publication. Keeping the task, repository, source bytes and valid individual signatures equal makes the independent context mismatch decisive.",
+    "implemented": false,
+    "required_observations": [
+      "No Popen/provider/model/solver or source RPC; no newly admitted source grant/socket/descriptor/thread for the refused composed launch.",
+      "Existing native task/allocation/nomination objects and bind-once reader publication remain exact, consumed where already published; no replacement handles, forged guard classes, copied authority Booleans or patching witnesses.",
+      "A matching A selection passes the gate using actual existing validators, without starting a provider; mandatory task/acceptance/raw-support bodies remain present."
+    ],
+    "test_separation": "Use a structural signed compiled capsule without learned/model receipts for this gate. New actual separate-UID/daemon/bootstrap deployment qualification is a later bounded inert-process test and must retain its own evidence; authored routing seams cannot satisfy it.",
+    "tests_authored": 0
+  },
+  "minimal_next_increment": {
+    "name": "Read-only native source launch admission with independent compiled-context correspondence",
+    "ordering": [
+      "Resolve the existing bootstrapped native owner/daemon and independently admitted command/context using current trust owners. Do not discover new authority from worker inputs or sender-selected database/sidecar paths.",
+      "Provision only the reviewed read-only UID/GID/group traversal profile before native allocation capture. Retain original control/source witnesses; leave the existing writable owner-wrapper branch unavailable to this native source profile.",
+      "As owner, replay the actual signed declaration and complete input population through existing signature/source validators; verify selected paths, required raw support, program paths and the full omitted frontier. Independently replay the compiled task/context selection and exact sealed prompt bytes. Retain literal native task/allocation/nomination objects and distinct source/context/bundle/manifest identities.",
+      "Close source-specific admission with original task revision/full body/claim/grant, allocation lifecycle/lease, source inventory/nomination generation, actual context bytes and descriptor/prompt correspondence. Reject absent correspondence rather than inferring context identity from bundle SHA, repository path or selected filenames.",
+      "Only after that gate, prepare a source-specific private handoff between the original owner and genuine daemon/wrapper. Independently observe kernel peers, exact bootstrapped daemon argv and derived attempt sidecar, selected wrapper command/cwd and their births. The runtime run lease and native task attempt coordinator remain separate.",
+      "At the wrapper literal Popen boundary, retain its real child and acknowledge the actual selected worker descendant UID/birth/cwd through that authenticated channel. Keep direct-owner SourceLookupWorkerBroker registration as a separate strict existing lane; never adopt arbitrary PID metadata or broaden ancestry.",
+      "Recheck the same native/context/source/deployment custody after supported callbacks and before acknowledgement or reply publication. Use COOR-before-SERVER; keep retained CAS and source-specific callbacks outside SERVER. Define only the finite callback points explicitly qualified by the follow-up tests.",
+      "Pre-birth refusal publishes no admitted child and prevents Popen. After-birth refusal consumes only its own handoff, retires its exact source grant/endpoints and preserves incurred validated native accounting; the literal spawning caller terminates/reaps its actual child. No retry, legacy downgrade or model fallback may manufacture admission."
+    ],
+    "protocol_rule": "No new capability is issued by this proposal. A future source handoff requires its own reviewed versioned protocol on the existing owners and independently admitted command; finite-proof, source-view, native source and sealed formalization schemas keep their current distinct meanings.",
+    "retained_correspondence": [
+      "Original owner/gateway/connection/lock and owner identity bytes; actual native daemon bootstrap and active daemon grant.",
+      "Canonical task CID/revision/full body CID and seven-field attempt/claim identity, real peer birth, existing coordinator file/config identity and lease.",
+      "Original allocation object/ownership CID, Portal binding/projection, lifecycle/renewal and immutable Git registration witnesses.",
+      "Existing inventory CID, nomination CID with required/program roles, complete signed manifest identity and selected/omitted source generation.",
+      "Independently admitted native context CID/repository ID; separate compiled prompt SHA, compiler version, bundle artifact+SHA, required evidence identities and signed public instruction/profile identities.",
+      "Exact deployed boundary digest/namespace/UID/GID/group policy, read-only permission before-state, original command/environment/FD handoff, authenticated wrapper and actual child/worker births."
+    ]
+  },
+  "production_changes": 0,
+  "review_basis": {
+    "checkout": "/home/barberb/lift_coding/.worktrees/source-initial-binding-20261015",
+    "frozen_sources_edited_by_this_artifact": false,
+    "hash_scope": "SHA-256 of inspected working files; not a claim of Git publication or a complete transitive toolchain attestation.",
+    "method": "Read-only source/proposal inspection and stdlib-only construction of this JSON. No runtime imports, tests, child, provider, model, solver, Docker or permission transition executed.",
+    "prior_proposals": [
+      {
+        "path": "docs/agent_supervisor/evidence/native-source-worker-spawn-20261014/permission-handoff-design.json",
+        "qualification_inferred": false,
+        "schema": "native-source-worker-permission-handoff-design@1",
+        "sha256": "db7465c316a3c8c04e40c2628c53f856fbbbd65209cd49e9a0368ad557b4a366"
+      },
+      {
+        "path": "docs/agent_supervisor/evidence/native-source-worker-spawn-20261014/indexed-proof-context-followup.json",
+        "qualification_inferred": false,
+        "schema": "supervisor-indexed-proof-context-followup@1",
+        "sha256": "07e726b189bb77d3c2d6ad895875c4d176b49763665b876f05b907772b04c262"
+      },
+      {
+        "path": "docs/agent_supervisor/evidence/source-query-replay-20261014/initial-binding-followup.json",
+        "qualification_inferred": false,
+        "schema": "source-initial-binding-followup@1",
+        "sha256": "45c355a809a702461dda3cf4545d81bb7bfe59d06f9c13bffdbdaa553bd7203f"
+      }
+    ],
+    "qualification_context": "Parent reports qualification session 2799 running with 299 planned cases, 32 new cases, 13 suites and 279 source bindings. These are planned populations, not results; this proposal contributes zero cases or bindings to that frozen run.",
+    "source_references": [
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+        "sha256": "d837c3a59e7cbce3fb285fbb0037f5aa6f8a4597193278da6f9518a922a6c570",
+        "symbols": [
+          {
+            "line": 84,
+            "observation": "Original owner retains native server, task/allocation handles, CAS, private source-only proxy and public credential-free endpoint.",
+            "symbol_or_anchor": "class SourceLookupWorkerBroker:"
+          },
+          {
+            "line": 441,
+            "observation": "One-use preparation retains exact objects and closes native/source custody; it explicitly does not admit a command, provider or worker UID.",
+            "symbol_or_anchor": "def require_before_spawn("
+          },
+          {
+            "line": 507,
+            "observation": "Actual initialized Popen, direct child parent, allocated cwd and stable kernel birth are required; post-birth refusal retires only this broker and leaves termination/reap to its caller.",
+            "symbol_or_anchor": "def _note_native_spawned("
+          },
+          {
+            "line": 559,
+            "observation": "SO_PEERCRED selects the worker UID and retained descendant root; real separate-UID access is independent from native same-UID child custody.",
+            "symbol_or_anchor": "def _peer("
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+        "sha256": "f76763ea8ca218a68f96a7e502af4722defdad20465018dba09ee265bd90780c",
+        "symbols": [
+          {
+            "line": 20,
+            "observation": "Separate existing semantic source-view adapter. It does not impersonate the native typed source.get owner grant.",
+            "symbol_or_anchor": "class WorkerSourceBroker("
+          },
+          {
+            "line": 324,
+            "observation": "Already wired into the container owner wrapper; do not replace or silently treat it as SourceLookupWorkerBroker.",
+            "symbol_or_anchor": "def prepare_worker_source_broker("
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+        "sha256": "4c1ca46146c37bc2f7c9957b4637aaefed3b98364e1c3855f5db041961e0811f",
+        "symbols": [
+          {
+            "line": 142,
+            "observation": "Revalidates the actual original task revision/full body, grant, peer and native claim.",
+            "symbol_or_anchor": "def _native("
+          },
+          {
+            "line": 308,
+            "observation": "Independently replays the nomination and retains its exact task/source join.",
+            "symbol_or_anchor": "def bind_nominated_current_source_lookup("
+          },
+          {
+            "line": 374,
+            "observation": "Reports native task/scope custody separately from allocation, compiled context and coding-process verification.",
+            "symbol_or_anchor": "def require_nominated_source_scope("
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+        "sha256": "07ddf2cff87f0b55e4eb7c039af021854691e6b3e2f6528f12989aab20dbdcd5",
+        "symbols": [
+          {
+            "line": 63,
+            "observation": "Exact owner directory with no group/world writes; retains actual device/inode/UID/mode.",
+            "symbol_or_anchor": "def _directory("
+          },
+          {
+            "line": 72,
+            "observation": "Bounded owner single-link control with exact physical/content witness including ctime.",
+            "symbol_or_anchor": "def _read("
+          },
+          {
+            "line": 198,
+            "observation": "Checks sealed Portal projection/binding, lifecycle/index, linked Git registration and original custody.",
+            "symbol_or_anchor": "def _observe("
+          },
+          {
+            "line": 278,
+            "observation": "Native allocation admission preserves COOR-before-SERVER ordering and reports bootstrap/context/coding-process verification false.",
+            "symbol_or_anchor": "def require_current("
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/container_worker_boundary.py",
+        "sha256": "1483fe780f9242354b5f397886f0e9dab971ef7bf353a00ed790190bf386ec8c",
+        "symbols": [
+          {
+            "line": 17,
+            "observation": "Worker-side root-controlled deployment manifest, real separate UID, namespaces, capability/no-new-privileges and inaccessible private authorities.",
+            "symbol_or_anchor": "def verify_container_worker_boundary("
+          }
+        ]
+      },
+      {
+        "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+        "sha256": "9f58827f64c171e733511b01c3aa63539239dfb0bbc9af9e9118c38cd437ca6c",
+        "symbols": [
+          {
+            "line": 36,
+            "observation": "Literal wrapper Popen plus caller termination/reap and broker cleanup.",
+            "symbol_or_anchor": "OWNER_MONITOR ="
+          },
+          {
+            "line": 105,
+            "observation": "Existing allocated-workspace traversal changes owner directory modes to 3770/2770 and regular source modes to 660/770 before sudo worker launch; native retained allocation cannot adopt this transition.",
+            "symbol_or_anchor": "OWNER_ENTRY ="
+          },
+          {
+            "line": 179,
+            "observation": "Existing separate UID, scrubbed environment, no-new-privileges and boundary checks; preserve these instead of creating a parallel launcher.",
+            "symbol_or_anchor": "WORKER_ENTRY ="
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_dispatch.py",
+        "sha256": "ef57a607fbe19806be72fc103747268d28dc9bf3427ffde4b7c8470c4b13dbc4",
+        "symbols": [
+          {
+            "line": 458,
+            "observation": "Derives attempt coordinator from genuine bootstrapped daemon argv, protected sidecars and kernel identity; explicitly distinct from runtime run-lease authority.",
+            "symbol_or_anchor": "def _attempt_authority("
+          },
+          {
+            "line": 972,
+            "observation": "Private handoff pattern observes real wrapper/isolated worker births. Its finite-proof protocol is not a source capability.",
+            "symbol_or_anchor": "def note_spawned("
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py",
+        "sha256": "ac592f12821a88747ed0c90265b590136a1195acff50347a8455d0b839157ff5",
+        "symbols": [
+          {
+            "line": 108,
+            "observation": "Existing private descriptor and exact Quack client attach; native source observations do not themselves demonstrate this full bootstrap.",
+            "symbol_or_anchor": "def database_owner_bootstrap_kwargs("
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "sha256": "bbe90c8862ea6019beee45cd7b36af9ef43d6b593ee4fa7534c19379fb5f7561",
+        "symbols": [
+          {
+            "line": 62781,
+            "observation": "Loads the selected task bundle against canonical task identity and checks nomination metadata before prompt construction.",
+            "symbol_or_anchor": "def _task_context_snapshot("
+          },
+          {
+            "line": 66465,
+            "observation": "Existing prompt composition consumer, to be joined rather than reimplemented.",
+            "symbol_or_anchor": "def _build_implementation_prompt("
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py",
+        "sha256": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+        "symbols": [
+          {
+            "line": 67,
+            "observation": "Canonical compiled context, exact chunk/reference and task evidence validation.",
+            "symbol_or_anchor": "def _parts("
+          },
+          {
+            "line": 220,
+            "observation": "Owner-protected exact prompt/evidence/task/bundle/source/boundary, bounded lifetime and false authority fields.",
+            "symbol_or_anchor": "def _sealed_handoff("
+          },
+          {
+            "line": 262,
+            "observation": "Owner live-selection validation or worker sealed projection plus canonical/allocated source checks.",
+            "symbol_or_anchor": "def validate_source_formalization_context("
+          },
+          {
+            "line": 294,
+            "observation": "Captures actual stdin to sealed memfd and optional owner handoff. This bundle digest is not the native context CID.",
+            "symbol_or_anchor": "def prepare_container_source_formalization_dispatch("
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+        "sha256": "8ae3ebf0932823cadbba4a0eb944d4e6700074ad1357383fa9546d33ca894c68",
+        "symbols": [
+          {
+            "line": 119,
+            "observation": "Joins descriptor to prompt/workspace/boundary and, when formalization exists, task CID. Native context CID/repository ID are retained separately from bundle SHA/path.",
+            "symbol_or_anchor": "def _source_lookup_broker_observation("
+          },
+          {
+            "line": 890,
+            "observation": "Existing pre-dispatch consumer validates formalization before optional source descriptor.",
+            "symbol_or_anchor": "formalization_receipt = validate_source_formalization_context("
+          },
+          {
+            "line": 1208,
+            "observation": "Descriptor is revalidated at dispatch; this is not an authenticated daemon-wrapper birth handoff.",
+            "symbol_or_anchor": "if source_lookup_receipt is not None:"
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_semantic_scope.py",
+        "sha256": "d5ef1435776d8aee797d5399f462502c31f8ec57b1199c37d909fdf00dc65fcf",
+        "symbols": [
+          {
+            "line": 44,
+            "observation": "Historical consistency helper alone does not authenticate signature or currentness.",
+            "symbol_or_anchor": "def terminal_semantic_scope_observation("
+          },
+          {
+            "line": 121,
+            "observation": "Replays signed manifest through local._manifest and complete source partition before selected context.",
+            "symbol_or_anchor": "def replay_terminal_semantic_scope("
+          },
+          {
+            "line": 176,
+            "observation": "Independent signed selected/required/program-role/source correspondence.",
+            "symbol_or_anchor": "def validate_terminal_semantic_payload("
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+        "sha256": "225b2ae29438a9fa13b9578ff0e05b8e15ac473bb6a038ec7457f97b45af202d",
+        "symbols": [
+          {
+            "line": 375,
+            "observation": "Existing DID-key manifest signature validation.",
+            "symbol_or_anchor": "def _verify_signature("
+          },
+          {
+            "line": 649,
+            "observation": "Existing signed manifest and live source binding gate; retain its trust assumptions.",
+            "symbol_or_anchor": "def _manifest("
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+        "sha256": "133b253df6a08865e7f16f1ad923b2ca481a674c79adbf160542a4a9ec3f01d4",
+        "symbols": [
+          {
+            "line": 24,
+            "observation": "Versioned native task formalization worker evidence and separately versioned nomination/reference schemas.",
+            "symbol_or_anchor": "WORKER_EVIDENCE_SCHEMA ="
+          }
+        ]
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_client.py",
+        "sha256": "330ab86a0faad1fbdb87653be98403a6fdf39437c7828507e3bc24d7d5204a1e",
+        "symbols": [
+          {
+            "line": 54,
+            "observation": "Versioned source-worker descriptor/request/response/result schemas retain false proof/execution/completion authority.",
+            "symbol_or_anchor": "DESCRIPTOR_SCHEMA ="
+          },
+          {
+            "line": 220,
+            "observation": "Exact owner-owned read-only descriptor, actual worker UID, protected parent, pinned bytes and endpoint custody.",
+            "symbol_or_anchor": "def load_descriptor("
+          }
+        ]
+      },
+      {
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py",
+        "sha256": "ac67fd448856c82b6831ecb46975a212772e20043581704e77ba479a22b004b3",
+        "symbols": [
+          {
+            "line": 189,
+            "observation": "Actual stdin required-context and signed-scope inclusion check; historical consistency does not establish native live admission.",
+            "symbol_or_anchor": "def verify_worker_context_prompt("
+          }
+        ]
+      },
+      {
+        "path": "test/api/test_native_source_worker_spawn_custody.py",
+        "sha256": "b9ff49fed27f3167d090d2aa70dd0ac15baaca4b9514c5a46f32045cf89be214",
+        "symbols": [
+          {
+            "line": 27,
+            "observation": "Real native claim/allocation/Git/CAS plus authored listener/deployment metadata.",
+            "symbol_or_anchor": "def native_spawn("
+          },
+          {
+            "line": 36,
+            "observation": "Same-UID real inert direct child; does not qualify real separate-UID deployment.",
+            "symbol_or_anchor": "def inert_child("
+          }
+        ]
+      },
+      {
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_signed_scope.py",
+        "sha256": "b20196250a2e139513080305eedb2c9950c587ae8c7e5a90bf9054f6468d13b8",
+        "symbols": [
+          {
+            "line": 41,
+            "observation": "Signed sources/native owner rebinding/compiled context fixture with authored planner/provider/UID-routing seams; no real native worker handoff.",
+            "symbol_or_anchor": "def worker("
+          }
+        ]
+      }
+    ]
+  },
+  "schema": "source-worker-permission-followup@1",
+  "scope": "Next narrow bridge: independently join the already admitted signed compiled context to the existing native source task/allocation and authenticate a read-only daemon-to-wrapper-to-worker handoff. Writable coding delegation remains a separate later increment.",
+  "status": "proposal_only",
+  "tests": 0,
+  "tests_executed": 0
+}
