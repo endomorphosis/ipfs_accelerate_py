@@ -5,6 +5,7 @@ import json
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
+    MAX_ACCEPTANCE_RECORDS,
     PROMPT_GOAL_PROPOSAL_SCHEMA,
     PROMPT_GOAL_PROVIDER_REQUEST_SCHEMA,
     PromptGoalPlannerConfig,
@@ -218,6 +219,85 @@ def _encoded_proposal(scan: DirectoryScanReceipt, **changes: object) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
+
+
+def _acceptance_proposal(scan: DirectoryScanReceipt, count: int) -> dict:
+    proposal = _proposal(scan)
+    for group in ("goals", "tasks"):
+        criterion = proposal[group][0]["acceptance"][0]
+        proposal[group][0]["acceptance"] = [
+            {**criterion, "criterion_key": f"criterion:{index}"}
+            for index in range(count)
+        ]
+    return proposal
+
+
+@pytest.mark.parametrize("count", [3, MAX_ACCEPTANCE_RECORDS])
+def test_single_task_preserves_multiple_acceptance_criteria_with_independent_bound(count):
+    from jsonschema import Draft202012Validator
+
+    request = _request(budget=_budget(max_tasks=1, max_provider_tokens=65_536))
+    scan = _scan(request)
+    proposal = _acceptance_proposal(scan, count)
+    schema = json.loads(build_prompt_goal_provider_request(request, scan))["response_schema"]
+    assert schema["properties"]["tasks"]["maxItems"] == 1
+    for group in ("goal", "task"):
+        assert schema["definitions"][group]["properties"]["acceptance"]["maxItems"] == MAX_ACCEPTANCE_RECORDS
+    Draft202012Validator(schema).validate(proposal)
+    result = generate_prompt_goal_graph(request, scan,
+        router=lambda _: json.dumps(proposal, separators=(",", ":")))
+    assert result.receipt.outcome == "provider" and not result.used_fallback
+    assert len(result.graph.tasks) == 1
+    expected = {row["criterion_key"]: (row["criterion"], tuple(row["evidence_cids"]), tuple(row["validation_keys"]))
+                for row in proposal["tasks"][0]["acceptance"]}
+    for node in (result.graph.goals[0], result.graph.tasks[0]):
+        assert len(node.acceptance) == count
+        assert {row.criterion_key: (row.criterion, row.evidence_cids, row.validation_keys)
+                for row in node.acceptance} == expected
+
+
+@pytest.mark.parametrize("group", ["goals", "tasks"])
+def test_acceptance_record_overflow_rejected_by_schema_and_parser(group):
+    from jsonschema import Draft202012Validator, ValidationError
+
+    request = _request(budget=_budget(max_tasks=1, max_provider_tokens=65_536))
+    scan = _scan(request)
+    proposal = _acceptance_proposal(scan, 1)
+    proposal[group][0]["acceptance"] = _acceptance_proposal(scan, MAX_ACCEPTANCE_RECORDS + 1)[group][0]["acceptance"]
+    schema = json.loads(build_prompt_goal_provider_request(request, scan))["response_schema"]
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(proposal)
+    with pytest.raises(PromptGoalProposalError, match="acceptance violates its item bound") as caught:
+        parse_prompt_goal_graph(json.dumps(proposal, separators=(",", ":")), request, scan)
+    assert caught.value.reason_code == "output_too_large"
+
+
+@pytest.mark.parametrize("group", ["goals", "tasks"])
+@pytest.mark.parametrize("invalid", ["duplicate_criterion", "unknown_evidence"])
+def test_multiple_acceptance_criteria_preserve_identity_and_evidence_checks(group, invalid):
+    request = _request(budget=_budget(max_tasks=1))
+    scan = _scan(request)
+    proposal = _acceptance_proposal(scan, 3)
+    rows = proposal[group][0]["acceptance"]
+    if invalid == "duplicate_criterion":
+        rows[1]["criterion_key"] = rows[0]["criterion_key"]
+        reason = "duplicate_value"
+    else:
+        rows[1]["evidence_cids"] = [_cid("unselected-evidence")]
+        reason = "orphan_reference"
+    with pytest.raises(PromptGoalProposalError) as caught:
+        parse_prompt_goal_graph(json.dumps(proposal), request, scan)
+    assert caught.value.reason_code == reason
+
+
+def test_independent_acceptance_bound_does_not_expand_task_allocation():
+    request = _request(budget=_budget(max_tasks=1))
+    scan = _scan(request)
+    proposal = _acceptance_proposal(scan, 3)
+    proposal["tasks"].append({**proposal["tasks"][0], "task_key": "task:unallocated"})
+    with pytest.raises(PromptGoalProposalError, match="tasks violates its item bound") as caught:
+        parse_prompt_goal_graph(json.dumps(proposal), request, scan)
+    assert caught.value.reason_code == "output_too_large"
 
 
 def test_provider_request_is_canonical_body_free_bounded_and_handle_only() -> None:

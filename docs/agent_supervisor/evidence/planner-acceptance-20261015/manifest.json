@@ -1,0 +1,121 @@
+{
+  "files": {
+    "independent-review.json": {
+      "bytes": 1679,
+      "sha256": "489f306f0fc1e892d48ccc5d49ef06f2f331d1b2a5c57d66f212a74c2d97c4f2"
+    },
+    "native-before-result.json": {
+      "bytes": 2003,
+      "sha256": "20ed7f2fd8abfc156bbd5fccec5519fab515b2141d098b8e9f95f68c54a185eb"
+    },
+    "native-before-source-pins.json": {
+      "bytes": 510,
+      "sha256": "ac041dbca40b572cc9c674104c5d67dd0dbedac59bd56626f964400113d9b5ac"
+    },
+    "native-before.log": {
+      "bytes": 2254,
+      "sha256": "0b79b7cc32d6591a186b10aca39d8f2d5f83a197db2d1c9fa39e097d61d906fb"
+    },
+    "native-before.xml": {
+      "bytes": 2861,
+      "sha256": "2890abc6be6b7eb6af54c73d2b7a72d570f0a9bb1fe500759a46500f19a99b82"
+    },
+    "native-final-result.json": {
+      "bytes": 2236,
+      "sha256": "5ea862eb29028659f72fd81a6974fd5dde5197beca1bc0b80822a694ae083a16"
+    },
+    "native-final-source-pins.json": {
+      "bytes": 964,
+      "sha256": "5b837bc85fad4f7e85ea442a4bbe2c1f046fe64b842558610f04f1b3151140f3"
+    },
+    "native-final.log": {
+      "bytes": 110,
+      "sha256": "99ede50cd65a3090d8ee3abf6a5065f593520c09579e67fa630b84e1338c55b7"
+    },
+    "native-final.xml": {
+      "bytes": 11124,
+      "sha256": "5e21e68ff97d79479879f9725a3823adae751c00a4ae76d5024bdd7810385cd2"
+    },
+    "planner-schema01-result.json": {
+      "bytes": 1946,
+      "sha256": "318e57c8fa1a2dabc6cfc5bb36b9fdfea331c3288248ffa0742f039a6b477adf"
+    },
+    "planner-schema01-source-pins.json": {
+      "bytes": 625,
+      "sha256": "cc126f136b4eeb076ad70bfaa2cebfe8a031e8223ad3c1c888ad3080e5522493"
+    },
+    "planner-schema01.log": {
+      "bytes": 100,
+      "sha256": "e19a7eb44d8a942062ab1bf7883677f4936197f85708b0992c1ff8a3d5445170"
+    },
+    "planner-schema01.xml": {
+      "bytes": 10465,
+      "sha256": "ccbeddaa8b0567777ccc7084d68364ef0efe66df984a6e2dbbdae31b6ce084dd"
+    },
+    "planner-unit01-result.json": {
+      "bytes": 1976,
+      "sha256": "4e5aa5cb744527e443fa05a428a059463f07b23c8d0ee58ff316ff9805196afd"
+    },
+    "planner-unit01-source-pins.json": {
+      "bytes": 510,
+      "sha256": "ac041dbca40b572cc9c674104c5d67dd0dbedac59bd56626f964400113d9b5ac"
+    },
+    "planner-unit01.log": {
+      "bytes": 923,
+      "sha256": "2e4534fbf840ce03e3698fbf3567baf1016d5d24e5f6655429e156d59c110245"
+    },
+    "planner-unit01.xml": {
+      "bytes": 5878,
+      "sha256": "6f4a1a7fba13ad5498b5835ed69d3ecaff77de08e2b13d8756014fc05ef2f40e"
+    },
+    "planner-unit02-result.json": {
+      "bytes": 1958,
+      "sha256": "7966c2442ac5b8b505df37e2f2c0365388823fbf9870b2e79b114ca971d10ac0"
+    },
+    "planner-unit02-source-pins.json": {
+      "bytes": 510,
+      "sha256": "5b627d4208808d1043fa7576ff4d016e9915139a2f085335fecd2c1d462c7972"
+    },
+    "planner-unit02.log": {
+      "bytes": 100,
+      "sha256": "be828dc447851b63727c2a71b1cddde645b8b34c588ce3ef07c3293d38eb2ff4"
+    },
+    "planner-unit02.xml": {
+      "bytes": 5244,
+      "sha256": "fcaf7f277798ed29dcf11022677192ceaf45e0d27a72bf1e8b8196e635c61daa"
+    },
+    "prior-cleanup-observation.json": {
+      "bytes": 288,
+      "sha256": "ae9ac9d0fff37e7da14e3ee736e97c409247624fe48545d33692e93ddc8d0b9f"
+    },
+    "prior-execute-result.json": {
+      "bytes": 544,
+      "sha256": "7ecc551abe06047ca7e4e01826d292bee66e9ae2af591007f2a22d5b709255ea"
+    },
+    "prior-planning-failure-diagnosis.json": {
+      "bytes": 742,
+      "sha256": "960f48b00b6c2417f585745bf6044bdf515348da1887390b34dde9f48b4c64a9"
+    },
+    "prior-readout-final.json": {
+      "bytes": 36543,
+      "sha256": "49c75fa4e9ee42ac7b3425c5d678d07caa0ef9d6517f9950c0fe9155a45bff75"
+    },
+    "prior-source-freeze.json": {
+      "bytes": 1757,
+      "sha256": "9a0ba9dcc128a77273c9321ba69c3b6fda7ef8f1a588df383f1023457ce26d35"
+    },
+    "prior-verify-result.json": {
+      "bytes": 23660,
+      "sha256": "e84a2cae1297e0804720321ef7e37d07940922157f6fedd96a30fd2f6396db07"
+    },
+    "qualification.json": {
+      "bytes": 3095,
+      "sha256": "215a850e479a5f255f2550c404c4d1c627348f67e60f1c74d008d40a273e1753"
+    },
+    "run-tests.py": {
+      "bytes": 4278,
+      "sha256": "30503daafb5d9e377ace47aad9bd2469ce7ede53d09be6baf35cc6c4def462a9"
+    }
+  },
+  "schema": "evidence-file-manifest@1"
+}

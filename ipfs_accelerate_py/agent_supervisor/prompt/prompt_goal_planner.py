@@ -53,6 +53,9 @@ DEFAULT_MAX_PROVIDER_REQUEST_BYTES = 64 * 1024
 DEFAULT_MAX_PROVIDER_RESPONSE_BYTES = 256 * 1024
 DEFAULT_MAX_SELECTED_EVIDENCE = 64
 DEFAULT_MAX_SUMMARY_BYTES = 1_024
+# One task can have several independently checked acceptance criteria. This
+# record bound is separate from the graph's number-of-tasks allocation.
+MAX_ACCEPTANCE_RECORDS = 256
 DEFAULT_RESOURCE_CLASSES = (
     "cpu-small",
     "cpu-medium",
@@ -748,6 +751,7 @@ def _proposal_schema(request: PromptWorkflowRequest) -> dict[str, Any]:
             "acceptance": {
                 "type": "array",
                 "minItems": 1,
+                "maxItems": MAX_ACCEPTANCE_RECORDS,
                 "items": {"$ref": "#/definitions/acceptance"},
             },
             "evidence_cids": {**strings, "minItems": 1},
@@ -779,6 +783,7 @@ def _proposal_schema(request: PromptWorkflowRequest) -> dict[str, Any]:
             "acceptance": {
                 "type": "array",
                 "minItems": 1,
+                "maxItems": MAX_ACCEPTANCE_RECORDS,
                 "items": {"$ref": "#/definitions/acceptance"},
             },
             "evidence_cids": {**strings, "minItems": 1},
@@ -1459,7 +1464,7 @@ def parse_prompt_goal_graph(
                 acceptance=_parse_acceptance(
                     item["acceptance"],
                     f"goals[{key}].acceptance",
-                    maximum=request.budget.max_tasks,
+                    maximum=MAX_ACCEPTANCE_RECORDS,
                     evidence_cids=evidence_cids,
                 ),
                 evidence_cids=refs,
@@ -1764,7 +1769,7 @@ def parse_prompt_goal_graph(
                 acceptance=_parse_acceptance(
                     item["acceptance"],
                     f"tasks[{key}].acceptance",
-                    maximum=256,
+                    maximum=MAX_ACCEPTANCE_RECORDS,
                     evidence_cids=evidence_cids,
                 ),
                 evidence_cids=refs,

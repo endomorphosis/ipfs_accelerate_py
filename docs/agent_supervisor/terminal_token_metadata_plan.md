@@ -1222,3 +1222,35 @@ selected model with no generation calls or host credential mutation. A newly
 committed archive, verified preparation and qualified reader are required before
 execution. The next live result must keep official reward, public-check outcomes
 and incomplete native token accounting separate from one another.
+
+## October 15: separate acceptance criteria from task allocation
+
+The first public-validation live trial stopped during model planning, with
+official reward **0**. Its **26,617 observed tokens cover planning only**; no
+coding receipt or public-validation continuation was recorded. The native CLI
+returned successfully, but the parser rejected `goals[TB-GOAL].acceptance`.
+Matching the retained error digest against the reviewed static error formatter
+identified the cause without reading provider text: goal acceptance arrays were
+limited by `max_tasks=1`, while the signed public task requires three criteria.
+
+The parser and proposal schema now give both goal and task acceptance arrays an
+independent 256-record limit, matching the existing task-acceptance bound. The
+one-task allocation, byte/depth budgets, evidence checks and independent signed
+admission remain enforced. The earlier native continuation fixture used declared
+contract planning and therefore did not exercise this model-parser path.
+
+[Qualification](evidence/planner-acceptance-20261015/qualification.json) records
+155 passing cases, including authored router responses through actual model-plan
+parsing, signed admission and DuckDB storage. Both goals and the single task
+retain all three criteria; changed or omitted task criteria and altered goal
+criteria are refused. Parser tests cover the record boundary, overflow, duplicate
+keys, unknown evidence and unchanged task allocation. Two development assertion
+failures and a concurrent change to a nonselected test file are retained and
+explained in the evidence. Selected production/test bytes and dependency pins
+match their successful qualification runs.
+
+The [closed failure diagnosis](evidence/planner-acceptance-20261015/prior-planning-failure-diagnosis.json)
+and [safe live readout](evidence/planner-acceptance-20261015/prior-readout-final.json)
+preserve the failed trial. Container cleanup was observed. A fresh diagnostic
+will use the corrected parser with the same live controls; the previous result
+does not establish successful task completion or token savings.
