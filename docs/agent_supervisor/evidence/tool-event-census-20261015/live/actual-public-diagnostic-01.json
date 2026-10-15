@@ -1,0 +1,2192 @@
+{
+  "archive_sha256": "2c3b6518b493eb788629a09ec4ec0084ce82e248993b9c968eb1c725c7f0b2ff",
+  "automatic_retries": 0,
+  "complete_run_token_savings_claimed": false,
+  "container_id_sha256": "91e64b3bb04c2058a6aced6f986652f68710c03bf35fc23c7fbdefc45632ff5f",
+  "container_stop_returned": true,
+  "controls": {
+    "candidate_rounds": 1,
+    "coding_reply_mode": "legacy",
+    "disable_intent_autoencoder": true,
+    "doctor_coding_policy": null,
+    "grok_coding_max_turns": 8,
+    "planning_mode": "declared-contract@1",
+    "provider_profile": "grok-4.7-cli-1.0.46@1",
+    "resource_profile": "source384-5cpu-20gib-formalization@1",
+    "semantic_metadata_view": "legacy",
+    "semantic_transport_schema": "supervisor-semantic-router-input@1",
+    "semantic_working_set": "legacy",
+    "source_edit_mode": "disabled",
+    "source_view_profile": "identity@1",
+    "working_set_census_only": false
+  },
+  "driver_report_sha256": "c8193f02697d9df352a8d9c52c895791a3212ba76589f686685cb6d9766b7d8c",
+  "exact_container_absence_observations": [
+    true,
+    true
+  ],
+  "expected_progress_schema": "native-grok-stream-progress@4",
+  "frozen_inputs_unchanged": true,
+  "inline_evidence_dispatch_enabled": false,
+  "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+  "max_coding_invocations": 1,
+  "observation": {
+    "billing_total_verified": false,
+    "coding_provider_calls": 1,
+    "complete_run_token_savings_claimed": false,
+    "driver_error_observed": false,
+    "driver_task_completed_observed": false,
+    "history_resend_bytes": null,
+    "invocations": [
+      {
+        "billing_total_verified": false,
+        "cache_included_in_input": false,
+        "known_reported_cost_subtotal_usd": null,
+        "known_token_subtotals": {
+          "cached_input_tokens": 232704,
+          "input_tokens": 92702,
+          "output_tokens": 15700,
+          "total_tokens": 341106
+        },
+        "native_grok_progress": {
+          "callback_errors": 0,
+          "completion_authority": false,
+          "discarded_text_bytes": 133,
+          "duration_seconds": 241.92973393085413,
+          "event_counts": {
+            "auto_compact": 0,
+            "available_commands": 12,
+            "end": 1,
+            "error": 0,
+            "max_turns_reached": 1,
+            "plan": 0,
+            "text": 56,
+            "thought": 799,
+            "tool_call": 8,
+            "tool_call_update": 40,
+            "unknown": 0,
+            "usage": 8
+          },
+          "event_origin_authenticated": false,
+          "events_after_final": 1,
+          "execution_authority": false,
+          "final_envelope_observed": true,
+          "final_event_seconds": 240.61285420693457,
+          "final_event_type": "max_turns_reached",
+          "final_reason_code": "max_turns",
+          "first_event_seconds": 0.10771369282156229,
+          "first_stderr_seconds": 241.92468271381222,
+          "first_stdout_seconds": 0.10771369282156229,
+          "frames": 925,
+          "last_event_seconds": 240.6145380048547,
+          "last_stderr_seconds": 241.92468271381222,
+          "last_stdout_seconds": 240.6145380048547,
+          "malformed_frames": 0,
+          "non_object_frames": 0,
+          "observation_only": true,
+          "oversized_frames": 0,
+          "process_exit_observed": true,
+          "process_exit_seconds": 241.9282268199604,
+          "proof_authority": false,
+          "raw_provider_data_exported": false,
+          "response_usable": false,
+          "retained_text_bytes": 150,
+          "returncode": 1,
+          "schema": "native-grok-stream-progress@4",
+          "stderr_bytes": 25,
+          "stderr_eof": true,
+          "stdout_bytes": 597997,
+          "stdout_eof": true,
+          "stream_complete": true,
+          "stream_tainted": false,
+          "terminal_rejection": null,
+          "text_bytes": 283,
+          "text_scope": "last_usage_delimited_text_segment",
+          "text_truncated": false,
+          "timed_out": false,
+          "timeout_phase": "none",
+          "tool_event_observations": {
+            "call_id_byte_limit": 1024,
+            "call_identities": 8,
+            "call_identity_limit": 64,
+            "call_relation_counts": {
+              "lifecycle_update": 40,
+              "new_call": 8,
+              "orphan_update": 0,
+              "repeated_call": 0,
+              "unattributed": 0
+            },
+            "completion_authority": false,
+            "event_origin_authenticated": false,
+            "execution_authority": false,
+            "frame_measurement_scope": "exact-json-line-bytes-excluding-lf",
+            "history_resend_bytes": null,
+            "incompleteness": {
+              "call_id_bound_exceeded": false,
+              "counter_overflow": false,
+              "invalid_payload": false,
+              "malformed_frames": false,
+              "non_object_frames": false,
+              "oversized_frames": false,
+              "payload_bound_exceeded": true,
+              "post_final_events": true,
+              "row_limit_exceeded": false,
+              "stream_incomplete": false,
+              "stream_tainted": false,
+              "text_truncated": false,
+              "timed_out": false,
+              "unattributed_call": false,
+              "unknown_event_shape": true,
+              "unknown_events": false
+            },
+            "observation_complete": false,
+            "observation_only": true,
+            "observed_events": 48,
+            "observed_only": true,
+            "omission_authority": false,
+            "omitted_events": 0,
+            "payload_byte_limit": 262144,
+            "payload_depth_limit": 32,
+            "payload_integer_bit_limit": 4096,
+            "payload_lanes_may_overlap": true,
+            "payload_measurement_scope": "separate-canonical-raw-input-raw-output-content-json",
+            "payload_node_limit": 4096,
+            "payloads": {
+              "content": {
+                "canonical_json_bytes": 78685,
+                "cross_call_repeated_bytes": 406,
+                "cross_call_repeated_events": 14,
+                "measured_fields": 48,
+                "repeated_bytes": 28565,
+                "repeated_events": 22,
+                "same_call_repeated_bytes": 28159,
+                "same_call_repeated_events": 8
+              },
+              "input": {
+                "canonical_json_bytes": 16780,
+                "cross_call_repeated_bytes": 0,
+                "cross_call_repeated_events": 0,
+                "measured_fields": 8,
+                "repeated_bytes": 0,
+                "repeated_events": 0,
+                "same_call_repeated_bytes": 0,
+                "same_call_repeated_events": 0
+              },
+              "output": {
+                "canonical_json_bytes": 169546,
+                "cross_call_repeated_bytes": 28,
+                "cross_call_repeated_events": 7,
+                "measured_fields": 33,
+                "repeated_bytes": 28,
+                "repeated_events": 7,
+                "same_call_repeated_bytes": 0,
+                "same_call_repeated_events": 0
+              }
+            },
+            "proof_authority": false,
+            "provider_request_bytes": null,
+            "provider_tokens": null,
+            "raw_provider_data_exported": false,
+            "repetition_categories_overlap": true,
+            "repetition_scope": "retained-tool-events-only",
+            "replacement_or_delta_semantics": "unverified",
+            "request_history_complete": false,
+            "retained_events": 48,
+            "retained_frame_bytes": 494617,
+            "row_limit": 64,
+            "rows": [
+              {
+                "after_final": false,
+                "call_id_sha256": "6a281dbf5721936e19d054a23a7238ea4101bc5c5e46aa524d809154dfd3ba51",
+                "call_id_status": "valid",
+                "call_relation": "new_call",
+                "content": {
+                  "canonical_json_bytes": 2,
+                  "repetition": "first_observed",
+                  "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "shape": "array",
+                  "state": "empty"
+                },
+                "elapsed_seconds": 4.638389048865065,
+                "event_ordinal": 1,
+                "event_type": "tool_call",
+                "frame_bytes": 1107,
+                "frame_ordinal": 29,
+                "input": {
+                  "canonical_json_bytes": 887,
+                  "repetition": "first_observed",
+                  "sha256": "7eaab105a4941e9f37263d9e807b3d16af719f324f7b3e5ac007ff8bc470601a",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "status": "pending",
+                "tool": "unknown",
+                "tool_name_present": true,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "6a281dbf5721936e19d054a23a7238ea4101bc5c5e46aa524d809154dfd3ba51",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 98,
+                  "repetition": "first_observed",
+                  "sha256": "7d464621b4f1e2fd172e21d941c5d65d0e5def460f1a44c0943ded48d2c73b46",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 4.6385753229260445,
+                "event_ordinal": 2,
+                "event_type": "tool_call_update",
+                "frame_bytes": 241,
+                "frame_ordinal": 30,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 4,
+                  "repetition": "first_observed",
+                  "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                  "shape": "null",
+                  "state": "null"
+                },
+                "status": "unknown",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "6a281dbf5721936e19d054a23a7238ea4101bc5c5e46aa524d809154dfd3ba51",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 56,
+                  "repetition": "first_observed",
+                  "sha256": "e619214a35983407a41ae6e5640d0cd40478ac13662fa3e7ca22b423d9e9c634",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 4.64296742901206,
+                "event_ordinal": 3,
+                "event_type": "tool_call_update",
+                "frame_bytes": 1280,
+                "frame_ordinal": 31,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 1076,
+                  "repetition": "first_observed",
+                  "sha256": "3b30c9fe0a92ba09c193cbec6e80c315bb6832acd65380a06f98c06d19d8f4d1",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "6a281dbf5721936e19d054a23a7238ea4101bc5c5e46aa524d809154dfd3ba51",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 2075,
+                  "repetition": "first_observed",
+                  "sha256": "512bb8d46e1f9ce5595e1b3fbd5fbaacde76a0f52b14461fe2f2ae0b8746e8f7",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 5.3831653678789735,
+                "event_ordinal": 4,
+                "event_type": "tool_call_update",
+                "frame_bytes": 11638,
+                "frame_ordinal": 32,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 9415,
+                  "repetition": "first_observed",
+                  "sha256": "dbfbb96b3d2a18da868d2553663db4fd6f367822af2fc58b80c2b29bfb79bda6",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "6a281dbf5721936e19d054a23a7238ea4101bc5c5e46aa524d809154dfd3ba51",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 3128,
+                  "repetition": "first_observed",
+                  "sha256": "30deee9b478cc9965b342c64a9922af472311e761fcf146a7c687638de7dc28e",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 6.083698836853728,
+                "event_ordinal": 5,
+                "event_type": "tool_call_update",
+                "frame_bytes": 17242,
+                "frame_ordinal": 33,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 13966,
+                  "repetition": "first_observed",
+                  "sha256": "3131f664ce43a64273418a31f8d4160ebce34296623bb2dfea0b3fb068393d49",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "6a281dbf5721936e19d054a23a7238ea4101bc5c5e46aa524d809154dfd3ba51",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 6853,
+                  "repetition": "first_observed",
+                  "sha256": "4db6cc0bc5f8edc83b3cff112b8bfc27fdef518c2c55c9052916922a09d92d70",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 6.783704174915329,
+                "event_ordinal": 6,
+                "event_type": "tool_call_update",
+                "frame_bytes": 37158,
+                "frame_ordinal": 34,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "object",
+                  "state": "oversized"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "6a281dbf5721936e19d054a23a7238ea4101bc5c5e46aa524d809154dfd3ba51",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 9396,
+                  "repetition": "first_observed",
+                  "sha256": "ef0d7ca5f8c87948a52fdf1ab24a1176329c23b596a698b981b15cdd0732b237",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 6.835319296922535,
+                "event_ordinal": 7,
+                "event_type": "tool_call_update",
+                "frame_bytes": 49952,
+                "frame_ordinal": 35,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "object",
+                  "state": "oversized"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "6a281dbf5721936e19d054a23a7238ea4101bc5c5e46aa524d809154dfd3ba51",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 9396,
+                  "repetition": "same_call",
+                  "sha256": "ef0d7ca5f8c87948a52fdf1ab24a1176329c23b596a698b981b15cdd0732b237",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 6.83815700490959,
+                "event_ordinal": 8,
+                "event_type": "tool_call_update",
+                "frame_bytes": 50211,
+                "frame_ordinal": 36,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "object",
+                  "state": "oversized"
+                },
+                "status": "completed",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "b28d856c43b06f5b4fece8ab13879fae4234e1de717bb2022354edbc769bcc82",
+                "call_id_status": "valid",
+                "call_relation": "new_call",
+                "content": {
+                  "canonical_json_bytes": 2,
+                  "repetition": "cross_call",
+                  "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "shape": "array",
+                  "state": "empty"
+                },
+                "elapsed_seconds": 83.42753417394124,
+                "event_ordinal": 9,
+                "event_type": "tool_call",
+                "frame_bytes": 1830,
+                "frame_ordinal": 464,
+                "input": {
+                  "canonical_json_bytes": 1610,
+                  "repetition": "first_observed",
+                  "sha256": "59e025ee4187563b9c55344d899c95ea6a0aa33890e25e1dcc56b12ca8a0d0b4",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "status": "pending",
+                "tool": "unknown",
+                "tool_name_present": true,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "b28d856c43b06f5b4fece8ab13879fae4234e1de717bb2022354edbc769bcc82",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 107,
+                  "repetition": "first_observed",
+                  "sha256": "c3954e5eaad938fd35dedc0d3870f8fa30218bec42056636c996752087860659",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 83.42768674786203,
+                "event_ordinal": 10,
+                "event_type": "tool_call_update",
+                "frame_bytes": 250,
+                "frame_ordinal": 465,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 4,
+                  "repetition": "cross_call",
+                  "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                  "shape": "null",
+                  "state": "null"
+                },
+                "status": "unknown",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "b28d856c43b06f5b4fece8ab13879fae4234e1de717bb2022354edbc769bcc82",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 56,
+                  "repetition": "cross_call",
+                  "sha256": "e619214a35983407a41ae6e5640d0cd40478ac13662fa3e7ca22b423d9e9c634",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 83.43186160898767,
+                "event_ordinal": 11,
+                "event_type": "tool_call_update",
+                "frame_bytes": 1994,
+                "frame_ordinal": 466,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 1790,
+                  "repetition": "first_observed",
+                  "sha256": "f5cc699ef58241eb06be1de426aa3682ed3b8167b5415d186a3a72335e768eb3",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "b28d856c43b06f5b4fece8ab13879fae4234e1de717bb2022354edbc769bcc82",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 547,
+                  "repetition": "first_observed",
+                  "sha256": "c0cfaedd4c46208e2e2665079658befb7eedbf3c25ca4f02d46b0d37c11f909d",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 83.48301653098315,
+                "event_ordinal": 12,
+                "event_type": "tool_call_update",
+                "frame_bytes": 4627,
+                "frame_ordinal": 467,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 3932,
+                  "repetition": "first_observed",
+                  "sha256": "ac2b0ff375bb4a9ec1e815775617e61aa9ff960b022a750fd8cd8ffe10b0a70d",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "b28d856c43b06f5b4fece8ab13879fae4234e1de717bb2022354edbc769bcc82",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 2141,
+                  "repetition": "first_observed",
+                  "sha256": "b93e0fae43b4d2d5b4becdee09833449336a11a4dc100de97c836ea9ae05cfc8",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 83.5284212490078,
+                "event_ordinal": 13,
+                "event_type": "tool_call_update",
+                "frame_bytes": 12930,
+                "frame_ordinal": 468,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 10641,
+                  "repetition": "first_observed",
+                  "sha256": "bec59c8adcff6ebc6924d9c1f0650510e4316dc2183607e62f9e4caa11ba8819",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "b28d856c43b06f5b4fece8ab13879fae4234e1de717bb2022354edbc769bcc82",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 2141,
+                  "repetition": "same_call",
+                  "sha256": "b93e0fae43b4d2d5b4becdee09833449336a11a4dc100de97c836ea9ae05cfc8",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 83.52993204281665,
+                "event_ordinal": 14,
+                "event_type": "tool_call_update",
+                "frame_bytes": 13198,
+                "frame_ordinal": 469,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 10911,
+                  "repetition": "first_observed",
+                  "sha256": "2eddae88c4b7b5206e43075cbd2145161b1715c17308c914c298ef09c1dc7cc1",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "completed",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "7445cae2f3e3551420bfef53f8fe631d46c42beac2c83ff8499772022fc93221",
+                "call_id_status": "valid",
+                "call_relation": "new_call",
+                "content": {
+                  "canonical_json_bytes": 2,
+                  "repetition": "cross_call",
+                  "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "shape": "array",
+                  "state": "empty"
+                },
+                "elapsed_seconds": 116.76634610700421,
+                "event_ordinal": 15,
+                "event_type": "tool_call",
+                "frame_bytes": 4096,
+                "frame_ordinal": 555,
+                "input": {
+                  "canonical_json_bytes": 3876,
+                  "repetition": "first_observed",
+                  "sha256": "c7fd4a20d2d9df889c471d794462e6adc5a428fe4a2474e57304f784243735ba",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "status": "pending",
+                "tool": "unknown",
+                "tool_name_present": true,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "7445cae2f3e3551420bfef53f8fe631d46c42beac2c83ff8499772022fc93221",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 103,
+                  "repetition": "first_observed",
+                  "sha256": "20447e201b66eea7a46d31cd356069a47c8cf4ca89567862bdda0d95aa92ae06",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 116.76654751691967,
+                "event_ordinal": 16,
+                "event_type": "tool_call_update",
+                "frame_bytes": 246,
+                "frame_ordinal": 556,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 4,
+                  "repetition": "cross_call",
+                  "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                  "shape": "null",
+                  "state": "null"
+                },
+                "status": "unknown",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "7445cae2f3e3551420bfef53f8fe631d46c42beac2c83ff8499772022fc93221",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 56,
+                  "repetition": "cross_call",
+                  "sha256": "e619214a35983407a41ae6e5640d0cd40478ac13662fa3e7ca22b423d9e9c634",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 116.76992638991214,
+                "event_ordinal": 17,
+                "event_type": "tool_call_update",
+                "frame_bytes": 4264,
+                "frame_ordinal": 557,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 4060,
+                  "repetition": "first_observed",
+                  "sha256": "0a7c597c3e68a4b4d7d01a2570cc23604dc18eefa5b517ad98866e330399b189",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "7445cae2f3e3551420bfef53f8fe631d46c42beac2c83ff8499772022fc93221",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 4970,
+                  "repetition": "first_observed",
+                  "sha256": "2109a913a5006f7fb4c15b0c46dedf3a09985f021e2f23c84fcf5428c338825c",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 116.92054398381151,
+                "event_ordinal": 18,
+                "event_type": "tool_call_update",
+                "frame_bytes": 29885,
+                "frame_ordinal": 558,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "object",
+                  "state": "oversized"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "7445cae2f3e3551420bfef53f8fe631d46c42beac2c83ff8499772022fc93221",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 4970,
+                  "repetition": "same_call",
+                  "sha256": "2109a913a5006f7fb4c15b0c46dedf3a09985f021e2f23c84fcf5428c338825c",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 116.92194381984882,
+                "event_ordinal": 19,
+                "event_type": "tool_call_update",
+                "frame_bytes": 30149,
+                "frame_ordinal": 559,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "object",
+                  "state": "oversized"
+                },
+                "status": "completed",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "2674ee5cc166190edd78ef9ef20b26f6b5dfc6e86027747dee5f8a06a0e047c3",
+                "call_id_status": "valid",
+                "call_relation": "new_call",
+                "content": {
+                  "canonical_json_bytes": 2,
+                  "repetition": "cross_call",
+                  "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "shape": "array",
+                  "state": "empty"
+                },
+                "elapsed_seconds": 154.8027570080012,
+                "event_ordinal": 20,
+                "event_type": "tool_call",
+                "frame_bytes": 1282,
+                "frame_ordinal": 685,
+                "input": {
+                  "canonical_json_bytes": 1062,
+                  "repetition": "first_observed",
+                  "sha256": "371719d236b781445a6f654e3b26d69ca88547d03698e23a033a0b5e367f8572",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "status": "pending",
+                "tool": "unknown",
+                "tool_name_present": true,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "2674ee5cc166190edd78ef9ef20b26f6b5dfc6e86027747dee5f8a06a0e047c3",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 96,
+                  "repetition": "first_observed",
+                  "sha256": "7cdf994535be28e186f29fd90b54240e1f448ed894637329f6218d4fc9d9a7d1",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 154.8027570080012,
+                "event_ordinal": 21,
+                "event_type": "tool_call_update",
+                "frame_bytes": 239,
+                "frame_ordinal": 686,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 4,
+                  "repetition": "cross_call",
+                  "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                  "shape": "null",
+                  "state": "null"
+                },
+                "status": "unknown",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "2674ee5cc166190edd78ef9ef20b26f6b5dfc6e86027747dee5f8a06a0e047c3",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 56,
+                  "repetition": "cross_call",
+                  "sha256": "e619214a35983407a41ae6e5640d0cd40478ac13662fa3e7ca22b423d9e9c634",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 154.80639912583865,
+                "event_ordinal": 22,
+                "event_type": "tool_call_update",
+                "frame_bytes": 1457,
+                "frame_ordinal": 687,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 1253,
+                  "repetition": "first_observed",
+                  "sha256": "713eb1d53bc7a5cdbda534e989909c79b5bd406eea83fd1a8cec00801bd05107",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "2674ee5cc166190edd78ef9ef20b26f6b5dfc6e86027747dee5f8a06a0e047c3",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 1877,
+                  "repetition": "first_observed",
+                  "sha256": "a35270cc67185c2f06f36a6b691fdff5d0040d901acf4605b40f5f758482fb83",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 154.88331379392184,
+                "event_ordinal": 23,
+                "event_type": "tool_call_update",
+                "frame_bytes": 11552,
+                "frame_ordinal": 688,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 9527,
+                  "repetition": "first_observed",
+                  "sha256": "188effa5d075ce8426fb51d2925f4c39c9c088702e05db544471e2d99180b369",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "2674ee5cc166190edd78ef9ef20b26f6b5dfc6e86027747dee5f8a06a0e047c3",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 3180,
+                  "repetition": "first_observed",
+                  "sha256": "164d71c085ae1d116694c221f0430fd9348e2ad1de7d29afc5353fc2c57dd2d4",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 154.9839911069721,
+                "event_ordinal": 24,
+                "event_type": "tool_call_update",
+                "frame_bytes": 18531,
+                "frame_ordinal": 689,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 15203,
+                  "repetition": "first_observed",
+                  "sha256": "2cf66105f22a1cb7307621b504863717b22e7f6cc5f8a520032144c8a47f6a2e",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "2674ee5cc166190edd78ef9ef20b26f6b5dfc6e86027747dee5f8a06a0e047c3",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 3246,
+                  "repetition": "first_observed",
+                  "sha256": "9ebf452a50a39112328632ff83a0197a8b486f823b9dbccfb09b88bc8ced611b",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 155.08302074484527,
+                "event_ordinal": 25,
+                "event_type": "tool_call_update",
+                "frame_bytes": 18887,
+                "frame_ordinal": 690,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 15493,
+                  "repetition": "first_observed",
+                  "sha256": "bfa2c268223733bf41f58ba3877baa4ff79f4163ced9759d9795d22e30b38d30",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "2674ee5cc166190edd78ef9ef20b26f6b5dfc6e86027747dee5f8a06a0e047c3",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 3703,
+                  "repetition": "first_observed",
+                  "sha256": "9a2dfae881ca31789c9dd180b8eafdb2a049e0a6f9f45ebd53c5ed3655d11da2",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 155.19890815089457,
+                "event_ordinal": 26,
+                "event_type": "tool_call_update",
+                "frame_bytes": 21423,
+                "frame_ordinal": 691,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 17572,
+                  "repetition": "first_observed",
+                  "sha256": "f30c33db772c315e16f2f7af722fe31d7bfa19dcd975f0e48795d01b7cabd1a6",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "2674ee5cc166190edd78ef9ef20b26f6b5dfc6e86027747dee5f8a06a0e047c3",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 3703,
+                  "repetition": "same_call",
+                  "sha256": "9a2dfae881ca31789c9dd180b8eafdb2a049e0a6f9f45ebd53c5ed3655d11da2",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 155.20068412600085,
+                "event_ordinal": 27,
+                "event_type": "tool_call_update",
+                "frame_bytes": 21680,
+                "frame_ordinal": 692,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 17831,
+                  "repetition": "first_observed",
+                  "sha256": "ddbc6166a61df06c33adbedfd17c624e816b33e4eddd11b1145cf5986f170b29",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "completed",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "818197709259373402f8a2270c9d082fdcdef6d0652670fd70684952449c4059",
+                "call_id_status": "valid",
+                "call_relation": "new_call",
+                "content": {
+                  "canonical_json_bytes": 2,
+                  "repetition": "cross_call",
+                  "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "shape": "array",
+                  "state": "empty"
+                },
+                "elapsed_seconds": 160.68160485080443,
+                "event_ordinal": 28,
+                "event_type": "tool_call",
+                "frame_bytes": 858,
+                "frame_ordinal": 699,
+                "input": {
+                  "canonical_json_bytes": 638,
+                  "repetition": "first_observed",
+                  "sha256": "509f2774f438927997148a752d6826f30dd8087a14c76a0579be270da7b5dec5",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "status": "pending",
+                "tool": "unknown",
+                "tool_name_present": true,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "818197709259373402f8a2270c9d082fdcdef6d0652670fd70684952449c4059",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 91,
+                  "repetition": "first_observed",
+                  "sha256": "e4f45611c225a4fccae8324c5e966960c124568324f3a94f8ee899fdce086f76",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 160.68171279598027,
+                "event_ordinal": 29,
+                "event_type": "tool_call_update",
+                "frame_bytes": 234,
+                "frame_ordinal": 700,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 4,
+                  "repetition": "cross_call",
+                  "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                  "shape": "null",
+                  "state": "null"
+                },
+                "status": "unknown",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "818197709259373402f8a2270c9d082fdcdef6d0652670fd70684952449c4059",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 56,
+                  "repetition": "cross_call",
+                  "sha256": "e619214a35983407a41ae6e5640d0cd40478ac13662fa3e7ca22b423d9e9c634",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 160.68501310702413,
+                "event_ordinal": 30,
+                "event_type": "tool_call_update",
+                "frame_bytes": 1038,
+                "frame_ordinal": 701,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 834,
+                  "repetition": "first_observed",
+                  "sha256": "551a14a55e64bf7527216c41821133e48f50bdf7cf19cde898e39a9aff2d6153",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "818197709259373402f8a2270c9d082fdcdef6d0652670fd70684952449c4059",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 343,
+                  "repetition": "first_observed",
+                  "sha256": "f7cf06334e4e5ffaa6c3b49d3af37270a4a6942b95257b6bea79a4276d5aabfd",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 160.76513962890022,
+                "event_ordinal": 31,
+                "event_type": "tool_call_update",
+                "frame_bytes": 2595,
+                "frame_ordinal": 702,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 2104,
+                  "repetition": "first_observed",
+                  "sha256": "f2d3a138f34cc2628098400afad16de67a9fc096adcd331f889b94e4727e10e2",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "818197709259373402f8a2270c9d082fdcdef6d0652670fd70684952449c4059",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 343,
+                  "repetition": "same_call",
+                  "sha256": "f7cf06334e4e5ffaa6c3b49d3af37270a4a6942b95257b6bea79a4276d5aabfd",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 160.76586917880923,
+                "event_ordinal": 32,
+                "event_type": "tool_call_update",
+                "frame_bytes": 2847,
+                "frame_ordinal": 703,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 2358,
+                  "repetition": "first_observed",
+                  "sha256": "32ebb4cbc64224c3242fe43d3a639472462f1e88fcd5373b27241c4971ce8f0a",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "completed",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "f62d1fc9cac86c79c9bfdb55d5680e8bc5476bec66b677f866de6d9cd44a355f",
+                "call_id_status": "valid",
+                "call_relation": "new_call",
+                "content": {
+                  "canonical_json_bytes": 2,
+                  "repetition": "cross_call",
+                  "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "shape": "array",
+                  "state": "empty"
+                },
+                "elapsed_seconds": 168.19306742888875,
+                "event_ordinal": 33,
+                "event_type": "tool_call",
+                "frame_bytes": 1714,
+                "frame_ordinal": 707,
+                "input": {
+                  "canonical_json_bytes": 1494,
+                  "repetition": "first_observed",
+                  "sha256": "63d5b92d9c6701d81411ec18e7330785c1ad430338c5d17dcd1baca1fed9ea92",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "status": "pending",
+                "tool": "unknown",
+                "tool_name_present": true,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "f62d1fc9cac86c79c9bfdb55d5680e8bc5476bec66b677f866de6d9cd44a355f",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 93,
+                  "repetition": "first_observed",
+                  "sha256": "c8ec736f6b532def3469b3d4a547d6b2038b09a17361d768e1af82f503f81b8c",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 168.19306742888875,
+                "event_ordinal": 34,
+                "event_type": "tool_call_update",
+                "frame_bytes": 236,
+                "frame_ordinal": 708,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 4,
+                  "repetition": "cross_call",
+                  "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                  "shape": "null",
+                  "state": "null"
+                },
+                "status": "unknown",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "f62d1fc9cac86c79c9bfdb55d5680e8bc5476bec66b677f866de6d9cd44a355f",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 56,
+                  "repetition": "cross_call",
+                  "sha256": "e619214a35983407a41ae6e5640d0cd40478ac13662fa3e7ca22b423d9e9c634",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 168.19644579291344,
+                "event_ordinal": 35,
+                "event_type": "tool_call_update",
+                "frame_bytes": 1892,
+                "frame_ordinal": 709,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 1688,
+                  "repetition": "first_observed",
+                  "sha256": "8cdc6d59aef3c51b3b72dd6ad4230fa5345e496b7b79a41cb9d64a71184d3dec",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "f62d1fc9cac86c79c9bfdb55d5680e8bc5476bec66b677f866de6d9cd44a355f",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 216,
+                  "repetition": "first_observed",
+                  "sha256": "4b35dded7b9a147ac07d381d6cdba0d44f8ee49e041eb6e3b139d68c1416955e",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 168.2838102208916,
+                "event_ordinal": 36,
+                "event_type": "tool_call_update",
+                "frame_bytes": 2771,
+                "frame_ordinal": 710,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 2407,
+                  "repetition": "first_observed",
+                  "sha256": "b8c00cbc0077894a22e7365c71d535c8215cd485d25c88c31209afd8e7fcac10",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "f62d1fc9cac86c79c9bfdb55d5680e8bc5476bec66b677f866de6d9cd44a355f",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 1065,
+                  "repetition": "first_observed",
+                  "sha256": "ab571a8744fbaa7f682b8c7d88d768692352cce94f9681a91a866dc1b7f0947a",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 168.30352592491545,
+                "event_ordinal": 37,
+                "event_type": "tool_call_update",
+                "frame_bytes": 7256,
+                "frame_ordinal": 711,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 6043,
+                  "repetition": "first_observed",
+                  "sha256": "c91fd66fafe68c2d2eee2a63cde36db9e42bb2a7971394e650d6b403b0933ea3",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "f62d1fc9cac86c79c9bfdb55d5680e8bc5476bec66b677f866de6d9cd44a355f",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 1065,
+                  "repetition": "same_call",
+                  "sha256": "ab571a8744fbaa7f682b8c7d88d768692352cce94f9681a91a866dc1b7f0947a",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 168.30430451896973,
+                "event_ordinal": 38,
+                "event_type": "tool_call_update",
+                "frame_bytes": 7510,
+                "frame_ordinal": 712,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 6299,
+                  "repetition": "first_observed",
+                  "sha256": "dbafe3f1fe71bf8c3f4407a73818315e8551c2374230321b0c57d06728f9c239",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "completed",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "3298bf13083a031e1ab47d25bee7489f8ce5ba73a6ab6dd6d9523b54d3508a75",
+                "call_id_status": "valid",
+                "call_relation": "new_call",
+                "content": {
+                  "canonical_json_bytes": 2,
+                  "repetition": "cross_call",
+                  "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "shape": "array",
+                  "state": "empty"
+                },
+                "elapsed_seconds": 175.38689955091104,
+                "event_ordinal": 39,
+                "event_type": "tool_call",
+                "frame_bytes": 1635,
+                "frame_ordinal": 717,
+                "input": {
+                  "canonical_json_bytes": 1415,
+                  "repetition": "first_observed",
+                  "sha256": "6c32ad8f174e75f522659643d44bd48e43e064d4c8dfad656744fecd48b7d19c",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "status": "pending",
+                "tool": "unknown",
+                "tool_name_present": true,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "3298bf13083a031e1ab47d25bee7489f8ce5ba73a6ab6dd6d9523b54d3508a75",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 96,
+                  "repetition": "first_observed",
+                  "sha256": "53981fb63d73bb0587a42b5675c9f3074abe81451901bdd6f4b147cd91e160fc",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 175.38701175292954,
+                "event_ordinal": 40,
+                "event_type": "tool_call_update",
+                "frame_bytes": 239,
+                "frame_ordinal": 718,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 4,
+                  "repetition": "cross_call",
+                  "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                  "shape": "null",
+                  "state": "null"
+                },
+                "status": "unknown",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "3298bf13083a031e1ab47d25bee7489f8ce5ba73a6ab6dd6d9523b54d3508a75",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 56,
+                  "repetition": "cross_call",
+                  "sha256": "e619214a35983407a41ae6e5640d0cd40478ac13662fa3e7ca22b423d9e9c634",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 175.3905771379359,
+                "event_ordinal": 41,
+                "event_type": "tool_call_update",
+                "frame_bytes": 1810,
+                "frame_ordinal": 719,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 1606,
+                  "repetition": "first_observed",
+                  "sha256": "656e1f94fc8c17a0a44082f9460d0365250e384fefc83488bfbedc48ad3070bd",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "3298bf13083a031e1ab47d25bee7489f8ce5ba73a6ab6dd6d9523b54d3508a75",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 528,
+                  "repetition": "first_observed",
+                  "sha256": "0bec65023baa5d8a6468ce9ce843d9b1d18a05420589a07d01f146dce3944c32",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 175.4290300779976,
+                "event_ordinal": 42,
+                "event_type": "tool_call_update",
+                "frame_bytes": 4305,
+                "frame_ordinal": 720,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 3629,
+                  "repetition": "first_observed",
+                  "sha256": "16783bf6687fdc223eb7985fa421cb5b64517943a731d11cf040b6b938457188",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "3298bf13083a031e1ab47d25bee7489f8ce5ba73a6ab6dd6d9523b54d3508a75",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 528,
+                  "repetition": "same_call",
+                  "sha256": "0bec65023baa5d8a6468ce9ce843d9b1d18a05420589a07d01f146dce3944c32",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 175.42979079694487,
+                "event_ordinal": 43,
+                "event_type": "tool_call_update",
+                "frame_bytes": 4562,
+                "frame_ordinal": 721,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 3888,
+                  "repetition": "first_observed",
+                  "sha256": "f3c5668ccdcf37aac7ebc15fd047c0efb81fabfa36ceed5a570d94dea54b9b11",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "completed",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "50c3b0832f5908f35469ca268f697c507abf99f5273f5c85c8db88162db1b296",
+                "call_id_status": "valid",
+                "call_relation": "new_call",
+                "content": {
+                  "canonical_json_bytes": 2,
+                  "repetition": "cross_call",
+                  "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                  "shape": "array",
+                  "state": "empty"
+                },
+                "elapsed_seconds": 240.4059378169477,
+                "event_ordinal": 44,
+                "event_type": "tool_call",
+                "frame_bytes": 6018,
+                "frame_ordinal": 919,
+                "input": {
+                  "canonical_json_bytes": 5798,
+                  "repetition": "first_observed",
+                  "sha256": "6b740c21e6d7288d62190e2454c0538b01a60b9bd46d90981a283af3da647e1e",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "status": "pending",
+                "tool": "unknown",
+                "tool_name_present": true,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "50c3b0832f5908f35469ca268f697c507abf99f5273f5c85c8db88162db1b296",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 97,
+                  "repetition": "first_observed",
+                  "sha256": "4927f1a412ec530198f832515f95db0c8940c379e23b970a48703a3c875ad3e7",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 240.40609485283494,
+                "event_ordinal": 45,
+                "event_type": "tool_call_update",
+                "frame_bytes": 240,
+                "frame_ordinal": 920,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 4,
+                  "repetition": "cross_call",
+                  "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                  "shape": "null",
+                  "state": "null"
+                },
+                "status": "unknown",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "50c3b0832f5908f35469ca268f697c507abf99f5273f5c85c8db88162db1b296",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 56,
+                  "repetition": "cross_call",
+                  "sha256": "e619214a35983407a41ae6e5640d0cd40478ac13662fa3e7ca22b423d9e9c634",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 240.4104944828432,
+                "event_ordinal": 46,
+                "event_type": "tool_call_update",
+                "frame_bytes": 6192,
+                "frame_ordinal": 921,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": 5988,
+                  "repetition": "first_observed",
+                  "sha256": "b27dbda2694dad87f65ecf034070282b71762c9ad125bdb1e9f0a3c53b51829e",
+                  "shape": "object",
+                  "state": "valid"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "50c3b0832f5908f35469ca268f697c507abf99f5273f5c85c8db88162db1b296",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 6013,
+                  "repetition": "first_observed",
+                  "sha256": "0efa687ef1eb1e3031365be792b8525ecb86ec428ffa47a4d59174460aff57e7",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 240.53564448282123,
+                "event_ordinal": 47,
+                "event_type": "tool_call_update",
+                "frame_bytes": 36529,
+                "frame_ordinal": 922,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "object",
+                  "state": "oversized"
+                },
+                "status": "in_progress",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              },
+              {
+                "after_final": false,
+                "call_id_sha256": "50c3b0832f5908f35469ca268f697c507abf99f5273f5c85c8db88162db1b296",
+                "call_id_status": "valid",
+                "call_relation": "lifecycle_update",
+                "content": {
+                  "canonical_json_bytes": 6013,
+                  "repetition": "same_call",
+                  "sha256": "0efa687ef1eb1e3031365be792b8525ecb86ec428ffa47a4d59174460aff57e7",
+                  "shape": "array",
+                  "state": "valid"
+                },
+                "elapsed_seconds": 240.5392888528295,
+                "event_ordinal": 48,
+                "event_type": "tool_call_update",
+                "frame_bytes": 36787,
+                "frame_ordinal": 923,
+                "input": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "missing",
+                  "state": "missing"
+                },
+                "output": {
+                  "canonical_json_bytes": null,
+                  "repetition": "not_measured",
+                  "sha256": null,
+                  "shape": "object",
+                  "state": "oversized"
+                },
+                "status": "completed",
+                "tool": "unknown",
+                "tool_name_present": false,
+                "unknown_field_count": 0
+              }
+            ],
+            "schema": "native-grok-tool-events@1",
+            "selection": "first_tool_events",
+            "token_savings_claimed": false,
+            "tool_result_coverage_complete": false,
+            "unique_output_bytes_measured": false
+          },
+          "tool_name_counts": {
+            "grep": 0,
+            "list_dir": 0,
+            "read_file": 0,
+            "run_terminal_cmd": 0,
+            "search_replace": 0,
+            "todo_write": 0,
+            "unknown": 8
+          },
+          "tool_status_counts": {
+            "completed": 8,
+            "failed": 0,
+            "in_progress": 24,
+            "pending": 8,
+            "unknown": 8
+          },
+          "transport": "streaming-json",
+          "unknown_events": 0,
+          "usage_observations": {
+            "billing_total_verified": false,
+            "counter_semantics": "unverified",
+            "observed_events": 8,
+            "omitted_events": 0,
+            "ordinals_are_turn_ids": false,
+            "raw_provider_data_exported": false,
+            "retained_events": 8,
+            "row_limit": 128,
+            "rows": [
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 4.638389048865065,
+                "event_ordinal": 1,
+                "frame_ordinal": 28,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 1536,
+                  "input_tokens": 24808,
+                  "output_tokens": 343,
+                  "reasoning_tokens": 58,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 83.42713584983721,
+                "event_ordinal": 2,
+                "frame_ordinal": 463,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 26240,
+                  "input_tokens": 5706,
+                  "output_tokens": 4726,
+                  "reasoning_tokens": 4141,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 116.7657907300163,
+                "event_ordinal": 3,
+                "frame_ordinal": 554,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 31872,
+                  "input_tokens": 5740,
+                  "output_tokens": 2552,
+                  "reasoning_tokens": 1258,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 154.80238020792603,
+                "event_ordinal": 4,
+                "frame_ordinal": 684,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 37504,
+                  "input_tokens": 4867,
+                  "output_tokens": 1838,
+                  "reasoning_tokens": 1483,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 160.68126285402104,
+                "event_ordinal": 5,
+                "frame_ordinal": 698,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 42368,
+                  "input_tokens": 3314,
+                  "output_tokens": 383,
+                  "reasoning_tokens": 150,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 168.19265113794245,
+                "event_ordinal": 6,
+                "frame_ordinal": 706,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 45568,
+                  "input_tokens": 606,
+                  "output_tokens": 520,
+                  "reasoning_tokens": 14,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 175.38642290281132,
+                "event_ordinal": 7,
+                "frame_ordinal": 716,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 46080,
+                  "input_tokens": 1133,
+                  "output_tokens": 603,
+                  "reasoning_tokens": 92,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 240.40504246600904,
+                "event_ordinal": 8,
+                "frame_ordinal": 918,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 1536,
+                  "input_tokens": 46528,
+                  "output_tokens": 4735,
+                  "reasoning_tokens": 2590,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              }
+            ],
+            "schema": "native-grok-usage-events@1",
+            "selection": "first_usage_events",
+            "summation_permitted": false
+          }
+        },
+        "native_task_complete_observed": false,
+        "native_usage_complete_observed": false,
+        "reported_cost_usd": null,
+        "seconds": 242.12043132912368,
+        "timeout_seconds": 1800,
+        "tokens": {
+          "cached_input_tokens": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "total_tokens": null
+        }
+      }
+    ],
+    "observation_only": true,
+    "official_reward": null,
+    "official_verifier_executed": false,
+    "phases": {
+      "context_seconds": 3.7829670179635286,
+      "initial_context_seconds": 15.997516833012924,
+      "planning_seconds": 4.391125445021316,
+      "prepare_seconds": 0.48250441206619143
+    },
+    "planning_provider_calls": 0,
+    "provider_generation_calls": 1,
+    "provider_input_bytes": null,
+    "provider_internal_model_calls": null,
+    "qualified": true,
+    "raw_prompt_or_provider_content_exported": false,
+    "request_history_complete": false,
+    "schema": "terminal-public-tool-event-readout@1",
+    "source384": {
+      "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+      "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+      "inference_sha256": "e82b9633ef5fb627364f32f1a0c0b0be4601a5d32109dff1e69ab37550b094de",
+      "preparation_inference_record_retained": true,
+      "seconds": 10.995189735898748,
+      "worker_consumption_independently_verified": false
+    },
+    "task_success_claimed": false,
+    "unreceipted_provider_attempt_observed": false,
+    "worker_cleanup_returncode": 0
+  },
+  "official_reward": null,
+  "official_verifier_executed": false,
+  "provider_billing_total_verified": false,
+  "provider_fallback": false,
+  "public_input_bindings": [
+    {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    {
+      "bytes": 642,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "bytes": 2246,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "public_profile_sha256": "274146542fd5d4c611b0b01700fbeea48a202da875525303bddbd44b2a4e67c3",
+  "qualified": true,
+  "resources": {
+    "available_memory_mb": 14091,
+    "cgroup_path": "/sys/fs/cgroup",
+    "cpu_max": "500000 100000",
+    "detected_cpu_slots": 5,
+    "detected_total_memory_mb": 20480,
+    "memory_max": "21474836480",
+    "schema": "terminal-source384-cgroup-observation@1"
+  },
+  "schema": "terminal-public-tool-event-diagnostic@1",
+  "scope": "fresh-source384-single-coding-invocation-telemetry",
+  "seconds": 474.2950817530509,
+  "semantic_pack_projection_dispatch_enabled": false,
+  "source_freeze_sha256": "be9d47a22dc06efd6d6659f6a5dfb4be5988e48cb6b92e2844a5877f3da4fd16",
+  "task_completed": false,
+  "task_name": "largest-eigenval"
+}

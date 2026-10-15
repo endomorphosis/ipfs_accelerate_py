@@ -1,0 +1,40 @@
+{
+  "binary": {
+    "bytes": 142867512,
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-1.0.46/grok",
+    "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e"
+  },
+  "content_and_locations_are_separate_from_raw_output": true,
+  "pinned_binary_executed": false,
+  "private_file_contents_read": false,
+  "provider_calls": 0,
+  "provider_request_history_observable": false,
+  "raw_input_example_shape": "object",
+  "raw_output_example_shape": "object",
+  "reference_is_exhaustive_schema": false,
+  "schema": "pinned-grok-tool-protocol-reference@1",
+  "shipped_protocol_section": {
+    "bytes": 3025,
+    "offset": 7587606,
+    "sha256": "9df2f3daa9b6fc1fb8f90bd6b8e4e56831de3e7a85008797de37c0d43dc5b9c0"
+  },
+  "tool_call_example_fields": [
+    "type",
+    "toolCallId",
+    "title",
+    "kind",
+    "status",
+    "toolName",
+    "rawInput",
+    "content",
+    "locations"
+  ],
+  "tool_call_update_example_fields": [
+    "type",
+    "toolCallId",
+    "status",
+    "content",
+    "rawOutput",
+    "locations"
+  ]
+}

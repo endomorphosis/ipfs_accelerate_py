@@ -1,0 +1,27 @@
+{
+  "closed_export_sha256": "45bac6a736500c756d46d950494ec63f8b7cb0c93feaf10905ba30cae98da6b9",
+  "docker_calls": 0,
+  "events_after_final": 1,
+  "max_measured_content_bytes": 9396,
+  "max_measured_output_bytes": 17831,
+  "max_retained_tool_frame_bytes": 50211,
+  "oversized_output_shapes": {
+    "object": 7
+  },
+  "oversized_output_statuses": {
+    "completed": 3,
+    "in_progress": 4
+  },
+  "private_owner_or_provider_output_read": false,
+  "provider_calls": 0,
+  "raw_content_exported": false,
+  "schema": "terminal-tool-event-closed-coverage-analysis@1",
+  "specific_payload_bound_reason_available": false,
+  "unknown_field_count_distribution": {
+    "0": 48
+  },
+  "unknown_status_event_types": {
+    "tool_call_update": 8
+  },
+  "usage_events_observed": 8
+}

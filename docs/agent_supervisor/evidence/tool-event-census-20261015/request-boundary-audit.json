@@ -1,0 +1,285 @@
+{
+  "binary": {
+    "bytes": 142867512,
+    "executed": false,
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-1.0.46/grok",
+    "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+    "version_from_pinned_source": "1.0.46"
+  },
+  "debug_logging_enabled": false,
+  "final_usage_scope": {
+    "all_provider_spend_measured": false,
+    "basis": "Pinned Grok1.0.46 shipped public headless documentation; existing runtime accounting not changed.",
+    "documented_total_equation": "input_tokens + cache_read_input_tokens + cache_creation_input_tokens + output_tokens",
+    "excluded": "Compaction and other side-model calls.",
+    "included": "Prompt ledger plus subagents that finished before prompt end.",
+    "incomplete_usage": "Missing or incomplete subagent accounting and drain timeout can make totals incomplete; absent cost is not zero cost.",
+    "input_tokens": "Uncached only; cache read and cache creation are separate buckets.",
+    "num_turns": "Main-agent model rounds recorded on the ledger; subagent calls do not increase it.",
+    "streaming_messages_caveat": "This alternative framing fills unavailable usage/cost with zero; zero must not be interpreted as free.",
+    "tool_event_bytes_are_tokens": false
+  },
+  "method": "Read-only bounded extraction of embedded public documentation/help literals and review of wrapper/config construction source. No runtime configuration or private artifacts opened.",
+  "network_calls": 0,
+  "next_concrete_measurement": {
+    "limits": "Current stdout census can identify large or repeated captured result payloads, but cannot establish whether they were retained, pruned, compacted or resent in later model requests. No token savings or efficacy claim follows from this audit.",
+    "proposal": "Qualify an isolated explicit compaction.pruning profile against the current profile on the same public task, with paired completion/quality checks and unchanged model/tool bounds. First establish whether pruning occurs and add a safe count-only request-boundary observation if the CLI offers or gains one.",
+    "required_distinctions": [
+      "Documented defaults versus effective explicit profile",
+      "Captured tool-event payload bytes versus actual serialized provider input",
+      "Main prompt ledger versus compaction/other side-model spend",
+      "Lossy trimming versus lossless initial-prompt projections"
+    ]
+  },
+  "observation_only": true,
+  "private_artifacts_read": false,
+  "provider_calls": 0,
+  "references": [
+    {
+      "body_exported": false,
+      "bytes": 14080,
+      "end_byte_exclusive": 7590631,
+      "id": "headless_usage_options_and_streaming_json",
+      "sha256": "b1e5717fbe142136c733a161e8068c3e6b3c436acf07b26216abfea03bc28499",
+      "start_byte_inclusive": 7576551,
+      "summary": "Headless arguments and final usage semantics, including excluded side-model work."
+    },
+    {
+      "body_exported": false,
+      "bytes": 3025,
+      "end_byte_exclusive": 7590631,
+      "id": "streaming_json_protocol",
+      "sha256": "9df2f3daa9b6fc1fb8f90bd6b8e4e56831de3e7a85008797de37c0d43dc5b9c0",
+      "start_byte_inclusive": 7587606,
+      "summary": "ACP-derived event frames and final aggregate fields; no serialized request-body hook described."
+    },
+    {
+      "body_exported": false,
+      "bytes": 13799,
+      "end_byte_exclusive": 7604430,
+      "id": "streaming_messages_json",
+      "sha256": "ef86e815b5e04e9a73e3327c42eba063d146f8748c4952016e7a235f817c62cc",
+      "start_byte_inclusive": 7590631,
+      "summary": "Alternate output framing, incomplete usage falling back to zero, and no budget or maximum-output catalog."
+    },
+    {
+      "body_exported": false,
+      "bytes": 916,
+      "end_byte_exclusive": 7611586,
+      "id": "headless_environment",
+      "sha256": "b999c08d5c19fa02c5349ce303ab2ca49cf97ac5f9762c1ccdc98291970ea4aa",
+      "start_byte_inclusive": 7610670,
+      "summary": "Documented headless environment variables; debug logging was not enabled."
+    },
+    {
+      "body_exported": false,
+      "bytes": 466,
+      "end_byte_exclusive": 7612972,
+      "id": "headless_tips",
+      "sha256": "abdeb411ffff36391bd107686e0f89f8162ab3e3b05dab0e2d110f5eb0e75df9",
+      "start_byte_inclusive": 7612506,
+      "summary": "Fresh sessions by default; explicit resumption reuses session state."
+    },
+    {
+      "body_exported": false,
+      "bytes": 1568,
+      "end_byte_exclusive": 7617348,
+      "id": "additional_headless_flags",
+      "sha256": "8cc4dac5cd31e60577a9a714d53049f670f910f2d4e573508337eb12f916e4e6",
+      "start_byte_inclusive": 7615780,
+      "summary": "Plan, subagent, memory, web and prompt controls."
+    },
+    {
+      "body_exported": false,
+      "bytes": 566,
+      "end_byte_exclusive": 7561493,
+      "id": "memory_priority",
+      "sha256": "1bf12969af614543563a4e52d1a65710687e7654e70871342a452e7373c96943",
+      "start_byte_inclusive": 7560927,
+      "summary": "The compatibility no-memory flag and GROK_MEMORY=0 force memory off for the process."
+    },
+    {
+      "body_exported": false,
+      "bytes": 196,
+      "end_byte_exclusive": 7309719,
+      "id": "compact_command",
+      "sha256": "6281f2bf3d43a50359f545c0ab85e1fc80fdc668163d7afa91a8b61d1b23a879",
+      "start_byte_inclusive": 7309523,
+      "summary": "Manual history compaction and configurable automatic threshold; default threshold documented as 85 percent."
+    },
+    {
+      "body_exported": false,
+      "bytes": 736,
+      "end_byte_exclusive": 7574663,
+      "id": "pruning_settings",
+      "sha256": "dcd45d0006c8bed4ab008a44b53946086cc24ec0cca03fbeb2de94f79c14cb0b",
+      "start_byte_inclusive": 7573927,
+      "summary": "Old tool-result trimming configuration and defaults; operational effect not measured by this audit."
+    },
+    {
+      "body_exported": false,
+      "bytes": 1083,
+      "end_byte_exclusive": 8034093,
+      "id": "compaction_help_literals",
+      "sha256": "b1601bc5e55097d96bb0475f93a70036ec9e37ccd06b4dfeb728db5c8084628f",
+      "start_byte_inclusive": 8033010,
+      "summary": "Bounded embedded public help literals describing compaction mode and segment detail controls."
+    }
+  ],
+  "request_boundary_finding": {
+    "cli_internal_requests_observed": false,
+    "initial_prompt_boundary_observed": true,
+    "scope": "No exact serialized per-request history/body hook found in the reviewed shipped public headless documentation, bounded help literals or local wrapper boundary. This is not proof that no internal mechanism exists.",
+    "stdout_bytes_times_turns_valid": false,
+    "stdout_pre_or_post_compaction_relation": "unknown",
+    "supported_count_only_hook_found": false,
+    "tool_stdout_equals_provider_input": false
+  },
+  "runtime_configuration_changed": false,
+  "schema": "grok-request-boundary-public-audit@1",
+  "source_edits": false,
+  "source_references": [
+    {
+      "body_exported": false,
+      "file_sha256": "1b6667ab6149ef547c52f1ad85c41fbd8eea9ddc544a563dc97101cf586e35bd",
+      "line_end_inclusive": 8145,
+      "line_start": 8073,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "range_sha256": "1a4affca59516bed9de29919529c53a4bde3dd179bc3bb4dae2664aea6e1f3f4",
+      "summary": "Structured route appends existing context restrictions and bounds turns."
+    },
+    {
+      "body_exported": false,
+      "file_sha256": "59cd95d263197520c26765d94d39454c87138970a1315c187f38b3b194ef8aa0",
+      "line_end_inclusive": 1211,
+      "line_start": 1182,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "range_sha256": "46d3f311f960f8ff068fcce979a6c279be11f01f82cb8fc26d759e7a7683652e",
+      "summary": "Supervisor coding allowlist, explicit MCP dispatcher denylist and tool observation opt-in."
+    },
+    {
+      "body_exported": false,
+      "file_sha256": "da85f716215df06edd5fd3664e510f1e10dae3534b3da2174663a4c69e7397f8",
+      "line_end_inclusive": 1422,
+      "line_start": 1319,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "range_sha256": "c8072ebf23d0f86b69882863342d282af394af371bb59544878fe9117fdab056",
+      "summary": "Native helper constructs compatibility/sandbox isolation config; no pruning setting in the reviewed constructor."
+    },
+    {
+      "body_exported": false,
+      "file_sha256": "67e5eddaa8e64e6d90daa47db581a4e31dd1f27f93a6d77bdfe75b99350f28dc",
+      "line_end_inclusive": 216,
+      "line_start": 193,
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "range_sha256": "ad409412960c553c8b09509792d236f5c56d474398d17452645ff3a27718c0de",
+      "summary": "Worker clears inherited environment and supplies the isolated Grok home; no compaction override in this environment construction."
+    },
+    {
+      "body_exported": false,
+      "file_sha256": "cb093c8e99506b739134c9a49ac3facf05a6d6ac91d6617fdc3dd88e60b85706",
+      "line_end_inclusive": 24,
+      "line_start": 18,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_grok_deployment.py",
+      "range_sha256": "af057e0d57d8b76a4bf5ec413539aad95f482be07accbc00b9bdbd25b2e15615",
+      "summary": "Version-pinned binary identity used to cross-check the audited executable."
+    }
+  ],
+  "supported_controls": [
+    {
+      "limitation": "Not a token or dollar budget; recorded ledger rounds can differ from a simple request count.",
+      "name": "--max-turns",
+      "scope": "headless main-agent loop bound",
+      "wrapper_status": "explicitly set; supervisor coding bound is configurable"
+    },
+    {
+      "limitation": "Allowlisting built-ins alone does not remove MCP dispatch; effective exposure still needs independent qualification.",
+      "name": "--tools / --disallowed-tools",
+      "scope": "built-in tool exposure",
+      "wrapper_status": "explicit coding allowlist; search_tool and use_tool denied"
+    },
+    {
+      "limitation": "Verbatim prompt wording is not evidence that the CLI adds no system context or performs no history transformations.",
+      "name": "--no-plan / --no-subagents / --disable-web-search / --no-memory / --verbatim",
+      "scope": "existing structured wrapper flags",
+      "wrapper_status": "all already appended by llm_router"
+    },
+    {
+      "limitation": "No runtime memory or credential configuration was inspected.",
+      "name": "GROK_MEMORY=0",
+      "scope": "documented process-wide memory disable",
+      "wrapper_status": "equivalent documented force-disable provided through existing --no-memory"
+    },
+    {
+      "limitation": "Accepted levels for the deployed Grok4.7 model were not discovered in this no-provider audit; changing effort changes the experiment.",
+      "name": "--reasoning-effort / --effort",
+      "scope": "model-specific reasoning menu",
+      "wrapper_status": "router supports an explicit effort value"
+    },
+    {
+      "limitation": "Fresh sessions are the documented default; this audit does not attest live arguments.",
+      "name": "--resume / --continue",
+      "scope": "reuse prior session context",
+      "wrapper_status": "optional caller controls; not required for a fresh run"
+    },
+    {
+      "limitation": "Not a request-boundary hook or a token-reduction control. Alternate Messages framing maps unknown usage/cost to zero and needs separate qualification.",
+      "name": "--output-format / --include-partial-messages",
+      "scope": "stdout event representation",
+      "wrapper_status": "coding observation uses streaming-json; partial messages affect only streaming-messages-json"
+    },
+    {
+      "documented_defaults": {
+        "enabled": true,
+        "hard_clear_age_turns": 10,
+        "keep_last_n_turns": 3,
+        "soft_trim_head": 1500,
+        "soft_trim_tail": 1500,
+        "soft_trim_threshold": 4000
+      },
+      "limitation": "These are shipped documentation defaults, not an attestation of effective live settings. Trimming is lossy and requires correctness/quality evaluation.",
+      "name": "[compaction.pruning]",
+      "scope": "old tool-result retention in conversation history",
+      "units": "threshold/head/tail are characters; ages are turns",
+      "wrapper_status": "no explicit setting in reviewed wrapper/deployment/config construction source"
+    },
+    {
+      "documented_default": "segments",
+      "documented_values": [
+        "summary",
+        "transcript",
+        "segments"
+      ],
+      "limitation": "Found in bounded embedded public help literals; not executed or changed. Mode controls retained reference strategy, not request metering.",
+      "name": "--compaction-mode / GROK_COMPACTION_MODE",
+      "scope": "history compaction representation",
+      "wrapper_status": "no explicit override in reviewed sources"
+    },
+    {
+      "documented_default": "verbose",
+      "documented_values": [
+        "none",
+        "minimal",
+        "balanced",
+        "verbose"
+      ],
+      "limitation": "Only applies to segments; a potential quality/size tradeoff, not a proven lossless reduction.",
+      "name": "--compaction-detail / GROK_COMPACTION_DETAIL",
+      "scope": "verbatim detail retained by segments mode",
+      "wrapper_status": "no explicit override in reviewed sources"
+    },
+    {
+      "documented_threshold_default_percent": 85,
+      "limitation": "Compaction can make side-model calls excluded from the final prompt ledger; no change made.",
+      "name": "[session] auto_compact_threshold_percent / model.context_window",
+      "scope": "automatic history compaction trigger",
+      "wrapper_status": "no explicit threshold override in reviewed source paths"
+    },
+    {
+      "limitation": "Changes task behavior; not a passive measurement or safe automatic fix.",
+      "name": "--rules / --system-prompt-override",
+      "scope": "system prompt behavior",
+      "wrapper_status": "not changed in this audit"
+    }
+  ]
+}
