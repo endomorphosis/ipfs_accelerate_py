@@ -1423,3 +1423,67 @@ Qualification distinguishes actual native state, local processes and Unix
 transport from authored same-UID deployment admission and provider stubs. No
 external provider or target program is invoked. Results and limitations are in
 [qualification.json](evidence/native-candidate-router-20261015/qualification.json).
+
+## October 15: quantitative capacity through candidate retirement
+
+`reserve_native_candidate_round_resources(...)` now reserves a genuine native
+child `ResourceLease` below the caller's existing parent. It uses that same
+datasets scheduler, policy and authenticated capability; it creates no scheduler
+or new root reservation. The child fits the parent's CPU, RAM and child-slot
+capacity and retains the candidate worker attempt, repository, workspace and
+original absolute deadline. Detached IDs, tokens or observations cannot replace
+the owner-issued resource handle. Public metadata excludes capability keys.
+
+The optional `resources=` argument on native candidate admission joins this
+handle to the exact new worker attempt. Native owner checks authenticate the
+parent and child keys against locked scheduler state, retain immutable capacity
+and ancestry, and observe cancellation, release, expiry and policy drift. These
+checks accompany task/run/source checks before birth and input delivery; a
+resource-only closing check follows late native observers. The candidate
+dispatch broker therefore also refuses delivery if the selected resource scope
+has been cancelled. The existing host route without this explicit selection
+retains its unreserved status.
+
+The launcher applies the admitted CPU thread environment to its literal child
+and refuses conflicting declarations. It polls resource cancellation in bounded
+`communicate` waits, supplies the prompt exactly once, and continues subsequent
+waits without another input write. Every wait stays within the original deadline.
+Neither cancellation nor a later refusal authorizes another candidate child.
+
+Resource retirement occurs after actual child reap, the caller's descendant
+cleanup, complete broker closure and the immutable worker census. It publishes
+a separate private quiescence record before keyed native release, refuses live
+native consumers beneath the leaf, and verifies actual leaf removal rather than
+treating a release acknowledgement as freed capacity. A scope that never
+attempted birth can be aborted explicitly; its gate is consumed before release.
+
+Failed cleanup, missing census publication, uncertain birth and failed resource
+publication retain strong owner custody. For a known child,
+`recover_retirement(cleanup=...)` runs the existing owner cleanup operation,
+checks actual child and broker quiescence again, and writes a separate immutable
+resource record. Historical census flags remain unchanged. Partial publications
+remain in place; bounded nonce filenames let a fresh recovery publish its own
+witness without adopting or overwriting an uncertain file. Reentrant retirement
+is refused, including a suppressed recursive attempt inside cleanup. Unknown
+births without an actual process handle remain unresolved.
+If construction fails before any launch is admitted, the factory aborts its
+proven-unstarted sublease. A failed abort preserves the original error and
+attaches the live owner handle for explicit cleanup.
+
+This is cooperative admission accounting, not CPU/RAM cgroup enforcement. The
+declared child budget must cover the selected command's subprocess needs.
+Strong pending custody protects a live owner process; it does not qualify
+supervisor-death recovery while external children survive. The deployed wrapper
+ownership crossing, original production deadline, writable-allocation delegation
+and explicit two-child policy still require their separate integration. This
+increment enables none of those deployment defaults and measures no token saving.
+
+Qualification passes the existing validation parent's real capability to the
+owner test process through a sealed private descriptor. Tests acquire genuine
+nested capacity beneath it, preserve the scheduler policy and original root
+charge, and keep that descriptor out of worker inheritance and model input.
+They exercise native authority, actual local children, cancellation during
+waiting, failed and partial publication, explicit recovery, and the existing
+candidate route. Deployment UID/path admission remains authored, and no provider
+model or target code runs. Results and explicit limits are retained in
+[qualification.json](evidence/native-candidate-resources-20261015/qualification.json).

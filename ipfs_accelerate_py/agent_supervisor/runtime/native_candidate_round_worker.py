@@ -38,7 +38,9 @@ def _environment(value):
         and sum(len(key.encode()) + len(item.encode()) for key, item in value.items()) <= 131072,
         "bounded explicit candidate child environment required")
     forbidden = (*DATABASE_PROGRAM_ENV_NAMES, *STATE_CREDENTIAL_ENV_NAMES,
-        "IPFS_ACCELERATE_AGENT_STATE_OWNER_TOKEN")
+        "IPFS_ACCELERATE_AGENT_STATE_OWNER_TOKEN",
+        "IPFS_ACCELERATE_VALIDATION_RESOURCE_PARENT_FD",
+        "IPFS_ACCELERATE_VALIDATION_RESOURCE_PARENT_SHA256")
     _need(not any(name in value for name in forbidden),
         "candidate child environment contains native database authority")
     return dict(value)
@@ -88,6 +90,14 @@ def run_native_candidate_round_worker(*, admission, source_broker, command,
         "candidate output requires owner streams rather than an unbounded pipe")
     literal = _command(command)
     environment = _environment(environment)
+    resources = admission.resources
+    if resources is not None:
+        from .native_candidate_round_resources import NativeCandidateRoundResources
+        NativeCandidateRoundResources.bind_broker(resources, source_broker)
+        for name, value in NativeCandidateRoundResources.thread_environment(resources).items():
+            _need(name not in environment or environment[name] == value,
+                "candidate environment conflicts with its resource thread declaration")
+            environment[name] = value
     prompt = admission.candidate_prompt
     attempt = admission.worker_attempt
     process = None
@@ -113,7 +123,25 @@ def run_native_candidate_round_worker(*, admission, source_broker, command,
         remaining = prompt._snapshot._absolute_deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("original candidate worker deadline exhausted")
-        process.communicate(input=prompt.provider_prompt, timeout=remaining)
+        if resources is None:
+            process.communicate(input=prompt.provider_prompt, timeout=remaining)
+        else:
+            # communicate() retains its partial write state across timeouts.
+            # Supply the complete prompt once; retries continue with no input.
+            supplied = False
+            while True:
+                if NativeCandidateRoundResources.poll(resources):
+                    raise RuntimeError("candidate resource reservation cancelled while waiting")
+                remaining = min(prompt._snapshot._absolute_deadline - time.monotonic(),
+                    NativeCandidateRoundResources.remaining(resources))
+                if remaining <= 0:
+                    raise TimeoutError("original candidate worker deadline exhausted")
+                try:
+                    process.communicate(input=None if supplied else prompt.provider_prompt,
+                        timeout=min(1.0, remaining))
+                    break
+                except subprocess.TimeoutExpired:
+                    supplied = True
         waited = True
         returncode = process.returncode
     except BaseException as error:
@@ -150,6 +178,16 @@ def run_native_candidate_round_worker(*, admission, source_broker, command,
             try:
                 attempt.finish(waited=waited, cleanup_succeeded=cleanup_succeeded,
                     brokers_closed=brokers_closed)
+            except BaseException as error:
+                if pending is None:
+                    pending = error
+        if resources is not None:
+            try:
+                if process is not None:
+                    NativeCandidateRoundResources.finish_retirement(resources)
+                elif not admission._state.spawn_started:
+                    NativeCandidateRoundResources.abort_unstarted(resources)
+                # Unknown process-creation outcomes retain their capacity.
             except BaseException as error:
                 if pending is None:
                     pending = error
