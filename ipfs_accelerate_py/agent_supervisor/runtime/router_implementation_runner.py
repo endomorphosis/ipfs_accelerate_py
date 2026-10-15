@@ -328,7 +328,8 @@ RUNNER_FAILURE_FILES = frozenset({
     "router_public_instruction.py", "local_planning_admission.py",
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
     "semantic_metadata_view.py", "semantic_instruction_view.py",
-    "semantic_metadata_census.py", "semantic_working_set.py",
+    "semantic_metadata_census.py", "semantic_working_set.py", "semantic_working_set_census.py",
+    "inline_evidence_projection.py", "semantic_pack_census.py",
     "source_formalization_context.py",
     "numerical_obligation_client.py", "source_lookup_worker_client.py", "worker_source_client.py",
     "candidate_dispatch_context.py", "candidate_reply_contract.py", "worker_candidate_round_client.py",
@@ -562,6 +563,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_metadata_token_counter: SemanticMetadataTokenCounter | None = None,
         census_only: bool = False,
         working_set_census_only: bool = False,
+        working_set_census_schema: str = "router-semantic-working-set-census@1",
         coding_reply_mode: str = "legacy",
         doctor_residual_artifact: Path | None = None,
         doctor_residual_sha256: str = "", doctor_residual_task_cid: str = "",
@@ -665,6 +667,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("explicit Boolean census selection required")
     if type(working_set_census_only) is not bool:
         raise ValueError("explicit Boolean working-set census selection required")
+    from .semantic_working_set_census import validate_census_schema
+    validate_census_schema(working_set_census_schema, census_only=working_set_census_only)
     if working_set_census_only and (census_only or semantic_working_set != "capsule-references@1"
             or semantic_metadata_token_counter is not None):
         raise ValueError("working-set census requires its separate explicit capsule reference profile")
@@ -957,6 +961,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if coding_reply_mode != "legacy" and model_prompt == candidate_model:
             coding_reply_receipt = candidate_reply
     working_set_receipt = None
+    native_working_set_model_prompt = model_prompt
     if semantic_working_set != "legacy":
         failure_phase = "semantic_working_set"
         from .semantic_working_set import project_semantic_working_set, select_working_set
@@ -1007,6 +1012,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             workspace=root, provider=provider, components=semantic_component_census,
             source_receipt=source_receipt, preflight=preflight, advisory=advisory,
             boundary_sha256=container_boundary_sha256, reply=coding_reply_receipt,
+            **({"census_schema": working_set_census_schema,
+                "native_model_prompt": native_working_set_model_prompt}
+                if working_set_census_schema != "router-semantic-working-set-census@1" else {}),
             formalization=formalization_receipt, doctor=residual_receipt, public=instruction_receipt)
         return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     if census_only:
@@ -1461,6 +1469,9 @@ def main():
                         help="Check the complete metadata view and emit only census metadata before provider dispatch")
     parser.add_argument("--semantic-working-set-census-only", action="store_true",
                         help="Measure capsule-reference input with authenticated preflight and no provider allocation")
+    parser.add_argument("--semantic-working-set-census-schema", default="router-semantic-working-set-census@1",
+                        choices=["router-semantic-working-set-census@1", "router-semantic-working-set-census@2"],
+                        help="Extended census also measures independent inline evidence and pack components")
     parser.add_argument("--coding-reply-mode", default="legacy",
                         choices=["legacy", "ordinary-completion@1"])
     parser.add_argument("--doctor-residual-artifact", type=Path)
@@ -1499,6 +1510,8 @@ def main():
                         grok_coding_max_turns=args.grok_coding_max_turns,
                         census_only=args.semantic_metadata_census_only,
                         working_set_census_only=args.semantic_working_set_census_only,
+                        **({"working_set_census_schema": args.semantic_working_set_census_schema}
+                            if args.semantic_working_set_census_schema != "router-semantic-working-set-census@1" else {}),
                         coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,
                         doctor_residual_sha256=args.doctor_residual_sha256,

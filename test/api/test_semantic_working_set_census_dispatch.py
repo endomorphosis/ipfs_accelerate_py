@@ -329,3 +329,69 @@ def test_cli_stale_source_failure_exports_only_closed_diagnostic(dispatch, monke
     assert diagnostic["schema"] == "router-implementation-error@2"
     assert diagnostic["diagnostic"]["provider_dispatch_observed"] is None
     assert calls == []
+
+
+@pytest.mark.parametrize("reply_mode", ["legacy", "ordinary-completion@1"])
+def test_extended_census_measures_independent_inline_input_with_exact_original_wrappers(
+        dispatch, monkeypatch, reply_mode):
+    from ipfs_accelerate_py.agent_supervisor.runtime import semantic_working_set_census as exporter
+    from ipfs_accelerate_py.agent_supervisor.runtime import inline_evidence_projection as inline
+    service, (_, calls), args = dispatch
+    forbid_provider(monkeypatch)
+    _, old = _census(args, coding_reply_mode=reply_mode)
+    original = exporter.working_set_census_receipt
+    captured = {}
+    def capture(**kwargs):
+        captured.update(kwargs)
+        return original(**kwargs)
+    monkeypatch.setattr(exporter, "working_set_census_receipt", capture)
+    output, result = _census(args, coding_reply_mode=reply_mode,
+        working_set_census_schema=exporter.EXTENDED_SCHEMA)
+    assert json.loads(output) == result and result["schema"] == exporter.EXTENDED_SCHEMA
+    assert set(result) - set(old) == {"inline_evidence_census", "semantic_pack_census"}
+    assert result["census"] == old["census"]
+    assert result["semantic_prompt_components"] == old["semantic_prompt_components"]
+    observation = result["inline_evidence_census"]
+    assert observation["exact_transport_inverse_verified"] is True
+    assert observation["dispatch_enabled"] is observation["composed_with_capsule_references"] is False
+    selected = inline.validate_selection_receipt(observation["selection"])
+    for suffix in ("_bytes", "_sha256"):
+        assert selected["native_complete" + suffix] == old["census"]["native_complete" + suffix]
+    # This fixture has no supported required artifact groups. The extra view
+    # overhead must produce a fallback, not a fabricated compression result.
+    assert selected["view_receipt"]["artifact_count"] == 0
+    assert selected["selected_mode"] == "legacy"
+    view = inline.project_inline_evidence(captured["encoded"])
+    assert inline.restore_inline_evidence(view.provider_prompt, view.receipt) == captured["encoded"].provider_prompt
+    assert result["semantic_pack_census"]["pack_object"]["object_bytes"] == (
+        result["semantic_prompt_components"]["translated_semantic"]["members"]["pack"]["value_bytes"])
+    assert original(**captured) == result
+    for value in (None, captured["native_model_prompt"] + " changed"):
+        with pytest.raises(ValueError):
+            original(**(captured | {"native_model_prompt": value}))
+    for private in (str(service.repository), str(service.workspace), service.prompt):
+        assert private not in output
+    assert calls == [] and result["provider_calls"] == result["router_calls"] == 0
+
+
+@pytest.mark.parametrize("schema", [None, True, "unknown", "router-semantic-working-set-census@2"])
+def test_census_schema_cannot_enable_a_generation_route(dispatch, monkeypatch, schema):
+    _, (_, calls), args = dispatch
+    forbid_provider(monkeypatch)
+    with pytest.raises(ValueError):
+        runner.run(**args, working_set_census_schema=schema)
+    assert calls == []
+
+
+def test_cli_extended_census_forwards_explicit_schema(dispatch, monkeypatch, capsys):
+    service, (_, calls), _ = dispatch
+    forbid_provider(monkeypatch)
+    monkeypatch.setattr("sys.argv", _cli(service, extra=("--semantic-working-set-census-schema",
+        "router-semantic-working-set-census@2")))
+    monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(service.prompt.encode())))
+    assert runner.main() == 0
+    captured = capsys.readouterr()
+    receipt = json.loads(captured.out)
+    assert captured.err == "" and receipt["schema"] == "router-semantic-working-set-census@2"
+    assert receipt["inline_evidence_census"]["dispatch_enabled"] is False
+    assert calls == []

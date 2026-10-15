@@ -402,6 +402,7 @@ def _run_working_set_census(*, state: Path, report: dict, provider_selection: di
     from .terminal_live_metadata_census import _identity
     from .terminal_source_view_policy import source_view_policy_argv
     from .terminal_working_set_census_observation import replay_working_set_census
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_working_set_census import EXTENDED_SCHEMA
     from .terminal_numerical_retrieval_observation import _parse
 
     if report["provider_invocations"] != []:
@@ -420,6 +421,7 @@ def _run_working_set_census(*, state: Path, report: dict, provider_selection: di
             "--model", provider_selection["model"], "--reasoning-effort", provider_selection["reasoning_effort"],
             "--purpose", "coding", "--timeout", str(timeout_seconds), "--max-output-tokens", "4096",
             "--semantic-working-set-census-only", "--semantic-working-set", "capsule-references@1",
+            "--semantic-working-set-census-schema", EXTENDED_SCHEMA,
             "--semantic-repository", str(options["semantic_repository"]),
             "--source-view-profile", source_view_profile, "--coding-reply-mode", coding_reply_mode]
         command += source_view_policy_argv(source_view_policy, profile=source_view_profile)
@@ -444,6 +446,7 @@ def _run_working_set_census(*, state: Path, report: dict, provider_selection: di
         source_observation = replay_working_set_census(prepared=prepared, observed=observed,
             deployment=deployment, provider_selection=provider_selection, source_view_profile=source_view_profile,
             source_view_policy=source_view_policy,
+            census_schema=EXTENDED_SCHEMA,
             source_audit_paths=sorted(set(audit_parent.glob("source-view-*-audit.json")) - before))
         metadata["retained_owner_planning_receipt_join_verified"] = True
     # Publish success only after current owner/source rechecks and allocation cleanup.

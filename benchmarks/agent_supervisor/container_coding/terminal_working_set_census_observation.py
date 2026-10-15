@@ -24,12 +24,15 @@ def _need(condition):
 
 
 def replay_working_set_census(*, prepared, observed, deployment, provider_selection,
-        source_view_profile, source_view_policy, source_audit_paths):
+        source_view_profile, source_view_policy, source_audit_paths,
+        census_schema="router-semantic-working-set-census@1"):
     from ipfs_accelerate_py.agent_supervisor.runtime import worker_source_client as source
     from ipfs_accelerate_py.agent_supervisor.runtime import worker_source_request_observation as operations
     from ipfs_accelerate_py.agent_supervisor.runtime import semantic_router_translation as codec
     from ipfs_accelerate_py.agent_supervisor.runtime import semantic_working_set as working
-    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_working_set_census import working_set_census_receipt
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_working_set_census import (
+        working_set_census_receipt, validate_census_schema, SCHEMA,
+    )
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
     from ipfs_accelerate_py.agent_supervisor.runtime.coding_reply_contract import apply_coding_reply_contract
     from ipfs_accelerate_py.agent_supervisor.runtime.doctor_residual_context import load_doctor_residual_advisory
@@ -40,6 +43,8 @@ def replay_working_set_census(*, prepared, observed, deployment, provider_select
     from .terminal_live_census_provenance import _worker_boundary
     from .terminal_source_view_policy import source_view_observation
 
+    validate_census_schema(census_schema)
+    _need(type(observed) is dict and observed.get("schema") == census_schema)
     options = prepared["runner_kwargs"]
     repository, workspace = prepared["repository"], prepared["workspace"]
     # This validates the independently qualified deployment and allocated scope;
@@ -147,6 +152,7 @@ def replay_working_set_census(*, prepared, observed, deployment, provider_select
         components=codec.census_semantic_router_prompt(encoded=encoded, census_schema=codec.DETAILED_COMPONENT_CENSUS_SCHEMA),
         source_receipt=source_receipt, preflight=preflight, advisory=advisory,
         boundary_sha256=boundary["manifest_sha256"], reply=candidate_reply if selected else native_reply,
+        **({"census_schema": census_schema, "native_model_prompt": native} if census_schema != SCHEMA else {}),
         formalization=formalization, doctor=residual_receipt, public=instruction_receipt)
     _need(source.canonical_json(expected) == source.canonical_json(observed))
     return dict(schema="terminal-working-set-census-source-observation@1", observation_only=True,

@@ -34,14 +34,34 @@ intelligence_index.discover_available_providers=forbidden
 intelligence_index.select_efficient_route=forbidden
 llm_router.get_llm_provider=forbidden
 llm_router.generate_text=forbidden
-output,receipt=router.run(**dict(kwargs,semantic_working_set='capsule-references@1',working_set_census_only=True))
+output,receipt=router.run(**dict(kwargs,semantic_working_set='capsule-references@1',working_set_census_only=True,
+    working_set_census_schema=config['census_schema']))
 assert not calls
 print(output)
 '''
 
 
 @pytest.mark.parametrize("expanded_module", [False, True])
-def test_owner_replays_exact_census_and_closed_source_accounting(tmp_path, monkeypatch, expanded_module):
+@pytest.mark.parametrize("census_schema", ["router-semantic-working-set-census@1", "router-semantic-working-set-census@2"])
+def test_owner_replays_exact_census_and_closed_source_accounting(tmp_path, monkeypatch, expanded_module, census_schema):
+    if census_schema.endswith("@2"):
+        # The public fixture normally supplies only semantic references. Add
+        # authored required artifacts through its real compiler before custody
+        # capture. This tests nonempty inline objects, not learned inference.
+        build = fixture.build_text_context_references
+        def required_artifacts(*args, **kwargs):
+            references = list(build(*args, **kwargs))
+            for kind, prefix, body in (
+                    ("intent-world-context", "intent-world", {"schema": "authored-world@1",
+                        "advice": 'café 世界 \\ "\n' * 700, "proof_authority": False}),
+                    ("code-retrieval-context", "code-retrieval", {"schema": "authored-retrieval@1",
+                        "hits": [{"score": .125, "description": "Preserve public eigenpair requirements"}]})):
+                text = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                references.extend(build(text, reference_prefix=prefix, kind=kind,
+                    path=".runtime/" + prefix + "-authored.json", required=True, chunk_bytes=6144,
+                    repository_id=kwargs["repository_id"], tree_id=kwargs["tree_id"]))
+            return tuple(references)
+        monkeypatch.setattr(fixture, "build_text_context_references", required_artifacts)
     if expanded_module:
         # Additional real numerical helpers, admitted and indexed before capture.
         monkeypatch.setattr(authored, "REFERENCE_SOURCE", authored.REFERENCE_SOURCE + '''
@@ -74,7 +94,7 @@ def normalize_vector(vector):
             for name in ("ipfs_datasets_py", "ipfs_kit_py")]
         _peer_seam(monkeypatch, broker, source)
         config = _config(broker, launch, imports, 1)
-        config.update(profile=broker._binding["profile"], public_artifact=str(native.public_request["artifact"]),
+        config.update(census_schema=census_schema, profile=broker._binding["profile"], public_artifact=str(native.public_request["artifact"]),
             public_sha256=native.public_request["expected_sha256"])
         launch.reserve_first_attempt([*owner._PREFIX, *argv, *broker.extra_argv])
         process = subprocess.Popen([sys.executable, "-I", "-c", _child(), json.dumps(config)],
@@ -89,6 +109,12 @@ def normalize_vector(vector):
                 process.wait(timeout=5)
             owner.retire_coding_worker(launch=launch, process=process, source_broker=broker)
         observed = json.loads(stdout)
+        assert observed["schema"] == census_schema
+        if census_schema.endswith("@2"):
+            assert observed["inline_evidence_census"]["dispatch_enabled"] is False
+            assert observed["inline_evidence_census"]["selection"]["view_receipt"]["artifact_count"] == 2
+            assert observed["inline_evidence_census"]["selection"]["selected_mode"] == "inline-evidence-objects@1"
+            assert observed["semantic_pack_census"]["raw_content_exported"] is False
         assert observed["census"]["selected_mode"] == ("capsule-references@1" if expanded_module else "legacy")
         prompt = tmp_path / "owner-prompt.txt"
         prompt.write_text(broker.prompt)
@@ -103,13 +129,21 @@ def normalize_vector(vector):
         deployment = {"qualification": {"permission_evidence": {"boundary": boundary}}}
         kwargs = dict(prepared=prepared, observed=observed, deployment=deployment,
             provider_selection=resolve_provider_profile(GROK_PROFILE), source_view_profile=broker._binding["profile"],
-            source_view_policy=None, source_audit_paths=[broker.audit_path])
+            source_view_policy=None, source_audit_paths=[broker.audit_path], census_schema=census_schema)
         result = replay.replay_working_set_census(**kwargs)
         assert result["complete_input_replayed"] and result["closed_observation_replayed"]
         assert result["source_session_requests"] == int(expanded_module)
         assert result["provider_input_bytes"] == result["provider_calls"] == 0
         assert result["source_session_stopped"] and result["source_session_accounting_complete"]
         assert result["provider_tokens"] is None
+        if census_schema.endswith("@2"):
+            for section in ("inline_evidence_census", "semantic_pack_census"):
+                changed = deepcopy(observed)
+                changed[section]["private_extra"] = "not-closed"
+                with pytest.raises(ValueError):
+                    replay.replay_working_set_census(**(kwargs | {"observed": changed}))
+            with pytest.raises(ValueError):
+                replay.replay_working_set_census(**(kwargs | {"census_schema": "router-semantic-working-set-census@1"}))
         for path, value in [(("census", "native_complete_bytes"), 1),
                 (("census", "selected_complete_bytes"), 1), (("provider_calls",), 1),
                 (("native_prompt_sha256",), "a" * 64), (("private_extra",), "private-owner-content")]:

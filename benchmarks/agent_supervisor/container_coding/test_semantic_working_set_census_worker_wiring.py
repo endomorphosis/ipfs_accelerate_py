@@ -91,3 +91,24 @@ def test_installed_grok_worker_preserves_eight_turn_control_without_entering_pro
 def test_census_only_flag_cannot_select_a_plain_worker_route():
     code, events = _worker_parser_and_route([FLAG])
     assert isinstance(code, str) and events == []
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_extended_schema_requires_census_only_and_is_forwarded_once(enabled):
+    flag, schema = "--semantic-working-set-census-schema", "router-semantic-working-set-census@2"
+    args = _arguments() + [flag, schema] + ([FLAG] if enabled else [])
+    code, events = _worker_parser_and_route(args)
+    if not enabled:
+        assert isinstance(code, str) and events == []
+    else:
+        assert code == 0 and events[0] == ("custody",)
+        argv = events[1][1]
+        assert argv.count(flag) == 1 and argv[argv.index(flag) + 1] == schema
+
+
+def test_installed_worker_forwards_extended_schema(tmp_path):
+    flag, schema = "--semantic-working-set-census-schema", "router-semantic-working-set-census@2"
+    result = worker_run(tmp_path, _arguments() + [FLAG, flag, schema])
+    assert result.returncode == 0, result.stderr.decode()
+    argv = json.loads(result.stdout)["argv"]
+    assert argv.count(flag) == 1 and argv[argv.index(flag) + 1] == schema

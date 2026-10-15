@@ -249,6 +249,7 @@ parser.add_argument('--semantic-metadata-view',choices=['legacy','common-binding
 parser.add_argument('--semantic-working-set',choices=['legacy','capsule-references@1'],default='legacy')
 parser.add_argument('--semantic-metadata-census-only',action='store_true')
 parser.add_argument('--semantic-working-set-census-only',action='store_true')
+parser.add_argument('--semantic-working-set-census-schema',choices=['router-semantic-working-set-census@1','router-semantic-working-set-census@2'],default='router-semantic-working-set-census@1')
 parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion@1'],default='legacy')
 parser.add_argument('--doctor-candidate-artifact',type=pathlib.Path)
 parser.add_argument('--doctor-candidate-sha256')
@@ -310,6 +311,7 @@ if any(formalization_values) and (not all(formalization_values) or args.semantic
 if args.semantic_metadata_view!='legacy' and (args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('metadata view requires original semantic router coding')
 if args.semantic_working_set!='legacy' and (args.source_view_profile=='disabled' or args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.semantic_metadata_view!='legacy' or args.semantic_metadata_census_only or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('working set requires original semantic router coding with source retrieval')
 if args.semantic_working_set_census_only and (args.semantic_working_set!='capsule-references@1' or args.semantic_metadata_census_only or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('working-set census requires its separate capsule reference route')
+if args.semantic_working_set_census_schema!='router-semantic-working-set-census@1' and not args.semantic_working_set_census_only:raise SystemExit('extended census requires explicit census-only mode')
 if args.semantic_metadata_census_only and args.semantic_metadata_view not in ('common-bindings@1','common-bindings-instruction@1'):raise SystemExit('metadata census requires common bindings')
 if args.semantic_transport_schema!='supervisor-semantic-router-input@1' and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('controller dictionary transport requires semantic router coding')
 if args.coding_reply_mode!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('ordinary completion requires semantic Codex router coding')
@@ -379,6 +381,7 @@ else:
  if args.semantic_working_set!='legacy':sys.argv+=['--semantic-working-set',args.semantic_working_set]
  if args.semantic_metadata_census_only:sys.argv+=['--semantic-metadata-census-only']
  if args.semantic_working_set_census_only:sys.argv+=['--semantic-working-set-census-only']
+ if args.semantic_working_set_census_schema!='router-semantic-working-set-census@1':sys.argv+=['--semantic-working-set-census-schema',args.semantic_working_set_census_schema]
  if args.coding_reply_mode!='legacy':sys.argv+=['--coding-reply-mode',args.coding_reply_mode]
  if args.doctor_residual_artifact is not None:sys.argv+=['--doctor-residual-artifact',str(args.doctor_residual_artifact),'--doctor-residual-sha256',args.doctor_residual_sha256,'--doctor-residual-task-cid',args.doctor_residual_task_cid]
  if args.public_instruction_artifact is not None:sys.argv+=['--public-instruction-artifact',str(args.public_instruction_artifact),'--public-instruction-sha256',args.public_instruction_sha256,'--public-instruction-task-cid',args.public_instruction_task_cid]

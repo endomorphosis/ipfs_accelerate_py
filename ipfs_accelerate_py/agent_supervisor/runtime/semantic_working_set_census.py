@@ -15,6 +15,18 @@ from .semantic_router_translation import (
     EncodedSemanticPrompt, census_semantic_router_prompt, DETAILED_COMPONENT_CENSUS_SCHEMA,
 )
 
+SCHEMA = "router-semantic-working-set-census@1"
+EXTENDED_SCHEMA = "router-semantic-working-set-census@2"
+SCHEMAS = (SCHEMA, EXTENDED_SCHEMA)
+
+
+def validate_census_schema(value, *, census_only=True):
+    if type(value) is not str or value not in SCHEMAS:
+        raise ValueError("unsupported working-set census schema")
+    if value != SCHEMA and census_only is not True:
+        raise ValueError("extended working-set measurements require census-only mode")
+    return value
+
 
 def _json(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
@@ -35,8 +47,11 @@ def _require_sha256(value):
 
 def working_set_census_receipt(*, selection, encoded, prompt, model, workspace, provider,
         components, source_receipt, preflight, advisory, boundary_sha256, reply,
-        formalization, doctor, public):
+        formalization, doctor, public, census_schema=SCHEMA, native_model_prompt=None):
     """Export fixed labels, counts and hashes; retain identifiers only as hashes."""
+    validate_census_schema(census_schema)
+    if census_schema == SCHEMA and native_model_prompt is not None:
+        raise ValueError("original working-set census does not accept extended measurements")
     if type(provider) is not str or provider not in {"codex_cli", "grok_cli"}:
         raise ValueError("working-set census requires a supported provider label")
     _require_sha256(boundary_sha256)
@@ -113,7 +128,7 @@ def working_set_census_receipt(*, selection, encoded, prompt, model, workspace, 
         candidate_complete_byte_reduction=chosen["native_complete_bytes"] - chosen["candidate_complete_bytes"],
         behavioral_fields_deferred=False, raw_source_deferred=False, complete_expansion_verified=False,
         provider_token_usage=None, token_estimate=False, complete_run_token_savings_claimed=False)
-    result = dict(schema="router-semantic-working-set-census@1", purpose="coding", observation_only=True,
+    result = dict(schema=census_schema, purpose="coding", observation_only=True,
         provider=provider, model_sha256=_sha(model), workspace_identity_sha256=_sha(str(workspace)),
         native_prompt_sha256=_sha(prompt), native_prompt_bytes=len(prompt.encode()),
         container_boundary_artifact_sha256=boundary_sha256,
@@ -134,6 +149,31 @@ def working_set_census_receipt(*, selection, encoded, prompt, model, workspace, 
         source_freshness_authority=False, proof_authority=False, execution_authority=False,
         completion_authority=False, settlement_authority=False, publication_authority=False,
         required_fact_omission_authority=False)
+    if census_schema == EXTENDED_SCHEMA:
+        from .inline_evidence_projection import (
+            project_inline_evidence, restore_inline_evidence, select_inline_evidence,
+        )
+        from .semantic_pack_census import census_semantic_pack
+        if (type(native_model_prompt) is not str
+                or len(native_model_prompt.encode()) != chosen["native_complete_bytes"]
+                or _sha(native_model_prompt) != chosen["native_complete_sha256"]
+                or native_model_prompt.count(encoded.provider_prompt) != 1):
+            raise ValueError("extended census requires the exact original complete input")
+        inline = project_inline_evidence(encoded)
+        if restore_inline_evidence(inline.provider_prompt, inline.receipt) != encoded.provider_prompt:
+            raise ValueError("inline evidence inverse differs from original transport")
+        prefix, suffix = native_model_prompt.split(encoded.provider_prompt)
+        candidate = prefix + inline.provider_prompt + suffix
+        selected = select_inline_evidence(inline, native_model_prompt, candidate)
+        result["inline_evidence_census"] = dict(
+            schema="supervisor-inline-evidence-census@1", observation_only=True,
+            comparison_basis="original-complete-input-with-identical-wrappers@1",
+            composed_with_capsule_references=False, dispatch_enabled=False,
+            exact_transport_inverse_verified=True, selection=selected.receipt,
+            provider_calls=0, provider_tokens=None, token_savings_claimed=False,
+            proof_authority=False, omission_authority=False, execution_authority=False,
+            completion_authority=False, raw_content_exported=False)
+        result["semantic_pack_census"] = census_semantic_pack(encoded=encoded)
     if len(_json(result).encode()) > 32768:
         raise ValueError("working-set census exceeds its closed output bound")
     return result
