@@ -5,6 +5,11 @@ spending on a new benchmark comparison. The census measures the complete coding
 input and its exactly restorable metadata view. General planning and
 `llm_router` remain part of the live benchmark.
 
+The separate [capsule-reference census](terminal_working_set_census.md) now
+measures the existing working-set profile before provider allocation. Its
+router and installed-worker route is qualified; a declared-plan integration
+in the Terminal Bench owner driver remains pending.
+
 The separate [prepared-input displacement observer](representation_displacement.md)
 joins the ordinary opt-in metadata/instruction selection to exact transport and
 wrapper spans. It records a prepared replacement without changing this census's

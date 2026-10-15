@@ -1,0 +1,16 @@
+{
+  "base_commit": "434d007ca454b0235ff0387c0d6be77f44c07c23",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py": "9b35e7df98aae4a323520ee0d4e370f4205605029bc5ae47861afa8cee3a3d73",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py": "6ac3e3aca2d48974eca90927ef5a4416cd6cb39d5405aa370ce01c97ae530a0b",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "d038cbc4bd538af3edf0e85d8ba4712b4038ab574ec7c2ae00485dbedfea9941",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": "c6b080eaa9f75af5994f9ef642a91aad9b89f42457763fa7b1a4908972623c1d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set_census.py": "b17d9508ca597c5db2e2550ea5fdc6c38497a3e45e8e434f34125b147e104c4f",
+    "test/api/test_semantic_component_census_v2.py": "93183044e35d4095de38a1e4c1b379a749cbf332c2e465705e22ef33333be2a9",
+    "test/api/test_semantic_metadata_census_dispatch.py": "d726d922306c4e8d24e3419a852b83bcc77a24fa530bb23021132da2c141ad57",
+    "test/api/test_semantic_working_set.py": "9ecdfae9908a7c639a34c0e46087111efe0b96433c62f56d83ac509beea47fd8",
+    "test/api/test_semantic_working_set_census_dispatch.py": "d67a6a664e9aac924989118d5613d7507bd765c44bb2526f9cafe9d12e9fb36c",
+    "test/api/test_semantic_working_set_dispatch.py": "427248e229ddcbc3635159be9834feae91fb1ecd5ac7c451acb6c114ace49c6a",
+    "test/api/test_semantic_working_set_native.py": "91e01f992970f7c5989f77453e4b1f2565c458a4a5215e2925cab830a59d4031"
+  }
+}

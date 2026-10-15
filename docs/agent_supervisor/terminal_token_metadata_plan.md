@@ -1473,3 +1473,27 @@ dropping arbitrary required world-model or formalization evidence.
 [Qualification, closed live results, and next-step source analysis](evidence/candidate-prompt-projection-20261015/manifest.json)
 retain both development failures and the final evidence without replacing prior
 results or upgrading missing usage into a verified total.
+
+## First-input working-set census qualification (2026-10-15)
+
+The additive router census and installed worker flag are implemented in
+`5c1ab44ede`. They use the normal complete-input selector and authenticated
+capsule preflight, returning before provider discovery or allocation. A closed
+component census `@2` separates additional known semantic fields and
+intent/world/retrieval evidence while retaining the old default `@1` output.
+
+The [qualified measurements](terminal_working_set_census.md) show the limit of
+this representation: the native indexed public/Doctor fixture would grow from
+23,202 to 23,249 bytes, so it correctly retains the original input. Another
+dispatch fixture saves 1,603 bytes. Complete capsule retrieval, exact inverse,
+required-field preservation, stale-source refusal and census/input identity
+passed. The final 235 tests passed with unchanged source and dependency pins;
+no live provider calls were made.
+
+The remaining first-input pilot prerequisite is a declared-plan census profile
+in the Terminal Bench owner driver. Its current metadata census requires an
+actual model-generated planning invocation and cannot truthfully represent a
+zero-call declared plan. Preserve that contract while adding the explicit
+profile, then collect current public-task component measurements and count
+retrieval exposure in any subsequent live comparison. No new benchmark reward
+or total token saving is established by these fixture results.
