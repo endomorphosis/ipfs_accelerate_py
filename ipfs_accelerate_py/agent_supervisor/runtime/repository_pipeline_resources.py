@@ -26,6 +26,9 @@ from .repository_process_limits import RepositoryProcessLimits
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_daemon_resources import (
     DaemonResourceReservation, DaemonResourceError,
 )
+from ipfs_datasets_py.optimizers.logic_theorem_optimizer.parented_phase_resources import (
+    ParentedPhaseResourceReservation,
+)
 from ipfs_datasets_py.logic.backends.codebase_process import (
     BoundedToolRunner, SubprocessExecutor, ToolRunLimits, _terminate_process_tree,
 )
@@ -179,9 +182,9 @@ class PipelinePhase:
         self._live()
         return self.native.thread_environment()
 
-    def check_usage(self):
+    def check_usage(self, *, full=False):
         self._live()
-        usage = self.daemon.check_usage(self.attempt)
+        usage = self.daemon.check_usage(self.attempt, full=full)
         if usage["process_slot_estimate_exceeded"]:
             raise DaemonResourceError("sampled child process count exceeds phase capacity")
         return usage
@@ -420,7 +423,10 @@ class RepositoryPipelineReservation:
             native_context = self.parent.phase(demand)
             native = native_context.__enter__()
             native_entered = True
-            daemon = DaemonResourceReservation(self.ledger_path, roots=self.roots,
+            daemon = ParentedPhaseResourceReservation(self.ledger_path, roots=self.roots,
+                attempt_directory=attempt,
+                scheduler_state_path=self.parent.shared.state_path,
+                expected_scheduler_policy_sha256=self.parent.policy_sha256,
                 storage_bytes=demand.disk_bytes, memory_mb=demand.memory_mb,
                 cpu_slots=demand.cpu_slots, child_process_slots=demand.process_slots,
                 timeout_seconds=self.parent.remaining(), ledger_lock_timeout_seconds=min(5, self.parent.remaining()),
@@ -483,6 +489,17 @@ class RepositoryPipelineReservation:
             if retained_context and exit_info[0] is None:
                 raise RepositoryResourceError("live consumer retained; host and disk reservations require explicit reap")
 
+    def reap_retained(self, reservation_id, *, artifacts_durable=False):
+        """Drain this original stopped owner after outer cancellation/expiry.
+
+        No productive phase or new host grant is acquired. Both actual native
+        consumers and the recorded OS group must already have stopped.
+        """
+        with self._condition:
+            _require(self._outer_exited and self._closed,
+                     "stopped recovery requires the original outer context to exit")
+            return self._recover(reservation_id, artifacts_durable=artifacts_durable)
+
     def _recover(self, reservation_id, *, artifacts_durable):
         with self._condition:
             _require(reservation_id in self._retained, "unknown retained disk reservation")
@@ -526,18 +543,36 @@ class RepositoryPipelineResources:
         self.bridge = RepositoryResourceBridge(supervisor)
 
     @contextmanager
-    def reserve(self, *, repository_id, workspace, budget, policy, ledger_path, roots, cancel_event=None, recovery_only=False):
+    def reserve(self, *, repository_id, workspace, budget, policy, ledger_path, roots,
+                scheduler_state_path, expected_scheduler_policy_sha256,
+                cancel_event=None, recovery_only=False):
         _require(type(policy) is PipelineResourcePolicy, "exact pipeline policy required")
         policy.validate(budget)
         roots = tuple(Path(root).absolute() for root in roots)
-        # Canonical constructor validates roots/ledger without reserving capacity.
-        DaemonResourceReservation(ledger_path, roots=roots, storage_bytes=budget.disk_bytes,
-            memory_mb=budget.memory_mb, cpu_slots=budget.cpu_slots, child_process_slots=budget.process_slots)
+        # Bound waiting Python owners before entering either metadata lock.
+        # Preflight and host admission consume the same original request deadline.
+        deadline = time.monotonic() + budget.wall_time_ms / 1000
         token = _claim_lifecycle(recovery_only)
         pipeline = None
         try:
+            from ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler import open_existing_scheduler
+            open_existing_scheduler(scheduler_state_path, expected_scheduler_policy_sha256)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import LeaseTimeoutError
+                raise LeaseTimeoutError("repository envelope expired during metadata admission")
+            disk_scope = DaemonResourceReservation(ledger_path, roots=roots, storage_bytes=budget.disk_bytes,
+                memory_mb=budget.memory_mb, cpu_slots=budget.cpu_slots, child_process_slots=budget.process_slots,
+                scheduler_state_path=scheduler_state_path,
+                expected_scheduler_policy_sha256=expected_scheduler_policy_sha256,
+                require_existing_ledger=True, ledger_lock_timeout_seconds=min(5, remaining))
+            with disk_scope._locked():
+                disk_scope._read()
             with self.bridge.reserve(repository_id=repository_id, workspace=workspace,
-                                     budget=budget, cancel_event=cancel_event) as parent:
+                                     budget=budget, cancel_event=cancel_event,
+                                     scheduler_state_path=scheduler_state_path,
+                                     expected_scheduler_policy_sha256=expected_scheduler_policy_sha256,
+                                     deadline_monotonic=deadline) as parent:
                 pipeline = RepositoryPipelineReservation(parent, policy, ledger_path, roots,
                     lifecycle_token=token, recovery_only=recovery_only)
                 try:
