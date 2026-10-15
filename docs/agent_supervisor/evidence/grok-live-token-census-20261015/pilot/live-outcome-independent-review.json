@@ -1,0 +1,122 @@
+{
+  "authorship_disclosure": "Reviewer authored census helper and cap-cancelled parser fix; independently reviewed launcher, root structured-route fix, and closed outcome joins.",
+  "blocking_findings": [],
+  "findings": [],
+  "limitations": [
+    "A native provider returned successfully; task completion still failed the separate owner/public/verifier gates.",
+    "Observed usage subtotals are not independently complete native or billing totals; reasoning is already separate and not added again.",
+    "Owner-private retained input artifacts were not exported for independent host replay; input and continuation joins use native in-container audits.",
+    "No source or provider text was examined. Equal generation checks establish no retained generation change, not absence of transient edits.",
+    "Declared planning instantiates a signed task shape and does not establish inferred semantic intent or discharged source proofs.",
+    "Broker source-byte accounting excludes direct native CLI source reads.",
+    "These single runs and changed runtime controls do not establish causal token or timing savings."
+  ],
+  "provider_calls_by_review": 0,
+  "raw_source_or_prompt_exported": false,
+  "repository_changes_by_review": 0,
+  "retained_outcome": {
+    "actual_child_returncodes": [
+      1,
+      0
+    ],
+    "candidate_component_census_status": "absent",
+    "complete_model_prompt_bytes": [
+      67380,
+      91839
+    ],
+    "complete_native_totals": {
+      "cache_write_input_tokens": null,
+      "cached_input_tokens": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "reasoning_output_tokens": null,
+      "total_tokens": null
+    },
+    "declared_planning_calls": 0,
+    "declared_planning_seconds": 4.391944996081293,
+    "first_component_partitions_identical_to_T": true,
+    "first_terminal": {
+      "duration_seconds": 122.22632871801034,
+      "events_after_final": 1,
+      "final_event_type": "max_turns_reached",
+      "final_reason_code": "max_turns",
+      "returncode": 1,
+      "stream_tainted": false
+    },
+    "input_audit": {
+      "all_observed_coding_inputs_verified": true,
+      "coding_receipts_seen": 2,
+      "prior_receipt_matches_reported": [],
+      "reason": "per_invocation_context_and_input_comparison",
+      "schema": "terminal-final-context-audit@1",
+      "status": "verified_all_observed_model_inputs",
+      "usable_coding_receipts": 2
+    },
+    "matched_accounting": "matched_round_receipts",
+    "observed_usage_subtotals": {
+      "cache_write_input_tokens": 0,
+      "cached_input_tokens": 197248,
+      "input_tokens": 102333,
+      "output_tokens": 11103,
+      "reasoning_output_tokens": 9270,
+      "total_tokens": 310684
+    },
+    "official_reward": 0.0,
+    "owner_returncode": 1,
+    "owner_validation_outcome": "inconclusive",
+    "public_check_statuses": [
+      [
+        "passed",
+        "passed",
+        "inconclusive"
+      ],
+      [
+        "passed",
+        "passed",
+        "inconclusive"
+      ]
+    ],
+    "second_cli": {
+      "exit_code": 0,
+      "num_turns": 1,
+      "stop_reason": "end_turn"
+    },
+    "second_round_retained_workspace_generation_unchanged": true,
+    "task_completed_reported": false,
+    "two_coding_router_calls_joined": true
+  },
+  "reviewed_inputs": [
+    {
+      "bytes": 79813,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/readout-final.json",
+      "sha256": "5e03e1499ba1ffd8cd42a313ae338af4d6ba8ebffbcb3bb5645aeca513777952"
+    },
+    {
+      "bytes": 18262,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/readout-summary.json",
+      "sha256": "99aba095fa0e65df12ec4f9563ec2268f081ba3ebf286fa60af34c1e9664dbe3"
+    },
+    {
+      "bytes": 1822,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/qualification.json",
+      "sha256": "2362310a745bdde79028c46ae4e1db487f4745ac0359ca3c4fcea79326047b32"
+    },
+    {
+      "bytes": 8387,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/repaired-X-readout.json",
+      "sha256": "876ef688e38877c39cd63879b468267c60de7206a7499cbbbcf6d791f18d01f2"
+    },
+    {
+      "bytes": 8387,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/declared-T-readout.json",
+      "sha256": "fe5227c6b5853a32a4d7a77ba8eebd6d860b7086c74d4e9f0f1282d85b4dccf0"
+    },
+    {
+      "bytes": 292,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/cleanup-observation.json",
+      "sha256": "336dd635d78c5d532d92d0ae1e0314507364705427e6b6e8a7be1409772bdb05"
+    }
+  ],
+  "runtime_commit": "9d6ef76c8e2bb6916b68cad3563c6ec530b32736",
+  "schema": "grok-repaired-live-independent-review@1"
+}

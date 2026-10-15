@@ -1289,3 +1289,83 @@ run; all selected current source hashes match. These are offline qualifications,
 not a new live score or retrospective recovery of discarded counters. The
 [retained model run](evidence/grok-coding-route-20261015/model-run-readout-final.json)
 continues to report missing coding usage honestly.
+
+## October 15: live router qualification and measured prompt overhead
+
+The fresh declared-contract trial used runtime commit
+`9d6ef76c8e2bb6916b68cad3563c6ec530b32736` through `llm_router`. Both repairs
+reached their live native boundaries. The first eight-turn attempt still failed
+with actual exit 1, but its stream remained untainted and retained one final
+usage envelope: **269,557 observed tokens**. The structured second attempt now
+launched Grok, returned exit 0 after one native turn, and retained **41,127
+observed tokens**. Their subtotal is **310,684**, including **197,248 cached
+input tokens**. The 9,270 reasoning tokens are reported separately
+and are not added again to the native subtotal. Native completeness and billing verification
+remain unknown; this subtotal is not a verified whole-run billing total.
+
+Official reward remains **0**, and the supervisor reports the task incomplete.
+Both rounds pass public structural and eigenpair checks; performance remains
+inconclusive because of unstable timing. The second round retains the same
+workspace generation. Successful provider return therefore establishes that the
+route works, not that a repair or successful task completion occurred. Both
+started children have distinct joined router receipts, and the two model-input
+bindings agree with in-container accounting. Independent owner replay was not
+performed. The trial container was removed; no services were changed.
+
+The preceding model-planning trial observed 26,977 planning tokens and took
+120.576 seconds in that phase. The otherwise matched declared-contract trial
+reported zero planning provider/model calls and took 4.666 seconds; the fresh
+router trial took 4.392 seconds with the same zero-call route. This route copies
+an independently admitted signed task structure into two goals and one task.
+It does not interpret the instruction or prove source semantics. All three
+trials scored zero, and the earlier coding totals remain unknown. These single
+runs establish neither a causal overall token reduction nor a speedup estimate.
+Some offline tests overlapped the preceding declared trial's wall time.
+
+The pure report reader needed a lazy-import repair: its custody validator was
+already hash-pinned, but the loader removed its import path before the first
+non-null custody observation. A separate qualified bundle preloads the pinned
+module closure, verifies its imports, and restores the search path. Its 43
+passing checks include fresh-process custody observations, invalid bindings and
+unchanged prior readouts. The original reader and failed export are preserved.
+The custody observation itself records passed checks and is not a new runtime
+failure.
+
+A separately qualified, observation-only component reader passes 15 checks and
+joins closed byte partitions to the retained receipt hashes. It exports no
+prompt/source bodies and does not infer token counts. The first-input partitions
+are identical in the two declared trials:
+
+| Input component | UTF-8 bytes | Scope |
+| --- | ---: | --- |
+| Original native envelope | 67,378 | Whole prompt before translation |
+| Evidence array | 58,932 | Nested within that envelope, about 87.5% |
+| Translated transport | 60,826 | Whole transport before later additions |
+| Complete first model input | 67,380 | Actual final router input |
+| Complete second model input | 91,839 | Fresh router trial; prior trial 91,841 |
+
+Rows overlap and must not be summed. Reversible translation reduced the measured
+transport by 6,552 bytes, while subsequent additions brought the final input
+back to approximately its original size. Capsule/admission values account for
+7,550 bytes within the 28,751-byte translated semantic object; other semantic
+fields and retained nonsemantic evidence also contribute substantially. Six
+semantic evidence rows are serialization chunks, not six capsules. Zero source
+bytes delivered by the broker does not mean zero provider source reads: native
+stream observations separately record file/tool activity.
+
+The next contract gap is candidate prompt projection. Its current renderer
+JSON-embeds the entire original native envelope, including historical indexed
+evidence, then appends current context and feedback. Preserve exact original
+requirements and full evidence owner-side. Add a versioned, independently
+admitted provider projection that retains the literal public instruction and
+all requirement/goal/scope/acceptance/authority and unknown fields, while
+replacing only explicitly classified baseline advisory material with bounded
+digest references. Bind original and projected hashes in dispatch and replay;
+keep current source checks and proof obligations authoritative owner-side.
+Existing one-capsule selection can bound part of the payload, but its benefit
+needs a measured ablation and the public two-attempt combination still needs
+qualification. Neither broader projection nor that ablation is implemented or
+claimed by this live result.
+
+[Closed results, reader qualification, and component measurements](evidence/grok-live-token-census-20261015/manifest.json)
+retain the new observations without rewriting earlier missing token totals.

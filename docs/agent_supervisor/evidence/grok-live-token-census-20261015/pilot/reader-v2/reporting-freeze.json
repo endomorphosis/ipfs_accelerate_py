@@ -1,0 +1,85 @@
+{
+  "files": [
+    {
+      "bytes": 7356,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_bridge_contract.py",
+      "sha256": "ec13f500fab51e13dacc81bea07eabeca7d134807a7826e74d0186db26b59237"
+    },
+    {
+      "bytes": 3278,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_custody_contract.py",
+      "sha256": "6c847721cf37d44ce622aceaf80d25077debaeaf9d43880c854d2a4b945d0736"
+    },
+    {
+      "bytes": 3404,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_doctor_dispatch_contract.py",
+      "sha256": "bda1de9250d39d276e76c72fad2f9d7e3171f1d4c83dfbc7ebc7d421a37e3e03"
+    },
+    {
+      "bytes": 255,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_doctor_policy_contract.py",
+      "sha256": "b1da173085700a43c283613faf4054016751efb171c1a3e82bc486d38143014b"
+    },
+    {
+      "bytes": 11055,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_grok_progress_contract.py",
+      "sha256": "3ba416938805c63c2d430fd6f816e2781918eb443f9809b5275246d1dfeaa762"
+    },
+    {
+      "bytes": 5303,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_grok_usage_contract.py",
+      "sha256": "7e908afa1956dcaa83eb4844d649a01b6c24aa3c11b7f02b2dd38364a7ea2e91"
+    },
+    {
+      "bytes": 433,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_json_contract.py",
+      "sha256": "15b97c3abd1030efc96dafcb2edd2c44351d25f987a77ab1085f57ff012500ce"
+    },
+    {
+      "bytes": 4304,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_owner_rounds_contract.py",
+      "sha256": "7f6fb26d8d29f50723eba549223e3537deb4c25a39cbf1ec11186859e12c9e1c"
+    },
+    {
+      "bytes": 4324,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_public_check_contract.py",
+      "sha256": "2c62a6986e228ca76750feea9341894369a86ffc1e51f59536f3b6af4e2e2351"
+    },
+    {
+      "bytes": 4202,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_public_validation_contract.py",
+      "sha256": "12be75bb7dbe039132ef4d97049bceeb11e5ac1d0cacff232f555f9120195118"
+    },
+    {
+      "bytes": 1273,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_residual_budget_contract.py",
+      "sha256": "e50660459094c196bce9b111858ef2419ae2c755fc2d7521dbcd9e5ae302826f"
+    },
+    {
+      "bytes": 4337,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_runner_contract.py",
+      "sha256": "c1fca837796dfec38c2e05e7f40a4a79998159ff494f1d059b1440c9b8323ad3"
+    },
+    {
+      "bytes": 236,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_source_digest_contract.py",
+      "sha256": "42e4aaccd33868b7b75aaf36626e3f1c11228484a4b12400dea25e59f97620f3"
+    },
+    {
+      "bytes": 18711,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/read_pilot.py",
+      "sha256": "df230edb68d7eb582a388902a07a7a085426b6e089c64a6ad5e4baac25803ce3"
+    },
+    {
+      "bytes": 3123,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/safe_diagnostics.py",
+      "sha256": "71364ee7757f901db953ec4a4858ad7112b807c99feeffeeab29319a903c5c86"
+    },
+    {
+      "bytes": 4566,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/safe_public_validation.py",
+      "sha256": "ad1585978aa55b34e38108cd51ae4654b15a544c61f60f86b3a53d0bf3ac411d"
+    }
+  ],
+  "schema": "pure-reader-module-closure@1"
+}
