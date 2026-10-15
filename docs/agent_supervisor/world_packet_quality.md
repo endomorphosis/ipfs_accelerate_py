@@ -24,6 +24,10 @@ that older historical artifact format reconstructs the original full prompt.
 This opt-in library API does not activate a general Harbor or container CLI
 profile and does not change supervisor defaults.
 
+For durable starts, complete receipt capture before caller postprocessing, and
+collection of incomplete attempt populations, see
+[Durable repository world packet attempts](world_packet_attempt_retention.md).
+
 The router receipt distinguishes these inputs:
 
 | Receipt binding | Input represented |

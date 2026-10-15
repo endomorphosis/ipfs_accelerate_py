@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from .semantic_metadata_view import SemanticMetadataTokenCounter
     from .repository_world_packet import PreparedRepositoryWorldPacket
     from .repository_world_packet_presentation import PreparedRepositoryWorldPacketPresentation
+    from .repository_world_attempt_journal import RepositoryWorldAttemptJournal
 
 MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
 MAX_MODEL_PROMPT_BYTES = 256_000
@@ -397,6 +398,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "terminal_semantic_scope_currentness",
     "semantic_metadata_view", "world_task_packet", "world_task_packet_currentness", "world_task_presentation",
+    "world_task_attempt_journal",
     "world_packet_artifact_retention",
     "semantic_metadata_census",
     "prompt_tokenizer", "prompt_selection",
@@ -425,6 +427,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "repository_world_packet_presentation.py",
     "repository_world_packet_replay.py", "repository_world_invocation_replay.py",
     "repository_world_artifact_retention.py",
+    "repository_world_attempt_journal.py",
 })
 
 
@@ -689,7 +692,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         max_input_tokens: int | None = None,
         world_task_packet: PreparedRepositoryWorldPacket | None = None,
         world_task_presentation: PreparedRepositoryWorldPacketPresentation | None = None,
-        world_packet_artifact_dir: Path | None = None) -> tuple[str, dict]:
+        world_packet_artifact_dir: Path | None = None,
+        world_task_attempt_journal: RepositoryWorldAttemptJournal | None = None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
     if world_task_packet is not None:
         from .repository_world_packet import PreparedRepositoryWorldPacket
@@ -700,6 +704,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("world task presentation requires an original provider-eligible packet")
     if world_task_presentation is not None and world_packet_artifact_dir is not None:
         raise ValueError("world task presentation cannot use original-only packet artifact retention")
+    if world_task_attempt_journal is not None:
+        from .repository_world_attempt_journal import RepositoryWorldAttemptJournal
+        if (world_task_packet is None or provider != "codex_cli" or purpose != "coding"
+                or type(world_task_attempt_journal) is not RepositoryWorldAttemptJournal):
+            raise ValueError("world attempt journal requires an issued journal and strict Codex coding packet")
+        if world_packet_artifact_dir is not None:
+            raise ValueError("world attempt journal requires separate historical artifact processing")
+        RepositoryWorldAttemptJournal.require_open(world_task_attempt_journal)
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
     from ipfs_accelerate_py.llm_router import generate_text, get_llm_provider
@@ -1456,6 +1468,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             if current_instruction != instruction or current_receipt != instruction_receipt:
                 raise ValueError("signed Terminal scope changed before provider dispatch")
             receipt["terminal_semantic_scope_dispatch_rechecked"] = True
+        if world_task_attempt_journal is not None:
+            # Journal checks may read host custody. Complete all native source
+            # closing checks below them; perform no journal write before call.
+            failure_phase = "world_task_attempt_journal"
+            RepositoryWorldAttemptJournal.require_open(world_task_attempt_journal, workspace=root)
         if world_task_packet is not None:
             if world_presentation_snapshot is not None:
                 failure_phase = "world_task_presentation"
@@ -1635,6 +1652,18 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 "total_token_savings_measured": False,
                 "raw_content_exported": False,
             }
+        if world_task_attempt_journal is not None:
+            try:
+                # Freeze full native/derived accounting before historical
+                # retention, printing, or caller output processing can fail.
+                RepositoryWorldAttemptJournal.retain_receipt(world_task_attempt_journal, receipt)
+            except BaseException:
+                # Custody failures cannot replace an observed provider result
+                # or its original exception. Missing receipts remain unknown.
+                try:
+                    RepositoryWorldAttemptJournal.mark_capture_error(world_task_attempt_journal)
+                except BaseException:
+                    pass
         if world_artifact_retention is not None:
             try:
                 if receipt["world_packet_artifacts"]["packet"] is not None:
