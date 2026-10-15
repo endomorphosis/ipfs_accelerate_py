@@ -389,6 +389,41 @@ def implementation_timeout_limit(budget_profile=None):
     validate_budget_profile(budget_profile)
     return 1800 if budget_profile is not None else MAX_IMPLEMENTATION_TIMEOUT_SECONDS
 
+
+def load_semantic_metadata_tokenizer(*, artifact: Path, expected_sha256: str,
+                                     provider: str, model: str):
+    """Load the explicit local metadata counter and content-free provenance.
+
+    This shares the existing bounded, hash/version-bound JSON tokenizer loader.
+    Counts are a local estimate for complete rendered prompt text. The counter
+    revision additionally binds the special-token policy, without claiming that
+    this tokenizer is equivalent to the selected remote provider's tokenizer.
+    The returned owner object allows the dispatcher to recheck its exact assets
+    before the existing final native source and authority checks.
+    """
+    from .local_prompt_tokenizer import load_owner_prompt_tokenizer
+    from .semantic_metadata_view import SemanticMetadataTokenCounter, TOKEN_MEASUREMENT_SCOPE
+
+    local = load_owner_prompt_tokenizer(artifact=artifact, expected_sha256=expected_sha256,
+                                       provider=provider, model=model)
+    policy_pin = hashlib.sha256(local.special_token_policy.encode("utf-8")).hexdigest()
+    revision = local.tokenizer_revision + "/special-policy-sha256:" + policy_pin
+    counter = SemanticMetadataTokenCounter(count=local.count, provider=local.provider,
+        model=local.model, tokenizer=local.tokenizer_id, tokenizer_revision=revision,
+        qualification="estimate")
+    source = local.provenance()
+    provenance = dict(schema="supervisor-semantic-metadata-tokenizer-provenance@1",
+        backend=source["backend"], provider=local.provider, model=local.model,
+        tokenizer_id=local.tokenizer_id, tokenizer_revision=local.tokenizer_revision,
+        counter_tokenizer_revision=revision, special_token_policy=local.special_token_policy,
+        descriptor_sha256=source["descriptor_sha256"], asset_sha256=source["asset_sha256"],
+        tokenizers_version=source["tokenizers_version"], qualification="estimate",
+        measurement_scope=TOKEN_MEASUREMENT_SCOPE, compatibility_basis="owner_declaration",
+        provider_tokenizer_equivalence_verified=False, provider_usage_verified=False,
+        provider_ingestion_verified=False, complete_run_token_savings_claimed=False,
+        completion_authority=False)
+    return local, counter, provenance
+
 # Diagnostic vocabulary is intentionally closed: exception messages, dynamic
 # type names, caller paths and locals never enter the child-reported record.
 RUNNER_FAILURE_PHASES = frozenset({
@@ -397,7 +432,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "numerical_obligation_descriptor", "source_lookup_descriptor", "source_view_descriptor",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "terminal_semantic_scope_currentness",
-    "semantic_metadata_view", "world_task_packet", "world_task_packet_currentness", "world_task_presentation",
+    "semantic_metadata_view", "semantic_metadata_tokenizer", "world_task_packet", "world_task_packet_currentness", "world_task_presentation",
     "world_task_attempt_journal",
     "world_packet_artifact_retention",
     "semantic_metadata_census",
@@ -676,6 +711,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
         semantic_metadata_token_counter: SemanticMetadataTokenCounter | None = None,
+        semantic_metadata_tokenizer_artifact: Path | None = None,
+        semantic_metadata_tokenizer_sha256: str = "",
         tool_output_policy: str = "legacy",
         source_view_advisory_policy: str = "legacy",
         repository_source_policy: str = "legacy",
@@ -725,6 +762,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if (purpose != "coding" or provider != "codex_cli" or semantic_repository is not None
                 or semantic_transport_schema != "supervisor-semantic-router-input@1"
                 or semantic_metadata_view != "legacy" or semantic_metadata_token_counter is not None
+                or semantic_metadata_tokenizer_artifact is not None or semantic_metadata_tokenizer_sha256 != ""
                 or source_input_policy != "legacy" or query_reference_policy != "legacy"
                 or source_view_advisory_policy != "legacy" or source_view_profile != "disabled"
                 or source_edit_mode != "disabled" or census_only
@@ -824,6 +862,27 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if semantic_metadata_view != "legacy" and (purpose != "coding" or semantic_repository is None
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
         raise ValueError("metadata view requires the original semantic coding transport")
+    metadata_local_tokenizer = None
+    metadata_tokenizer_source = None
+    if type(semantic_metadata_tokenizer_sha256) is not str:
+        raise ValueError("exact local metadata tokenizer artifact binding required")
+    metadata_tokenizer_selected = (semantic_metadata_tokenizer_artifact is not None
+                                   or bool(semantic_metadata_tokenizer_sha256))
+    if metadata_tokenizer_selected:
+        if semantic_metadata_tokenizer_artifact is None or not semantic_metadata_tokenizer_sha256:
+            raise ValueError("exact local metadata tokenizer artifact binding required")
+        if semantic_metadata_view == "legacy":
+            raise ValueError("local metadata tokenizer requires the explicit metadata view")
+        if semantic_metadata_token_counter is not None:
+            raise ValueError("choose one metadata token-counter binding")
+        if (prompt_token_counter is not None or prompt_tokenizer_artifact is not None
+                or prompt_tokenizer_sha256 != "" or max_input_tokens is not None):
+            raise ValueError("local metadata tokenizer requires an independent metadata selection")
+        failure_phase = "semantic_metadata_tokenizer"
+        metadata_local_tokenizer, semantic_metadata_token_counter, metadata_tokenizer_source = (
+            load_semantic_metadata_tokenizer(artifact=semantic_metadata_tokenizer_artifact,
+                expected_sha256=semantic_metadata_tokenizer_sha256, provider=provider, model=model))
+        failure_phase = "argument_validation"
     if semantic_metadata_token_counter is not None:
         from .semantic_metadata_view import SemanticMetadataTokenCounter
         if semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}:
@@ -1188,6 +1247,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("implementation inherited database authority")
     if census_only:
         failure_phase = "semantic_metadata_census"
+        if metadata_local_tokenizer is not None:
+            from .local_prompt_tokenizer import OwnerPromptTokenizer
+            OwnerPromptTokenizer._verify_binding(metadata_local_tokenizer)
         census = metadata_census
         def digest_json(value):
             if value is None:
@@ -1239,6 +1301,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             receipt["semantic_prompt_components"] = semantic_component_census
         if prompt_selection is not None:
             receipt["prompt_selection"] = prompt_selection
+        if metadata_tokenizer_source is not None:
+            receipt["semantic_metadata_tokenizer_source"] = metadata_tokenizer_source
+            receipt["semantic_metadata_tokenizer_dispatch_rechecked"] = False
         return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     failure_phase = "provider_discovery"
     available = discover_available_providers()
@@ -1325,6 +1390,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["prompt_selection"] = prompt_selection
     if tokenizer_source is not None:
         receipt["prompt_tokenizer_source"] = tokenizer_source
+    if metadata_tokenizer_source is not None:
+        receipt["semantic_metadata_tokenizer_source"] = metadata_tokenizer_source
+        receipt["semantic_metadata_tokenizer_dispatch_rechecked"] = False
     failure_phase = "provider_invocation"
     provider_options = {}
     if repository_source_binding is not None:
@@ -1456,6 +1524,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
             if current != source_lookup_receipt:
                 raise ValueError("source descriptor changed before provider dispatch")
+        if metadata_local_tokenizer is not None:
+            # Counting can fail closed to the original transport, but a changed
+            # descriptor or asset must never authorize a provider dispatch.
+            # Complete this file/runtime check before final native closing
+            # fences, which may not be followed by an arbitrary counter call.
+            failure_phase = "semantic_metadata_tokenizer"
+            from .local_prompt_tokenizer import OwnerPromptTokenizer
+            OwnerPromptTokenizer._verify_binding(metadata_local_tokenizer)
+            receipt["semantic_metadata_tokenizer_dispatch_rechecked"] = True
         if scoped_instruction:
             # Provider initialization and earlier descriptor checks may run
             # caller code. Rejoin the compiled selection and complete signed
@@ -1719,6 +1796,9 @@ def main():
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"])
+    parser.add_argument("--semantic-metadata-tokenizer-artifact", type=Path,
+                        help="Explicit hash-bound local JSON tokenizer for metadata selection; local proxy only")
+    parser.add_argument("--semantic-metadata-tokenizer-sha256")
     from .tool_output_policy import POLICIES as TOOL_OUTPUT_POLICIES
     parser.add_argument("--tool-output-policy", default="legacy", choices=TOOL_OUTPUT_POLICIES)
     from .source_view_policy import POLICIES as SOURCE_VIEW_POLICIES
@@ -1743,6 +1823,9 @@ def main():
     if ((args.prompt_tokenizer_artifact is None) != (args.prompt_tokenizer_sha256 is None)
             or args.prompt_tokenizer_sha256 == ""):
         parser.error("both tokenizer binding arguments require nonempty values")
+    if ((args.semantic_metadata_tokenizer_artifact is None) != (args.semantic_metadata_tokenizer_sha256 is None)
+            or args.semantic_metadata_tokenizer_sha256 == ""):
+        parser.error("both metadata tokenizer binding arguments require nonempty values")
     if args.max_input_tokens is not None and args.max_input_tokens < 1:
         parser.error("max-input-tokens must be positive")
     try:
@@ -1766,6 +1849,8 @@ def main():
                         source_view_descriptor_sha256=args.source_view_descriptor_sha256,
                         semantic_transport_schema=args.semantic_transport_schema,
                         semantic_metadata_view=args.semantic_metadata_view,
+                        semantic_metadata_tokenizer_artifact=args.semantic_metadata_tokenizer_artifact,
+                        semantic_metadata_tokenizer_sha256=args.semantic_metadata_tokenizer_sha256 or "",
                         tool_output_policy=args.tool_output_policy,
                         source_view_advisory_policy=args.source_view_advisory_policy,
                         repository_source_policy=args.repository_source_policy,

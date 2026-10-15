@@ -29,6 +29,7 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
     "benchmarks/agent_supervisor/container_coding/terminal_source_input_policy.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_prompt_tokenizer.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_columns.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py",

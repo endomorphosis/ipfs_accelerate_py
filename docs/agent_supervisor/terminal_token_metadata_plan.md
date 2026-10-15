@@ -7,6 +7,13 @@ results should identify which obligations remain, and semantic capsules should
 give the model the relevant current evidence without repeating its bookkeeping.
 Minification is a representation step within that workflow.
 
+The October 15 [local tokenizer selection path](metadata_tokenizer_selection.md)
+adds an explicit pinned counter to the container supervisor, router worker and
+historical context audit. It compares complete original and compact coding
+prompts using a local estimate, while retaining defaults and native accounting.
+It does not establish provider tokenizer equivalence or workflow savings; Harbor
+asset staging and a fresh controlled live pair remain separate work.
+
 The [October 13 complete-context comparison](context_projection_pair.md) now
 measures the existing lossless metadata projection with identical source reads.
 It saves 885 of 79,362 one-pass exposed UTF-8 bytes (1.12%); both public program

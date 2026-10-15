@@ -487,7 +487,9 @@ def _failure_diagnostics(error: Exception, *, phase: str) -> dict:
     return result
 
 
-def _final_context_audit(report: dict, *, state: Path, deadline: float) -> None:
+def _final_context_audit(report: dict, *, state: Path, deadline: float,
+                         semantic_metadata_tokenizer_artifact: Path | None = None,
+                         semantic_metadata_tokenizer_sha256: str | None = None) -> None:
     """Observe completed dispatch inputs after shutdown within remaining time."""
     if report.get("arm") != "full":
         return
@@ -503,7 +505,10 @@ def _final_context_audit(report: dict, *, state: Path, deadline: float) -> None:
         )
         report["context_input_audit"] = collect_terminal_context_audit(
             state=state, receipts=report.get("provider_invocations", []), workspace_root=WORKTREES,
-            timeout_seconds=max(0, min(MAX_AUDIT_SECONDS, deadline - time.monotonic() - 1.0)))
+            timeout_seconds=max(0, min(MAX_AUDIT_SECONDS, deadline - time.monotonic() - 1.0)),
+            **({"semantic_metadata_tokenizer_artifact": semantic_metadata_tokenizer_artifact,
+                "semantic_metadata_tokenizer_sha256": semantic_metadata_tokenizer_sha256}
+               if semantic_metadata_tokenizer_artifact is not None or semantic_metadata_tokenizer_sha256 is not None else {}))
     except Exception as error:
         # Observation failure must never suppress provider accounting or the
         # final report. STOP and worker cleanup have already been attempted.
@@ -695,6 +700,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         planning_mode: str = "model",
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
+        semantic_metadata_tokenizer_artifact: Path | None = None,
+        semantic_metadata_tokenizer_sha256: str | None = None,
         source_view_profile: str = "disabled",
         source_edit_mode: str = "disabled",
         source_view_policy: dict | None = None,
@@ -759,6 +766,13 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     if semantic_metadata_view != "legacy" and (arm != "full"
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
         raise ValueError("metadata view requires the original full semantic arm")
+    tokenizer_selection = None
+    if semantic_metadata_tokenizer_artifact is not None or semantic_metadata_tokenizer_sha256 is not None:
+        from .terminal_doctor_dispatch import semantic_metadata_tokenizer_selection
+        tokenizer_selection = semantic_metadata_tokenizer_selection(
+            artifact=semantic_metadata_tokenizer_artifact, sha256=semantic_metadata_tokenizer_sha256,
+            semantic_metadata_view=semantic_metadata_view, semantic_transport_schema=semantic_transport_schema,
+            semantic_repository=Path("/app"), arm=arm, census_only=metadata_census_only)
     provider_selection = resolve_provider_profile(provider_profile)
     from .terminal_source_input_policy import validate_source_input_policy, source_input_selection
     validate_source_input_policy(source_input_policy, arm=arm, provider=provider_selection["provider"],
@@ -859,6 +873,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     phase_budget = ReservedPhaseBudget(started=started, profile=resource_profile) if reserved_phases else None
     report = {"schema": "terminal-admitted-supervisor-run@1", "arm": arm,
               "task_completed": False, "official_reward": None,
+              **({"semantic_metadata_tokenizer": tokenizer_selection} if tokenizer_selection is not None else {}),
               "start_cleanup": _empty_start_cleanup_observation("runtime_not_created"),
               "provider_profile": provider_selection,
               **planning_selection(planning_mode),
@@ -1144,7 +1159,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             **({"repository_source_policy": repository_source_policy} if repository_source_policy != "legacy" else {}),
             **({"source_input_policy": source_input_policy} if source_input_policy != "legacy" else {}),
             **({"query_reference_policy": query_reference_policy} if query_reference_policy != "legacy" else {}),
-            **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}))
+            **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}),
+            **({"semantic_metadata_tokenizer_artifact": semantic_metadata_tokenizer_artifact,
+                "semantic_metadata_tokenizer_sha256": semantic_metadata_tokenizer_sha256}
+               if tokenizer_selection is not None else {}))
         if provider_free_candidate:
             # Keep the requested treatment in the report and signed controls;
             # no model context, view or edit broker was dispatched on this route.
@@ -1157,7 +1175,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     "coding_reply_mode": coding_reply_mode,
                     "source_view_profile": source_view_profile,
                     "source_edit_mode": source_edit_mode,
-                    "source_view_policy": source_view_policy},
+                    "source_view_policy": source_view_policy,
+                    **({"semantic_metadata_tokenizer": tokenizer_selection} if tokenizer_selection is not None else {})},
                 "model_coding_dispatched": False,
                 "token_savings_established": False,
                 "completion_authority": False,
@@ -1373,7 +1392,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             except Exception as error:
                 report["planning_usage_audit"] = {"status": "unavailable", "error_type": type(error).__name__,
                                                  "complete_total_tokens": None}
-        _final_context_audit(report, state=state, deadline=deadline)
+        _final_context_audit(report, state=state, deadline=deadline,
+            **({"semantic_metadata_tokenizer_artifact": semantic_metadata_tokenizer_artifact,
+                "semantic_metadata_tokenizer_sha256": semantic_metadata_tokenizer_sha256}
+               if tokenizer_selection is not None else {}))
         try:
             progress.finish(report)
         except Exception:
@@ -1453,6 +1475,8 @@ def main():
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA)
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"])
+    parser.add_argument("--semantic-metadata-tokenizer-artifact", type=Path)
+    parser.add_argument("--semantic-metadata-tokenizer-sha256")
     from .terminal_source_view_policy import SOURCE_VIEW_PROFILES, DEFAULT_SOURCE_VIEW_PROFILE
     parser.add_argument("--source-view-profile", default=DEFAULT_SOURCE_VIEW_PROFILE, choices=SOURCE_VIEW_PROFILES)
     from .terminal_source_edit_policy import SOURCE_EDIT_MODES

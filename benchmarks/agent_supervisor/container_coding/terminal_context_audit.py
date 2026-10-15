@@ -38,6 +38,7 @@ RECEIPT_FIELDS = (
     "workspace_advisory_bytes",
 )
 TRANSLATION_FIELDS = ('router_prompt_sha256', 'router_prompt_bytes', 'semantic_translation', 'doctor_residual_context', 'public_instruction', 'coding_reply_contract', 'semantic_metadata_view', 'semantic_metadata_native_coding_reply_contract', 'source_formalization_context', 'source_view_retrieval', 'representation_displacement', 'terminal_semantic_scope_dispatch_rechecked', 'semantic_prompt_components', 'tool_output_policy', 'source_view_advisory_policy', 'repository_source_policy', 'source_input_policy', 'source_input_view', 'source_input_dispatched', 'query_reference_policy', 'query_reference_view', 'query_reference_selected', 'query_reference_dispatched', 'query_reference_provider_attempted')
+TRANSLATION_FIELDS += ('semantic_metadata_tokenizer_source', 'semantic_metadata_tokenizer_dispatch_rechecked')
 
 
 def _semantic_prompt_components(value):
@@ -395,6 +396,39 @@ def _token_selection_receipt(metadata: dict, item: dict) -> None:
         raise ValueError("token-counted metadata selection arithmetic differs")
 
 
+def _metadata_tokenizer_provenance(value, item, metadata):
+    """Validate content-free observations without reading any receipt path."""
+    fixed = dict(schema="supervisor-semantic-metadata-tokenizer-provenance@1",
+        backend="tokenizers-json@1", qualification="estimate",
+        measurement_scope="complete-rendered-prompt-text@1", compatibility_basis="owner_declaration",
+        provider_tokenizer_equivalence_verified=False, provider_usage_verified=False,
+        provider_ingestion_verified=False, complete_run_token_savings_claimed=False,
+        completion_authority=False)
+    fields = {"provider", "model", "tokenizer_id", "tokenizer_revision", "counter_tokenizer_revision",
+        "special_token_policy", "descriptor_sha256", "asset_sha256", "tokenizers_version"}
+    if (type(value) is not dict or set(value) != fields | set(fixed)
+            or any(not _same_json(value[key], expected) for key, expected in fixed.items())):
+        raise ValueError("invalid metadata tokenizer provenance")
+    for key in fields:
+        if type(value[key]) is not str or not value[key].strip() or len(value[key].encode()) > 4096:
+            raise ValueError("invalid metadata tokenizer provenance field")
+    for key in ("descriptor_sha256", "asset_sha256"):
+        _digest(value[key])
+    policy = value["special_token_policy"]
+    if policy not in {"tokenizers.encode:add_special_tokens=true", "tokenizers.encode:add_special_tokens=false"}:
+        raise ValueError("unsupported metadata tokenizer special token policy")
+    revision = "tokenizers/" + value["tokenizers_version"] + "/sha256:" + value["asset_sha256"]
+    if (value["tokenizer_revision"] != revision or value["counter_tokenizer_revision"] !=
+            revision + "/special-policy-sha256:" + _sha(policy.encode())):
+        raise ValueError("metadata tokenizer revision differs from its asset or policy")
+    identity = metadata.get("token_counter_identity")
+    if (type(identity) is not dict or any(value[key] != item.get(key) for key in ("provider", "model"))
+            or identity.get("tokenizer") != value["tokenizer_id"]
+            or identity.get("tokenizer_revision") != value["counter_tokenizer_revision"]
+            or identity.get("qualification") != "estimate"):
+        raise ValueError("metadata tokenizer provenance differs from counter identity")
+
+
 def _receipt(item: dict, workspace_root: Path) -> dict:
     if not isinstance(item, dict) or item.get("schema") != "router-implementation-invocation@1":
         raise ValueError("invalid router receipt")
@@ -571,6 +605,12 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
         if (metadata["selected_complete_bytes"] != result["model_prompt_bytes"]
                 or metadata["selected_complete_sha256"] != result["model_prompt_sha256"]):
             raise ValueError("metadata selection differs from actual provider input")
+    if ("semantic_metadata_tokenizer_source" in result
+            or "semantic_metadata_tokenizer_dispatch_rechecked" in result):
+        if (metadata is None or metadata.get("schema") != "supervisor-semantic-metadata-selection@2"
+                or type(result.get("semantic_metadata_tokenizer_dispatch_rechecked")) is not bool):
+            raise ValueError("metadata tokenizer provenance requires token-counted metadata selection")
+        _metadata_tokenizer_provenance(result.get("semantic_metadata_tokenizer_source"), item, metadata)
     if "representation_displacement" in result:
         if metadata is None:
             raise ValueError("displacement observation requires retained metadata selection")
@@ -622,6 +662,7 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
 
 def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
                       formalization: dict | None = None, token_counter=None,
+                      tokenizer_source=None,
                       world_packet_artifact_root: Path | None = None, workspace_root: Path | None = None):
     """Reconstruct historical provider bytes without granting freshness."""
     if "world_task_packet" in receipt or "world_packet_artifacts" in receipt:
@@ -851,6 +892,9 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
                         for arm, text in (("native", native), ("candidate", candidate), ("selected", chosen))))
             checks["semantic_metadata_token_counter_verified"] = False
             checks["semantic_metadata_selection_receipt"] = False
+            if "semantic_metadata_tokenizer_source" in receipt:
+                checks["semantic_metadata_tokenizer_provenance"] = (tokenizer_source is not None
+                    and _same_json(receipt["semantic_metadata_tokenizer_source"], tokenizer_source))
             if token_counter is not None:
                 from ipfs_accelerate_py.agent_supervisor.runtime.semantic_metadata_view import (
                     SemanticMetadataTokenCounter,
@@ -1130,11 +1174,46 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
     return result, rendered, dispatch
 
 
+def _metadata_tokenizer_selection(artifact, expected_sha256):
+    """Normalize only an explicit owner's selection, never a receipt path."""
+    if artifact is None and expected_sha256 is None:
+        return None
+    if artifact is None or expected_sha256 is None:
+        raise ValueError("explicit metadata tokenizer artifact and SHA-256 required")
+    from ipfs_accelerate_py.agent_supervisor.runtime.local_prompt_tokenizer import _local_path
+
+    return _local_path(artifact), _digest(expected_sha256)
+
+
+def _metadata_counter_for_audit(receipt, tokenizer_selection):
+    """Reconstruct a counter only from the separately selected owner artifact.
+
+    Recorded provider/model constrain the selected descriptor; they do not
+    select a path or authorize provider execution. Recorded provenance alone
+    cannot load a tokenizer or verify the counter.
+    """
+    metadata = receipt.get("semantic_metadata_view")
+    if (tokenizer_selection is None or type(metadata) is not dict
+            or metadata.get("schema") != "supervisor-semantic-metadata-selection@2"):
+        return None, None
+    from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import (
+        load_semantic_metadata_tokenizer,
+    )
+
+    _, counter, provenance = load_semantic_metadata_tokenizer(artifact=tokenizer_selection[0],
+        expected_sha256=tokenizer_selection[1], provider=receipt["provider"], model=receipt["model"])
+    return counter, provenance
+
+
 def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path,
-                          world_packet_artifact_root: Path | None = None) -> dict:
+                          world_packet_artifact_root: Path | None = None,
+                          semantic_metadata_tokenizer_artifact: Path | None = None,
+                          semantic_metadata_tokenizer_sha256: str | None = None) -> dict:
     """Read historical evidence and compare exact native and model input bytes."""
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
 
+    tokenizer_selection = _metadata_tokenizer_selection(semantic_metadata_tokenizer_artifact,
+        semantic_metadata_tokenizer_sha256)
     result = _base()
     if len(receipts) > MAX_RECEIPTS:
         raise ValueError("receipt inventory exceeds audit bound")
@@ -1212,9 +1291,11 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
                         if (observed["native_prompt_sha256"] != receipt["native_prompt_sha256"]
                                 or observed["native_prompt_bytes"] != receipt["native_prompt_bytes"]):
                             continue
+                        counter, tokenizer_source = _metadata_counter_for_audit(receipt, tokenizer_selection)
                         model, advisory, checks = _model_projection(rendered=rendered, receipt=receipt,
                             repository=Path(prepared["repository"]) if prepared.get("repository") else None,
-                            formalization=formalization)
+                            formalization=formalization, token_counter=counter,
+                            tokenizer_source=tokenizer_source)
                         match = {"capsule_id": observed["capsule_id"],
                             "invocation_id": receipt["invocation_id"],
                             "workspace_sha256": _sha(receipt["workspace"].encode()),
@@ -1270,7 +1351,9 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
 
 def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
         workspace_root: Path, timeout_seconds: float = MAX_AUDIT_SECONDS,
-        world_packet_artifact_root: Path | None = None) -> dict:
+        world_packet_artifact_root: Path | None = None,
+        semantic_metadata_tokenizer_artifact: Path | None = None,
+        semantic_metadata_tokenizer_sha256: str | None = None) -> dict:
     """Run in a bounded child, with the caller's remaining cleanup allowance.
 
     The default is a ceiling rather than a reserved allocation. Owners with an
@@ -1284,6 +1367,8 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
     if timeout_seconds < .1:
         return _base(reason="audit_budget_unavailable")
     try:
+        tokenizer_selection = _metadata_tokenizer_selection(semantic_metadata_tokenizer_artifact,
+            semantic_metadata_tokenizer_sha256)
         rows = []
         for row in receipts:
             if not isinstance(row, dict) or row.get("phase") != "coding":
@@ -1325,7 +1410,10 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
         process = subprocess.run([sys.executable, "-B", "-P", "-m", __name__, "--state", str(state),
             "--workspace-root", str(workspace_root),
             *(["--world-packet-artifact-root", str(world_packet_artifact_root)]
-                if world_packet_artifact_root is not None else [])], input=request, capture_output=True,
+                if world_packet_artifact_root is not None else []),
+            *(["--semantic-metadata-tokenizer-artifact", str(tokenizer_selection[0]),
+                "--semantic-metadata-tokenizer-sha256", tokenizer_selection[1]]
+                if tokenizer_selection is not None else [])], input=request, capture_output=True,
             timeout=min(MAX_AUDIT_SECONDS, timeout_seconds), check=False,
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
         if process.returncode or len(process.stdout) > MAX_RESULT_BYTES:
@@ -1348,6 +1436,8 @@ def main():
     parser.add_argument("--state", required=True, type=Path)
     parser.add_argument("--workspace-root", required=True, type=Path)
     parser.add_argument("--world-packet-artifact-root", type=Path)
+    parser.add_argument("--semantic-metadata-tokenizer-artifact", type=Path)
+    parser.add_argument("--semantic-metadata-tokenizer-sha256")
     args = parser.parse_args()
     try:
         raw = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
@@ -1357,7 +1447,9 @@ def main():
         if not isinstance(receipts, list):
             raise ValueError("audit receipts must be a list")
         result = audit_terminal_context(state=args.state, receipts=receipts, workspace_root=args.workspace_root,
-            world_packet_artifact_root=args.world_packet_artifact_root)
+            world_packet_artifact_root=args.world_packet_artifact_root,
+            semantic_metadata_tokenizer_artifact=args.semantic_metadata_tokenizer_artifact,
+            semantic_metadata_tokenizer_sha256=args.semantic_metadata_tokenizer_sha256)
     except Exception as error:
         result = _base(reason="audit_unavailable")
         result["error_type"] = type(error).__name__

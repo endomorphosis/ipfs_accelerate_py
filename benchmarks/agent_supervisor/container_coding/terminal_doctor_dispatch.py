@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -238,10 +239,36 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
     return dispatch
 
 
+def semantic_metadata_tokenizer_selection(*, artifact, sha256, semantic_metadata_view,
+                                         semantic_transport_schema, semantic_repository,
+                                         arm=None, census_only=False):
+    """Validate a declared local selection without opening any asset."""
+    if artifact is None and sha256 is None:
+        return None
+    if (not isinstance(artifact, Path) or not artifact.is_absolute()
+            or artifact == Path("/") or ".." in artifact.parts
+            or len(str(artifact)) > 4096 or "\0" in str(artifact)
+            or type(sha256) is not str or re.fullmatch(r"[0-9a-f]{64}", sha256) is None):
+        raise ValueError("exact local semantic metadata tokenizer artifact and SHA256 required")
+    if (type(semantic_metadata_view) is not str
+            or semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}
+            or semantic_transport_schema != "supervisor-semantic-router-input@1"
+            or semantic_repository is None or arm not in (None, "full") or census_only):
+        raise ValueError("metadata tokenizer requires the original full semantic coding route")
+    return {"schema": "terminal-semantic-metadata-tokenizer-request@1",
+            "artifact_sha256": sha256,
+            "artifact_path_sha256": hashlib.sha256(str(artifact).encode()).hexdigest(),
+            "requested": True, "descriptor_loaded": False,
+            "worker_provisioning_verified": False, "provider_tokenizer_compatibility_verified": False,
+            "provider_usage_verified": False, "token_savings_established": False}
+
+
 def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: int,
                         semantic_repository: Path | None, doctor: dict | None,
                         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
                         coding_reply_mode: str = "legacy", semantic_metadata_view: str = "legacy",
+                        semantic_metadata_tokenizer_artifact: Path | None = None,
+                        semantic_metadata_tokenizer_sha256: str | None = None,
                         source_view_profile: str = "disabled", source_view_policy: dict | None = None,
                         source_edit_mode: str = "disabled",
                         tool_output_policy: str = "legacy", source_view_advisory_policy: str = "legacy",
@@ -250,6 +277,10 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
     """Closed choice that the admitted launch signs before any worker starts."""
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
     validate_semantic_transport_schema(semantic_transport_schema)
+    tokenizer_selection = semantic_metadata_tokenizer_selection(
+        artifact=semantic_metadata_tokenizer_artifact, sha256=semantic_metadata_tokenizer_sha256,
+        semantic_metadata_view=semantic_metadata_view, semantic_transport_schema=semantic_transport_schema,
+        semantic_repository=semantic_repository)
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, validate_coding_reply_mode
     validate_coding_reply_mode(coding_reply_mode)
     from .terminal_source_view_policy import (
@@ -338,6 +369,9 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
               if coding_reply_mode != DEFAULT_CODING_REPLY_MODE else []),
             *(["--semantic-metadata-view", semantic_metadata_view]
               if semantic_metadata_view != "legacy" else []),
+            *(["--semantic-metadata-tokenizer-artifact", str(semantic_metadata_tokenizer_artifact),
+               "--semantic-metadata-tokenizer-sha256", semantic_metadata_tokenizer_sha256]
+              if tokenizer_selection is not None else []),
             *(["--source-view-profile", source_view_profile]
               if source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE else []),
             *source_view_policy_argv(source_view_policy, profile=source_view_profile),

@@ -196,6 +196,8 @@ parser.add_argument('--purpose',choices=['planning','coding'],default='coding')
 parser.add_argument('--semantic-repository',type=pathlib.Path)
 parser.add_argument('--semantic-transport-schema',choices=['supervisor-semantic-router-input@1','supervisor-semantic-router-input@2'],default='supervisor-semantic-router-input@1')
 parser.add_argument('--semantic-metadata-view',choices=['legacy','common-bindings@1','common-bindings-instruction@1','capsule-columns@1'],default='legacy')
+parser.add_argument('--semantic-metadata-tokenizer-artifact',type=pathlib.Path)
+parser.add_argument('--semantic-metadata-tokenizer-sha256')
 parser.add_argument('--semantic-metadata-census-only',action='store_true')
 parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion@1'],default='legacy')
 parser.add_argument('--tool-output-policy',choices=['legacy','artifact-preview@1','artifact-preview@2'],default='legacy')
@@ -243,6 +245,12 @@ instruction_values=(args.public_instruction_artifact,args.public_instruction_sha
 formalization_values=(args.source_formalization_handoff,args.source_formalization_handoff_sha256)
 numerical_obligation_values=(args.numerical_obligation_descriptor,args.numerical_obligation_descriptor_sha256)
 source_lookup_values=(args.source_lookup_descriptor,args.source_lookup_descriptor_sha256)
+metadata_tokenizer_values=(args.semantic_metadata_tokenizer_artifact,args.semantic_metadata_tokenizer_sha256)
+if any(value is not None for value in metadata_tokenizer_values):
+ tokenizer_artifact=args.semantic_metadata_tokenizer_artifact
+ tokenizer_sha256=args.semantic_metadata_tokenizer_sha256
+ if tokenizer_artifact is None or not tokenizer_artifact.is_absolute() or tokenizer_artifact==pathlib.Path('/') or '..' in tokenizer_artifact.parts or len(str(tokenizer_artifact))>4096 or '\0' in str(tokenizer_artifact) or type(tokenizer_sha256) is not str or len(tokenizer_sha256)!=64 or any(char not in '0123456789abcdef' for char in tokenizer_sha256):raise SystemExit('exact local semantic metadata tokenizer artifact and SHA256 required')
+ if args.semantic_metadata_view=='legacy' or args.semantic_repository is None or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values):raise SystemExit('metadata tokenizer requires original semantic router coding')
 if any(value is not None for value in source_lookup_values) and (not all(source_lookup_values) or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('exact source lookup descriptor requires isolated router coding')
 source_view_values=(args.source_view_descriptor,args.source_view_descriptor_sha256)
 if args.source_view_profile!='disabled' and any(value!='legacy' for value in (args.source_view_advisory_policy,args.repository_source_policy,args.source_input_policy,args.query_reference_policy)):raise SystemExit('signed source views cannot combine with advisory or projected source policies')
@@ -323,6 +331,7 @@ else:
  if args.semantic_repository is not None:sys.argv+=['--semantic-repository',str(args.semantic_repository)]
  if args.semantic_transport_schema!='supervisor-semantic-router-input@1':sys.argv+=['--semantic-transport-schema',args.semantic_transport_schema]
  if args.semantic_metadata_view!='legacy':sys.argv+=['--semantic-metadata-view',args.semantic_metadata_view]
+ if args.semantic_metadata_tokenizer_artifact is not None:sys.argv+=['--semantic-metadata-tokenizer-artifact',str(args.semantic_metadata_tokenizer_artifact),'--semantic-metadata-tokenizer-sha256',args.semantic_metadata_tokenizer_sha256]
  if args.semantic_metadata_census_only:sys.argv+=['--semantic-metadata-census-only']
  if args.coding_reply_mode!='legacy':sys.argv+=['--coding-reply-mode',args.coding_reply_mode]
  if args.tool_output_policy!='legacy':sys.argv+=['--tool-output-policy',args.tool_output_policy]
