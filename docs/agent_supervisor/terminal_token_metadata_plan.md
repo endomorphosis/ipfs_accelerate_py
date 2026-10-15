@@ -1497,3 +1497,36 @@ zero-call declared plan. Preserve that contract while adding the explicit
 profile, then collect current public-task component measurements and count
 retrieval exposure in any subsequent live comparison. No new benchmark reward
 or total token saving is established by these fixture results.
+
+## Fresh declared-plan working-set census (2026-10-15)
+
+The owner prerequisite above is complete at `92b540f004`. The integration passed
+267 runtime tests, with 19 additional launcher/exporter tests. A fresh public
+`largest-eigenval` Docker run passed full indexed preparation, pinned Source384
+inference, retained declared-plan/admission checks, native worker dispatch,
+complete-input owner replay and cleanup. No model generation or official
+verification ran. [Closed evidence and component sizes](evidence/working-set-owner-census-20261015/README.md)
+are retained with source/dependency/asset pins and hashes.
+
+The complete input shrank from **67,201 to 67,120 bytes: only 81 bytes (0.12%)**.
+The 24 deferred fields across two capsules are provenance; behavioral fields and
+raw source remain inline. Most bytes are in the remaining native context
+(30,343) and translated semantic context (28,751). This result does not support
+running a costly token-efficiency ablation of the existing capsule-reference
+profile alone. It is also not a comparison against native Codex or a new score.
+
+The next bounded projection should keep required evidence inline but encode
+its canonical JSON artifacts as typed objects with exact original-chunk
+reconstruction. The remaining intent/world, formalization and retrieval rows
+contain 1,373 bytes of JSON-string overhead: a gross ceiling of about 2.04% of
+this complete input before replacement metadata. Reuse existing artifact/chunk
+bindings; intent/world spans two chunks, so independently parsing each summary
+would be incorrect. Preserve unknown or noncanonical summaries unchanged and
+select a candidate only after complete-input comparison. This is a design
+candidate, not an implemented or measured saving.
+
+In parallel, measure repeated content inside the 6,266-byte semantic pack before
+attempting deduplication. Its size alone does not establish redundancy. Larger
+reductions still require explicit source-bound selection of required evidence
+and accounted retrieval; arbitrary deletion and symbol renaming alone cannot
+establish reduced full-run token usage.

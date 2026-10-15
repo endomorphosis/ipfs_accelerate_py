@@ -90,23 +90,99 @@ not be added together. The native fixture retained complete-input measurements
 and reconstruction checks, not numeric component-group shares. The new schema
 is structurally qualified; no live-task component savings are claimed.
 
-## Remaining Terminal Bench integration
+## Declared-plan Terminal Bench integration
 
-The router and installed worker are ready. The Harbor/container owner driver
-does not yet expose this new census mode. Its existing metadata-census path
-requires a model-generated plan, one planning invocation and Source384 controls.
-Declared-contract runs use zero planning invocations; reusing that path by
-loosening its checks would misstate provenance.
+The Harbor adapter and container owner now expose an explicit
+`--working-set-census-only` route. Preparation freezes the full indexed arm,
+`declared-contract@1` planning, `capsule-references@1`, enabled source views,
+original transport and legacy metadata. Candidate continuation, mapped source
+edits and metadata-census mixing are rejected. Harbor's official verifier is
+explicitly disabled. The new `terminal-benchmark-declared-controls@9` record
+keeps this measurement profile distinct from a coding benchmark.
 
-The next integration needs an explicit declared-plan census profile that
-reuses native preparation, allocation, admission and current-source checks;
-validates the retained declared graph; launches the registered child with this
-flag; checks the closed result and source-session joins; and performs normal
-cleanup. It must stop before coding generation and official verification.
-Only then can a fresh public-task census guide another full-run comparison.
+The owner performs indexed preparation and validates the signed admission.
+It rebuilds the declared goal/task graph and matches the retained planning
+receipt, including zero planning-provider calls and initial context that was
+never supplied to a planning router. The existing model-planned metadata census
+retains its separate provenance requirements. Source384 is optional for this
+census; a lexical index does not establish learned checkpoint inference.
 
-Capsule references currently defer an allowlist of provenance fields. Required
-behavioral constraints, formalization, raw source and unknown fields stay
-inline. Whole-codebase reversible minification and selective retrieval of the
-larger required evidence groups remain separate work, with explicit freshness,
-reconstruction and request-accounting requirements.
+The registered child uses the normal qualified worker namespace and source
+boundary. Current source, native semantic context, public requirements and
+applicable Doctor/formalization inputs remain bound to the observation. Grok's
+catalog/readiness probe is skipped in this explicit mode; its configured turn
+bound is preserved without allocating or calling a provider. The child measures
+the complete original and reference inputs through the production renderer and
+selector, retaining the original whenever references are larger.
+
+After the source session stops, the owner replays the production encoding,
+selection and closed census export, joins the observed requests and independent
+deployment qualification, and completes cleanup. Only then can
+`working_set_census_succeeded` become true. The collector reports measurement
+completion separately; `complete_single_trial_receipt` and task completion stay
+false. No coding generation or official verification runs, and there is no new
+reward, model token score or efficacy comparison.
+
+The integration passed **267 qualification tests**, including 102 Harbor and
+control checks, with unchanged source/dependency pins and zero live provider
+calls. Runtime commit: `92b540f004`.
+
+## Fresh public Docker measurement
+
+The [closed public-task evidence](evidence/working-set-owner-census-20261015/README.md)
+now closes the owner-integration prerequisite. A fresh `largest-eigenval`
+container completed full indexed preparation, pinned Source384 inference,
+declared planning, admission, the ordinary worker/source boundary and owner
+replay. Cleanup succeeded and the container was confirmed absent twice.
+
+| Complete coding input | Bytes |
+| --- | ---: |
+| Original | 67,201 |
+| Capsule-reference candidate, selected | 67,120 |
+| Reduction | **81 (0.12%)** |
+
+The candidate defers 24 provenance fields across two capsules. References and
+guidance nearly offset that reduction. Remaining native context occupies
+30,343 bytes; translated semantic context occupies 28,751. Together these
+contain the large required intent/world, formalization, code-retrieval and
+source groups that this projection preserves. This explains its limited effect
+on this first input; it does not explain or measure the whole CLI history.
+
+The source preflight returned 4,096 bytes, including 2,327 evidence bytes,
+without supplying them to a provider. Complete capsule expansion was not tested
+in this public run. The owner independently reproduced the full input counts,
+hashes and closed receipt after the source session stopped. Zero planning or
+coding generation calls ran, official verification was disabled, and there is
+no new reward or token-efficiency claim.
+
+Source384 inference took 9.744 seconds inside the 14.634-second initial-context
+phase. The census took 29.572 seconds. The complete owned Docker lifecycle,
+including deployment, took 491.373 seconds. These nested, single-run timings are
+not a throughput comparison.
+
+## Next measured optimization
+
+Use the closed `@2` component census to choose the next target. Its nested
+partitions overlap; compare sibling shares rather than adding parent and child
+bytes. Keep each experiment source-bound and compare the complete rendered
+input, including reference and retrieval guidance overhead.
+
+1. Prototype inline typed JSON evidence artifacts with exact original-chunk
+   reconstruction. The measured 1,373 bytes of remaining JSON-string overhead
+   is only a gross ceiling (2.04% of this input), before replacement metadata.
+   Reuse native artifact/chunk bindings: intent/world spans two chunks, so
+   parsing each summary independently would be incorrect. Unknown or
+   noncanonical summaries must remain unchanged.
+2. Measure repeated content inside the 6,266-byte semantic pack and existing
+   reconstruction/worker-projection fields. Their size alone does not establish
+   redundancy. Extend authenticated references only for fields with a defined
+   exact inverse and no behavioral authority.
+3. For larger reductions in intent/world, retrieval or formalization evidence,
+   design an owner-selected disclosure contract before changing model input.
+   Preserve required constraints and unknown fields, bind all pages to the
+   admitted source generation, reject stale expansions and account for every
+   retrieved response.
+
+These are candidates for qualification, not established savings. Reversible
+whole-codebase minification remains separate work: this route compresses a
+selected prompt representation and does not transform the executable repository.
