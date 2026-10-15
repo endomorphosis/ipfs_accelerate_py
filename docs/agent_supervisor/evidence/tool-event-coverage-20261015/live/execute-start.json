@@ -1,0 +1,8 @@
+{
+  "free_bytes": 60198793216,
+  "minimum_free_bytes": 34359738368,
+  "native_admission_still_required": true,
+  "source_freeze_sha256": "ebc308f813840cdaac49cc52c2048c09785ebbe8a653443e03d3214f1ab9f990",
+  "started_at_utc": "2026-10-15T07:08:44.922687+00:00",
+  "step": "execute"
+}

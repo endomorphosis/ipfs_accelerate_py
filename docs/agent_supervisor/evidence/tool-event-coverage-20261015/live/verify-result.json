@@ -1,0 +1,21 @@
+{
+  "all_archive_members_verified": true,
+  "archive": {
+    "bytes": 1411544707,
+    "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/runtime-01/runtime.tar.gz",
+    "sha256": "4c017dbba576a93ec85181f36fd24f892fc7ea011b82d84f84729ad701d49a96"
+  },
+  "archive_members": 27555,
+  "docker_calls": 0,
+  "exit_code": 0,
+  "frozen_inputs_unchanged": true,
+  "manifest": {
+    "bytes": 6227498,
+    "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/runtime-01/manifest.json",
+    "sha256": "505bd9e2bf875d03b59bcc13b1b0ecc2d11f57f9b303313af10cfeb8c013e20e"
+  },
+  "provider_calls": 0,
+  "seconds": 12.240907138912007,
+  "step": "verify",
+  "uncompressed_bytes": 4072854512
+}

@@ -1,0 +1,64 @@
+{
+  "batches": [
+    {
+      "label": "capture-final01",
+      "passed_cases": 292,
+      "result_sha256": "8999173b67712953cf8f30fe29589300ffd12d934b4e9618dc862677b9d31c0f",
+      "source_pins_sha256": "3465a3ac6255330415c947871dce7cd93b5c437c497e45fb86f573799039ca8e"
+    },
+    {
+      "label": "routes-dev01",
+      "passed_cases": 312,
+      "result_sha256": "877cc247fdd5ad2da61205d40620c68b07f353234eb94f22a37f4770fd00122f",
+      "source_pins_sha256": "17ba3afb3d6487bb593af69e9d5b283b4b8d25b6497af671097bbbb6ef92eeb6"
+    },
+    {
+      "label": "codec-final01",
+      "passed_cases": 80,
+      "result_sha256": "e43b55ef62965f6f4eed54e94e10cbd7fba3a4337294bde85474c6ada89ee6ee",
+      "source_pins_sha256": "4a3a4e499b6c5466603ced9bf6815f46ab886e22316d6ab1e0a1330d3135a1b5"
+    },
+    {
+      "label": "external-final01",
+      "passed_cases": 45,
+      "result_sha256": "75dc51d3a5fe521ffc914205a2f96ec1c78753cc2940ac89a48bba1b6d82f3ee",
+      "source_pins_sha256": "f4de516d7e355b7eb1c698fbd5ad04b1c5e0d7a969b2d4638b5574a4c7f702d2"
+    }
+  ],
+  "errors": 0,
+  "external_sha256": {
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/authored-e2e/test_authored_pipeline.py": "14334f94f2d36469c3e817de8811a16f38f2edeeddea78048b80da0233d295e2",
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/closed_export.py": "2f7b4e2c5264d212e26a50075df7b244e0d09f54809c536fb47b68c992fc0985",
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/prepare_draft.py": "a2ff14b31bd1bfe497b761715b8c8f26512a01e313fe7cf5ad6bd5b45fac8a13",
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/run.py": "81ef64437f72b6acf7b09df24b93ab7e4e5ed1625bb25c1e3e754a43b6e275fc",
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/test_closed_export.py": "637e050606485d9949ccfdb1dca0cc4cf4ce543d383f95379e6df19525bdaa18",
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/test_run.py": "d8ea36148dcbee3b4acf4dabc3dec8d187c68f8d9d73819bfbb4a7d64ff4c0e3"
+  },
+  "failures": 0,
+  "live_provider_calls": 0,
+  "passed": true,
+  "passed_cases": 729,
+  "qualification_script_sha256": "039fee293c35a4fe1d4b021e2f6724384f7284f06a7aebded3ce6b7be9082cce",
+  "runtime_commit": "7c68549bc4e57ff0d1736fefbf2db94b081da013",
+  "schema": "tool-event-coverage-qualification@1",
+  "skipped": 0,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "66391e9c9735fb65937ed15bda07c21e80dc2a0bc09b3e3be9f32a9752227ef6",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "6746da40da37392bc76b865d71b36c44f18e8e545fc30ff20c690df89bbc64c2",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "5690bf5ff65b56de469bfc2fd3a4c249eb4c68a4d1837df6389954a2d6cc709a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "73bc9d510f202e28a12631bc1b079feeb483a538b9c2c4e23a1c741fbb72b927",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "72d38f903b4b73ab076ee74c55d37be951f62faf55d5216b51c2a9ea86efbeb0",
+    "ipfs_accelerate_py/cli_runtime/grok_tool_events.py": "15d661ce6ba3acd7ec12aaa3a431cfd739806c28f664e4ff9513ca369bf12f83",
+    "ipfs_accelerate_py/llm_router.py": "13fb5b1815662b9edf50761826d291504534629b578bdea84feee0fe85347bde",
+    "test/api/test_grok_stream_capture.py": "20de776a8293ee38bd423c317de6f28f02a529330f0b58e4a15b138d3a2ca3ce",
+    "test/api/test_grok_stream_coverage.py": "f02f0dc0f24e6969cb91e6d415f6c208b0d54fd8da9fb3fd348f155d14b34f9e",
+    "test/api/test_grok_stream_router.py": "399db826ea5e483c501b989c4785b1a3075a561127c326490797fe661f7f2000",
+    "test/api/test_grok_stream_usage.py": "83e40adb35d026b4f7e5afa75fbd55859773566ec233b99a9214a370e8ee6796",
+    "test/api/test_grok_tool_event_capture.py": "c180e7910667f830d50fe776205b2a0e583fc6e8de2f180c78a871b6a68c59f5",
+    "test/api/test_grok_tool_event_coverage.py": "abe8f0ed92853eedcf6173c8c7a57ae503fdde8e38d44f0a3037b8e6e88e4c18",
+    "test/api/test_grok_tool_event_history_compatibility.py": "3862e222f45bfabd411c8c53c948521de0b9538e49969d69ca4c2b65d60ff2ad",
+    "test/api/test_grok_tool_events.py": "67a56e3bbbae5d3a1d26ac51cc6578ad53143f5a2b44d55186850dda1e3b0064",
+    "test/api/test_router_implementation_runner.py": "a53068326a777c743b1b00b51b9f7e983d3ab8ba42400e64ebf4ad452c91086f"
+  },
+  "test_runner_sha256": "4539318b25cf413188c8c94942bd7d0dccc30428ae35d6fec81004aa48216fca"
+}

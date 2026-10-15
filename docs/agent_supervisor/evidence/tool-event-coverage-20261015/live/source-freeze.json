@@ -1,0 +1,212 @@
+{
+  "docker_calls": 0,
+  "files": [
+    {
+      "bytes": 17743,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/run.py",
+      "sha256": "81ef64437f72b6acf7b09df24b93ab7e4e5ed1625bb25c1e3e754a43b6e275fc"
+    },
+    {
+      "bytes": 3321,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/prepare_draft.py",
+      "sha256": "a2ff14b31bd1bfe497b761715b8c8f26512a01e313fe7cf5ad6bd5b45fac8a13"
+    },
+    {
+      "bytes": 4399,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/recipe-draft.json",
+      "sha256": "ca60989ce238193d15f48ae70819a39e080f596d567b5b716082898711efef5c"
+    },
+    {
+      "bytes": 1699,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/environment.json",
+      "sha256": "2186c312d1a25139c423c02eb9fca066740be8459347c4f798519073539b14ef"
+    },
+    {
+      "bytes": 375,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/largest-eigenval-public-profile.json",
+      "sha256": "274146542fd5d4c611b0b01700fbeea48a202da875525303bddbd44b2a4e67c3"
+    },
+    {
+      "bytes": 4825,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/closed_export.py",
+      "sha256": "2f7b4e2c5264d212e26a50075df7b244e0d09f54809c536fb47b68c992fc0985"
+    },
+    {
+      "bytes": 4857,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/local-asset-readiness-draft01.json",
+      "sha256": "b9d9de822c04b4ec9ca3c5d1c8f925add7005f907240398741df9a9aaea1ab8c"
+    },
+    {
+      "bytes": 4146,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/test_run.py",
+      "sha256": "d8ea36148dcbee3b4acf4dabc3dec8d187c68f8d9d73819bfbb4a7d64ff4c0e3"
+    },
+    {
+      "bytes": 7617,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/test_closed_export.py",
+      "sha256": "637e050606485d9949ccfdb1dca0cc4cf4ce543d383f95379e6df19525bdaa18"
+    },
+    {
+      "bytes": 2096,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/scaffold-origin.json",
+      "sha256": "c024236cd71f7bd91c4afffaf097ad9e62c90e484e362da7212d182804d40c71"
+    },
+    {
+      "bytes": 4513,
+      "path": "qualification-final01.json",
+      "sha256": "cbdb7e9cd309af586cba93dc502023ba738cec80bd23261fb3b6ae4f03d6a238"
+    }
+  ],
+  "inputs": [
+    {
+      "bytes": 1739,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+      "sha256": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5"
+    },
+    {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    {
+      "bytes": 642,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "bytes": 2246,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    {
+      "bytes": 493355,
+      "path": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    },
+    {
+      "bytes": 142867512,
+      "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-1.0.46/grok",
+      "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e"
+    },
+    {
+      "bytes": 155005253,
+      "path": "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+    },
+    {
+      "bytes": 190,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/1_Pooling/config.json",
+      "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+    },
+    {
+      "bytes": 583,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/config.json",
+      "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+    },
+    {
+      "bytes": 66746168,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors",
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    {
+      "bytes": 385,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/modules.json",
+      "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+    },
+    {
+      "bytes": 57,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/sentence_bert_config.json",
+      "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+    },
+    {
+      "bytes": 125,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/special_tokens_map.json",
+      "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+    },
+    {
+      "bytes": 711661,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer.json",
+      "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+    },
+    {
+      "bytes": 394,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer_config.json",
+      "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+    },
+    {
+      "bytes": 231508,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/vocab.txt",
+      "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+    },
+    {
+      "bytes": 32143862,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension",
+      "sha256": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+    },
+    {
+      "bytes": 19861758,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension",
+      "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9"
+    },
+    {
+      "bytes": 29708110,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+      "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+    },
+    {
+      "bytes": 1032,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/task.toml",
+      "sha256": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830"
+    },
+    {
+      "bytes": 307,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/Dockerfile",
+      "sha256": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94"
+    }
+  ],
+  "provider_calls": 0,
+  "qualification": {
+    "bytes": 4513,
+    "path": "qualification-final01.json",
+    "sha256": "cbdb7e9cd309af586cba93dc502023ba738cec80bd23261fb3b6ae4f03d6a238"
+  },
+  "recipe": {
+    "bytes": 4920,
+    "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/recipe.json",
+    "sha256": "945f5ef71366ff316395c0e5fdee7bed23b7fd8b5efdd4b6044254444b0e2e80"
+  },
+  "roots": {
+    "datasets": {
+      "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014"
+    },
+    "kit": {
+      "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit"
+    },
+    "source": {
+      "commit": "7c68549bc4e57ff0d1736fefbf2db94b081da013",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-tool-event-coverage-20261015"
+    }
+  },
+  "schema": "tool-event-public-diagnostic-source-freeze@1",
+  "source_frozen_before_execution": true,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "66391e9c9735fb65937ed15bda07c21e80dc2a0bc09b3e3be9f32a9752227ef6",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "6746da40da37392bc76b865d71b36c44f18e8e545fc30ff20c690df89bbc64c2",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "5690bf5ff65b56de469bfc2fd3a4c249eb4c68a4d1837df6389954a2d6cc709a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "73bc9d510f202e28a12631bc1b079feeb483a538b9c2c4e23a1c741fbb72b927",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "72d38f903b4b73ab076ee74c55d37be951f62faf55d5216b51c2a9ea86efbeb0",
+    "ipfs_accelerate_py/cli_runtime/grok_tool_events.py": "15d661ce6ba3acd7ec12aaa3a431cfd739806c28f664e4ff9513ca369bf12f83",
+    "ipfs_accelerate_py/llm_router.py": "13fb5b1815662b9edf50761826d291504534629b578bdea84feee0fe85347bde",
+    "test/api/test_grok_stream_capture.py": "20de776a8293ee38bd423c317de6f28f02a529330f0b58e4a15b138d3a2ca3ce",
+    "test/api/test_grok_stream_coverage.py": "f02f0dc0f24e6969cb91e6d415f6c208b0d54fd8da9fb3fd348f155d14b34f9e",
+    "test/api/test_grok_stream_router.py": "399db826ea5e483c501b989c4785b1a3075a561127c326490797fe661f7f2000",
+    "test/api/test_grok_stream_usage.py": "83e40adb35d026b4f7e5afa75fbd55859773566ec233b99a9214a370e8ee6796",
+    "test/api/test_grok_tool_event_capture.py": "c180e7910667f830d50fe776205b2a0e583fc6e8de2f180c78a871b6a68c59f5",
+    "test/api/test_grok_tool_event_coverage.py": "abe8f0ed92853eedcf6173c8c7a57ae503fdde8e38d44f0a3037b8e6e88e4c18",
+    "test/api/test_grok_tool_event_history_compatibility.py": "3862e222f45bfabd411c8c53c948521de0b9538e49969d69ca4c2b65d60ff2ad",
+    "test/api/test_grok_tool_events.py": "67a56e3bbbae5d3a1d26ac51cc6578ad53143f5a2b44d55186850dda1e3b0064",
+    "test/api/test_router_implementation_runner.py": "a53068326a777c743b1b00b51b9f7e983d3ab8ba42400e64ebf4ad452c91086f"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "disabled": true,
+  "docker_calls": 0,
+  "new_archive_required": true,
+  "new_runtime_commit_required": true,
+  "new_runtime_qualification_required": true,
+  "previous_result_or_private_state_reused": false,
+  "provider_calls": 0,
+  "schema": "tool-event-diagnostic-scaffold-origin@1",
+  "source_files": [
+    {
+      "bytes": 17532,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/run.py",
+      "sha256": "5297158682025e2ffa1ef56b90b23853f1c161c4caf99902e7e690a144b8be17"
+    },
+    {
+      "bytes": 4765,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/closed_export.py",
+      "sha256": "2cd4ac9e0a7d3fed5d9f4aaeb33321da1890d42970994d9ef8eefc0dfbc5aa41"
+    },
+    {
+      "bytes": 4016,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/test_run.py",
+      "sha256": "2d59122a8fc3fa802850734c1039e42ac2e40351703e60a507b926af205824c6"
+    },
+    {
+      "bytes": 6527,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/test_closed_export.py",
+      "sha256": "ee24a02237cafb9cbd85c2a9d53069f234fdd46bfbbdd2278b6a16744551451c"
+    },
+    {
+      "bytes": 4328,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/recipe-draft.json",
+      "sha256": "5fdd1ed67c9c5260e690f530a1dd6e653f50958f950ee178b78c9603789e7fa4"
+    },
+    {
+      "bytes": 1693,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/environment.json",
+      "sha256": "31994cbd317b7ef6f108f14aed01799319775607ace193c61ad51b9f425ef7c0"
+    },
+    {
+      "bytes": 4857,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/local-asset-readiness-draft01.json",
+      "sha256": "b9d9de822c04b4ec9ca3c5d1c8f925add7005f907240398741df9a9aaea1ab8c"
+    },
+    {
+      "bytes": 375,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/largest-eigenval-public-profile.json",
+      "sha256": "274146542fd5d4c611b0b01700fbeea48a202da875525303bddbd44b2a4e67c3"
+    }
+  ]
+}

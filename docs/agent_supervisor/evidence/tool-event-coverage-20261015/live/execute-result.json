@@ -1,0 +1,17 @@
+{
+  "exact_container_absence_observations": [
+    true,
+    true
+  ],
+  "exit_code": 0,
+  "frozen_inputs_unchanged": true,
+  "observation": {
+    "bytes": 108237,
+    "path": "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/actual-public-diagnostic-01.json",
+    "sha256": "3377ef9dfeb66c2f2ce7009dbca8ae5216c9694e7d4ddfc123af17282db58d2c"
+  },
+  "outer_failure": null,
+  "qualified": true,
+  "seconds": 396.85663901502267,
+  "step": "execute"
+}
