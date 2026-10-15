@@ -42,9 +42,10 @@ print(output)
 
 
 @pytest.mark.parametrize("expanded_module", [False, True])
-@pytest.mark.parametrize("census_schema", ["router-semantic-working-set-census@1", "router-semantic-working-set-census@2"])
+@pytest.mark.parametrize("census_schema", ["router-semantic-working-set-census@1",
+    "router-semantic-working-set-census@2", "router-semantic-working-set-census@3"])
 def test_owner_replays_exact_census_and_closed_source_accounting(tmp_path, monkeypatch, expanded_module, census_schema):
-    if census_schema.endswith("@2"):
+    if not census_schema.endswith("@1"):
         # The public fixture normally supplies only semantic references. Add
         # authored required artifacts through its real compiler before custody
         # capture. This tests nonempty inline objects, not learned inference.
@@ -110,11 +111,25 @@ def normalize_vector(vector):
             owner.retire_coding_worker(launch=launch, process=process, source_broker=broker)
         observed = json.loads(stdout)
         assert observed["schema"] == census_schema
-        if census_schema.endswith("@2"):
+        if not census_schema.endswith("@1"):
             assert observed["inline_evidence_census"]["dispatch_enabled"] is False
             assert observed["inline_evidence_census"]["selection"]["view_receipt"]["artifact_count"] == 2
             assert observed["inline_evidence_census"]["selection"]["selected_mode"] == "inline-evidence-objects@1"
             assert observed["semantic_pack_census"]["raw_content_exported"] is False
+        if census_schema.endswith("@3"):
+            from ipfs_accelerate_py.agent_supervisor.runtime import semantic_pack_projection as pack
+            projection = observed["semantic_pack_projection_census"]
+            assert projection["dispatch_enabled"] is False
+            assert projection["composed_with_capsule_references"] is False
+            assert projection["composed_with_inline_evidence"] is False
+            assert projection["exact_transport_inverse_verified"] is True
+            assert projection["raw_content_exported"] is False
+            pack.validate_selection_receipt(projection["selection"])
+            for field in ("native_complete_bytes", "native_complete_sha256"):
+                assert projection["selection"][field] == observed["census"][field]
+                assert projection["selection"][field] == observed["inline_evidence_census"]["selection"][field]
+        else:
+            assert "semantic_pack_projection_census" not in observed
         assert observed["census"]["selected_mode"] == ("capsule-references@1" if expanded_module else "legacy")
         prompt = tmp_path / "owner-prompt.txt"
         prompt.write_text(broker.prompt)
@@ -136,14 +151,29 @@ def normalize_vector(vector):
         assert result["provider_input_bytes"] == result["provider_calls"] == 0
         assert result["source_session_stopped"] and result["source_session_accounting_complete"]
         assert result["provider_tokens"] is None
-        if census_schema.endswith("@2"):
-            for section in ("inline_evidence_census", "semantic_pack_census"):
+        if census_schema.endswith("@1"):
+            standalone = dict(kwargs)
+            standalone.pop("census_schema")
+            assert replay.replay_working_set_census(**standalone) == result
+        else:
+            sections = ["inline_evidence_census", "semantic_pack_census"]
+            if census_schema.endswith("@3"):
+                sections.append("semantic_pack_projection_census")
+            for section in sections:
                 changed = deepcopy(observed)
                 changed[section]["private_extra"] = "not-closed"
                 with pytest.raises(ValueError):
                     replay.replay_working_set_census(**(kwargs | {"observed": changed}))
             with pytest.raises(ValueError):
                 replay.replay_working_set_census(**(kwargs | {"census_schema": "router-semantic-working-set-census@1"}))
+        if census_schema.endswith("@3"):
+            for field, value in (("native_complete_bytes", 1), ("candidate_complete_sha256", "a" * 64)):
+                changed = deepcopy(observed)
+                changed["semantic_pack_projection_census"]["selection"][field] = value
+                with pytest.raises(ValueError):
+                    replay.replay_working_set_census(**(kwargs | {"observed": changed}))
+            with pytest.raises(ValueError):
+                replay.replay_working_set_census(**(kwargs | {"census_schema": "router-semantic-working-set-census@2"}))
         for path, value in [(("census", "native_complete_bytes"), 1),
                 (("census", "selected_complete_bytes"), 1), (("provider_calls",), 1),
                 (("native_prompt_sha256",), "a" * 64), (("private_extra",), "private-owner-content")]:

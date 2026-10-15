@@ -17,7 +17,8 @@ from .semantic_router_translation import (
 
 SCHEMA = "router-semantic-working-set-census@1"
 EXTENDED_SCHEMA = "router-semantic-working-set-census@2"
-SCHEMAS = (SCHEMA, EXTENDED_SCHEMA)
+PACK_SCHEMA = "router-semantic-working-set-census@3"
+SCHEMAS = (SCHEMA, EXTENDED_SCHEMA, PACK_SCHEMA)
 
 
 def validate_census_schema(value, *, census_only=True):
@@ -149,7 +150,7 @@ def working_set_census_receipt(*, selection, encoded, prompt, model, workspace, 
         source_freshness_authority=False, proof_authority=False, execution_authority=False,
         completion_authority=False, settlement_authority=False, publication_authority=False,
         required_fact_omission_authority=False)
-    if census_schema == EXTENDED_SCHEMA:
+    if census_schema in (EXTENDED_SCHEMA, PACK_SCHEMA):
         from .inline_evidence_projection import (
             project_inline_evidence, restore_inline_evidence, select_inline_evidence,
         )
@@ -174,6 +175,25 @@ def working_set_census_receipt(*, selection, encoded, prompt, model, workspace, 
             proof_authority=False, omission_authority=False, execution_authority=False,
             completion_authority=False, raw_content_exported=False)
         result["semantic_pack_census"] = census_semantic_pack(encoded=encoded)
+    if census_schema == PACK_SCHEMA:
+        from .semantic_pack_projection import (
+            project_semantic_pack, restore_semantic_pack, select_semantic_pack,
+        )
+        pack_view = project_semantic_pack(encoded)
+        if restore_semantic_pack(pack_view.provider_prompt, pack_view.receipt) != encoded.provider_prompt:
+            raise ValueError("semantic pack inverse differs from original transport")
+        # The @2 branch validates the original complete input and captures its
+        # exact wrappers. Never compose independent measurement candidates.
+        pack_candidate = prefix + pack_view.provider_prompt + suffix
+        pack_selected = select_semantic_pack(pack_view, native_model_prompt, pack_candidate)
+        result["semantic_pack_projection_census"] = dict(
+            schema="supervisor-semantic-pack-projection-census@1", observation_only=True,
+            comparison_basis="original-complete-input-with-identical-wrappers@1",
+            composed_with_capsule_references=False, composed_with_inline_evidence=False,
+            dispatch_enabled=False, exact_transport_inverse_verified=True,
+            selection=pack_selected.receipt, provider_calls=0, provider_tokens=None,
+            token_savings_claimed=False, proof_authority=False, omission_authority=False,
+            execution_authority=False, completion_authority=False, raw_content_exported=False)
     if len(_json(result).encode()) > 32768:
         raise ValueError("working-set census exceeds its closed output bound")
     return result

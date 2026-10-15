@@ -154,3 +154,85 @@ def test_declared_census_invalid_controls_refuse_before_reads(tmp_path, monkeypa
     monkeypatch.setattr(driver.subprocess, "run", _forbidden)
     with pytest.raises(ValueError):
         driver.run(**(_census_options(tmp_path) | change))
+
+
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_current_owner_selects_pack_census_for_worker_and_replay_before_success(
+        tmp_path, monkeypatch, cleanup_fails):
+    from benchmarks.agent_supervisor.container_coding import terminal_working_set_census as preparation
+    from benchmarks.agent_supervisor.container_coding import terminal_working_set_census_observation as replay
+    from ipfs_accelerate_py.agent_supervisor.runtime import numerical_obligation_client as protocol
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_working_set_census import PACK_SCHEMA
+
+    assert PACK_SCHEMA == "router-semantic-working-set-census@3"
+    root = tmp_path / "container"
+    root.mkdir()
+    workspace = root / "workspace"
+    workspace.mkdir()
+    private = root / "private"
+    private.mkdir()
+    prompt = private / "prompt.txt"
+    prompt.write_text("Authored owner prompt")
+    planning = {"qualified": True, "provider_calls": 0}
+    report = {"planning": planning, "provider_invocations": [], "working_set_census_succeeded": False}
+    metadata = {"planning_metadata_sha256": live._identity(planning)}
+    source_observation = {"complete_input_replayed": True, "closed_observation_replayed": True}
+    observed = {"schema": PACK_SCHEMA, "provider_calls": 0}
+    events = []
+    prepared = dict(metadata=metadata, runner_kwargs={"semantic_repository": root / "repository"},
+        workspace=workspace, prompt_artifact=prompt, private_artifact_dir=private)
+    deployment = {"authored_deployment": True}
+
+    @contextmanager
+    def prepare(**kwargs):
+        assert kwargs["coding_reply_mode"] == "legacy"
+        assert kwargs["require_source384"] is False
+        events.append("prepare")
+        try:
+            yield prepared
+        finally:
+            assert report["working_set_census_succeeded"] is False
+            events.append("cleanup")
+            if cleanup_fails:
+                raise ValueError("authored cleanup failure")
+
+    def worker_call(argv, **kwargs):
+        assert argv.count("--semantic-working-set-census-only") == 1
+        flag = "--semantic-working-set-census-schema"
+        assert argv.count(flag) == 1 and argv[argv.index(flag) + 1] == PACK_SCHEMA
+        assert argv[argv.index("--grok-coding-max-turns") + 1] == "8"
+        assert kwargs["stdin"].read() == prompt.read_bytes()
+        events.append("worker")
+        return SimpleNamespace(returncode=0, stdout=protocol.canonical_json(observed), stderr=b"")
+
+    def owner_replay(**kwargs):
+        assert kwargs["prepared"] is prepared
+        assert kwargs["observed"] == observed
+        assert kwargs["deployment"] == deployment
+        assert kwargs["census_schema"] == PACK_SCHEMA
+        assert report["working_set_census_succeeded"] is False
+        events.append("replay")
+        return source_observation
+
+    monkeypatch.setattr(driver, "ROOT", root)
+    monkeypatch.setattr(driver, "WORKTREES", root / "worktrees")
+    monkeypatch.setattr(driver, "_live_census_boundary", lambda path: deployment)
+    monkeypatch.setattr(preparation, "prepare_terminal_working_set_census", prepare)
+    monkeypatch.setattr(replay, "replay_working_set_census", owner_replay)
+    monkeypatch.setattr(driver.subprocess, "run", worker_call)
+    args = dict(state=root / "state", report=report, provider_selection=resolve_provider_profile(GROK_PROFILE),
+        timeout_seconds=120, source_view_profile="identity@1", source_view_policy=None,
+        coding_reply_mode="legacy", grok_coding_max_turns=8, require_source384=False)
+    if cleanup_fails:
+        with pytest.raises(ValueError, match="authored cleanup failure"):
+            driver._run_working_set_census(**args)
+        assert report["working_set_census_succeeded"] is False
+        assert "working_set_census" not in report
+    else:
+        driver._run_working_set_census(**args)
+        assert report["working_set_census_succeeded"] is True
+        assert report["working_set_census"] == observed
+        assert report["working_set_census_source_observation"] == source_observation
+        assert report["working_set_census_context"]["retained_owner_planning_receipt_join_verified"] is True
+        assert report["coding_dispatch_possible"] is False
+    assert events == ["prepare", "worker", "replay", "cleanup"]

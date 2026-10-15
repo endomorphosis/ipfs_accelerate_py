@@ -1,8 +1,8 @@
 """Owner replay of a closed census and its stopped source-reader session.
 
-Reconstruct both complete inputs from current owner artifacts. The worker's
-counts and hashes are accepted only if the existing selector/exporter reproduces
-the entire observation. No provider is initialized and no prompt is exported.
+Reconstruct the selected schema's complete inputs from current owner artifacts.
+The worker's counts and hashes are accepted only if the existing selector/exporter
+reproduces the entire observation. No provider is initialized and no prompt is exported.
 """
 from __future__ import annotations
 

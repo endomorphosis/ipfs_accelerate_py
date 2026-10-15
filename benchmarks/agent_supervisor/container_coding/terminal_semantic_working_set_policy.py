@@ -25,6 +25,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set_census.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/inline_evidence_projection.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_pack_census.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_pack_projection.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence_client.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",

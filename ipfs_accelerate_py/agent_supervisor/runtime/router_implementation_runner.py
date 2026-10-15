@@ -329,7 +329,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
     "semantic_metadata_view.py", "semantic_instruction_view.py",
     "semantic_metadata_census.py", "semantic_working_set.py", "semantic_working_set_census.py",
-    "inline_evidence_projection.py", "semantic_pack_census.py",
+    "inline_evidence_projection.py", "semantic_pack_census.py", "semantic_pack_projection.py",
     "source_formalization_context.py",
     "numerical_obligation_client.py", "source_lookup_worker_client.py", "worker_source_client.py",
     "candidate_dispatch_context.py", "candidate_reply_contract.py", "worker_candidate_round_client.py",
@@ -1470,8 +1470,9 @@ def main():
     parser.add_argument("--semantic-working-set-census-only", action="store_true",
                         help="Measure capsule-reference input with authenticated preflight and no provider allocation")
     parser.add_argument("--semantic-working-set-census-schema", default="router-semantic-working-set-census@1",
-                        choices=["router-semantic-working-set-census@1", "router-semantic-working-set-census@2"],
-                        help="Extended census also measures independent inline evidence and pack components")
+                        choices=["router-semantic-working-set-census@1", "router-semantic-working-set-census@2",
+                            "router-semantic-working-set-census@3"],
+                        help="Extended censuses measure independent evidence and pack representations")
     parser.add_argument("--coding-reply-mode", default="legacy",
                         choices=["legacy", "ordinary-completion@1"])
     parser.add_argument("--doctor-residual-artifact", type=Path)

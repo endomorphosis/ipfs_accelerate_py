@@ -12,6 +12,7 @@ from benchmarks.agent_supervisor.container_coding.test_source_formalization_work
 
 
 FLAG = "--semantic-working-set-census-only"
+EXTENDED_SCHEMAS = ("router-semantic-working-set-census@2", "router-semantic-working-set-census@3")
 
 
 def _arguments():
@@ -28,6 +29,7 @@ def test_shipped_worker_forwards_explicit_census_once_through_normal_child_custo
     assert len(events) == 2 and events[1][0] == "router"
     argv = events[1][1]
     assert argv.count(FLAG) == census
+    assert "--semantic-working-set-census-schema" not in argv
     assert "--semantic-metadata-census-only" not in argv
     for flag in ("--semantic-repository", "--semantic-working-set", "--source-view-profile",
             "--source-view-descriptor", "--source-view-descriptor-sha256"):
@@ -94,8 +96,9 @@ def test_census_only_flag_cannot_select_a_plain_worker_route():
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_extended_schema_requires_census_only_and_is_forwarded_once(enabled):
-    flag, schema = "--semantic-working-set-census-schema", "router-semantic-working-set-census@2"
+@pytest.mark.parametrize("schema", EXTENDED_SCHEMAS)
+def test_extended_schema_requires_census_only_and_is_forwarded_once(enabled, schema):
+    flag = "--semantic-working-set-census-schema"
     args = _arguments() + [flag, schema] + ([FLAG] if enabled else [])
     code, events = _worker_parser_and_route(args)
     if not enabled:
@@ -106,9 +109,17 @@ def test_extended_schema_requires_census_only_and_is_forwarded_once(enabled):
         assert argv.count(flag) == 1 and argv[argv.index(flag) + 1] == schema
 
 
-def test_installed_worker_forwards_extended_schema(tmp_path):
-    flag, schema = "--semantic-working-set-census-schema", "router-semantic-working-set-census@2"
-    result = worker_run(tmp_path, _arguments() + [FLAG, flag, schema])
+@pytest.mark.parametrize("schema", EXTENDED_SCHEMAS)
+@pytest.mark.parametrize("grok", [False, True])
+def test_installed_worker_forwards_extended_schema(tmp_path, schema, grok):
+    flag = "--semantic-working-set-census-schema"
+    args = _arguments() + [FLAG, flag, schema]
+    if grok:
+        args += ["--provider", "grok_cli", "--model", "grok-4.7", "--grok-coding-max-turns", "8"]
+    result = worker_run(tmp_path, args)
     assert result.returncode == 0, result.stderr.decode()
     argv = json.loads(result.stdout)["argv"]
     assert argv.count(flag) == 1 and argv[argv.index(flag) + 1] == schema
+    assert argv.count(FLAG) == 1
+    if grok:
+        assert argv[argv.index("--grok-coding-max-turns") + 1] == "8"

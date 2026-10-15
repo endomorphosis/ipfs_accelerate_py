@@ -249,7 +249,7 @@ parser.add_argument('--semantic-metadata-view',choices=['legacy','common-binding
 parser.add_argument('--semantic-working-set',choices=['legacy','capsule-references@1'],default='legacy')
 parser.add_argument('--semantic-metadata-census-only',action='store_true')
 parser.add_argument('--semantic-working-set-census-only',action='store_true')
-parser.add_argument('--semantic-working-set-census-schema',choices=['router-semantic-working-set-census@1','router-semantic-working-set-census@2'],default='router-semantic-working-set-census@1')
+parser.add_argument('--semantic-working-set-census-schema',choices=['router-semantic-working-set-census@1','router-semantic-working-set-census@2','router-semantic-working-set-census@3'],default='router-semantic-working-set-census@1')
 parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion@1'],default='legacy')
 parser.add_argument('--doctor-candidate-artifact',type=pathlib.Path)
 parser.add_argument('--doctor-candidate-sha256')

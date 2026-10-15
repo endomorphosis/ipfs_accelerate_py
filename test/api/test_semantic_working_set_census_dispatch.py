@@ -332,8 +332,10 @@ def test_cli_stale_source_failure_exports_only_closed_diagnostic(dispatch, monke
 
 
 @pytest.mark.parametrize("reply_mode", ["legacy", "ordinary-completion@1"])
+@pytest.mark.parametrize("census_schema", ["router-semantic-working-set-census@2",
+    "router-semantic-working-set-census@3"])
 def test_extended_census_measures_independent_inline_input_with_exact_original_wrappers(
-        dispatch, monkeypatch, reply_mode):
+        dispatch, monkeypatch, reply_mode, census_schema):
     from ipfs_accelerate_py.agent_supervisor.runtime import semantic_working_set_census as exporter
     from ipfs_accelerate_py.agent_supervisor.runtime import inline_evidence_projection as inline
     service, (_, calls), args = dispatch
@@ -346,9 +348,12 @@ def test_extended_census_measures_independent_inline_input_with_exact_original_w
         return original(**kwargs)
     monkeypatch.setattr(exporter, "working_set_census_receipt", capture)
     output, result = _census(args, coding_reply_mode=reply_mode,
-        working_set_census_schema=exporter.EXTENDED_SCHEMA)
-    assert json.loads(output) == result and result["schema"] == exporter.EXTENDED_SCHEMA
-    assert set(result) - set(old) == {"inline_evidence_census", "semantic_pack_census"}
+        working_set_census_schema=census_schema)
+    assert json.loads(output) == result and result["schema"] == census_schema
+    added = {"inline_evidence_census", "semantic_pack_census"}
+    if census_schema == exporter.PACK_SCHEMA:
+        added.add("semantic_pack_projection_census")
+    assert set(result) - set(old) == added
     assert result["census"] == old["census"]
     assert result["semantic_prompt_components"] == old["semantic_prompt_components"]
     observation = result["inline_evidence_census"]
@@ -365,6 +370,27 @@ def test_extended_census_measures_independent_inline_input_with_exact_original_w
     assert inline.restore_inline_evidence(view.provider_prompt, view.receipt) == captured["encoded"].provider_prompt
     assert result["semantic_pack_census"]["pack_object"]["object_bytes"] == (
         result["semantic_prompt_components"]["translated_semantic"]["members"]["pack"]["value_bytes"])
+    if census_schema == exporter.PACK_SCHEMA:
+        from ipfs_accelerate_py.agent_supervisor.runtime import semantic_pack_projection as pack
+        measured = result["semantic_pack_projection_census"]
+        assert measured["exact_transport_inverse_verified"] is True
+        assert measured["dispatch_enabled"] is measured["composed_with_inline_evidence"] is False
+        assert measured["composed_with_capsule_references"] is False
+        pack_selection = pack.validate_selection_receipt(measured["selection"])
+        for suffix in ("_bytes", "_sha256"):
+            assert pack_selection["native_complete" + suffix] == old["census"]["native_complete" + suffix]
+        pack_view = pack.project_semantic_pack(captured["encoded"])
+        assert pack.restore_semantic_pack(pack_view.provider_prompt, pack_view.receipt) == captured["encoded"].provider_prompt
+        prefix, suffix = captured["native_model_prompt"].split(captured["encoded"].provider_prompt)
+        candidate = prefix + pack_view.provider_prompt + suffix
+        assert pack_selection["candidate_complete_sha256"] == _sha(candidate)
+        assert pack_selection["candidate_complete_bytes"] == len(candidate.encode())
+        expected_mode = pack.MODE if len(candidate.encode()) < len(captured["native_model_prompt"].encode()) else "legacy"
+        assert pack_selection["selected_mode"] == expected_mode
+        # Additive schema: the entire previous observation remains unchanged.
+        previous = original(**(captured | {"census_schema": exporter.EXTENDED_SCHEMA}))
+        assert result == (previous | {"schema": exporter.PACK_SCHEMA,
+            "semantic_pack_projection_census": measured})
     assert original(**captured) == result
     for value in (None, captured["native_model_prompt"] + " changed"):
         with pytest.raises(ValueError):
@@ -374,7 +400,8 @@ def test_extended_census_measures_independent_inline_input_with_exact_original_w
     assert calls == [] and result["provider_calls"] == result["router_calls"] == 0
 
 
-@pytest.mark.parametrize("schema", [None, True, "unknown", "router-semantic-working-set-census@2"])
+@pytest.mark.parametrize("schema", [None, True, "unknown", "router-semantic-working-set-census@2",
+    "router-semantic-working-set-census@3"])
 def test_census_schema_cannot_enable_a_generation_route(dispatch, monkeypatch, schema):
     _, (_, calls), args = dispatch
     forbid_provider(monkeypatch)
@@ -383,15 +410,18 @@ def test_census_schema_cannot_enable_a_generation_route(dispatch, monkeypatch, s
     assert calls == []
 
 
-def test_cli_extended_census_forwards_explicit_schema(dispatch, monkeypatch, capsys):
+@pytest.mark.parametrize("schema", ["router-semantic-working-set-census@2", "router-semantic-working-set-census@3"])
+def test_cli_extended_census_forwards_explicit_schema(dispatch, monkeypatch, capsys, schema):
     service, (_, calls), _ = dispatch
     forbid_provider(monkeypatch)
     monkeypatch.setattr("sys.argv", _cli(service, extra=("--semantic-working-set-census-schema",
-        "router-semantic-working-set-census@2")))
+        schema)))
     monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(service.prompt.encode())))
     assert runner.main() == 0
     captured = capsys.readouterr()
     receipt = json.loads(captured.out)
-    assert captured.err == "" and receipt["schema"] == "router-semantic-working-set-census@2"
+    assert captured.err == "" and receipt["schema"] == schema
     assert receipt["inline_evidence_census"]["dispatch_enabled"] is False
+    if schema == "router-semantic-working-set-census@3":
+        assert receipt["semantic_pack_projection_census"]["dispatch_enabled"] is False
     assert calls == []
