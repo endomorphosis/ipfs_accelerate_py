@@ -1205,6 +1205,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if purpose == "coding" and response_format is None:
             provider_options.update(grok_stream_progress=True,
                                     grok_tool_event_census=True,
+                        grok_tool_event_schema="native-grok-tool-events@2",
                                     grok_progress_callback=_grok_progress_emitter(invocation))
         if response_format is not None:
             provider_options["response_format"] = response_format

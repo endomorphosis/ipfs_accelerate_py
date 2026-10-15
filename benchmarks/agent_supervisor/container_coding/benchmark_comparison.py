@@ -939,6 +939,21 @@ def markdown(comparison: dict) -> str:
                 *(payloads[key]["canonical_json_bytes"] for key in ("input", "output", "content")),
                 *(payloads[key]["repeated_bytes"] for key in ("output", "content")), census["observation_complete"]]
             lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    coverage_events = [(row, call, census) for row, call, census in tool_events
+                       if census["schema"] == "native-grok-tool-events@2"]
+    if coverage_events:
+        lines += ["", "Tool coverage v2 distinguishes documented name aliases, omitted update statuses, and fixed payload-bound reasons. Alias classification is observational and does not identify tools whose names remain unknown. Historical v1 receipts retain their original coverage interpretation.", "",
+                  "| Trial | Invocation | Documented alias events | Unknown named events | Updates without status | Byte-bound fields | Node-bound fields | Depth-bound fields | Integer-bound fields |",
+                  "|---|---|---:|---:|---:|---:|---:|---:|---:|"]
+        for row, call, census in coverage_events:
+            events = census["rows"]
+            bounds = [event[lane]["bound_reason"] for event in events for lane in ("input", "output", "content")]
+            values = [row["trial"], call["invocation_id"],
+                sum(event["tool_resolution_basis"] == "documented_alias" for event in events),
+                sum(event["tool_name_present"] and event["resolved_tool"] == "unknown" for event in events),
+                sum(event["event_type"] == "tool_call_update" and not event["status_present"] for event in events),
+                *(bounds.count(reason) for reason in ("bytes", "nodes", "depth", "integer_bits"))]
+            lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
     archives = [row for row in supervised if row["runtime_archive_sha256"] is not None]
     if archives:
         lines += ["", "Runtime archive provenance is projected from retained agent metadata. The comparison implementation has its own source SHA256 in comparison.json; it may postdate these immutable runtimes.", "",

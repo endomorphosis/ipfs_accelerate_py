@@ -12,11 +12,16 @@ import math
 import re
 
 SCHEMA = "native-grok-tool-events@1"
+COVERAGE_SCHEMA = "native-grok-tool-events@2"
 MAX_TOOL_EVENTS = 64
 MAX_FRAME_BYTES = 256 * 1024
 MAX_PAYLOAD_BYTES = MAX_FRAME_BYTES
 MAX_CALL_ID_BYTES = 1024
 MAX_PAYLOAD_NODES = 4096
+# Each non-root JSON node requires a value and separator. This v2 bound
+# permits dense payloads inside the unchanged byte cap; it does not identify
+# which v1 bound caused any previously observed undifferentiated overflow.
+COVERAGE_MAX_PAYLOAD_NODES = MAX_PAYLOAD_BYTES // 2
 MAX_PAYLOAD_DEPTH = 32
 MAX_INTEGER_BITS = 4096
 MAX_COUNT = (1 << 63) - 1
@@ -59,6 +64,17 @@ _ROW_FIELDS = frozenset({"event_ordinal", "frame_ordinal", "elapsed_seconds", "a
 _PAYLOAD_FIELDS = frozenset({"state", "shape", "canonical_json_bytes", "sha256", "repetition"})
 _FIELDS = frozenset({*_CONSTANTS, "observed_events", "retained_events", "omitted_events", "rows",
     "retained_frame_bytes", "call_identities", "call_relation_counts", "payloads", "incompleteness", "observation_complete"})
+_BOUND_REASONS = ("bytes", "nodes", "depth", "integer_bits")
+_RESOLUTION_BASES = ("exact", "documented_alias", "unknown")
+_TOOL_ALIASES = {"run_terminal_command": "run_terminal_cmd"}
+_COVERAGE_CONSTANTS = {**_CONSTANTS, "schema": COVERAGE_SCHEMA,
+    "payload_node_limit": COVERAGE_MAX_PAYLOAD_NODES, "tool_name_byte_limit": MAX_CALL_ID_BYTES,
+    "tool_classification_scope": "retained-tool-events",
+    "tool_alias_profile": "grok-1.0.46-public-tool-names@1",
+    "post_final_coverage_scope": "retained-tool-events-with-conservative-overflow"}
+_COVERAGE_FIELDS = _FIELDS | set(_COVERAGE_CONSTANTS) | {"classification_counts"}
+_COVERAGE_ROW_FIELDS = _ROW_FIELDS | {"tool_name_shape", "tool_name_status", "tool_name_sha256",
+    "status_present", "status_shape", "resolved_tool", "tool_resolution_basis"}
 _MISSING = object()
 
 
@@ -88,12 +104,32 @@ def _bucket(value, allowed):
     return value if type(value) is str and value in allowed else "unknown"
 
 
+def _shape(value):
+    if value is _MISSING:
+        return "missing"
+    return {type(None): "null", bool: "boolean", int: "integer", float: "number",
+            str: "string", dict: "object", list: "array"}.get(type(value), "invalid")
+
+
+def _resolve_tool(digest):
+    if digest is not None:
+        for name in TOOLS[:-1]:
+            if digest == _sha(name.encode("utf-8")):
+                return name, "exact"
+        for name, resolved in _TOOL_ALIASES.items():
+            if digest == _sha(name.encode("utf-8")):
+                return resolved, "documented_alias"
+    return "unknown", "unknown"
+
+
 class _Bound(Exception):
     pass
 
 
-def _payload(raw):
+def _payload(raw, *, coverage=False):
     result = dict(state="missing", shape="missing", canonical_json_bytes=None, sha256=None, repetition="not_measured")
+    if coverage:
+        result["bound_reason"] = None
     if raw is _MISSING:
         return result
     shapes = {type(None): "null", bool: "boolean", int: "integer", float: "number",
@@ -104,18 +140,20 @@ def _payload(raw):
     def inspect(value, depth):
         nonlocal nodes, string_bytes
         nodes += 1
-        if nodes > MAX_PAYLOAD_NODES or depth > MAX_PAYLOAD_DEPTH:
-            raise _Bound
+        if nodes > (COVERAGE_MAX_PAYLOAD_NODES if coverage else MAX_PAYLOAD_NODES):
+            raise _Bound("nodes")
+        if depth > MAX_PAYLOAD_DEPTH:
+            raise _Bound("depth")
         kind = type(value)
         if kind is str:
             if len(value) > MAX_PAYLOAD_BYTES:
-                raise _Bound
+                raise _Bound("bytes")
             string_bytes += len(value.encode("utf-8"))
             if string_bytes > MAX_PAYLOAD_BYTES:
-                raise _Bound
+                raise _Bound("bytes")
         elif kind is int:
             if value.bit_length() > MAX_INTEGER_BITS:
-                raise _Bound
+                raise _Bound("integer_bits")
         elif kind is float:
             if not math.isfinite(value):
                 raise ValueError
@@ -134,13 +172,15 @@ def _payload(raw):
         serialized = json.dumps(raw, ensure_ascii=False, allow_nan=False, sort_keys=True,
                                 separators=(",", ":")).encode("utf-8")
         if len(serialized) > MAX_PAYLOAD_BYTES:
-            raise _Bound
-    except _Bound:
-        return {**result, "state": "oversized", "shape": shape}
+            raise _Bound("bytes")
+    except _Bound as error:
+        return {**result, "state": "oversized", "shape": shape,
+                **({"bound_reason": error.args[0]} if coverage else {})}
     except (ValueError, TypeError, UnicodeError, RecursionError, OverflowError):
         return {**result, "state": "invalid", "shape": "invalid"}
     state = "null" if raw is None else "empty" if type(raw) in (str, dict, list) and len(raw) == 0 else "valid"
-    return dict(state=state, shape=shape, canonical_json_bytes=len(serialized), sha256=_sha(serialized), repetition="first_observed")
+    return dict(state=state, shape=shape, canonical_json_bytes=len(serialized), sha256=_sha(serialized),
+                repetition="first_observed", **({"bound_reason": None} if coverage else {}))
 
 
 def _identity(value):
@@ -185,7 +225,24 @@ def _context(state):
     return min(total, MAX_COUNT)
 
 
-def _derive(rows, observed, state):
+def _classification_counts(rows):
+    result = dict(resolved_tools=dict.fromkeys(TOOLS, 0), resolution_bases=dict.fromkeys(_RESOLUTION_BASES, 0),
+        tool_name_shapes=dict.fromkeys(_SHAPES, 0), tool_name_statuses=dict.fromkeys(_STATES, 0),
+        status_shapes=dict.fromkeys(_SHAPES, 0), status_presence=dict(present=0, missing=0),
+        payload_bounds={lane: dict.fromkeys(_BOUND_REASONS, 0) for lane in PAYLOAD_LANES})
+    for row in rows:
+        for aggregate, key in (("resolved_tools", "resolved_tool"), ("resolution_bases", "tool_resolution_basis"),
+                ("tool_name_shapes", "tool_name_shape"), ("tool_name_statuses", "tool_name_status"),
+                ("status_shapes", "status_shape")):
+            result[aggregate][row[key]] += 1
+        result["status_presence"]["present" if row["status_present"] else "missing"] += 1
+        for lane in PAYLOAD_LANES:
+            if row[lane]["bound_reason"] is not None:
+                result["payload_bounds"][lane][row[lane]["bound_reason"]] += 1
+    return result
+
+
+def _derive(rows, observed, state, *, coverage=False):
     identities = set()
     payload_seen = {name: {} for name in PAYLOAD_LANES}
     aggregates = {name: dict.fromkeys(_AGGREGATE_FIELDS, 0) for name in payload_seen}
@@ -250,20 +307,42 @@ def _derive(rows, observed, state):
         for name in PAYLOAD_LANES:
             reasons["invalid_payload"] |= row[name]["state"] == "invalid"
             reasons["payload_bound_exceeded"] |= row[name]["state"] == "oversized"
-    return {**_CONSTANTS, "observed_events": observed, "retained_events": len(copied),
+    if coverage:
+        # The parent parser alone admits a terminal trailer. Its post-final
+        # count is not evidence of an additional tool event. Omitted rows and
+        # tainted/unknown frames remain conservatively incomplete.
+        reasons["post_final_events"] = any(row["after_final"] for row in copied) or (
+            observed > len(copied) and state["events_after_final"] > 0)
+        reasons["unknown_event_shape"] = any(row["unknown_field_count"] > 0
+            or row["event_type"] == "unknown" or row["call_id_status"] == "invalid"
+            or (row["event_type"] == "tool_call" or row["tool_name_present"]) and row["resolved_tool"] == "unknown"
+            or (row["event_type"] == "tool_call" or row["status_present"]) and row["status"] == "unknown"
+            for row in copied)
+    return {**(_COVERAGE_CONSTANTS if coverage else _CONSTANTS),
+        "observed_events": observed, "retained_events": len(copied),
         "omitted_events": observed-len(copied), "rows": copied,
         "retained_frame_bytes": sum(row["frame_bytes"] for row in copied),
         "call_identities": len(identities), "call_relation_counts": relations,
-        "payloads": aggregates, "incompleteness": reasons, "observation_complete": not any(reasons.values())}
+        "payloads": aggregates, "incompleteness": reasons, "observation_complete": not any(reasons.values()),
+        **({"classification_counts": _classification_counts(copied)} if coverage else {})}
 
 
-def _validate_payload(value):
-    _need(type(value) is dict and set(value) == _PAYLOAD_FIELDS, "invalid Grok tool payload fields")
+def _validate_payload(value, *, coverage=False):
+    fields = _PAYLOAD_FIELDS | {"bound_reason"} if coverage else _PAYLOAD_FIELDS
+    _need(type(value) is dict and set(value) == fields, "invalid Grok tool payload fields")
     _need(type(value["state"]) is str and value["state"] in _STATES
         and type(value["shape"]) is str and value["shape"] in _SHAPES
         and type(value["repetition"]) is str and value["repetition"] in _REPETITIONS,
         "invalid Grok tool payload labels")
     status, shape, size, digest = (value[key] for key in ("state", "shape", "canonical_json_bytes", "sha256"))
+    if coverage:
+        reason = value["bound_reason"]
+        _need(type(reason) is str and reason in _BOUND_REASONS if status == "oversized" else reason is None,
+            "invalid Grok tool payload bound reason")
+        if reason is not None:
+            allowed = {"bytes": {"string", "object", "array"}, "nodes": {"object", "array"},
+                "depth": {"object", "array"}, "integer_bits": {"integer", "object", "array"}}
+            _need(shape in allowed[reason], "inconsistent Grok tool payload bound shape")
     if status in {"missing", "invalid", "oversized"}:
         _need(size is None and digest is None and value["repetition"] == "not_measured"
             and (shape == status if status in {"missing", "invalid"} else shape not in {"missing", "null", "invalid"}),
@@ -279,11 +358,47 @@ def _validate_payload(value):
         _need(shape not in {"missing", "null", "invalid"}, "invalid Grok tool payload shape")
 
 
+def _same_types_and_values(value, expected):
+    if type(value) is not type(expected):
+        return False
+    if type(expected) is dict:
+        return set(value) == set(expected) and all(_same_types_and_values(value[key], item) for key, item in expected.items())
+    if type(expected) is list:
+        return len(value) == len(expected) and all(_same_types_and_values(left, right) for left, right in zip(value, expected))
+    return value == expected
+
+
+def _validate_coverage_labels(row):
+    for key, allowed in (("tool_name_shape", _SHAPES), ("status_shape", _SHAPES),
+            ("tool_name_status", _STATES), ("resolved_tool", TOOLS), ("tool_resolution_basis", _RESOLUTION_BASES)):
+        _need(type(row[key]) is str and row[key] in allowed, "invalid Grok tool coverage label")
+    _need(type(row["status_present"]) is bool, "invalid Grok tool status presence")
+    shape, status, digest = row["tool_name_shape"], row["tool_name_status"], row["tool_name_sha256"]
+    _need((shape == "missing") == (not row["tool_name_present"])
+        and (status == "missing") == (not row["tool_name_present"]), "inconsistent Grok tool name presence")
+    if status == "valid":
+        _need(shape == "string" and _digest(digest), "invalid Grok tool name digest")
+    else:
+        _need(digest is None, "invalid Grok unmeasured tool name digest")
+        if status == "null": _need(shape == "null", "invalid Grok null tool name")
+        if status in {"empty", "oversized"}: _need(shape == "string", "invalid Grok tool name string shape")
+        if status == "invalid": _need(shape not in {"missing", "null"}, "invalid Grok tool name shape")
+    resolved, basis = _resolve_tool(digest)
+    _need(row["resolved_tool"] == resolved and row["tool_resolution_basis"] == basis
+        and row["tool"] == (resolved if basis == "exact" else "unknown"), "inconsistent Grok tool classification")
+    _need((row["status_shape"] == "missing") == (not row["status_present"])
+        and (row["status"] == "unknown" or row["status_shape"] == "string"),
+        "inconsistent Grok tool status shape")
+
+
 def validate_grok_tool_events(value: object, *, stream_state: dict) -> dict:
     """Validate closed rows and recompute counts/repetition against parent state."""
     observed = _context(stream_state)
-    _need(type(value) is dict and set(value) == _FIELDS, "invalid Grok tool census fields")
-    for key, expected in _CONSTANTS.items():
+    _need(type(value) is dict and type(value.get("schema")) is str
+        and value["schema"] in {SCHEMA, COVERAGE_SCHEMA}, "invalid Grok tool census schema")
+    coverage = value["schema"] == COVERAGE_SCHEMA
+    _need(set(value) == (_COVERAGE_FIELDS if coverage else _FIELDS), "invalid Grok tool census fields")
+    for key, expected in (_COVERAGE_CONSTANTS if coverage else _CONSTANTS).items():
         _need(type(value[key]) is type(expected) and value[key] == expected, "invalid Grok tool census constants")
     _need(all(_count(value[key]) for key in ("observed_events", "retained_events", "omitted_events",
         "retained_frame_bytes", "call_identities")) and value["observed_events"] == observed
@@ -294,7 +409,8 @@ def validate_grok_tool_events(value: object, *, stream_state: dict) -> dict:
     last_frame, last_elapsed = 0, 0
     kinds = dict.fromkeys(_EVENTS, 0); names = dict.fromkeys(TOOLS, 0); statuses = dict.fromkeys(STATUSES, 0)
     for ordinal, row in enumerate(rows, 1):
-        _need(type(row) is dict and set(row) == _ROW_FIELDS, "invalid Grok tool event fields")
+        _need(type(row) is dict and set(row) == (_COVERAGE_ROW_FIELDS if coverage else _ROW_FIELDS),
+            "invalid Grok tool event fields")
         _need(_count(row["event_ordinal"]) and row["event_ordinal"] == ordinal
             and _count(row["frame_ordinal"]) and last_frame < row["frame_ordinal"] <= stream_state["frames"]
             and _count(row["frame_bytes"]) and 1 <= row["frame_bytes"] <= MAX_FRAME_BYTES
@@ -318,8 +434,10 @@ def validate_grok_tool_events(value: object, *, stream_state: dict) -> dict:
             _need(type(row[key]) is str and row[key] in labels, "invalid Grok tool event vocabulary")
         _need(_digest(row["call_id_sha256"]) if row["call_id_status"] == "valid"
             else row["call_id_sha256"] is None, "invalid Grok tool identity binding")
+        if coverage:
+            _validate_coverage_labels(row)
         for name in PAYLOAD_LANES:
-            _validate_payload(row[name])
+            _validate_payload(row[name], coverage=coverage)
         kinds[row["event_type"]] += 1
         statuses[row["status"]] += 1
         if row["event_type"] == "tool_call": names[row["tool"]] += 1
@@ -344,15 +462,18 @@ def validate_grok_tool_events(value: object, *, stream_state: dict) -> dict:
     for item in value["payloads"].values():
         _need(type(item) is dict and set(item) == set(_AGGREGATE_FIELDS) and all(_count(n) for n in item.values()),
             "invalid Grok tool payload counters")
-    expected = _derive(rows, observed, stream_state)
-    _need(value == expected, "inconsistent Grok tool census replay")
+    expected = _derive(rows, observed, stream_state, coverage=coverage)
+    _need(_same_types_and_values(value, expected) if coverage else value == expected,
+        "inconsistent Grok tool census replay")
     return expected
 
 
 class GrokToolEventObserver:
     """Keep at most 64 hashed rows; no IO, raw payload retention, or authority."""
 
-    def __init__(self):
+    def __init__(self, *, schema=SCHEMA):
+        _need(type(schema) is str and schema in {SCHEMA, COVERAGE_SCHEMA}, "unsupported Grok tool census schema")
+        self.schema = schema
         self.observed_events = 0
         self.rows = []
 
@@ -363,6 +484,15 @@ class GrokToolEventObserver:
             return
         event = event if type(event) is dict else {}
         identity_status, identity = _identity(event.get("toolCallId", _MISSING))
+        coverage = self.schema == COVERAGE_SCHEMA
+        labels = {}
+        if coverage:
+            tool_name = event.get("toolName", _MISSING)
+            name_status, name_digest = _identity(tool_name)
+            resolved, basis = _resolve_tool(name_digest)
+            labels = dict(tool_name_shape=_shape(tool_name), tool_name_status=name_status, tool_name_sha256=name_digest,
+                status_present="status" in event, status_shape=_shape(event.get("status", _MISSING)),
+                resolved_tool=resolved, tool_resolution_basis=basis)
         self.rows.append(dict(event_ordinal=self.observed_events, frame_ordinal=frame_ordinal,
             elapsed_seconds=elapsed_seconds, after_final=after_final, frame_bytes=frame_bytes,
             event_type=_bucket(event.get("type"), _EVENTS), tool=_bucket(event.get("toolName"), TOOLS),
@@ -370,13 +500,15 @@ class GrokToolEventObserver:
             status=_bucket(event.get("status"), STATUSES), call_id_status=identity_status,
             call_id_sha256=identity, call_relation="unattributed",
             unknown_field_count=sum(key not in _KNOWN_FIELDS for key in event),
-            input=_payload(event.get("rawInput", _MISSING)), output=_payload(event.get("rawOutput", _MISSING)),
-            content=_payload(event.get("content", _MISSING))))
+            input=_payload(event.get("rawInput", _MISSING), coverage=coverage),
+            output=_payload(event.get("rawOutput", _MISSING), coverage=coverage),
+            content=_payload(event.get("content", _MISSING), coverage=coverage), **labels))
 
     def snapshot(self, *, stream_state: dict) -> dict:
         """Use final parser coverage flags; callbacks need not retain event rows."""
         _need(self.observed_events == _context(stream_state), "Grok tool observer count differs from parser")
-        return validate_grok_tool_events(_derive(self.rows, self.observed_events, stream_state), stream_state=stream_state)
+        return validate_grok_tool_events(_derive(self.rows, self.observed_events, stream_state,
+            coverage=self.schema == COVERAGE_SCHEMA), stream_state=stream_state)
 
 
-__all__ = ["GrokToolEventObserver", "validate_grok_tool_events", "SCHEMA", "MAX_TOOL_EVENTS"]
+__all__ = ["GrokToolEventObserver", "validate_grok_tool_events", "SCHEMA", "COVERAGE_SCHEMA", "MAX_TOOL_EVENTS"]

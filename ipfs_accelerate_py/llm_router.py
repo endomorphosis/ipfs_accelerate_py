@@ -8008,11 +8008,16 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             response_format = kwargs.pop("response_format", None)
             stream_progress = kwargs.pop("grok_stream_progress", False)
             tool_event_census = kwargs.pop("grok_tool_event_census", False)
+            tool_event_schema = kwargs.pop("grok_tool_event_schema", "native-grok-tool-events@1")
             progress_callback = kwargs.pop("grok_progress_callback", None)
             if type(stream_progress) is not bool:
                 raise ValueError("grok_stream_progress requires a boolean")
             if type(tool_event_census) is not bool or tool_event_census and not stream_progress:
                 raise ValueError("grok_tool_event_census requires a boolean and streaming progress")
+            if (type(tool_event_schema) is not str
+                    or tool_event_schema not in {"native-grok-tool-events@1", "native-grok-tool-events@2"}
+                    or tool_event_schema != "native-grok-tool-events@1" and not tool_event_census):
+                raise ValueError("supported Grok tool-event schema and enabled census required")
             if progress_callback is not None and (not stream_progress or not callable(progress_callback)):
                 raise ValueError("grok_progress_callback requires streaming mode and a callable")
             if stream_progress and (not structured_cli or response_format is not None):
@@ -8205,9 +8210,11 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 try:
                     if stream_progress:
                         from .cli_runtime.grok_stream_capture import capture_grok_stream
+                        census_options = {"tool_event_census": True} if tool_event_census else {}
+                        if tool_event_schema != "native-grok-tool-events@1":
+                            census_options["tool_event_schema"] = tool_event_schema
                         proc = capture_grok_stream(cmd, env=env, timeout=timeout,
-                            progress_callback=progress_callback,
-                            **({"tool_event_census": True} if tool_event_census else {}))
+                            progress_callback=progress_callback, **census_options)
                         stream_observation = proc.progress
                         if proc.timed_out:
                             raise subprocess.TimeoutExpired(cmd, timeout,

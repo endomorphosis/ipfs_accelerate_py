@@ -23,6 +23,9 @@ LEGACY_SCHEMA = "native-grok-stream-progress@1"
 USAGE_SCHEMA = "native-grok-stream-progress@2"
 SCHEMA = "native-grok-stream-progress@3"
 TOOL_EVENTS_SCHEMA = "native-grok-stream-progress@4"
+TOOL_COVERAGE_SCHEMA = "native-grok-stream-progress@5"
+_TOOL_SCHEMA = "native-grok-tool-events@1"
+_TOOL_COVERAGE_SCHEMA = "native-grok-tool-events@2"
 MAX_FRAME_BYTES = 256 * 1024
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 CALLBACK_INTERVAL_SECONDS = 5.0
@@ -108,12 +111,13 @@ def validate_grok_stream_progress(value: object) -> dict:
     if type(value) is not dict:
         raise ValueError("invalid Grok progress fields")
     schema = value.get("schema")
-    if type(schema) is not str or schema not in {LEGACY_SCHEMA, USAGE_SCHEMA, SCHEMA, TOOL_EVENTS_SCHEMA}:
+    if type(schema) is not str or schema not in {
+            LEGACY_SCHEMA, USAGE_SCHEMA, SCHEMA, TOOL_EVENTS_SCHEMA, TOOL_COVERAGE_SCHEMA}:
         raise ValueError("invalid Grok progress schema")
     keys = _KEYS if schema == LEGACY_SCHEMA else _KEYS | {"usage_observations"}
-    if schema in {SCHEMA, TOOL_EVENTS_SCHEMA}:
+    if schema in {SCHEMA, TOOL_EVENTS_SCHEMA, TOOL_COVERAGE_SCHEMA}:
         keys |= {"terminal_rejection"}
-    if schema == TOOL_EVENTS_SCHEMA:
+    if schema in {TOOL_EVENTS_SCHEMA, TOOL_COVERAGE_SCHEMA}:
         keys |= {"tool_event_observations"}
     if set(value) != keys:
         raise ValueError("invalid Grok progress fields")
@@ -164,7 +168,7 @@ def validate_grok_stream_progress(value: object) -> dict:
             observed_events=value["event_counts"]["usage"], frames=value["frames"],
             duration_seconds=value["duration_seconds"], final_event_seconds=value["final_event_seconds"],
             events_after_final=value["events_after_final"])
-    if schema in {SCHEMA, TOOL_EVENTS_SCHEMA}:
+    if schema in {SCHEMA, TOOL_EVENTS_SCHEMA, TOOL_COVERAGE_SCHEMA}:
         rejection = value["terminal_rejection"]
         if rejection is not None:
             rejection = _validate_terminal_rejection(rejection)
@@ -177,10 +181,14 @@ def validate_grok_stream_progress(value: object) -> dict:
                     or not value["final_event_seconds"] <= rejection["elapsed_seconds"] <= value["duration_seconds"]):
                 raise ValueError("inconsistent Grok terminal rejection observation")
         result["terminal_rejection"] = rejection
-    if schema == TOOL_EVENTS_SCHEMA:
+    if schema in {TOOL_EVENTS_SCHEMA, TOOL_COVERAGE_SCHEMA}:
         from .grok_tool_events import validate_grok_tool_events
+        tool_events = value["tool_event_observations"]
+        expected = _TOOL_SCHEMA if schema == TOOL_EVENTS_SCHEMA else _TOOL_COVERAGE_SCHEMA
+        if type(tool_events) is not dict or tool_events.get("schema") != expected:
+            raise ValueError("Grok progress and tool-event schemas differ")
         result["tool_event_observations"] = validate_grok_tool_events(
-            value["tool_event_observations"], stream_state=value)
+            tool_events, stream_state=value)
     return result
 
 
@@ -247,9 +255,13 @@ class GrokStreamParser:
     """Incremental LF parser with optional closed tool-event sizes and hashes."""
 
     def __init__(self, *, max_frame_bytes: int = MAX_FRAME_BYTES, max_text_bytes: int = MAX_TEXT_BYTES,
-                 tool_event_census: bool = False):
+                 tool_event_census: bool = False, tool_event_schema: str = _TOOL_SCHEMA):
         if type(tool_event_census) is not bool:
             raise ValueError("explicit Boolean tool-event census selection required")
+        if type(tool_event_schema) is not str or tool_event_schema not in {_TOOL_SCHEMA, _TOOL_COVERAGE_SCHEMA}:
+            raise ValueError("supported tool-event schema required")
+        if tool_event_schema == _TOOL_COVERAGE_SCHEMA and not tool_event_census:
+            raise ValueError("tool-event coverage schema requires census selection")
         if any(type(n) is not int or n < 1 for n in (max_frame_bytes, max_text_bytes)):
             raise ValueError("positive stream bounds required")
         if max_frame_bytes > MAX_FRAME_BYTES or max_text_bytes > MAX_TEXT_BYTES:
@@ -266,14 +278,15 @@ class GrokStreamParser:
         self._tool_observer = None
         if tool_event_census:
             from .grok_tool_events import GrokToolEventObserver
-            self._tool_observer = GrokToolEventObserver()
+            self._tool_observer = GrokToolEventObserver(schema=tool_event_schema)
         self._state = {**_CONSTANTS, **dict.fromkeys(_COUNTERS, 0), **dict.fromkeys(_TIMES),
                        **dict.fromkeys(_BOOLS, False), "returncode": None, "timeout_phase": "none",
                        "terminal_rejection": None,
                        "final_event_type": None, "final_reason_code": "unknown", "event_counts": dict.fromkeys(_EVENTS, 0),
                        "tool_name_counts": dict.fromkeys(_TOOLS, 0), "tool_status_counts": dict.fromkeys(_STATUSES, 0)}
         if tool_event_census:
-            self._state["schema"] = TOOL_EVENTS_SCHEMA
+            self._state["schema"] = (TOOL_EVENTS_SCHEMA if tool_event_schema == _TOOL_SCHEMA
+                                     else TOOL_COVERAGE_SCHEMA)
 
     def _inc(self, key, count=1, *, bucket=None):
         target = self._state if bucket is None else self._state[bucket]
@@ -573,7 +586,8 @@ class GrokStreamResult:
 def capture_grok_stream(command: Sequence[str], *, env: Mapping[str, str] | None,
                         timeout: float, cwd: str | os.PathLike | None = None,
                         progress_callback: Callable[[dict], None] | None = None,
-                        tool_event_census: bool = False) -> GrokStreamResult:
+                        tool_event_census: bool = False,
+                        tool_event_schema: str = _TOOL_SCHEMA) -> GrokStreamResult:
     """Drain both pipes under one deadline; kill/reap only this owned child.
 
     Descendant custody belongs to the calling runtime. An inherited descendant
@@ -582,12 +596,13 @@ def capture_grok_stream(command: Sequence[str], *, env: Mapping[str, str] | None
     through owned-child cleanup. Stream event origin is not authenticated.
     The optional tool-event census measures observed stdout events, not provider
     requests or history resends, and is omitted from count-only callbacks.
+    Coverage schema @2 is explicit; the existing census defaults to schema @1.
     """
     if not _number(timeout) or timeout <= 0:
         raise ValueError("positive finite Grok stream timeout required")
     if progress_callback is not None and not callable(progress_callback):
         raise ValueError("Grok progress callback must be callable")
-    parser = GrokStreamParser(tool_event_census=tool_event_census)
+    parser = GrokStreamParser(tool_event_census=tool_event_census, tool_event_schema=tool_event_schema)
     started = time.monotonic()
     deadline = started + timeout
     last_callback = -CALLBACK_INTERVAL_SECONDS

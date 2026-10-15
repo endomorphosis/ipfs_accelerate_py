@@ -371,9 +371,10 @@ def test_terminal_rejection_survives_comparison_without_creating_native_usage():
     assert _invocations({"provider_invocations": [row]})[0]["native_grok_progress"] is None
 
 
-def test_tool_events_reach_comparison_as_separate_byte_channels_without_token_promotion(tmp_path):
+@pytest.mark.parametrize("revision", [1, 2])
+def test_tool_events_reach_comparison_as_separate_byte_channels_without_token_promotion(tmp_path, revision):
     from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
-    parser = GrokStreamParser(tool_event_census=True)
+    parser = GrokStreamParser(tool_event_census=True, tool_event_schema=f"native-grok-tool-events@{revision}")
     for identity in ("PRIVATE-CALL-1", "PRIVATE-CALL-2"):
         for event in (
             {"type": "tool_call", "toolName": "read_file", "toolCallId": identity,
@@ -402,6 +403,39 @@ def test_tool_events_reach_comparison_as_separate_byte_channels_without_token_pr
     assert "rawOutput bytes retained" in rendered and "content bytes retained" in rendered
     assert "must not be added as unique output" in rendered
     assert "do not establish provider history resends" in rendered
+    assert "PRIVATE" not in json.dumps(result) + rendered
+
+
+def test_v2_coverage_reports_aliases_optional_status_and_dense_payload_without_changing_tokens(tmp_path):
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    parser = GrokStreamParser(tool_event_census=True, tool_event_schema="native-grok-tool-events@2")
+    frames = [
+        {"type": "tool_call", "toolName": "run_terminal_command", "toolCallId": "PRIVATE-CALL",
+         "status": "pending", "rawInput": {"command": "PRIVATE-COMMAND"}},
+        {"type": "tool_call_update", "toolCallId": "PRIVATE-CALL", "rawOutput": [0] * 5000},
+        {"type": "text", "data": "PRIVATE-RESPONSE"},
+        {"type": "end", "stopReason": "end_turn"},
+    ]
+    for frame in frames:
+        parser.feed((json.dumps(frame) + "\n").encode())
+    parser.eof("stdout"); parser.eof("stderr"); parser.process_exit(0, elapsed_seconds=0)
+    progress = parser.snapshot()
+    census = progress["tool_event_observations"]
+    assert census["observation_complete"] is True
+    assert census["rows"][0]["tool"] == "unknown"  # Preserve the original event category.
+    assert census["rows"][0]["resolved_tool"] == "run_terminal_cmd"
+    assert census["rows"][0]["tool_resolution_basis"] == "documented_alias"
+    assert census["rows"][1]["status_present"] is False
+    assert census["payloads"]["output"]["canonical_json_bytes"] == 10001
+    invocation = _grok_invocation("v2-coverage", True)
+    invocation["native_grok_progress"] = progress
+    receipt = _receipt(tmp_path, "v2-coverage.json", SUPERVISOR, [{"trial": "v2-coverage",
+        "supervisor": {"task_completed": False, "provider_invocations": [invocation]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    rendered = markdown(result)
+    assert "| v2-coverage | v2-coverage | 1 | 0 | 1 | 0 | 0 | 0 | 0 |" in rendered
+    assert "Historical v1 receipts retain their original coverage interpretation" in rendered
+    assert result["rows"][1]["tokens"]["total_tokens"] == 42
     assert "PRIVATE" not in json.dumps(result) + rendered
 
 

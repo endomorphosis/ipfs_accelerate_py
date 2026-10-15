@@ -215,6 +215,10 @@ def test_callback_error_does_not_trigger_reinvocation_or_change_result(provider,
     {"grok_stream_progress": 1},
     {"grok_tool_event_census": True},
     {"grok_stream_progress": True, "grok_tool_event_census": 1},
+    {"grok_tool_event_schema": "native-grok-tool-events@2"},
+    {"grok_stream_progress": True, "grok_tool_event_schema": "native-grok-tool-events@2"},
+    {"grok_stream_progress": True, "grok_tool_event_census": True, "grok_tool_event_schema": None},
+    {"grok_stream_progress": True, "grok_tool_event_census": True, "grok_tool_event_schema": "private-schema"},
     {"grok_progress_callback": lambda _: None},
     {"grok_stream_progress": True, "grok_progress_callback": "not callable"},
     {"grok_stream_progress": True, "response_format": {"type": "json_object"}},
@@ -261,7 +265,8 @@ def test_partial_usage_stream_survives_timeout_without_inventing_final_accountin
 
 
 @pytest.mark.parametrize("timed_out", [False, True])
-def test_tool_census_opt_in_survives_real_cli_and_tls_without_changing_usage(provider, tmp_path, timed_out):
+@pytest.mark.parametrize("revision", [1, 2])
+def test_tool_census_opt_in_survives_real_cli_and_tls_without_changing_usage(provider, tmp_path, timed_out, revision):
     from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_usage_receipt
     frames = [
         {"type": "tool_call", "toolCallId": "PRIVATE-CALL", "toolName": "read_file",
@@ -275,6 +280,7 @@ def test_tool_census_opt_in_survives_real_cli_and_tls_without_changing_usage(pro
     def generate():
         return provider.generate("private prompt", timeout=0.3 if timed_out else 3,
             grok_cli_cmd=argv, grok_stream_progress=True, grok_tool_event_census=True,
+            grok_tool_event_schema=f"native-grok-tool-events@{revision}",
             grok_progress_callback=callbacks.append)
     if timed_out:
         with pytest.raises(subprocess.TimeoutExpired):
@@ -283,7 +289,7 @@ def test_tool_census_opt_in_survives_real_cli_and_tls_without_changing_usage(pro
         assert generate() == "authored response"
     observation = get_last_cli_observation("grok_cli")
     progress = observation["native_grok_progress"]
-    assert progress["schema"] == "native-grok-stream-progress@4"
+    assert progress["schema"] == f"native-grok-stream-progress@{revision+3}"
     assert progress["timed_out"] is timed_out
     assert progress["response_usable"] is (not timed_out)
     assert "tool_event_observations" in progress

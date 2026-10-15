@@ -257,11 +257,11 @@ def grok_progress_workspace(tmp_path, monkeypatch):
     return llm_router
 
 
-def _grok_progress_snapshot(usage_events=0, *, tool_event_census=False):
+def _grok_progress_snapshot(usage_events=0, *, tool_event_census=False, tool_event_schema="native-grok-tool-events@1"):
     from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
     from ipfs_accelerate_py.cli_runtime.grok_stream_usage import MAX_COUNT, USAGE_FIELDS
     import json
-    parser = GrokStreamParser(tool_event_census=tool_event_census)
+    parser = GrokStreamParser(tool_event_census=tool_event_census, tool_event_schema=tool_event_schema)
     frame = json.dumps({"type": "usage", "messageId": "private-id", "signature": "private-signature",
                         "stopReason": "tool_use", "usage": dict.fromkeys(USAGE_FIELDS, MAX_COUNT)}).encode() + b"\n"
     for _ in range(usage_events):
@@ -279,18 +279,20 @@ def _run_grok_progress(*, purpose="coding"):
 
 @pytest.mark.parametrize("timeout", [False, True])
 @pytest.mark.parametrize("usage_events", [0, 128])
-@pytest.mark.parametrize("tool_event_census", [False, True])
+@pytest.mark.parametrize("census_revision", [None, 1, 2])
 def test_grok_progress_is_prefixed_advisory_and_final_metadata_survives_tls(
-        grok_progress_workspace, monkeypatch, capsys, timeout, usage_events, tool_event_census):
+        grok_progress_workspace, monkeypatch, capsys, timeout, usage_events, census_revision):
     import json
     from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
     from ipfs_accelerate_py.agent_supervisor.runtime.provider_capacity_custody import execution_observation
     from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation, get_last_cli_observation
 
-    snapshot = _grok_progress_snapshot(usage_events, tool_event_census=tool_event_census)
+    snapshot = _grok_progress_snapshot(usage_events, tool_event_census=census_revision is not None,
+        tool_event_schema=f"native-grok-tool-events@{census_revision or 1}")
     def generate(prompt, **kwargs):
         assert kwargs["grok_stream_progress"] is True
         assert kwargs["grok_tool_event_census"] is True
+        assert kwargs["grok_tool_event_schema"] == "native-grok-tool-events@2"
         kwargs["grok_progress_callback"](snapshot)
         metadata = {"native_grok_progress": snapshot}
         metadata.update({"timed_out": True} if timeout else {"exit_code": 0})
@@ -362,6 +364,7 @@ def test_grok_planning_does_not_enable_or_export_coding_progress(grok_progress_w
     def generate(prompt, **kwargs):
         assert "grok_stream_progress" not in kwargs and "grok_progress_callback" not in kwargs
         assert "grok_tool_event_census" not in kwargs
+        assert "grok_tool_event_schema" not in kwargs
         set_last_cli_observation("grok_cli", {"exit_code": 0, "native_grok_progress": _grok_progress_snapshot()})
         return "authored planning response"
     monkeypatch.setattr(grok_progress_workspace, "generate_text", generate)
