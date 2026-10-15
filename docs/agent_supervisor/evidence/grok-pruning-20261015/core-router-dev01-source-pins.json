@@ -1,0 +1,21 @@
+{
+  "base_commit": "c3144fbbce99347ed37aa86cee18a63a3ac6c621",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "c739673076eb915c4d7cf65b639b7b968bcc76c593caad57b0583303b5a26697",
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "888ba231ddebaa46ef2323e837e3c9def5b1acc8585acd48ee9aa886fd1c732a",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "7761926faba07adab4003ec35c5bd992c63c2aad412538f7719a314ea158fc0c",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "40b9ebcd31caecd36ffd9f6392dafc974e389ecc3e9951849a931cd480dce809",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "9c2675ca50ed66a72b24a59feb88be205c683e5f06ae7b6e627dec3dc8d5595c",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "87d3a018bd6515a67881873a744d875c914c6ad507a8fc261f6147fccde398bc",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "90fc1163012dc01e4e387a73fc4e5fffaa7002760d955906bc31809feccbe99e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "d676e67ca3a036a5ddf8a11564382d7996809f1ba364857c962c44e35ecbf702",
+    "ipfs_accelerate_py/cli_runtime/grok_pruning.py": "e8d9786e07d5a5f3d7952cb1e538b8482904068cd03a8e1a160056642be30f4c",
+    "ipfs_accelerate_py/llm_router.py": "c52017514cb8c06b65c43de9a97c439e026a5da391d3dcc7d9cd073dced7440a",
+    "test/api/test_grok_coding_turn_bound.py": "02da81f059d8db57c8f24e623642d3dcf199f9c8ea6813bdc6356e465c8a2474",
+    "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+    "test/api/test_grok_pruning.py": "cf8624e34f3fa85c59a770aaa4145e3e4a878c4007ea0cba1f575a6442151daa",
+    "test/api/test_grok_pruning_router.py": "3686319ef062eb7b90c6580181db7e110d8ca9671bad254ec13e1c19dbfef998",
+    "test/api/test_grok_stream_router.py": "399db826ea5e483c501b989c4785b1a3075a561127c326490797fe661f7f2000",
+    "test/api/test_router_implementation_runner.py": "a53068326a777c743b1b00b51b9f7e983d3ab8ba42400e64ebf4ad452c91086f"
+  }
+}

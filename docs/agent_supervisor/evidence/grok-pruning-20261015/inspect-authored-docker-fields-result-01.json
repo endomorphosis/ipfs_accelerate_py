@@ -1,0 +1,92 @@
+{
+  "authored_only": true,
+  "binary_sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+  "canonical_configuration_read": false,
+  "credentials_read": false,
+  "minimum_free_bytes": 34359738368,
+  "native_reports_equal": true,
+  "network_requests_possible": false,
+  "profiles": [
+    {
+      "auth_provided": false,
+      "authored_config_sha256": "a4538ea94e7c72ee309797bf4a7b9983a38424acdd88360f11ed39396b437956",
+      "authored_config_unchanged": true,
+      "bound_failure": null,
+      "canonical_home_mounted": false,
+      "cleanup_returncode": 0,
+      "container_id_sha256": "3f73e3e6f8ecb88f37592f25f4c256d869cb172651504010677b2a4b157e4c9b",
+      "create_returncode": 0,
+      "create_stderr_bytes": 0,
+      "exact_container_absence_observations": [
+        true,
+        true
+      ],
+      "exact_six_values_match": false,
+      "image_id": "sha256:54c85f3c47607a77f32adec749d3c81d1348bf25833671f512b26a9b6d778cb3",
+      "json_object": true,
+      "native_report_sha256": "03405dda40bebe19d431310ec9b015143ceed73c25248d4a28185fae4095b72a",
+      "network_mode": "none",
+      "normalized_target_key_occurrences": {
+        "enabled": 13,
+        "hard_clear_age_turns": 0,
+        "keep_last_n_turns": 0,
+        "soft_trim_head": 0,
+        "soft_trim_tail": 0,
+        "soft_trim_threshold": 0
+      },
+      "profile": "off",
+      "pruning_or_compaction_key_occurrences": {
+        "compaction": 0,
+        "pruning": 0
+      },
+      "recognized_top_level_sections": [],
+      "returncode": 0,
+      "six_target_fields_same_object_count": 0,
+      "stderr_bytes": 0,
+      "stdout_bytes": 3211,
+      "target_pruning_object_count": 0
+    },
+    {
+      "auth_provided": false,
+      "authored_config_sha256": "82219d8eca0f26841a540e02a5afedf6aa55f406dda9e0f5a86a2c896bc41d4f",
+      "authored_config_unchanged": true,
+      "bound_failure": null,
+      "canonical_home_mounted": false,
+      "cleanup_returncode": 0,
+      "container_id_sha256": "24f541fa01467d7b0d40ce5e365089e102b3e14176239aaf1c00a00c8118e857",
+      "create_returncode": 0,
+      "create_stderr_bytes": 0,
+      "exact_container_absence_observations": [
+        true,
+        true
+      ],
+      "exact_six_values_match": false,
+      "image_id": "sha256:54c85f3c47607a77f32adec749d3c81d1348bf25833671f512b26a9b6d778cb3",
+      "json_object": true,
+      "native_report_sha256": "03405dda40bebe19d431310ec9b015143ceed73c25248d4a28185fae4095b72a",
+      "network_mode": "none",
+      "normalized_target_key_occurrences": {
+        "enabled": 13,
+        "hard_clear_age_turns": 0,
+        "keep_last_n_turns": 0,
+        "soft_trim_head": 0,
+        "soft_trim_tail": 0,
+        "soft_trim_threshold": 0
+      },
+      "profile": "on",
+      "pruning_or_compaction_key_occurrences": {
+        "compaction": 0,
+        "pruning": 0
+      },
+      "recognized_top_level_sections": [],
+      "returncode": 0,
+      "six_target_fields_same_object_count": 0,
+      "stderr_bytes": 0,
+      "stdout_bytes": 3211,
+      "target_pruning_object_count": 0
+    }
+  ],
+  "provider_calls": 0,
+  "remaining_free_bytes": 34693578752,
+  "schema": "grok-authored-docker-inspect-field-qualification@1"
+}

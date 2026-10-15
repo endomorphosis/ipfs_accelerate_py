@@ -1,0 +1,107 @@
+{
+  "batches": [
+    {
+      "counts": {
+        "passed": 383
+      },
+      "label": "core-router-final03",
+      "result_sha256": "97c85338ffe57e0a5e0e8c8e7e928342539588a4c8882aa4f64cda2c6fabb34d",
+      "seconds": 54.269254392944276,
+      "source_pins_sha256": "128073fa3fe1691e33af256ae9c385bbddba30f4dd0e342be9ad08f999978bfd"
+    },
+    {
+      "counts": {
+        "passed": 371
+      },
+      "label": "outer-final01",
+      "result_sha256": "e9c5aaa490925e6646f9557efc52f3e94e04a2d2e1cfc06e1a7408e4ce9700db",
+      "seconds": 6.225461600814015,
+      "source_pins_sha256": "477b84def9424de9b0b0e2cc90cb94b4536b0b9bf7faef5ce81a0b0ecf4a11f7"
+    },
+    {
+      "counts": {
+        "passed": 9
+      },
+      "label": "subprocess-final01",
+      "result_sha256": "0a641ae1f46639276905af53f4858ead93870b64b698388b035ea3d8963c3cea",
+      "seconds": 1.1081631288398057,
+      "source_pins_sha256": "0423eda3cdd9cb368bf0dd4e8864beb43ded61b6e194d881d58e88e529047880"
+    },
+    {
+      "counts": {
+        "passed": 137
+      },
+      "label": "metadata-doctor-final01",
+      "result_sha256": "f4e4197ee5e3525e516982c90197f05527c7816310dbbcbb86ef4c8f9cd2fb98",
+      "seconds": 65.42655792785808,
+      "source_pins_sha256": "32dcac08b1dcd9b118640b5a98f9456eefa2df27df1a0925e952d98756fb99ce"
+    }
+  ],
+  "benchmark_score": null,
+  "branch": "supervisor-grok-pruning-20261015",
+  "config_file_consumption_verified": false,
+  "corrected_findings": [
+    "Reserved structured preflight receipt was stringified by CLI metadata; validated preservation and redaction added.",
+    "Runner success now requires selected preflight before acceptance; failures retain observed usage.",
+    "Configuration comparison eligibility is independent of outcome equality.",
+    "Authored timeout fixture now leaves absent completion evidence unknown.",
+    "Authored native observation fixtures now include the separate generic successful exit field."
+  ],
+  "effective_settings_verified": false,
+  "inspection_containers_cleaned": 5,
+  "live_admission": {
+    "admission_floor_changed": false,
+    "minimum_free_bytes": 34359738368,
+    "observed_free_bytes": 12687036416,
+    "reason": "disk_floor",
+    "retained_artifacts_deleted": false,
+    "status": "blocked"
+  },
+  "live_benchmark_launched": false,
+  "native_authored_inspection_calls": 5,
+  "new_runtime_archive_built": false,
+  "observed_at_utc": "2026-10-15T08:07:51.654417+00:00",
+  "passed": 900,
+  "remaining": [
+    "Build and qualify updated runtime archive after admission permits it.",
+    "Run matched on/off tasks with fixed controls and official correctness measurement.",
+    "Native effective pruning and config consumption evidence is unavailable in pinned inspection."
+  ],
+  "runtime_commit": "09cd34767b991aa81d5b57fa3fcea0637d9f6fc7",
+  "schema": "grok-pruning-offline-qualification@1",
+  "source_files": {
+    "/home/barberb/lift_coding/artifacts/grok-pruning-profiles-20261015/authored-e2e/test_pruning_preflight.py": "9383b4411d49ed586e65e404b5bfb4864acd94782c5e6d12af55fa0cd7a34f14",
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "f7f6a6348b63b8f06f66679f9f58c8bec2f88df87e22894b37d171fbec6fa1b2",
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "888ba231ddebaa46ef2323e837e3c9def5b1acc8585acd48ee9aa886fd1c732a",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "7761926faba07adab4003ec35c5bd992c63c2aad412538f7719a314ea158fc0c",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "40b9ebcd31caecd36ffd9f6392dafc974e389ecc3e9951849a931cd480dce809",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "9c2675ca50ed66a72b24a59feb88be205c683e5f06ae7b6e627dec3dc8d5595c",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "87d3a018bd6515a67881873a744d875c914c6ad507a8fc261f6147fccde398bc",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "90fc1163012dc01e4e387a73fc4e5fffaa7002760d955906bc31809feccbe99e",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "6746da40da37392bc76b865d71b36c44f18e8e545fc30ff20c690df89bbc64c2",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "180e2ac6ea8fa9079040e5d3a23a8bdafc0694ab61bbce9277068669160e05f5",
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "23bb73f47c993259d0a2a6434ec1af51ee2ad3f12bb4f6e33c01d25661e2988c",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_grok_readiness_setup.py": "12f38393904f1ff588b709331e1e24c7595223af87f6331459efb381128e84d8",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c",
+    "benchmarks/agent_supervisor/container_coding/test_grok_coding_budget.py": "4c74c607fda93ddecb4fc90efc43e104b05ac8cb511fcbb89da50688354f6253",
+    "benchmarks/agent_supervisor/container_coding/test_grok_pruning_comparison.py": "63d07f64e451a421792a82573055af2c46edcbeeebea366f9078c9f08f89f84b",
+    "benchmarks/agent_supervisor/container_coding/test_grok_pruning_deployment.py": "ade7b372c08e25356158e4363064e7ba3aa506b4ba501e570bd8de9467589315",
+    "benchmarks/agent_supervisor/container_coding/test_grok_pruning_supervisor.py": "a7bce3a543f6c46263251f37482ef712ffc540f5998c92730570ba767f292b8e",
+    "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py": "da407a63226b6b8252ff04524a13fbff7daa6b50dc1e724c501205c70d72ca3e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "fd68bf806b6fdde2e9cac9f58681494145fd9bb6fcd51455dcd2bd1983dba7b3",
+    "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "5f7601ed7cb57e2339a5ff536cc9db1346b60e38db3ab738bbac3d5bc35504ae",
+    "ipfs_accelerate_py/cli_runtime/grok_pruning.py": "f2fbe5d119bf115a83ff047825f660bdc532567e3fa283705bed5b845ecc62c7",
+    "ipfs_accelerate_py/llm_router.py": "c52017514cb8c06b65c43de9a97c439e026a5da391d3dcc7d9cd073dced7440a",
+    "test/api/test_grok_coding_turn_bound.py": "02da81f059d8db57c8f24e623642d3dcf199f9c8ea6813bdc6356e465c8a2474",
+    "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+    "test/api/test_grok_pruning.py": "dc03fb02ee41139025d17ff2979eebe1963f2e67caf6cae47ce9a11329ada946",
+    "test/api/test_grok_pruning_router.py": "cb309f61bb5e31bf17f9634d32ad0617dcb8474766d5cd30b6324b270c07394a",
+    "test/api/test_grok_stream_router.py": "399db826ea5e483c501b989c4785b1a3075a561127c326490797fe661f7f2000",
+    "test/api/test_router_implementation_runner.py": "a53068326a777c743b1b00b51b9f7e983d3ab8ba42400e64ebf4ad452c91086f",
+    "test/api/test_terminal_doctor_dispatch.py": "644c7f4ee1b3920daea395cd950a6ca49a7f29e9aeb10971f8784c9c554bb600",
+    "test/test_llm_allocation.py": "d36ef588ccf86bc6d1811e5e4dcc41a4c71c1830c6f81e7b191099d00a909b88"
+  },
+  "source_pins_current": true,
+  "tests_provider_calls": 0,
+  "token_savings_established": false
+}

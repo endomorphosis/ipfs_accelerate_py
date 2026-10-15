@@ -1,0 +1,63 @@
+{
+  "authored_only": true,
+  "binary_sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+  "canonical_configuration_read": false,
+  "credentials_read": false,
+  "minimum_free_bytes": 34359738368,
+  "network_requests_possible": false,
+  "profiles": [
+    {
+      "auth_provided": false,
+      "authored_config_sha256": "a4538ea94e7c72ee309797bf4a7b9983a38424acdd88360f11ed39396b437956",
+      "authored_config_unchanged": true,
+      "bound_failure": null,
+      "canonical_home_mounted": false,
+      "cleanup_returncode": 0,
+      "container_id_sha256": "348ee1ddfb5d92cd891fb6ace42a899d874eaa46b94db2e31fb8b9525b0ba69a",
+      "create_returncode": 0,
+      "create_stderr_bytes": 0,
+      "exact_container_absence_observations": [
+        true,
+        true
+      ],
+      "exact_six_values_match": false,
+      "image_id": "sha256:54c85f3c47607a77f32adec749d3c81d1348bf25833671f512b26a9b6d778cb3",
+      "json_object": true,
+      "network_mode": "none",
+      "profile": "off",
+      "recognized_top_level_sections": [],
+      "returncode": 0,
+      "stderr_bytes": 0,
+      "stdout_bytes": 3211,
+      "target_pruning_object_count": 0
+    },
+    {
+      "auth_provided": false,
+      "authored_config_sha256": "82219d8eca0f26841a540e02a5afedf6aa55f406dda9e0f5a86a2c896bc41d4f",
+      "authored_config_unchanged": true,
+      "bound_failure": null,
+      "canonical_home_mounted": false,
+      "cleanup_returncode": 0,
+      "container_id_sha256": "e3854c3312bc1b050af55c3af5d7f73d431dba54043387e64b45a69e991c3113",
+      "create_returncode": 0,
+      "create_stderr_bytes": 0,
+      "exact_container_absence_observations": [
+        true,
+        true
+      ],
+      "exact_six_values_match": false,
+      "image_id": "sha256:54c85f3c47607a77f32adec749d3c81d1348bf25833671f512b26a9b6d778cb3",
+      "json_object": true,
+      "network_mode": "none",
+      "profile": "on",
+      "recognized_top_level_sections": [],
+      "returncode": 0,
+      "stderr_bytes": 0,
+      "stdout_bytes": 3211,
+      "target_pruning_object_count": 0
+    }
+  ],
+  "provider_calls": 0,
+  "remaining_free_bytes": 35177971712,
+  "schema": "grok-authored-docker-inspect-qualification@1"
+}
