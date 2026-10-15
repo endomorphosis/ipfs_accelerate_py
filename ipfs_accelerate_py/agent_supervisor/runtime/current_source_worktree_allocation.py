@@ -158,6 +158,7 @@ class NativeSourceWorktreeAllocation:
         self._nominated_source_scope = self._original_nominated_source_scope = None
         self._nominated_scope_checking = False
         self._binding = self._checking = False
+        self._owner_callback_active = self._owner_callback_reentry_detected = False
         self._lock = threading.RLock()
         self._original = (self, task_admission, self._server, self._source, self._bridge, self._store,
             self._canonical_repository, self._workspace, self._worktree_root, self._attempt_root,
@@ -278,6 +279,7 @@ class NativeSourceWorktreeAllocation:
     def require_current(self):
         """Fence COOR before SERVER, then close with detached allocation reads."""
         with self._lock:
+            self._refuse_owner_callback_reentry()
             _need(not self._checking, "native source allocation reentry refused")
             self._checking = True
             try:
@@ -297,37 +299,122 @@ class NativeSourceWorktreeAllocation:
                     admission._native()
                     final = self._observe()
                     _need(final == observed, "allocation changed after its native claim fence")
-                fixed, record, identity, binding = final
-                stable = record.to_dict()
-                renewal = tuple(stable.pop(key) for key in ("fence", "updated_at", "expires_at"))
-                _need(self._fixed_files is None or fixed == self._fixed_files,
-                      "allocation immutable custody changed")
-                _need(self._lifecycle_bytes is None or _wire(stable) == self._lifecycle_bytes,
-                      "allocation lifecycle ownership changed")
-                _need(self._renewal is None or all(a >= b for a, b in zip(renewal, self._renewal)),
-                      "allocation lifecycle renewal rolled back")
-                if self._material is None:
-                    task = json.loads(self._task_bytes)
-                    material = dict(schema=SCHEMA, **{key: task[key] for key in (
-                        "task_cid", "task_alias", "task_revision", "expected_task_body_cid")},
-                        native_attempt_number=admission._claim["attempt_number"],
-                        portal_canonical_task_cid=identity["canonical_task_cid"], portal_binding_id=binding["binding_id"],
-                        lifecycle_record_id=record.record_id, lifecycle_attempt=record.attempt,
-                        lifecycle_initial_fence=record.fence,
-                        lifecycle_lease_identity_cid=cid_for_structured({"lease_id": record.lease_id}),
-                        lifecycle_owner_birth=record.owner.to_dict(), canonical_repository=str(self._canonical_repository),
-                        workspace=str(self._workspace), branch=record.branch, merge_target_branch=self._merge_target,
-                        allocation_ownership_verified=True, proof_authority=False, execution_authority=False,
-                        completion_authority=False, bootstrap_verified=False, compiled_context_verified=False,
-                        coding_process_verified=False)
-                    material["allocation_cid"] = cid_for_structured(material)
-                    self._material = canonical_json_bytes(material)
-                    self._fixed_files, self._lifecycle_bytes = fixed, _wire(stable)
-                    self._original_custody = (self._fixed_files, self._lifecycle_bytes, self._material)
-                self._renewal = renewal
-                return json.loads(self._material)
+                return self._retain_observation(final)
             finally:
                 self._checking = False
+
+    def _retain_observation(self, observed):
+        """Share the original immutable custody and monotonic renewal checks."""
+        fixed, record, identity, binding = observed
+        stable = record.to_dict()
+        renewal = tuple(stable.pop(key) for key in ("fence", "updated_at", "expires_at"))
+        _need(self._fixed_files is None or fixed == self._fixed_files,
+              "allocation immutable custody changed")
+        _need(self._lifecycle_bytes is None or _wire(stable) == self._lifecycle_bytes,
+              "allocation lifecycle ownership changed")
+        _need(self._renewal is None or all(a >= b for a, b in zip(renewal, self._renewal)),
+              "allocation lifecycle renewal rolled back")
+        if self._material is None:
+            task = json.loads(self._task_bytes)
+            material = dict(schema=SCHEMA, **{key: task[key] for key in (
+                "task_cid", "task_alias", "task_revision", "expected_task_body_cid")},
+                native_attempt_number=self._task_admission._claim["attempt_number"],
+                portal_canonical_task_cid=identity["canonical_task_cid"], portal_binding_id=binding["binding_id"],
+                lifecycle_record_id=record.record_id, lifecycle_attempt=record.attempt,
+                lifecycle_initial_fence=record.fence,
+                lifecycle_lease_identity_cid=cid_for_structured({"lease_id": record.lease_id}),
+                lifecycle_owner_birth=record.owner.to_dict(), canonical_repository=str(self._canonical_repository),
+                workspace=str(self._workspace), branch=record.branch, merge_target_branch=self._merge_target,
+                allocation_ownership_verified=True, proof_authority=False, execution_authority=False,
+                completion_authority=False, bootstrap_verified=False, compiled_context_verified=False,
+                coding_process_verified=False)
+            material["allocation_cid"] = cid_for_structured(material)
+            self._material = canonical_json_bytes(material)
+            self._fixed_files, self._lifecycle_bytes = fixed, _wire(stable)
+            self._original_custody = (self._fixed_files, self._lifecycle_bytes, self._material)
+        self._renewal = renewal
+        return json.loads(self._material)
+
+    def _refuse_owner_callback_reentry(self):
+        if self._owner_callback_active:
+            self._owner_callback_reentry_detected = True
+            raise CurrentSourceWorktreeAllocationError("native allocation owner callback reentry refused")
+
+    def _observe_callback_boundary(self):
+        """Under COOR then SERVER, read task/grant and allocation controls only."""
+        self._retained()
+        admission = self._task_admission
+        admission._require_inactive_owner_transaction()
+        before, grant = admission._native()
+        _need(before[0] == self._task_bytes, "allocation task snapshot changed")
+        observed = self._observe()
+        after, current = admission._native()
+        _need(before == after and after[0] == self._task_bytes
+              and grant.grant_id == current.grant_id,
+              "allocation native claim or grant changed during owner callback boundary")
+        self._retain_observation(observed)
+        _need(not self._owner_callback_reentry_detected
+              and not admission._owner_callback_reentry_detected,
+              "native allocation owner callback attempted reentry")
+        admission._require_inactive_owner_transaction()
+        self._retained()
+
+    def execute_with_current_claim(self, callback, *, minimum_remaining_ms=0):
+        """Run a trusted owner callback under the existing live task fence.
+
+        The callback receives the genuine immutable protected lease. Allocation
+        and admission locks, then COOR and SERVER, span its execution. Native
+        task/grant and allocation controls are checked before and after; source
+        contents are not read. This method grants no launch, retry or completion
+        authority. A failure after callback entry cannot undo external effects:
+        the caller retains its child cleanup and possible-effects obligations.
+        """
+        _need(callable(callback), "trusted owner callback required")
+        with self._lock:
+            self._refuse_owner_callback_reentry()
+            _need(not self._checking, "native source allocation reentry refused")
+            self._retained()
+            admission = self._task_admission
+            with admission._lock:
+                admission._refuse_owner_callback_reentry()
+                _need(not admission._checking, "native source task admission reentry refused")
+                # Check before acquiring COOR and again under SERVER, so an
+                # unrelated borrowed SQL transaction never reaches the callback.
+                admission._require_inactive_owner_transaction()
+                self._checking = admission._checking = True
+                self._owner_callback_active = admission._owner_callback_active = True
+                self._owner_callback_reentry_detected = admission._owner_callback_reentry_detected = False
+                try:
+                    def checked(lease):
+                        with self._server._lock:
+                            self._observe_callback_boundary()
+                            callback_error = None
+                            result = None
+                            try:
+                                result = callback(lease)
+                            except BaseException as error:
+                                callback_error = error
+                            try:
+                                self._observe_callback_boundary()
+                            except BaseException as closing_error:
+                                if callback_error is not None:
+                                    raise callback_error from closing_error
+                                raise
+                            if callback_error is not None:
+                                raise callback_error
+                            return result
+                    result = admission._coordinator.execute_with_task_claim_fence(
+                        admission._claim, checked, minimum_remaining_ms=minimum_remaining_ms)
+                    # The coordinator's own closing clock/commit can invoke
+                    # owner code. Close again after that fence without entering
+                    # another claim transaction or reading candidate contents.
+                    with self._server._lock:
+                        self._observe_callback_boundary()
+                    return result
+                finally:
+                    self._checking = admission._checking = False
+                    self._owner_callback_active = admission._owner_callback_active = False
+                    self._owner_callback_reentry_detected = admission._owner_callback_reentry_detected = False
 
     def bind_current_source_lookup(self, *, cas, expected_inventory_cid, request, limits,
                                    context_cid, allowed_paths, max_response_bytes=16384, max_slice_bytes=4096):

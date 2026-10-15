@@ -1299,3 +1299,72 @@ archive compatibility. These tests invoke no model and do not qualify Docker
 identity isolation or live candidate delivery. Results, dependency revisions and
 retained failed runs are recorded in
 [qualification.json](evidence/owner-worker-attempt-census-20261015/qualification.json).
+
+## October 15: host-native admission for one candidate child
+
+The next connection is a host-owner admission that joins the existing native
+task and allocation handles to the failed-child snapshot, complete candidate
+prompt, original deadline, supervisor run lease and both worker census handles.
+It admits at most one candidate child per retained original source worker.
+Serialized observations, checkpoints and read descriptors remain insufficient.
+
+`NativeSourceWorktreeAllocation.execute_with_current_claim(...)` now provides
+the required native boundary. The real process-serialized coordinator holds its
+task-claim transaction across the owner's callback, with COOR before SERVER lock
+order. The surrounding checks retain the full native task body, claim tuple,
+active daemon grant, Portal projection, ACTIVE worktree lifecycle, linked Git
+controls and monotonic lifecycle renewals. Reentry, a borrowed SQL transaction,
+or changed authority refuses the callback. This reusable boundary reads
+allocation controls; it does not turn source contents into proofs or authorize
+a coding command by itself.
+
+The new `capture_native_candidate_round_admission(...)` factory independently
+checks a successfully published prior retirement event, the actual waited
+positive failed child, exact native allocation/task identity, current candidate
+generation and producers, original requirements and new prepared worker event.
+The immutable candidate event must bind the exact complete candidate prompt and
+the same absolute deadline as its predecessor. The run lease is read from its
+existing native coordinator with the original owner and fencing identity.
+It is a `supervisor_run` lease, separately from quantitative CPU, memory and
+child-slot reservations; this increment does not establish those reservations.
+
+The issued handle consumes its birth admission once, holds the real native
+claim fence through actual `Popen` registration, and records the new census
+birth before external broker registration. A postbirth failure retains the
+actual process and possible effects; neither a failed acknowledgement nor a
+missing receipt becomes a refund or permission to launch another child.
+Source verification precedes birth. Afterward, the final pre-input check
+revalidates the candidate prompt/generation after coordinator closing callbacks
+and closes with native control and expiry observations. These are bounded
+sequential checks, not a filesystem or distributed transaction.
+
+`run_native_candidate_round_worker(...)` supplies the host-owner execution
+helper. It opens an empty stdin pipe, creates and registers the child through
+that admission, and releases the exact candidate bytes only after the native
+boundary and final checks return. Its wait uses the original remaining deadline.
+Failed registration, expiry, interrupted execution and failed cleanup preserve
+the child handle and census evidence. The caller supplies its existing
+descendant cleanup operation and owner output streams; the helper refuses an
+environment carrying database authority and unbounded output-pipe capture.
+Successful broker retirement also requires the reader thread to have exited
+and its descriptor and socket to have been removed.
+
+This qualifies a host-owner boundary with real native claims, grants,
+allocation/lifecycle records, run leases, candidate producers, private events
+and local children. The fixture authors Quack transport, deployment admission
+and cleanup for its inert same-UID children. It invokes no provider, executes
+no target code and leaves the native task in progress. The original candidate
+prompt remains `dispatch_usable=False`; the router still refuses it without a
+separate admitted input route.
+
+The deployed Terminal path still needs its authenticated daemon-to-wrapper
+handoff, original absolute provider deadline, explicit two-child policy and
+typed candidate router input. Ordinary single-lane execution must select shared
+coordinator serialization before opening its sidecar. Its group-writable
+container workspace also needs a separately qualified allocation contract: the
+existing source allocation handle continues rejecting those modes. None of
+these deployment properties is inferred from this host admission or enabled by
+default. Matched native token/reward trials remain a later measurement gate.
+
+Qualification results and explicit limitations are retained in
+[qualification.json](evidence/native-candidate-admission-20261015/qualification.json).

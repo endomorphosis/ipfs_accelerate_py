@@ -129,6 +129,7 @@ class _State:
     child: tuple | None = None
     spent: bool = False
     retired: bool = False
+    retired_event: _Event | None = None
     lock: object = field(default_factory=threading.Lock)
 
 
@@ -294,7 +295,7 @@ class OwnerWorkerAttempt:
                 waited=waited, child_returncode=returncode, cleanup_succeeded=cleanup_succeeded,
                 brokers_closed=brokers_closed)
             state.retired = True
-            OwnerWorkerAttempt._publish(self, value, deadline=False)
+            state.retired_event = OwnerWorkerAttempt._publish(self, value, deadline=False)
             return json.loads(_wire(value))
 
 
