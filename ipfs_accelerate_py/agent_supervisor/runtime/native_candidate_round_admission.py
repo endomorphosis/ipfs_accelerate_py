@@ -192,16 +192,17 @@ class _State:
 class NativeCandidateRoundAdmission:
     """Exact issued one-use host handle; no deserializer or dispatch route."""
     __slots__ = ("__weakref__", "_seal", "_token", "_allocation", "_run_coordinator", "_run_lease",
-        "_candidate_prompt", "_prior_worker_attempt", "_worker_attempt", "_snapshot", "_source_broker",
+        "_candidate_prompt", "_prior_worker_attempt", "_worker_attempt", "_snapshot", "_source_broker", "_resources",
         "_original", "_literal", "_run_refs", "_run_input", "_binding", "_state", "_original_state")
 
     def __init__(self, seal, *, token, allocation, run_coordinator, run_lease, candidate_prompt,
-            prior_worker_attempt, worker_attempt):
+            prior_worker_attempt, worker_attempt, resources=None):
         _need(seal is _SEAL and type(self) is NativeCandidateRoundAdmission,
             "candidate admission must be captured by its host owner")
         values = dict(_seal=seal, _token=token, _allocation=allocation, _run_coordinator=run_coordinator,
             _run_lease=run_lease, _candidate_prompt=candidate_prompt,
             _prior_worker_attempt=prior_worker_attempt, _worker_attempt=worker_attempt,
+            _resources=resources,
             _snapshot=candidate_prompt._snapshot, _source_broker=candidate_prompt._snapshot._source_broker,
             _state=_State(), _binding=None)
         for name, value in values.items():
@@ -221,13 +222,14 @@ class NativeCandidateRoundAdmission:
             self._source_broker, self._state, self._prior_worker_attempt._state,
             self._worker_attempt._state, self._prior_worker_attempt._state.prepared,
             self._prior_worker_attempt._state.spawned, self._prior_worker_attempt._state.retired_event,
-            self._worker_attempt._state.prepared)
+            self._worker_attempt._state.prepared, self._resources)
 
     def _literals(self):
         return (self._allocation._material, self._allocation._task_bytes,
             self._candidate_prompt.provider_prompt, self._candidate_prompt.metadata_bytes,
             self._snapshot.metadata_bytes, self._snapshot.native_prompt, self._snapshot._baseline_bytes,
-            self._snapshot._absolute_deadline, self._prior_worker_attempt._common, self._worker_attempt._common)
+            self._snapshot._absolute_deadline, self._prior_worker_attempt._common, self._worker_attempt._common,
+            None if self._resources is None else self._resources.metadata_bytes)
 
     def _issued(self):
         _need(type(self) is NativeCandidateRoundAdmission and self._seal is _SEAL
@@ -277,6 +279,23 @@ class NativeCandidateRoundAdmission:
         NativeCandidateRoundAdmission._issued(self)
         return self._original[6]
 
+    @property
+    def resources(self):
+        NativeCandidateRoundAdmission._issued(self)
+        return self._resources
+
+    def _resources_current(self):
+        if self._resources is not None:
+            from .native_candidate_round_resources import NativeCandidateRoundResources
+            NativeCandidateRoundResources.revalidate(self._resources)
+
+    def _resources_final(self):
+        if self._resources is not None:
+            from .native_candidate_round_resources import NativeCandidateRoundResources
+            if NativeCandidateRoundResources.poll(self._resources):
+                raise RuntimeError("candidate resource reservation is no longer current")
+            NativeCandidateRoundResources.remaining(self._resources)
+
     def _run_current(self):
         NativeCandidateRoundAdmission._retained(self)
         coordinator, lease = self._run_coordinator, self._run_lease
@@ -295,6 +314,7 @@ class NativeCandidateRoundAdmission:
 
     def _before_spawn(self):
         NativeCandidateRoundAdmission._retained(self)
+        NativeCandidateRoundAdmission._resources_current(self)
         protected = NativeCandidateRoundAdmission._run_current(self)
         prior, prior_events = _attempt(self._prior_worker_attempt, phase="retired")
         current, current_events = _attempt(self._worker_attempt, phase="prepared")
@@ -328,6 +348,7 @@ class NativeCandidateRoundAdmission:
         # Native controls close AFTER source/producer and owner-file observers.
         # This does not enter another claim transaction or read source bytes.
         NativeSourceWorktreeAllocation._observe_callback_boundary(self._allocation)
+        NativeCandidateRoundAdmission._resources_final(self)
         _expiry(protected, minimum_ms=MINIMUM_REMAINING_MS)
         if time.monotonic_ns() + MINIMUM_REMAINING_MS * 1_000_000 >= deadline:
             raise TimeoutError("original candidate deadline lacks a full birth budget")
@@ -363,6 +384,7 @@ class NativeCandidateRoundAdmission:
                         NativeCandidateRoundAdmission._before_spawn(self))
                 else:
                     NativeCandidateRoundAdmission._retained(self)
+                    NativeCandidateRoundAdmission._resources_current(self)
                     protected = NativeCandidateRoundAdmission._run_current(self)
                     _attempt(self._prior_worker_attempt, phase="retired")
                     _attempt(self._worker_attempt, phase="spawned", process=self._state.process)
@@ -376,6 +398,7 @@ class NativeCandidateRoundAdmission:
             # Observe one current run-lease result after closing native clocks,
             # including an authentic same-fence shortening. This authority's
             # clock also precedes the final source verification below.
+            NativeCandidateRoundAdmission._resources_current(self)
             protected_leases["run"] = NativeCandidateRoundAdmission._run_current(self)
             # The native coordinator's closing clock may invoke owner code.
             # Recheck source after it has finished; no coordinator/observer
@@ -385,6 +408,7 @@ class NativeCandidateRoundAdmission:
             NativeCandidateRoundAdmission._retained(self)
             with self._allocation._server._lock:
                 NativeSourceWorktreeAllocation._observe_callback_boundary(self._allocation)
+            NativeCandidateRoundAdmission._resources_final(self)
             _expiry(protected_leases["task"], minimum_ms=MINIMUM_REMAINING_MS)
             _expiry(protected_leases["run"], minimum_ms=MINIMUM_REMAINING_MS)
             attempts._remaining(json.loads(self._worker_attempt._common)["absolute_deadline_ns"])
@@ -411,12 +435,17 @@ class NativeCandidateRoundAdmission:
                         NativeCandidateRoundAdmission._before_spawn(self))
                     _expiry(claim_lease, minimum_ms=MINIMUM_REMAINING_MS)
                     _expiry(protected, minimum_ms=MINIMUM_REMAINING_MS)
+                    if self._resources is not None:
+                        from .native_candidate_round_resources import NativeCandidateRoundResources
+                        NativeCandidateRoundResources.note_spawn_attempt(self._resources)
                     state.spawn_started = True
                     process = spawn()
                     if type(process) is subprocess.Popen:
                         state.process = process
                     _need(type(process) is subprocess.Popen, "spawn callback must return its actual Popen child")
                     attempts.OwnerWorkerAttempt.note_spawned(self._worker_attempt, process)
+                    if self._resources is not None:
+                        NativeCandidateRoundResources.note_spawned(self._resources, process)
                     child = attempts._birth(process.pid)
                     state.child = child
                     _need(child[1] == os.getpid()
@@ -432,6 +461,7 @@ class NativeCandidateRoundAdmission:
                 result = NativeSourceWorktreeAllocation.execute_with_current_claim(self._allocation,
                     checked, minimum_remaining_ms=MINIMUM_REMAINING_MS)
                 # Native coordinator closing callbacks have now finished.
+                NativeCandidateRoundAdmission._resources_current(self)
                 protected_leases["run"] = NativeCandidateRoundAdmission._run_current(self)
                 NativeCandidateRoundAdmission._retained(self)
                 # The run authority has its own native clock. Close any of its
@@ -439,6 +469,7 @@ class NativeCandidateRoundAdmission:
                 # replaying candidate source after a child has been born.
                 with self._allocation._server._lock:
                     NativeSourceWorktreeAllocation._observe_callback_boundary(self._allocation)
+                NativeCandidateRoundAdmission._resources_final(self)
                 _expiry(protected_leases["task"], minimum_ms=MINIMUM_REMAINING_MS)
                 _expiry(protected_leases["run"], minimum_ms=MINIMUM_REMAINING_MS)
                 attempts._remaining(json.loads(self._worker_attempt._common)["absolute_deadline_ns"])
@@ -449,7 +480,7 @@ class NativeCandidateRoundAdmission:
 
 
 def capture_native_candidate_round_admission(*, allocation, run_coordinator, run_lease,
-        candidate_prompt, prior_worker_attempt, worker_attempt):
+        candidate_prompt, prior_worker_attempt, worker_attempt, resources=None):
     """Capture one real host-native candidate admission per original source worker.
 
     This deliberately retains the existing allocation's protected-directory
@@ -476,6 +507,15 @@ def capture_native_candidate_round_admission(*, allocation, run_coordinator, run
     repository_id = allocation._server.identity.repository_id
     _need(type(repository_id) is str and repository_id and run_lease.repository_id == repository_id,
         "run lease repository differs from the native task owner")
+    if resources is not None:
+        from .native_candidate_round_resources import NativeCandidateRoundResources
+        _need(type(resources) is NativeCandidateRoundResources
+            and resources.worker_attempt is worker_attempt
+            and resources.repository_id == repository_id
+            and resources.workspace == allocation._workspace
+            and resources.absolute_deadline_ns == json.loads(worker_attempt._common)["absolute_deadline_ns"],
+            "candidate resources differ from exact native owner, attempt, workspace or deadline")
+        NativeCandidateRoundResources.revalidate(resources)
     source = candidate_prompt._snapshot._source_broker
     token = object()
     with _REGISTRY_LOCK:
@@ -485,7 +525,7 @@ def capture_native_candidate_round_admission(*, allocation, run_coordinator, run
     try:
         result = NativeCandidateRoundAdmission(_SEAL, token=token, allocation=allocation,
             run_coordinator=run_coordinator, run_lease=run_lease, candidate_prompt=candidate_prompt,
-            prior_worker_attempt=prior_worker_attempt, worker_attempt=worker_attempt)
+            prior_worker_attempt=prior_worker_attempt, worker_attempt=worker_attempt, resources=resources)
         def checked(_lease):
             _protected, prior, prior_events, current, current_events = (
                 NativeCandidateRoundAdmission._before_spawn(result))
@@ -504,19 +544,24 @@ def capture_native_candidate_round_admission(*, allocation, run_coordinator, run
                 worker_prepared_event_sha256=_sha(current_events[0].raw),
                 absolute_deadline_ns=current["absolute_deadline_ns"], host_native_admission_only=True,
                 serialized_observation_grants_authority=False, native_run_lease_checked=True,
-                quantitative_resource_reservation_verified=False, candidate_artifacts_advisory=True,
+                quantitative_resource_reservation_verified=resources is not None,
+                resource_reservation_sha256=None if resources is None else _sha(resources.metadata_bytes),
+                candidate_artifacts_advisory=True,
                 proof_authority=False, completion_authority=False, retry_authority=False,
                 production_container_dispatch_qualified=False)
         binding = NativeSourceWorktreeAllocation.execute_with_current_claim(allocation,
             checked, minimum_remaining_ms=MINIMUM_REMAINING_MS)
         NativeCandidateRoundAdmission._run_current(result)
         NativeCandidateRoundAdmission._retained(result)
+        NativeCandidateRoundAdmission._resources_final(result)
         object.__setattr__(result, "_binding", _wire(binding))
         with _REGISTRY_LOCK:
             _need(_CAPTURING.get(source) is token and source not in _PRIOR_ADMISSIONS,
                 "original candidate admission issuance changed")
             _PRIOR_ADMISSIONS[source] = token
             _ISSUED[result] = (token, result._binding)
+        if resources is not None:
+            NativeCandidateRoundResources.bind_admission(resources, result)
         return result
     finally:
         with _REGISTRY_LOCK:
