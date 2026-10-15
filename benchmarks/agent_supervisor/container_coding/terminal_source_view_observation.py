@@ -83,7 +83,8 @@ def provider_free_coding_application_observed(report):
             rounds, policy = report.get("candidate_rounds", 1), report.get("doctor_coding_policy")
             validate_doctor_coding_selection(rounds, policy, arm=report["arm"],
                 source_view_profile=report.get("source_view_profile", "disabled"),
-                source_edit_mode=report.get("source_edit_mode", "disabled"))
+                source_edit_mode=report.get("source_edit_mode", "disabled"),
+                task_profile=report.get("task_profile"))
             attempt_selection = doctor_coding_selection(rounds, policy)
             if rounds == 2 and not doctor_coding_runtime_declared_matches(report, rounds, policy):
                 return False

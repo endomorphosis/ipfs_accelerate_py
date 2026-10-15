@@ -283,6 +283,17 @@ def _render(snapshot, requirements, max_prompt_bytes, doctor_context=None):
             schema="supervisor-doctor-candidate-context-binding@1",
             sha256=_sha(doctor_context.metadata_bytes), bytes=len(doctor_context.metadata_bytes)),
             doctor_advisory=doctor_context.advisory_bytes.decode("utf-8"))
+    public_validation = getattr(snapshot, "_public_validation", None)
+    if public_validation is not None:
+        from .candidate_public_validation import public_validation_feedback
+        _need(doctor_context is not None, "public validation continuation requires Doctor policy")
+        observed = public_validation.revalidate(launch=snapshot._validation_launch,
+            retired_worker=snapshot._retired_worker, snapshot=snapshot)
+        raw_validation = canonical_json(observed)
+        payload.update(schema="supervisor-owner-candidate-router-input@3", public_validation=dict(
+            schema="supervisor-public-validation-feedback-binding@1",
+            sha256=_sha(raw_validation), bytes=len(raw_validation),
+            feedback=public_validation_feedback(observed)))
     body = canonical_json(payload)
     _need(len(body) <= max_prompt_bytes, "complete candidate prompt exceeds byte bound; requirements cannot be truncated")
     metadata = dict(schema=OBSERVATION_SCHEMA, status="prepared",
@@ -303,6 +314,10 @@ def _render(snapshot, requirements, max_prompt_bytes, doctor_context=None):
             doctor_context_sha256=_sha(doctor_context.metadata_bytes),
             doctor_advisory_sha256=_sha(doctor_context.advisory_bytes),
             doctor_advisory_bytes=len(doctor_context.advisory_bytes))
+    if public_validation is not None:
+        metadata.update(schema="supervisor-owner-candidate-prompt-observation@3",
+            public_validation_observation_sha256=_sha(raw_validation),
+            public_validation_observation_bytes=len(raw_validation))
     requirements.revalidate(snapshot=snapshot)
     return body, canonical_json(metadata)
 

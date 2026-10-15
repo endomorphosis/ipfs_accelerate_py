@@ -134,9 +134,13 @@ def collect(*, parent: Path, report: dict):
         _need(type(markers) is list and len(markers) <= 8 and all(type(marker) is dict for marker in markers))
         prior = retained["prior_session_id"]
         for marker in markers:
-            _need(marker.get("schema") == "owner-candidate-rounds-observation@1"
+            _need(marker.get("schema") == retained["observation"]["schema"]
                 and type(marker.get("rounds")) is list and 1 <= len(marker["rounds"]) <= 2
                 and marker["rounds"][0].get("session_id") == prior)
+        if retained["observation"]["schema"] == "owner-candidate-rounds-observation@2":
+            result.update(owner_validation_outcome=retained["observation"]["owner_validation_outcome"],
+                owner_returncode=retained["observation"]["owner_returncode"],
+                public_validation_observations=retained["observation"]["public_validation_observations"])
         coding = [row for row in rows if row.get("phase") == "coding"]
         _need(all(row.get("phase") == "coding" for row in candidates))
         used, matched = set(), []
@@ -186,6 +190,15 @@ def collect(*, parent: Path, report: dict):
                             and doctor["context_cid"] == policy["doctor_context_cid"]
                             and canonical_json(doctor["proposal_budget"]) == canonical_json(policy["proposal_budget"])
                             and binding["dispatch_deadline_monotonic_ns"] <= policy["deadline_monotonic_ns"])
+                        from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import PUBLIC_VALIDATION_POLICY
+                        if policy["policy_id"] == PUBLIC_VALIDATION_POLICY:
+                            first_validation = retained["observation"]["public_validation_observations"][0]
+                            _need(doctor["public_validation_contract_sha256"] == policy["public_validation_contract_sha256"]
+                                == first_validation["contract_sha256"]
+                                and doctor["public_validation_observation_sha256"] == hashlib.sha256(canonical_json(first_validation)).hexdigest()
+                                and doctor["actual_prior_returncode"] == first_validation["actual_returncode"]
+                                == retained["observation"]["rounds"][0]["returncode"]
+                                and doctor["public_validation_status"] == first_validation["status"])
                     else:
                         _need("doctor_candidate_dispatch" not in binding)
                 matches.append(row)

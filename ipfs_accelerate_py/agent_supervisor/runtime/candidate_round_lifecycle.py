@@ -13,6 +13,7 @@ from .worker_source_views import canonical_json
 
 SCHEMA = "owner-candidate-rounds-retention@1"
 DOCTOR_SCHEMA = "owner-candidate-rounds-retention@2"
+PUBLIC_SCHEMA = "owner-candidate-rounds-retention@3"
 MAX_BYTES = 65536
 FLAGS = dict(audit_only=True, dispatch_reload_allowed=False, proof_authority=False,
     execution_authority=False, completion_authority=False)
@@ -38,9 +39,12 @@ def lifecycle_name(session):
 
 
 def _observation(value, *, normalized):
-    _need(type(value) is dict and set(value) >= OBSERVATION_FIELDS
-          and not set(value)-OBSERVATION_FIELDS-{"candidate_input_retention"}
-          and value["schema"] == "owner-candidate-rounds-observation@1"
+    public = type(value) is dict and value.get("schema") == "owner-candidate-rounds-observation@2"
+    fields = OBSERVATION_FIELDS | ({"public_validation_observations", "owner_validation_outcome", "owner_returncode"}
+        if public else set())
+    _need(type(value) is dict and set(value) >= fields
+          and not set(value)-fields-{"candidate_input_retention"}
+          and value["schema"] in ("owner-candidate-rounds-observation@1", "owner-candidate-rounds-observation@2")
           and type(value["max_rounds"]) is int and value["max_rounds"] == 2
           and type(value["elapsed_seconds"]) in (int, float)
           and 0 <= value["elapsed_seconds"] <= 86400 and math.isfinite(value["elapsed_seconds"])
@@ -65,6 +69,25 @@ def _observation(value, *, normalized):
         if normalized:
             _need(not row["wait_completed"] or row["process_started"] is True and row["returncode"] is not None)
             _need(not row["retirement_observed"] or row["process_started"] is True and row["returncode"] is not None)
+    if public:
+        from .candidate_public_validation import validate_public_validation_observation
+        observations = value["public_validation_observations"]
+        _need(type(observations) is list and len(observations) <= len(rows)
+            and value["owner_validation_outcome"] in (None, "passed", "failed", "inconclusive")
+            and (value["owner_returncode"] is None or type(value["owner_returncode"]) is int
+                and -255 <= value["owner_returncode"] <= 255))
+        for row, observed in zip(rows, observations):
+            validate_public_validation_observation(observed)
+            _need(row["retirement_observed"] is True
+                and all(observed[key] == row[key] for key in ("round_number", "session_id", "descriptor_sha256"))
+                and observed["actual_returncode"] == row["returncode"])
+        _need(value["owner_validation_outcome"] == (observations[-1]["status"] if observations else None))
+        if value["failure_type"] is None:
+            actual = rows[-1]["returncode"]
+            expected = 1 if actual == 0 and value["owner_validation_outcome"] != "passed" else actual
+            _need(type(value["owner_returncode"]) is int and value["owner_returncode"] == expected)
+        else:
+            _need(value["owner_returncode"] is None)
     return value
 
 
@@ -72,10 +95,10 @@ def validate_retention(value):
     keys = {"schema", "prior_session_id", "prior_descriptor_sha256", "task_id", "native_prompt_sha256",
         "workspace_sha256", "owner_pid", "owner_start_time_ticks", "boundary_manifest_sha256",
         "observation", *FLAGS}
-    doctor = type(value) is dict and value.get("schema") == DOCTOR_SCHEMA
+    doctor = type(value) is dict and value.get("schema") in (DOCTOR_SCHEMA, PUBLIC_SCHEMA)
     if doctor:
         keys.update(("doctor_coding_policy", "doctor_attempts_reserved"))
-    _need(type(value) is dict and set(value) == keys and value["schema"] in (SCHEMA, DOCTOR_SCHEMA)
+    _need(type(value) is dict and set(value) == keys and value["schema"] in (SCHEMA, DOCTOR_SCHEMA, PUBLIC_SCHEMA)
           and all(type(value[k]) is type(v) and value[k] == v for k, v in FLAGS.items()))
     lifecycle_name(value["prior_session_id"])
     _need(all(_digest(value[k]) for k in ("prior_descriptor_sha256", "native_prompt_sha256",
@@ -89,6 +112,10 @@ def validate_retention(value):
     if doctor:
         from .candidate_round_policy import validate_doctor_coding_policy_shape
         policy = validate_doctor_coding_policy_shape(value["doctor_coding_policy"])
+        from .candidate_round_policy import PUBLIC_VALIDATION_POLICY
+        public = policy["policy_id"] == PUBLIC_VALIDATION_POLICY
+        _need((value["schema"] == PUBLIC_SCHEMA) is public
+            and (observation["schema"] == "owner-candidate-rounds-observation@2") is public)
         _need(all(policy[key] == value[key] for key in ("prior_session_id", "prior_descriptor_sha256",
             "task_id", "native_prompt_sha256")))
         reservations = value["doctor_attempts_reserved"]
@@ -184,6 +211,14 @@ def persist(*, source_broker, observation):
           and boundary["worker_uid"] == source_broker.worker_uid
           and descriptor["owner_pid"] == os.getpid())
     normalized = dict(observation, rounds=_native_rows(launch, observation))
+    if launch.public_validation_contract is not None:
+        from .candidate_public_validation import RetiredCandidateValidation
+        retained = []
+        for number, observed in sorted(launch._state.public_validations.items()):
+            _need(type(number) is int and number in (1, 2) and type(observed) is RetiredCandidateValidation)
+            retired = launch._state.initial_retirement if number == 1 else launch._state.second_retirement
+            retained.append(observed.retained_metadata(launch=launch, retired_worker=retired))
+        _need(canonical_json(retained) == canonical_json(observation["public_validation_observations"]))
     payload = dict(schema=SCHEMA, prior_session_id=descriptor["session_id"],
         prior_descriptor_sha256=source_broker.descriptor_sha256,
         task_id=descriptor["task_id"], native_prompt_sha256=descriptor["native_prompt_sha256"],
@@ -195,8 +230,11 @@ def persist(*, source_broker, observation):
         policy = validate_doctor_coding_policy_binding(launch.doctor_coding_policy,
             doctor_requirements=launch._original_requirements._doctor_requirements.metadata,
             original_requirements_sha256=hashlib.sha256(launch._original_requirements.metadata_bytes).hexdigest(),
-            deadline_monotonic_ns=int(launch.absolute_deadline*1_000_000_000))
-        payload.update(schema=DOCTOR_SCHEMA, doctor_coding_policy=policy,
+            deadline_monotonic_ns=int(launch.absolute_deadline*1_000_000_000),
+            **({} if launch.public_validation_contract is None else dict(
+                policy_id=launch.doctor_coding_policy["policy_id"],
+                public_validation_contract=launch.public_validation_contract.metadata)))
+        payload.update(schema=DOCTOR_SCHEMA if launch.public_validation_contract is None else PUBLIC_SCHEMA, doctor_coding_policy=policy,
             doctor_attempts_reserved=sorted(launch._state.reserved_attempts))
     validate_retention(payload)
     raw = canonical_json(payload)

@@ -1,0 +1,274 @@
+{
+  "artifact_reader_review": {
+    "conclusion": "Closed public check shapes export only bounded statuses, fixed reasons and numeric measurements. Private source states and retention paths are excluded. Legacy reports acquire no synthetic public checks. Exact first-observation digest and actual returncode are joined to the new Doctor receipt. Reporting grants no retry or completion authority.",
+    "files": [
+      {
+        "bytes": 4566,
+        "path": "safe_public_validation.py",
+        "sha256": "ad1585978aa55b34e38108cd51ae4654b15a544c61f60f86b3a53d0bf3ac411d"
+      },
+      {
+        "bytes": 5882,
+        "path": "extract_reader_contracts.py",
+        "sha256": "00dd15d40e9af685cb802bfc1730ed3cf9c23d7bd255dbce8090243a836e87ac"
+      },
+      {
+        "bytes": 18711,
+        "path": "read_pilot.py",
+        "sha256": "df230edb68d7eb582a388902a07a7a085426b6e089c64a6ad5e4baac25803ce3"
+      },
+      {
+        "bytes": 9931,
+        "path": "test_public_validation_reader.py",
+        "sha256": "2a71c7984ea73e31b60107587594e09479a6898cea3f3fe90d1cc08e2803f2b1"
+      }
+    ],
+    "generated_validator_refresh_and_final_qualification_pending": true,
+    "root": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014"
+  },
+  "authored_context_not_independently_reviewed_by_this_reviewer": [
+    {
+      "bytes": 36492,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+      "sha256": "8cbfba2173b3bc1a60d158b9c6953788ef0e4d4bac7e48273647987d3a6bf53c"
+    },
+    {
+      "bytes": 102563,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "52c39ea64ab1487f69eb4a6a735c88bcc512830073c4e1024914709fac79e429"
+    },
+    {
+      "bytes": 5834,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py",
+      "sha256": "58b6cd38b8ec9752853f58460808e5d572b1b11451c9a302fe6a09de505a8116"
+    },
+    {
+      "bytes": 1021,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py",
+      "sha256": "b8f5acc36ce7929c4886184525bded32bba584f3f1fd4a04924caff11608d198"
+    },
+    {
+      "bytes": 82129,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "3666ca21205438bd5e7bc9b1b636b47e11f8741abf81bee19c3c02578ca1a47a"
+    },
+    {
+      "bytes": 13615,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py",
+      "sha256": "79aa4601fc6a3260e8e3ae61a7f5cc74c49724f5b27a9d9bf40c3dfce8f3d05d"
+    },
+    {
+      "bytes": 6664,
+      "path": "test/api/public_validation_fixture.py",
+      "sha256": "955f526bd0cf78b3766794ba6e120ce88160e96ef33322af9b6929b570c7caf5"
+    },
+    {
+      "bytes": 778,
+      "path": "test/api/test_public_validation_fixture.py",
+      "sha256": "23671fc3a58db77bef2e47f8178742199e5dc96fe5a49d96d8da8dcb66b1147c"
+    }
+  ],
+  "base_commit": "3193000dbf3b9e3262f1c32dc420640e56b62fc8",
+  "contract_assessments": [
+    "Only exact signed profile@4/largest-eigenval-public@1 is admitted under the new explicit two-attempt policy; ordinary and legacy Doctor policy shapes remain separate.",
+    "Real coding child exit status is retained unchanged. Exit-zero continuation requires a registered typed failed public observation tied to the retired process, original contract, candidate hashes, modes and generation. Inconclusive exit-zero checks cannot authorize continuation.",
+    "A nonzero child may continue for the independently authorized worker_exit_nonzero reason even when a public check is inconclusive.",
+    "The original deadline and two-attempt allocation remain bound. Attempt reservation occurs before possible process dispatch; a second continuation cannot create a third attempt.",
+    "Signed literal check commands execute through the fixed isolated runner. Combined output is bounded; failed cleanup prevents observation creation and continuation.",
+    "Canonical source pins, immutable workspace inputs, full candidate byte/mode state, original requirements, selected task, boundary, policy and observation digests are joined at owner preparation and worker replay.",
+    "Serialized observations and retained historical JSON do not become live owner handles or grant completion/proof/execution/continuation authority.",
+    "The artifact reader retains native usage completeness and missing-receipt limitations; it does not sum stream events into provider usage or fabricate prior C observations."
+  ],
+  "limitations": [
+    "This review ran no tests, provider calls, training, live benchmarks, containers or hidden verifier code. Test source review is not a replacement for the final qualification suites.",
+    "The reviewer authored the public profile/check generation and shared fixture files listed separately; these are context bindings, not claimed independent review of the reviewer own implementation.",
+    "The native continuation regressions use authored provider and privilege/runner seams; they are not live model or actual container performance measurements.",
+    "Public timing checks use an authored, explicitly documented stability policy and unrounded measurements. They are empirical checks, not a formal proof or a guarantee of the official hidden verifier result.",
+    "No fresh live result after these changes, token savings, benchmark score improvement, token/cost cap, or complete provider usage is claimed.",
+    "Final qualification reports, evidence documentation and generated reader validator hashes were not yet frozen for package review; a separate package consistency review is required."
+  ],
+  "regression_evidence_reviewed": [
+    "Correct-but-slow and incorrect-but-fast public acceptance cases in authored profile tests; signed native public+Doctor preparation fixture.",
+    "Real bounded local subprocesses for diagnostic capture, excess output, timeout reaping, lock contention and pre-spawn expiry.",
+    "Actual separate router child processes and source-broker socket preflight with authored provider and isolated-validation runner boundaries; first child exit0 plus failed performance observation, second child exit0 plus passed observation.",
+    "Typed-handle forgery, contract substitution, source/mode drift, receipt join tampering, cleanup failure, original-deadline crossing, and no-third-attempt cases.",
+    "Owner monitor passed/failed/inconclusive outcome cases preserve recorded zero child exits and keep owner return code separate.",
+    "Read-only historical audit/accounting replay and sanitized artifact reader cases."
+  ],
+  "resolved_findings": [
+    {
+      "finding": "Python equality could accept bool/numeric substitutions in signed validation specs.",
+      "id": "PV-01",
+      "resolution": "Canonical JSON exact equality now binds the complete expected task spec after evidence identifiers are normalized.",
+      "verification": "Read current _spec and strict shape regression; finding originated with another reviewer."
+    },
+    {
+      "finding": "Expensive signature or source replay could finish after the original deadline without a final check.",
+      "id": "PV-02",
+      "resolution": "Captured contract revalidation checks the original monotonic deadline after replay; retired observations check it after final source/mode joins.",
+      "verification": "Read regressions advancing the clock during replay and final full-state checks."
+    },
+    {
+      "finding": "Execution lock waiting, runner verification and process setup could renew a relative validation timeout.",
+      "id": "PV-03",
+      "resolution": "A bounded execution lease starts before lock acquisition, consumes the same timeout through setup, refuses before Popen when expired, and checks completion against that deadline.",
+      "verification": "Read real lock-contention and clock-advanced runner setup regressions plus bounded child output and reaping cases."
+    },
+    {
+      "finding": "Final initial Doctor revalidation could cross the first launch deadline after the earlier launch check.",
+      "id": "PV-04",
+      "resolution": "validate_first_command now checks remaining_seconds after the final Doctor revalidation and before reserving an attempt.",
+      "verification": "Read regression that advances the owner clock after native initial revalidation and asserts no reservation or child."
+    },
+    {
+      "finding": "Two public-profile admission/source-partition producers were initially missing from benchmark archive pins.",
+      "id": "PV-05",
+      "resolution": "local_planning_admission.py and terminal_source_partition.py are included in the selected policy source inventory.",
+      "verification": "Read explicit source list and stale-hash regression."
+    },
+    {
+      "finding": "Full timing measurements were redundant in the second coding prompt.",
+      "id": "PV-06",
+      "resolution": "Provider feedback uses five per-size median summaries while the owner retains all fifteen measurements and their observation digest.",
+      "verification": "Read exact feedback projection and its worker/historical binding; this is a byte-reduction design, not a measured run-token savings claim."
+    }
+  ],
+  "review_actions": {
+    "hidden_verifier_reads": 0,
+    "live_runs": 0,
+    "new_artifact_files_written": 1,
+    "provider_calls": 0,
+    "source_edits": 0,
+    "test_runs": 0
+  },
+  "reviewed_at_utc": "2026-10-15T00:17:46.186346Z",
+  "reviewed_production": [
+    {
+      "bytes": 28903,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/candidate_public_validation.py",
+      "sha256": "e8c5d72bded0b62c8463d4edd0101fa981c308df76347e5bd6e2139ce2e592f0"
+    },
+    {
+      "bytes": 13419,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py",
+      "sha256": "79516fb1ec46f3e2a833e319344af4a284b092d7a8916cd2c1dad59efa41e36b"
+    },
+    {
+      "bytes": 10655,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_policy.py",
+      "sha256": "3ec078f8621972a455d92732530f959029fcb1a74dd812a3665cf67081c17f4c"
+    },
+    {
+      "bytes": 14975,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_lifecycle.py",
+      "sha256": "41d0f21cc5c173045cebaa9d046e850d339e5df77dd61afb12a150f45ec10661"
+    },
+    {
+      "bytes": 8066,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_monitor.py",
+      "sha256": "b1a3c130491c9b94809d46211a31d54e5e2eef8d29a03c5ef4e6b610844eb8ea"
+    },
+    {
+      "bytes": 36965,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch.py",
+      "sha256": "05fac4a624b06843ca1a6845283442cc791a1a656296364a20c2e16409855ed8"
+    },
+    {
+      "bytes": 14931,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_context.py",
+      "sha256": "c48da0e61535138e7fd01d3744c05a375573b0c61be9d0a446f84e178cfab2b3"
+    },
+    {
+      "bytes": 22361,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_prompt.py",
+      "sha256": "c3fe290c1c16323979ae79387106927f1f750c2d6ee20dd278cf9b47688c6f54"
+    },
+    {
+      "bytes": 21064,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py",
+      "sha256": "ad667a86a338a5c54262d793ef1340fdfb8ab82e91094878649b4e3c9349fbbe"
+    },
+    {
+      "bytes": 14073,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/candidate_doctor_dispatch.py",
+      "sha256": "5cfdb23552baadcbd052edb03f6ad5e3d6eb014960a76d1507175f9ab6c70c4f"
+    },
+    {
+      "bytes": 16404,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch_audit.py",
+      "sha256": "a5c15b7d4ec6e5389be45de27ccbfd971cdd57adaf1f73a7fcfdf088e3de93c2"
+    },
+    {
+      "bytes": 27967,
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "170382deaa2a47dd0600eb118cce25e29b3ca0aa82a5c4b545eb01e019820d43"
+    },
+    {
+      "bytes": 67402,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "2381ae4cd4820d7aecb1866ce70800d94a7b1d463973f8c1566ee9d187962c42"
+    },
+    {
+      "bytes": 54911,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "f571910f6ebd98c6e36779cae6e4192df0b90f1331b86e2ad830d24badec6224"
+    },
+    {
+      "bytes": 98198,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "1b45e25e7b3a6129511420594ae890a9cd4a1bbbd2077fb1cf266e96ed81fa6d"
+    },
+    {
+      "bytes": 7793,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_coding_policy.py",
+      "sha256": "74ba1fbc14735029ee941ea2ec899b27bb9ef09cba886e1661d0fa30660aeed0"
+    },
+    {
+      "bytes": 29728,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+      "sha256": "9e44d6692c35127c39aacc718df4a82415b01480954aa113ccd89e861677fd44"
+    },
+    {
+      "bytes": 24666,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_candidate_input_audit.py",
+      "sha256": "cd0e6c7179f5ae004793b5c0917a7d1e8d861930f1d05946ddd3cfc26a4e1d09"
+    },
+    {
+      "bytes": 14024,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_candidate_attempt_accounting.py",
+      "sha256": "63c81e4125e9596954f8f60e8d2e1d51fa3749b847a57822eecbdd27ace72078"
+    }
+  ],
+  "reviewed_tests": [
+    {
+      "bytes": 11033,
+      "path": "test/api/test_candidate_public_validation.py",
+      "sha256": "ccb3ea8ad62dcf0464482367b4be774f63cff4b14c05aafe54204aa47d9f5dc2"
+    },
+    {
+      "bytes": 16422,
+      "path": "test/api/test_public_validation_continuation.py",
+      "sha256": "b7dc915c294c3dfb90dcb6b0284cac3f6611f0ae0526aa73e80eff6ae5875809"
+    },
+    {
+      "bytes": 15167,
+      "path": "test/api/test_candidate_round_monitor.py",
+      "sha256": "5f55a001638f9410fee1942ac4ce7a62088762bab0c9ac832a9dd3e6c0d83075"
+    },
+    {
+      "bytes": 12488,
+      "path": "test/api/test_owner_doctor_dispatch.py",
+      "sha256": "5669bbbe426c29d46f889875b59eb8b434ab9828a43a5496cdf6eac36a88ceb8"
+    },
+    {
+      "bytes": 16863,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py",
+      "sha256": "bd811058c9d00f29d4840e74adc357866770f95e479b18ae8b8a38e4534c4a25"
+    }
+  ],
+  "reviewer": "/root/doctor_candidate_context",
+  "schema": "doctor-public-validation-independent-review@1",
+  "scope": "Read-only independent review of signed public validation runtime, isolated bounded execution, explicit Doctor continuation, worker and historical joins, benchmark selector/archive wiring, and artifact-only reporting.",
+  "status": "no_blocking_findings_in_reviewed_frozen_sources",
+  "worktree": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014"
+}

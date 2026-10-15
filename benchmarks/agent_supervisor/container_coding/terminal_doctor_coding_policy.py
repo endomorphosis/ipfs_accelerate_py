@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import (
-    DOCTOR_CODING_POLICY, validate_candidate_rounds, validate_doctor_coding_policy,
+    DOCTOR_CODING_POLICY, DOCTOR_CODING_POLICIES, PUBLIC_VALIDATION_POLICY,
+    validate_candidate_rounds, validate_doctor_coding_policy,
 )
 
 SOURCE_PATHS = (
@@ -15,7 +16,8 @@ SOURCE_PATHS = (
         "full_supervisor_harbor_agent", "terminal_container_supervisor", "terminal_doctor_dispatch",
         "container_worker_deployment", "terminal_context_audit", "terminal_candidate_input_audit",
         "terminal_candidate_attempt_accounting", "terminal_candidate_round_observation", "terminal_source_view_observation",
-        "terminal_semantic_working_set_policy", "terminal_source_view_policy", "benchmark_provider_profile")),
+        "terminal_semantic_working_set_policy", "terminal_source_view_policy", "benchmark_provider_profile",
+        "terminal_task_profile", "terminal_indexed_preparation")),
     *("ipfs_accelerate_py/agent_supervisor/runtime/" + name + ".py" for name in (
         "candidate_round_policy", "doctor_candidate_context", "doctor_residual_context",
         "doctor_residual_budget", "owner_candidate_dispatch", "owner_candidate_dispatch_audit",
@@ -23,19 +25,51 @@ SOURCE_PATHS = (
         "candidate_dispatch_context", "candidate_doctor_dispatch", "candidate_round_monitor", "candidate_round_lifecycle",
         "worker_source_broker", "worker_candidate_round_broker", "worker_candidate_round_client",
         "worker_candidate_artifacts", "worker_candidate_context", "worker_candidate_selection",
-        "router_implementation_runner", "candidate_reply_contract", "grok_coding_budget")),
+        "router_implementation_runner", "candidate_reply_contract", "grok_coding_budget",
+        "candidate_public_validation", "terminal_task_profile", "candidate_execution",
+        "local_planning_admission", "terminal_source_partition")),
 )
+
+
+def _public_validation_task_profile(value):
+    """Read only the explicit bounded public declaration before setup work."""
+    from .terminal_task_profile import (
+        PUBLIC_ACCEPTANCE_SCHEMA, PUBLIC_VALIDATION_PROFILE, validate_task_profile,
+    )
+    if isinstance(value, Path):
+        value = value.absolute()
+        if (value.is_symlink() or not value.is_file()
+                or value.resolve(strict=True) != value):
+            raise ValueError("bounded public-validation task profile required")
+        with value.open("rb") as stream:
+            raw = stream.read(65537)
+        if not raw or len(raw) > 65536:
+            raise ValueError("bounded public-validation task profile required")
+        def unique(pairs):
+            result = {}
+            for key, item in pairs:
+                if key in result:
+                    raise ValueError("duplicate public-validation task profile field")
+                result[key] = item
+            return result
+        def nonfinite(_value):
+            raise ValueError("nonfinite public-validation task profile value")
+        value = json.loads(raw, object_pairs_hook=unique, parse_constant=nonfinite)
+    if (type(value) is not dict or value.get("schema") != PUBLIC_ACCEPTANCE_SCHEMA
+            or value.get("public_validation_profile") != PUBLIC_VALIDATION_PROFILE):
+        raise ValueError("public-validation Doctor policy requires its signed @4 largest-eigenval-public@1 task profile")
+    return validate_task_profile(value)
 
 
 def validate_doctor_coding_selection(candidate_rounds=1, doctor_coding_policy=None, *,
         arm=None, source_view_profile="disabled", source_edit_mode="disabled",
-        numerical_formalization_profile=None):
+        numerical_formalization_profile=None, task_profile=None):
     rounds = validate_candidate_rounds(candidate_rounds)
     if rounds == 2 and arm == "no-index":
         raise ValueError("candidate rounds=2 requires an admitted semantic source broker; no-index is unsupported")
     policy = validate_doctor_coding_policy(doctor_coding_policy, candidate_rounds=rounds)
     if rounds == 2:
-        if policy != DOCTOR_CODING_POLICY:
+        if policy not in DOCTOR_CODING_POLICIES:
             raise ValueError("candidate rounds=2 requires explicit Doctor constraints and coding-attempt policy")
         if source_edit_mode != "disabled":
             raise ValueError("Doctor coding continuation does not admit mapped source edits")
@@ -45,13 +79,15 @@ def validate_doctor_coding_selection(candidate_rounds=1, doctor_coding_policy=No
             raise ValueError("Doctor coding continuation requires the full indexed semantic source broker")
         from .terminal_source_view_policy import validate_source_view_profile
         validate_source_view_profile(source_view_profile, arm=arm)
+        if policy == PUBLIC_VALIDATION_POLICY:
+            _public_validation_task_profile(task_profile)
     return rounds
 
 
 def doctor_coding_selection(candidate_rounds=1, doctor_coding_policy=None):
     validate_candidate_rounds(candidate_rounds)
     validate_doctor_coding_policy(doctor_coding_policy, candidate_rounds=candidate_rounds)
-    if candidate_rounds == 2 and doctor_coding_policy != DOCTOR_CODING_POLICY:
+    if candidate_rounds == 2 and doctor_coding_policy not in DOCTOR_CODING_POLICIES:
         raise ValueError("two-attempt benchmark selection requires its explicit Doctor policy")
     return {} if candidate_rounds == 1 else {
         "candidate_rounds": candidate_rounds, "doctor_coding_policy": doctor_coding_policy}

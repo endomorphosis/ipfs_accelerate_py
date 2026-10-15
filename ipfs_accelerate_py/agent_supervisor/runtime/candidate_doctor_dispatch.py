@@ -13,6 +13,7 @@ from pathlib import Path
 from .worker_source_views import canonical_json
 
 SCHEMA = "supervisor-doctor-candidate-dispatch-observation@1"
+PUBLIC_SCHEMA = "supervisor-doctor-candidate-dispatch-observation@2"
 _OBSERVATION_FLAGS = dict(canonical_source_current=True, workspace_source_current=True,
     original_obligations_preserved=True, proposal_budget_changed=False,
     owner_round_number=2, native_token_cap_enforced=False, native_cost_cap_enforced=False,
@@ -50,6 +51,12 @@ def prepare_doctor_dispatch_projection(*, prompt, admission):
         artifact=dict(path=path, sha256=digest, bytes=len(original.artifact_bytes)),
         advisory_sha256=_sha(context.advisory_bytes), advisory_bytes=len(context.advisory_bytes),
         coding_policy=admission["doctor_coding_policy"])
+    snapshot = prompt._snapshot
+    if getattr(snapshot, "_public_validation", None) is not None:
+        observed = snapshot._public_validation.revalidate(launch=snapshot._validation_launch,
+            retired_worker=snapshot._retired_worker, snapshot=snapshot)
+        value["public_validation"] = dict(contract=snapshot._validation_launch.public_validation_contract.metadata,
+            observation=observed)
     _need(admission["doctor_context_sha256"] == _sha(canonical_json(metadata))
         and admission["doctor_advisory_sha256"] == value["advisory_sha256"]
         and admission["doctor_advisory_bytes"] == value["advisory_bytes"],
@@ -65,7 +72,7 @@ receipt. Calling this helper alone establishes neither freshness nor admission.
 """
     context, policy = projection["context"], projection["coding_policy"]
     original = context["original_doctor"]
-    return dict(schema=SCHEMA, policy_id=policy["policy_id"],
+    result = dict(schema=SCHEMA, policy_id=policy["policy_id"],
         coding_policy_sha256=_sha(canonical_json(policy)),
         doctor_context_sha256=_sha(canonical_json(context)),
         doctor_artifact_sha256=projection["artifact"]["sha256"],
@@ -79,16 +86,29 @@ receipt. Calling this helper alone establishes neither freshness nor admission.
         source_manifest_sha256=original["source_manifest_sha256"],
         source_files=len(context["candidate_inventory_paths"])+len(context["unchanged_inventory_paths"]),
         **_OBSERVATION_FLAGS)
+    if "public_validation" in projection:
+        public = projection["public_validation"]
+        result.update(schema=PUBLIC_SCHEMA,
+            public_validation_contract_sha256=_sha(canonical_json(public["contract"])),
+            public_validation_observation_sha256=_sha(canonical_json(public["observation"])),
+            actual_prior_returncode=public["observation"]["actual_returncode"],
+            public_validation_status=public["observation"]["status"])
+    return result
 
 
 def validate_doctor_dispatch_observation(value):
     """Check a receipt's closed wire shape; no source or admission is replayed."""
     from .source_formalization_context import _digest
     from .doctor_residual_budget import LIMIT_FIELDS, validate_residual_budget
+    from .candidate_round_policy import DOCTOR_CODING_POLICY, PUBLIC_VALIDATION_POLICY
     fields = {"schema", "policy_id", "proposal_budget", "doctor_advisory_bytes", "source_files",
         "task_cid", "context_cid", "native_capsule_id", *_DIGEST_FIELDS, *_OBSERVATION_FLAGS}
-    _need(type(value) is dict and set(value) == fields and value["schema"] == SCHEMA
-        and value["policy_id"] == "doctor-coding-two-attempts@1"
+    public = type(value) is dict and value.get("schema") == PUBLIC_SCHEMA
+    if public:
+        fields.update(("public_validation_contract_sha256", "public_validation_observation_sha256",
+            "actual_prior_returncode", "public_validation_status"))
+    _need(type(value) is dict and set(value) == fields and value["schema"] in (SCHEMA, PUBLIC_SCHEMA)
+        and value["policy_id"] == (PUBLIC_VALIDATION_POLICY if public else DOCTOR_CODING_POLICY)
         and all(_digest(value[key]) for key in _DIGEST_FIELDS)
         and all(type(value[key]) is str and 1 <= len(value[key]) <= 1024
                 for key in ("task_cid", "context_cid", "native_capsule_id"))
@@ -97,6 +117,12 @@ def validate_doctor_dispatch_observation(value):
         and all(type(value[key]) is type(expected) and value[key] == expected
                 for key, expected in _OBSERVATION_FLAGS.items()),
         "invalid Doctor candidate dispatch observation")
+    if public:
+        _need(all(_digest(value[key]) for key in ("public_validation_contract_sha256", "public_validation_observation_sha256"))
+            and type(value["actual_prior_returncode"]) is int and 0 <= value["actual_prior_returncode"] <= 255
+            and value["public_validation_status"] in ("passed", "failed", "inconclusive")
+            and (value["actual_prior_returncode"] > 0 or value["public_validation_status"] == "failed"),
+            "invalid public-validation candidate dispatch observation")
     budget = value["proposal_budget"]
     _need(type(budget) is dict, "closed unchanged Doctor proposal budget required")
     validate_residual_budget(dict(residual_budget=budget,
@@ -114,8 +140,11 @@ def validate_doctor_dispatch_projection(*, projection, wire, handoff, descriptor
     from . import local_planning_admission as local
     from .candidate_round_policy import validate_doctor_coding_policy_binding
 
+    from .candidate_round_policy import PUBLIC_VALIDATION_POLICY
+    public = (type(projection) is dict and type(projection.get("coding_policy")) is dict
+        and projection["coding_policy"].get("policy_id") == PUBLIC_VALIDATION_POLICY)
     _need(type(projection) is dict and set(projection) == {
-        "context", "artifact", "advisory_sha256", "advisory_bytes", "coding_policy"},
+        "context", "artifact", "advisory_sha256", "advisory_bytes", "coding_policy"} | ({"public_validation"} if public else set()),
         "closed Doctor candidate handoff projection required")
     context, artifact = projection["context"], projection["artifact"]
     admitted = handoff["admission"]
@@ -171,9 +200,16 @@ def validate_doctor_dispatch_projection(*, projection, wire, handoff, descriptor
         original_obligations_preserved=True, residual_budget=budget,
         continuation_status="requires_independent_budget_enforcement", **original_context.FLAGS)
     _need(_same(context, expected_context), "Doctor candidate context generation or coverage differs")
+    options = {}
+    if public:
+        from .candidate_public_validation import validate_public_validation_projection
+        validate_public_validation_projection(projection["public_validation"], handoff=handoff,
+            wire=wire, descriptor=descriptor, repository=repository, workspace=workspace)
+        options = dict(policy_id=PUBLIC_VALIDATION_POLICY,
+            public_validation_contract=projection["public_validation"]["contract"])
     policy = validate_doctor_coding_policy_binding(projection["coding_policy"],
         doctor_requirements=expected_original, original_requirements_sha256=original_requirements_sha256,
-        deadline_monotonic_ns=admitted["deadline_monotonic_ns"])
+        deadline_monotonic_ns=admitted["deadline_monotonic_ns"], **options)
     _need(_same(admitted.get("doctor_coding_policy"), policy)
         and admitted.get("doctor_context_sha256") == _sha(canonical_json(context))
         and admitted.get("doctor_advisory_sha256") == projection["advisory_sha256"]

@@ -127,6 +127,7 @@ class _State:
     admission: object = None
     retirement_started: set = field(default_factory=set)
     reserved_attempts: set = field(default_factory=set)
+    public_validations: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +144,7 @@ class CapturedCodingLaunch:
     started_monotonic: float
     _state: _State = field(repr=False, compare=False)
     _doctor_policy_bytes: bytes | None = field(default=None, repr=False)
+    _public_validation_contract: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
         _need(self._token is _TOKEN, "owner capture factory required")
@@ -154,6 +156,10 @@ class CapturedCodingLaunch:
     @property
     def doctor_coding_policy(self):
         return None if self._doctor_policy_bytes is None else json.loads(self._doctor_policy_bytes)
+
+    @property
+    def public_validation_contract(self):
+        return self._public_validation_contract
 
     @property
     def remaining_seconds(self):
@@ -188,12 +194,14 @@ class CapturedCodingLaunch:
             validate_doctor_coding_policy_binding(self.doctor_coding_policy,
                 doctor_requirements=doctor.metadata,
                 original_requirements_sha256=_sha(self._original_requirements.metadata_bytes),
-                deadline_monotonic_ns=int(self.absolute_deadline * 1_000_000_000))
+                deadline_monotonic_ns=int(self.absolute_deadline * 1_000_000_000),
+                **_policy_options(self))
         else:
             _need(self._original_requirements._doctor_requirements is None
                 and broker._doctor_request is None,
                 "Doctor continuation requires explicit independent coding attempt admission")
         return self.launch_settings
+
 
     def validate_first_command(self, command):
         from .worker_source_broker import worker_source_argv
@@ -206,6 +214,7 @@ class CapturedCodingLaunch:
               "first child command differs from captured owner launch")
         if self._doctor_policy_bytes is not None:
             self._original_requirements._doctor_requirements.revalidate_initial()
+        self.remaining_seconds
 
     def reserve_first_attempt(self, command):
         """Consume the first attempt before Popen, including interrupted spawns."""
@@ -213,6 +222,40 @@ class CapturedCodingLaunch:
         with _LOCK:
             _need(not self._state.reserved_attempts, "first coding attempt already reserved")
             self._state.reserved_attempts.add(1)
+
+
+def _policy_options(launch):
+    contract = launch.public_validation_contract
+    if contract is None:
+        return {}
+    from .candidate_round_policy import PUBLIC_VALIDATION_POLICY
+    from .candidate_public_validation import CapturedPublicValidationContract
+    _need(type(contract) is CapturedPublicValidationContract,
+        "typed captured public validation contract required")
+    contract.revalidate()
+    return dict(policy_id=PUBLIC_VALIDATION_POLICY, public_validation_contract=contract.metadata)
+
+
+def _continuation_reason(launch, retired_worker, public_validation=None, *, snapshot=None):
+    """Keep a real child exit separate from the owner's public check outcome."""
+    code = retired_worker.revalidate()
+    _need(retired_worker._launch is launch and retired_worker.round_number == 1,
+        "original retired coding worker required")
+    if launch.public_validation_contract is None:
+        _need(public_validation is None and type(code) is int and 1 <= code <= 255,
+            "positive original coding failure required")
+        return "worker_exit_nonzero"
+    from .candidate_public_validation import RetiredCandidateValidation
+    _need(type(public_validation) is RetiredCandidateValidation,
+        "typed retired public validation required")
+    observed = public_validation.revalidate(launch=launch, retired_worker=retired_worker, snapshot=snapshot)
+    _need(type(code) is int and 0 <= code <= 255 and observed["actual_returncode"] == code,
+        "public validation differs from actual child returncode")
+    if code:
+        return "worker_exit_nonzero"
+    _need(observed["status"] == "failed" and observed["failed_obligations"],
+        "conclusive public validation failure required after exit zero")
+    return "public_validation_failed"
 
 
 def capture_original_coding_launch(*, source_broker, argv, absolute_deadline, max_rounds=2,
@@ -278,12 +321,19 @@ def capture_original_coding_launch(*, source_broker, argv, absolute_deadline, ma
           and settings["max_output_tokens"] > 0
           and 1 <= settings["grok_coding_max_turns"] <= 128,
           "bounded original coding settings required")
+    contract, policy_options = None, {}
+    from .candidate_round_policy import PUBLIC_VALIDATION_POLICY
+    if doctor_coding_policy == PUBLIC_VALIDATION_POLICY:
+        from .candidate_public_validation import capture_public_validation_contract
+        contract = capture_public_validation_contract(source_broker=broker, requirements=requirements,
+            deadline_monotonic_ns=int(absolute_deadline * 1_000_000_000))
+        policy_options = dict(policy_id=doctor_coding_policy, public_validation_contract=contract.metadata)
     policy_bytes = None if doctor is None else canonical_json(build_doctor_coding_policy(
         doctor_requirements=doctor.metadata, original_requirements_sha256=_sha(requirements.metadata_bytes),
-        deadline_monotonic_ns=int(absolute_deadline * 1_000_000_000)))
+        deadline_monotonic_ns=int(absolute_deadline * 1_000_000_000), **policy_options))
     result = CapturedCodingLaunch(_TOKEN, broker, tuple(argv), canonical_json(settings),
         _identity(), requirements, canonical_json(broker._binding), broker.descriptor_sha256,
-        float(absolute_deadline), float(absolute_deadline)-timeout, _State(), policy_bytes)
+        float(absolute_deadline), float(absolute_deadline)-timeout, _State(), policy_bytes, contract)
     with _LOCK:
         _need(broker not in _LAUNCHES, "original broker already captured a continuation policy")
         _LAUNCHES[broker] = result
@@ -393,6 +443,7 @@ class CandidateDispatchAdmission:
     _prompt: object = field(repr=False)
     _source_broker: object = field(repr=False)
     _binding_bytes: bytes = field(repr=False)
+    _public_validation: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
         _need(self._token is _TOKEN, "one-use owner admission factory required")
@@ -405,7 +456,7 @@ class CandidateDispatchAdmission:
               and source_broker is self._source_broker
               and launch._state.candidate_broker is source_broker,
               "candidate admission does not own these live handles")
-        _need(self._retired.revalidate() in range(1, 256), "positive original coding failure required")
+        _continuation_reason(launch, self._retired, self._public_validation, snapshot=snapshot)
         metadata = snapshot.revalidate()
         prompt.revalidate()
         _need(snapshot._source_broker is launch.source_broker
@@ -448,6 +499,14 @@ def _admission_binding(launch, snapshot, prompt, source_broker):
             doctor_coding_policy=launch.doctor_coding_policy,
             doctor_context_sha256=_sha(doctor.metadata_bytes),
             doctor_advisory_sha256=_sha(doctor.advisory_bytes), doctor_advisory_bytes=len(doctor.advisory_bytes))
+        if launch.public_validation_contract is not None:
+            observed = snapshot._public_validation.revalidate(launch=launch,
+                retired_worker=snapshot._retired_worker, snapshot=snapshot)
+            result.update(public_validation_contract_sha256=_sha(launch.public_validation_contract.metadata_bytes),
+                public_validation_observation_sha256=_sha(canonical_json(observed)),
+                public_validation_observation_bytes=len(canonical_json(observed)),
+                continuation_reason=_continuation_reason(launch, snapshot._retired_worker,
+                    snapshot._public_validation, snapshot=snapshot))
     else:
         _need(prompt._doctor_context is None, "Doctor context requires independent coding attempt policy")
     return result
@@ -595,7 +654,7 @@ class PreparedCandidateWorker:
         self.handoff.close()
 
 
-def prepare_second_coding_worker(*, launch, retired_worker):
+def prepare_second_coding_worker(*, launch, retired_worker, public_validation=None):
     """Consume the only continuation claim and prepare a fresh candidate route."""
     from .owner_candidate_round_context import prepare_candidate_round_context
     from .owner_candidate_round_prompt import prepare_candidate_round_prompt
@@ -605,9 +664,10 @@ def prepare_second_coding_worker(*, launch, retired_worker):
     _need(type(launch) is CapturedCodingLaunch and type(retired_worker) is RetiredCodingWorker,
           "live captured launch and fixed cleanup retirement required")
     launch.revalidate()
-    _need(retired_worker._launch is launch and retired_worker.round_number == 1
-          and retired_worker.revalidate() in range(1, 256),
-          "positive first coding failure required")
+    if launch.public_validation_contract is None:
+        _need(retired_worker._launch is launch and retired_worker.round_number == 1
+            and retired_worker.revalidate() in range(1, 256), "positive first coding failure required")
+    _continuation_reason(launch, retired_worker, public_validation)
     with _LOCK:
         _need(launch._state.phase == "captured", "original continuation claim already consumed")
         if launch.doctor_coding_policy is not None:
@@ -615,9 +675,11 @@ def prepare_second_coding_worker(*, launch, retired_worker):
         launch._state.phase = "preparing"
     broker = handoff = None
     try:
+        validation_options = {} if public_validation is None else dict(public_validation=public_validation,
+            validation_launch=launch, retired_worker=retired_worker)
         snapshot = prepare_candidate_round_context(source_broker=launch.source_broker,
             prior_returncode=retired_worker.returncode, round_number=2,
-            absolute_deadline=launch.absolute_deadline)
+            absolute_deadline=launch.absolute_deadline, **validation_options)
         doctor_options = {}
         if launch.doctor_coding_policy is not None:
             from .doctor_candidate_context import prepare_doctor_candidate_context
@@ -628,7 +690,7 @@ def prepare_second_coding_worker(*, launch, retired_worker):
         broker = WorkerCandidateRoundBroker(snapshot)
         launch._state.candidate_broker = broker
         admission = CandidateDispatchAdmission(_TOKEN, launch, retired_worker, snapshot, prompt,
-            broker, canonical_json(_admission_binding(launch, snapshot, prompt, broker)))
+            broker, canonical_json(_admission_binding(launch, snapshot, prompt, broker)), public_validation)
         launch._state.admission = admission
         handoff = prepare_candidate_dispatch_handoff(snapshot=snapshot, prompt=prompt,
             source_broker=broker, admission=admission)

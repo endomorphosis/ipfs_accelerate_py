@@ -56,7 +56,7 @@ from .terminal_semantic_working_set_policy import (
     semantic_working_set_selection, semantic_working_set_observation, require_semantic_working_set_archive,
 )
 from .terminal_doctor_coding_policy import (
-    DOCTOR_CODING_POLICY, doctor_coding_selection, doctor_coding_observation, require_doctor_coding_archive,
+    DOCTOR_CODING_POLICIES, doctor_coding_selection, doctor_coding_observation, require_doctor_coding_archive,
     doctor_coding_runtime_declared_matches,
 )
 from .terminal_source_edit_policy import (
@@ -271,7 +271,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                model_revision: str = "") -> dict:
     benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
         doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
-        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile)
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+        task_profile=task_profile)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract,
         task_profile=task_profile)
     validate_numerical_profile(numerical_formalization_profile)
@@ -376,7 +377,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
     benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
         doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
-        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile)
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+        task_profile=task_profile)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract)
     validate_numerical_profile(numerical_formalization_profile)
     validate_capsule_selection(capsule_selection, arm=arm)
@@ -920,7 +922,7 @@ def main():
     parser.add_argument("--grok-coding-max-turns", type=int, default=DEFAULT_GROK_CODING_MAX_TURNS)
     parser.add_argument("--candidate-rounds", type=int, choices=(1, 2), default=1,
         help="Owner coding attempts; two requires the explicit Doctor coding policy and indexed source views")
-    parser.add_argument("--doctor-coding-policy", choices=(DOCTOR_CODING_POLICY,),
+    parser.add_argument("--doctor-coding-policy", choices=DOCTOR_CODING_POLICIES,
         help="Explicit two-attempt Doctor coding policy; tokens and cost remain observations")
     args = parser.parse_args()
     if args.operation != "prepare" and args.doctor_coding_policy is not None:

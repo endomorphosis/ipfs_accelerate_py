@@ -6,10 +6,12 @@ interprets candidate code in the owner process or accepts a worker command.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import json
 import os
 from pathlib import Path
+import selectors
 import signal
 import stat
 import subprocess
@@ -114,6 +116,84 @@ def _run_candidate(binding, argv, *, cwd: Path, timeout: float,
         raise
     verify_candidate_runner(binding)
     return subprocess.CompletedProcess(command, process.returncode, out, err)
+
+
+class CandidateOutputLimitError(ValueError):
+    """A validation worker exceeded its owner-selected diagnostic byte bound."""
+
+
+@contextmanager
+def _bounded_execution_lease(argv, timeout):
+    if type(timeout) not in (float, int) or not 0 < timeout <= 300:
+        raise ValueError("bounded public validation timeout required")
+    deadline = time.monotonic() + timeout
+    if not _EXECUTION_LOCK.acquire(timeout=max(0, deadline-time.monotonic())):
+        raise subprocess.TimeoutExpired(argv, timeout)
+    try:
+        if time.monotonic() >= deadline:
+            raise subprocess.TimeoutExpired(argv, timeout)
+        yield deadline
+    finally:
+        _EXECUTION_LOCK.release()
+
+
+def run_candidate_bounded(binding, argv, *, cwd: Path, timeout: float, max_output_bytes=16384):
+    """Capture bounded diagnostics through the same fixed isolated launcher.
+
+    The owner never imports the program under test. Excess output and elapsed
+    deadlines terminate the monitor and let it reap the worker before returning.
+    """
+    with _bounded_execution_lease(argv, timeout) as deadline:
+        verify_candidate_runner(binding)
+        if (type(argv) not in (tuple, list) or not 1 <= len(argv) <= 128
+                or any(type(arg) is not str or not arg or len(arg) > 8192 or "\0" in arg for arg in argv)
+                or type(timeout) not in (float, int) or not 0 < timeout <= 300
+                or type(max_output_bytes) is not int or not 1 <= max_output_bytes <= 65536):
+            raise ValueError("bounded literal candidate command required")
+        cwd = Path(cwd).absolute()
+        if cwd.resolve(strict=True) != cwd or not cwd.is_dir():
+            raise ValueError("exact candidate validation cwd required")
+        command = [*binding["argv"], *argv]
+        if time.monotonic() >= deadline:
+            raise subprocess.TimeoutExpired(command, timeout)
+        process = subprocess.Popen(command, cwd=cwd, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
+            env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", **GIT_OWNER_ENV})
+        output = bytearray()
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(process.stdout, selectors.EVENT_READ)
+                while selector.get_map():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(command, timeout)
+                    for key, _ in selector.select(remaining):
+                        chunk = os.read(key.fileobj.fileno(), min(8192, max_output_bytes-len(output)+1))
+                        if not chunk:
+                            selector.unregister(key.fileobj)
+                        else:
+                            output.extend(chunk)
+                            if len(output) > max_output_bytes:
+                                raise CandidateOutputLimitError("candidate validation output exceeds bound")
+                remaining = deadline-time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(command, timeout)
+                process.wait(timeout=remaining)
+        except BaseException:
+            if process.poll() is None:
+                process.send_signal(signal.SIGTERM)
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill(); process.wait()
+                raise RuntimeError("candidate monitor failed to reap worker after interruption")
+            raise
+        finally:
+            process.stdout.close()
+            verify_candidate_runner(binding)
+        if time.monotonic() >= deadline:
+            raise subprocess.TimeoutExpired(command, timeout)
+        return subprocess.CompletedProcess(command, process.returncode, bytes(output), None)
 
 
 def install_portal_candidate_runner(portal, binding) -> None:

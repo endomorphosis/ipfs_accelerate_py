@@ -177,7 +177,8 @@ def _doctor_replay(*, bodies, manifest, dispatch, handoff, context, wire, requir
     from ipfs_accelerate_py.agent_supervisor.runtime.candidate_doctor_dispatch import doctor_dispatch_observation
     from ipfs_accelerate_py.agent_supervisor.runtime import doctor_residual_context as residual
     from ipfs_accelerate_py.agent_supervisor.runtime import owner_candidate_dispatch_audit as archive
-    from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import validate_doctor_coding_policy_binding
+    from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import (
+        validate_doctor_coding_policy_binding, PUBLIC_VALIDATION_POLICY)
     from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_views import canonical_json
     from .terminal_context_audit import _json, _same_json
 
@@ -194,9 +195,11 @@ def _doctor_replay(*, bodies, manifest, dispatch, handoff, context, wire, requir
     artifact = _json(bodies["original_doctor_artifact"])
     original_receipt = _json(bodies["original_doctor_receipt"])
     advice = bodies["original_doctor_advisory"]
+    public = projection["coding_policy"].get("policy_id") == PUBLIC_VALIDATION_POLICY
     _need(set(projection) == {"context", "artifact", "advisory_sha256", "advisory_bytes", "coding_policy"}
+            | ({"public_validation"} if public else set())
         and set(projection["artifact"]) == {"path", "sha256", "bytes"}
-        and wire["schema"] == "supervisor-owner-candidate-router-input@2"
+        and wire["schema"] == ("supervisor-owner-candidate-router-input@3" if public else "supervisor-owner-candidate-router-input@2")
         and handoff["schema"] == gate.DOCTOR_SCHEMA
         and admitted["schema"] == "supervisor-owner-candidate-dispatch-admission@2"
         and _same_json(projection["context"], doctor_context)
@@ -234,9 +237,38 @@ def _doctor_replay(*, bodies, manifest, dispatch, handoff, context, wire, requir
     _need(set(candidate_binding) == {"task_id", "native_prompt_sha256", "prior_session_id", "descriptor_sha256",
         "workspace_generation", "candidate_scope_cid", "semantic_root_cid", "producer_binding_sha256", "source_hashes"}
         and all(_same_json(candidate_binding[k], context[k]) for k in candidate_binding))
+    options = {}
+    if public:
+        from ipfs_accelerate_py.agent_supervisor.runtime.candidate_public_validation import validate_public_validation_projection_binding
+        validate_public_validation_projection_binding(projection["public_validation"], handoff=handoff,
+            wire=wire, descriptor=_json(bodies["descriptor"]))
+        options = dict(policy_id=PUBLIC_VALIDATION_POLICY,
+            public_validation_contract=projection["public_validation"]["contract"])
+        contract = options["public_validation_contract"]
+        request, public_receipt = contract["public_instruction_request"], requirements["public_instruction_receipt"]
+        from ipfs_accelerate_py.agent_supervisor.runtime import router_public_instruction as public_instruction
+        from ipfs_accelerate_py.agent_supervisor.runtime.candidate_public_validation import _spec
+        public_payload = _json(bodies["original_public_artifact"])
+        public_manifest = public_instruction._selection(public_payload)
+        tasks = [task for task in public_manifest["tasks"] if task["task_key"] == contract["task_id"]]
+        _need(len(tasks) == 1 and _spec(contract["profile"], tasks[0]) == contract["task_spec"]
+            and request["artifact"] == public_receipt["artifact"]
+            and request["sha256"] == public_receipt["artifact_sha256"] == _sha(bodies["original_public_artifact"])
+            and request["task_cid"] == public_receipt["task_cid"] == contract["task_cid"]
+            and public_payload["manifest_cid"] == contract["manifest_cid"] == public_receipt["manifest_cid"]
+            and public_payload["task_id"] == contract["task_id"] == public_receipt["task_id"]
+            and contract["baseline_commit"] == public_manifest["baseline_commit"] == requirements["baseline_commit"]
+            and contract["sources"] == public_manifest["sources"] == _json(bodies["public_sources"]))
+        _need(all(_same_json(manifest["binding"][key], admitted[key])
+            for key in archive.PUBLIC_VALIDATION_BINDING_FIELDS)
+            and context["public_validation_observation_sha256"] == admitted["public_validation_observation_sha256"]
+            and context["prior_returncode"] == projection["public_validation"]["observation"]["actual_returncode"])
+    else:
+        _need("public_validation" not in wire
+            and not set(archive.PUBLIC_VALIDATION_BINDING_FIELDS).intersection(admitted))
     validate_doctor_coding_policy_binding(projection["coding_policy"], doctor_requirements=captured,
         original_requirements_sha256=_sha(bodies["original_requirements"]),
-        deadline_monotonic_ns=admitted["deadline_monotonic_ns"])
+        deadline_monotonic_ns=admitted["deadline_monotonic_ns"], **options)
     _need(_same_json(admitted["doctor_coding_policy"], projection["coding_policy"])
         and admitted["doctor_context_sha256"] == _sha(bodies["doctor_context"])
         and admitted["doctor_advisory_sha256"] == _sha(advice)

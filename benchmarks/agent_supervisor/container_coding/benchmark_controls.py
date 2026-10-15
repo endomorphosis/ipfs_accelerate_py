@@ -36,12 +36,12 @@ AGENT_KEYS = ("override_timeout_sec", "max_timeout_sec", "override_setup_timeout
 
 def validate_full_supervisor_candidate_rounds(value=1, *, arm=None,
         doctor_coding_policy=None, source_view_profile="disabled", source_edit_mode="disabled",
-        numerical_formalization_profile=None):
+        numerical_formalization_profile=None, task_profile=None):
     """Admit the exact optional coding-attempt policy before setup work."""
     from .terminal_doctor_coding_policy import validate_doctor_coding_selection
     return validate_doctor_coding_selection(value, doctor_coding_policy,
         arm=arm, source_view_profile=source_view_profile, source_edit_mode=source_edit_mode,
-        numerical_formalization_profile=numerical_formalization_profile)
+        numerical_formalization_profile=numerical_formalization_profile, task_profile=task_profile)
 
 
 def validate_frozen_candidate_rounds(prepared, config):
@@ -51,12 +51,14 @@ def validate_frozen_candidate_rounds(prepared, config):
         arm=prepared.get("arm"), doctor_coding_policy=prepared.get("doctor_coding_policy"),
         source_view_profile=prepared.get("source_view_profile", "disabled"),
         source_edit_mode=prepared.get("source_edit_mode", "disabled"),
-        numerical_formalization_profile=prepared.get("numerical_formalization_profile"))
+        numerical_formalization_profile=prepared.get("numerical_formalization_profile"),
+        task_profile=kwargs.get("task_profile"))
     configured = validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1),
         arm=kwargs.get("arm"), doctor_coding_policy=kwargs.get("doctor_coding_policy"),
         source_view_profile=kwargs.get("source_view_profile", "disabled"),
         source_edit_mode=kwargs.get("source_edit_mode", "disabled"),
-        numerical_formalization_profile=kwargs.get("numerical_formalization_profile"))
+        numerical_formalization_profile=kwargs.get("numerical_formalization_profile"),
+        task_profile=kwargs.get("task_profile"))
     if chosen != configured or prepared.get("doctor_coding_policy") != kwargs.get("doctor_coding_policy"):
         raise ValueError("prepared candidate rounds changed")
     return chosen
@@ -133,7 +135,8 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
             doctor_coding_policy=kwargs.get("doctor_coding_policy"),
             source_view_profile=kwargs.get("source_view_profile", "disabled"),
             source_edit_mode=kwargs.get("source_edit_mode", "disabled"),
-            numerical_formalization_profile=kwargs.get("numerical_formalization_profile"))
+            numerical_formalization_profile=kwargs.get("numerical_formalization_profile"),
+            task_profile=kwargs.get("task_profile"))
         if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "capsule_budget", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode", "semantic_working_set", "grok_coding_max_turns", "candidate_rounds", "doctor_coding_policy"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         validate_grok_coding_max_turns(kwargs.get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
@@ -227,7 +230,8 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
             doctor_coding_policy=kwargs.get("doctor_coding_policy"),
             source_view_profile=kwargs.get("source_view_profile", "disabled"),
             source_edit_mode=kwargs.get("source_edit_mode", "disabled"),
-            numerical_formalization_profile=kwargs.get("numerical_formalization_profile"))
+            numerical_formalization_profile=kwargs.get("numerical_formalization_profile"),
+            task_profile=kwargs.get("task_profile"))
     if agent.get("model_name") != model:
         raise ValueError("frozen model differs from configuration")
     if agent.get("name") == "codex" and not agent.get("import_path"):

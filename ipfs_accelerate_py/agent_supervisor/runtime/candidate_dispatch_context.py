@@ -287,6 +287,13 @@ def validate_candidate_dispatch_context(*, prompt, repository, workspace, bounda
     wire = _parse(prompt.encode())
     candidate = wire.get("candidate_binding", {})
     prompt_schema = "supervisor-owner-candidate-router-input@2" if doctor_selected else "supervisor-owner-candidate-router-input@1"
+    from .candidate_round_policy import PUBLIC_VALIDATION_POLICY
+    public_validation_selected = (doctor_selected and type(admitted.get("doctor_coding_policy")) is dict
+        and admitted["doctor_coding_policy"].get("policy_id") == PUBLIC_VALIDATION_POLICY)
+    if public_validation_selected:
+        prompt_schema = "supervisor-owner-candidate-router-input@3"
+    _need(public_validation_selected or "public_validation" not in wire,
+        "public validation feedback requires explicit owner policy")
     _need(wire.get("schema") == prompt_schema
         and type(wire.get("native_prompt")) is str
         and _sha(wire["native_prompt"].encode()) == value["native_prompt_sha256"] == current["native_prompt_sha256"]

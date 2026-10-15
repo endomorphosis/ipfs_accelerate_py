@@ -33,9 +33,9 @@ from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
 from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
 from .terminal_task_profile import (
-    MULTITASK_SCHEMA, PROFILE, normalized_instruction, task_profile_bytes, task_profile_index_paths,
+    MULTITASK_SCHEMA, PUBLIC_ACCEPTANCE_SCHEMA, PROFILE, normalized_instruction, task_profile_bytes, task_profile_index_paths,
     task_profile_smoke, task_profile_spec, task_profile_specs, task_profile_worker_inputs,
-    validate_task_profile, validate_task_profile_contract, validate_task_data,
+    validate_task_profile, validate_task_profile_contract, validate_task_data, validate_task_profile_public_inputs,
 )
 from .benchmark_provider_profile import CLI_VERSION, resolve_provider_profile
 from .terminal_capsule_selection_policy import (
@@ -96,7 +96,7 @@ def _config(repository, *, timeout_seconds=90, provider_profile=None):
 
 def _constraints(spec, text):
     return {
-        "allowed_paths": spec["scope_paths"], "validation_commands": [ARGV],
+        "allowed_paths": spec["scope_paths"], "validation_commands": [check["argv"] for check in spec["validations"]],
         "constraint_summaries": [
             "The complete public task instruction is separately bound to " + INSTRUCTION
             + " with SHA256 " + hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -158,6 +158,8 @@ def _load_prepared(state):
     multitask = False
     if task_profile is not None:
         task_profile = validate_task_profile(task_profile, instruction=prepared["query"])
+        if task_profile["schema"] == PUBLIC_ACCEPTANCE_SCHEMA:
+            validate_task_profile_public_inputs(task_profile, public_evaluator=(repository / "eval.py").read_bytes())
         multitask = task_profile["schema"] == MULTITASK_SCHEMA
         if multitask:
             validate_task_profile_contract(task_profile, requirement_contract, instruction=prepared["query"])
@@ -175,7 +177,8 @@ def _load_prepared(state):
                 raise ValueError("multi-task preparation differs from all exact signed task declarations")
         else:
             expected_spec = task_profile_spec(task_profile, policy_cid=local.content_identity(local.LOCAL_POLICY))
-            expected_spec["acceptance"][0]["evidence_cids"] = [PromptEvidenceRecord.from_dict(inputs["selected_evidence"][0]).evidence_cid]
+            for criterion in expected_spec["acceptance"]:
+                criterion["evidence_cids"] = [PromptEvidenceRecord.from_dict(inputs["selected_evidence"][0]).evidence_cid]
             if prepared["spec"] != expected_spec:
                 raise ValueError("public task profile differs from exact signed input declaration")
         if (prepared["task_profile"] != task_profile
@@ -315,6 +318,8 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     if task_profile is not None:
         text = normalized_instruction(text)
         task_profile = validate_task_profile(task_profile, instruction=text)
+        if task_profile["schema"] == PUBLIC_ACCEPTANCE_SCHEMA:
+            validate_task_profile_public_inputs(task_profile, public_evaluator=(repository / "eval.py").read_bytes())
     if not text.strip() or len(text.encode()) > 32768:
         raise ValueError("public instruction must contain 1 to 32768 bytes")
     requirements = _load_intent_requirement_contract(intent_requirement_contract, text)
@@ -494,7 +499,8 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
                 criterion["evidence_cids"] = [evidence[0].evidence_cid]
         constraints = _multitask_constraints(specs, text)
     else:
-        acceptance["evidence_cids"] = [evidence[0].evidence_cid]
+        for criterion in spec["acceptance"]:
+            criterion["evidence_cids"] = [evidence[0].evidence_cid]
         constraints = _constraints(spec, text)
     manifest = local.author_local_benchmark_manifest(repository=repository, profile_dir=profile_dir,
         lifecycle_dir=lifecycle_dir, task_specs=specs, planning_roots={

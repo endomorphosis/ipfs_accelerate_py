@@ -27,6 +27,21 @@ def run_candidate_coding_rounds(*, launch, command):
     failure = None
     retained_input = None
     code = 1
+    selected_validation = getattr(launch, "public_validation_contract", None) is not None
+    validations = []
+    owner_validation_outcome = None
+
+    def validate(retired):
+        nonlocal owner_validation_outcome
+        if not selected_validation or type(code) is not int or not 0 <= code <= 255:
+            return None
+        from .candidate_public_validation import validate_retired_candidate
+        observed = validate_retired_candidate(launch=launch, retired_worker=retired)
+        metadata = observed.revalidate(launch=launch, retired_worker=retired)
+        launch._state.public_validations[retired.round_number] = observed
+        validations.append(metadata)
+        owner_validation_outcome = metadata["status"]
+        return observed
 
     def interrupted(signum, frame):
         raise InterruptedError("owner coding rounds interrupted")
@@ -93,13 +108,18 @@ def run_candidate_coding_rounds(*, launch, command):
             retire(process, launch.source_broker, 1, waited=False, suppress=True)
             raise
         retired = settle(process, launch.source_broker, 1)
-        if type(code) is int and 1 <= code <= 255:
-            prepared = prepare_second_coding_worker(launch=launch, retired_worker=retired)
+        validation = validate(retired)
+        retry_validation = (validation is not None and code == 0
+            and owner_validation_outcome == "failed")
+        if type(code) is int and 1 <= code <= 255 or retry_validation:
+            options = {} if validation is None else dict(public_validation=validation)
+            prepared = prepare_second_coding_worker(launch=launch, retired_worker=retired, **options)
             try:
                 audit = getattr(prepared, "audit", None)
                 retained_input = None if audit is None else audit.observation
                 running = prepared.start()
-                settle(running.process, running.source_broker, 2)
+                second_retired = settle(running.process, running.source_broker, 2)
+                validate(second_retired)
             finally:
                 # A signal can arrive after start registers the child but
                 # before its return value is assigned or settle is entered.
@@ -123,7 +143,7 @@ def run_candidate_coding_rounds(*, launch, command):
                     except BaseException:
                         if not pending_error and not closing_error:
                             raise
-        return code
+        return 1 if selected_validation and code == 0 and owner_validation_outcome != "passed" else code
     except BaseException as error:
         failure = type(error).__name__
         raise
@@ -138,6 +158,12 @@ def run_candidate_coding_rounds(*, launch, command):
             source_obligations_discharged=0, accepted_index_published=False)
         if retained_input is not None:
             observation["candidate_input_retention"] = retained_input
+        if selected_validation:
+            observation.update(schema="owner-candidate-rounds-observation@2",
+                public_validation_observations=validations,
+                owner_validation_outcome=owner_validation_outcome,
+                owner_returncode=None if failure is not None else (
+                    1 if code == 0 and owner_validation_outcome != "passed" else code))
         try:
             from .candidate_round_lifecycle import persist
             observation["owner_lifecycle_retention"] = persist(

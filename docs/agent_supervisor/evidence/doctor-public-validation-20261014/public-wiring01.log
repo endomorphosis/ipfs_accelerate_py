@@ -1,0 +1,27 @@
+.........................FFFF........................................... [ 30%]
+........................................................................ [ 61%]
+........................................................................ [ 92%]
+.................                                                        [100%]
+=================================== FAILURES ===================================
+________ test_early_profile_file_loader_is_bounded_and_closed[symlink] _________
+benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py:93: in test_early_profile_file_loader_is_bounded_and_closed
+    controls.validate_full_supervisor_candidate_rounds(arm="full", task_profile=path, **SELECTED)
+E   TypeError: validate_full_supervisor_candidate_rounds() got an unexpected keyword argument 'candidate_rounds'
+_______ test_early_profile_file_loader_is_bounded_and_closed[duplicate] ________
+benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py:93: in test_early_profile_file_loader_is_bounded_and_closed
+    controls.validate_full_supervisor_candidate_rounds(arm="full", task_profile=path, **SELECTED)
+E   TypeError: validate_full_supervisor_candidate_rounds() got an unexpected keyword argument 'candidate_rounds'
+________ test_early_profile_file_loader_is_bounded_and_closed[oversize] ________
+benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py:93: in test_early_profile_file_loader_is_bounded_and_closed
+    controls.validate_full_supervisor_candidate_rounds(arm="full", task_profile=path, **SELECTED)
+E   TypeError: validate_full_supervisor_candidate_rounds() got an unexpected keyword argument 'candidate_rounds'
+_______ test_early_profile_file_loader_is_bounded_and_closed[nonfinite] ________
+benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py:93: in test_early_profile_file_loader_is_bounded_and_closed
+    controls.validate_full_supervisor_candidate_rounds(arm="full", task_profile=path, **SELECTED)
+E   TypeError: validate_full_supervisor_candidate_rounds() got an unexpected keyword argument 'candidate_rounds'
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py::test_early_profile_file_loader_is_bounded_and_closed[symlink]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py::test_early_profile_file_loader_is_bounded_and_closed[duplicate]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py::test_early_profile_file_loader_is_bounded_and_closed[oversize]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py::test_early_profile_file_loader_is_bounded_and_closed[nonfinite]
+4 failed, 229 passed in 3.64s

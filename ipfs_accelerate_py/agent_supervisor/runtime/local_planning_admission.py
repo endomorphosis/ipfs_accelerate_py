@@ -700,23 +700,24 @@ def _manifest(envelope: Mapping, *, initial=False, source_transition=None) -> tu
 
 
 def _verify_multitask_profile_sources(manifest: Mapping) -> dict | None:
-    """Replay the reviewed multi-task declaration at the actual owner boundary.
+    """Replay opt-in task declarations at the actual owner boundary.
 
     Preparation metadata is not an authority input. Every native admission and
     materialization must bind the immutable profile to its exact requirements,
     generated task contracts and structural checks, including after re-signing.
     """
     from .terminal_task_profile import (
-        INSTRUCTION, MULTITASK_SCHEMA, PROFILE, SCHEMA, SMOKE, normalized_instruction,
+        INSTRUCTION, MULTITASK_SCHEMA, PUBLIC_ACCEPTANCE_SCHEMA, PROFILE, SCHEMA, SMOKE, normalized_instruction,
         task_profile_bytes, task_profile_smoke, task_profile_specs,
-        task_profile_worker_inputs, validate_task_profile_contract,
+        task_profile_worker_inputs, validate_task_profile_contract, validate_task_profile,
+        validate_task_profile_public_inputs,
     )
 
     if PROFILE not in manifest["sources"]:
         return None
     root = Path(manifest["repository"])
     # Retain the generic source bound while identifying the opt-in schema.
-    # The stricter canonical support and task checks belong only to @3.
+    # Opt-in @3 and @4 bind the canonical support and all task checks.
     path = root / PROFILE
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
@@ -731,6 +732,34 @@ def _verify_multitask_profile_sources(manifest: Mapping) -> dict | None:
         raise LocalPlanningError("reserved public task profile must be unambiguous JSON") from exc
     if type(declaration) is not dict:
         raise LocalPlanningError("reserved public task profile must be a declaration object")
+    if declaration.get("schema") == PUBLIC_ACCEPTANCE_SCHEMA:
+        try:
+            sources = manifest["sources"]
+            instruction = _read(root, INSTRUCTION, sources, 32768).decode("utf-8")
+            if normalized_instruction(instruction) != instruction:
+                raise ValueError("canonical public acceptance instruction required")
+            declaration = validate_task_profile(declaration, instruction=instruction)
+            validate_task_profile_public_inputs(declaration, public_evaluator=_read(root, "eval.py", sources, 262144))
+            if (raw != task_profile_bytes(declaration)
+                    or set(sources) != set(task_profile_worker_inputs(declaration))
+                    or _read(root, SMOKE, sources, 262144).decode("utf-8") != task_profile_smoke(declaration)):
+                raise ValueError("public acceptance profile, source population or signed checker differs")
+            if "planning_inputs" not in manifest:
+                raise ValueError("public acceptance requires signed planning inputs")
+            _, evidence = _verify_planning_inputs(manifest)
+            if not evidence:
+                raise ValueError("public acceptance requires native selected evidence")
+            specs = task_profile_specs(declaration, policy_cid=content_identity(LOCAL_POLICY))
+            for spec in specs:
+                for criterion in spec["acceptance"]:
+                    criterion["evidence_cids"] = [evidence[0].evidence_cid]
+            if manifest["tasks"] != specs:
+                raise ValueError("all signed public acceptance checks must match their canonical declarations")
+        except (ValueError, TypeError, KeyError, IndexError, OSError, RecursionError) as exc:
+            raise LocalPlanningError("invalid signed public acceptance profile binding: " + str(exc)) from exc
+        # This is a singleton profile; callers use a non-None return to select
+        # the separate multi-task symbolic-planning path.
+        return None
     if declaration.get("schema") != MULTITASK_SCHEMA:
         from . import terminal_task_profile as profile_owner
         known_singleton_schemas = {SCHEMA}

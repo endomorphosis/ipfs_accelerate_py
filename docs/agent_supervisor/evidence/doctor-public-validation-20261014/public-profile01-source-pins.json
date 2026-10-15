@@ -1,0 +1,23 @@
+{
+  "base_commit": "3193000dbf3b9e3262f1c32dc420640e56b62fc8",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "170382deaa2a47dd0600eb118cce25e29b3ca0aa82a5c4b545eb01e019820d43",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "2381ae4cd4820d7aecb1866ce70800d94a7b1d463973f8c1566ee9d187962c42",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "f571910f6ebd98c6e36779cae6e4192df0b90f1331b86e2ad830d24badec6224",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "40b82f922fbf06123e4ea4f8d955989b37e4880af3b3855b6a799e37d16b0f3e",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_coding_policy.py": "797dc9b759599b2a725aa6fed25a248dc534f72b17f2e076fa74942bd9570a1c",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "3666ca21205438bd5e7bc9b1b636b47e11f8741abf81bee19c3c02578ca1a47a",
+    "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py": "3641c7cc4dbc69d03442076f4a16621eb7070e8dac9e9784c2f321b7e7e4e7bb",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py": "037aeceeb1654e566fc4c351f0e17829dcd123e26b70c6f83b21103ae0630862",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py": "980e0d894b642948c8f4ad79bd47f714f94e6bfcc2479a0d6462bc084da9e042",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py": "ad667a86a338a5c54262d793ef1340fdfb8ab82e91094878649b4e3c9349fbbe",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_doctor_dispatch.py": "5cfdb23552baadcbd052edb03f6ad5e3d6eb014960a76d1507175f9ab6c70c4f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py": "d7f88e3b46b9ae6e897c80424770fd439aaf07a771d65cca1c70fff4d4693279",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_monitor.py": "b1a3c130491c9b94809d46211a31d54e5e2eef8d29a03c5ef4e6b610844eb8ea",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_policy.py": "096af342600b6dd9778e285aff63327c2d21051a837c575e030df2dedede9d78",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch.py": "6f651b35be1ed1316002950615c702bef60040cdbc9e50aeea1737b9f1684e62",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_context.py": "c48da0e61535138e7fd01d3744c05a375573b0c61be9d0a446f84e178cfab2b3",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_prompt.py": "c3fe290c1c16323979ae79387106927f1f750c2d6ee20dd278cf9b47688c6f54",
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": "c6141f0a9845ec8ace7634fe0af20deed3e786af45a4829c65842a03db18c64b"
+  }
+}

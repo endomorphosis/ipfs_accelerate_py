@@ -14,7 +14,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime import candidate_round_monitor 
 from benchmarks.agent_supervisor.container_coding.container_worker_deployment import OWNER_ENTRY, WORKER_ENTRY
 
 
-def _run(monkeypatch, *, first=7, second=0, failure=None):
+def _run(monkeypatch, *, first=7, second=0, failure=None, public_statuses=None):
     from ipfs_accelerate_py.agent_supervisor.runtime import owner_candidate_dispatch as lifecycle
     events, children = [], []
     signals = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
@@ -54,6 +54,9 @@ def _run(monkeypatch, *, first=7, second=0, failure=None):
                 raise ValueError("authored command failure")
 
     launch = Launch()
+    if public_statuses is not None:
+        launch.public_validation_contract = object()
+        launch._state = SimpleNamespace(public_validations={})
     if failure == "timeout":
         command[-1] = "import time;time.sleep(5)"
         launch.remaining_seconds = .05
@@ -66,12 +69,18 @@ def _run(monkeypatch, *, first=7, second=0, failure=None):
             assert process.poll() is not None
         if failure == "cleanup" and number == 1 or failure == "second_cleanup" and number == 2:
             raise ValueError("authored cleanup failure")
+        if public_statuses is not None:
+            return SimpleNamespace(round_number=number, process=process, returncode=process.returncode)
         return (number, process)
 
-    def prepare(*, launch, retired_worker):
+    def prepare(*, launch, retired_worker, public_validation=None):
         events.append(("prepared", 2))
-        assert retired_worker[0] == 1 and retired_worker[1].poll() == first
-        assert events[-2] == ("retired", 1)
+        if public_statuses is None:
+            assert retired_worker[0] == 1 and retired_worker[1].poll() == first
+            assert events[-2] == ("retired", 1) and public_validation is None
+        else:
+            assert retired_worker.round_number == 1 and retired_worker.process.poll() == first
+            assert events[-2] == ("public_validated", 1) and public_validation is not None
         if failure == "prepare":
             raise ValueError("authored preparation failure")
         class Prepared:
@@ -96,6 +105,17 @@ def _run(monkeypatch, *, first=7, second=0, failure=None):
     monkeypatch.setattr(lifecycle, "CapturedCodingLaunch", Launch)
     monkeypatch.setattr(lifecycle, "retire_coding_worker", retire)
     monkeypatch.setattr(lifecycle, "prepare_second_coding_worker", prepare)
+    if public_statuses is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime import candidate_public_validation
+        def validate(*, launch, retired_worker):
+            number = retired_worker.round_number
+            assert events[-1] == ("retired", number)
+            assert retired_worker.process.poll() == retired_worker.returncode
+            events.append(("public_validated", number))
+            metadata = dict(status=public_statuses[number-1], actual_returncode=retired_worker.returncode,
+                round_number=number, failed_obligations=["public.performance"] if public_statuses[number-1] == "failed" else [])
+            return SimpleNamespace(revalidate=lambda **_: metadata)
+        monkeypatch.setattr(candidate_public_validation, "validate_retired_candidate", validate)
     outcome = None
     try:
         outcome = monitor.run_candidate_coding_rounds(launch=launch, command=command)
@@ -132,6 +152,36 @@ def test_success_does_not_spend_a_second_round(monkeypatch, capsys):
     assert result == 0 and len(children) == 1
     assert ("prepared", 2) not in events
     assert len(_observation(capsys)["rounds"]) == 1
+
+
+@pytest.mark.parametrize("statuses,expected,rounds", [
+    (["passed"], 0, 1), (["inconclusive"], 1, 1),
+    (["failed", "passed"], 0, 2), (["failed", "failed"], 1, 2),
+    (["failed", "inconclusive"], 1, 2)])
+def test_explicit_public_policy_preserves_zero_child_exit_and_separate_owner_outcome(monkeypatch, capsys, statuses, expected, rounds):
+    result, events, children = _run(monkeypatch, first=0, second=0, public_statuses=statuses)
+    assert result == expected and len(children) == rounds
+    assert all(child.returncode == 0 for child in children)
+    observed = _observation(capsys)
+    assert observed["schema"] == "owner-candidate-rounds-observation@2"
+    assert [row["returncode"] for row in observed["rounds"]] == [0]*rounds
+    assert observed["owner_returncode"] == expected
+    assert observed["owner_validation_outcome"] == statuses[-1]
+    assert events.count(("prepared", 2)) == rounds-1
+
+
+def test_nonzero_child_can_continue_when_public_validation_is_inconclusive(monkeypatch, capsys):
+    result, _, children = _run(monkeypatch, first=7, public_statuses=["inconclusive", "passed"])
+    assert result == 0 and [child.returncode for child in children] == [7, 0]
+    assert _observation(capsys)["owner_validation_outcome"] == "passed"
+
+
+def test_failed_cleanup_never_runs_public_checks_or_a_second_child(monkeypatch, capsys):
+    result, events, children = _run(monkeypatch, first=0, failure="cleanup", public_statuses=["failed"])
+    assert isinstance(result, ValueError) and len(children) == 1
+    assert ("public_validated", 1) not in events and ("prepared", 2) not in events
+    observed = _observation(capsys)
+    assert observed["owner_returncode"] is None and observed["public_validation_observations"] == []
 
 
 def test_second_failure_is_terminal_without_third_round(monkeypatch, capsys):

@@ -44,6 +44,8 @@ DOCTOR_FILENAMES = MappingProxyType({**ARTIFACT_FILENAMES,
     "original_doctor_receipt": "original-doctor-receipt.json"})
 DOCTOR_BINDING_FIELDS = ("doctor_coding_policy", "doctor_context_sha256",
     "doctor_advisory_sha256", "doctor_advisory_bytes")
+PUBLIC_VALIDATION_BINDING_FIELDS = ("public_validation_contract_sha256", "public_validation_observation_sha256",
+    "public_validation_observation_bytes", "continuation_reason")
 FLAGS = dict(audit_only=True, owner_private=True, worker_readable=False,
     retained_before_child_registration=True, candidate_input_retained=True,
     original_requirements_retained=True, dispatch_reload_allowed=False,
@@ -194,6 +196,8 @@ def persist_candidate_dispatch_audit(*, snapshot, prompt, source_broker, admissi
         public_instruction_block_sha256=_sha(requirements.public_instruction_block))
     if doctor_context is not None:
         binding.update({key: admitted[key] for key in DOCTOR_BINDING_FIELDS})
+        if getattr(snapshot, "_public_validation", None) is not None:
+            binding.update({key: admitted[key] for key in PUBLIC_VALIDATION_BINDING_FIELDS})
         _need(binding["doctor_context_sha256"] == _sha(payloads["doctor_context"])
             and binding["doctor_advisory_sha256"] == _sha(payloads["original_doctor_advisory"])
             and binding["doctor_advisory_bytes"] == len(payloads["original_doctor_advisory"]),

@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -52,6 +53,21 @@ def retire_first(launch, *, code=3):
         path = service.workspace / "answer.py"
         path.write_text(path.read_text().replace("process(count=2)", "process(amount=2)"))
     return owner.retire_coding_worker(launch=launch, process=service._process, source_broker=service)
+
+
+def test_first_attempt_cannot_start_after_final_doctor_validation_crosses_deadline(doctor_launch, monkeypatch):
+    launch = doctor_launch
+    doctor = launch._original_requirements._doctor_requirements
+    native = type(doctor).revalidate_initial
+    def cross_deadline(handle):
+        result = native(handle)
+        monkeypatch.setattr(owner, 'time', SimpleNamespace(monotonic=lambda:launch.absolute_deadline+1))
+        return result
+    monkeypatch.setattr(type(doctor), 'revalidate_initial', cross_deadline)
+    command = [*owner._PREFIX,*launch._argv,*launch.source_broker.extra_argv]
+    with pytest.raises(ValueError, match='deadline'):
+        launch.reserve_first_attempt(command)
+    assert launch._state.reserved_attempts == set() and launch.source_broker._process is None
 
 
 @pytest.mark.parametrize("selected", [None, "wrong", True])

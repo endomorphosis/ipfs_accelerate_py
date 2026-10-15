@@ -731,8 +731,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     from .benchmark_controls import validate_full_supervisor_candidate_rounds
     validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
         doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
-        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile)
-    from .terminal_doctor_coding_policy import doctor_coding_selection, doctor_coding_observation
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+        task_profile=task_profile)
+    from .terminal_doctor_coding_policy import (
+        PUBLIC_VALIDATION_POLICY, doctor_coding_selection, doctor_coding_observation,
+    )
     if candidate_rounds == 2 and metadata_census_only:
         raise ValueError("Doctor coding continuation requires actual coding, not metadata census")
     from .benchmark_provider_profile import resolve_provider_profile
@@ -835,6 +838,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
                 formula_decoder_descriptor, header_protocol_descriptor)):
             raise ValueError("generic legacy decoder assets require an explicit frozen checkpoint")
+    validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+        task_profile=generic_profile)
     if os.geteuid() != 1000 or not state.is_relative_to(ROOT / "state"):
         raise ValueError("container task must run as the deployed private supervisor owner")
     # Canonical files remain read-only to the model identity. The trusted
@@ -868,6 +875,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "native_start_timeout_seconds": budget["native_start_seconds"],
               "production_activation": False, "benchmark_advantage_claimed": False,
               "phases": {}, "remaining_processes": None}
+    if doctor_coding_policy == PUBLIC_VALIDATION_POLICY:
+        report["task_profile"] = generic_profile
     if phase_budget is not None:
         report["reserved_phase_budgets_seconds"] = dict(phase_budget.limits)
         report["native_lifetime_seconds"] = budget["native_lifetime_seconds"]
@@ -1324,7 +1333,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 if line.startswith("[owner-candidate-rounds] "):
                     try:
                         marker = json.loads(line[len("[owner-candidate-rounds] "):])
-                        if isinstance(marker, dict) and marker.get("schema") == "owner-candidate-rounds-observation@1":
+                        if _owner_candidate_round_marker_valid(marker):
                             if marker not in report.setdefault("owner_candidate_rounds", []):
                                 report["owner_candidate_rounds"].append(marker)
                     except ValueError:
@@ -1439,6 +1448,23 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     return report
 
 
+def _owner_candidate_round_marker_valid(marker):
+    """Retain public-validation diagnostics without granting lifecycle authority."""
+    if type(marker) is not dict:
+        return False
+    if marker.get("schema") == "owner-candidate-rounds-observation@1":
+        return True  # Preserve the historical nomination path.
+    if marker.get("schema") != "owner-candidate-rounds-observation@2":
+        return False
+    from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_lifecycle import _observation
+    try:
+        _observation({key: value for key, value in marker.items()
+            if key not in {"owner_lifecycle_retention", "owner_lifecycle_retention_unavailable"}}, normalized=False)
+    except (KeyError, TypeError, ValueError):
+        return False
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--instruction", type=Path, required=True)
@@ -1461,8 +1487,8 @@ def main():
     parser.add_argument("--candidate-rounds", type=int, choices=(1, 2), default=1,
         help="Two coding attempts share one original deadline and require --doctor-coding-policy")
     from .terminal_source_edit_policy import SOURCE_EDIT_MODES
-    from .terminal_doctor_coding_policy import DOCTOR_CODING_POLICY
-    parser.add_argument("--doctor-coding-policy", choices=(DOCTOR_CODING_POLICY,))
+    from .terminal_doctor_coding_policy import DOCTOR_CODING_POLICIES
+    parser.add_argument("--doctor-coding-policy", choices=DOCTOR_CODING_POLICIES)
     parser.add_argument("--source-edit-mode", default="disabled", choices=SOURCE_EDIT_MODES)
     from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy
     parser.add_argument("--source-view-policy-json", dest="source_view_policy",

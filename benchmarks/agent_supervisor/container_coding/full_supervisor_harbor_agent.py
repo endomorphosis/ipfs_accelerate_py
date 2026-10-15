@@ -353,7 +353,8 @@ class FullSupervisorAgent(BaseAgent):
         from .benchmark_controls import validate_full_supervisor_candidate_rounds
         selected_rounds = validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
             doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
-            source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile)
+            source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+            task_profile=task_profile)
         super().__init__(*args, **kwargs)
         self.candidate_rounds = self._frozen_candidate_rounds = selected_rounds
         self.doctor_coding_policy = self._frozen_doctor_coding_policy = doctor_coding_policy
@@ -511,7 +512,8 @@ class FullSupervisorAgent(BaseAgent):
             doctor_coding_policy=getattr(self, "doctor_coding_policy", None),
             source_view_profile=getattr(self, "source_view_profile", "disabled"),
             source_edit_mode=getattr(self, "source_edit_mode", "disabled"),
-            numerical_formalization_profile=getattr(self, "numerical_formalization_profile", None))
+            numerical_formalization_profile=getattr(self, "numerical_formalization_profile", None),
+            task_profile=getattr(self, "task_profile", None))
         if (selected != getattr(self, "_frozen_candidate_rounds", 1)
                 or getattr(self, "doctor_coding_policy", None) != getattr(self, "_frozen_doctor_coding_policy", None)):
             raise ValueError("prepared candidate rounds changed")

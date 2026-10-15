@@ -1181,3 +1181,44 @@ or exporting provider text. Historical progress schemas remain supported, and
 unknown native usage remains unknown. No new live run has exercised these final
 changes. Public behavioral/performance validation and live final-usage recovery
 remain open; the earlier live scores and token observations are unchanged.
+
+## October 15: validate public obligations between Doctor attempts
+
+The new explicit `doctor-coding-public-validation-two-attempts@1` policy connects
+signed public checks to Doctor continuation. Its
+`terminal-public-task-profile@4` declaration binds the reviewed `largest-eigenval`
+instruction and evaluator to structural, eigenpair and performance checks. Native
+planning admission verifies all three checks and acceptance criteria, and source
+partitioning attaches evidence to each. Existing profiles remain available.
+
+After the actual coding worker retires, the owner runs those commands in the
+isolated validation worker. A successful worker exit can now lead to a second
+attempt when a typed public observation establishes a failed requirement. The
+actual exit code remains separate from check outcomes. Inconclusive timing alone
+does not grant a retry. Both attempts share the original deadline and proposal
+allocation, and canonical validation still runs independently after publication.
+These are empirical checks, not discharged formal proof obligations.
+
+Doctor receives failed obligations and five per-size timing summaries; all
+15 measurements and the full source bindings remain in protected audit evidence.
+The second dispatch, retained input replay and attempt accounting join that
+feedback to the exact candidate generation and prior child. Late setup, replay
+and source checks cannot renew an expired deadline. Check output is bounded, and
+worker cleanup must complete before any observation can support continuation.
+
+[Qualification and the exact profile declaration](evidence/doctor-public-validation-20261014/README.md)
+cover 816 distinct passing tests, including 28 pure artifact-reader cases. The
+full continuation run's one test-order failure is retained and superseded only
+for its three-case native module by a passing replay. Production source and
+dependency pins stayed unchanged; the single test-file replacement is recorded.
+Provider, host isolation and native continuation check results use authored
+boundaries in these tests. Separate generated-checker tests execute real NumPy
+behavioral cases. This does not establish a new live score or token reduction.
+
+The fresh diagnostic recipe selects the new profile and policy with Grok 4.7
+through `llm_router`, eight native coding turns per attempt and the existing
+1,800-second shared coding deadline. A metadata-only container probe observed the
+selected model with no generation calls or host credential mutation. A newly
+committed archive, verified preparation and qualified reader are required before
+execution. The next live result must keep official reward, public-check outcomes
+and incomplete native token accounting separate from one another.
