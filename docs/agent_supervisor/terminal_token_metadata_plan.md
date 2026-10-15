@@ -1574,3 +1574,36 @@ selected pins. The fresh run completed owner replay, worktree/worker cleanup,
 source-session accounting and two exact container-absence checks. Retained
 [closed evidence and next pack design](evidence/inline-evidence-census-20261015/README.md)
 include the final freeze check; private prompts and owner archives are excluded.
+
+## Pack factoring and the request-history gap (2026-10-15)
+
+The pack design is implemented at `19dbb524c8`. It factors only exact common
+reference defaults and an outer estimate exactly reconstructible from unchanged
+inner-pack totals. Reference roles, requirements, caveats, identifiers, unknown
+fields, producer identities and raw source remain intact. Exact inverse and
+complete-input fallback are qualified. New `router-semantic-working-set-census@3`
+measures the independent candidate through the worker and owner replay; earlier
+census outputs and normal generation are unchanged.
+
+The fresh `largest-eigenval` Docker run measured **67,201 → 66,896 bytes**, a
+**305-byte (0.45%)** reduction. Pack values lost 1,160 bytes, while recipe and
+guidance overhead added 855. Independent capsule and inline-evidence comparisons
+saved 81 and 749 bytes respectively against the same original input. Their
+savings are not additive and do not establish reduced provider token use.
+
+All **177 runtime** and **47 launcher/exporter** checks passed. Pinned Source384
+inference ran; intent autoencoder inference was disabled. Owner replay,
+source-currentness checks, accounting and cleanup completed. No LLM generation
+or official verification ran, and no new reward or token score is available.
+[Closed evidence](evidence/pack-view-census-20261015/README.md) preserves the
+measurements, qualification, frozen source bindings and their limits.
+
+These small first-input gains leave the larger conversation-growth question
+open. The source audit located bounded tool events in `GrokStreamParser._frame`,
+where an observation-only byte/hash census can measure outputs and duplicate
+notifications without exporting content. That observer is designed but not yet
+implemented. Actual CLI request bodies and resends are not observed there;
+their bytes and completeness must stay unknown until a pinned request-boundary
+hook supplies evidence after compaction. Do not infer resends from stdout or
+multiply prompt size by the turn count. Keep native terminal usage accounting
+unchanged while adding the next measurement.

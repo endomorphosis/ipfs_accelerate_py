@@ -175,8 +175,9 @@ Inside an already admitted owner/source session, select:
 --semantic-working-set-census-schema router-semantic-working-set-census@2
 ```
 
-The declared-plan container owner's existing `--working-set-census-only` route
-now selects `@2`. Direct router calls retain the original `@1` default and
+At runtime `78c1494bfb`, the declared-plan container owner's existing
+`--working-set-census-only` route selects `@2`; the pack experiment below
+advances that explicit route to `@3`. Direct router calls retain the `@1` default and
 output. Selecting `@2` outside census-only mode is rejected. These flags do not
 create admission or a source session. Generation dispatch for the new inline
 candidate remains disabled.
@@ -231,6 +232,62 @@ retain these observations and their limits. This is a bounded prompt
 representation experiment, not reversible executable-codebase minification or
 a native Codex versus supervisor efficacy comparison.
 
+## Reversible pack factoring
+
+Runtime `19dbb524c8` implements the previous pack design as an independent
+`semantic-pack-view@1` candidate. Six reference fields can move to one inline
+defaults map: the current schema and contract version, empty repository/tree/path
+strings, and integer-zero byte counts. Each field must explicitly match on every
+row. A missing or differing field stays literal. Every reference remains separate,
+with its role, identifiers, metadata, requirements and caveats preserved.
+
+The outer token estimate can be reconstructed from the unchanged inner pack's
+token totals, estimator version and exact integer sum. The recipe applies only
+when it reproduces the complete original estimate. Extra estimate fields and
+different duplicated values stay literal. This copies existing accounting;
+it does not run an estimator or measure provider tokens. The exact inverse
+restores the original transport, including unknown fields and identifier aliases.
+
+Inside an admitted source session, select:
+
+```text
+--semantic-working-set capsule-references@1
+--semantic-working-set-census-only
+--semantic-working-set-census-schema router-semantic-working-set-census@3
+```
+
+The container owner's explicit census now selects `@3` for worker and owner
+replay. Direct router and standalone replay defaults remain `@1`; `@1` and `@2`
+retain their output contracts. `@3` adds `semantic_pack_projection_census` and
+rejects ordinary generation routes. Pack generation dispatch remains disabled.
+
+The fresh public Docker measurement compared all three candidates against the
+same original complete input:
+
+| Complete coding input | UTF-8 bytes | Reduction from original |
+| --- | ---: | ---: |
+| Original | 67,201 | — |
+| Capsule references | 67,120 | 81 (0.12%) |
+| Inline evidence objects | 66,452 | 749 (1.11%) |
+| Pack factoring | 66,896 | **305 (0.45%)** |
+
+The pack itself shrank from 6,266 to 5,106 bytes. Factoring six defaults across
+six references and reconstructing the duplicate estimate removed 1,160 bytes;
+recipe, instructions and view structure added 855 bytes. The net reduction
+includes the complete unchanged 6,579-byte wrapper. These candidates are
+independent; their reductions cannot be added without a qualified composition.
+
+All **177 runtime tests** and **47 launcher/exporter tests** passed. The fresh
+run consumed the pinned Source384 checkpoint, reproduced the complete inputs
+through owner replay, revalidated admission and completed source/worktree/worker
+cleanup. The exact container was confirmed absent twice. Intent autoencoder
+inference stayed disabled in this profile. Zero LLM generation calls ran;
+tokens, task reward and coding efficacy remain unmeasured. The codec establishes
+exact representation equality, not formal correctness of the program.
+
+[Closed results and next measurement design](evidence/pack-view-census-20261015/README.md)
+retain qualification, final source checks and independent arithmetic review.
+
 ## Next measured optimization
 
 Use the closed `@2` component census to choose the next target. Its nested
@@ -238,11 +295,11 @@ partitions overlap; compare sibling shares rather than adding parent and child
 bytes. Keep each experiment source-bound and compare the complete rendered
 input, including reference and retrieval guidance overhead.
 
-1. Use the pack census to qualify exact factoring of duplicated token estimates
-   and identical reference envelope defaults. Preserve every role, requirement,
-   caveat and source obligation. The
-   [source-based design](evidence/inline-evidence-census-20261015/pack-factoring-design.md)
-   defines eligibility, inverse, fallback and tests; no saving is measured yet.
+1. Add bounded, closed tool-event byte accounting at the existing Grok stream
+   parser. The [history-accounting design](evidence/pack-view-census-20261015/history-accounting-design.md)
+   distinguishes event repetition from actual request resends. Existing stdout
+   events cannot reveal the CLI's complete request history; request/history byte
+   counts must stay unknown until a supported request-boundary hook exists.
 2. Keep new candidates independent until their composition has its own exact
    inverse and complete-input selection. Include instructions and dictionary
    overhead. A later token comparison must also count retrieval exposure,
