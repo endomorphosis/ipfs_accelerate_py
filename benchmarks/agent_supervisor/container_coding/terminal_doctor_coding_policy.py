@@ -25,7 +25,7 @@ SOURCE_PATHS = (
         "candidate_dispatch_context", "candidate_doctor_dispatch", "candidate_round_monitor", "candidate_round_lifecycle",
         "worker_source_broker", "worker_candidate_round_broker", "worker_candidate_round_client",
         "worker_candidate_artifacts", "worker_candidate_context", "worker_candidate_selection",
-        "router_implementation_runner", "candidate_reply_contract", "grok_coding_budget",
+        "router_implementation_runner", "candidate_reply_contract", "candidate_prompt_projection", "grok_coding_budget",
         "candidate_public_validation", "terminal_task_profile", "candidate_execution",
         "local_planning_admission", "terminal_source_partition")),
 )

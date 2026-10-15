@@ -110,6 +110,18 @@ def test_selected_archive_binds_current_runtime_and_benchmark_sources(change):
         policy.require_doctor_coding_archive(selected, 2, policy.DOCTOR_CODING_POLICY)
 
 
+@pytest.mark.parametrize("change", ["missing", "hash", "size"])
+def test_selected_archive_binds_candidate_prompt_codec(change):
+    selected = inventory()
+    codec = next(row for row in selected["files"]
+        if row["path"].endswith("/candidate_prompt_projection.py"))
+    if change == "missing": selected["files"].remove(codec)
+    elif change == "hash": codec["sha256"] = "f" * 64
+    else: codec["bytes"] += 1
+    with pytest.raises(ValueError, match="newly qualified"):
+        policy.require_doctor_coding_archive(selected, 2, policy.DOCTOR_CODING_POLICY)
+
+
 def test_dry_prepare_freezes_the_pair_and_attempt_scope(tmp_path, monkeypatch):
     dataset, _ = authored_task(tmp_path)
     archive = tmp_path / "archive"

@@ -66,8 +66,21 @@ def validate_receipt(receipt):
         "model_prompt_after_sha256", "model_prompt_after_bytes", "response_validated"}
     _need(type(reply) is dict and set(reply) == set(expected) and type(reply["response_validated"]) is bool
         and all(_same_json(reply[key], expected[key]) for key in expected if key not in dynamic))
+    provider_input_bytes = receipt["prompt_bytes"]
+    if "candidate_prompt_projection" in receipt:
+        from ipfs_accelerate_py.agent_supervisor.runtime.candidate_prompt_projection import validate_selection_receipt
+        projection = validate_selection_receipt(receipt["candidate_prompt_projection"])
+        view = projection["view_receipt"]
+        _need(view["original_input_sha256"] == receipt["prompt_sha256"]
+            and view["original_input_bytes"] == receipt["prompt_bytes"]
+            and view["native_prompt_sha256"] == receipt["native_prompt_sha256"]
+            and view["native_prompt_bytes"] == receipt["native_prompt_bytes"]
+            and projection["selected_complete_sha256"] == receipt["model_prompt_sha256"]
+            and projection["selected_complete_bytes"] == receipt["model_prompt_bytes"])
+        provider_input_bytes = (view["candidate_view_bytes"] if projection["selected_mode"] != "legacy"
+                                else view["original_input_bytes"])
     _need(type(receipt["router_prompt_bytes"]) is int
-        and receipt["router_prompt_bytes"] == receipt["prompt_bytes"] + len(advice)
+        and receipt["router_prompt_bytes"] == provider_input_bytes + len(advice)
         and reply["model_prompt_before_bytes"] == receipt["router_prompt_bytes"] + receipt["workspace_advisory_bytes"]
         and reply["model_prompt_after_bytes"] == receipt["model_prompt_bytes"]
         and reply["model_prompt_after_sha256"] == receipt["model_prompt_sha256"]
@@ -335,7 +348,24 @@ def replay(*, rendered, receipt, parent):
     router = bodies["candidate_input"].decode() + _candidate_round_guidance(dispatch)
     model, advice = render_model_prompt(prompt=router, purpose="coding", workspace=Path(receipt["workspace"]), candidate_transport=True)
     model, reply = apply_candidate_reply_contract(model_prompt=model, binding=dispatch)
-    checks = dict(retained_owner_input_bindings=True, retained_native_prompt=True, **doctor_checks,
+    projection_checks = {}
+    if "candidate_prompt_projection" in receipt:
+        from ipfs_accelerate_py.agent_supervisor.runtime.candidate_prompt_projection import (
+            project_candidate_prompt, select_candidate_prompt)
+        # Recreate from immutable admitted input, never from a projected payload
+        # or rehashed report supplied by the worker.
+        view = project_candidate_prompt(bodies["candidate_input"].decode())
+        projected_router = view.provider_prompt + _candidate_round_guidance(dispatch)
+        projected_model, projected_advice = render_model_prompt(prompt=projected_router,
+            purpose="coding", workspace=Path(receipt["workspace"]), candidate_transport=True)
+        _need(projected_advice == advice)
+        projected_model, projected_reply = apply_candidate_reply_contract(model_prompt=projected_model, binding=dispatch)
+        selection = select_candidate_prompt(view, model, projected_model)
+        _need(_same_json(selection.receipt, receipt["candidate_prompt_projection"]))
+        if selection.selected_mode != "legacy":
+            router, model, reply = projected_router, selection.selected_prompt, projected_reply
+        projection_checks["retained_candidate_projection"] = True
+    checks = dict(retained_owner_input_bindings=True, retained_native_prompt=True, **doctor_checks, **projection_checks,
         router_prompt_sha256=_sha(router.encode()) == receipt["router_prompt_sha256"],
         router_prompt_bytes=len(router.encode()) == receipt["router_prompt_bytes"],
         model_prompt_sha256=_sha(model.encode()) == receipt["model_prompt_sha256"],

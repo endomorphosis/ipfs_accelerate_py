@@ -35,7 +35,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "doctor_budget_capability", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement", "semantic_working_set", "semantic_working_set_preflight", "candidate_round_dispatch", "candidate_reply_contract", "candidate_retrieval_guidance", "candidate_round_preflight")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "doctor_budget_capability", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement", "semantic_working_set", "semantic_working_set_preflight", "candidate_round_dispatch", "candidate_reply_contract", "candidate_retrieval_guidance", "candidate_round_preflight", "candidate_prompt_projection")
 
 
 def _sha(raw: bytes) -> str:

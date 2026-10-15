@@ -462,7 +462,8 @@ def _refuse_candidate_preparation(prompt):
     except (ValueError, RecursionError):
         return
     if (type(envelope) is dict and type(envelope.get("schema")) is str
-            and envelope["schema"].startswith("supervisor-owner-candidate-router-input@")):
+            and envelope["schema"].startswith(("supervisor-owner-candidate-router-input@",
+                "supervisor-candidate-provider-view@"))):
         raise ValueError("candidate round prompt requires independent dispatch admission")
 
 
@@ -698,6 +699,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     router_prompt = prompt
     candidate_receipt = None
     candidate_reply_receipt = None
+    candidate_projection_receipt = None
     candidate_guidance = ""
     candidate_settings = dict(provider=provider, model=model, reasoning_effort=reasoning_effort,
         max_output_tokens=max_output_tokens, budget_profile=budget_profile,
@@ -818,9 +820,43 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         **({"candidate_transport": True} if candidate_receipt is not None else {}))
     if candidate_receipt is not None:
         failure_phase = "candidate_reply_contract"
-        from .candidate_reply_contract import apply_candidate_reply_contract, candidate_completion_schema
+        from .candidate_reply_contract import (MAX_PROMPT_BYTES, apply_candidate_reply_contract,
+            candidate_completion_schema)
         model_prompt, candidate_reply_receipt = apply_candidate_reply_contract(
             model_prompt=model_prompt, binding=candidate_receipt)
+        # The admitted owner envelope stays unchanged. Only its provider-facing
+        # representation may change, after handoff validation and an exact inverse.
+        from .candidate_prompt_projection import (CandidatePromptProjectionError,
+            project_candidate_prompt, select_candidate_prompt)
+        try:
+            candidate_view = project_candidate_prompt(prompt)
+        except CandidatePromptProjectionError:
+            # Unsupported representations retain every original byte.
+            candidate_view = None
+        if candidate_view is not None:
+            projected_router = candidate_view.provider_prompt + candidate_guidance
+            projected_model, projected_advisory = render_model_prompt(prompt=projected_router,
+                purpose=purpose, workspace=root, candidate_transport=True)
+            if projected_advisory != advisory:
+                raise ValueError("candidate projection changed the workspace advisory")
+            projection = None
+            # A larger alternative must not reject an already valid legacy
+            # input when the final reply grammar pushes it over the limit.
+            if (len(projected_model.encode()) + candidate_reply_receipt["instruction_bytes"]
+                    <= MAX_PROMPT_BYTES):
+                projected_model, projected_reply = apply_candidate_reply_contract(
+                    model_prompt=projected_model, binding=candidate_receipt)
+                try:
+                    projection = select_candidate_prompt(candidate_view, model_prompt, projected_model)
+                except CandidatePromptProjectionError:
+                    # Unsupported complete representations retain the original.
+                    pass
+            if projection is not None:
+                candidate_projection_receipt = projection.receipt
+                if projection.selected_mode != "legacy":
+                    router_prompt = projected_router
+                    model_prompt = projection.selected_prompt
+                    candidate_reply_receipt = projected_reply
         if provider == "grok_cli":
             response_format = {"type": "json_schema", "json_schema": {
                 "name": "supervisor_candidate_completion", "strict": True,
@@ -1032,6 +1068,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if candidate_receipt is not None:
         receipt["candidate_round_dispatch"] = candidate_receipt
         receipt["candidate_reply_contract"] = candidate_reply_receipt
+        if candidate_projection_receipt is not None:
+            receipt["candidate_prompt_projection"] = candidate_projection_receipt
         receipt["candidate_retrieval_guidance"] = dict(
             sha256=hashlib.sha256(candidate_guidance.encode()).hexdigest(),
             bytes=len(candidate_guidance.encode()), requests_observed=False,

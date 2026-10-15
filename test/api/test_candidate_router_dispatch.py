@@ -60,7 +60,7 @@ def candidate_route(public_service, monkeypatch):
         proof_authority=False, completion_authority=False, settlement_authority=False)
     state = dict(provider="codex_cli", model="gpt-6.1-sol", validation_calls=0,
         discovery_calls=0, calls=[], binding=binding, prepared=prepared,
-        original=original, source=source, service=service, preflight_calls=0)
+        original=original, source=source, service=service, preflight_calls=0, admitted_prompt=prompt)
     state["reply"] = json.dumps(dict(schema=replies.SCHEMA, status="candidate_ready",
         **{key: binding[key] for key in replies.BINDING_FIELDS}))
     monkeypatch.chdir(service.workspace)
@@ -75,7 +75,7 @@ def candidate_route(public_service, monkeypatch):
 
     def validate(**kwargs):
         state["validation_calls"] += 1
-        assert kwargs["prompt"] == prompt
+        assert kwargs["prompt"] == state["admitted_prompt"]
         assert kwargs["repository"] == service.repository
         assert kwargs["workspace"] == service.workspace
         assert kwargs["launch_settings"] == dict(provider=state["provider"], model=state["model"],
@@ -165,7 +165,15 @@ def test_candidate_dispatch_preserves_native_public_requirements_and_accounts_in
     assert state["discovery_calls"] == 1 and state["validation_calls"] == 2
     assert len(state["calls"]) == receipt["router_calls"] == 1
     actual, options = state["calls"][0]
-    assert state["prepared"].provider_prompt.decode() in actual
+    from ipfs_accelerate_py.agent_supervisor.runtime.candidate_prompt_projection import (
+        project_candidate_prompt, restore_candidate_prompt, validate_selection_receipt)
+    projection = validate_selection_receipt(receipt["candidate_prompt_projection"])
+    view = project_candidate_prompt(state["prepared"].provider_prompt.decode())
+    selected = projection["selected_mode"] != "legacy"
+    assert (view.provider_prompt if selected else view.original_prompt) in actual
+    assert restore_candidate_prompt(view.provider_prompt, projection["view_receipt"]) == view.original_prompt
+    assert projection["selected_complete_sha256"] == sha(actual.encode())
+    assert projection["selected_complete_bytes"] <= projection["native_complete_bytes"]
     wire = json.loads(state["prepared"].provider_prompt)
     assert wire["native_prompt"].encode() == state["original"].native_prompt
     assert wire["original_public_instruction_block"].encode() == state["original"].public_instruction_block
@@ -195,6 +203,64 @@ def test_candidate_dispatch_preserves_native_public_requirements_and_accounts_in
         assert "grok_stream_progress" not in options and "grok_progress_callback" not in options
         assert options["response_format"]["json_schema"]["schema"] == replies.candidate_completion_schema(state["binding"])
         assert receipt["native_rollout_usage"]["usage"]["total_tokens"] == 149
+
+
+def test_candidate_projection_is_not_attempted_before_handoff_validation(candidate_route, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.runtime import candidate_prompt_projection as projection
+    state = candidate_route
+    state["validation_error_at"] = 1
+    monkeypatch.setattr(projection, "project_candidate_prompt",
+        lambda *_: pytest.fail("projection preceded candidate admission"))
+    with pytest.raises(ValueError, match="preflight refusal"):
+        run(state)
+    assert not state["calls"] and state["discovery_calls"] == 0
+
+
+@pytest.mark.parametrize("operation", ["project_candidate_prompt", "select_candidate_prompt"])
+def test_unsupported_candidate_projection_retains_original_input(candidate_route, monkeypatch, operation):
+    from ipfs_accelerate_py.agent_supervisor.runtime import candidate_prompt_projection as projection
+    state = candidate_route
+    def unsupported(*_):
+        raise projection.CandidatePromptProjectionError("authored unsupported representation")
+    monkeypatch.setattr(projection, operation, unsupported)
+    _, receipt = run(state)
+    assert "candidate_prompt_projection" not in receipt
+    assert state["prepared"].provider_prompt.decode() in state["calls"][0][0]
+    assert receipt["candidate_round_preflight"]["requests"] == 1
+
+
+def test_projection_reply_overflow_preserves_valid_admitted_original(candidate_route):
+    from ipfs_accelerate_py.agent_supervisor.runtime import candidate_prompt_projection as projection
+    state = candidate_route
+    wire = json.loads(state["kwargs"]["prompt"])
+    # This boundary fixture has little nested escaping and a large unknown
+    # outer field. Its fully preserved alternative is necessarily larger.
+    native = canonical(dict(contract_version=1, evidence=[], goal="g", scope="s",
+        acceptance="a", authority="u")).decode()
+    wire["native_prompt"] = native
+    wire["unknown_outer_padding"] = ""
+    def render(prompt):
+        model, _ = runner.render_model_prompt(prompt=prompt + runner._candidate_round_guidance(state["binding"]),
+            purpose="coding", workspace=state["service"].workspace, candidate_transport=True)
+        return replies.apply_candidate_reply_contract(model_prompt=model, binding=state["binding"])[0]
+    small = canonical(wire).decode()
+    view = projection.project_candidate_prompt(small)
+    overhead = len(view.provider_prompt.encode()) - len(small.encode())
+    assert overhead > 1
+    wire["unknown_outer_padding"] = "x" * (replies.MAX_PROMPT_BYTES - len(render(small).encode()) - 1)
+    prompt = canonical(wire).decode()
+    original_model = render(prompt)
+    view = projection.project_candidate_prompt(prompt)
+    with pytest.raises(ValueError, match="reply contract exceeds bound"):
+        render(view.provider_prompt)
+    state["admitted_prompt"] = state["kwargs"]["prompt"] = prompt
+    state["binding"].update(native_prompt_sha256=sha(native.encode()), native_prompt_bytes=len(native.encode()),
+        provider_input_sha256=sha(prompt.encode()), provider_input_bytes=len(prompt.encode()))
+    _, receipt = run(state)
+    assert "candidate_prompt_projection" not in receipt
+    assert state["calls"][0][0] == original_model
+    assert receipt["model_prompt_bytes"] == replies.MAX_PROMPT_BYTES - 1
+    assert receipt["candidate_round_preflight"]["requests"] == 1
 
 
 @pytest.mark.parametrize("failure", [None, "wrong_generation", "cancelled", "exit_failure"])
@@ -366,10 +432,14 @@ def test_candidate_route_rejects_partial_or_mixed_baseline_selection(candidate_r
     assert state["validation_calls"] == state["discovery_calls"] == 0 and state["calls"] == []
 
 
-def test_ordinary_route_still_rejects_preparation_and_inherited_candidate_environment(monkeypatch):
+@pytest.mark.parametrize("schema", [
+    "supervisor-owner-candidate-router-input@1", "supervisor-owner-candidate-router-input@99",
+    "supervisor-candidate-provider-view@1", "supervisor-candidate-provider-view@99",
+])
+def test_ordinary_route_still_rejects_preparation_and_inherited_candidate_environment(monkeypatch, schema):
     kwargs = dict(provider="codex_cli", model="gpt-6.1-sol", timeout=1, max_output_tokens=1)
     with pytest.raises(ValueError, match="independent dispatch admission"):
-        runner.run(prompt='{"schema":"supervisor-owner-candidate-router-input@1"}', **kwargs)
+        runner.run(prompt=json.dumps({"schema": schema}), **kwargs)
     monkeypatch.setenv(runner.CANDIDATE_DESCRIPTOR_ENV, "/forged/descriptor")
     with pytest.raises(ValueError, match="explicit owner selection"):
         runner.run(prompt="native instruction", **kwargs)

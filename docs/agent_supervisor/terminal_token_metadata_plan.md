@@ -1369,3 +1369,53 @@ claimed by this live result.
 
 [Closed results, reader qualification, and component measurements](evidence/grok-live-token-census-20261015/manifest.json)
 retain the new observations without rewriting earlier missing token totals.
+
+## October 15: lossless candidate provider representation
+
+The next implementation takes a narrower step than removing indexed evidence.
+Semantic and source-formalization rows can carry required invariant evidence;
+their kind alone does not authorize replacing their bodies with references.
+The new `native-context-object@1` provider representation instead removes one
+layer of JSON string escaping from the second coding attempt. It carries the
+parsed native context and its exact literal suffix, plus every other original
+candidate field. Evidence bodies, unknown fields, public instructions, Doctor
+constraints and public-validation feedback remain inline. Its inverse restores
+the exact admitted owner input, including each evidence item's original status.
+
+The router applies this representation after candidate handoff admission and
+uses it only when the complete model input is strictly smaller in UTF-8 bytes.
+Workspace instructions, retrieval guidance and final reply grammar are included
+in that comparison and must remain identical. Unsupported representations and
+oversized alternatives retain the valid original input. The original owner
+envelope and its admission hash stay unchanged; a versioned receipt binds that
+input to the selected router/model input. Historical replay reconstructs the
+choice from retained owner bytes. Both candidate envelope families are refused
+on ordinary routes, and frozen runtime archives bind the new codec.
+
+The first native integration test exposed a serialization mismatch: public
+checks produce finite decimal timing measurements, while the formal-IR JSON
+serializer rejects every float. The codec now follows the owner envelope's
+canonical JSON contract, retaining finite numbers while rejecting nonfinite
+values, duplicate keys, noncanonical input and excessive size or structure.
+A boundary regression also preserves a valid 255,999-byte legacy model input
+when the alternative would exceed the final reply contract's limit. Review
+additionally caught provider guidance that could upgrade optional evidence to
+required evidence; the representation preserves the original requirement status.
+
+This changes serialization for the conditional second coding call. It does not
+minify files on disk or establish source semantics, omission authority or token
+savings. The previous first call accounted for 269,557 of 310,684 observed
+tokens, so improving that path remains a separate priority. Broader selective
+evidence delivery needs an explicit disclosure contract and a measured ablation;
+the existing required evidence cannot simply disappear from the provider view.
+
+The broader regression snapshot passed 294 checks. After the guidance-only
+correction, 117 focused checks passed on the final bytes: 104 codec cases,
+12 provider/router/archive cases and one full indexed public+Doctor continuation.
+Source and dependency pins remained unchanged within every qualification run.
+The final native fixture reduced the complete second input from 46,230 to
+42,785 bytes (3,445 bytes, about 7.45%). Both real router children, continuation
+admission, retained input audit and replay after cleanup/later source edits run
+natively; provider responses and public-check execution are authored fixtures.
+Five forged receipt variants are refused. These are representation measurements,
+with zero live provider calls and no inferred token savings.

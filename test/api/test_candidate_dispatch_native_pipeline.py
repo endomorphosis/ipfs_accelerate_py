@@ -57,7 +57,12 @@ llm_router.get_llm_provider=lambda *args,**kwargs:object()
 calls=[]
 def canonical(value):return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False).encode()
 def generate(model_prompt,**kwargs):
-    assert prompt in model_prompt and kwargs['side_effecting'] is True
+    if prompt not in model_prompt:
+        from ipfs_accelerate_py.agent_supervisor.runtime.candidate_prompt_projection import project_candidate_prompt, restore_candidate_prompt
+        view=project_candidate_prompt(prompt)
+        assert view.provider_prompt in model_prompt
+        assert restore_candidate_prompt(view.provider_prompt,view.receipt)==prompt
+    assert kwargs['side_effecting'] is True
     assert kwargs['allow_cross_provider_fallback'] is kwargs['allow_local_fallback'] is False
     raw=b'';cursor=None
     for _ in range(32):
