@@ -1104,7 +1104,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "disallowed_tools": provider_options["grok_disallowed_tools"].split(","),
             "effective_toolset_verified": False,
         }
-        if purpose == "coding":
+        # The shared provider supports native schemas through its JSON route.
+        # Combining that route with streaming progress is rejected before CLI
+        # launch, so candidate replies must retain their schema in JSON mode.
+        if purpose == "coding" and response_format is None:
             provider_options.update(grok_stream_progress=True,
                                     grok_progress_callback=_grok_progress_emitter(invocation))
         if response_format is not None:

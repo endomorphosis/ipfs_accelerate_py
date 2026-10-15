@@ -91,6 +91,53 @@ def test_matching_end_still_accepted_without_diagnostic_or_counter_summation():
     assert state["usage_observations"]["summation_permitted"] is False
 
 
+@pytest.mark.parametrize("fields,reason", [
+    ({"PRIVATE_KEY": "PRIVATE_VALUE"}, "unknown_end_fields"),
+    ({"text": "PRIVATE_VALUE"}, "unknown_end_fields"),
+    ({"stop_reason": "end_turn"}, "unknown_end_fields"),
+    ({"usage": None}, "invalid_end_field_shape"),
+    ({"modelUsage": []}, "invalid_end_field_shape"),
+    ({"sessionId": None}, "invalid_end_field_shape"),
+    ({"requestId": False}, "invalid_end_field_shape"),
+    ({"num_turns": True}, "invalid_end_field_shape"),
+    ({"total_cost_usd_ticks": -1}, "invalid_end_field_shape"),
+    ({"total_cost_usd": True}, "invalid_end_field_shape"),
+    ({"usage_is_incomplete": "false"}, "invalid_end_field_shape"),
+    ({"cost_is_partial": 0}, "invalid_end_field_shape"),
+])
+def test_turn_guard_cancelled_compatibility_keeps_all_trailer_shape_checks(fields, reason):
+    parser, state = parse({"type": "max_turns_reached"}, end(stopReason="cancelled", **fields))
+    assert state["stream_tainted"] is True
+    assert state["response_usable"] is False
+    assert state["terminal_rejection"]["reason"] == reason
+    assert parser.final_payload is None
+    assert "PRIVATE" not in json.dumps(state)
+
+
+@pytest.mark.parametrize("first,reason", [
+    ({"type": "error", "subtype": "error_max_turns"}, "end_reason_mismatch"),
+    ({"type": "error", "stopReason": "max_turn_requests"}, "end_reason_mismatch"),
+    ({"type": "end", "stopReason": "max_turn_requests"}, "second_final_envelope"),
+])
+def test_cancelled_trailer_alias_is_limited_to_exact_native_turn_guard(first, reason):
+    parser, state = parse(first, end(stopReason="cancelled", usage={"input_tokens": 7}))
+    assert state["terminal_rejection"]["reason"] == reason
+    assert parser.final_payload is None
+    assert state["response_usable"] is False
+
+
+@pytest.mark.parametrize("tail", [
+    end(stopReason="cancelled", usage={"input_tokens": 7}), {"type": "end"},
+    {"type": "usage", "usage": {"input_tokens": 7}}, b"malformed\n",
+])
+def test_cancelled_trailer_cannot_be_duplicated_or_followed_by_more_accounting(tail):
+    parser, state = parse({"type": "max_turns_reached"},
+                         end(stopReason="cancelled", usage={"input_tokens": 7}), tail)
+    assert state["stream_tainted"] is True
+    assert state["response_usable"] is False
+    assert parser.final_payload is None
+
+
 @pytest.mark.parametrize("schema", [LEGACY_SCHEMA, USAGE_SCHEMA])
 def test_historical_progress_replays_exactly_without_inventing_diagnostics(schema):
     _, current = parse({"type": "max_turns_reached"}, end(sessionId=None))

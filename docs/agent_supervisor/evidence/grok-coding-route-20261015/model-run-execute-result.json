@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "seconds": 695.3998022320447,
+  "source_pins_unchanged": true,
+  "stderr": {
+    "bytes": 0,
+    "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/execute.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stdout": {
+    "bytes": 236698,
+    "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/execute.stdout",
+    "sha256": "6f839cff09ad74e957fe50092d4965e0344342df8384cb7ea21ca0432d92a32e"
+  },
+  "step": "execute"
+}

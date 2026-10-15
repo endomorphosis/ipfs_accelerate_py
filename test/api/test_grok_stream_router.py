@@ -78,7 +78,8 @@ def test_end_event_then_sleep_stays_timeout_with_observation_and_prompt_cleanup(
     assert not Path((tmp_path / "prompt_path").read_text()).exists()
 
 
-@pytest.mark.parametrize("closing", [{"type": "end"}, end(stopReason="max_turn_requests")])
+@pytest.mark.parametrize("closing", [{"type": "end"}, end(stopReason="max_turn_requests"),
+                                    end(stopReason="cancelled")])
 @pytest.mark.parametrize("exit_code", [0, 1])
 def test_max_turns_then_end_retains_failure_and_only_explicit_final_usage(provider, tmp_path, closing, exit_code):
     from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_usage_receipt, grok_outcome_receipt
@@ -91,6 +92,11 @@ def test_max_turns_then_end_retains_failure_and_only_explicit_final_usage(provid
     outcome = grok_outcome_receipt(observation)
     assert outcome["reason_code"] == "max_turns"
     assert outcome["envelope_observed"] is True
+    if closing.get("stopReason") == "cancelled":
+        assert outcome["stop_reason"] == "cancelled"
+        assert outcome["classification_source"] == "native_type"
+        assert outcome["error_observed"] is True
+    assert outcome["process_outcome"] == ("returned" if exit_code == 0 else "failed")
     assert observation["native_grok_task_complete"] is False
     usage = grok_usage_receipt(observation)
     if "usage" in closing:
@@ -107,6 +113,49 @@ def test_max_turns_then_end_retains_failure_and_only_explicit_final_usage(provid
     assert progress["usage_observations"]["retained_events"] == 8
     assert progress["usage_observations"]["summation_permitted"] is False
     assert not Path((tmp_path / "prompt_path").read_text()).exists()
+
+
+@pytest.mark.parametrize("incomplete", [None, True])
+def test_cancelled_turn_cap_trailer_retains_one_final_envelope_with_unknown_or_partial_usage(provider, tmp_path, incomplete):
+    from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_usage_receipt
+    closing = end(stopReason="cancelled", sessionId="private-session", requestId="private-request",
+        num_turns=8, usage={"input_tokens": 13, "cache_read_input_tokens": 21,
+            "cache_creation_input_tokens": 2, "output_tokens": 5, "reasoning_tokens": 3},
+        modelUsage={"private-model": {"inputTokens": 999999}}, total_cost_usd=0.01,
+        total_cost_usd_ticks=10000)
+    if incomplete is not None:
+        closing["usage_is_incomplete"] = incomplete
+    frames = [*({"type": "usage", "usage": {"input_tokens": 9000}} for _ in range(8)),
+              {"type": "max_turns_reached"}, closing]
+    with pytest.raises(llm_router.LLMRouterError):
+        provider.generate("private prompt", timeout=3,
+            grok_cli_cmd=command(tmp_path, frames, suffix="sys.exit(1)\n"), grok_stream_progress=True)
+    observation = get_last_cli_observation("grok_cli")
+    usage = grok_usage_receipt(observation)
+    assert usage["usage"] == {"input_tokens": 13, "cached_input_tokens": 21,
+        "cache_write_input_tokens": 2, "output_tokens": 5, "reasoning_output_tokens": 3}
+    assert usage["usage_complete_observed"] is (None if incomplete is None else False)
+    assert usage["task_complete_observed"] is False
+    assert usage["observed_final_usage_records"] == 1
+    assert usage["billing_total_verified"] is False
+    assert observation["native_grok_reason_code"] == "max_turns"
+    progress = observation["native_grok_progress"]
+    assert progress["terminal_rejection"] is None
+    assert progress["usage_observations"]["summation_permitted"] is False
+    assert progress["response_usable"] is False
+
+
+def test_cancelled_turn_cap_trailer_then_live_process_remains_timeout(provider, tmp_path):
+    frames = [{"type": "max_turns_reached"}, end(stopReason="cancelled")]
+    with pytest.raises(subprocess.TimeoutExpired):
+        provider.generate("private prompt", timeout=0.3,
+            grok_cli_cmd=command(tmp_path, frames, suffix="time.sleep(30)\n"), grok_stream_progress=True)
+    observation = get_last_cli_observation("grok_cli")
+    assert observation["native_grok_reason_code"] == "timeout"
+    assert observation["native_grok_process_outcome"] == "timeout"
+    assert observation["native_grok_task_complete"] is False
+    assert observation["native_grok_input_tokens"] == 12
+    assert observation["native_grok_progress"]["response_usable"] is False
 
 
 def test_error_with_end_marker_preserves_failure_without_native_usage(provider, tmp_path):

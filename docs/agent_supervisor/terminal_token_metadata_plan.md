@@ -1254,3 +1254,38 @@ and [safe live readout](evidence/planner-acceptance-20261015/prior-readout-final
 preserve the failed trial. Container cleanup was observed. A fresh diagnostic
 will use the corrected parser with the same live controls; the previous result
 does not establish successful task completion or token savings.
+
+## October 15: qualify the corrected plan and repair Grok coding routes
+
+The corrected model-planning diagnostic now admits two goals and one task,
+including all three public criteria. It records two distinct coding router
+receipts with matched continuation accounting. Public structure and eigenpair
+checks pass after each attempt, while timing remains inconclusive. Official
+reward remains **0**. The **26,977 observed tokens cover planning only**; both
+coding usage totals remain unknown. The model-planning phase took 120.576 seconds
+and the native supervisor run took 521.323 seconds.
+
+The closed diagnostics exposed two further integration defects. First, the
+native eight-turn limit emits `max_turns_reached` followed by an `end` trailer
+whose `stopReason` is `cancelled`. Requiring identical reasons discarded its
+final usage envelope. The parser now accepts only that exact additional pair,
+preserves the first `max_turns` failure, keeps the actual cancellation reason,
+and observes counters from the untouched final envelope. Timeout still takes
+precedence. Shape, identity, duplicate-trailer and conflicting-spend checks
+remain enforced, and per-event counters are never summed.
+
+Second, candidate dispatch requested both streaming progress and a native JSON
+schema. The shared Grok adapter rejects that combination before launching the
+CLI. Schema-bearing candidate attempts now use its supported JSON route;
+schema-free coding retains streaming progress. New tests reach the actual
+provider adapter with authored CLI responses, so a mock cannot hide this option
+conflict again. Invalid candidate generation, cancellation and nonzero exits
+remain failures, with their observed usage retained.
+
+[Qualification](evidence/grok-coding-route-20261015/qualification.json) records
+415 distinct passing cases. The initial three failing trailer regressions are
+retained. One test comment/import cleanup supersedes its earlier capture-module
+run; all selected current source hashes match. These are offline qualifications,
+not a new live score or retrospective recovery of discarded counters. The
+[retained model run](evidence/grok-coding-route-20261015/model-run-readout-final.json)
+continues to report missing coding usage honestly.

@@ -8231,7 +8231,9 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     if stream_observation is not None:
                         # Stream diagnostics describe the transport only. A final
                         # event never overrides process timeout or grants retry.
-                        observed.update(native_grok_observation(proc.final_payload, exit_code=None, timed_out=True))
+                        from .cli_runtime.grok_stream_capture import native_grok_stream_observation
+                        observed.update(native_grok_stream_observation(proc.final_payload,
+                            progress=stream_observation, exit_code=None, timed_out=True))
                         observed["native_grok_progress"] = stream_observation
                     set_last_cli_observation("grok_cli", observed)
                     raise
@@ -8278,6 +8280,9 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 observed = {key: value for key, value in observed.items() if not key.startswith("native_grok_")}
                 observed.update(native_grok_observation(payload, exit_code=proc.returncode))
                 if stream_observation is not None:
+                    from .cli_runtime.grok_stream_capture import native_grok_stream_observation
+                    observed.update(native_grok_stream_observation(payload,
+                        progress=stream_observation, exit_code=proc.returncode))
                     observed["native_grok_progress"] = stream_observation
                     if not stream_observation["response_usable"]:
                         observed["native_grok_task_complete"] = False

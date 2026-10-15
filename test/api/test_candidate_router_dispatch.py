@@ -191,9 +191,63 @@ def test_candidate_dispatch_preserves_native_public_requirements_and_accounts_in
     assert runner.CANDIDATE_DESCRIPTOR_ENV not in os.environ
     assert runner.CANDIDATE_DESCRIPTOR_DIGEST_ENV not in os.environ
     if provider == "grok_cli":
-        assert options["grok_max_turns"] == 128 and options["grok_stream_progress"] is True
+        assert options["grok_max_turns"] == 128
+        assert "grok_stream_progress" not in options and "grok_progress_callback" not in options
         assert options["response_format"]["json_schema"]["schema"] == replies.candidate_completion_schema(state["binding"])
         assert receipt["native_rollout_usage"]["usage"]["total_tokens"] == 149
+
+
+@pytest.mark.parametrize("failure", [None, "wrong_generation", "cancelled", "exit_failure"])
+def test_candidate_grok_options_reach_real_structured_adapter(candidate_route, monkeypatch, capsys, failure):
+    """Exercise adapter option validation too; only native CLI execution is authored."""
+    from ipfs_accelerate_py import llm_router
+
+    state = candidate_route
+    state.update(provider="grok_cli", model="grok-4.7")
+    monkeypatch.setattr(llm_router, "find_grok_cli", lambda: "/fixture/grok")
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _: True)
+    native_provider = llm_router._get_grok_cli_provider()
+    subprocess_run = llm_router.subprocess.run
+    calls = []
+    reply = json.loads(state["reply"])
+    if failure == "wrong_generation":
+        reply["workspace_generation"] = "0" * 64
+
+    def native_cli(argv, **kwargs):
+        if not argv or argv[0] != "/fixture/grok":
+            return subprocess_run(argv, **kwargs)
+        calls.append(argv)
+        assert argv[argv.index("--output-format") + 1] == "json"
+        assert argv[argv.index("--max-turns") + 1] == "128"
+        assert "--json-schema" in argv
+        return SimpleNamespace(returncode=1 if failure == "exit_failure" else 0, stderr="",
+            stdout=json.dumps(dict(type="end", stopReason="cancelled" if failure == "cancelled" else "end_turn",
+                structuredOutput=reply, num_turns=2,
+                usage=dict(input_tokens=123, cache_read_input_tokens=19, output_tokens=7, total_tokens=149))))
+
+    monkeypatch.setattr(llm_router.subprocess, "run", native_cli)
+
+    def native_adapter(prompt, **kwargs):
+        assert kwargs["side_effecting"] is True
+        assert kwargs["allow_local_fallback"] is kwargs["allow_cross_provider_fallback"] is False
+        return native_provider.generate(prompt, **kwargs)
+
+    monkeypatch.setattr(llm_router, "generate_text", native_adapter)
+    if failure is None:
+        output, receipt = run(state)
+        assert json.loads(output) == reply
+        assert receipt["status"] == "provider_returned"
+        assert receipt["candidate_reply_contract"]["response_validated"] is True
+    else:
+        with pytest.raises((ValueError, llm_router.LLMRouterError)):
+            run(state)
+        rows = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")]
+        receipt = next(row for row in rows if row.get("schema") == "router-implementation-invocation@1")
+        assert receipt["status"] == "failed"
+        assert receipt["candidate_reply_contract"]["response_validated"] is False
+    assert len(calls) == receipt["router_calls"] == 1
+    assert receipt["native_rollout_usage"]["usage"]["total_tokens"] == 149
+    assert receipt["completion_authority"] is False
 
 
 def test_candidate_reply_binds_input_generation_after_provider_edits(candidate_route):

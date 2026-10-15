@@ -85,13 +85,15 @@ def test_any_event_after_terminal_invalidates_terminal_payload(tail):
     assert parser.snapshot()["events_after_final"] == 1
 
 
+@pytest.mark.parametrize("stop_reason", ["max_turn_requests", "cancelled"])
 @pytest.mark.parametrize("chunked", [False, True])
-def test_max_turns_marker_then_matching_end_retains_final_usage_not_event_sum(chunked):
-    # Authored from the pinned CLI's documented protocol; the live failure
-    # retained event counts, not the raw closing envelope or its token totals.
-    from ipfs_accelerate_py.cli_runtime.grok_native_usage import native_grok_observation, grok_usage_receipt
+def test_max_turns_marker_then_matching_end_retains_final_usage_not_event_sum(chunked, stop_reason):
+    # The cancelled pair was observed in closed live diagnostics; the matching
+    # reason follows the documented protocol. All identifiers and token values
+    # below are authored fixtures, not a retained raw closing envelope.
+    from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_usage_receipt
     parser = GrokStreamParser()
-    terminal = end(stopReason="max_turn_requests", sessionId="private-session", num_turns=8,
+    terminal = end(stopReason=stop_reason, sessionId="private-session", num_turns=8,
                    usage={"input_tokens": 13, "output_tokens": 5}, usage_is_incomplete=True)
     frames = encoded(*({"type": "usage", "stopReason": "tool_use", "usage": {"input_tokens": 9000}}
                        for _ in range(8)), {"type": "max_turns_reached"}, terminal)
@@ -105,7 +107,8 @@ def test_max_turns_marker_then_matching_end_retains_final_usage_not_event_sum(ch
     assert state["final_reason_code"] == "max_turns"
     assert state["event_counts"]["max_turns_reached"] == state["event_counts"]["end"] == 1
     assert state["events_after_final"] == 1
-    observed = native_grok_observation(parser.final_payload, exit_code=1)
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import native_grok_stream_observation
+    observed = native_grok_stream_observation(parser.final_payload, progress=state, exit_code=1)
     assert observed["native_grok_reason_code"] == "max_turns"
     assert grok_usage_receipt(observed)["usage"] == {"input_tokens": 13, "output_tokens": 5}
     assert grok_usage_receipt(observed)["usage_complete_observed"] is False
@@ -133,7 +136,7 @@ def test_one_bare_end_marker_preserves_terminal_outcome_and_usage(terminal, code
 
 
 @pytest.mark.parametrize("tail", [
-    [end()], [end(stopReason="cancelled")],
+    [end()], [end(stopReason="Cancelled")], [end(stopReason="refusal")],
     [end(stopReason="max_turn_requests", text="private response")],
     [end(stopReason="max_turn_requests", stop_reason="end_turn")],
     [end(stopReason="max_turn_requests", usage="invalid")],
@@ -154,6 +157,7 @@ def test_contradictory_or_substantive_records_after_failure_still_taint_stream(t
     assert parser.final_payload is None
 
 
+@pytest.mark.parametrize("stop_reason", ["max_turn_requests", "cancelled"])
 @pytest.mark.parametrize("field,previous,current", [
     ("usage", {"input_tokens": 9}, {"input_tokens": 7}),
     ("usage", {"input_tokens": True}, {"input_tokens": 1}),
@@ -168,24 +172,25 @@ def test_contradictory_or_substantive_records_after_failure_still_taint_stream(t
     ("total_cost_usd", 0, 0.0),
     ("total_cost_usd_ticks", 1, 2),
 ])
-def test_conflicting_terminal_identity_or_spend_cannot_be_replaced_by_end(field, previous, current):
+def test_conflicting_terminal_identity_or_spend_cannot_be_replaced_by_end(field, previous, current, stop_reason):
     parser = GrokStreamParser()
     parser.feed(encoded({"type": "max_turns_reached", field: previous},
-                        end(stopReason="max_turn_requests", **{field: current})))
+                        end(stopReason=stop_reason, **{field: current})))
     assert close(parser, code=1)["stream_tainted"] is True
     assert parser.final_payload is None
 
 
+@pytest.mark.parametrize("stop_reason", ["max_turn_requests", "cancelled"])
 @pytest.mark.parametrize("field,value", [
     ("usage", {"input_tokens": 9}), ("usage_is_incomplete", True),
     ("sessionId", "private-session"), ("requestId", "private-request"),
     ("num_turns", 8), ("modelUsage", {"model": {"inputTokens": 7}}),
     ("cost_is_partial", False), ("total_cost_usd", 0), ("total_cost_usd_ticks", 1),
 ])
-def test_end_cannot_erase_existing_terminal_identity_or_spend(field, value):
+def test_end_cannot_erase_existing_terminal_identity_or_spend(field, value, stop_reason):
     parser = GrokStreamParser()
     parser.feed(encoded({"type": "max_turns_reached", field: value},
-                        {"type": "end", "stopReason": "max_turn_requests"}))
+                        {"type": "end", "stopReason": stop_reason}))
     assert close(parser, code=1)["stream_tainted"] is True
     assert parser.final_payload is None
 

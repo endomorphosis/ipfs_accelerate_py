@@ -191,6 +191,30 @@ def grok_stream_progress_summary(value: object) -> dict:
     return validate_grok_stream_progress(result)
 
 
+def native_grok_stream_observation(payload: object, *, progress: dict,
+                                   exit_code: int | None, timed_out: bool = False) -> dict:
+    """Keep final-envelope accounting separate from the first terminal cause.
+
+    The turn guard can emit ``max_turns_reached`` followed by an ``end`` with
+    ``stopReason=cancelled``. The untouched trailer supplies the sole final
+    usage record; its cancellation does not replace the preceding turn guard.
+    Timeout still takes precedence, and neither record proves task completion.
+    """
+    from .grok_native_usage import native_grok_observation
+    state = validate_grok_stream_progress(progress)
+    observed = native_grok_observation(payload, exit_code=exit_code, timed_out=timed_out)
+    if (not state["stream_tainted"] and state["final_event_type"] == "max_turns_reached"
+            and state["final_reason_code"] == "max_turns" and state["events_after_final"] == 1
+            and type(payload) is dict and payload.get("type") == "end"
+            and payload.get("stopReason") == "cancelled"):
+        observed["native_grok_error_observed"] = True
+        observed["native_grok_task_complete"] = False
+        if not timed_out:
+            observed["native_grok_reason_code"] = "max_turns"
+            observed["native_grok_classification_source"] = "native_type"
+    return observed
+
+
 def _unique(pairs):
     result = {}
     for key, value in pairs:
@@ -312,7 +336,12 @@ class GrokStreamParser:
             return self._reject_end_trailer("unknown_end_fields", event)
         from .grok_native_usage import native_grok_observation
         reason = native_grok_observation(event, exit_code=0)["native_grok_reason_code"]
-        if reason in {"unknown", "end_turn"} or reason != self._state["final_reason_code"]:
+        # The turn guard's protocol trailer uses cancellation to end the
+        # stream. Accept only this exact pair, retaining the original cause
+        # in progress and projecting it separately from untouched spend data.
+        turn_guard_cancelled = (self._state["final_event_type"] == "max_turns_reached"
+            and self._state["final_reason_code"] == "max_turns" and event.get("stopReason") == "cancelled")
+        if reason in {"unknown", "end_turn"} or (reason != self._state["final_reason_code"] and not turn_guard_cancelled):
             return self._reject_end_trailer("end_reason_mismatch", event)
         invalid_fields = []
         for key in ("usage", "modelUsage"):

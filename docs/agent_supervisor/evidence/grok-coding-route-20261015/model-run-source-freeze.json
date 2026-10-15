@@ -1,0 +1,36 @@
+{
+  "independent_review": {
+    "bytes": 3902,
+    "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/agent-review.json",
+    "sha256": "e33bc8545c40bf01cb8586481057c3897c2d1ed1e2cc59008e1ebdbe3e11cd36"
+  },
+  "manifest": {
+    "bytes": 4239,
+    "path": "/home/barberb/lift_coding/.worktrees/supervisor-planner-acceptance-20261015/docs/agent_supervisor/evidence/planner-acceptance-20261015/manifest.json",
+    "sha256": "229b8691bbb067ac688de0806c9ab31fed237682abd71389e899d29f808718d4"
+  },
+  "observed_at": "2026-10-15T01:03:00.066776+00:00",
+  "production_source_pins_match": true,
+  "provider_generation_calls": 0,
+  "qualification": {
+    "bytes": 3095,
+    "path": "/home/barberb/lift_coding/.worktrees/supervisor-planner-acceptance-20261015/docs/agent_supervisor/evidence/planner-acceptance-20261015/qualification.json",
+    "sha256": "215a850e479a5f255f2550c404c4d1c627348f67e60f1c74d008d40a273e1753"
+  },
+  "qualified_tests": 155,
+  "recipe": {
+    "bytes": 149865,
+    "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/recipe.json",
+    "sha256": "3c512c8480559f51ee5f4e4798168e034534476af7149099ff07b6ce589588b1"
+  },
+  "root_authorized_source_freeze": true,
+  "runner": {
+    "bytes": 11763,
+    "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/run.py",
+    "sha256": "9b3d224087fbc39930dcc3b5fe952c753e77f70f5354a201d385a99d761cf7f5"
+  },
+  "schema": "planner-acceptance-source-freeze@1",
+  "scope": "One fresh authorized follow-up; same treatment controls, no automatic retry or provider fallback.",
+  "source_commit": "4acfdce7aa7059d40e2bdcfa9a0470bce195c40c",
+  "worktree_clean": true
+}
