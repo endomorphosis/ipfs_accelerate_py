@@ -276,6 +276,7 @@ parser.add_argument('--numerical-obligation-descriptor-sha256')
 parser.add_argument('--source-lookup-descriptor',type=pathlib.Path)
 parser.add_argument('--source-lookup-descriptor-sha256')
 parser.add_argument('--grok-coding-max-turns',type=int,default=128)
+parser.add_argument('--grok-pruning-profile',choices=('legacy','grok-pruning-off@1','grok-pruning-on@1'),default='legacy')
 parser.add_argument('--source-view-profile',default='disabled',choices=('disabled','identity@1','python-whitespace@1','python-comments@1'))
 parser.add_argument('--source-edit-mode',default='disabled',choices=('disabled','mapped-span@1','mapped-span@2'))
 parser.add_argument('--source-view-descriptor',type=pathlib.Path)
@@ -301,6 +302,20 @@ source_view_values=(args.source_view_descriptor,args.source_view_descriptor_sha2
 candidate_values=(args.candidate_dispatch_handoff,args.candidate_dispatch_handoff_sha256,args.candidate_round_descriptor,args.candidate_round_descriptor_sha256)
 if any(value is not None for value in candidate_values):
  if not all(candidate_values) or args.purpose!='coding' or args.semantic_repository is None or args.preflight or args.semantic_metadata_census_only or args.semantic_working_set_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values) or any(residual_values) or any(instruction_values) or any(formalization_values) or any(numerical_obligation_values) or any(source_lookup_values) or any(source_view_values) or args.source_view_profile!='disabled' or args.source_edit_mode!='disabled' or args.semantic_working_set!='legacy' or args.semantic_metadata_view!='legacy' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.coding_reply_mode!='legacy':raise SystemExit('exact candidate handoff requires independent ordinary coding')
+pruning_path=root/'grok-pruning.json';deployed_pruning='legacy'
+if args.grok_pruning_profile!='legacy' or pruning_path.exists() or pruning_path.is_symlink():
+ from ipfs_accelerate_py.cli_runtime.grok_pruning import validate_grok_pruning_profile,validate_grok_pruning_declaration,observe_deployed_grok_pruning
+ validate_grok_pruning_profile(args.grok_pruning_profile,provider=args.provider,purpose=args.purpose)
+if pruning_path.exists() or pruning_path.is_symlink():
+ import stat
+ info=pruning_path.lstat()
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=0o444 or info.st_size>4096:raise SystemExit('protected Grok pruning declaration required')
+ pruning_declaration=validate_grok_pruning_declaration(json.loads(pruning_path.read_bytes()))
+ deployed_pruning=pruning_declaration['profile']
+if not args.preflight and (args.purpose!='coding' and deployed_pruning!='legacy' or args.purpose=='coding' and args.grok_pruning_profile!=deployed_pruning):raise SystemExit('Grok pruning selection differs from deployment')
+if args.grok_pruning_profile!='legacy':
+ if args.preflight or args.semantic_metadata_census_only or args.semantic_working_set_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values) or any(candidate_values) or args.source_edit_mode!='disabled':raise SystemExit('pruning requires independent ordinary Grok coding')
+ observe_deployed_grok_pruning(args.grok_pruning_profile)
 if not 1<=args.grok_coding_max_turns<=128:raise SystemExit('Grok coding turn bound must be 1 through 128')
 if args.grok_coding_max_turns!=128 and (args.provider!='grok_cli' or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('nondefault coding turns require isolated Grok model-router coding')
 if args.source_edit_mode!='disabled' and (args.source_view_profile=='disabled' or args.preflight or args.semantic_metadata_census_only or args.semantic_working_set_census_only):raise SystemExit('source editing requires selected coding views')
@@ -389,6 +404,7 @@ else:
  if args.numerical_obligation_descriptor is not None:sys.argv+=['--numerical-obligation-descriptor',str(args.numerical_obligation_descriptor),'--numerical-obligation-descriptor-sha256',args.numerical_obligation_descriptor_sha256]
  if args.source_lookup_descriptor is not None:sys.argv+=['--source-lookup-descriptor',str(args.source_lookup_descriptor),'--source-lookup-descriptor-sha256',args.source_lookup_descriptor_sha256]
  if args.grok_coding_max_turns!=128:sys.argv+=['--grok-coding-max-turns',str(args.grok_coding_max_turns)]
+ if args.grok_pruning_profile!='legacy':sys.argv+=['--grok-pruning-profile',args.grok_pruning_profile]
  if args.source_view_profile!='disabled':sys.argv+=['--source-view-profile',args.source_view_profile,'--source-view-descriptor',str(args.source_view_descriptor),'--source-view-descriptor-sha256',args.source_view_descriptor_sha256]
  if args.source_edit_mode!='disabled':sys.argv+=['--source-edit-mode',args.source_edit_mode]
  if any(candidate_values):sys.argv+=['--candidate-dispatch-handoff',str(args.candidate_dispatch_handoff),'--candidate-dispatch-handoff-sha256',args.candidate_dispatch_handoff_sha256,'--candidate-round-descriptor',str(args.candidate_round_descriptor),'--candidate-round-descriptor-sha256',args.candidate_round_descriptor_sha256]
@@ -396,9 +412,13 @@ else:
 """
 
 
-async def install_worker_boundary(environment, *, container_name: str, output: Path, provider: str = "codex_cli") -> dict:
+async def install_worker_boundary(environment, *, container_name: str, output: Path, provider: str = "codex_cli",
+                                  grok_pruning_profile: str = "legacy") -> dict:
     if provider not in {"codex_cli", "grok_cli"}:
         raise ValueError("explicit supported container provider required")
+    from ipfs_accelerate_py.cli_runtime.grok_pruning import (
+        validate_grok_pruning_profile, render_grok_pruning_config, grok_pruning_declaration, grok_pruning_selection)
+    validate_grok_pruning_profile(grok_pruning_profile, provider=provider)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
 
@@ -480,6 +500,15 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
         + ROOT
         + "/bin/worker-entry *\n"
     )
+    pruning_files = []
+    if grok_pruning_profile != "legacy":
+        declaration = grok_pruning_declaration(grok_pruning_profile)
+        pruning_files = [
+            ("grok-pruning-config", render_grok_pruning_config(grok_pruning_profile),
+                ROOT + "/worker-home/.grok/config.toml", "0444"),
+            ("grok-pruning-selection", (json.dumps(declaration, sort_keys=True) + "\n").encode(),
+                ROOT + "/grok-pruning.json", "0444"),
+        ]
     with tempfile.TemporaryDirectory() as temporary:
         for name, data, target, mode in [
             ("boundary", raw, ROOT + "/container-boundary.json", "0444"),
@@ -488,6 +517,7 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
             ("worker", WORKER_ENTRY.encode(), ROOT + "/bin/worker-entry", "0555"),
             ("source-lookup", SOURCE_LOOKUP_ENTRY.encode(), ROOT + "/bin/source-lookup", "0555"),
             ("sudoers", sudoers.encode(), "/etc/sudoers.d/supervisor-worker", "0440"),
+            *pruning_files,
         ]:
             path = Path(temporary) / name
             path.write_bytes(data)
@@ -502,11 +532,14 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
     )
     result = {
         "schema": "container-worker-deployment@1",
+        **grok_pruning_selection(grok_pruning_profile),
+        **({"grok_pruning_declaration": declaration} if pruning_files else {}),
         "boundary": boundary,
         "boundary_sha256": hashlib.sha256(raw).hexdigest(),
         "implementation_command": ROOT
         + "/bin/router-worker --provider " + provider + " --model "
-        + ("grok-4.7" if provider == "grok_cli" else "gpt-6.1-sol") + " --reasoning-effort high --timeout 90",
+        + ("grok-4.7" if provider == "grok_cli" else "gpt-6.1-sol") + " --reasoning-effort high --timeout 90"
+        + (" --grok-pruning-profile " + grok_pruning_profile if grok_pruning_profile != "legacy" else ""),
         "candidate_runner_argv": [ROOT + "/bin/validation-worker"],
         "worker_worktree_root": ROOT + "/worktrees",
         "provider_calls": 0,
@@ -516,7 +549,8 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
     return result
 
 
-async def deploy_worker_boundary(environment, *, output: Path, provider: str = "codex_cli") -> dict:
+async def deploy_worker_boundary(environment, *, output: Path, provider: str = "codex_cli",
+                                 grok_pruning_profile: str = "legacy") -> dict:
     """Fresh Harbor deployment: install and exercise the actual worker boundary."""
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
@@ -524,7 +558,8 @@ async def deploy_worker_boundary(environment, *, output: Path, provider: str = "
     # the installer independently compares engine and in-container namespaces.
     container = await environment._platform._resolve_service_container("main")
     installed = await install_worker_boundary(
-        environment, container_name=container, output=output / "installation", provider=provider
+        environment, container_name=container, output=output / "installation", provider=provider,
+        **({"grok_pruning_profile": grok_pruning_profile} if grok_pruning_profile != "legacy" else {})
     )
     qualified = await qualify_worker_boundary(environment, output=output / "qualification")
     result = {**installed, "qualified": qualified["qualified"], "qualification": qualified}

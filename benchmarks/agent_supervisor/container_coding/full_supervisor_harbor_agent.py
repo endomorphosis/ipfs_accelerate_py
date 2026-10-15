@@ -5,6 +5,11 @@ Installation is setup time, measured by Harbor separately for both harnesses.
 """
 from __future__ import annotations
 
+from ipfs_accelerate_py.cli_runtime.grok_pruning import (
+    DEFAULT_GROK_PRUNING_PROFILE, grok_pruning_selection,
+    require_grok_pruning_archive, grok_pruning_runtime_matches,
+)
+
 from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
     DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns, grok_coding_selection,
     require_grok_coding_archive, grok_coding_runtime_matches,
@@ -341,6 +346,7 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                  semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
                  grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
+                 grok_pruning_profile: str = DEFAULT_GROK_PRUNING_PROFILE,
                  candidate_rounds: int = 1,
                  doctor_coding_policy: str | None = None,
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
@@ -393,6 +399,12 @@ class FullSupervisorAgent(BaseAgent):
         self.grok_coding_max_turns = validate_grok_coding_max_turns(
             grok_coding_max_turns, provider=selected_provider["provider"])
         self._frozen_grok_coding_max_turns = self.grok_coding_max_turns
+        from .benchmark_controls import validate_full_supervisor_grok_pruning
+        self.grok_pruning_profile = self._frozen_grok_pruning_profile = validate_full_supervisor_grok_pruning(
+            grok_pruning_profile, provider=selected_provider["provider"],
+            metadata_census_only=metadata_census_only, working_set_census_only=working_set_census_only,
+            candidate_rounds=selected_rounds, doctor_coding_policy=doctor_coding_policy,
+            source_edit_mode=self.source_edit_mode, planning_mode=self.planning_mode)
         if self.grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS and metadata_census_only:
             raise ValueError("nondefault coding turns require generation, not metadata census")
         if type(metadata_census_only) is not bool:
@@ -483,6 +495,15 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("prepared Grok coding turn bound changed")
         return value
 
+    def _checked_grok_pruning_profile(self):
+        from .benchmark_controls import grok_pruning_from_controls
+        selected = grok_pruning_from_controls({key: getattr(self, key) for key in (
+            "grok_pruning_profile", "provider_profile", "metadata_census_only", "working_set_census_only",
+            "candidate_rounds", "doctor_coding_policy", "source_edit_mode", "planning_mode") if hasattr(self, key)})
+        if selected != getattr(self, "_frozen_grok_pruning_profile", DEFAULT_GROK_PRUNING_PROFILE):
+            raise ValueError("prepared Grok pruning profile changed")
+        return selected
+
     def _checked_semantic_working_set(self):
         mode = validate_semantic_working_set(getattr(self, "semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET),
             arm=self.arm, source_view_profile=getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
@@ -571,6 +592,8 @@ class FullSupervisorAgent(BaseAgent):
         require_semantic_working_set_archive(manifest, working_set)
         grok_turns = self._checked_grok_coding_max_turns()
         require_grok_coding_archive(manifest, grok_turns)
+        grok_pruning = self._checked_grok_pruning_profile()
+        require_grok_pruning_archive(manifest, grok_pruning)
         require_doctor_coding_archive(manifest, candidate_rounds, doctor_coding_policy)
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
@@ -600,6 +623,7 @@ class FullSupervisorAgent(BaseAgent):
                                 **({"setup_cache_selection": selection} if selection is not None else {}))
         boundary = self.logs_dir / "worker-boundary"
         deployed_boundary = await deploy_worker_boundary(environment, output=boundary,
+            **grok_pruning_selection(grok_pruning),
             **({"provider": "grok_cli"} if selected_provider["provider"] == "grok_cli" else {}))
         if getattr(self, "metadata_census_only", False) or working_set_census:
             if not working_set_census and validate_source384_binding(manifest) is None:
@@ -650,6 +674,8 @@ class FullSupervisorAgent(BaseAgent):
         require_semantic_working_set_archive(manifest, working_set)
         grok_turns = self._checked_grok_coding_max_turns()
         require_grok_coding_archive(manifest, grok_turns)
+        grok_pruning = self._checked_grok_pruning_profile()
+        require_grok_pruning_archive(manifest, grok_pruning)
         require_doctor_coding_archive(manifest, candidate_rounds, doctor_coding_policy)
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
@@ -696,6 +722,8 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--candidate-rounds", "2", "--doctor-coding-policy", doctor_coding_policy]
         if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
             argv += ["--grok-coding-max-turns", str(grok_turns)]
+        if grok_pruning != DEFAULT_GROK_PRUNING_PROFILE:
+            argv += ["--grok-pruning-profile", grok_pruning]
         if planning_mode != DEFAULT_PLANNING_MODE:
             argv += ["--planning-mode", planning_mode]
         if numerical_profile is not None:
@@ -758,6 +786,7 @@ class FullSupervisorAgent(BaseAgent):
                             **semantic_working_set_observation(working_set),
                             **working_set_census_observation(working_set_census),
                             **grok_coding_selection(grok_turns),
+                            **grok_pruning_selection(grok_pruning),
                             **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
                             **numerical_observation(numerical_profile, self.arm),
                             **planning_observation(planning_mode),
@@ -817,6 +846,11 @@ class FullSupervisorAgent(BaseAgent):
                     context.metadata["grok_coding_runtime_policy_matches"] = grok_coding_runtime_matches(report, grok_turns)
                     context.metadata["grok_coding_not_applicable_provider_free"] = (
                         grok_coding_not_applicable_provider_free(report, grok_turns))
+                if grok_pruning != DEFAULT_GROK_PRUNING_PROFILE:
+                    context.metadata["grok_pruning_runtime_declared_matches"] = (
+                        type(report.get("grok_pruning_profile")) is str
+                        and report["grok_pruning_profile"] == grok_pruning)
+                    context.metadata["grok_pruning_runtime_policy_matches"] = grok_pruning_runtime_matches(report, grok_pruning)
                 if candidate_rounds == 2:
                     context.metadata["doctor_coding_runtime_declared_matches"] = doctor_coding_runtime_declared_matches(
                         report, candidate_rounds, doctor_coding_policy)

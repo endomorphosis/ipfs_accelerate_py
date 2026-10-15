@@ -115,6 +115,10 @@ def _walk(obj: Any, meta: dict[str, Any], *, depth: int = 0) -> None:
             _walk(model_usage, meta, depth=depth + 1)
         for key, value in obj.items():
             lk = str(key)
+            # This is a host-created preflight receipt, never native text.
+            # Do not mine nested fields from an untrusted lookalike either.
+            if lk == "native_grok_pruning":
+                continue
             if lk.lower() in _SKIP_KEYS or lk in _SKIP_KEYS:
                 continue
             if lk in _ID_KEYS or lk in _MODEL_KEYS or lk in _USAGE_KEYS:
@@ -163,15 +167,35 @@ def extract_cli_metadata(
             _walk(parsed, meta)
     if extra:
         for key, value in extra.items():
+            if key == "native_grok_pruning":
+                continue
             _put(meta, str(key), value)
-    return sanitize_session_metadata(meta)
+    clean = sanitize_session_metadata(meta)
+    if extra and "native_grok_pruning" in extra:
+        _preserve_grok_pruning(clean, provider, extra["native_grok_pruning"])
+    return clean
+
+
+def _preserve_grok_pruning(clean: dict[str, Any], provider: str, value: Any) -> None:
+    if str(provider or "").strip().lower().replace("-", "_") != "grok_cli":
+        return
+    from .grok_pruning import validate_grok_pruning_preflight
+    try:
+        receipt = validate_grok_pruning_preflight(value)
+    except (TypeError, ValueError):
+        return
+    if receipt:
+        clean["native_grok_pruning"] = receipt
 
 
 def set_last_cli_observation(provider: str, payload: Mapping[str, Any]) -> None:
     key = str(provider or "").strip().lower().replace("-", "_")
     if not key:
         return
-    clean = sanitize_session_metadata(payload)
+    # Reserved structured receipts must never pass through the generic nested
+    # value stringifier, even if the candidate is malformed or contains text.
+    clean = sanitize_session_metadata({name: value for name, value in payload.items()
+                                       if name != "native_grok_pruning"})
     # The final runner receipt needs the closed transport snapshot intact;
     # generic session metadata deliberately stringifies arbitrary nested data.
     # Preserve this one validated protocol object only in the last observation.
@@ -181,6 +205,8 @@ def set_last_cli_observation(provider: str, payload: Mapping[str, Any]) -> None:
             clean["native_grok_progress"] = validate_grok_stream_progress(payload["native_grok_progress"])
         except (TypeError, ValueError):
             clean.pop("native_grok_progress", None)
+    if "native_grok_pruning" in payload:
+        _preserve_grok_pruning(clean, key, payload["native_grok_pruning"])
     with _LOCK:
         _LAST[key] = dict(clean)
     _TLS.provider = key

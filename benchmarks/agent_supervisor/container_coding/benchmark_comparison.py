@@ -491,6 +491,23 @@ def _grok_progress(raw):
         return None
 
 
+def _grok_pruning_observation(raw):
+    """Keep only a validated closed receipt; absent historical rows stay exact."""
+    policy = raw.get("provider_invocation_policy")
+    if type(policy) is not dict or "grok_pruning" not in policy:
+        return {}
+    from ipfs_accelerate_py.cli_runtime.grok_pruning import validate_grok_pruning_preflight
+    observed = None
+    if raw.get("provider") == "grok_cli" and raw.get("purpose") == "coding" and raw.get("phase") in (None, "coding"):
+        try:
+            observed = validate_grok_pruning_preflight(policy["grok_pruning"])
+            if not observed:
+                observed = None
+        except (TypeError, ValueError):
+            pass
+    return {"grok_pruning": observed}
+
+
 def _uniform_boolean(values):
     values = list(values)
     return values[0] if values and type(values[0]) is bool and all(value is values[0] for value in values) else None
@@ -540,9 +557,169 @@ def _invocations(report):
                 "known_reported_cost_subtotal_usd": observed_cost,
                 "input_observation": _input_observation(raw),
                 "native_grok_progress": _grok_progress(raw),
+                **_grok_pruning_observation(raw),
             },
         )
     return [item[1] for item in found.values()]
+
+
+def _pruning_pair_input(value):
+    """Bound the pure comparison's JSON input before hashing or projection."""
+    pending, nodes, characters = [(value, 0)], 0, 0
+    while pending:
+        item, depth = pending.pop()
+        nodes += 1
+        if nodes > 100_000 or depth > 40:
+            raise ValueError("pruning comparison input exceeds bounds")
+        if type(item) is dict:
+            if len(item) > 100_000:
+                raise ValueError("pruning comparison input exceeds bounds")
+            for key, child in item.items():
+                if type(key) is not str:
+                    raise ValueError("pruning comparison requires JSON objects")
+                characters += len(key)
+                pending.append((child, depth + 1))
+        elif type(item) is list:
+            if len(item) > 100_000:
+                raise ValueError("pruning comparison input exceeds bounds")
+            pending.extend((child, depth + 1) for child in item)
+        elif type(item) is str:
+            characters += len(item)
+        elif (type(item) not in (int, float, bool, type(None))
+                or type(item) is float and not math.isfinite(item)
+                or type(item) is int and item.bit_length() > 4096):
+            raise ValueError("pruning comparison requires finite JSON")
+        if characters > 8_000_000:
+            raise ValueError("pruning comparison input exceeds bounds")
+    wire = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                      allow_nan=False).encode("utf-8")
+    if len(wire) > 8_000_000:
+        raise ValueError("pruning comparison input exceeds bounds")
+    return json.loads(wire)
+
+
+def _pruning_pair_side(receipt, config, profile):
+    from . import benchmark_controls as controls
+    from ipfs_accelerate_py.cli_runtime.grok_pruning import grok_pruning_runtime_matches
+    receipt, config = _pruning_pair_input(receipt), _pruning_pair_input(config)
+    if (type(receipt) is not dict or receipt.get("schema") != SUPERVISOR
+            or receipt.get("arm") not in ("full", "no-index") or receipt.get("grok_pruning_profile") != profile
+            or any(receipt.get(key) is not True for key in (
+                "original_task_inputs_unchanged", "complete_single_trial_receipt",
+                "native_job_result_present", "grok_pruning_config_unchanged",
+                "grok_pruning_runtime_declared_matches", "grok_pruning_runtime_policy_matches"))
+            or type(receipt.get("trials")) is not list or len(receipt["trials"]) != 1):
+        raise ValueError("invalid pruning receipt")
+    observed = receipt.get("comparison_controls")
+    if (type(observed) is not dict or observed.get("status") != "observed"
+            or observed.get("configuration_unchanged") is not True
+            or not controls.validate_controls(observed.get("declared"))):
+        raise ValueError("invalid pruning controls")
+    declared = observed["declared"]
+    if (declared["schema"] != controls.GROK_PRUNING_SCHEMA
+            or any(receipt.get(key) != value for key, value in declared["identity"].items())
+            or controls.observe_controls({"comparison_controls": declared}, config,
+                current_task_hashes=declared["task_input_sha256"]).get("configuration_unchanged") is not True):
+        raise ValueError("unbound pruning configuration")
+    agent = config["agents"][0]
+    kwargs = agent.get("kwargs", {})
+    if (agent.get("import_path") != "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"
+            or kwargs.get("arm") != receipt["arm"] or controls.grok_pruning_from_controls(kwargs) != profile):
+        raise ValueError("invalid pruning route")
+    trial = receipt["trials"][0]
+    if (type(trial) is not dict or trial.get("exact_trial_task_matches") is not True
+            or trial.get("task") != declared["identity"]["task"] or _archive_digest(trial) is None):
+        raise ValueError("unbound pruning trial")
+    report = trial.get("supervisor")
+    if (type(report) is not dict or report.get("grok_pruning_profile") != profile
+            or grok_pruning_runtime_matches(report, profile) is not True
+            or any(row.get("purpose") != "coding" or row.get("model") != declared["identity"]["model"]
+                   or row.get("reasoning_effort") != declared["identity"]["reasoning_effort"]
+                   for row in report["provider_invocations"])):
+        raise ValueError("unbound pruning runtime")
+    calls = _invocations(report)
+    if (not 1 <= len(calls) <= 128 or any(call.get("grok_pruning") is None or
+            call["grok_pruning"]["effective_observation"]["cli_version"] != declared["identity"]["cli_version"]
+            for call in calls)):
+        raise ValueError("invalid pruning invocation")
+    # The complete config binding covers adapter kwargs absent from the common
+    # cross-arm controls. Only the declared intervention and output location vary.
+    normalized = _pruning_pair_input(config)
+    normalized.pop("jobs_dir", None)
+    normalized["agents"][0]["kwargs"].pop("grok_pruning_profile")
+    sealed = {key: value for key, value in declared.items()
+              if key not in {"sha256", "configuration_sha256"}}
+    sealed["experimental_controls_sha256"] = {
+        key: value for key, value in declared["experimental_controls_sha256"].items()
+        if key != "grok_pruning_profile"}
+    reward = trial.get("reward")
+    completion = report.get("task_completed")
+    verifier_seconds = _mapping(trial.get("durations_seconds")).get("verifier")
+    if (reward is not None and (type(reward) is not dict or
+            reward.get("reward") is not None and _number(reward["reward"]) is None)
+            or completion is not None and type(completion) is not bool
+            or verifier_seconds is not None and _number(verifier_seconds) is None):
+        raise ValueError("invalid pruning outcome observation")
+    correctness = {"official_reward": _number(_mapping(reward).get("reward")),
+        "native_task_completed": _boolean(completion),
+        "verifier_phase_observed": True if verifier_seconds is not None else None}
+    complete = _completion(call["native_usage_complete_observed"] for call in calls)
+    usage = {"native_usage_complete_observed": complete,
+        "tokens": {key: _sum(call["tokens"][key] for call in calls) for key in TOKENS},
+        "known_token_subtotals": {key: _subtotal(call["known_token_subtotals"][key] for call in calls)
+                                  for key in TOKENS},
+        "billing_total_verified": False}
+    return {"configuration_sha256": declared["configuration_sha256"],
+        "normalized_configuration_sha256": controls._digest(normalized),
+        "sealed_controls_sha256": controls._digest(sealed),
+        "runtime_archive_sha256": _archive_digest(trial),
+        "correctness": correctness, "reward_observation_sha256": controls._digest(reward),
+        "usage": usage, "profile": profile, "arm": receipt["arm"], "invocations": calls}
+
+
+def compare_grok_pruning_pair(off, on, *, off_config, on_config):
+    """Compare same-arm config-bound supervisor observations, without file I/O.
+
+    Eligibility establishes matching declarations and preinvoke receipts only.
+    Native inspection currently omits effective pruning settings and file
+    consumption. Task outcomes and native usage completeness remain separate.
+    """
+    sides, reasons, outcome_reasons = {}, [], []
+    for name, receipt, config, profile in (
+            ("off", off, off_config, "grok-pruning-off@1"),
+            ("on", on, on_config, "grok-pruning-on@1")):
+        try:
+            sides[name] = _pruning_pair_side(receipt, config, profile)
+        except (KeyError, TypeError, ValueError, UnicodeError, OverflowError, RecursionError):
+            sides[name] = None
+            reasons.append(name + "_receipt_or_configuration_invalid")
+    if all(side is not None for side in sides.values()):
+        for field, reason in (("normalized_configuration_sha256", "configurations_differ"),
+                ("sealed_controls_sha256", "sealed_controls_differ"),
+                ("runtime_archive_sha256", "runtime_archives_differ")):
+            if sides["off"][field] != sides["on"][field]:
+                reasons.append(reason)
+        for field, reason in (("correctness", "correctness_observations_differ"),
+                ("reward_observation_sha256", "reward_observations_differ")):
+            if sides["off"][field] != sides["on"][field]:
+                outcome_reasons.append(reason)
+    available = all(side is not None for side in sides.values())
+    return {"schema": "terminal-grok-pruning-pair-comparison@1",
+        "eligible_configuration_comparison": not reasons, "ineligible_reasons": reasons,
+        "comparison_basis": "frozen-configs-and-preinvoke-profile-bindings@1",
+        "configuration_exceptions": ["jobs_dir", "agents[0].kwargs.grok_pruning_profile"],
+        "profiles": sides,
+        "correctness_observations_match": not outcome_reasons if available else None,
+        "outcome_difference_reasons": outcome_reasons,
+        "correctness_observations_complete": available and all(
+            all(value is not None for value in side["correctness"].values()) for side in sides.values()),
+        "native_usage_observations_complete": available and all(
+            side["usage"]["native_usage_complete_observed"] is True
+            and all(value is not None for value in side["usage"]["tokens"].values())
+            for side in sides.values()),
+        "effective_settings_verified": False, "config_file_consumption_verified": False,
+        "native_behavior": "unknown", "billing_total_verified": False,
+        "token_savings_established": False, "benchmark_advantage_claimed": False}
 
 
 def _trial(receipt, raw, *, source):
@@ -924,6 +1101,18 @@ def markdown(comparison: dict) -> str:
                 call["error_type"], call["timeout_seconds"], call["native_task_complete_observed"],
                 call["native_usage_complete_observed"], call["token_count_scope"],
                 *(_token_cell(call, key) for key in TOKENS)]
+            lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    pruning_calls = [(row, call) for row, call in calls if "grok_pruning" in call]
+    if pruning_calls:
+        lines += ["", "Grok pruning receipts bind the requested profile to an exact preinvoke file observation and successful native inspection. The inspected client omits effective pruning values and config-file provenance; actual pruning behavior and token savings remain unknown. Invalid receipts are shown as unknown.", "",
+                  "| Trial | Invocation | Profile | Config SHA256 | Exact file observed | Native inspection completed | Effective settings verified |",
+                  "|---|---|---|---|---|---|---|"]
+        for row, call in pruning_calls:
+            observed = call["grok_pruning"] or {}
+            values = [row["trial"], call["invocation_id"], observed.get("profile"),
+                _mapping(observed.get("declaration")).get("config_sha256"),
+                _mapping(observed.get("file_observation")).get("exact_bytes_verified"),
+                observed.get("native_inspect_completed"), observed.get("effective_settings_verified")]
             lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
     tool_events = [(row, call, (call.get("native_grok_progress") or {}).get("tool_event_observations"))
                    for row, call in calls]

@@ -8009,6 +8009,13 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             stream_progress = kwargs.pop("grok_stream_progress", False)
             tool_event_census = kwargs.pop("grok_tool_event_census", False)
             tool_event_schema = kwargs.pop("grok_tool_event_schema", "native-grok-tool-events@1")
+            grok_pruning_profile = kwargs.pop("grok_pruning_profile", "legacy")
+            from .cli_runtime.grok_pruning import validate_grok_pruning_profile
+            validate_grok_pruning_profile(grok_pruning_profile, provider="grok_cli")
+            if grok_pruning_profile != "legacy" and (not structured_cli or not stream_progress
+                    or response_format is not None or len(base_parts) != 1
+                    or base_parts[0] != "/opt/ipfs-supervisor/provider-bin/grok"):
+                raise ValueError("pruning requires the isolated pinned Grok streaming route")
             progress_callback = kwargs.pop("grok_progress_callback", None)
             if type(stream_progress) is not bool:
                 raise ValueError("grok_stream_progress requires a boolean")
@@ -8189,6 +8196,19 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             elif chat_session_id:
                 cmd.extend(["--session-id", chat_session_id])
 
+            pruning_observation = None
+            if grok_pruning_profile != "legacy":
+                if resume_session_id or continue_session or chat_session_id:
+                    raise ValueError("explicit pruning requires a fresh coding session")
+                from .cli_runtime.grok_pruning import run_grok_pruning_preflight
+                pruning_env = os.environ.copy()
+                pruning_env.update({key: value for key, value in extra_env.items() if value is not None})
+                pruning_started = time.monotonic()
+                pruning_observation = run_grok_pruning_preflight(grok_pruning_profile,
+                    command=base_parts, env=pruning_env, timeout=min(timeout, 30.0))
+                timeout -= time.monotonic() - pruning_started
+                if timeout <= 0:
+                    raise subprocess.TimeoutExpired(base_parts, timeout)
             prompt_path = ""
             stream_observation = None
             try:
@@ -8203,7 +8223,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     prompt_path = prompt_file.name
                 cmd.extend(["--prompt-file", prompt_path])
 
-                env = os.environ.copy()
+                env = pruning_env if pruning_observation is not None else os.environ.copy()
                 for key, value in extra_env.items():
                     if value is not None:
                         env[key] = value
@@ -8246,6 +8266,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         observed.update(native_grok_stream_observation(proc.final_payload,
                             progress=stream_observation, exit_code=None, timed_out=True))
                         observed["native_grok_progress"] = stream_observation
+                    if pruning_observation is not None:
+                        observed["native_grok_pruning"] = pruning_observation
                     set_last_cli_observation("grok_cli", observed)
                     raise
             finally:
@@ -8297,6 +8319,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     observed["native_grok_progress"] = stream_observation
                     if not stream_observation["response_usable"]:
                         observed["native_grok_task_complete"] = False
+                if pruning_observation is not None:
+                    observed["native_grok_pruning"] = pruning_observation
                 set_last_cli_observation("grok_cli", observed)
             except Exception:
                 pass

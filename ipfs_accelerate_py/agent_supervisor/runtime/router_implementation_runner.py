@@ -560,6 +560,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_metadata_view: str = "legacy",
         semantic_working_set: str = "legacy",
         grok_coding_max_turns: int = 128,
+        grok_pruning_profile: str = "legacy",
         semantic_metadata_token_counter: SemanticMetadataTokenCounter | None = None,
         census_only: bool = False,
         working_set_census_only: bool = False,
@@ -674,6 +675,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("working-set census requires its separate explicit capsule reference profile")
     from .grok_coding_budget import validate_grok_coding_max_turns
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider, purpose=purpose)
+    from ipfs_accelerate_py.cli_runtime.grok_pruning import validate_grok_pruning_profile
+    validate_grok_pruning_profile(grok_pruning_profile, provider=provider, purpose=purpose)
+    if grok_pruning_profile != "legacy" and (census_only or working_set_census_only
+            or candidate_dispatch_handoff is not None or candidate_round_descriptor is not None
+            or source_edit_mode != "disabled"):
+        raise ValueError("explicit pruning requires independent ordinary Grok coding")
     if grok_coding_max_turns != 128 and census_only:
         raise ValueError("nondefault coding turns require generation, not metadata census")
     if type(semantic_working_set) is not str or semantic_working_set not in {"legacy", "capsule-references@1"}:
@@ -1202,6 +1209,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         # The shared provider supports native schemas through its JSON route.
         # Combining that route with streaming progress is rejected before CLI
         # launch, so candidate replies must retain their schema in JSON mode.
+        if grok_pruning_profile != "legacy":
+            if response_format is not None:
+                raise ValueError("explicit pruning does not support structured candidate replies")
+            provider_options["grok_pruning_profile"] = grok_pruning_profile
         if purpose == "coding" and response_format is None:
             provider_options.update(grok_stream_progress=True,
                                     grok_tool_event_census=True,
@@ -1329,6 +1340,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             )
         failure_phase = "provider_result_validation"
         observation = get_last_cli_observation(provider)
+        if grok_pruning_profile != "legacy":
+            from ipfs_accelerate_py.cli_runtime.grok_pruning import validate_grok_pruning_preflight
+            try:
+                validate_grok_pruning_preflight(observation.get("native_grok_pruning"),
+                                               profile=grok_pruning_profile)
+            except (TypeError, ValueError):
+                raise RuntimeError("Grok pruning preflight receipt is missing or invalid") from None
         if observation.get("exit_code") != 0:
             raise RuntimeError("coding CLI did not return an observed successful exit")
         if not isinstance(output, str) or not output.strip():
@@ -1414,6 +1432,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         else:
             from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_outcome_receipt, grok_usage_receipt
             receipt["native_rollout_usage"] = grok_usage_receipt(observation)
+            if grok_pruning_profile != "legacy":
+                from ipfs_accelerate_py.cli_runtime.grok_pruning import validate_grok_pruning_preflight
+                try:
+                    receipt["provider_invocation_policy"]["grok_pruning"] = validate_grok_pruning_preflight(
+                        observation.get("native_grok_pruning"), profile=grok_pruning_profile)
+                except (TypeError, ValueError):
+                    receipt["grok_pruning_error"] = "missing_or_invalid_preflight"
             receipt["native_provider_outcome"] = grok_outcome_receipt(observation)
             if purpose == "coding" and observation.get("native_grok_progress") is not None:
                 try:
@@ -1443,6 +1468,8 @@ def main():
     parser.add_argument("--budget-profile")
     parser.add_argument("--max-output-tokens", type=int, default=4096)
     parser.add_argument("--grok-coding-max-turns", type=int, default=128)
+    parser.add_argument("--grok-pruning-profile", default="legacy",
+                        choices=("legacy", "grok-pruning-off@1", "grok-pruning-on@1"))
     parser.add_argument("--reasoning-effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
     parser.add_argument("--purpose", default="coding", choices=["planning", "coding"])
     parser.add_argument("--container-boundary", type=Path)
@@ -1511,6 +1538,8 @@ def main():
                         semantic_metadata_view=args.semantic_metadata_view,
                         semantic_working_set=args.semantic_working_set,
                         grok_coding_max_turns=args.grok_coding_max_turns,
+                        **({"grok_pruning_profile": args.grok_pruning_profile}
+                            if args.grok_pruning_profile != "legacy" else {}),
                         census_only=args.semantic_metadata_census_only,
                         working_set_census_only=args.semantic_working_set_census_only,
                         **({"working_set_census_schema": args.semantic_working_set_census_schema}

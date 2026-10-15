@@ -6,6 +6,11 @@ verifier runs afterwards and remains outside this process's indexed context.
 """
 from __future__ import annotations
 
+from ipfs_accelerate_py.cli_runtime.grok_pruning import (
+    DEFAULT_GROK_PRUNING_PROFILE, GROK_PRUNING_PROFILES,
+    grok_pruning_selection, grok_pruning_runtime_matches,
+)
+
 from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
     DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns, grok_coding_selection,
     grok_coding_runtime_matches,
@@ -763,6 +768,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         semantic_metadata_view: str = "legacy",
         semantic_working_set: str = "legacy",
         grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
+        grok_pruning_profile: str = DEFAULT_GROK_PRUNING_PROFILE,
         candidate_rounds: int = 1,
         doctor_coding_policy: str | None = None,
         source_view_profile: str = "disabled",
@@ -840,6 +846,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         raise ValueError("metadata view requires the original full semantic arm")
     provider_selection = resolve_provider_profile(provider_profile)
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider_selection["provider"])
+    from .benchmark_controls import validate_full_supervisor_grok_pruning
+    validate_full_supervisor_grok_pruning(grok_pruning_profile, provider=provider_selection["provider"],
+        metadata_census_only=metadata_census_only, working_set_census_only=working_set_census_only,
+        candidate_rounds=candidate_rounds, doctor_coding_policy=doctor_coding_policy,
+        source_edit_mode=source_edit_mode, planning_mode=planning_mode)
     if grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS and metadata_census_only:
         raise ValueError("nondefault coding turns require generation, not metadata census")
     if type(metadata_census_only) is not bool:
@@ -932,6 +943,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               **source_edit_observation(source_edit_mode),
               **semantic_working_set_observation(semantic_working_set),
               **grok_coding_selection(grok_coding_max_turns),
+              **grok_pruning_selection(grok_pruning_profile),
               **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
               **coding_reply_selection(coding_reply_mode),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
@@ -1214,6 +1226,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             coding_reply_mode=coding_reply_mode,
             **semantic_working_set_selection(semantic_working_set),
             **grok_coding_selection(grok_coding_max_turns),
+            **grok_pruning_selection(grok_pruning_profile),
             **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
             **({"source_view_profile": source_view_profile} if source_view_profile != "disabled" else {}),
             **({"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {}),
@@ -1233,6 +1246,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     "source_edit_mode": source_edit_mode,
                     **semantic_working_set_selection(semantic_working_set),
                     **grok_coding_selection(grok_coding_max_turns),
+                    **grok_pruning_selection(grok_pruning_profile),
                     **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
                     "source_view_policy": source_view_policy},
                 "model_coding_dispatched": False,
@@ -1462,6 +1476,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                                                  "complete_total_tokens": None}
         if grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS:
             report["grok_coding_runtime_policy_matches"] = grok_coding_runtime_matches(report, grok_coding_max_turns)
+        if grok_pruning_profile != DEFAULT_GROK_PRUNING_PROFILE:
+            report["grok_pruning_runtime_declared_matches"] = (
+                type(report.get("grok_pruning_profile")) is str
+                and report["grok_pruning_profile"] == grok_pruning_profile)
+            report["grok_pruning_runtime_policy_matches"] = grok_pruning_runtime_matches(report, grok_pruning_profile)
         _final_context_audit(report, state=state, deadline=deadline)
         try:
             progress.finish(report)
@@ -1574,6 +1593,8 @@ def main():
     from .terminal_semantic_working_set_policy import SEMANTIC_WORKING_SETS, DEFAULT_SEMANTIC_WORKING_SET
     parser.add_argument("--semantic-working-set", choices=SEMANTIC_WORKING_SETS, default=DEFAULT_SEMANTIC_WORKING_SET)
     parser.add_argument("--grok-coding-max-turns", type=int, default=DEFAULT_GROK_CODING_MAX_TURNS)
+    parser.add_argument("--grok-pruning-profile", choices=GROK_PRUNING_PROFILES,
+        default=DEFAULT_GROK_PRUNING_PROFILE)
     parser.add_argument("--candidate-rounds", type=int, choices=(1, 2), default=1,
         help="Two coding attempts share one original deadline and require --doctor-coding-policy")
     from .terminal_source_edit_policy import SOURCE_EDIT_MODES
