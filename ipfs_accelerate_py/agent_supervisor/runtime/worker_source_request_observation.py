@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 AUDIT_SCHEMA = "supervisor-worker-source-session@5"
+EVIDENCE_AUDIT_SCHEMA = "supervisor-worker-source-session@6"
 COUNTS_SCHEMA = "worker-source-request-operation-counts@1"
 FIELDS = ("request_operation", "request_source_state", "request_view")
 UNKNOWN = ("unknown", "unknown", "unknown")
 COMBINATIONS = frozenset({UNKNOWN,
     ("discover", "not_applicable", "not_applicable"),
     ("candidate_context", "working-candidate", "not_applicable"),
+    ("semantic_evidence", "baseline", "not_applicable"),
     ("edit_prepare", "working-candidate", "compact"),
     ("edit_confirm", "working-candidate", "not_applicable"),
     *(("read", state, view) for state in ("baseline", "working-candidate")
@@ -26,6 +28,8 @@ def request_details(request=None):
         elif schema in {"supervisor-worker-candidate-context-request@1",
                          "supervisor-worker-candidate-context-request@2"}:
             selected = ("candidate_context", "working-candidate", "not_applicable")
+        elif schema == "supervisor-worker-semantic-evidence-request@1":
+            selected = ("semantic_evidence", "baseline", "not_applicable")
         elif schema == "supervisor-worker-source-request@3" and query["operation"] == "discover":
             selected = ("discover", "not_applicable", "not_applicable")
         else:
@@ -42,7 +46,8 @@ def validate_record(record):
             or (selected == UNKNOWN) != (record.get("request_sha256") is None)):
         raise ValueError("source request attribution differs from validated envelope")
     if record.get("status") == "ok":
-        operation = ("edit_" + record["source_edit_operation"] if record.get("source_edit_page") is True
+        operation = ("semantic_evidence" if record.get("semantic_evidence_page") is True
+                     else "edit_" + record["source_edit_operation"] if record.get("source_edit_page") is True
                      else "candidate_context" if record.get("candidate_context_page") is True
                      else "discover" if record.get("discovery_page") is True else "read")
         if selected[0] != operation:

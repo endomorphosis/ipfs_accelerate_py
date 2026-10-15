@@ -1,0 +1,155 @@
+{
+  "complete_parallel_coverage_claimed": false,
+  "completion_authority": false,
+  "execution_authority": false,
+  "external_repository_coverage": "cached local objects and named worktrees only; no universal GitHub absence claim",
+  "findings": [
+    "No comparable constructor canonical CAS-detachment, native source.get callback detachment, or native permission/provenance handoff patch was found in the surveyed named peers or targeted modified paths.",
+    "Published 7883e693c5 detaches broker-selected delivery replay only; constructor CurrentSourceLookup creation and the subsequent canonical load still occur under SERVER at the observed cached main.",
+    "The privileged source.get gateway holds its transaction lock around service.execute. It rejects an already active transaction; this survey does not assert a separate SQL BEGIN in that action.",
+    "Peer native reader/gateway files match the observed main, and their older broker blobs are inherited rather than changed by their own candidate commits.",
+    "The older dirty local main checkout had 230 added/19 removed typed_state_owner lines but no source.get/current_source_lookup-specific changed lines in the reviewed diff.",
+    "Permission delegation, daemon/wrapper/child provenance and signed @4/@5 context joins remain separately proposed and unqualified by this construction increment."
+  ],
+  "foreign_worktrees_modified": false,
+  "named_relevant_peers": [
+    "codex/supervisor-candidate-dispatch-20261014",
+    "supervisor-candidate-reporting-20261014"
+  ],
+  "network_queries": false,
+  "note": "Dated survey observations precede the new construction implementation. They are not native admission or new qualification results.",
+  "observed_cached_main": "e21d6e7b41f14f3994b0fd8556bfcd341d9e888c",
+  "peer_native_file_comparisons": [
+    {
+      "cached_main_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+      "changed_by_peer_own_commit": false,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+      "peer_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+      "revision": "79f089c6f28f28f3f5adade4979aed115a039223",
+      "same_as_cached_main": true
+    },
+    {
+      "cached_main_git_blob": "d437dec6b522bc50c3e6c2eaec17c4d4370311f3",
+      "changed_by_peer_own_commit": false,
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "peer_git_blob": "d437dec6b522bc50c3e6c2eaec17c4d4370311f3",
+      "revision": "79f089c6f28f28f3f5adade4979aed115a039223",
+      "same_as_cached_main": true
+    },
+    {
+      "cached_main_git_blob": "4688b2e739c5841e6b4d7435325a43965dc7d29f",
+      "changed_by_peer_own_commit": false,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "peer_git_blob": "a0bfbe776b0be69c9d1853addd75f0c8ed4ba808",
+      "revision": "79f089c6f28f28f3f5adade4979aed115a039223",
+      "same_as_cached_main": false
+    },
+    {
+      "cached_main_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+      "changed_by_peer_own_commit": false,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+      "peer_git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+      "revision": "259b3ae686337830211893f7e585b66ecf1601e9",
+      "same_as_cached_main": true
+    },
+    {
+      "cached_main_git_blob": "d437dec6b522bc50c3e6c2eaec17c4d4370311f3",
+      "changed_by_peer_own_commit": false,
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "peer_git_blob": "d437dec6b522bc50c3e6c2eaec17c4d4370311f3",
+      "revision": "259b3ae686337830211893f7e585b66ecf1601e9",
+      "same_as_cached_main": true
+    },
+    {
+      "cached_main_git_blob": "4688b2e739c5841e6b4d7435325a43965dc7d29f",
+      "changed_by_peer_own_commit": false,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "peer_git_blob": "a0bfbe776b0be69c9d1853addd75f0c8ed4ba808",
+      "revision": "259b3ae686337830211893f7e585b66ecf1601e9",
+      "same_as_cached_main": false
+    }
+  ],
+  "process_or_environment_values_exported": false,
+  "product_imports": false,
+  "proof_authority": false,
+  "recorded_at_utc": "2026-10-14T18:14:46.468195+00:00",
+  "refs_mutated": false,
+  "review_kind": "bounded_static_Git_and_targeted_file_survey",
+  "schema": "source-worker-construction-parallel-survey@1",
+  "source_observations": [
+    {
+      "bytes": 42668,
+      "finding": "published delivery fences leave constructor canonical creation/replay inside SERVER",
+      "git_blob": "4688b2e739c5841e6b4d7435325a43965dc7d29f",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "revision": "e21d6e7b41f14f3994b0fd8556bfcd341d9e888c",
+      "sha256": "2694487172dcd41f780061077486f5349faf2031cea915fc854d3d96cc9a73b4"
+    },
+    {
+      "bytes": 27415,
+      "finding": "constructor and execute have retained CAS loads; source.get gateway remains a distinct contract",
+      "git_blob": "d31c1dfd42afd31add06d7378a2a3bdb4c24d538",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+      "revision": "e21d6e7b41f14f3994b0fd8556bfcd341d9e888c",
+      "sha256": "195c2c3d5c7173702ab2252b7cbf522fd51bff072e677759f99f7aa15c2e2373"
+    },
+    {
+      "bytes": 620001,
+      "finding": "native source.get locks the gateway around service.execute and refuses an already active transaction",
+      "git_blob": "d437dec6b522bc50c3e6c2eaec17c4d4370311f3",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "revision": "e21d6e7b41f14f3994b0fd8556bfcd341d9e888c",
+      "sha256": "90bdfdf7ab2303453a600b953e7728789c48cb08d2d71c5d195d3694b0f0c32b"
+    },
+    {
+      "bytes": 19489,
+      "finding": "maintained guide explicitly scopes published fix to broker-selected delivery replay",
+      "git_blob": "b43e2c1478fd30e4ee0f323a5b5528ad3cf4fdfc",
+      "path": "docs/agent_supervisor/source_lookup_worker.md",
+      "revision": "e21d6e7b41f14f3994b0fd8556bfcd341d9e888c",
+      "sha256": "2fc54e956139ff912dbe98fb3893c0acb80d3885ec7844491c5faad846140284"
+    },
+    {
+      "bytes": 90636,
+      "finding": "permission delegation, real wrapper/child ancestry and independent signed context remain proposed",
+      "git_blob": "719a3c28364fb2e38d814a5614511a8d855fdafa",
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "revision": "e21d6e7b41f14f3994b0fd8556bfcd341d9e888c",
+      "sha256": "aa49f0fce1af4f86a69666c6bab482c497c578856cf19f01de86321edbd7f47d"
+    },
+    {
+      "bytes": 21912,
+      "finding": "proposed four-increment permission/provenance plan, not an implemented capability",
+      "git_blob": "11747d04d96db1e994648cd01d08c2dde48f7a28",
+      "path": "docs/agent_supervisor/evidence/native-source-worker-spawn-20261014/permission-handoff-design.json",
+      "revision": "e21d6e7b41f14f3994b0fd8556bfcd341d9e888c",
+      "sha256": "db7465c316a3c8c04e40c2628c53f856fbbbd65209cd49e9a0368ad557b4a366"
+    },
+    {
+      "bytes": 28184,
+      "finding": "new candidate continuation uses exact WorkerSourceBroker, not native SourceLookupWorkerBroker",
+      "git_blob": "6b8e318f9b02529569a61842f556af17e853a6ba",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch.py",
+      "revision": "79f089c6f28f28f3f5adade4979aed115a039223",
+      "sha256": "ec4c796e3835555bd2608675f25e960fecfb2293812efbb33d0ed011c3481ce3"
+    },
+    {
+      "bytes": 42342,
+      "finding": "ordinary candidate chmods do not implement a native allocation permission delegation",
+      "git_blob": "ea9e82ba148e9a5fe9cd8c4f699f5ced4c1bc4d1",
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "revision": "79f089c6f28f28f3f5adade4979aed115a039223",
+      "sha256": "4fc7d37f0215bfff7fec277576d9e14749c3295cb6b66c89e354798526ac978c"
+    },
+    {
+      "bytes": 13689,
+      "finding": "separate candidate lifecycle/reporting work is not constructor/native-source callback detachment",
+      "git_blob": "18bd50cd222f25e87391a86e656b172102c52b94",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch_audit.py",
+      "revision": "259b3ae686337830211893f7e585b66ecf1601e9",
+      "sha256": "7af52704136d04981f3100f582a93794a60191f0e728b1df8dac3d970c0a5831"
+    }
+  ],
+  "target_processes_launched": false,
+  "tests_executed": false
+}

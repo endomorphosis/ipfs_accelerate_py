@@ -1,0 +1,519 @@
+{
+  "accelerator_base": "c82e5774fe2ab97ccbb791416e9d77964c519d85",
+  "applied_merge_path_count": 93,
+  "code_whitespace_checked_separately_from_raw_stdout": true,
+  "datasets_actual_execution": "a0f60d42f836571a0023515e92dfb0e5724f0d79",
+  "datasets_parent_preserved_pin": "7afeb5fc503de83bc937b0cadda3d9815a96f190",
+  "datasets_same_listed_objects": [
+    {
+      "bytes": 56829,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/__init__.py",
+      "sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9"
+    },
+    {
+      "bytes": 2052,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/autoformal/tree_pin.py",
+      "sha256": "ec43fd9379f3c9198451e8d62d98db53826dcf115e6858039a73c3da7d72a1c2"
+    },
+    {
+      "bytes": 86862,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/backends/smt/compiler.py",
+      "sha256": "9b14183c071fb9eaed29a18e0bdd6483f71e152a82c88732bc0ae0a6d2321be5"
+    },
+    {
+      "bytes": 51399,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/families/registry.py",
+      "sha256": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450"
+    },
+    {
+      "bytes": 7118,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/intent_action_checkpoint_384.py",
+      "sha256": "467b5e00df9e6960618a36064255d2680f2b369e3f27bf1901b6260a132b5eab"
+    },
+    {
+      "bytes": 3468,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_384.py",
+      "sha256": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7"
+    },
+    {
+      "bytes": 31851,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_training_v2.py",
+      "sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+    },
+    {
+      "bytes": 27328,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/structured_source_384.py",
+      "sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7"
+    },
+    {
+      "bytes": 24220,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/intent_ir/decoder.py",
+      "sha256": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257"
+    },
+    {
+      "bytes": 14572,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/intent_ir/formalize/action_contracts.py",
+      "sha256": "694e490c8f62bf8abed4cea0f60f161888436ee5886b1e814784ff77da811cc7"
+    },
+    {
+      "bytes": 11527,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/intent_ir/formalize/rich_grammar.py",
+      "sha256": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b"
+    },
+    {
+      "bytes": 27163,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/intent_ir/schema.py",
+      "sha256": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56"
+    },
+    {
+      "bytes": 14098,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/ir_core/canonical.py",
+      "sha256": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0"
+    },
+    {
+      "bytes": 31823,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/ir_core/schema_registry.py",
+      "sha256": "1b214ea190a41c6a451377a03bc71ea84f6703314293ef78c5f269082eee4fbe"
+    },
+    {
+      "bytes": 109257,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/legal_ir/canonical_contracts.py",
+      "sha256": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b"
+    },
+    {
+      "bytes": 37220,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/security_ir/model.py",
+      "sha256": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39"
+    },
+    {
+      "bytes": 57876,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+      "sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f"
+    },
+    {
+      "bytes": 22146,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+      "sha256": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df"
+    },
+    {
+      "bytes": 53460,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/python_frontend.py",
+      "sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df"
+    },
+    {
+      "bytes": 22314,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/chunked_snapshot.py",
+      "sha256": "2a187d7ed7b228d4179302405bed47536754a7e789b5623f59a11e76cbe27f9d"
+    },
+    {
+      "bytes": 14891,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/committed_snapshot.py",
+      "sha256": "4700a72c4463f0398b6b68e3df4b694b030dfe88a24db006772322f0cee26a15"
+    },
+    {
+      "bytes": 8128,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py",
+      "sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102"
+    },
+    {
+      "bytes": 34958,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+      "sha256": "4b061c97838929a4cdc055998ce71aa854234c7e75d3fbee12595fa1bafa8a75"
+    },
+    {
+      "bytes": 22375,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/paged_snapshot.py",
+      "sha256": "6f4419e85df97097d2dc20c8253ae2cabb2175f1ea69abcf365f18bf98f00b68"
+    },
+    {
+      "bytes": 30681,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/pytest_analysis.py",
+      "sha256": "45a0ab3fae08e91db2971540e5d933c8e82c47e7f65b3e5ec88912dbedc67ab4"
+    },
+    {
+      "bytes": 54595,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py",
+      "sha256": "744c5d1699403239d3eb5e9588a38a38cbc0cc56799c2884d8821f1a4e1bdd76"
+    },
+    {
+      "bytes": 32144,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+      "sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1"
+    },
+    {
+      "bytes": 48191,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+      "sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6"
+    },
+    {
+      "bytes": 18520,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/symbol_graph.py",
+      "sha256": "4e269d1e2f39ea27582e98f240996696d61b0fe0b1358e363ff2376baa7972e3"
+    },
+    {
+      "bytes": 43440,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+      "sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51"
+    },
+    {
+      "bytes": 20976,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/bindings.py",
+      "sha256": "268ff6aab60e3a8a2e5e9719b637edfd1efb7bc50a4310bd4b1f2660b04cdfcc"
+    },
+    {
+      "bytes": 31668,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py",
+      "sha256": "6f2581e84606f718e9b3d610d5b01434f386ea74459cafb44d9eb5edb8e6869d"
+    },
+    {
+      "bytes": 33366,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/merkle.py",
+      "sha256": "526b8d427247e11a4d3cf9fd568304c8448c4358c0772a28b5637e887d2512e0"
+    },
+    {
+      "bytes": 102763,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/models.py",
+      "sha256": "488fa256322807b895a3f7e277fef5b4d5dc6ac1f3619696a6c288340aae0586"
+    },
+    {
+      "bytes": 44955,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py",
+      "sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822"
+    },
+    {
+      "bytes": 8003,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_obligation_retrieval.py",
+      "sha256": "8a044dae64a12cccee904929d60b8a7c0aec51d0266592394e237ca4bbe90e85"
+    },
+    {
+      "bytes": 28735,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_verification/numerical_source.py",
+      "sha256": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5"
+    },
+    {
+      "bytes": 58065,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_verification/program.py",
+      "sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+    },
+    {
+      "bytes": 76841,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_verification/source_adapters.py",
+      "sha256": "aef42730598f74d35e232f460637560be71b55ddc459d555df9105d17fcfc003"
+    },
+    {
+      "bytes": 47941,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/software_verification/syntax_bridge.py",
+      "sha256": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116"
+    },
+    {
+      "bytes": 56966,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/syntax_core/ast.py",
+      "sha256": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4"
+    },
+    {
+      "bytes": 30488,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/syntax_core/signatures.py",
+      "sha256": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf"
+    },
+    {
+      "bytes": 7300,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/ui_ux_ir/decoder.py",
+      "sha256": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3"
+    },
+    {
+      "bytes": 120714,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/logic/ui_ux_ir/schema.py",
+      "sha256": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855"
+    },
+    {
+      "bytes": 26219,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_production.py",
+      "sha256": "735ca0597186e094d736ef58435c82956c4ab805a68fc7a6adbfc0ee21ee889f"
+    },
+    {
+      "bytes": 19364,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py",
+      "sha256": "ce80ed6294009e04580051e6eb06a817d74a8a56f04814ad0a698e3d27dd0d41"
+    },
+    {
+      "bytes": 34679,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py",
+      "sha256": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6"
+    },
+    {
+      "bytes": 14622,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_formula_codec.py",
+      "sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290"
+    },
+    {
+      "bytes": 42137,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_family_evaluator.py",
+      "sha256": "3b6cd3a6fade78fed275a478f010329e5d030a250b914c4b46ab0f0d77b9d5ab"
+    },
+    {
+      "bytes": 146870,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py",
+      "sha256": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd"
+    },
+    {
+      "bytes": 35427,
+      "identical_at_preserved_parent_pin": true,
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_latent_formula.py",
+      "sha256": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+    }
+  ],
+  "incoming_path_count": 93,
+  "incoming_paths": [
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_delivery_observation.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_owner_candidate_refresh_observation.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_grok_coding_budget.py",
+    "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py",
+    "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_worker_wiring.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_delivery_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_owner_candidate_refresh_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_provider_stop.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py",
+    "docs/agent_supervisor/context_delivery_accounting.md",
+    "docs/agent_supervisor/evidence/bounded-rounds-20261014/qualification.json",
+    "docs/agent_supervisor/evidence/capsule-budget-20261014/README.md",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/README.md",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/control-audit.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/initial-readiness.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/launch-tests.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/legacy-initial-context.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/legacy-launch.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/legacy-readiness.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/manifest.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/one-capsule-launch.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/one-capsule-readiness.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/pair-lock.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/post-failure-readiness.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/readout.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/recipe.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/reporting-freeze.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/reporting-tests.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/resource-policy-audit.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/runtime-verification.json",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/scripts/campaign_common.py",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/scripts/observe_initial_context.py",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/scripts/prepare_pair.py",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/scripts/read_live_pair.py",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/scripts/run_locked_trial.py",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/scripts/verify_runtime.py",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/tests/launch.stderr",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/tests/reporting.xml",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/tests/test_campaign_scripts.py",
+    "docs/agent_supervisor/evidence/capsule-budget-live-20261014/tests/test_read_live_pair.py",
+    "docs/agent_supervisor/evidence/coding-checkpoints-20261014/qualification.json",
+    "docs/agent_supervisor/evidence/owner-rounds-20261014/qualification.json",
+    "docs/agent_supervisor/evidence/semantic-working-set-20261014/qualification.json",
+    "docs/agent_supervisor/terminal_token_metadata_plan.md",
+    "docs/agent_supervisor/worker_source_views.md",
+    "ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/context_delivery_accounting.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_coding_budget.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/native_context_delivery.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_checkpoint.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_context.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence_client.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_edit_client.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+    "ipfs_accelerate_py/llm_router.py",
+    "ipfs_accelerate_py/mcp_server/fastapi_service.py",
+    "ipfs_accelerate_py/mcplusplus_module/p2p/__init__.py",
+    "ipfs_accelerate_py/mcplusplus_module/p2p_transport.py",
+    "test/api/test_agent_supervisor_implementation_auto_rescue.py",
+    "test/api/test_context_delivery_accounting.py",
+    "test/api/test_grok_coding_turn_bound.py",
+    "test/api/test_grok_nonstream_outcome.py",
+    "test/api/test_implementation_rescue_cumulative_deadline.py",
+    "test/api/test_native_context_delivery.py",
+    "test/api/test_native_provider_failure_settlement.py",
+    "test/api/test_native_provider_rescue_boundary.py",
+    "test/api/test_owner_candidate_refresh_e2e.py",
+    "test/api/test_owner_candidate_round_checkpoint.py",
+    "test/api/test_owner_candidate_round_context.py",
+    "test/api/test_provider_failure_checkpoint_retention.py",
+    "test/api/test_provider_failure_retry_context.py",
+    "test/api/test_router_implementation_runner.py",
+    "test/api/test_semantic_working_set.py",
+    "test/api/test_semantic_working_set_dispatch.py",
+    "test/api/test_stream_absolute_deadline.py",
+    "test/api/test_worker_semantic_evidence.py"
+  ],
+  "incoming_revision": "2b24fde95f2938f2265d85d7351814abdca0d104",
+  "incoming_tests_outside_roster_executed_here": false,
+  "listed_dependency_overlap": [
+    {
+      "bytes": 23171,
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "repository": "accelerator",
+      "sha256": "841ed6214c01bb0cda15f960f0d906d4812bad11c11c7e939206dad86dcb3f50"
+    },
+    {
+      "bytes": 39269,
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "repository": "accelerator",
+      "sha256": "a39881d44b1691c74d2536dac2a13410512be5e57e2a22f6e53c122d197d405e"
+    },
+    {
+      "bytes": 94608,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "repository": "accelerator",
+      "sha256": "993ee341086aa3ad389fa1acd4a76695eefba6e12ea39ee9e5de5dd2756bb23e"
+    },
+    {
+      "bytes": 58399,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "repository": "accelerator",
+      "sha256": "0e96d2490ccd2b5c5f5d65de451b308318b79334d4d2cdf0464956bfd955b092"
+    },
+    {
+      "bytes": 97316,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "repository": "accelerator",
+      "sha256": "aecaf7f3c2f70170d59a3022047476b19a653f35483a3a3c12a19beee5210346"
+    },
+    {
+      "bytes": 83620,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "repository": "accelerator",
+      "sha256": "c6867a6761574e68cda107d4b2379ef7ed4af217bc2205c9e8754db5a7d4926c"
+    },
+    {
+      "bytes": 24180,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "repository": "accelerator",
+      "sha256": "d26cca909c0428ab3afacb8e92c72dfafce31ff4b1d6b057789e12c1b77a9213"
+    },
+    {
+      "bytes": 21633,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+      "repository": "accelerator",
+      "sha256": "12e407ecf7b82924c37901d14bc43d3f4ea8080b438fabaf1d1e3f92dab6d875"
+    },
+    {
+      "bytes": 97108,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "repository": "accelerator",
+      "sha256": "f7fa2db3255f221562d830c6b574da068012b58e729ef7172941c10f6e688428"
+    },
+    {
+      "bytes": 18207,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "repository": "accelerator",
+      "sha256": "ebd1c861469bac02360bfa31b2cb2b1c3592ef9a50e445f043afb9518f5d4808"
+    },
+    {
+      "bytes": 32145,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "repository": "accelerator",
+      "sha256": "90711d0d9ea05c4d091acfb74b61362bc79105a320aab3ef283364cd8d0b687c"
+    },
+    {
+      "bytes": 491002,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "repository": "accelerator",
+      "sha256": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7"
+    },
+    {
+      "bytes": 3258627,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "repository": "accelerator",
+      "sha256": "8b98a73a042caf2f0f08b9820f394bb38589dbe85b986472556cfcb0d4b52951"
+    },
+    {
+      "bytes": 569385,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "repository": "accelerator",
+      "sha256": "0c84879510f496fbfed2b0967bf9e268b7ec098e5fc7c411cbb03f1b04541c6d"
+    }
+  ],
+  "listed_kit_bindings": 0,
+  "merged_execution_head": "4abdba0376011285d685dcb82714f6586a2f4b67",
+  "merged_full_qualification_required": true,
+  "original_prior_evidence_modification_scope": "upstream maintained README append; raw prior result objects unchanged",
+  "original_prior_evidence_modified_by_upstream": [
+    "docs/agent_supervisor/evidence/capsule-budget-20261014/README.md"
+  ],
+  "own_source_test_and_guide_git_objects_unchanged": true,
+  "owned_source_test_and_guide_overlap": [],
+  "parent_publication_base_at_review": "bedf465e0269d4a099f5307b760c18dd843f79f0",
+  "premerge_complete_qualification": "qualification-03",
+  "premerge_doc_receipt": "documentation-checks.json",
+  "premerge_qualified_leaf": "6bcbdaef3fbc4a27ab8d6c91be7edfe78f464586",
+  "preserved_evidence_revision": "2b24fde95f2938f2265d85d7351814abdca0d104",
+  "proposed_merged_qualification": "qualification-04",
+  "raw_stdout_whitespace_preserved": true,
+  "recorded_at_utc": "2026-10-14T09:09:47.021800+00:00",
+  "schema": "repository-proof-context-merged-incoming-review@1",
+  "total_session_token_savings_established": false,
+  "whole_program_proved": false
+}

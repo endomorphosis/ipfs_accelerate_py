@@ -25,23 +25,42 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
-    LIBP2P_INSTALL_HINT,
-    PY_LIBP2P_MAIN_SPEC,
-    create_libp2p_key_pair,
-    ensure_libp2p_runtime,
-    install_libp2p_runtime,
-    install_libp2p_runtime_async,
-    make_multiaddr,
-    make_rendezvous_service,
-    new_libp2p_host,
-    peer_id_from_base58,
-    peerinfo_from_multiaddr,
-)
-from ipfs_accelerate_py.mcplusplus_module.leanstral_topology import (
-    LEANSTRAL_P2P_LISTEN_ADDR,
-    LEANSTRAL_P2P_PORT,
-)
+try:
+    from .p2p.libp2p_runtime import (
+        LIBP2P_INSTALL_HINT,
+        PY_LIBP2P_MAIN_SPEC,
+        create_libp2p_key_pair,
+        ensure_libp2p_runtime,
+        install_libp2p_runtime,
+        install_libp2p_runtime_async,
+        make_multiaddr,
+        make_rendezvous_service,
+        new_libp2p_host,
+        peer_id_from_base58,
+        peerinfo_from_multiaddr,
+    )
+    from .leanstral_topology import (
+        LEANSTRAL_P2P_LISTEN_ADDR,
+        LEANSTRAL_P2P_PORT,
+    )
+except ImportError:  # installed-package context without a package parent
+    from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
+        LIBP2P_INSTALL_HINT,
+        PY_LIBP2P_MAIN_SPEC,
+        create_libp2p_key_pair,
+        ensure_libp2p_runtime,
+        install_libp2p_runtime,
+        install_libp2p_runtime_async,
+        make_multiaddr,
+        make_rendezvous_service,
+        new_libp2p_host,
+        peer_id_from_base58,
+        peerinfo_from_multiaddr,
+    )
+    from ipfs_accelerate_py.mcplusplus_module.leanstral_topology import (
+        LEANSTRAL_P2P_LISTEN_ADDR,
+        LEANSTRAL_P2P_PORT,
+    )
 
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.p2p_transport")
 

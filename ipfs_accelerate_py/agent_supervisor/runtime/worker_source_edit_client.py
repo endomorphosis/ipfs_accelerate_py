@@ -115,7 +115,8 @@ def validate_request(value):
 
 def validate_descriptor(value):
     source.validate_descriptor(value)
-    _need(value["schema"] == DESCRIPTOR_SCHEMA and value.get("source_edit_mode") in MODES,
+    _need(value["schema"] in (DESCRIPTOR_SCHEMA, source.DESCRIPTOR_SCHEMA_V4)
+        and value.get("source_edit_mode") in MODES,
         "source owner did not enable compact edits")
     return value
 

@@ -12,6 +12,7 @@ schema verification, cold imports.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_repository i
     STATE_REPOSITORY_INTERFACE,
     EmbeddedStateRepository,
     MaintenanceLease,
+    MAINTENANCE_LEASE_VALIDITY_SCHEMA,
     QuackStateRepository,
     RepositoryAuthorityMode,
     StateRepositoryAuthorityError,
@@ -719,3 +721,364 @@ def test_expected_identity_mismatch_fails_closed(tmp_path: Path) -> None:
             expected_identity=expected,
             seed_generation=False,
         )
+
+
+# Explicit validity extensions never reinterpret historical equal watermarks.
+_VALIDITY_NOW = "2026-10-14T12:00:00Z"
+_VALIDITY_LATER = "2026-10-14T12:00:30Z"
+_LEASE_MUTATIONS = (
+    ("lease_id", "mlease:other"),
+    ("scope", "other-scope"),
+    ("owner_session_id", "session:other"),
+    ("process_birth_id", "birth:other"),
+    ("fencing_token", 2),
+    ("fence_epoch", 2),
+    ("acquired_at", "2026-10-14T11:59:59Z"),
+    ("expires_at", "2026-10-14T12:01:00Z"),
+    ("state", "released"),
+    ("revision", 1),
+    ("extension_schema", "unsupported-validity@99"),
+    ("extension_json", "{}"),
+    ("released_at", "2026-10-14T12:00:01Z"),
+)
+
+
+def _validity_lease(db: Path, **kwargs: Any) -> MaintenanceLease:
+    return acquire_maintenance_lease(
+        db, owner_session_id="session:validity", process_birth_id="birth:validity",
+        ttl_seconds=30, clock=lambda: _VALIDITY_NOW, **kwargs,
+    )
+
+
+def _maintenance_rows(db: Path) -> tuple[dict[str, Any], ...]:
+    with open_duckdb_connection(db) as connection:
+        return tuple(dict(row) for row in connection.execute(
+            "SELECT * FROM maintenance_leases ORDER BY lease_id"
+        ).fetchall())
+
+
+def test_maintenance_validity_acquisition_has_real_deadline(tmp_path: Path) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    lease = _validity_lease(db)
+    assert lease.expires_at == _VALIDITY_LATER
+    assert lease.acquired_at == _VALIDITY_NOW
+    assert lease.extension_schema == MAINTENANCE_LEASE_VALIDITY_SCHEMA
+    native = _maintenance_rows(db)[0]
+    assert native["extension_schema"] == lease.extension_schema
+    assert native["extension_json"] == lease.extension_json
+    assert native["expires_at"] == _VALIDITY_LATER
+    released = release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)
+    assert released.revision == 1
+    assert not released.active
+
+
+@pytest.mark.parametrize("ttl", [True, False, 0, -1, 1.5, "30", 10**30])
+def test_maintenance_validity_rejects_invalid_ttl_without_rows(tmp_path: Path, ttl: Any) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    with pytest.raises(StateRepositoryMaintenanceError):
+        acquire_maintenance_lease(
+            db, owner_session_id="session:validity", process_birth_id="birth:validity",
+            ttl_seconds=ttl, clock=lambda: _VALIDITY_NOW,
+        )
+    assert _maintenance_rows(db) == ()
+
+
+@pytest.mark.parametrize("instant", ["", "bad", "2026-10-14T12:00:00", "2026-10-14T12:00:00+01:00", True])
+def test_maintenance_validity_rejects_invalid_clock_without_rows(tmp_path: Path, instant: Any) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    with pytest.raises(StateRepositoryMaintenanceError):
+        acquire_maintenance_lease(
+            db, owner_session_id="session:validity", process_birth_id="birth:validity",
+            clock=lambda: instant,
+        )
+    assert _maintenance_rows(db) == ()
+
+
+@pytest.mark.parametrize("field,value", _LEASE_MUTATIONS)
+def test_marked_exclusive_attachment_refuses_each_changed_field(tmp_path: Path, field: str, value: Any) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    lease = _validity_lease(db)
+    before = _maintenance_rows(db)
+    repo = EmbeddedStateRepository(
+        db, exclusive=True, maintenance_lease=replace(lease, **{field: value}),
+        seed_generation=False, clock=lambda: _VALIDITY_NOW,
+    )
+    with pytest.raises(StateRepositoryMaintenanceError):
+        repo.attach()
+    assert not repo.is_open
+    repo.close()
+    assert _maintenance_rows(db) == before
+    release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)
+
+
+@pytest.mark.parametrize("instant", ["2026-10-14T11:59:59Z", _VALIDITY_LATER, "2026-10-14T12:00:31Z"])
+def test_marked_exclusive_attachment_refuses_outside_validity(tmp_path: Path, instant: str) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    lease = _validity_lease(db)
+    repo = EmbeddedStateRepository(
+        db, exclusive=True, maintenance_lease=lease, seed_generation=False,
+        clock=lambda: instant,
+    )
+    with pytest.raises(StateRepositoryMaintenanceError):
+        repo.attach()
+    assert not repo.is_open
+    release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)
+
+
+@pytest.mark.parametrize("operation", ["execute", "transaction", "client", "count_tasks", "cas_task_status", "submit_command"])
+def test_marked_repository_rechecks_expiry_after_attach(tmp_path: Path, operation: str) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    now = {"instant": _VALIDITY_NOW}
+    lease = _validity_lease(db)
+    repo = open_embedded_repository(
+        db, exclusive=True, maintenance_lease=lease, seed_generation=False,
+        clock=lambda: now["instant"],
+    )
+    assert repo.count_tasks() == 0
+    now["instant"] = _VALIDITY_LATER
+    try:
+        with pytest.raises(StateRepositoryMaintenanceError, match="expired"):
+            if operation == "execute":
+                repo.execute("insert_goal", {})
+            elif operation == "transaction":
+                repo.transaction()
+            elif operation == "client":
+                _ = repo.client
+            elif operation == "count_tasks":
+                repo.count_tasks()
+            elif operation == "cas_task_status":
+                repo.cas_task_status(task_cid="never-created", expected_task_revision=0,
+                                     new_status="done", idempotency_key="never-used")
+            else:
+                repo.submit_command(None)
+    finally:
+        repo.close()
+    with open_duckdb_connection(db) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM idempotency_records").fetchone()[0] == 0
+    release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)
+
+
+@pytest.mark.parametrize("field,value", _LEASE_MUTATIONS)
+def test_marked_release_refuses_forged_record_and_preserves_native_row(tmp_path: Path, field: str, value: Any) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    lease = _validity_lease(db)
+    before = _maintenance_rows(db)
+    with pytest.raises(StateRepositoryMaintenanceError):
+        release_maintenance_lease(db, replace(lease, **{field: value}), clock=lambda: _VALIDITY_LATER)
+    assert _maintenance_rows(db) == before
+    release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)
+
+
+def test_marked_release_allows_expired_cleanup_and_exact_response_loss_replay(tmp_path: Path) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    lease = _validity_lease(db)
+    released = release_maintenance_lease(db, lease, clock=lambda: "2026-10-14T12:00:31Z")
+    before = _maintenance_rows(db)
+    assert release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER) == released
+    assert release_maintenance_lease(db, released, clock=lambda: _VALIDITY_LATER) == released
+    assert _maintenance_rows(db) == before
+    with pytest.raises(StateRepositoryMaintenanceError):
+        release_maintenance_lease(db, replace(lease, owner_session_id="session:other"))
+    assert _maintenance_rows(db) == before
+    newer = _validity_lease(db)
+    assert newer.fencing_token > lease.fencing_token
+    release_maintenance_lease(db, newer, clock=lambda: _VALIDITY_LATER)
+
+
+@pytest.mark.parametrize("field,value", _LEASE_MUTATIONS)
+def test_marked_attachment_and_release_refuse_changed_native_row(tmp_path: Path, field: str, value: Any) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    lease = _validity_lease(db)
+    with open_duckdb_connection(db) as connection:
+        connection.execute("UPDATE maintenance_leases SET " + field + " = ? WHERE lease_id = ?",
+                           [value, lease.lease_id])
+    after_change = _maintenance_rows(db)
+    repo = EmbeddedStateRepository(db, exclusive=True, maintenance_lease=lease,
+        seed_generation=False, clock=lambda: _VALIDITY_NOW)
+    with pytest.raises(StateRepositoryMaintenanceError):
+        repo.attach()
+    assert not repo.is_open
+    with pytest.raises(StateRepositoryMaintenanceError):
+        release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)
+    assert _maintenance_rows(db) == after_change
+
+
+@pytest.mark.parametrize("field", ["fencing_token", "fence_epoch", "revision"])
+def test_marked_record_rejects_boolean_integer_coercion(tmp_path: Path, field: str) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    lease = _validity_lease(db)
+    bad = replace(lease, **{field: True})
+    assert bad.to_dict()[field] is True
+    before = _maintenance_rows(db)
+    with pytest.raises(StateRepositoryMaintenanceError):
+        EmbeddedStateRepository(db, exclusive=True, maintenance_lease=bad.to_dict(),
+            seed_generation=False, clock=lambda: _VALIDITY_NOW).attach()
+    with pytest.raises(StateRepositoryMaintenanceError):
+        release_maintenance_lease(db, bad.to_dict())
+    assert _maintenance_rows(db) == before
+    release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)
+
+
+@pytest.mark.parametrize("extension", [
+    '{"schema":"ipfs_accelerate_py/agent-supervisor/maintenance-lease-validity@1","ttl_seconds":30,"ttl_seconds":30}',
+    '{"schema":"ipfs_accelerate_py/agent-supervisor/maintenance-lease-validity@1","ttl_seconds":true}',
+    '{"schema":"ipfs_accelerate_py/agent-supervisor/maintenance-lease-validity@1","ttl_seconds":31}',
+    '{"schema":"ipfs_accelerate_py/agent-supervisor/maintenance-lease-validity@1","ttl_seconds":30,"other":1}',
+    " " * 1025,
+])
+def test_marked_native_validity_body_is_closed_and_duration_consistent(tmp_path: Path, extension: str) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    lease = _validity_lease(db)
+    altered = replace(lease, extension_json=extension)
+    with open_duckdb_connection(db) as connection:
+        connection.execute("UPDATE maintenance_leases SET extension_json = ? WHERE lease_id = ?",
+                           [extension, lease.lease_id])
+    before = _maintenance_rows(db)
+    with pytest.raises(StateRepositoryMaintenanceError):
+        EmbeddedStateRepository(db, exclusive=True, maintenance_lease=altered,
+            seed_generation=False, clock=lambda: _VALIDITY_NOW).attach()
+    with pytest.raises(StateRepositoryMaintenanceError):
+        release_maintenance_lease(db, altered)
+    assert _maintenance_rows(db) == before
+
+
+@pytest.mark.parametrize("operation", ["attach", "release"])
+def test_marked_lease_cannot_strip_validity_extension(tmp_path: Path, operation: str) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    lease = _validity_lease(db)
+    stripped = replace(lease, extension_schema="", extension_json="{}")
+    before = _maintenance_rows(db)
+    with pytest.raises(StateRepositoryMaintenanceError):
+        if operation == "attach":
+            EmbeddedStateRepository(db, exclusive=True, maintenance_lease=stripped,
+                seed_generation=False, clock=lambda: _VALIDITY_NOW).attach()
+        else:
+            release_maintenance_lease(db, stripped)
+    assert _maintenance_rows(db) == before
+    release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)
+
+
+def test_legacy_equal_watermark_lease_stays_active_until_explicit_release(tmp_path: Path) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    lease = MaintenanceLease(
+        lease_id="mlease:historical", scope=DEFAULT_MAINTENANCE_SCOPE,
+        owner_session_id="session:historical", process_birth_id="birth:historical",
+        fencing_token=7, fence_epoch=1, acquired_at="1970-01-01T00:00:00Z",
+        expires_at="1970-01-01T00:00:00Z", state="active", revision=0,
+    )
+    with open_duckdb_connection(db) as connection:
+        connection.execute(
+            "INSERT INTO maintenance_leases (lease_id, scope, owner_session_id, process_birth_id, "
+            "fencing_token, fence_epoch, acquired_at, expires_at, state, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [lease.lease_id, lease.scope, lease.owner_session_id, lease.process_birth_id,
+             lease.fencing_token, lease.fence_epoch, lease.acquired_at, lease.expires_at, lease.state, lease.revision],
+        )
+    before = _maintenance_rows(db)
+    assert "extension_schema" not in lease.to_dict()
+    with open_embedded_repository(db, exclusive=True, maintenance_lease=lease,
+                                 seed_generation=False, clock=lambda: _VALIDITY_NOW) as repo:
+        assert repo.count_tasks() == 0
+    assert _maintenance_rows(db) == before
+    with pytest.raises(StateRepositoryMaintenanceError, match="already held"):
+        _validity_lease(db)
+    assert _maintenance_rows(db) == before
+    release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)
+    newer = _validity_lease(db)
+    assert newer.fencing_token == 8
+    release_maintenance_lease(db, newer, clock=lambda: _VALIDITY_LATER)
+
+
+@pytest.mark.parametrize("operation", ["acquire", "release", "exclusive_attach"])
+def test_maintenance_operations_do_not_create_missing_authority(tmp_path: Path, operation: str) -> None:
+    db = tmp_path / "missing" / "control.duckdb"
+    supplied = MaintenanceLease(
+        lease_id="mlease:historical", scope=DEFAULT_MAINTENANCE_SCOPE,
+        owner_session_id="session:historical", process_birth_id="birth:historical",
+        fencing_token=1, fence_epoch=1, acquired_at=_VALIDITY_NOW,
+        expires_at=_VALIDITY_NOW, state="active",
+    )
+    with pytest.raises(StateRepositoryMaintenanceError, match="missing"):
+        if operation == "acquire":
+            _validity_lease(db)
+        elif operation == "release":
+            release_maintenance_lease(db, supplied)
+        else:
+            EmbeddedStateRepository(db, exclusive=True, maintenance_lease=supplied).attach()
+    assert not db.parent.exists()
+
+
+@pytest.mark.parametrize("capability", ["client", "transaction", "apply_callback"])
+def test_marked_repository_refuses_retainable_public_capabilities_before_expiry(tmp_path: Path, capability: str) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    now = {"instant": _VALIDITY_NOW}
+    lease = _validity_lease(db)
+    repo = open_embedded_repository(db, exclusive=True, maintenance_lease=lease,
+        seed_generation=False, clock=lambda: now["instant"])
+    retained = []
+    try:
+        with pytest.raises(StateRepositoryAuthorityError, match="retainable"):
+            if capability == "client":
+                retained.append(repo.client)
+            elif capability == "transaction":
+                retained.append(repo.transaction())
+            else:
+                repo.submit_command(None, apply=lambda txn, command, live: retained.append(txn))
+        assert retained == []
+        now["instant"] = _VALIDITY_LATER
+        with pytest.raises(StateRepositoryMaintenanceError, match="expired"):
+            repo.execute("insert_goal", {})
+    finally:
+        repo.close()
+    with open_duckdb_connection(db) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM idempotency_records").fetchone()[0] == 0
+    release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)
+
+
+def test_marked_release_timestamp_is_bound_and_exact_replay_preserves_it(tmp_path: Path) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    lease = _validity_lease(db)
+    released = release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)
+    assert released.released_at == _VALIDITY_LATER
+    before = _maintenance_rows(db)
+    assert release_maintenance_lease(db, lease, clock=lambda: "2026-10-14T12:01:00Z") == released
+    with pytest.raises(StateRepositoryMaintenanceError):
+        release_maintenance_lease(db, replace(released, released_at="2026-10-14T12:00:31Z"))
+    assert _maintenance_rows(db) == before
+
+
+def test_marked_release_refuses_clock_before_acquisition(tmp_path: Path) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    lease = _validity_lease(db)
+    before = _maintenance_rows(db)
+    with pytest.raises(StateRepositoryMaintenanceError, match="precedes"):
+        release_maintenance_lease(db, lease, clock=lambda: "2026-10-14T11:59:59Z")
+    assert _maintenance_rows(db) == before
+    release_maintenance_lease(db, lease, clock=lambda: _VALIDITY_LATER)

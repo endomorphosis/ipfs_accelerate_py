@@ -1,0 +1,10 @@
+[
+  "test/api/test_native_source_worker_delivery.py",
+  "test/api/test_source_lookup_worker_channel.py",
+  "test/api/test_native_source_worker_spawn.py",
+  "test/api/test_native_source_worker_spawn_custody.py",
+  "test/api/test_native_source_worker_spawn_lock_order.py",
+  "test/api/test_native_nominated_source_allocation.py",
+  "test/api/test_native_nominated_source_allocation_custody.py",
+  "test/api/test_current_source_worktree_allocation.py"
+]

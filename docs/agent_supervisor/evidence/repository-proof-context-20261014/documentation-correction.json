@@ -1,0 +1,12 @@
+{
+  "additional_tests": false,
+  "attempt": "documentation-03",
+  "correction": "Refer to future final manifest as an inline filename; use exclusive documentation attempt04.",
+  "original_readme_sha256": "92f1145a27c1fc227b57a494d4db80ccdb4fc357b2c525b6471be8d327e5f54e",
+  "original_receipt_and_workflow_log_preserved": true,
+  "production_or_test_source_changed": false,
+  "reason": "README linked final manifest before its after-documentation creation; manual link checker correctly refused missing target.",
+  "recorded_at_utc": "2026-10-14T10:43:58.542572+00:00",
+  "schema": "repository-proof-context-documentation-correction@1",
+  "status": "failed_after_four_workflow_blocks"
+}

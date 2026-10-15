@@ -128,6 +128,80 @@ _PLAN_R2_PROTECTED_STATUSES: Final = frozenset(
 )
 
 
+class _PrivateOwnerOperationConnection:
+    """Owner-local native connection with the existing closed operation catalog.
+
+    This object never crosses either served Quack endpoint. Signed-command,
+    lease, replay and CAS checks remain in the fabric's original transaction.
+    The named-operation seam supports lifecycle history in that same connection;
+    it does not disguise an embedded client as a remote authenticated owner.
+    """
+
+    def __init__(self, connection: Any) -> None:
+        try:
+            from .typed_state_owner import build_control_plane_operation_catalog
+
+            self._catalog = build_control_plane_operation_catalog()
+        except BaseException:
+            connection.close()
+            raise
+        self._connection = connection
+        self._active = False
+        self._closed = False
+
+    def execute(self, sql: str, parameters: Any = None) -> Any:
+        if self._closed:
+            raise QuackCommandFabricStateError("private owner connection is closed")
+        result = self._connection.execute(sql, parameters) if parameters is not None else self._connection.execute(sql)
+        normalized = " ".join(sql.split()).upper()
+        if normalized in {"BEGIN", "BEGIN TRANSACTION"}:
+            self._active = True
+        elif normalized in {"COMMIT", "ROLLBACK"}:
+            self._active = False
+        return result
+
+    @property
+    def execute_operation(self) -> Callable[[str, Sequence[Any] | None], Any] | None:
+        # The existing client lifecycle binds trusted templates outside a
+        # transaction. Expose this extra seam only during actual owner custody,
+        # so load/session/heartbeat/close keep their original closed SQL path.
+        if self._closed or not self._active:
+            return None
+        return self._execute_transaction_operation
+
+    def _execute_transaction_operation(self, operation: str, parameters: Sequence[Any] | None = None) -> Any:
+        from .typed_state_owner import _closed_parameters
+
+        # A method retained during custody cannot survive rollback/commit/close.
+        if self._closed or not self._active:
+            raise QuackCommandFabricStateError("private owner named operation requires its active transaction")
+        if type(operation) is not str or operation not in self._catalog:
+            raise QuackCommandFabricStateError("unknown private owner named operation")
+        selected = self._catalog[operation]
+        if selected.bootstrap_only:
+            raise QuackCommandFabricStateError("private owner transaction refuses bootstrap operation")
+        bound = _closed_parameters(parameters)
+        if len(bound) != selected.parameter_count:
+            raise QuackCommandFabricStateError("private owner named-operation parameter count differs")
+        return self._connection.execute(selected.sql, bound if bound else None)
+
+    def commit(self) -> None:
+        self._connection.commit()
+        self._active = False
+
+    def rollback(self) -> None:
+        try:
+            self._connection.rollback()
+        finally:
+            self._active = False
+
+    def close(self) -> None:
+        if not self._closed:
+            self._closed = True
+            self._active = False
+            self._connection.close()
+
+
 class QuackCommandFabricError(RuntimeError):
     """Base error for the compatibility slice."""
 
@@ -1447,8 +1521,8 @@ class QuackCommandFabric:
                 "quack:127.0.0.1:1",
                 owner_id=self.authorization_policy.owner_principal_did,
                 store_id=self.authorization_policy.store_id,
-                connection_factory=lambda _endpoint: self._duckdb.connect(
-                    str(self.operational_database)
+                connection_factory=lambda _endpoint: _PrivateOwnerOperationConnection(
+                    self._duckdb.connect(str(self.operational_database))
                 ),
                 seed_generation=False,
             )

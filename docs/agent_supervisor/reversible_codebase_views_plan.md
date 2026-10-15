@@ -107,6 +107,48 @@ savings nor correct execution of transformed source.
 
 ## What moving the whole codebase to and from a compact state means
 
+### Current worker routes and the whole-codebase hypothesis
+
+The October 14 audit confirms that missing unchanged-tree restoration is not
+the outstanding implementation gap. The bounded
+[`repository_source_view` package](../../ipfs_accelerate_py/agent_supervisor/runtime/repository_source_view.py)
+already captures original and compact blobs and materializes either tree into
+a new directory, with tests that remove the source before original restoration.
+Its limits are 4,096 entries, 64 MiB total and 1 MiB per file. Git metadata and
+ownership/timestamps/ACLs are outside that snapshot contract. Its compact Python
+path uses an AST renderer. The CAS inventory plus KEEP/DELETE codec described
+elsewhere in this plan is a separate implementation; its exact sidecar and
+fallback guarantees must not be attributed to the AST renderer.
+
+There are also two worker routes. The older `WorkerSourceViews` reader uses
+the bounded semantic-manifest population and KEEP/DELETE profiles, with optional
+mapped-span edits. The newer
+[`RepositorySourceSession`](../../ipfs_accelerate_py/agent_supervisor/runtime/repository_source_session.py)
+uses the bounded repository snapshot and native index, defaulting to 512 files
+and 16 MiB. Its MCP tools provide path/symbol discovery, original or compact
+reads, supported definition selection, guarded canonical edits and refresh.
+Whole-repository coverage is limited to the admitted snapshot; explicit limits
+and unsupported files remain observable.
+
+The new MCP route already combines with `world_task_packet`, as exercised by
+the [native historical replay cycle](evidence/world-replay-20261014/qualification.json).
+The older `source_view_profile` route remains incompatible with that selection.
+Thus integration work should extend and qualify the existing MCP path, rather
+than assume all worker reads/edits or all world/source composition are absent.
+Both routes leave ordinary shell/file-tool reads on canonical source.
+
+A meaningful test of the user's whole-codebase hypothesis must measure that
+read surface: how many relevant reads use compact content, which fall back or
+expand, and whether the same bodies were already sent. A read-only compact
+navigation tree could broaden ordinary-tool adoption, but its paths, source
+maps and editing behavior need separate qualification. A restorable archive
+does not redirect a worker's tools. The
+[matched experiment sequence](terminal_token_metadata_plan.md#next-experiment-and-acceptance-gates)
+isolates indexed retrieval, compact representation and world-context selection
+before combining them.
+
+### Representation and editing boundaries
+
 The goal is less total model work at equal official task success. Keep three
 distinct representations of the same admitted source revision:
 
@@ -1047,3 +1089,251 @@ before launching the next token experiment. Existing reconstruction assets and
 the three earlier live compaction trials remain the starting evidence; this
 host allocation join supplies no new learned reconstruction or token-saving
 result.
+
+## Native broker launch boundary, 2026-10-14
+
+The [broker launch gates](source_lookup_worker.md#check-before-launch-and-before-registration)
+now carry the retained native task, nomination and allocation through a trusted
+launcher's before-spawn check and closing child registration. Complete source
+currentness in both roots remains independent of allocation ownership. A native
+session requires the actual `Popen` child, its direct-parent/kernel birth and
+allocated working directory; peer reads remain disabled until closing checks
+pass. A refusal after birth closes and revokes the source session but leaves
+the launcher responsible for terminating/reaping the actual child and workers.
+Preserve that distinction when counting failed attempts: a before-spawn refusal
+and an already launched child are different events and costs.
+
+The [new qualification](evidence/native-source-worker-spawn-20261014/README.md)
+uses inert same-UID children and actual native/CAS/Portal/worktree fixtures.
+It supplies no new worker-UID, compiled-context, provider, proof or official-task
+result. Parent/birth checks authenticate this direct-owner boundary; they do not
+allow a different container wrapper to submit a serialized child identity.
+Currentness checks remain sequential rather than a filesystem writer lease.
+
+Two concrete deployment prerequisites remain. First, retain the original
+allocation and add a separately sealed permission delegation. The guard accepts
+owner-controlled modes and pins their exact identities; the ordinary Terminal
+wrapper changes candidate directories to `3770`/`2770`, files to `660`/`770` and
+the Git marker to `440`. These changes must not be hidden by recapturing old
+control witnesses or allowing group writes in the generic allocation guard.
+Keep canonical Git, Portal, lifecycle and attempt controls owner protected.
+Second, authenticate the actual native daemon/wrapper claim and child ancestry
+across processes. Reuse the existing finite-proof dispatch protocol's reviewed
+pattern rather than interpreting routing paths or copied claim tuples as grants.
+Join signed profile `@4` and compiled instruction `@5` independently afterward.
+
+The [permission and process handoff proposal](evidence/native-source-worker-spawn-20261014/permission-handoff-design.json)
+breaks that work into four reviewable increments: provision read-only access
+before allocation capture, seal writable delegation without replacing original
+witnesses, authenticate wrapper and child provenance, then join signed context.
+Each increment lists acceptance, refusal and cleanup checks. The proposal is
+not an implemented delegation or a qualified worker launch.
+
+The [fresh parallel survey](evidence/native-source-worker-spawn-20261014/parallel-work-survey.json)
+observed an active integration checkout containing both published allocation
+custody and the committed capsule-budget/per-turn usage stack. Preserve that
+reconciliation and review its actual published result before deployment or
+token experiments. This increment does not duplicate router, capsule or usage
+implementations. Existing independent IR/dimension/schema/task checkpoints,
+embeddings, model-manager entries and DuckDB/DuckLake inventories remain the
+assets for subsequent controlled reconstruction and complete-session trials.
+
+The [published integration review](evidence/native-source-worker-spawn-20261014/incoming-integration-review.json)
+confirms that the parallel repository session, context adapter, capsule-budget
+and per-turn usage work has reached upstream. Reuse its generation-bound
+refresh, source validation, expansion and edit paths. Their worker-side source
+generations remain separate from native Quack claim, allocation and source-grant
+successors: an edit invalidates the old native current-source reader, and a
+new generation needs explicit admission. Qualify the combined stack before
+deployment; preserving incoming commits alone does not qualify all their code.
+
+The [next indexed-proof context proposal](evidence/native-source-worker-spawn-20261014/indexed-proof-context-followup.json)
+uses the existing DuckDB-backed repository index, context adapter and formal
+verification cache. Join checked proof references with a complete admitted cache
+key and the current repository generation; retain mandatory evidence, assumptions
+and residual obligations. Independently match Git-tree identities to the
+adapter's SHA256 source identity instead of relabeling digests. Existing
+source-backed repository restoration and unchanged-AST edits preserve retained
+original bytes within their declared scope; they do not measure learned IR
+reconstruction. Measure the complete session after the permission/process joins,
+including retrieval, expansion, edits, refresh, failures and validation. The
+proposal creates no proof authority and reports no token saving.
+
+## Checked local proof context, 2026-10-14
+
+The [proof-context bridge](repository_proof_context.md) now implements the first
+backend of that indexed-proof proposal. It wraps the existing repository adapter,
+native index and live header-proof-cache admission. The complete independently
+reviewed key and original receipt remain bound; all local theorem inputs,
+assumptions, source premises, residual obligations and frontiers are required
+context. The compiler can defer the optional proof digest while keeping those
+conditions and every caller-required IntentIR, SecurityIR and UI/UXIR reference.
+Expansion, retry and final rendering recheck source and proof eligibility.
+
+The identity review found a necessary refinement to the proposal: a native
+header key's tree is the signed task-scope CID, rather than a committed Git
+tree. The session's source-view SHA256 and private index repository ID are
+different identities again. This backend checks complete signed regular-file
+correspondence, including omitted originals, and preserves all namespaces. It
+supports a fully signed dirty candidate but makes no Git-tree equivalence claim.
+Generic committed-tree keys need a separate independently verified backend.
+
+The [current qualification record](evidence/repository-proof-context-20261014/README.md)
+uses actual signed source, Git, SQLite/DuckDB/CAS, index, session and compiler
+owners. Its existing authored fixture supplies pinned prover transcripts;
+no native solver/kernel, provider, model, training or worker runs. Cache reuse
+does not prove execution, whole-program correctness or task completion. Sequential
+closing checks still require consumer-boundary validation and do not exclude
+filesystem writers. Record their scan and cache overhead in the eventual trial.
+
+The [parallel survey](evidence/repository-proof-context-20261014/parallel-work-survey.json)
+retains the scoped review of capsule working sets, provider-failure checkpoints,
+repository context, native formalization proposals and model catalogs. The
+[incoming review](evidence/repository-proof-context-20261014/incoming-integration-review.json)
+records byte compatibility with the frozen execution. Preserve the newer LegalIR
+source-alignment and datasets progress when publishing this bridge. Separate
+family/schema/version/decoder-task and 8D/384D/768D assets remain the basis for
+later learned reconstruction; this source-backed proof join changes none of them.
+
+The [merged integration review](evidence/repository-proof-context-20261014/merged-incoming-review.json)
+preserves subsequent capsule working-set, usage-accounting and provider-checkpoint
+progress from upstream. Its fourteen changed listed dependencies require a new
+complete qualification of the merged source; the earlier passing result remains
+separate. Incoming maintained documentation updates are retained alongside raw
+historical results. Currentness and source correspondence do not themselves
+qualify these additional router and deployed-worker combinations.
+
+The [router adoption followup](evidence/repository-proof-context-20261014/router-adoption-followup.json)
+identified a specific repair: instruction `@5` closing replay occurred before
+a working-set RPC. The [later closing-replay qualification](evidence/router-signed-scope-closing-20261014/README.md)
+records that repair separately from the original five proof-context suites.
+Complete signed/profile/compiled-instruction replay now follows preflight and
+descriptor-context entry, with an actual allocated-CWD check before dispatch.
+Existing selected-capsule and native spawn checks remain distinct; host controls
+do not establish deployed worker admission or task success.
+
+The [subsequent source/session review](evidence/repository-proof-context-20261014/current-source-compatibility-review.json)
+preserves upstream repository-world and stable-symbol APIs. Their opt-in
+representations do not revive old source generations. Reuse the original native
+fences and exact lookup path, and qualify the changed index/session implementation
+with the bridge. The new world-packet lane excludes signed public instructions;
+it does not itself supply the closing replay for the capsule-working-set and
+instruction `@5` combination. Its separate suites are not counted in the
+original proof-context qualification.
+
+The [newer LegalIR findings](evidence/repository-proof-context-20261014/preserved-legalir-review.json)
+preserve trained-parent reuse and a separate published conditions-head comparison.
+Fresh-panel exact IR remained zero, and actual latent conditioning was disabled.
+Treat that as failed generalization evidence rather than a qualified 384D teacher.
+Retain checkpoint/task/schema/latent-mode lineage, verify actual encoder assets
+and per-family ModelManager registration, then gate distillation on fresh semantic
+and text reconstruction as well as loss. This host proof-context run supplies
+no model-quality or complete dimension-matrix qualification.
+
+Next, qualify a trusted deployed consumer alongside the existing permission,
+claim, profile and instruction joins. Then extend admitted proof families and
+multi-receipt dependency closure before choosing retrieval defaults. Freeze
+matched complete-session Terminal Bench trials, including every planning,
+coding, lookup, expansion, edit, refresh, verification, retry and failed attempt.
+Compare total input/output tokens and latency at matched official success.
+Reversible source restoration, learned semantic reconstruction, proof status
+and complete-session savings remain separate measurements.
+
+## Broker source-delivery replay, 2026-10-14
+
+The [delivery boundary](source_lookup_worker.md#close-source-delivery-after-broker-replay)
+now releases SERVER for both broker-owned selected-source CAS replays. Each
+replay is followed by native task/allocation fencing and detached original
+custody, endpoint and complete canonical/allocated source checks. The same
+closing section preserves the existing launch check order. Before-backend
+refusal avoids the source RPC; after-backend refusal retains validated bytes
+already incurred. The [new regression phase](evidence/source-worker-delivery-fences-20261014/README.md)
+keeps its unpatched control and failed setup attempt separate from qualification.
+
+This owner-side increment admits no worker peer, permission transition or
+cross-process native claim. Constructor and privileged native gateway CAS
+transactions remain separate callback boundaries. Preserve the reviewed
+candidate-launcher and reporting work while implementing the explicit native
+delegation and wrapper/child handoff; their separate worker broker cannot be
+substituted for retained native task/allocation handles. Qualify those joins and
+actual signed compiled-context adoption before measuring a deployed token trial.
+
+## Source session construction, 2026-10-14
+
+The [constructor boundary](source_lookup_worker.md#construct-the-source-session-before-publishing-endpoints)
+retains original owner/source/CAS witnesses and copied inputs before either
+canonical replay. Both replays run outside SERVER. Native fences and detached
+source, allocation, nomination and protected-path checks follow before issuing a
+proxy grant, then again after the real client opens and before endpoints are
+published. Early refusal issues no proxy; late refusal revokes only the new
+proxy and closes its transport while preserving consumed native source binding.
+
+The [constructor regression phase](evidence/source-worker-construction-20261014/README.md)
+keeps the unpatched control, source snapshots, callback drift refusals and late
+cleanup checks separate. This is an owner-side boundary with authored deployment
+metadata, rather than separate worker-UID or native coding-child qualification.
+Initial native source binding and privileged source-query transactions still
+need their own callback review. Preserve the planned permission delegation,
+cross-process provenance and independent compiled-context joins. Existing IR
+families, schema/version, decoder tasks and 8D/384D/768D assets retain their own
+reconstruction, registry and teacher-promotion gates.
+
+## Native source-query replay, 2026-10-14
+
+The [typed source-query boundary](source_lookup_worker.md#detach-native-source-query-replay)
+now releases SERVER for the retained CAS load and source-specific clock samples.
+It captures original owner/reader/connection/store/grant and registry witnesses
+first, rejects overlapping reads and active native transactions, and stages its
+response privately. Final native task/body, source population, selected bytes
+and exact active-grant checks precede one-use cursor publication. Refused reads
+preserve their predecessor and never roll back a borrowed transaction.
+
+The [query evidence](evidence/source-query-replay-20261014/README.md) keeps the
+unpatched control, listed dependency bindings and source snapshots separate
+from earlier constructor/delivery findings. Initial reader binding remains its
+own CAS callback boundary. Preserve the planned native permission delegation,
+worker provenance and signed compiled-context adoption before deployed trials.
+Reuse the existing independent IR family/schema/task and 8D/384D/768D assets;
+this source query change supplies no learned reconstruction or token-saving
+result. Fresh encoder-conditioned evaluation and native ModelManager custody
+still gate teacher promotion.
+
+
+## Initial native source binding, 2026-10-15
+
+The [initial publication boundary](source_lookup_worker.md#publish-the-initial-native-source-reader)
+now configures the literal reader under original SERVER custody and releases
+SERVER for retained-CAS inventory replay. Existing task/allocation binders add
+their actual native fences before closing original-object, native-row and full
+current-source checks. A private one-attempt witness pins only that candidate's
+publication. Post-publication refusal preserves consumed task/allocation joins;
+it cannot adopt another gateway reader or authorize a rebind. Before publication,
+a refused attempt publishes no reader of its own and leaves its native markers
+empty. A competing genuine reader is preserved, and retry requires the gateway
+still to be unbound. An early original-transaction
+gate precedes ready/native SQL and coordinator fences on the relevant routes;
+this path neither repairs nor rolls back a borrowed native transaction.
+
+The [regression phase](evidence/source-initial-binding-20261015/README.md)
+retains its unpatched lock-order control and target-roster expansion separately
+from current qualification. The complete task-admission test module is included
+because its binder changes, without inflating the existing 279-source inventory.
+Prior query/constructor/delivery manifests stay immutable Git evidence; prior
+API-test counts are not added to this phase. A finite final clock sample runs
+outside SERVER after detached native fences and is supplied to closing
+task/grant and allocation checks. Existing fence/default clock callbacks retain
+their own contracts. Sequential lease observations provide no filesystem writer
+exclusion, universal callback safety or atomic delivery-time expiry guarantee.
+
+Next qualify native worker permission delegation and daemon/wrapper/child
+provenance with the independent signed profile and compiled-context joins.
+Preserve parallel candidate continuation and its separate broker rather than
+substituting it for native task/allocation handles. Keep CodebaseIR, IntentIR,
+SecurityIR, LegalIR and UI/UXIR assets separate by family, schema/version,
+decoder task and 8D/384D/768D size, reusing existing checkpoints and embeddings.
+Fresh encoder-conditioned semantic and legal-text reconstruction, checkpoint
+lineage and ModelManager custody still gate distillation; failed fresh LegalIR
+panels and disabled latent conditioning do not become a qualified teacher.
+This source-binding work performs no training, model upload or reconstruction
+quality evaluation. Measure complete planning/coding/retrieval/refresh/repair
+sessions at matched official success before claiming token savings.

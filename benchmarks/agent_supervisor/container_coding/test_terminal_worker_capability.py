@@ -59,6 +59,19 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_context_evidence.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_decision_usage_projection.py',
+        'source/benchmarks/agent_supervisor/container_coding/semantic_decision_input_audit.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_decision_usage.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/cumulative_usage_reconciliation.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_world_packet_audit.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_world_nomination_audit.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet_replay.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_invocation_replay.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_artifact_store.py',
+        'source/ipfs_accelerate_py/agent_supervisor/prompt/delta_task_packet.py',
+        'source/ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py',
         'source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py',
@@ -81,6 +94,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py',
         'source/ipfs_accelerate_py/llm_router.py',
         'source/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py',
+        'source/ipfs_accelerate_py/cli_runtime/grok_stream_usage.py',
         'source/ipfs_accelerate_py/cli_runtime/cli_metadata.py',
         'source/ipfs_accelerate_py/cli_runtime/grok_native_usage.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py',
@@ -103,10 +117,13 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
 
 
 @pytest.mark.parametrize('name', ['terminal_container_supervisor.py', 'terminal_output_observation.py',
-    'llm_router.py', 'grok_stream_capture.py', 'cli_metadata.py', 'grok_native_usage.py',
+    'llm_router.py', 'grok_stream_capture.py', 'grok_stream_usage.py', 'cli_metadata.py', 'grok_native_usage.py',
     'source_formalization_context.py', 'validation_runtime.py', 'representation_displacement.py',
     'numerical_obligation_broker.py', 'numerical_obligation_client.py', 'source_view_policy.py',
-    'context_selection_observation.py', 'worker_source_request_observation.py'])
+    'context_selection_observation.py', 'worker_source_request_observation.py',
+    'terminal_world_packet_audit.py', 'terminal_world_nomination_audit.py', 'repository_world_packet.py',
+    'repository_world_packet_replay.py', 'repository_world_invocation_replay.py',
+    'repository_world_artifact_store.py', 'delta_task_packet.py', 'world_model.py'])
 @pytest.mark.parametrize('kind', ['missing', 'stale', 'copied-feature'])
 def test_output_observation_requires_matching_owner_driver_and_collector(packaged, name, kind):
     manifest = copy.deepcopy(packaged[1])
@@ -190,7 +207,9 @@ def test_prepare_rejects_stale_or_mismatched_archive_before_harbor(packaged, tmp
     archive, manifest, dataset = packaged
     (archive / 'manifest.json').write_text(json.dumps(_mutate(manifest, kind)))
     monkeypatch.setattr(benchmark.subprocess, 'run', lambda *a, **k: pytest.fail('unexpected Harbor call'))
-    with pytest.raises(ValueError, match='worker archive capability'):
+    expected_failure = (r"^runtime deadline sources differ; rebuild the runtime archive$"
+        if kind == "inventory" else "worker archive capability")
+    with pytest.raises(ValueError, match=expected_failure):
         benchmark.prepare(dataset=dataset, output=tmp_path / 'trial', archive=archive,
                           arm='full', resource_profile=profile)
     assert not (tmp_path / 'trial').exists()

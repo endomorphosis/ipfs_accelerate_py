@@ -3707,6 +3707,158 @@ def _classify_codex_error_kind(*, stdout: str, stderr: str) -> Optional[str]:
     return None
 
 
+MAX_PROVIDER_RETRY_AFTER_SECONDS = 7 * 24 * 60 * 60
+
+
+def _bounded_provider_retry_hint(value: object, *, unbounded: object = False) -> dict:
+    """Project relative seconds; a longer valid hint must never be shortened.
+
+    This is metadata, not permission to retry a dispatched operation. Missing,
+    nonfinite, boolean, string and nonpositive values remain unknown. An exact
+    true unbounded marker prevents a shorter numeric value becoming authority.
+    """
+    if unbounded is True:
+        return {"retry_after_unbounded": True}
+    if type(value) not in (int, float) or (type(value) is float and not math.isfinite(value)):
+        return {}
+    if value <= 0:
+        return {}
+    if value > MAX_PROVIDER_RETRY_AFTER_SECONDS:
+        return {"retry_after_unbounded": True}
+    return {"retry_after_seconds": value}
+
+
+_CODEX_RATE_ERROR_TYPES = frozenset({"rate_limit", "rate_limit_error", "rate_limit_exceeded", "usage_limit", "usage_limit_reached"})
+_CODEX_AUTH_ERROR_TYPES = frozenset({"authentication_error", "invalid_api_key"})
+_CODEX_BILLING_ERROR_TYPES = frozenset({"insufficient_quota", "billing_error"})
+
+
+def _codex_native_error_envelopes(stdout: str) -> list[dict]:
+    """Return bounded native error envelopes from one invocation, never model text.
+
+    Accept native ``error`` and ``turn.failed`` records and their direct error
+    body. A native error message may itself contain one JSON error envelope.
+    Never recursively search tool results, assistant text, usage or arbitrary
+    JSON for similarly named fields. The final error determines classification;
+    earlier typed rate errors may conservatively extend its cooldown.
+    """
+    if type(stdout) is not str or len(stdout) > 262144:
+        return []
+    try:
+        if len(stdout.encode("utf-8")) > 262144:
+            return []
+    except UnicodeError:
+        return []
+    lines = stdout.splitlines()
+    if len(lines) > 1024:
+        return []
+
+    def reject_constant(_):
+        raise ValueError("nonfinite native error value")
+
+    def unique_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate native error key")
+            result[key] = value
+        return result
+
+    def envelope(raw):
+        if type(raw) is not str or len(raw) > 16384:
+            return None
+        try:
+            if len(raw.encode("utf-8")) > 16384:
+                return None
+            value = json.loads(raw, object_pairs_hook=unique_keys, parse_constant=reject_constant)
+        except (ValueError, TypeError, RecursionError, OverflowError, UnicodeError):
+            return None
+        return value if type(value) is dict else None
+
+    selected = []
+    for line in lines:
+        record = envelope(line)
+        if record is None or type(record.get("type")) is not str or record.get("type") not in {"error", "turn.failed"}:
+            continue
+        body = record.get("error")
+        body = body if type(body) is dict else {}
+        native_message = record.get("message") if record.get("type") == "error" else body.get("message")
+        nested = envelope(native_message)
+        _, outer_status, outer_codes = _codex_error_envelope_fields(record)
+        outer_hard_stop = (outer_status in {401, 402, 403}
+                           or bool(outer_codes & (_CODEX_AUTH_ERROR_TYPES | _CODEX_BILLING_ERROR_TYPES)))
+        if not outer_hard_stop and nested is not None and nested.get("type") == "error":
+            record = nested
+        selected.append(record)
+    return selected
+
+
+def _codex_native_error_envelope(stdout: str) -> dict:
+    records = _codex_native_error_envelopes(stdout)
+    return records[-1] if records else {}
+
+
+def _codex_error_envelope_fields(record: dict) -> tuple[dict, int | None, set[str]]:
+    body = record.get("error")
+    body = body if type(body) is dict else {}
+    status = record.get("status")
+    status = status if type(status) is int and 100 <= status <= 599 else None
+    codes = [record.get("code"), body.get("type"), body.get("code")]
+    return body, status, {code for code in codes if type(code) is str}
+
+
+def _codex_error_envelope_kind(record: dict, *, fallback: str = ""):
+    from .llm_allocation.observations import CallErrorKind, classify_provider_failure
+
+    body, status, codes = _codex_error_envelope_fields(record)
+    diagnostic = next((text for text in (body.get("message"), record.get("message"), fallback)
+                       if type(text) is str and text.strip()), "")[:16384]
+    kind = classify_provider_failure("codex_cli", diagnostic, status_code=status).kind
+    # Explicit terminal authentication/billing errors are hard stops, even
+    # when their explanatory text also mentions a rate or usage limit.
+    if status == 401 or codes & _CODEX_AUTH_ERROR_TYPES:
+        return CallErrorKind.AUTHENTICATION
+    if status == 402 or codes & _CODEX_BILLING_ERROR_TYPES:
+        return CallErrorKind.BILLING
+    if status == 403:
+        return CallErrorKind.POLICY
+    if codes & _CODEX_RATE_ERROR_TYPES and kind is not CallErrorKind.BILLING:
+        return CallErrorKind.RATE_LIMIT
+    if kind is CallErrorKind.UNKNOWN and (status == 400 or "invalid_request_error" in codes):
+        return CallErrorKind.INVALID_REQUEST
+    return kind
+
+
+def _codex_retry_after_hint(stdout: str) -> dict:
+    """Keep the longest typed reset while the final native failure is rate-limited.
+
+    HTTP-date and epoch reset values are not interpreted as durations.
+    A generic final wrapper may omit timing, so earlier typed rate-limit
+    records in the same invocation conservatively extend the wait. Only
+    explicit native rate envelopes supply timing; prose supplies no hints.
+    """
+    from .llm_allocation.observations import CallErrorKind
+
+    records = _codex_native_error_envelopes(stdout)
+    if not records or _codex_error_envelope_kind(records[-1]) is not CallErrorKind.RATE_LIMIT:
+        return {}
+    selected = {}
+    for record in records:
+        body, status, codes = _codex_error_envelope_fields(record)
+        if status in {401, 402, 403} or codes & (_CODEX_AUTH_ERROR_TYPES | _CODEX_BILLING_ERROR_TYPES):
+            continue
+        if status != 429 and not codes & _CODEX_RATE_ERROR_TYPES:
+            continue
+        for mapping in (record, body):
+            for key in ("retry_after_seconds", "retry_after", "resets_in_seconds", "reset_in_seconds"):
+                hint = _bounded_provider_retry_hint(mapping.get(key))
+                if hint.get("retry_after_unbounded") is True:
+                    return hint
+                if hint.get("retry_after_seconds", 0) > selected.get("retry_after_seconds", 0):
+                    selected = hint
+    return selected
+
+
 def _codex_cli_failure(message: str, *, stdout: str, stderr: str) -> LLMRouterError:
     """Keep the existing exception text and attach only closed diagnostics.
 
@@ -3716,34 +3868,23 @@ def _codex_cli_failure(message: str, *, stdout: str, stderr: str) -> LLMRouterEr
     """
     error = LLMRouterError(message)
     try:
-        from .llm_allocation.observations import CallErrorKind, classify_provider_failure
+        from .llm_allocation.observations import CallErrorKind
 
-        diagnostic = _extract_first_error_message_from_codex_jsonl((stdout or "")[:262144])
-        diagnostic = (diagnostic or stderr or message)[:16384]
-        status = None
-        native_error_type = None
-        try:
-            nested = json.loads(diagnostic)
-        except (ValueError, TypeError, RecursionError):
-            nested = None
-        if type(nested) is dict and nested.get("type") == "error":
-            supplied_status = nested.get("status")
-            if type(supplied_status) is int and 100 <= supplied_status <= 599:
-                status = supplied_status
-            body = nested.get("error")
-            if type(body) is dict:
-                native_error_type = body.get("type")
-        failure = classify_provider_failure("codex_cli", diagnostic, status_code=status)
-        kind = failure.kind
-        if kind is CallErrorKind.UNKNOWN and (
-                status == 400 or native_error_type == "invalid_request_error"):
-            kind = CallErrorKind.INVALID_REQUEST
+        native = _codex_native_error_envelope(stdout)
+        _body, status, _codes = _codex_error_envelope_fields(native)
+        kind = _codex_error_envelope_kind(native, fallback=stderr or message)
         if isinstance(kind, CallErrorKind) and kind is not CallErrorKind.SUCCESS:
             error.codex_error_kind = kind
         if status is not None:
             # Deliberately not status_code: this diagnostic must not alter the
             # generic retry/fallback classifier's existing decision inputs.
             error.codex_error_status = status
+        if kind is CallErrorKind.RATE_LIMIT:
+            hint = _codex_retry_after_hint(stdout)
+            if "retry_after_seconds" in hint:
+                error.codex_retry_after_seconds = hint["retry_after_seconds"]
+            if hint.get("retry_after_unbounded") is True:
+                error.codex_retry_after_unbounded = True
     except Exception:
         pass
     return error
@@ -5149,6 +5290,32 @@ def _grok_cli_error(stdout: str, stderr: str) -> LLMRouterError:
     return LLMRouterError(message or "Grok CLI failed")
 
 
+def _grok_cli_has_incomplete_native_outcome(payload: object) -> bool:
+    """Reject explicit native stops without treating response text as a signal.
+
+    Legacy JSON may omit a recognized stop reason; absence is not invented
+    completion evidence. Conflicting aliases remain unknown in observation,
+    but a known incomplete alias must not be hidden by the other alias.
+    """
+    if type(payload) is not dict:
+        return False
+    from .cli_runtime.grok_native_usage import native_grok_observation
+
+    candidates = [payload]
+    if "stopReason" in payload and "stop_reason" in payload:
+        candidates.extend({key: value for key, value in payload.items() if key != omitted}
+                          for omitted in ("stopReason", "stop_reason"))
+    for candidate in candidates:
+        outcome = native_grok_observation(candidate, exit_code=0)
+        reason = outcome["native_grok_reason_code"]
+        if (outcome["native_grok_error_observed"]
+                or reason not in {"unknown", "end_turn", "other_stop"}
+                or (reason == "other_stop"
+                    and outcome["native_grok_stop_reason"] in {"tool_use", "pause_turn"})):
+            return True
+    return False
+
+
 def _redact_grok_cli_command(command: Sequence[str], prompt: str) -> list[str]:
     redacted: list[str] = []
     for value in command:
@@ -6253,6 +6420,7 @@ def build_codex_cli_command(
     output_schema: Optional[str | Path] = None,
     json_mode: bool = False,
     resume_session_id: Optional[str] = None,
+    codex_repository_source_binding: Optional[dict] = None,
 ) -> list[str]:
     """Build native Codex argv without launching or changing process custody.
 
@@ -6317,8 +6485,67 @@ def build_codex_cli_command(
         command.extend(["--output-schema", str(output_schema)])
     if json_mode:
         command.append("--json")
+    if codex_repository_source_binding is not None:
+        from .agent_supervisor.runtime.repository_source_policy import native_config_arguments
+        command.extend(native_config_arguments(codex_repository_source_binding))
     command.append("-")
     return command
+
+
+def _run_codex_repository_command(command, *, input, text, capture_output, check, timeout):
+    """Own only the opt-in CLI process group, including its stdio tool servers.
+
+    Native MCP children can outlive a timed-out CLI. Reap or stop this newly
+    allocated group before the caller removes invocation-local repository state.
+    Legacy CLI invocations keep their existing process owner.
+    """
+    import signal
+
+    if text is not True or capture_output is not True or check is not False:
+        raise ValueError("repository Codex process requires the native capture contract")
+    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, start_new_session=True)
+
+    def stop_owned_group():
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        deadline = time.monotonic() + 0.25
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.01)
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    try:
+        try:
+            stdout, stderr = process.communicate(input=input, timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            stop_owned_group()
+            try:
+                stdout, stderr = process.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                # A child that deliberately escaped the owned process group is
+                # outside this owner. Preserve bounded partial native output.
+                stdout, stderr = error.output, error.stderr
+            raise subprocess.TimeoutExpired(command, timeout, output=stdout, stderr=stderr) from None
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    finally:
+        stop_owned_group()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
 
 
 def _get_codex_cli_provider() -> Optional[LLMProvider]:
@@ -6329,12 +6556,25 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
         def generate(
             self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
         ) -> str:
+            literal_response = kwargs.pop("codex_cli_literal_response", False)
+            if type(literal_response) is not bool:
+                raise ValueError("Codex literal response must be an explicit Boolean")
             model = (model_name or _codex_default_model()).strip()
             sandbox = (os.getenv("ipfs_accelerate_py_CODEX_SANDBOX", "auto") or "auto").strip()
             skip_git_repo_check = (
                 os.getenv("ipfs_accelerate_py_CODEX_SKIP_GIT_REPO_CHECK", "1") != "0"
             )
             timeout = float(kwargs.get("timeout", 180))
+
+            repository_binding = kwargs.pop("codex_repository_source_binding", None)
+            repository_observation = {}
+            if repository_binding is not None:
+                from .agent_supervisor.runtime.repository_source_policy import validate_binding
+                validate_binding(repository_binding, workspace=Path.cwd(), materialized=True)
+                repository_observation = {
+                    "codex_repository_source_config_sha256": repository_binding["config_sha256"],
+                    "codex_repository_source_configured": True,
+                }
 
             reasoning_effort = kwargs.get("reasoning_effort")
             if reasoning_effort is not None and reasoning_effort not in {
@@ -6382,6 +6622,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
             last_msg_path = None
             schema_path = None
             structured_file_invalid_utf8 = False
+            final_message_error = None
             try:
                 with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as last_msg:
                     last_msg_path = last_msg.name
@@ -6397,8 +6638,11 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         output_last_message=last_msg_path, json_mode=json_mode,
                         resume_session_id=resume_session_id,
                         **({"output_schema": schema_path} if schema_requested else {}),
+                        **({"codex_repository_source_binding": repository_binding}
+                           if repository_binding is not None else {}),
                     )
-                    proc = subprocess.run(
+                    execute = _run_codex_repository_command if repository_binding is not None else subprocess.run
+                    proc = execute(
                         cmd,
                         input=str(prompt),
                         text=True,
@@ -6421,17 +6665,23 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         extra={"model_id": model, "timed_out": True,
                                "session_id": resume_session_id,
                                "reasoning_effort": reasoning_effort,
+                               **repository_observation,
                                **schema_observation},
                     )
                     raise
                 try:
                     with open(last_msg_path, "r", encoding="utf-8",
-                              errors="strict" if schema_requested else "replace") as handle:
-                        text_out = handle.read().strip()
-                except UnicodeError:
+                              errors="strict" if schema_requested or literal_response else "replace",
+                              newline="" if literal_response else None) as handle:
+                        text_out = handle.read()
+                        if not literal_response:
+                            text_out = text_out.strip()
+                except UnicodeError as error:
+                    final_message_error = error
                     structured_file_invalid_utf8 = schema_requested
                     text_out = ""
-                except Exception:
+                except Exception as error:
+                    final_message_error = error
                     text_out = ""
             finally:
                 for temporary in (last_msg_path, schema_path):
@@ -6453,6 +6703,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         "exit_code": proc.returncode,
                         "session_id": resume_session_id,
                         "reasoning_effort": reasoning_effort,
+                        **repository_observation,
                         **schema_observation,
                     },
                 )
@@ -6461,7 +6712,9 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
 
             if proc.returncode == 0 or (text_out and not schema_requested):
                 selected = text_out
-                if json_mode and proc.stdout:
+                if literal_response and final_message_error is not None and not schema_requested:
+                    raise LLMRouterError("Codex literal final response unavailable") from final_message_error
+                if not literal_response and json_mode and proc.stdout:
                     extracted = _extract_last_agent_message_from_codex_jsonl(proc.stdout)
                     if extracted:
                         selected = extracted
@@ -6475,7 +6728,8 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         MAX_RESPONSE_BYTES, _bounded_json, _loads,
                     )
 
-                    selected = selected.strip()
+                    if not literal_response:
+                        selected = selected.strip()
                     try:
                         if structured_file_invalid_utf8:
                             raise ValueError("structured response is not valid UTF-8")
@@ -6488,6 +6742,8 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         raise LLMRouterError(
                             "Codex CLI structured response failed validation"
                         ) from None
+                    return selected
+                if literal_response:
                     return selected
                 return _clean_codex_output(selected)
 
@@ -6507,13 +6763,11 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                     pass
 
             kind = _classify_codex_error_kind(stdout=proc.stdout or "", stderr=proc.stderr or "")
-            resets = _extract_resets_in_seconds_from_codex_jsonl(proc.stdout or "")
             if kind == "quota_exceeded":
                 raise _codex_cli_failure("Codex quota exceeded (billing/plan hard limit)",
                     stdout=proc.stdout or "", stderr=proc.stderr or "")
             if kind == "usage_limit":
-                suffix = f" (resets in ~{resets}s)" if isinstance(resets, int) else ""
-                raise _codex_cli_failure(f"Codex usage limit reached{suffix}",
+                raise _codex_cli_failure("Codex usage limit reached",
                     stdout=proc.stdout or "", stderr=proc.stderr or "")
             raise _codex_cli_failure(proc.stderr.strip() or "codex exec failed",
                 stdout=proc.stdout or "", stderr=proc.stderr or "")
@@ -8011,6 +8265,16 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 executable_name = Path(base_parts[0]).name.lower() if base_parts else ""
                 structured_cli = executable_name in {"grok", "agent"}
 
+            explicit_max_turns = "grok_max_turns" in kwargs
+            if explicit_max_turns:
+                from .cli_runtime.grok_turn_policy import (
+                    bind_explicit_grok_max_turns, validate_grok_max_turns,
+                )
+                requested_max_turns = validate_grok_max_turns(kwargs["grok_max_turns"])
+                if not structured_cli:
+                    raise ValueError("explicit grok_max_turns requires a structured Grok CLI command")
+                base_parts = bind_explicit_grok_max_turns(base_parts, requested_max_turns)
+
             response_format = kwargs.pop("response_format", None)
             stream_progress = kwargs.pop("grok_stream_progress", False)
             progress_callback = kwargs.pop("grok_progress_callback", None)
@@ -8063,6 +8327,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 if payload is not None:
                     if str(payload.get("type") or "").lower() == "error":
                         raise _grok_cli_error(raw, "")
+                    if _grok_cli_has_incomplete_native_outcome(payload):
+                        raise LLMRouterError("Grok CLI native response is incomplete or failed")
                     text = payload.get("text")
                     if isinstance(text, str):
                         return _clean_grok_cli_output(text)
@@ -8109,7 +8375,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     )
                 ),
             )
-            if "--max-turns" not in cmd:
+            if not explicit_max_turns and "--max-turns" not in cmd:
                 cmd.extend(["--max-turns", str(max_turns)])
 
             permission_mode = str(
@@ -8296,6 +8562,12 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 raise LLMRouterError("Grok CLI streaming response is incomplete or invalid")
             if payload is not None and str(payload.get("type") or "").lower() == "error":
                 raise _grok_cli_error(proc.stdout or "", proc.stderr or "")
+            if (not stream_progress and response_validator is None
+                    and _grok_cli_has_incomplete_native_outcome(payload)):
+                # Keep the original native usage/outcome recorded above. A
+                # successful process exit cannot turn a bounded/incomplete
+                # generation into successful response text.
+                raise LLMRouterError("Grok CLI native response is incomplete or failed")
 
             if trace_enabled:
                 trace_path = ""
@@ -11162,7 +11434,7 @@ def _set_last_generation_trace(
         "effective_model_name": str(model_name or "").strip(),
     }
     if route_trace:
-        for key in _PINNED_SYMAI_TRACE_KEYS:
+        for key in _PINNED_SYMAI_TRACE_KEYS | {"effective_provider_name", "effective_model_name"}:
             value = route_trace.get(key)
             if isinstance(value, str) and value.strip():
                 payload[key] = value.strip()
@@ -11870,9 +12142,10 @@ def _llm_provider_display_name(
     requested: Optional[str] = None,
 ) -> str:
     if backend is not None:
-        name = getattr(backend, "router_provider_name", None)
-        if isinstance(name, str) and name.strip():
-            return _canonicalize_provider(name) or name.strip()
+        for attribute in ("router_provider_name", "name"):
+            name = getattr(backend, attribute, None)
+            if isinstance(name, str) and name.strip():
+                return _canonicalize_provider(name) or name.strip()
     if requested:
         return _canonicalize_provider(requested) or str(requested).strip()
     return ""
@@ -12853,14 +13126,23 @@ def _generate_with_provider_fallbacks(
             raise initial_error
         if side_effecting:
             raise initial_error
+        # Capacity/backoff and prompt semantics belong to the usage routing
+        # owner. A hidden retry with the backend's default model would bypass
+        # that decision and can consume another physical request unaccounted.
+        from .endpoint_usage.routing import ErrorSafetyClass
+
+        if _classify_llm_invoke_exception(initial_error) in {
+            ErrorSafetyClass.CAPACITY, ErrorSafetyClass.SEMANTIC,
+        }:
+            raise initial_error
         if model_name is not None and not disable_model_retry:
             try:
                 return backend.generate(prompt, model_name=None, **call_kwargs)
             except Exception:
                 pass
-        if _is_hf_inference_provider_name(
+        if (not disable_model_retry and _is_hf_inference_provider_name(
             effective_provider_name
-        ) and _is_hf_model_compatibility_error(initial_error):
+        ) and _is_hf_model_compatibility_error(initial_error)):
             attempted = {
                 str(model_name or "").strip(),
                 _coalesce_env(
@@ -12940,6 +13222,7 @@ def generate_text(
     usage_batch_items: int = 1,
     allocation_session_id: Optional[str] = None,
     allocation_path: Optional[str] = None,
+    codex_cli_literal_response: bool = False,
     **kwargs: object,
 ) -> str:
     """Generate text from an LLM.
@@ -12958,8 +13241,13 @@ def generate_text(
     ``allocation_session_id`` / ``allocation_path`` select the DuckDB CLI vs
     API routing path and accumulate per-session cost, tokens, tokens/sec, and
     latency. They are not forwarded to the provider.
+
+    ``codex_cli_literal_response`` preserves the Codex final-message file
+    exactly for structured decisions. Ordinary Codex prose cleanup is default.
     """
 
+    if type(codex_cli_literal_response) is not bool:
+        raise ValueError("Codex literal response must be an explicit Boolean")
     started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
     call_kwargs = dict(kwargs)
@@ -13010,7 +13298,8 @@ def generate_text(
         min_intelligence = 0.0
         kwargs.pop("min_intelligence", None)
     auto_model = str(model_name or "").strip().casefold() in {"", "auto", "efficient"}
-    if auto_model:
+    if (auto_model and provider_instance is None and usage_candidates is None
+            and usage_provider_by_binding is None):
         try:
             from .llm_allocation.intelligence_index import (
                 discover_available_providers,
@@ -13033,6 +13322,10 @@ def generate_text(
         except Exception:
             logger.debug("efficient model routing skipped", exc_info=True)
     effective_provider_name = _effective_llm_provider_name(provider)
+    if codex_cli_literal_response:
+        if effective_provider_name != "codex_cli":
+            raise ValueError("Codex literal response requires the Codex CLI provider")
+        kwargs["codex_cli_literal_response"] = True
     cross_provider_fallback_allowed = (
         True
         if allow_cross_provider_fallback is None
@@ -13206,7 +13499,7 @@ def generate_text(
             if isinstance(candidate_trace, dict):
                 route_trace = candidate_trace
         _set_last_generation_trace(
-            provider_name=effective_provider_name,
+            provider_name=provider_used_name,
             model_name=model_name,
             route_trace=route_trace,
         )

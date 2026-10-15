@@ -6,11 +6,12 @@ import importlib
 import os
 import subprocess
 import sys
+from types import SimpleNamespace
 from typing import Any, Mapping
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.provider_execution import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_execution import (
     RESERVATION_AWARE_PROVIDER_EXECUTION_REQUIREMENT_ID,
     CoordinationState,
     ProviderExecutionError,
@@ -25,7 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.provider_execution import (
     discover_schemas,
     new_attempt_idempotency_key,
 )
-from ipfs_accelerate_py.agent_supervisor.provider_usage import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_usage import (
     SupervisorToEndpointRequest,
     SupervisorUsageBudget,
     SupervisorUsageEnvelope,
@@ -328,12 +329,14 @@ class _FakeSettlement:
     def __init__(
         self,
         *,
+        reservation_id: str,
         charged: UsageVector | None = None,
         event_id: str = "event:1",
         usage_revision: str = "usage:rev-2",
         state: str = "committed",
     ) -> None:
-        self.charged = charged or UsageVector.of(requests=1)
+        self.reservation_id = reservation_id
+        self.charged = charged if charged is not None else UsageVector.of(requests=1)
         self.event_id = event_id
         self.usage_revision = usage_revision
         self.state = state
@@ -372,10 +375,11 @@ class FakeCoordinator:
         }
         return _FakeDecision(reservation_id=reservation_id)
 
-    def mark_dispatched(self, reservation_id: str) -> None:
+    def mark_dispatched(self, reservation_id: str) -> Any:
         self.dispatch_calls += 1
         if reservation_id in self.reservations:
             self.reservations[reservation_id]["dispatched"] = True
+        return SimpleNamespace(reservation_id=reservation_id, state="held")
 
     def cancel(self, reservation_id: str, *, reason: str = "cancelled") -> _FakeSettlement:
         self.cancel_calls += 1
@@ -383,6 +387,7 @@ class FakeCoordinator:
         record["terminal"] = True
         charged = UsageVector.of(requests=1) if record.get("dispatched") else UsageVector()
         return _FakeSettlement(
+            reservation_id=reservation_id,
             charged=charged,
             event_id=f"cancel-event:{reservation_id}",
             state="committed" if record.get("dispatched") else "released",
@@ -393,6 +398,7 @@ class FakeCoordinator:
         if reservation_id in self.reservations:
             self.reservations[reservation_id]["terminal"] = True
         return _FakeSettlement(
+            reservation_id=reservation_id,
             charged=UsageVector(),
             event_id=f"release-event:{reservation_id}",
             state="released",
@@ -411,6 +417,7 @@ class FakeCoordinator:
             self.reservations[reservation_id]["terminal"] = True
         charged = actual if isinstance(actual, UsageVector) else UsageVector.of(requests=1)
         return _FakeSettlement(
+            reservation_id=reservation_id,
             charged=charged,
             event_id=f"commit-event:{reservation_id}",
             state="committed",
@@ -557,7 +564,9 @@ def test_enforce_mode_allows_reviewed_degraded_budget_local_fallback() -> None:
         calls["n"] += 1
         return {"status": "local_ok"}
 
-    gateway = ProviderExecutionGateway(coordinator=None, invoker=invoker)
+    # A reviewed local fallback still belongs to an explicitly configured
+    # coordination owner; missing coordination is no longer synthetic enforce.
+    gateway = ProviderExecutionGateway(coordinator=FakeCoordinator(), invoker=invoker)
     result = gateway.execute(
         _execution_request(
             mode=ProviderExecutionMode.ENFORCE,
@@ -714,7 +723,7 @@ def test_cold_import_is_side_effect_free() -> None:
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     script = """
-import ipfs_accelerate_py.agent_supervisor.provider_execution as pe
+import ipfs_accelerate_py.agent_supervisor.runtime.provider_execution as pe
 assert pe.RESERVATION_AWARE_PROVIDER_EXECUTION_REQUIREMENT_ID.startswith("requirement:")
 schemas = pe.discover_schemas()
 assert schemas["authorizes_usage"] == "false"
@@ -732,7 +741,7 @@ print("ok")
     )
     assert completed.returncode == 0, completed.stderr
     assert "ok" in completed.stdout
-    module = importlib.import_module("ipfs_accelerate_py.agent_supervisor.provider_execution")
+    module = importlib.import_module("ipfs_accelerate_py.agent_supervisor.runtime.provider_execution")
     for name in (
         "ProviderExecutionRequest",
         "ProviderExecutionResult",
@@ -745,8 +754,21 @@ print("ok")
 
 def test_simulated_path_without_coordinator_is_offline() -> None:
     gateway = ProviderExecutionGateway()
-    result = gateway.execute(_execution_request(coordination_state=CoordinationState.AVAILABLE))
-    # No coordinator → simulated reserve path.
+    result = gateway.execute(_execution_request(mode=ProviderExecutionMode.OBSERVE,
+        coordination_state=CoordinationState.AVAILABLE))
+    # Offline observation remains explicit; enforce requires a coordinator.
     assert result.phase is ProviderExecutionPhase.SETTLED
+    assert result.mode is ProviderExecutionMode.OBSERVE
+    assert result.coordination_state is CoordinationState.SIMULATED
     assert result.reservation_id.startswith("sim:")
     assert result.receipt is not None
+
+
+def test_default_enforce_without_coordinator_never_invokes() -> None:
+    gateway = ProviderExecutionGateway(invoker=lambda _: pytest.fail(
+        "enforce cannot dispatch without an authoritative coordinator"))
+    result = gateway.execute(_execution_request())
+    assert result.phase is ProviderExecutionPhase.DENIED
+    assert "coordinator_required" in result.reason_codes
+    assert result.receipt is None
+    assert gateway.invoke_count(result.attempt_key) == 0

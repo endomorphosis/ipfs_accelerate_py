@@ -1,0 +1,15 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python3
+cachedir: /tmp/repository-proof-context-qualification-02-batf02n_/pytest-cache
+rootdir: /home/barberb/lift_coding/.worktrees/repository-proof-context-20261014
+configfile: pytest.ini
+collecting ... collected 180 items
+
+test/api/test_repository_proof_context.py::test_compile_render_reuses_owners_without_reexecuting_authored_provers PASSED [  0%]
+test/api/test_repository_proof_context.py::test_budget_omits_optional_digest_without_omitting_complete_conditions PASSED [  1%]
+test/api/test_repository_proof_context.py::test_native_expansion_and_retry_preserve_conditions_and_every_caller_requirement FAILED [  1%]
+test/api/test_repository_proof_context.py::test_independent_security_ir_residuals_survive_projection PASSED [  2%]
+test/api/test_repository_proof_context.py::test_constructor_requires_original_native_inputs_and_independent_pins[key] 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/usr/lib/python3.12/subprocess.py:1196: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)

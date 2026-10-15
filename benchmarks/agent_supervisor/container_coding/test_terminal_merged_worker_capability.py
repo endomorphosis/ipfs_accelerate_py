@@ -76,7 +76,7 @@ def test_fresh_merged_builder_contains_all_three_reviewed_owner_chains(packaged)
     assert reviewed["terminal_task_profile_schema"] == "terminal-public-task-profile@4"
     assert reviewed["terminal_semantic_scope_schema"] == "terminal-public-task-semantic-scope@1"
     assert reviewed["worker_child_custody_schema"] == "terminal-worker-child-custody@1"
-    assert len(reviewed["source_sha256"]) == 47
+    assert len(reviewed["source_sha256"]) == 61
     assert "source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py" in reviewed["source_sha256"]
     assert len(edits.SOURCE_PATHS) == 22 and len(planning.SOURCE_PATHS) == 13
     edits.require_source_edit_archive(manifest, edits.REPEATED_SOURCE_EDIT_MODE)
@@ -147,7 +147,13 @@ def test_every_mapped_edit_pin_refuses_before_harbor_when_selected(packaged, tmp
     archive = changed_archive(packaged, manifest, tmp_path)
     forbid_harbor(monkeypatch)
     output = tmp_path / "trial"
-    with pytest.raises(ValueError, match="matching worker archive capability|newly qualified runtime archive"):
+    expected_failure = (r"^runtime deadline sources differ; rebuild the runtime archive$"
+        if name in {
+            "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+            "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+            "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+        } else "matching worker archive capability|newly qualified runtime archive")
+    with pytest.raises(ValueError, match=expected_failure):
         benchmark.prepare(dataset=packaged[2], output=output, archive=archive, arm="full",
             source_view_profile="identity@1", source_edit_mode=edits.REPEATED_SOURCE_EDIT_MODE)
     assert not output.exists()
@@ -163,7 +169,12 @@ def test_every_declared_planning_pin_refuses_before_harbor_when_selected(package
     archive = changed_archive(packaged, manifest, tmp_path)
     forbid_harbor(monkeypatch)
     output = tmp_path / "trial"
-    with pytest.raises(ValueError, match="matching worker archive capability|newly qualified runtime archive"):
+    expected_failure = (r"^runtime deadline sources differ; rebuild the runtime archive$"
+        if name in {
+            "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+            "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+        } else "matching worker archive capability|newly qualified runtime archive")
+    with pytest.raises(ValueError, match=expected_failure):
         benchmark.prepare(dataset=packaged[2], output=output, archive=archive, arm="full",
             planning_mode=planning.DECLARED_PLANNING_MODE)
     assert not output.exists()

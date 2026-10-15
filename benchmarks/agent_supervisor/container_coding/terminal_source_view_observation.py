@@ -35,27 +35,106 @@ def _base(status="unavailable", reason="evidence_unavailable"):
         total_token_savings_measured=False, raw_queries_exported=False, raw_sources_exported=False)
 
 
-def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mode="disabled"):
+def provider_free_coding_application_observed(report):
+    """Join requested controls to an observed Doctor materialization, not a route label.
+
+    This only distinguishes an inapplicable model-input observation. It grants
+    no completion authority and does not turn missing receipts into zero usage.
+    """
+    if type(report) is not dict or report.get("arm") != "full":
+        return False
+    application = report.get("coding_control_application")
+    route = report.get("implementation_route")
+    expected_schema = {"doctor_candidate": "native-doctor-candidate-materialization@1",
+        "doctor_contract_candidate": "native-doctor-contract-candidate-materialization@1"}.get(route)
+    if (expected_schema is None or type(application) is not dict or set(application) != {
+            "schema", "status", "implementation_route", "requested", "model_coding_dispatched",
+            "token_savings_established", "completion_authority"}
+            or application["schema"] != "terminal-coding-control-application@1"
+            or application["status"] != "not_applicable_provider_free"
+            or application["implementation_route"] != route
+            or any(application[key] is not False for key in (
+                "model_coding_dispatched", "token_savings_established", "completion_authority"))):
+        return False
+    metadata = report.get("semantic_metadata_view", {})
+    if type(metadata) is not dict or type(application["requested"]) is not dict or application["requested"] != {
+            "semantic_transport_schema": report.get("semantic_transport_schema", "supervisor-semantic-router-input@1"),
+            "semantic_metadata_view": metadata.get("requested_mode", "legacy"),
+            "coding_reply_mode": report.get("coding_reply_mode", "legacy"),
+            "source_view_profile": report.get("source_view_profile", "disabled"),
+            "source_edit_mode": report.get("source_edit_mode", "disabled"),
+            "source_view_policy": report.get("source_view_policy")}:
+        return False
+    rows = report.get("provider_invocations")
+    doctor = report.get("doctor_dispatch")
+    materializations = report.get("doctor_invocations")
+    if (type(rows) is not list or len(rows) > 128
+            or any(type(row) is not dict or row.get("phase") != "planning" for row in rows)
+            or (report.get("unreceipted_provider_attempt") is not None
+                and report.get("unreceipted_provider_attempt") is not False)
+            or type(report.get("worker_cleanup_returncode")) is not int
+            or report["worker_cleanup_returncode"] != 0
+            or type(doctor) is not dict or doctor.get("route") != route
+            or doctor.get("status") != "candidate_ready"
+            or type(doctor.get("provider_calls")) is not int or doctor["provider_calls"] != 0
+            or type(doctor.get("task_cid")) is not str or not doctor["task_cid"]
+            or type(materializations) is not list or len(materializations) != 1):
+        return False
+    receipt = materializations[0]
+    return (type(receipt) is dict and receipt.get("schema") == expected_schema
+        and receipt.get("task_cid") == doctor["task_cid"]
+        and receipt.get("status") == "candidate_materialized"
+        and type(receipt.get("provider_calls")) is int and receipt["provider_calls"] == 0
+        and receipt.get("publication_authority") is False and receipt.get("completion_authority") is False
+        and (route != "doctor_candidate" or type(doctor.get("candidate_commit")) is str
+             and receipt.get("candidate_commit") == doctor["candidate_commit"]))
+
+
+def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mode="disabled",
+             expected_semantic_working_set="legacy"):
     audit = _parse(raw)
     _need(set(audit) == _AUDIT_FIELDS and audit["schema"] in {
         "supervisor-worker-source-session@1", "supervisor-worker-source-session@2",
-        "supervisor-worker-source-session@3", "supervisor-worker-source-session@4", request_observation.AUDIT_SCHEMA}
+        "supervisor-worker-source-session@3", "supervisor-worker-source-session@4", request_observation.AUDIT_SCHEMA,
+        request_observation.EVIDENCE_AUDIT_SCHEMA}
         and all(audit[key] is False for key in ("proof_authority", "execution_authority", "completion_authority")))
     for key in ("source_obligations_discharged", "retrieval_provider_calls"):
         _need(type(audit[key]) is int and audit[key] == 0)
     descriptor = protocol.validate_descriptor(audit["session"])
-    editing = descriptor["schema"] == "supervisor-worker-source-descriptor@3"
+    evidence_enabled = descriptor["schema"] == "supervisor-worker-source-descriptor@4"
+    _need(evidence_enabled is (expected_semantic_working_set == "capsule-references@1"))
+    if evidence_enabled:
+        from .terminal_context_audit import _receipt
+        # Join the captured model input, selected projection and probe to this
+        # session before treating any of its retrieval counts as qualified.
+        _receipt(row, Path(row["workspace"]).parent)
+        working_set = row.get("semantic_working_set")
+        _need(type(working_set) is dict and working_set.get("requested_profile") == expected_semantic_working_set)
+        if working_set["selected_mode"] != "legacy":
+            probe = row["semantic_working_set_preflight"]
+            _need(any(record.get("response_sha256") == probe["response_sha256"]
+                and record.get("response_bytes") == probe["response_bytes"]
+                and record.get("status") == "ok" and record.get("delivered") is True
+                and record.get("semantic_evidence_page") is True
+                and record.get("request_operation") == "semantic_evidence"
+                for record in audit["requests"]))
+    else:
+        _need("semantic_working_set" not in row and "semantic_working_set_preflight" not in row)
+    editing = descriptor.get("source_edit_mode", "disabled") != "disabled"
     shared = descriptor.get("view_policy_binding_sha256") is not None
-    attributed = audit["schema"] == request_observation.AUDIT_SCHEMA
+    attributed = audit["schema"] in {request_observation.AUDIT_SCHEMA, request_observation.EVIDENCE_AUDIT_SCHEMA}
+    _need((audit["schema"] == request_observation.EVIDENCE_AUDIT_SCHEMA) is evidence_enabled)
     _need((attributed or ((audit["schema"] == "supervisor-worker-source-session@4") is editing
         and (editing or (audit["schema"] == "supervisor-worker-source-session@3") is shared)))
         and descriptor.get("source_edit_mode", "disabled") == expected_edit_mode)
     observation = row["source_view_retrieval"]
-    expected_fields = OBSERVATION_FIELDS | set(SHARED_PIN_FIELDS) if shared or editing else OBSERVATION_FIELDS
-    if editing:
+    expected_fields = OBSERVATION_FIELDS | set(SHARED_PIN_FIELDS) if shared or editing or evidence_enabled else OBSERVATION_FIELDS
+    if editing or evidence_enabled:
         expected_fields = expected_fields | {"source_edit_mode"}
+    if evidence_enabled:
+        expected_fields = expected_fields | {"semantic_evidence_mode"}
     _need(type(observation) is dict and set(observation) == expected_fields
-        and observation["schema"] == ("worker-source-dispatch-observation@3" if editing else "worker-source-dispatch-observation@2" if shared
+        and observation["schema"] == ("worker-source-dispatch-observation@4" if evidence_enabled else "worker-source-dispatch-observation@3" if editing else "worker-source-dispatch-observation@2" if shared
                                       else "worker-source-dispatch-observation@1")
         and all(observation[key] is False for key in ("requests_observed", "proof_authority",
                                                      "execution_authority", "completion_authority")))
@@ -65,9 +144,11 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
         and all(descriptor[key] == observation[key] for key in (*protocol.BINDING_FIELDS, "boundary_manifest_sha256"))
         and descriptor["task_id"] == scope["task_alias"]
         and descriptor["workspace"] == row["workspace"] and descriptor["owner_uid"] == os.geteuid())
-    if shared or editing:
+    if shared or editing or evidence_enabled:
         _need(all(observation[key] == descriptor[key] for key in SHARED_PIN_FIELDS))
-    if editing:
+    if evidence_enabled:
+        _need(observation["semantic_evidence_mode"] == descriptor["semantic_evidence_mode"] == "selected-capsules@1")
+    if editing or evidence_enabled:
         _need(observation["source_edit_mode"] == expected_edit_mode)
     if expected_policy_binding is not None:
         _need(shared and descriptor["view_policy_binding_sha256"] == expected_policy_binding)
@@ -84,10 +165,13 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
     candidate_counts = None
     discovery_counts = None
     edit_counts = None
+    evidence_counts = None
     accounting_audit = audit
-    if audit["schema"] in {"supervisor-worker-source-session@2", "supervisor-worker-source-session@3", "supervisor-worker-source-session@4", request_observation.AUDIT_SCHEMA}:
+    if audit["schema"] in {"supervisor-worker-source-session@2", "supervisor-worker-source-session@3", "supervisor-worker-source-session@4", request_observation.AUDIT_SCHEMA, request_observation.EVIDENCE_AUDIT_SCHEMA}:
         candidate_counts = dict(prepared_pages=0, delivered_pages=0, prepared_bytes=0, delivered_bytes=0)
         discovery_counts = dict.fromkeys(DISCOVERY_COUNT_FIELDS, 0)
+        if evidence_enabled:
+            evidence_counts = dict(prepared_pages=0, delivered_pages=0, prepared_bytes=0, delivered_bytes=0)
         if editing:
             edit_counts = dict(prepared_mapping_pages=0, delivered_mapping_pages=0,
                 prepared_confirmation_pages=0, delivered_confirmation_pages=0)
@@ -100,6 +184,25 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
                 request_observation.validate_record(record)
                 for field in request_observation.FIELDS:
                     record.pop(field)
+            if evidence_enabled:
+                evidence = record.pop("semantic_evidence_page", None)
+                evidence_size = record.pop("returned_semantic_evidence_bytes", None)
+                _need(type(evidence) is bool and type(evidence_size) is int
+                    and 0 <= evidence_size <= protocol.MAX_FRAME_BYTES
+                    and (evidence or evidence_size == 0)
+                    and type(record.get("response_bytes")) is int and evidence_size <= record["response_bytes"]
+                    and (not evidence or (record.get("status") == "ok" and evidence_size > 0
+                        and record.get("returned_source_bytes") == 0
+                        and record.get("returned_candidate_context_bytes") == 0
+                        and record.get("candidate_context_page") is False
+                        and record.get("discovery_page") is False
+                        and record.get("returned_discovery_rows") == 0
+                        and record.get("source_edit_page", False) is False)))
+                evidence_counts["prepared_pages"] += evidence
+                evidence_counts["prepared_bytes"] += evidence_size
+                if record.get("delivered") is True:
+                    evidence_counts["delivered_pages"] += evidence
+                    evidence_counts["delivered_bytes"] += evidence_size
             if editing:
                 edit = record.pop("source_edit_page", None)
                 operation = record.pop("source_edit_operation", None)
@@ -159,6 +262,8 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
     if editing:
         result.update(source_edit_mode=expected_edit_mode, source_edit_counts=edit_counts,
             owner_writes_performed=False, task_validation_observed=False)
+    if evidence_enabled:
+        result["semantic_evidence_counts"] = evidence_counts
     if attributed:
         result["request_operation_counts"] = request_observation.operation_counts(audit["requests"])
         _need(result["request_operation_counts"]["accepted_requests"] == counts["accepted_requests"])
@@ -172,6 +277,11 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
         _need(type(rows) is list and len(rows) <= 128 and all(type(row) is dict for row in rows))
         profile = report.get("source_view_profile", "disabled")
         _need(type(profile) is str and profile in ("disabled", *protocol.PROFILES))
+        from .terminal_semantic_working_set_policy import validate_semantic_working_set
+        working_set = validate_semantic_working_set(report.get("semantic_working_set", "legacy"),
+            arm=report.get("arm"), source_view_profile=profile,
+            transport_schema=report.get("semantic_transport_schema", "supervisor-semantic-router-input@1"),
+            metadata_view=report.get("semantic_metadata_view", "legacy"))
         from .terminal_source_edit_policy import validate_source_edit_mode
         edit_mode = validate_source_edit_mode(report.get("source_edit_mode", "disabled"),
             arm=report.get("arm"), source_view_profile=profile)
@@ -189,6 +299,8 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
             _need(not policy_fields.intersection(report))
         selected = [row for row in rows if "source_view_retrieval" in row]
         if not selected:
+            if provider_free_coding_application_observed(report):
+                return _base("not_applicable", "provider_free_doctor_materialization_observed")
             if profile != "disabled":
                 return _base(reason="selected_session_receipt_unavailable")
             return _base("not_selected", "no_source_view_router_observation")
@@ -224,7 +336,8 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
                 after = os.stat(name, dir_fd=fd, follow_symlinks=False)
                 _need(_identity(before) == _identity(after) and before.st_gid == after.st_gid)
                 item, request_hashes, response_hashes = _session(raw, row, scope,
-                    expected_policy_binding=expected_policy_binding, expected_edit_mode=edit_mode)
+                    expected_policy_binding=expected_policy_binding, expected_edit_mode=edit_mode,
+                    expected_semantic_working_set=working_set)
                 sessions.append(item); requests.update(request_hashes); responses.update(response_hashes)
             _protected_directory(parent, owner=owner, group=owner)
             _need(_identity(directory) == _identity(parent.lstat()))
@@ -239,6 +352,10 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
         result["candidate_context_counts"] = ({key: sum(item["candidate_context_counts"][key] for item in sessions)
             for key in ("prepared_pages", "delivered_pages", "prepared_bytes", "delivered_bytes")}
             if all(item["candidate_context_counts"] is not None for item in sessions) else None)
+        if any("semantic_evidence_counts" in item for item in sessions):
+            result["semantic_evidence_counts"] = ({key: sum(item["semantic_evidence_counts"][key] for item in sessions)
+                for key in ("prepared_pages", "delivered_pages", "prepared_bytes", "delivered_bytes")}
+                if all("semantic_evidence_counts" in item for item in sessions) else None)
         result["discovery_counts"] = ({key: sum(item["discovery_counts"][key] for item in sessions)
             for key in DISCOVERY_COUNT_FIELDS}
             if all(item["discovery_counts"] is not None for item in sessions) else None)

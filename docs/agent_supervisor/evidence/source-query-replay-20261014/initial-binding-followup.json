@@ -1,0 +1,166 @@
+{
+  "schema": "source-initial-binding-followup@1",
+  "status": "proposal_only",
+  "implemented": false,
+  "tests": 0,
+  "test_execution": false,
+  "production_changes": 0,
+  "scope": "Next phase: initial native source reader binding only. Current source-query qualification does not qualify the reader's initial binding callbacks.",
+  "observation_context": {
+    "checkout": "/home/barberb/lift_coding/.worktrees/source-query-replay-20261014",
+    "method": "Read-only inspection of frozen working source; no runtime imports, future tests, owner processes or providers executed by this review.",
+    "source_hash_scope": "Working file hashes recorded for inspected source, not asserted to be published Git object hashes.",
+    "current_qualification_counts_added": false,
+    "source_references": [
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+        "line": 5550,
+        "symbol": "TypedStateOwnerGateway.bind_current_source_lookup",
+        "observation": "The whole CurrentSourceLookup constructor, native checks and publication run inside gateway._transaction_lock. The constructor performs retained CAS replay.",
+        "observed_working_file_sha256": "9b41186cf0c900ffe36e27bf4202350a5ab398b9d6c6153ecb3b10ae82b58c6b"
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "line": 4570,
+        "symbol": "QuackStateServer.bind_current_source_lookup",
+        "observation": "QuackStateServer retains its outer self._lock while invoking the gateway binder; moving only the gateway's inner lock would leave SERVER owned.",
+        "observed_working_file_sha256": "31a03fd79b6e8a74644d73693322e5709961a2fa620f471997643dde7c534d78"
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+        "line": 239,
+        "symbol": "NativeSourceTaskAdmission._bind_current_source_lookup",
+        "observation": "The task binder also retains _owner_lock around the Quack server bind call, and its finally currently retains the gateway's published reader.",
+        "observed_working_file_sha256": "eece603dcd9f72d28d9aa572934fd23785f87602ecb36d8c0c2e2d97e0712df5"
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+        "line": 353,
+        "symbol": "NativeSourceWorktreeAllocation._bind_source_lookup",
+        "observation": "Allocation and task handle locks serialize the whole native bind. SERVER is briefly used for the empty-reader precondition and literal task/allocation marker joins; actual COOR claim fences belong to the existing native admissions.",
+        "observed_working_file_sha256": "4597ee652dc5818ff990abf668b31fa2b84a0c14e626c490c29b86ee5af74916"
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+        "line": 160,
+        "symbol": "CurrentSourceLookup.__init__",
+        "observation": "Construction captures request/limits/store/root/scope, runs full-source checks and retained _load, then verifies the admitted paths and full source again.",
+        "observed_working_file_sha256": "8fc15bf41c2b264f12dc07033298aa113a8877e6227f421c00261474d94c1bcd"
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py",
+        "line": 148,
+        "symbol": "_BoundCAS and _input_guard",
+        "observation": "The wrapper retains the supplied native CAS and physical/configuration bindings. The input guard pins original request/limits values and checks them around retained reads.",
+        "observed_working_file_sha256": "0d205b309651e1aeef4714b162796f4ea0e6fbed451692824db7f1f9708099ab"
+      }
+    ]
+  },
+  "findings": [
+    "SERVER remains owned through three known call layers: the gateway, the Quack server wrapper, and the native task binder. Releasing only the gateway's inner acquisition does not release the outer RLock recursion.",
+    "A retained CAS callback can enter a native claim observer that needs COOR before SERVER. Running that callback with SERVER owned violates the existing native lock order.",
+    "Existing allocation/task bind-once guards distinguish prepublication retry from postpublication consumption. Their behavior must survive a change in lock placement.",
+    "Releasing SERVER opens a competing-publication boundary: a failure handler must not adopt whichever reader happens to be in the gateway, and must not replace an actual publication witness with serialized binding bytes."
+  ],
+  "recommended_design": {
+    "bind_busy_guard": {
+      "purpose": "A short-held, gateway-owned mutex installs an original per-bind ticket before any supported bind CAS or clock callback. Recursive or competing binds refuse promptly.",
+      "retained_scope": "The ticket persists over capture, off-lock replay, native closing and publication; the mutex does not remain held across callbacks, native fences or I/O.",
+      "teardown": "Clear only the caller's original ticket in finally. Never clear another ticket, a published reader or another caller's native markers."
+    },
+    "capture_under_original_server": {
+      "retained_objects": [
+        "Original Quack server and gateway, their literal SERVER lock and connection object, gateway owner identity object and detached canonical bytes.",
+        "Unbound gateway reader/binding/owner/connection fields; query/bind active-state conditions; connection.in_transaction must be exactly False.",
+        "Supplied existing ImmutableCAS object and its physical/configuration binding. A candidate _BoundCAS wrapper may retain it; do not copy/reconstruct the CAS, owner, database or grant.",
+        "Original request/limits references plus detached validated values and their existing input guard; canonical repository/root identity, admitted paths, inventory/context/task CIDs, task revision/body CID and exact bounds.",
+        "For native caller lanes, the literal already-issued NativeSourceTaskAdmission and NativeSourceWorktreeAllocation handles, their original nomination joins, empty bind markers and whole-operation guards."
+      ],
+      "copy_before_callbacks": "Copy validated scalar configuration and detached request/limits/scope values before replay, while preserving original object witnesses and input-guard comparisons. Equal copies cannot replace the retained CAS, connection, native handles or owner.",
+      "safety": "Reject an active/unknown native transaction. Do not silently commit/rollback a caller transaction or unlock arbitrary caller-owned SERVER recursion."
+    },
+    "remove_outer_server_recursion": {
+      "gateway": "Limit SERVER to capture and closing/publication; perform candidate construction and its retained _load outside SERVER.",
+      "quack_server": "Capture READY state, original gateway/connection/identity/lock under self._lock, release it before delegation, and verify the same borrowed resources at closing.",
+      "native_task": "Release its known _owner_lock around candidate replay/delegation while retaining the original task handle lock and _binding_in_progress guard for the whole operation.",
+      "native_allocation": "Retain the original allocation/task operation serialization. Keep actual COOR claims in existing admission require_current calls outside SERVER; do not invent a separate claim or owner."
+    },
+    "candidate_replay": {
+      "candidate": "Construct an unbound genuine CurrentSourceLookup using the existing CAS. Never publish it merely to make constructor checks or callbacks work.",
+      "before_and_after": "Verify retained input guards and source-store custody around supported retained replay; close full source population, including omitted paths, not only the selected source.",
+      "nested_operations": "Reentrant native require_current may use the original live handles with SERVER released. Reentrant bind/source operations cannot acquire new publication authority from callback observations."
+    },
+    "native_closing_and_literal_publication": {
+      "staging": "Use an owner-private, nonserializable pending-bind record retaining the exact candidate and original capture. Public binding JSON remains an observation, never a pending publication capability.",
+      "native_lanes": "The existing task/allocation binder owns pre- and post-replay real native claim/grant/task/allocation checks. If the candidate is staged for publication, these checks must finish outside SERVER before its final publish boundary.",
+      "closing": "Reacquire the original SERVER, reject changed server/gateway/connection/lock/CAS/store/config/owner or a competing reader, validate the exact task/body/source inputs and pending candidate, and close exact full-source and selected-byte checks after the last supported callback.",
+      "marker_join": "Publish the literal candidate and its binding/owner/connection bytes, joining only the original native handles that participated. Retain one exact internal publication witness for native finally paths; no alternate reader or reconstructed owner can stand in for it.",
+      "ordinary_host_lane": "Preserve ordinary host scope binding without inferring a native claim/allocation from configuration. Native task/allocation authority derives only from the actual original admission handles.",
+      "return": "Return the existing public binding shape. Mint no source-worker proxy grant, socket, descriptor, worker process or additional execution authority as a side effect of binding."
+    }
+  },
+  "retry_and_consumption": {
+    "before_own_publication": "Leave the gateway unbound and original task/allocation reader/nomination markers empty; release only this attempt's busy/in-progress flags. A clean retry remains available after the caller repairs its temporary mutation.",
+    "competing_reader": "If another genuine publisher won, refuse without adopting, replacing or deleting that reader. Empty native markers do not confer a right to rebind the already-bound gateway.",
+    "after_own_publication": "Keep the exact originally published reader and attempted task/allocation/nomination joins consumed even if a later validation raises. Never roll back to an unbound state or allow a second bind.",
+    "replaced_after_publication": "Retain the original publication witness/consumed native markers and refuse currentness if the gateway now points elsewhere. Do not discover and adopt the replacement reader in finally.",
+    "existing_controls": [
+      {
+        "path": "test/api/test_native_nominated_source_allocation_custody.py",
+        "line": 137,
+        "symbol": "test_prepublication_failure_leaves_allocation_and_task_bind_retryable"
+      },
+      {
+        "path": "test/api/test_native_nominated_source_allocation_custody.py",
+        "line": 159,
+        "symbol": "test_postpublication_exception_retains_both_handles_and_consumes_both_bind_paths"
+      },
+      {
+        "path": "test/api/test_native_nominated_source_allocation_custody.py",
+        "line": 185,
+        "symbol": "test_second_allocation_cannot_adopt_or_remark_an_existing_reader"
+      }
+    ]
+  },
+  "future_validation_proposal": {
+    "implemented": false,
+    "executed_tests": 0,
+    "baseline": "A retained CAS callback first asserts original SERVER is unowned before genuine native task/allocation require_current. Exercise gateway direct binding, Quack server delegation, and the native task/allocation caller chain independently so outer recursion cannot be masked.",
+    "mutation_matrix": [
+      "Selected and omitted working bytes/modes/population in original canonical and allocated roots; retained frame corruption; request/limits/path/bound mutations.",
+      "Original CAS/store/connection/SERVER/owner/gateway changes during replay; active caller transaction; competing reader publication and genuine reentry/duplicate bind.",
+      "Actual native task body/revision/daemon grant/claim custody and allocation lifecycle/nomination loss at declared native fences.",
+      "Failure before publication permits repaired retry only while still unbound; failure after exact publication retains both consumed handles; another handle cannot adopt or remark an existing reader."
+    ],
+    "stable_control": "Publish once with exact existing inventory/source refs and retained native joins; query exact source with the original source-only grant and unchanged envelope/cursor semantics.",
+    "resource_checks": "No new native owner/CAS, no proxy grant, no worker socket/descriptor/child, and no cursor publication on a refused initial bind.",
+    "execution_plan": "Run a finite reviewed roster in an owned checkout with preserved unpatched regression, all failed artifacts retained, fixed source/head/index guards, and fresh independent publication/doc evidence. No new run is performed by this proposal."
+  },
+  "finite_qualification_limits": {
+    "cas": "Cover the explicitly instrumented retained CAS get callbacks in candidate construction/replay and declared nomination replay boundaries, not arbitrary Python objects or every method reachable from Git/CAS.",
+    "clocks": "Existing native task/coordinator and allocation/grant clocks retain their own contracts. Initial-binding clock sites need explicit review and finite targeted tests; source-query clock qualification does not automatically cover these clocks.",
+    "last_callback_rule": "Identify the final supported CAS/clock callback for each reviewed lane and close real native state plus source bytes afterward before publication. Do not assert a blanket callback-free primitive without evidence.",
+    "authority": "Git/source currentness, bind-once custody and native claim joins remain separate. Authored listener/deployment UID seams do not qualify separate-worker-UID access, deployed child adoption, compiled-context provenance or an official task.",
+    "writer_lease": false,
+    "universal_callback_safety": false,
+    "complete_import_closure_attested": false
+  },
+  "preserved_assets": {
+    "model_checkpoints_changed": false,
+    "embeddings_or_teacher_assets_regenerated": false,
+    "model_manager_or_huggingface_publication_performed": false,
+    "inventories_or_runtime_databases_changed": false,
+    "ir_separation": "Preserve CodebaseIR, IntentIR, SecurityIR, LegalIR and UI/UXIR separation by family, schema/version, decoder task and 8D/384D/768D dimensions.",
+    "learned_reconstruction_or_whole_session_token_savings_established": false
+  },
+  "provider_calls": 0,
+  "model_calls": 0,
+  "training_steps": 0,
+  "solver_calls": 0,
+  "child_processes_spawned": 0,
+  "docker_run": false,
+  "proof_authority": false,
+  "execution_authority": false,
+  "completion_authority": false,
+  "official_task_result": null
+}

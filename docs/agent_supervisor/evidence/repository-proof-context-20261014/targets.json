@@ -1,0 +1,7 @@
+[
+  "test/api/test_repository_proof_context.py",
+  "test/api/test_repository_context_compiler.py",
+  "test/api/test_repository_context_optional_evidence.py",
+  "test/api/test_repository_source_index.py",
+  "test/api/test_repository_source_session.py"
+]

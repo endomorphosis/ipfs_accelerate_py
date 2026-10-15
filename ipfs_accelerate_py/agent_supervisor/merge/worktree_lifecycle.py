@@ -910,6 +910,26 @@ class WorktreeLifecycleStore:
             raise WorktreeLifecycleError(
                 "worktree quarantine lifecycle record is invalid"
             ) from exc
+        repository_binding_valid = bool(
+            record.repo_root
+            and normalize_workspace_path(record.repo_root)
+            == normalize_workspace_path(self.repo_root)
+        )
+        if (
+            not repository_binding_valid
+            and record.repo_root
+            and normalized_workspace is None
+            and receipt_path is not None
+        ):
+            # Inventory is shared by every linked checkout through Git's
+            # common directory. Authenticate sibling roots without granting
+            # direct workspace access or discarding their deny receipts.
+            try:
+                repository_binding_valid = git_common_dir(
+                    Path(record.repo_root)
+                ).samefile(git_common_dir(self.repo_root))
+            except OSError:
+                repository_binding_valid = False
         if (
             record_payload != record.to_dict()
             or record.record_id != record.compute_record_id()
@@ -919,9 +939,7 @@ class WorktreeLifecycleStore:
                 != normalized_workspace
             )
             or path != self.quarantine_path_for(record.workspace_path)
-            or not record.repo_root
-            or normalize_workspace_path(record.repo_root)
-            != normalize_workspace_path(self.repo_root)
+            or not repository_binding_valid
             or record.is_terminal
         ):
             raise WorktreeLifecycleError(

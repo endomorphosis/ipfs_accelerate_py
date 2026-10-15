@@ -8,12 +8,187 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shlex
 import subprocess
 import tempfile
 from pathlib import Path
 
 from .terminal_deployment import PYTHON, ROOT, native_codex_exposure_script, runtime_environment
+
+def prompt_tokenizer_arguments(*, prompt_tokenizer_artifact: str | Path | None = None,
+                              prompt_tokenizer_sha256: str | None = None,
+                              max_input_tokens: int | None = None) -> list[str]:
+    """Forward explicit child-local inputs; the router still admits their bytes.
+
+    Without a descriptor the child chooses its automatic offline counter. This
+    boundary neither reads nor stages assets. An absolute descriptor path
+    is required because planning and coding use separate allocated worktrees.
+    The existing child loader checks the exact provider/model, descriptor,
+    tokenizer asset, runtime, and complete untruncated prompt.
+    """
+    supplied = prompt_tokenizer_artifact is not None or prompt_tokenizer_sha256 is not None
+    if supplied and (prompt_tokenizer_artifact is None or prompt_tokenizer_sha256 is None):
+        raise ValueError("exact prompt tokenizer descriptor and digest required")
+    if max_input_tokens is not None:
+        if type(max_input_tokens) is not int or max_input_tokens < 1:
+            raise ValueError("positive complete prompt token budget required")
+    if not supplied:
+        return ["--max-input-tokens", str(max_input_tokens)] if max_input_tokens is not None else []
+    if not isinstance(prompt_tokenizer_artifact, str | Path):
+        raise ValueError("explicit absolute child-local tokenizer path required")
+    text = str(prompt_tokenizer_artifact)
+    path = Path(text)
+    if (not text or len(text.encode()) > 4096 or not path.is_absolute()
+            or text != str(path) or "\x00" in text or ":" in text or "\\" in text
+            or any(part in {".", ".."} for part in text.split("/"))):
+        raise ValueError("explicit absolute child-local tokenizer path required")
+    if (type(prompt_tokenizer_sha256) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", prompt_tokenizer_sha256) is None):
+        raise ValueError("exact prompt tokenizer descriptor and digest required")
+    return ["--prompt-tokenizer-artifact", text,
+            "--prompt-tokenizer-sha256", prompt_tokenizer_sha256,
+            *(["--max-input-tokens", str(max_input_tokens)] if max_input_tokens is not None else [])]
+
+def semantic_context_arguments(*, semantic_slot_policy_revision: str = "legacy@1",
+                               semantic_context_projection: bool = False,
+                               semantic_native_input: bool = False) -> list[str]:
+    """Encode explicit comparison options without selecting a model input.
+
+    Callers must additionally require their bound semantic model coding route.
+    The child router retains source admission, complete token comparison, and
+    native fallback. The native control preserves the complete semantic input
+    and excludes projection and identifier encoding. No assets are supplied here.
+    """
+    if type(semantic_slot_policy_revision) is not str or semantic_slot_policy_revision not in {
+        "legacy@1", "closed-typed-identifiers@2",
+    }:
+        raise ValueError("unsupported semantic identifier slot policy")
+    if type(semantic_context_projection) is not bool:
+        raise ValueError("semantic context projection must be an explicit Boolean")
+    if type(semantic_native_input) is not bool:
+        raise ValueError("semantic native input must be an explicit Boolean")
+    if semantic_native_input and (semantic_context_projection or semantic_slot_policy_revision != "legacy@1"):
+        raise ValueError("semantic native input requires exclusive legacy semantic context")
+    if semantic_context_projection and semantic_slot_policy_revision != "closed-typed-identifiers@2":
+        raise ValueError("semantic context projection requires the versioned identifier policy")
+    return [*(["--semantic-slot-policy-revision", semantic_slot_policy_revision]
+              if semantic_slot_policy_revision != "legacy@1" else []),
+            *(["--semantic-context-projection"] if semantic_context_projection else []),
+            *(["--semantic-native-input"] if semantic_native_input else [])]
+
+def semantic_decision_arguments(*,
+        semantic_decision_policy_artifact: str | Path | None = None,
+        semantic_decision_policy_sha256: str | None = None,
+        semantic_decision_nomination_artifact: str | Path | None = None,
+        semantic_decision_nomination_sha256: str | None = None,
+        disable_semantic_typed_nomination: bool = False,
+        semantic_retrieval_query_reference: bool = False,
+        owner_binding: bool = False,
+        semantic_decision_max_calls: int = 3,
+        semantic_decision_max_total_input_tokens: int | None = None) -> list[str]:
+    """Encode a prebound policy or independently pinned owner nomination.
+
+    The worker admits prebound descriptors against native task context. A
+    nomination is materialized by the owner against the final compiled stdin;
+    its admitted task key must be added by the signing caller. This function
+    neither loads nor stages assets. Model output never selects policy.
+    """
+    if (type(disable_semantic_typed_nomination) is not bool or type(owner_binding) is not bool
+            or type(semantic_retrieval_query_reference) is not bool):
+        raise ValueError("typed nomination switches must be boolean")
+    if type(semantic_decision_max_calls) is not int or not 1 <= semantic_decision_max_calls <= 4:
+        raise ValueError("semantic decision call limit must be between 1 and 4")
+    if (semantic_decision_max_total_input_tokens is not None
+            and (type(semantic_decision_max_total_input_tokens) is not int
+                 or semantic_decision_max_total_input_tokens < 1)):
+        raise ValueError("positive semantic decision cumulative input budget required")
+    policy_supplied = semantic_decision_policy_artifact is not None or semantic_decision_policy_sha256 is not None
+    nomination_supplied = (semantic_decision_nomination_artifact is not None
+                           or semantic_decision_nomination_sha256 is not None)
+    if semantic_retrieval_query_reference and not nomination_supplied:
+        raise ValueError("retrieval query reference requires an independently pinned owner nomination")
+    if (disable_semantic_typed_nomination or owner_binding) and not nomination_supplied:
+        raise ValueError("typed nomination switches require an owner nomination")
+    if policy_supplied and nomination_supplied:
+        raise ValueError("choose either a prebound semantic decision policy or an owner nomination")
+    supplied = policy_supplied or nomination_supplied
+    if not supplied:
+        if semantic_decision_max_calls != 3 or semantic_decision_max_total_input_tokens is not None:
+            raise ValueError("semantic decision budgets require an explicit policy")
+        return []
+    # Reuse the closed child-local spelling/hash checks; this does not load a
+    # tokenizer or assert compatibility of a policy with any provider.
+    try:
+        pair = prompt_tokenizer_arguments(
+            prompt_tokenizer_artifact=(semantic_decision_nomination_artifact if nomination_supplied
+                                       else semantic_decision_policy_artifact),
+            prompt_tokenizer_sha256=(semantic_decision_nomination_sha256 if nomination_supplied
+                                     else semantic_decision_policy_sha256))
+    except ValueError as exc:
+        raise ValueError("exact absolute semantic decision policy and digest required") from exc
+    kind = "nomination" if nomination_supplied else "policy"
+    return ["--semantic-decision-" + kind + "-artifact", pair[1],
+            "--semantic-decision-" + kind + "-sha256", pair[3],
+            *(["--semantic-decision-typed-nomination",
+                "disabled" if disable_semantic_typed_nomination else "enabled"]
+              if owner_binding else
+              ["--disable-semantic-typed-nomination"] if disable_semantic_typed_nomination else []),
+            "--semantic-decision-max-calls", str(semantic_decision_max_calls),
+            *(["--semantic-decision-max-total-input-tokens", str(semantic_decision_max_total_input_tokens)]
+              if semantic_decision_max_total_input_tokens is not None else [])]
+
+def doctor_dispatch_arguments(*, arm: str, doctor_dispatch_policy: str = "auto") -> list[str]:
+    """Forward an explicit full-arm model-route ablation without authority."""
+    if type(arm) is not str or arm not in {"full", "no-index"}:
+        raise ValueError("explicit supervisor arm required")
+    if type(doctor_dispatch_policy) is not str or doctor_dispatch_policy not in {"auto", "model-only"}:
+        raise ValueError("unsupported Doctor dispatch policy")
+    if doctor_dispatch_policy == "model-only" and arm != "full":
+        raise ValueError("model-only Doctor dispatch policy requires the full indexed arm")
+    return ["--doctor-dispatch-policy", doctor_dispatch_policy] if doctor_dispatch_policy != "auto" else []
+
+
+def validate_legacy_semantic_route(*, policyoptions: dict, rendereroptions: dict) -> None:
+    """Refuse unqualified rendering combinations for selected semantic routes."""
+    if (type(policyoptions) is not dict or type(rendereroptions) is not dict
+            or len(policyoptions) > 32 or len(rendereroptions) > 32
+            or any(type(key) is not str for key in (*policyoptions, *rendereroptions))):
+        raise ValueError("bounded literal semantic route option dictionaries required")
+    decision_selected = (policyoptions.get("semantic_retrieval_query_reference", False) is not False
+        or any(policyoptions.get(key) is not None for key in (
+            "semantic_decision_policy_artifact", "semantic_decision_policy_sha256",
+            "semantic_decision_nomination_artifact", "semantic_decision_nomination_source",
+            "semantic_decision_nomination_sha256")))
+    selected = (decision_selected
+        or policyoptions.get("semantic_slot_policy_revision", "legacy@1") != "legacy@1"
+        or policyoptions.get("semantic_context_projection", False) is not False
+        or policyoptions.get("semantic_native_input", False) is not False)
+    if not selected:
+        return
+    defaults = {
+        "semantic_transport_schema": "supervisor-semantic-router-input@1",
+        "semantic_metadata_view": "legacy", "semantic_working_set": "legacy",
+        "source_view_profile": "disabled", "source_edit_mode": "disabled",
+        "source_view_policy": None, "coding_reply_mode": "legacy",
+        "tool_output_policy": "legacy", "source_view_advisory_policy": "legacy",
+        "repository_source_policy": "legacy", "source_input_policy": "legacy",
+        "query_reference_policy": "legacy", "semantic_context_profile": "legacy-bounded@1",
+        "capsule_selection": "lexical-query-symbol-name@1", "capsule_budget": "legacy",
+        "metadata_census_only": False,
+    }
+    if any(key not in defaults and key != "provider" for key in rendereroptions):
+        raise ValueError("unknown semantic renderer option")
+    provider = rendereroptions.get("provider", "codex_cli")
+    if decision_selected and (type(provider) is not str or provider != "codex_cli"):
+        raise ValueError("semantic decision policy requires the qualified Codex provider")
+    incompatible = sorted(key for key, default in defaults.items()
+        if key in rendereroptions and (type(rendereroptions[key]) is not type(default)
+                                      or rendereroptions[key] != default))
+    if incompatible:
+        raise ValueError("native/decision semantic routes require separately qualified renderer controls: "
+                         + ", ".join(incompatible))
+
 
 SOURCE_LOOKUP_ENTRY = r"""#!/opt/ipfs-supervisor/venv/bin/python -I
 import os,pathlib,runpy,stat,sys
@@ -34,8 +209,10 @@ except (OSError,ValueError,ImportError,RuntimeError):
 """
 
 OWNER_MONITOR = r"""
-import signal,subprocess
+import json,signal,subprocess,time
 process=None
+worker_waited=False
+worker_cleanup_succeeded=False
 def interrupted(signum,frame):
  raise InterruptedError('owner monitor interrupted')
 for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,interrupted)
@@ -49,6 +226,7 @@ try:
  guard=globals().get("proof_query_guard")
  if guard is not None:guard.note_spawned(process)
  code=process.wait()
+ worker_waited=True
 except BaseException:
  if process is not None:
   try:process.terminate()
@@ -60,6 +238,7 @@ finally:
  for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,signal.SIG_IGN)
  try:
   cleanup=subprocess.run(['/usr/bin/sudo','-n','-u','benchmarkworker','--','/opt/ipfs-supervisor/bin/worker-entry','--cleanup'],cwd='/',stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,start_new_session=True,timeout=15)
+  worker_cleanup_succeeded=cleanup.returncode==0
   if cleanup.returncode:code=1
  finally:
   try:
@@ -72,12 +251,36 @@ finally:
    finally:
     source_broker=globals().get("worker_source_broker")
     if source_broker is not None:source_broker.close()
+# Retired worker observations cannot authorize another child or completion.
+# Refresh only after native wait, isolated cleanup and every broker retirement.
+source_broker=globals().get("worker_source_broker")
+refresh_deadline=globals().get("owner_candidate_round_deadline")
+if worker_waited and worker_cleanup_succeeded and type(code) is int and code>0 and source_broker is not None and refresh_deadline is not None:
+ observation=None
+ refresh_flags={'proof_authority':False,'execution_authority':False,'completion_authority':False,'retry_authority':False,'settlement_authority':False,'automatic_retry_admitted':False,'model_inference_calls':0,'provider_calls':0,'source_obligations_discharged':0}
+ try:
+  # Cleanup must finish, but advisory candidate analysis remains interruptible.
+  for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,interrupted)
+  if type(code) is not int or process.returncode!=code or process.poll()!=code:
+   raise ValueError('worker exit is not settled')
+  if time.monotonic()>=refresh_deadline:
+   observation={'schema':'owner-candidate-refresh-observation@1','status':'skipped','reason_code':'deadline_exhausted',**refresh_flags}
+  else:
+   from ipfs_accelerate_py.agent_supervisor.runtime.owner_candidate_round_checkpoint import persist_failed_worker_candidate_context
+   observation=persist_failed_worker_candidate_context(source_broker=source_broker,prior_returncode=code,absolute_deadline=refresh_deadline)
+ except Exception:
+  observation={'schema':'owner-candidate-refresh-observation@1','status':'failed','reason_code':'refresh_failed',**refresh_flags}
+ try:
+  if observation is not None:print('[owner-candidate-refresh] '+json.dumps(observation,sort_keys=True,allow_nan=False),flush=True)
+ except Exception:
+  pass
 raise SystemExit(code)
 """
 
 OWNER_ENTRY = (
     r"""#!/opt/ipfs-supervisor/venv/bin/python -I
-import json,os,pathlib,sys
+import json,os,pathlib,sys,time
+owner_candidate_round_started=time.monotonic()
 root=pathlib.Path('/opt/ipfs-supervisor')
 boundary=json.loads((root/'container-boundary.json').read_text())
 if os.getuid()!=boundary['owner_uid'] or os.geteuid()!=boundary['owner_uid']:raise SystemExit('owner identity required')
@@ -98,12 +301,41 @@ for base,dirs,files in os.walk(cwd,followlinks=False):
   if q.is_symlink() or not q.is_file() or q.stat().st_uid not in (1000,1001) or q.stat().st_nlink!=1:raise SystemExit('candidate input is not one allocated regular file')
   if q.stat().st_uid==1000:q.chmod(0o440 if q==cwd/'.git' else (0o770 if q.stat().st_mode&0o111 else 0o660))
 sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
+# The fixed lease includes allocation checks, ownership setup and formalization.
+from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import _argument,MAX_SESSION_SECONDS
+owner_candidate_round_deadline=None
+try:
+ owner_candidate_round_timeout=int(_argument(list(sys.argv[1:]),'--timeout','90'))
+ if 1<=owner_candidate_round_timeout<=MAX_SESSION_SECONDS:owner_candidate_round_deadline=owner_candidate_round_started+owner_candidate_round_timeout
+except (TypeError,ValueError,OverflowError):
+ pass
+worker_arguments=sys.argv[1:]
+owner_prompt_bytes=None
+if any(part=='--semantic-native-input' or part.startswith('--semantic-native-input=') for part in worker_arguments) and any(part==flag or part.startswith(flag+'=') for part in worker_arguments for flag in ('--semantic-decision-policy-artifact','--semantic-decision-policy-sha256','--semantic-decision-nomination-artifact','--semantic-decision-nomination-sha256','--semantic-decision-task-id','--semantic-decision-typed-nomination','--semantic-decision-context-bundle-artifact','--semantic-decision-context-bundle-sha256','--semantic-decision-task-cid')):raise SystemExit('semantic native input excludes semantic decision policy and nomination')
+# Capture original stdin once through the existing bounded sealed handoff.
 from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import prepare_container_source_formalization_dispatch
-handoff=prepare_container_source_formalization_dispatch(argv=list(sys.argv[1:]),boundary=root/'container-boundary.json',workspace=cwd)
+handoff=prepare_container_source_formalization_dispatch(argv=worker_arguments,boundary=root/'container-boundary.json',workspace=cwd)
 os.dup2(handoff['stdin_fd'],0,inheritable=True);os.close(handoff['stdin_fd'])
+worker_arguments=handoff['argv']
+if any(part==flag or part.startswith(flag+'=') for part in worker_arguments for flag in ('--semantic-decision-nomination-artifact','--semantic-decision-nomination-sha256','--semantic-decision-task-id','--semantic-decision-typed-nomination','--semantic-decision-context-bundle-artifact','--semantic-decision-context-bundle-sha256','--semantic-decision-task-cid')):
+ sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
+ from ipfs_accelerate_py.agent_supervisor.runtime.semantic_decision_owner import prepare_decision_owner_dispatch
+ try:
+  owner_prompt_bytes=os.pread(0,256001,0)
+  dispatch=prepare_decision_owner_dispatch(arguments=worker_arguments,prompt_bytes=owner_prompt_bytes,workspace=cwd)
+  if dispatch.prompt_bytes!=owner_prompt_bytes:raise ValueError('owner dispatch changed native stdin')
+ except Exception as error:
+  print(json.dumps({'schema':'supervisor-semantic-decision-owner-refusal@1','error_type':type(error).__name__,'provider_called':False,'completion_authority':False}),flush=True)
+  raise SystemExit(1)
+ worker_arguments=list(dispatch.worker_arguments)
+ owner_prompt_bytes=dispatch.prompt_bytes
+ print(json.dumps(dispatch.receipt,sort_keys=True,allow_nan=False),flush=True)
+command=['/usr/bin/sudo','-n','-u','benchmarkworker','--',str(root/'bin/worker-entry'),*worker_arguments]
+proof_query_guard=None
+# Brokers receive the owner-bound argv; the worker inherits the same sealed fd0.
+handoff={**handoff,'argv':worker_arguments}
 from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_broker import worker_source_argv
 command=['/usr/bin/sudo','-n','-u','benchmarkworker','--',str(root/'bin/worker-entry'),*worker_source_argv(handoff['argv'])]
-proof_query_guard=None
 if any(part==flag or part.startswith(flag+'=') for part in sys.argv[1:] for flag in ('--finite-proof-query-context','--finite-proof-query-sha256','--finite-proof-query-context-cid')):
  sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
  from ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_dispatch import require_finite_proof_query_isolated_worker_dispatch
@@ -194,10 +426,26 @@ parser.add_argument('--timeout',type=int,default=90);parser.add_argument('--max-
 parser.add_argument('--budget-profile')
 parser.add_argument('--purpose',choices=['planning','coding'],default='coding')
 parser.add_argument('--semantic-repository',type=pathlib.Path)
+parser.add_argument('--semantic-slot-policy-revision',choices=['legacy@1','closed-typed-identifiers@2'],default='legacy@1')
+parser.add_argument('--semantic-context-projection',action='store_true')
+parser.add_argument('--semantic-native-input',action='store_true')
+parser.add_argument('--semantic-decision-policy-artifact',type=pathlib.Path)
+parser.add_argument('--semantic-decision-policy-sha256')
+parser.add_argument('--semantic-decision-max-calls',type=int,default=3)
+parser.add_argument('--semantic-decision-max-total-input-tokens',type=int)
+parser.add_argument('--prompt-tokenizer-artifact',type=pathlib.Path)
+parser.add_argument('--prompt-tokenizer-sha256')
+parser.add_argument('--max-input-tokens',type=int)
 parser.add_argument('--semantic-transport-schema',choices=['supervisor-semantic-router-input@1','supervisor-semantic-router-input@2'],default='supervisor-semantic-router-input@1')
 parser.add_argument('--semantic-metadata-view',choices=['legacy','common-bindings@1','common-bindings-instruction@1'],default='legacy')
+parser.add_argument('--semantic-working-set',choices=['legacy','capsule-references@1'],default='legacy')
 parser.add_argument('--semantic-metadata-census-only',action='store_true')
 parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion@1'],default='legacy')
+parser.add_argument('--tool-output-policy',choices=['legacy','artifact-preview@1','artifact-preview@2'],default='legacy')
+parser.add_argument('--source-view-advisory-policy',choices=['legacy','source-view-raw@1','source-view-compact@1'],default='legacy')
+parser.add_argument('--repository-source-policy',choices=['legacy','repository-source-raw@1','repository-source-compact@1'],default='legacy')
+parser.add_argument('--source-input-policy',choices=['legacy','source-input-raw@1','source-input-compact@1','source-input-ast-ref-raw@1','source-input-ast-ref-compact@1'],default='legacy')
+parser.add_argument('--query-reference-policy',choices=['legacy','required-instruction-ref@1'],default='legacy')
 parser.add_argument('--doctor-candidate-artifact',type=pathlib.Path)
 parser.add_argument('--doctor-candidate-sha256')
 parser.add_argument('--doctor-task-cid')
@@ -222,6 +470,7 @@ parser.add_argument('--numerical-obligation-descriptor',type=pathlib.Path)
 parser.add_argument('--numerical-obligation-descriptor-sha256')
 parser.add_argument('--source-lookup-descriptor',type=pathlib.Path)
 parser.add_argument('--source-lookup-descriptor-sha256')
+parser.add_argument('--grok-coding-max-turns',type=int,default=128)
 parser.add_argument('--source-view-profile',default='disabled',choices=('disabled','identity@1','python-whitespace@1','python-comments@1'))
 parser.add_argument('--source-edit-mode',default='disabled',choices=('disabled','mapped-span@1','mapped-span@2'))
 parser.add_argument('--source-view-descriptor',type=pathlib.Path)
@@ -240,14 +489,38 @@ numerical_obligation_values=(args.numerical_obligation_descriptor,args.numerical
 source_lookup_values=(args.source_lookup_descriptor,args.source_lookup_descriptor_sha256)
 if any(value is not None for value in source_lookup_values) and (not all(source_lookup_values) or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('exact source lookup descriptor requires isolated router coding')
 source_view_values=(args.source_view_descriptor,args.source_view_descriptor_sha256)
+tokenizer_values=(args.prompt_tokenizer_artifact,args.prompt_tokenizer_sha256)
+decision_values=(args.semantic_decision_policy_artifact,args.semantic_decision_policy_sha256)
+decision_options=any(value is not None for value in decision_values)
+semantic_options=args.semantic_native_input or args.semantic_context_projection or args.semantic_slot_policy_revision!='legacy@1'
+if args.semantic_native_input and (args.semantic_context_projection or args.semantic_slot_policy_revision!='legacy@1'):raise SystemExit('semantic native input requires exclusive legacy semantic context')
+if decision_options and not all(decision_values):raise SystemExit('exact semantic decision policy and digest required')
+if not 1<=args.semantic_decision_max_calls<=4 or (args.semantic_decision_max_total_input_tokens is not None and args.semantic_decision_max_total_input_tokens<1):raise SystemExit('bounded semantic decision budgets required')
+if not decision_options and (args.semantic_decision_max_calls!=3 or args.semantic_decision_max_total_input_tokens is not None):raise SystemExit('semantic decision budgets require an explicit policy')
+if decision_options and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(finite_values) or any(proof_query_values) or any(contract_values) or any(doctor_values) or semantic_options):raise SystemExit('semantic decision policy requires exclusive bound model coding')
+if decision_options and (args.provider!='codex_cli' or args.budget_profile is not None or not 1<=args.timeout<=600 or args.preflight_sleep!=0 or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.semantic_metadata_view!='legacy' or args.semantic_working_set!='legacy' or args.semantic_metadata_census_only or args.coding_reply_mode!='legacy' or args.tool_output_policy!='legacy' or args.source_view_advisory_policy!='legacy' or args.repository_source_policy!='legacy' or args.source_input_policy!='legacy' or args.query_reference_policy!='legacy' or args.source_view_profile!='disabled' or args.source_edit_mode!='disabled' or any(source_view_values) or any(formalization_values) or any(numerical_obligation_values) or any(source_lookup_values)):raise SystemExit('semantic decision policy requires exclusive supported Codex model coding')
+if args.semantic_context_projection and args.semantic_slot_policy_revision!='closed-typed-identifiers@2':raise SystemExit('semantic context projection requires the versioned identifier policy')
+if semantic_options and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(finite_values) or any(proof_query_values) or any(contract_values) or any(doctor_values)):raise SystemExit('semantic context options require bound model coding')
+if any(value is not None for value in tokenizer_values) and not all(tokenizer_values):raise SystemExit('exact prompt tokenizer descriptor and digest required')
+if args.max_input_tokens is not None and args.max_input_tokens<1:raise SystemExit('positive complete prompt token budget required')
+if (any(tokenizer_values) or args.max_input_tokens is not None) and (args.preflight or any(finite_values) or any(proof_query_values) or any(contract_values) or any(doctor_values)):raise SystemExit('prompt tokenizer and token budget require router invocation')
+if args.source_view_profile!='disabled' and any(value!='legacy' for value in (args.source_view_advisory_policy,args.repository_source_policy,args.source_input_policy,args.query_reference_policy)):raise SystemExit('signed source views cannot combine with advisory or projected source policies')
+if not 1<=args.grok_coding_max_turns<=128:raise SystemExit('Grok coding turn bound must be 1 through 128')
+if args.grok_coding_max_turns!=128 and (args.provider!='grok_cli' or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('nondefault coding turns require isolated Grok model-router coding')
 if args.source_edit_mode!='disabled' and (args.source_view_profile=='disabled' or args.preflight or args.semantic_metadata_census_only):raise SystemExit('source editing requires selected coding views')
 if args.source_view_profile!='disabled' or any(value is not None for value in source_view_values):
  if args.source_view_profile=='disabled' or not all(source_view_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values):raise SystemExit('exact source descriptor requires isolated semantic coding')
 if any(value is not None for value in numerical_obligation_values) and (not all(numerical_obligation_values) or not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact numerical obligation descriptor requires owner formalization coding')
 if any(formalization_values) and (not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact owner formalization handoff requires semantic router coding')
 if args.semantic_metadata_view!='legacy' and (args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('metadata view requires original semantic router coding')
+if args.semantic_working_set!='legacy' and (args.source_view_profile=='disabled' or args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.semantic_metadata_view!='legacy' or args.semantic_metadata_census_only or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('working set requires original semantic router coding with source retrieval')
 if args.semantic_metadata_census_only and args.semantic_metadata_view not in ('common-bindings@1','common-bindings-instruction@1'):raise SystemExit('metadata census requires common bindings')
 if args.semantic_transport_schema!='supervisor-semantic-router-input@1' and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('controller dictionary transport requires semantic router coding')
+if args.tool_output_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('tool output policy requires semantic Codex router coding')
+if args.repository_source_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or args.source_view_advisory_policy!='legacy' or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('repository source policy requires semantic Codex router coding and exclusive source tools')
+if args.source_view_advisory_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('source view policy requires semantic Codex router coding')
+if args.source_input_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('source input policy requires semantic Codex router coding')
+if args.query_reference_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or args.semantic_metadata_view!='legacy' or args.source_input_policy!='legacy' or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('query reference policy requires semantic Codex router coding')
 if args.coding_reply_mode!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('ordinary completion requires semantic Codex router coding')
 if any(finite_values) and (not all(finite_values) or any(contract_values) or any(doctor_values) or any(residual_values) or any(instruction_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact finite repository candidate invocation required')
 if any(proof_query_values) and (not all(proof_query_values) or not all(finite_values) or any(contract_values) or any(doctor_values) or any(residual_values) or any(instruction_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact finite proof-query context invocation required')
@@ -305,20 +578,38 @@ elif args.doctor_candidate_artifact is not None:
  sys.argv=[sys.argv[0],'--artifact',str(args.doctor_candidate_artifact),'--sha256',args.doctor_candidate_sha256,'--task-cid',args.doctor_task_cid]
  raise SystemExit(main())
 else:
- from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import main
+ if decision_options:
+  from ipfs_accelerate_py.agent_supervisor.runtime.semantic_decision_worker import main
+ else:
+  from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import main
  from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_cli_subreaper import run_with_child_custody
  sys.argv=[sys.argv[0],'--provider',args.provider,'--model',args.model,'--reasoning-effort',args.reasoning_effort,'--purpose',args.purpose,'--timeout',str(args.timeout),'--max-output-tokens',str(args.max_output_tokens),'--container-boundary',str(artifact),'--container-boundary-sha256',digest]
  if args.budget_profile is not None:sys.argv+=['--budget-profile',args.budget_profile]
  if args.semantic_repository is not None:sys.argv+=['--semantic-repository',str(args.semantic_repository)]
+ if args.semantic_slot_policy_revision!='legacy@1':sys.argv+=['--semantic-slot-policy-revision',args.semantic_slot_policy_revision]
+ if args.semantic_context_projection:sys.argv+=['--semantic-context-projection']
+ if args.semantic_native_input:sys.argv+=['--semantic-native-input']
+ if decision_options:
+  sys.argv+=['--semantic-decision-policy-artifact',str(args.semantic_decision_policy_artifact),'--semantic-decision-policy-sha256',args.semantic_decision_policy_sha256,'--semantic-decision-max-calls',str(args.semantic_decision_max_calls)]
+  if args.semantic_decision_max_total_input_tokens is not None:sys.argv+=['--semantic-decision-max-total-input-tokens',str(args.semantic_decision_max_total_input_tokens)]
+ if args.prompt_tokenizer_artifact is not None:sys.argv+=['--prompt-tokenizer-artifact',str(args.prompt_tokenizer_artifact),'--prompt-tokenizer-sha256',args.prompt_tokenizer_sha256]
+ if args.max_input_tokens is not None:sys.argv+=['--max-input-tokens',str(args.max_input_tokens)]
  if args.semantic_transport_schema!='supervisor-semantic-router-input@1':sys.argv+=['--semantic-transport-schema',args.semantic_transport_schema]
  if args.semantic_metadata_view!='legacy':sys.argv+=['--semantic-metadata-view',args.semantic_metadata_view]
+ if args.semantic_working_set!='legacy':sys.argv+=['--semantic-working-set',args.semantic_working_set]
  if args.semantic_metadata_census_only:sys.argv+=['--semantic-metadata-census-only']
  if args.coding_reply_mode!='legacy':sys.argv+=['--coding-reply-mode',args.coding_reply_mode]
+ if args.tool_output_policy!='legacy':sys.argv+=['--tool-output-policy',args.tool_output_policy]
+ if args.source_view_advisory_policy!='legacy':sys.argv+=['--source-view-advisory-policy',args.source_view_advisory_policy]
+ if args.repository_source_policy!='legacy':sys.argv+=['--repository-source-policy',args.repository_source_policy]
+ if args.source_input_policy!='legacy':sys.argv+=['--source-input-policy',args.source_input_policy]
+ if args.query_reference_policy!='legacy':sys.argv+=['--query-reference-policy',args.query_reference_policy]
  if args.doctor_residual_artifact is not None:sys.argv+=['--doctor-residual-artifact',str(args.doctor_residual_artifact),'--doctor-residual-sha256',args.doctor_residual_sha256,'--doctor-residual-task-cid',args.doctor_residual_task_cid]
  if args.public_instruction_artifact is not None:sys.argv+=['--public-instruction-artifact',str(args.public_instruction_artifact),'--public-instruction-sha256',args.public_instruction_sha256,'--public-instruction-task-cid',args.public_instruction_task_cid]
  if args.source_formalization_handoff is not None:sys.argv+=['--source-formalization-handoff',str(args.source_formalization_handoff),'--source-formalization-handoff-sha256',args.source_formalization_handoff_sha256]
  if args.numerical_obligation_descriptor is not None:sys.argv+=['--numerical-obligation-descriptor',str(args.numerical_obligation_descriptor),'--numerical-obligation-descriptor-sha256',args.numerical_obligation_descriptor_sha256]
  if args.source_lookup_descriptor is not None:sys.argv+=['--source-lookup-descriptor',str(args.source_lookup_descriptor),'--source-lookup-descriptor-sha256',args.source_lookup_descriptor_sha256]
+ if args.grok_coding_max_turns!=128:sys.argv+=['--grok-coding-max-turns',str(args.grok_coding_max_turns)]
  if args.source_view_profile!='disabled':sys.argv+=['--source-view-profile',args.source_view_profile,'--source-view-descriptor',str(args.source_view_descriptor),'--source-view-descriptor-sha256',args.source_view_descriptor_sha256]
  if args.source_edit_mode!='disabled':sys.argv+=['--source-edit-mode',args.source_edit_mode]
  raise SystemExit(run_with_child_custody(main))

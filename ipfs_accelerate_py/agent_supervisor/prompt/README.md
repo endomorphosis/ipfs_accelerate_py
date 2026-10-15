@@ -17,6 +17,7 @@ Prompt workflow surfaces: directory scanning, goal planning hooks, plan admissio
 
 | Module | Path |
 | --- | --- |
+| `acceptance_bindings` | `prompt/acceptance_bindings.py` |
 | `prompt_directory_scanner` | `prompt/prompt_directory_scanner.py` |
 | `prompt_goal_planner` | `prompt/prompt_goal_planner.py` |
 | `intent_plan_coverage` | `prompt/intent_plan_coverage.py` |
@@ -49,6 +50,15 @@ cache reuse or persistence, and disables reuse for opaque live dependencies.
 Request-only snapshot version 1 stays compatible.
 
 ## Extending
+
+`acceptance_bindings.bind_acceptance_checker()` creates a new immutable
+schema-v1 graph revision for one existing criterion and its mirrored goal
+records. It requires the exact prior plan root, one producer task, a new native
+validation command and advisory evidence, preserves criterion text and existing
+checks, and recomputes dependent CIDs together. Its identity crosswalk is a
+declaration receipt: the command must still run, its evidence must be verified,
+and native IR/proof/validation/prompt admission still applies. It never marks a
+criterion satisfied. Schema-v2 lifecycle/DAG revisions require their own owner.
 
 1. Add modules here only if this package **owns** the concern ([placement table](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)).
 2. Update this README module table in the same change.

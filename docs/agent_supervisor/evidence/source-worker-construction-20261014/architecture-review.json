@@ -1,0 +1,29 @@
+{
+  "canonical_initialization_and_refs_replay_outside_server": true,
+  "completion_authority": false,
+  "concrete_static_blocker_after_import_correction": false,
+  "copied_request_limits_paths_and_bounds": true,
+  "execution_authority": false,
+  "legacy_and_task_only_lanes_retained": true,
+  "mandatory_exact_active_proxy_grant_checks_preserved": true,
+  "native_and_detached_custody_before_grant_and_before_endpoints": true,
+  "original_bind_once_reader_and_task_allocation_markers_preserved_on_refusal": true,
+  "original_witnesses_captured_before_callbacks": true,
+  "proof_authority": false,
+  "remaining_callback_boundaries": [
+    "initial_native_source_binding",
+    "privileged_native_source_get_transaction"
+  ],
+  "review_method": "read_only_diff_and_source_review",
+  "reviewer": "signed_scope_architecture",
+  "runtime_or_test_execution_by_reviewer": false,
+  "schema": "source-worker-construction-independent-code-review@1",
+  "source_sha256": {
+    "docs/agent_supervisor/evidence/source-worker-construction-20261014/qualification_runner.py": "382d663c1d0b8820d0750e81226bcb255a831455bee2051cc242955cd41dd2f3",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py": "d837c3a59e7cbce3fb285fbb0037f5aa6f8a4597193278da6f9518a922a6c570",
+    "test/api/test_source_worker_construction.py": "63afe57ac673bb3cb1ea9328d4e8c5c86b03410312b77198911f839cb13278d6"
+  },
+  "stdlib_json_and_asdict_names_bound": true,
+  "universal_callback_safety": false,
+  "worker_uid_qualified": false
+}

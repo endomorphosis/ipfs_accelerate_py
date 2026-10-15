@@ -374,3 +374,103 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/**/*.json
 !data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/**/*.json
 /data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/
+
+# Bounded legal autoformalization bootstrap runtime
+/data/agent_supervisor/legal_autoformalization_bootstrap/runtime/
+
+# Persist only accepted legal inventory evidence in Git
+!/data/legal_autoformalization_convergence/
+!/data/legal_autoformalization_convergence/LAC-*/
+!/data/legal_autoformalization_convergence/LAC-*/result.json
+
+# Legal source-contract foundations operational state and accepted evidence
+/data/agent_supervisor/legal_autoformalization_foundations/runtime/
+!/data/legal_autoformalization_foundations/
+!/data/legal_autoformalization_foundations/LAC-S2-*/
+!/data/legal_autoformalization_foundations/LAC-S2-*/result.json
+
+# Legal proposed graph contracts operational state and accepted evidence
+/data/agent_supervisor/legal_autoformalization_graphs/runtime/
+!/data/legal_autoformalization_graphs/
+!/data/legal_autoformalization_graphs/LAC-S3-*/
+!/data/legal_autoformalization_graphs/LAC-S3-*/result.json
+
+# Legal cache-intake operational state and accepted qualification evidence
+/data/agent_supervisor/legal_autoformalization_intake/runtime/
+!/data/legal_autoformalization_intake/
+!/data/legal_autoformalization_intake/LAC-S4-*/
+!/data/legal_autoformalization_intake/LAC-S4-*/result.json
+
+# Primary graph reconstruction operational state and qualification evidence
+/data/agent_supervisor/legal_autoformalization_primary/runtime/
+!/data/legal_autoformalization_primary/
+!/data/legal_autoformalization_primary/LAC-S5-*/
+!/data/legal_autoformalization_primary/LAC-S5-*/result.json
+
+# Span-to-section bridge operational state and qualification evidence
+/data/agent_supervisor/legal_autoformalization_span_section/runtime/
+!/data/legal_autoformalization_span_section/
+!/data/legal_autoformalization_span_section/LAC-S6-*/
+!/data/legal_autoformalization_span_section/LAC-S6-*/result.json
+
+# Official source custody operational state and qualification evidence
+/data/agent_supervisor/legal_autoformalization_source_custody/runtime/
+!/data/legal_autoformalization_source_custody/
+!/data/legal_autoformalization_source_custody/LAC-S7-*/
+!/data/legal_autoformalization_source_custody/LAC-S7-*/result.json
+
+# Owned recovery runtime is retained locally; only declared results are proposals.
+/data/agent_supervisor/legal_autoformalization_source_views_recovery/
+!/data/legal_autoformalization_source_views_recovery/
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-011/
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-011/result.json
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-024/
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-024/result.json
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-044/
+!/data/legal_autoformalization_source_views_recovery/LAC-S8R1-044/result.json
+
+# Owned parent-page runtime; exact three declared qualification results.
+/data/agent_supervisor/legal_autoformalization_parent_pages/
+!/data/legal_autoformalization_parent_pages/
+!/data/legal_autoformalization_parent_pages/LAC-S9-011/
+!/data/legal_autoformalization_parent_pages/LAC-S9-011/result.json
+!/data/legal_autoformalization_parent_pages/LAC-S9-024/
+!/data/legal_autoformalization_parent_pages/LAC-S9-024/result.json
+!/data/legal_autoformalization_parent_pages/LAC-S9-044/
+!/data/legal_autoformalization_parent_pages/LAC-S9-044/result.json
+
+# Owned span reconstruction runtime; exact three declared qualification results.
+/data/agent_supervisor/legal_autoformalization_span_reconstruction/
+!/data/legal_autoformalization_span_reconstruction/
+!/data/legal_autoformalization_span_reconstruction/LAC-S10-011/
+!/data/legal_autoformalization_span_reconstruction/LAC-S10-011/result.json
+!/data/legal_autoformalization_span_reconstruction/LAC-S10-024/
+!/data/legal_autoformalization_span_reconstruction/LAC-S10-024/result.json
+!/data/legal_autoformalization_span_reconstruction/LAC-S10-044/
+!/data/legal_autoformalization_span_reconstruction/LAC-S10-044/result.json
+
+# Generated state for the declared source-view generation; preserve on resume.
+/data/agent_supervisor/legal_autoformalization_source_views/runtime/generation-01/
+!/data/legal_autoformalization_source_views/
+!/data/legal_autoformalization_source_views/LAC-S8-*/
+!/data/legal_autoformalization_source_views/LAC-S8-*/result.json
+
+# Owned span-reconstruction recovery runtime; exact three declared results.
+/data/agent_supervisor/legal_autoformalization_span_reconstruction_recovery/
+!/data/legal_autoformalization_span_reconstruction_recovery/
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-011/
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-011/result.json
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-024/
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-024/result.json
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-044/
+!/data/legal_autoformalization_span_reconstruction_recovery/LAC-S10R1-044/result.json
+
+# Owned source-alignment runtime; exact three declared results.
+/data/agent_supervisor/legal_autoformalization_source_alignment/
+!/data/legal_autoformalization_source_alignment/
+!/data/legal_autoformalization_source_alignment/LAC-S11-011/
+!/data/legal_autoformalization_source_alignment/LAC-S11-011/result.json
+!/data/legal_autoformalization_source_alignment/LAC-S11-024/
+!/data/legal_autoformalization_source_alignment/LAC-S11-024/result.json
+!/data/legal_autoformalization_source_alignment/LAC-S11-044/
+!/data/legal_autoformalization_source_alignment/LAC-S11-044/result.json

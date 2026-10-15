@@ -5,15 +5,32 @@ Installation is setup time, measured by Harbor separately for both harnesses.
 """
 from __future__ import annotations
 
+from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
+    DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns, grok_coding_selection,
+    require_grok_coding_archive, grok_coding_runtime_matches,
+    grok_coding_not_applicable_provider_free,
+)
+
 import asyncio
+import hashlib
 import json
+import math
+import os
 from pathlib import Path
 import shlex
+import stat
+from time import monotonic
+import uuid
 
 from harbor.agents.base import BaseAgent
 from harbor.models.agent.context import AgentContext
 
-from .container_worker_deployment import deploy_worker_boundary
+from .container_worker_deployment import (deploy_worker_boundary, doctor_dispatch_arguments,
+    prompt_tokenizer_arguments, semantic_context_arguments, semantic_decision_arguments,
+    validate_legacy_semantic_route)
+from .semantic_decision_nomination_delivery import (capture_nomination_snapshot,
+    nomination_delivery_arguments, nomination_delivery_command, read_nomination_source,
+    verify_nomination_snapshot)
 from .terminal_deployment import (
     ROOT, PYTHON, CANONICAL_CVE_PATH, SECURITY_INITIALIZER_DESCRIPTOR,
     SECURITY_INITIALIZER_PATH, SECURITY_CHECKPOINT_PATH, SECURITY_CHECKPOINT_HUB, deploy_supervisor, runtime_environment,
@@ -25,7 +42,9 @@ from .terminal_deployment import (
 from .benchmark_resource_profile import PROFILES, execution_budget, admission_environment
 from .native_codex_baseline import MODEL, CLI_VERSION
 from .benchmark_provider_profile import require_runtime_provider_profile, resolve_provider_profile
-from .full_supervisor_benchmark import _intent_selection, validate_header_planning_selection
+from .full_supervisor_benchmark import _decision_options
+from .terminal_decision_policy import require_decision_archive
+from .full_supervisor_benchmark import _intent_selection, validate_header_planning_selection, _prompt_options
 from .terminal_public_outputs import capture_public_inputs, export_public_outputs
 from .terminal_retrieval_selection import require_retrieval_revision
 from .terminal_semantic_transport_policy import (
@@ -36,6 +55,26 @@ from .terminal_coding_reply_policy import (
     DEFAULT_CODING_REPLY_MODE, validate_coding_reply_mode, require_coding_reply_archive,
     coding_reply_selection,
 )
+from .terminal_source_input_policy import (
+    DEFAULT_SOURCE_INPUT_POLICY, validate_source_input_policy,
+    source_input_selection, require_source_input_archive,
+)
+from .terminal_query_reference_policy import (
+    DEFAULT_QUERY_REFERENCE_POLICY, validate_query_reference_policy,
+    query_reference_selection, require_query_reference_archive,
+)
+from .terminal_repository_source_policy import (
+    DEFAULT_REPOSITORY_SOURCE_POLICY, validate_repository_source_policy,
+    repository_source_selection, require_repository_source_archive,
+)
+from .terminal_source_view_policy import (
+    DEFAULT_SOURCE_VIEW_POLICY, validate_source_view_advisory_policy,
+    source_view_advisory_selection, require_source_view_advisory_archive,
+)
+from .terminal_tool_output_policy import (
+    DEFAULT_TOOL_OUTPUT_POLICY, validate_tool_output_policy,
+    tool_output_selection, require_tool_output_archive,
+)
 from .terminal_semantic_metadata_policy import (
     DEFAULT_SEMANTIC_METADATA_VIEW, validate_semantic_metadata_view,
     semantic_metadata_observation, require_semantic_metadata_archive,
@@ -43,10 +82,16 @@ from .terminal_semantic_metadata_policy import (
 from .terminal_capsule_selection_policy import (
     DEFAULT_CAPSULE_SELECTION, validate_capsule_selection,
     capsule_selection_observation, require_capsule_selection_archive,
+    DEFAULT_CAPSULE_BUDGET, validate_capsule_budget,
+    capsule_budget_observation, require_capsule_budget_archive,
 )
 from .terminal_planning_policy import (
     DEFAULT_PLANNING_MODE, validate_planning_mode,
     planning_observation, require_planning_archive,
+)
+from .terminal_semantic_working_set_policy import (
+    DEFAULT_SEMANTIC_WORKING_SET, SEMANTIC_WORKING_SETS, validate_semantic_working_set,
+    semantic_working_set_selection, semantic_working_set_observation, require_semantic_working_set_archive,
 )
 from .terminal_source_edit_policy import (
     DEFAULT_SOURCE_EDIT_MODE, SOURCE_EDIT_MODES, validate_source_edit_mode,
@@ -56,15 +101,237 @@ from .terminal_source_view_policy import (
     DEFAULT_SOURCE_VIEW_PROFILE, validate_source_view_profile,
     source_view_observation, require_source_view_archive, validate_source_view_policy, source_view_policy_argv,
 )
+from .terminal_semantic_context_policy import (
+    DEFAULT_SEMANTIC_CONTEXT_PROFILE, validate_semantic_context_profile,
+    semantic_context_selection, require_semantic_context_archive,
+)
 from .terminal_numerical_policy import (
     validate_numerical_profile, numerical_observation, require_numerical_archive,
 )
 from .terminal_numerical_selection_deployment import (
     numerical_selection_asset_arguments,
 )
+from .terminal_provider_stop import provider_stop_observation
+from .timeout_policy import MIN_DRIVER_TIMEOUT_SECONDS
+
+PUBLIC_EXPORT_SECONDS = 5
+ADAPTER_RECEIPT_MARGIN_SECONDS = 5
+ADAPTER_FINALIZATION_SECONDS = 4 * PUBLIC_EXPORT_SECONDS + ADAPTER_RECEIPT_MARGIN_SECONDS
 
 
-def measured_usage(report: dict) -> dict:
+class _AdapterBudgetExhausted(TimeoutError):
+    """The selected profile's original deadline cannot accommodate this stage."""
+
+
+class _AdapterRunDeadline:
+    def __init__(self, metadata, *, resource_profile=None, started=None,
+                 agent_timeout_seconds=None):
+        limits = execution_budget(resource_profile)
+        seconds = limits["harbor_seconds"]
+        # The optional legacy helper argument can confirm this profile, never
+        # replace its independently selected physical execution limit.
+        if agent_timeout_seconds is not None and (
+                type(agent_timeout_seconds) is not int or agent_timeout_seconds != seconds):
+            raise ValueError("adapter timeout must equal the selected resource profile")
+        now = monotonic()
+        if started is not None and (type(started) not in (int, float)
+                or not math.isfinite(started) or started > now):
+            raise ValueError("finite elapsed adapter start required")
+        self.started = now if started is None else started
+        self.deadline = self.started + seconds
+        self.driver_limit = limits["driver_seconds"]
+        self.exec_grace = limits["exec_seconds"] - self.driver_limit
+        self.receipt = {
+            "schema": "terminal-supervisor-adapter-deadline@1",
+            "resource_profile": resource_profile,
+            "budget_seconds": seconds,
+            "profile_driver_seconds": self.driver_limit,
+            "profile_exec_seconds": limits["exec_seconds"],
+            "driver_exec_grace_seconds": self.exec_grace,
+            "finalization_reserve_seconds": ADAPTER_FINALIZATION_SECONDS,
+            "receipt_margin_seconds": ADAPTER_RECEIPT_MARGIN_SECONDS,
+            "budget_exhausted": False, "stages": {},
+        }
+        metadata["adapter_deadline"] = self.receipt
+
+    def remaining(self):
+        return max(0.0, self.deadline - monotonic())
+
+    def exhausted(self, stage, reason):
+        if not self.receipt["budget_exhausted"]:
+            self.receipt.update(budget_exhausted=True, exhausted_stage=stage,
+                                exhaustion_reason=reason)
+        return _AdapterBudgetExhausted("adapter budget exhausted before " + stage)
+
+    def driver_seconds(self):
+        seconds = min(self.driver_limit, int(self.remaining()
+            - ADAPTER_FINALIZATION_SECONDS - self.exec_grace))
+        if seconds < MIN_DRIVER_TIMEOUT_SECONDS:
+            self.receipt["stages"]["driver"] = {
+                "status": "not_started_budget_exhausted",
+                "available_driver_seconds": max(0, seconds),
+            }
+            raise self.exhausted("driver", "insufficient_driver_budget")
+        self.receipt["driver_timeout_seconds"] = seconds
+        return seconds
+
+    async def stage(self, name, operation, *, maximum=None,
+                    reserve=ADAPTER_RECEIPT_MARGIN_SECONDS):
+        # Do not construct an environment coroutine when its reserve is gone.
+        available = self.remaining() - reserve
+        if available <= 0:
+            self.receipt["stages"][name] = {"status": "not_started_budget_exhausted"}
+            raise self.exhausted(name, "reserved_finalization_time_unavailable")
+        timeout = min(available, maximum) if maximum is not None else available
+        started = monotonic()
+        receipt = {"status": "running", "timeout_seconds": timeout}
+        self.receipt["stages"][name] = receipt
+        try:
+            result = await asyncio.wait_for(operation(), timeout=timeout)
+        except BaseException as error:
+            receipt.update(status="cancelled" if isinstance(error, asyncio.CancelledError)
+                           else "timed_out" if isinstance(error, TimeoutError) else "failed",
+                           error_type=type(error).__name__)
+            raise
+        else:
+            receipt["status"] = "completed"
+            return result
+        finally:
+            receipt["seconds"] = max(0.0, monotonic() - started)
+
+    def finish(self):
+        self.receipt.update(seconds=max(0.0, monotonic() - self.started),
+                            remaining_seconds=self.remaining(),
+                            deadline_exhausted=self.remaining() <= 0)
+
+
+def _retain_nomination_publisher_result(result, *, operation: str, artifact: Path) -> None:
+    """Retain only this standalone publisher's bounded private diagnostics."""
+    if operation not in {"prepare", "publish"}:
+        raise ValueError("closed nomination publisher operation required")
+    return_code = getattr(result, "return_code", None)
+    record = {
+        "schema": "terminal-semantic-decision-nomination-command@1", "operation": operation,
+        "return_code": (return_code if type(return_code) is int
+                        and -(2 ** 31) <= return_code < 2 ** 31 else None),
+        "provider_called": False, "completion_authority": False,
+    }
+    for field in ("stdout", "stderr"):
+        value = getattr(result, field, None)
+        raw = value.encode("utf-8", errors="replace") if type(value) is str else None
+        record[field] = raw[-4096:].decode("utf-8", errors="replace") if raw is not None else None
+        record[field + "_bytes"] = len(raw) if raw is not None else None
+        record[field + "_truncated"] = len(raw) > 4096 if raw is not None else None
+    raw_record = json.dumps(record, sort_keys=True, ensure_ascii=False, allow_nan=False).encode()
+    if len(raw_record) > 65_536:
+        raise ValueError("nomination publisher diagnostic exceeds its byte bound")
+    descriptor = os.open(artifact, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "wb", closefd=False) as stream:
+            stream.write(raw_record)
+            stream.flush()
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _nomination_delivery_receipt(result, expected: dict) -> dict:
+    """Accept only the bounded root publisher's exact transport receipt."""
+    if type(result.return_code) is not int or result.return_code != 0:
+        raise ValueError("nomination delivery command failed")
+    if type(result.stdout) is not str or len(result.stdout.encode("utf-8")) > 4096:
+        raise ValueError("bounded nomination delivery receipt required")
+
+    def closed_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate nomination delivery receipt field")
+            value[key] = item
+        return value
+
+    receipt = json.loads(result.stdout, object_pairs_hook=closed_object)
+    if (type(receipt) is not dict or set(receipt) != set(expected)
+            or any(type(receipt[key]) is not type(value) or receipt[key] != value
+                   for key, value in expected.items())):
+        raise ValueError("nomination delivery receipt differs from pinned transport")
+    return receipt
+
+
+async def _download_context_replay_evidence(environment, *, state: str,
+                                            receipt: dict, output: Path) -> dict:
+    """Receive only the attested sibling archive through the closed verifier."""
+    from .terminal_context_evidence import validate_evidence_receipt, verify_evidence_archive
+
+    checked = validate_evidence_receipt(receipt, state=Path(state))
+    destination = output / "context-replay-evidence.tar"
+    receipt_destination = output / "context-replay-evidence-receipt.json"
+    if any(os.path.lexists(path) for path in (destination, receipt_destination)):
+        raise ValueError("fresh context replay evidence destination required")
+    temporary = output / (".context-replay-evidence-" + uuid.uuid4().hex + ".tar")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    os.close(descriptor)
+    published = receipt_identity = None
+    completed = False
+
+    def identity(path):
+        info = path.lstat()
+        return (info.st_dev, info.st_ino, info.st_size, info.st_mode,
+                info.st_mtime_ns, info.st_ctime_ns)
+
+    def remove_owned(path, held):
+        if held is not None:
+            try:
+                current = path.lstat()
+            except FileNotFoundError:
+                return
+            if (current.st_dev, current.st_ino) == held:
+                path.unlink()
+
+    try:
+        await environment.download_file(str(state) + "-context-evidence.tar", temporary)
+        info = temporary.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or info.st_size != checked["bytes"]):
+            raise ValueError("context replay evidence size or file type differs")
+        before = identity(temporary)
+        # The worker only reads a bounded archive. Cancellation can unlink its
+        # temporary pathname; the worker can never publish any output.
+        manifest = await asyncio.to_thread(verify_evidence_archive, archive=temporary,
+            expected_sha256=checked["sha256"], manifest_sha256=checked["manifest_sha256"])
+        encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":"),
+                             ensure_ascii=False, allow_nan=False).encode()
+        if (identity(temporary) != before or len(encoded) != checked["manifest_bytes"]
+                or hashlib.sha256(encoded).hexdigest() != checked["manifest_sha256"]
+                or len(manifest["files"]) != checked["file_count"]
+                or manifest["content_bytes"] != checked["content_bytes"]
+                or any(manifest[key] != checked[key] for key in (
+                    "repository_origin", "state_origin", "workspace_root_origin", "profile"))):
+            raise ValueError("context replay evidence manifest differs from receipt")
+        temporary.chmod(0o444)
+        os.link(temporary, destination, follow_symlinks=False)
+        info = destination.lstat()
+        published = (info.st_dev, info.st_ino)
+        temporary.unlink()
+        result = {**checked, "artifact": str(destination), "status": "delivered", "verified": True}
+        descriptor = os.open(receipt_destination,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, "w") as stream:
+            info = os.fstat(stream.fileno())
+            receipt_identity = (info.st_dev, info.st_ino)
+            json.dump(result, stream, sort_keys=True, indent=2, allow_nan=False)
+            stream.write("\n")
+        completed = True
+        return result
+    finally:
+        temporary.unlink(missing_ok=True)
+        if not completed:
+            remove_owned(receipt_destination, receipt_identity)
+            remove_owned(destination, published)
+
+
+def _measured_native_usage(report: dict) -> dict:
     """Count observed native totals once, retaining provider-specific semantics."""
     from .native_usage_accounting import native_usage_contract
 
@@ -122,9 +389,21 @@ def measured_usage(report: dict) -> dict:
         and type(result["cache_included_in_input"]) is bool
         and all(type(result.get(key)) is int and result[key] >= 0 for key in (
             "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")))
+    # A native task_complete event can close a failed session with no token
+    # counters. Preserve that event separately from complete accounting.
+    result["usage_accounting_complete"] = result["harbor_usage_exportable"]
     result["billing_total_verified"] = False
     result["dollar_cost"] = None
     return result
+
+
+def measured_usage(report: dict) -> dict:
+    """Apply decision coverage only when its explicit report scope is selected."""
+    from .terminal_decision_usage_projection import decision_usage_selected, measured_decision_usage
+
+    if decision_usage_selected(report):
+        return measured_decision_usage(report)
+    return _measured_native_usage(report)
 
 
 def populate_harbor_usage(context: AgentContext, usage: dict) -> None:
@@ -322,14 +601,79 @@ class FullSupervisorAgent(BaseAgent):
                  provider_profile: str | None = None,
                  semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
                  coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
+                 tool_output_policy: str = DEFAULT_TOOL_OUTPUT_POLICY,
+                 source_view_advisory_policy: str = DEFAULT_SOURCE_VIEW_POLICY,
+                 repository_source_policy: str = DEFAULT_REPOSITORY_SOURCE_POLICY,
+                 source_input_policy: str = DEFAULT_SOURCE_INPUT_POLICY,
+                 query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+                 semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
+                 grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
+                 capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                  source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
                  source_view_policy: dict | None = None,
                  source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
+                 semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
                  numerical_formalization_profile: str | None = None,
                  planning_mode: str = DEFAULT_PLANNING_MODE,
-                 metadata_census_only: bool = False, **kwargs):
+                 metadata_census_only: bool = False,
+                 prompt_tokenizer_artifact: str | Path | None = None,
+                 prompt_tokenizer_sha256: str | None = None,
+                 max_input_tokens: int | None = None,
+                 semantic_slot_policy_revision: str = "legacy@1",
+                 semantic_context_projection: bool = False,
+                 semantic_native_input: bool = False,
+                 semantic_decision_policy_artifact: str | Path | None = None,
+                 semantic_decision_policy_sha256: str | None = None,
+                 semantic_decision_nomination_artifact: str | Path | None = None,
+                 semantic_decision_nomination_source: str | Path | None = None,
+                 semantic_decision_nomination_sha256: str | None = None,
+                 disable_semantic_typed_nomination: bool = False,
+                 semantic_retrieval_query_reference: bool = False,
+                 semantic_decision_max_calls: int = 3,
+                 semantic_decision_max_total_input_tokens: int | None = None,
+                 doctor_dispatch_policy: str = "auto",
+                 **kwargs):
+        decision = _decision_options({**kwargs, **locals()}, arm=arm,
+            provider=resolve_provider_profile(provider_profile)["provider"])
+        doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
+        prompt_options = _prompt_options(arm,
+            prompt_tokenizer_artifact=prompt_tokenizer_artifact,
+            prompt_tokenizer_sha256=prompt_tokenizer_sha256,
+            max_input_tokens=max_input_tokens,
+            semantic_slot_policy_revision=semantic_slot_policy_revision,
+            semantic_context_projection=semantic_context_projection,
+            semantic_native_input=semantic_native_input,
+            semantic_decision_policy_artifact=semantic_decision_policy_artifact,
+            semantic_decision_policy_sha256=semantic_decision_policy_sha256,
+            semantic_decision_nomination_artifact=semantic_decision_nomination_artifact,
+            semantic_decision_nomination_source=semantic_decision_nomination_source,
+            semantic_decision_nomination_sha256=semantic_decision_nomination_sha256,
+            disable_semantic_typed_nomination=disable_semantic_typed_nomination,
+            **({"semantic_retrieval_query_reference": semantic_retrieval_query_reference}
+               if semantic_retrieval_query_reference is not False else {}),
+            semantic_decision_max_calls=semantic_decision_max_calls,
+            semantic_decision_max_total_input_tokens=semantic_decision_max_total_input_tokens)
+        validate_legacy_semantic_route(policyoptions=prompt_options, rendereroptions={
+            'semantic_transport_schema': semantic_transport_schema,
+            'semantic_metadata_view': semantic_metadata_view,
+            'semantic_working_set': semantic_working_set,
+            'source_view_profile': source_view_profile,
+            'source_edit_mode': source_edit_mode,
+            'source_view_policy': source_view_policy,
+            'coding_reply_mode': coding_reply_mode,
+            'tool_output_policy': tool_output_policy,
+            'source_view_advisory_policy': source_view_advisory_policy,
+            'repository_source_policy': repository_source_policy,
+            'source_input_policy': source_input_policy,
+            'query_reference_policy': query_reference_policy,
+            'semantic_context_profile': semantic_context_profile,
+            'capsule_selection': capsule_selection,
+            'capsule_budget': capsule_budget,
+            'metadata_census_only': metadata_census_only,
+            "provider": resolve_provider_profile(provider_profile)["provider"],
+        })
         super().__init__(*args, **kwargs)
         selected_provider = resolve_provider_profile(provider_profile)
         if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
@@ -338,6 +682,12 @@ class FullSupervisorAgent(BaseAgent):
             intent_requirement_contract=intent_requirement_contract, task_profile=task_profile)
         self._frozen_planning_mode = self.planning_mode
         self.capsule_selection = validate_capsule_selection(capsule_selection, arm=arm)
+        self.capsule_budget = validate_capsule_budget(capsule_budget, arm=arm)
+        self._frozen_capsule_budget = self.capsule_budget
+        if self.capsule_budget != DEFAULT_CAPSULE_BUDGET:
+            from .terminal_task_profile import MULTITASK_SCHEMA
+            if isinstance(task_profile, dict) and task_profile.get("schema") == MULTITASK_SCHEMA:
+                raise ValueError("bounded capsules support one independent signed task")
         self.source_view_profile = validate_source_view_profile(source_view_profile, arm=arm)
         self.source_edit_mode = validate_source_edit_mode(source_edit_mode, arm=arm,
             source_view_profile=self.source_view_profile)
@@ -347,11 +697,36 @@ class FullSupervisorAgent(BaseAgent):
         self._source_view_policy_frozen_json = json.dumps(
             source_view_observation(self.source_view_profile, self.source_view_policy),
             sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+        self.semantic_context_profile = validate_semantic_context_profile(semantic_context_profile, arm=arm)
+        from .terminal_source_view_policy import validate_source_context_combination
+        validate_source_context_combination(source_view_profile=source_view_profile,
+            source_view_advisory_policy=source_view_advisory_policy, repository_source_policy=repository_source_policy,
+            source_input_policy=source_input_policy, query_reference_policy=query_reference_policy,
+            capsule_selection=capsule_selection, semantic_context_profile=semantic_context_profile)
         self.semantic_transport_schema = validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
+        self.source_input_policy = validate_source_input_policy(source_input_policy,
+            arm=arm, provider=selected_provider["provider"], semantic_metadata_view=semantic_metadata_view)
+        self.query_reference_policy = validate_query_reference_policy(query_reference_policy,
+            arm=arm, provider=selected_provider["provider"], semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
+        self.repository_source_policy = validate_repository_source_policy(repository_source_policy,
+            arm=arm, provider=selected_provider["provider"], source_view_advisory_policy=source_view_advisory_policy)
+        self.source_view_advisory_policy = validate_source_view_advisory_policy(source_view_advisory_policy,
+            arm=arm, provider=selected_provider["provider"])
+        self.tool_output_policy = validate_tool_output_policy(tool_output_policy,
+            arm=arm, provider=selected_provider["provider"])
         self.coding_reply_mode = validate_coding_reply_mode(coding_reply_mode,
             arm=arm, provider=selected_provider["provider"])
         self.semantic_metadata_view = validate_semantic_metadata_view(semantic_metadata_view,
             arm=arm, transport_schema=self.semantic_transport_schema, provider=selected_provider["provider"])
+        self.semantic_working_set = validate_semantic_working_set(semantic_working_set, arm=arm,
+            source_view_profile=self.source_view_profile, transport_schema=self.semantic_transport_schema,
+            metadata_view=self.semantic_metadata_view)
+        self._frozen_semantic_working_set = self.semantic_working_set
+        self.grok_coding_max_turns = validate_grok_coding_max_turns(
+            grok_coding_max_turns, provider=selected_provider["provider"])
+        self._frozen_grok_coding_max_turns = self.grok_coding_max_turns
+        if self.grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS and metadata_census_only:
+            raise ValueError("nondefault coding turns require generation, not metadata census")
         if type(metadata_census_only) is not bool:
             raise ValueError("explicit Boolean metadata census selection required")
         if metadata_census_only and self.source_edit_mode != DEFAULT_SOURCE_EDIT_MODE:
@@ -361,6 +736,16 @@ class FullSupervisorAgent(BaseAgent):
         if metadata_census_only and (arm != "full" or self.semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}
                 or self.coding_reply_mode != "ordinary-completion@1"):
             raise ValueError("live census requires the full common-bindings ordinary-completion route")
+        if metadata_census_only and self.source_input_policy != DEFAULT_SOURCE_INPUT_POLICY:
+            raise ValueError("source input policy requires an executed coding route")
+        if metadata_census_only and self.query_reference_policy != DEFAULT_QUERY_REFERENCE_POLICY:
+            raise ValueError("query reference policy requires an executed coding route")
+        if metadata_census_only and self.repository_source_policy != DEFAULT_REPOSITORY_SOURCE_POLICY:
+            raise ValueError("repository source policy requires an executed coding route")
+        if metadata_census_only and self.source_view_advisory_policy != DEFAULT_SOURCE_VIEW_POLICY:
+            raise ValueError("source view policy requires an executed coding route")
+        if metadata_census_only and self.tool_output_policy != DEFAULT_TOOL_OUTPUT_POLICY:
+            raise ValueError("tool output policy requires an executed coding route")
         self.metadata_census_only = metadata_census_only
         self.numerical_formalization_profile = validate_numerical_profile(numerical_formalization_profile)
         if type(disable_intent_autoencoder) is not bool:
@@ -371,6 +756,22 @@ class FullSupervisorAgent(BaseAgent):
             if selected_provider["provider"] == "codex_cli" else ".grok/auth.json"))
         self.arm = arm
         self.model_revision = model_revision
+        self.prompt_tokenizer_artifact = prompt_tokenizer_artifact
+        self.prompt_tokenizer_sha256 = prompt_tokenizer_sha256
+        self.max_input_tokens = max_input_tokens
+        self.semantic_slot_policy_revision = semantic_slot_policy_revision
+        self.semantic_context_projection = semantic_context_projection
+        self.semantic_native_input = semantic_native_input
+        self.semantic_decision_policy_artifact = semantic_decision_policy_artifact
+        self.semantic_decision_policy_sha256 = semantic_decision_policy_sha256
+        self.semantic_decision_nomination_artifact = semantic_decision_nomination_artifact
+        self.semantic_decision_nomination_source = semantic_decision_nomination_source
+        self.semantic_decision_nomination_sha256 = semantic_decision_nomination_sha256
+        self.disable_semantic_typed_nomination = disable_semantic_typed_nomination
+        self.semantic_retrieval_query_reference = semantic_retrieval_query_reference
+        self.semantic_decision_max_calls = semantic_decision_max_calls
+        self.semantic_decision_max_total_input_tokens = semantic_decision_max_total_input_tokens
+        self.doctor_dispatch_policy = doctor_dispatch_policy
         if resource_profile not in (None, *PROFILES):
             raise ValueError("unknown benchmark resource profile")
         self.resource_profile = resource_profile
@@ -392,7 +793,21 @@ class FullSupervisorAgent(BaseAgent):
         self.intent_requirement_contract = intent_requirement_contract
         from .terminal_task_profile import validate_task_profile
         self.task_profile = validate_task_profile(task_profile) if task_profile is not None else None
+        self._decision_frozen_json = json.dumps(decision, sort_keys=True, allow_nan=False)
         self.logs_dir.mkdir(parents=True, exist_ok=True)
+
+    def _checked_decision_selection(self, manifest):
+            selected = _decision_options(vars(self), arm=self.arm,
+                provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+            if json.dumps(selected, sort_keys=True, allow_nan=False) != getattr(self, "_decision_frozen_json", "{}"):
+                raise ValueError("prepared semantic decision selection changed")
+            if selected:
+                # Inferred archive assets cannot silently broaden the selected route.
+                _decision_options({**vars(self), "source384_config": validate_source384_binding(manifest),
+                    "numerical_selection_config": manifest.get("numerical_selection_384")}, arm=self.arm,
+                    provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+                require_decision_archive(self.runtime_archive, manifest, selected)
+            return selected
 
     @staticmethod
     def name():
@@ -410,6 +825,39 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("live metadata census requires model planning")
         if mode != getattr(self, "_frozen_planning_mode", DEFAULT_PLANNING_MODE):
             raise ValueError("prepared planning mode changed")
+        return mode
+
+    def _checked_capsule_budget(self):
+        value = validate_capsule_budget(getattr(self, "capsule_budget", DEFAULT_CAPSULE_BUDGET),
+            arm=self.arm)
+        if value != getattr(self, "_frozen_capsule_budget", DEFAULT_CAPSULE_BUDGET):
+            raise ValueError("prepared capsule budget changed")
+        if value != DEFAULT_CAPSULE_BUDGET:
+            from .terminal_task_profile import MULTITASK_SCHEMA
+            task_profile = getattr(self, "task_profile", None)
+            if isinstance(task_profile, dict) and task_profile.get("schema") == MULTITASK_SCHEMA:
+                raise ValueError("bounded capsules support one independent signed task")
+        return value
+
+    def _checked_grok_coding_max_turns(self):
+        value = validate_grok_coding_max_turns(
+            getattr(self, "grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        if value != DEFAULT_GROK_CODING_MAX_TURNS and getattr(self, "metadata_census_only", False):
+            raise ValueError("nondefault coding turns require generation, not metadata census")
+        if value != getattr(self, "_frozen_grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS):
+            raise ValueError("prepared Grok coding turn bound changed")
+        return value
+
+    def _checked_semantic_working_set(self):
+        mode = validate_semantic_working_set(getattr(self, "semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET),
+            arm=self.arm, source_view_profile=getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
+            transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+            metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+        if mode != DEFAULT_SEMANTIC_WORKING_SET and getattr(self, "metadata_census_only", False):
+            raise ValueError("semantic working set requires a coding worker")
+        if mode != getattr(self, "_frozen_semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET):
+            raise ValueError("prepared semantic working set changed")
         return mode
 
     def _checked_source_edit_mode(self, profile):
@@ -437,6 +885,7 @@ class FullSupervisorAgent(BaseAgent):
         )
         selection = getattr(self, "setup_cache_selection", None)
         manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
+        self._checked_decision_selection(manifest)
         from .terminal_worker_capability import require_worker_capability
         require_worker_capability(manifest, getattr(self, "resource_profile", None))
         require_planning_archive(manifest, self._checked_planning_mode())
@@ -450,19 +899,51 @@ class FullSupervisorAgent(BaseAgent):
         reply_mode = validate_coding_reply_mode(getattr(self, "coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
             arm=self.arm, provider=selected_provider["provider"])
         require_coding_reply_archive(manifest, reply_mode)
+        tool_output = validate_tool_output_policy(
+            getattr(self, "tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_tool_output_archive(manifest, tool_output)
+        source_view_advisory = validate_source_view_advisory_policy(
+            getattr(self, "source_view_advisory_policy", DEFAULT_SOURCE_VIEW_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_source_view_advisory_archive(manifest, source_view_advisory)
+        repository_source = validate_repository_source_policy(
+            getattr(self, "repository_source_policy", DEFAULT_REPOSITORY_SOURCE_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"], source_view_advisory_policy=source_view_advisory)
+        require_repository_source_archive(manifest, repository_source, archive=self.runtime_archive / "runtime.tar.gz")
+        source_input = validate_source_input_policy(
+            getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
+            semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+        query_reference = validate_query_reference_policy(
+            getattr(self, "query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
+            semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            source_input_policy=getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
+        require_source_input_archive(manifest, source_input)
+        require_query_reference_archive(manifest, query_reference)
         metadata_view = validate_semantic_metadata_view(
             getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=self.arm,
             transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
             provider=selected_provider["provider"])
         require_semantic_metadata_archive(manifest, metadata_view)
+        working_set = self._checked_semantic_working_set()
+        require_semantic_working_set_archive(manifest, working_set)
+        grok_turns = self._checked_grok_coding_max_turns()
+        require_grok_coding_archive(manifest, grok_turns)
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
         require_capsule_selection_archive(manifest, capsule_selection)
+        capsule_budget = self._checked_capsule_budget()
+        require_capsule_budget_archive(manifest, capsule_budget)
         source_view = validate_source_view_profile(
             getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=self.arm)
         self._checked_source_view_policy(source_view)
         require_source_edit_archive(manifest, self._checked_source_edit_mode(source_view))
         require_source_view_archive(manifest, source_view, getattr(self, "resource_profile", None))
+        semantic_profile = validate_semantic_context_profile(
+            getattr(self, "semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE), arm=self.arm)
+        require_semantic_context_archive(manifest, semantic_profile)
         require_retrieval_revision(manifest, self.arm, getattr(self, "model_revision", ""))
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
@@ -477,6 +958,8 @@ class FullSupervisorAgent(BaseAgent):
             if selected_provider["provider"] == "grok_cli" else {})
         await deploy_supervisor(environment, archive_dir=self.runtime_archive,
                                 output=self.logs_dir / "deployment", auth_json=self.auth_json, **provider_options,
+                                **({"repository_source_policy": repository_source}
+                                   if repository_source != DEFAULT_REPOSITORY_SOURCE_POLICY else {}),
                                 **({"isolated_uv_bootstrap": True} if task_profile is not None else {}),
                                 **({"setup_cache_selection": selection} if selection is not None else {}))
         boundary = self.logs_dir / "worker-boundary"
@@ -506,9 +989,68 @@ class FullSupervisorAgent(BaseAgent):
                 resource_profile=getattr(self, "resource_profile", None))
 
     async def run(self, instruction: str, environment, context: AgentContext):
+        run_started = monotonic()
+        _decision_options(vars(self), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        doctor_arguments = doctor_dispatch_arguments(arm=self.arm,
+            doctor_dispatch_policy=getattr(self, "doctor_dispatch_policy", "auto"))
+        nomination_source = getattr(self, "semantic_decision_nomination_source", None)
+        nomination_sha256 = getattr(self, "semantic_decision_nomination_sha256", None)
+        prompt_options = _prompt_options(self.arm,
+            prompt_tokenizer_artifact=getattr(self, "prompt_tokenizer_artifact", None),
+            prompt_tokenizer_sha256=getattr(self, "prompt_tokenizer_sha256", None),
+            max_input_tokens=getattr(self, "max_input_tokens", None),
+            semantic_slot_policy_revision=getattr(self, "semantic_slot_policy_revision", "legacy@1"),
+            semantic_context_projection=getattr(self, "semantic_context_projection", False),
+            semantic_native_input=getattr(self, "semantic_native_input", False),
+            semantic_decision_policy_artifact=getattr(self, "semantic_decision_policy_artifact", None),
+            semantic_decision_policy_sha256=getattr(self, "semantic_decision_policy_sha256", None),
+            semantic_decision_nomination_artifact=getattr(self, "semantic_decision_nomination_artifact", None),
+            semantic_decision_nomination_source=nomination_source,
+            semantic_decision_nomination_sha256=nomination_sha256,
+            disable_semantic_typed_nomination=getattr(self, "disable_semantic_typed_nomination", False),
+            **({"semantic_retrieval_query_reference": getattr(self, "semantic_retrieval_query_reference", False)}
+               if getattr(self, "semantic_retrieval_query_reference", False) is not False else {}),
+            semantic_decision_max_calls=getattr(self, "semantic_decision_max_calls", 3),
+            semantic_decision_max_total_input_tokens=getattr(self, "semantic_decision_max_total_input_tokens", None))
+        validate_legacy_semantic_route(policyoptions=prompt_options, rendereroptions={
+            'semantic_transport_schema': getattr(self, 'semantic_transport_schema', 'supervisor-semantic-router-input@1'),
+            'semantic_metadata_view': getattr(self, 'semantic_metadata_view', 'legacy'),
+            'semantic_working_set': getattr(self, 'semantic_working_set', 'legacy'),
+            'source_view_profile': getattr(self, 'source_view_profile', 'disabled'),
+            'source_edit_mode': getattr(self, 'source_edit_mode', 'disabled'),
+            'source_view_policy': getattr(self, 'source_view_policy', None),
+            'coding_reply_mode': getattr(self, 'coding_reply_mode', 'legacy'),
+            'tool_output_policy': getattr(self, 'tool_output_policy', 'legacy'),
+            'source_view_advisory_policy': getattr(self, 'source_view_advisory_policy', 'legacy'),
+            'repository_source_policy': getattr(self, 'repository_source_policy', 'legacy'),
+            'source_input_policy': getattr(self, 'source_input_policy', 'legacy'),
+            'query_reference_policy': getattr(self, 'query_reference_policy', 'legacy'),
+            'semantic_context_profile': getattr(self, 'semantic_context_profile', 'legacy-bounded@1'),
+            'capsule_selection': getattr(self, 'capsule_selection', 'lexical-query-symbol-name@1'),
+            'capsule_budget': getattr(self, 'capsule_budget', 'legacy'),
+            'metadata_census_only': getattr(self, 'metadata_census_only', False),
+            "provider": resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
+        })
+        semantic_arguments = semantic_context_arguments(
+            semantic_slot_policy_revision=getattr(self, "semantic_slot_policy_revision", "legacy@1"),
+            semantic_context_projection=getattr(self, "semantic_context_projection", False),
+            **({"semantic_native_input": True} if getattr(self, "semantic_native_input", False) else {}))
+        decision_arguments = [] if nomination_source is not None else semantic_decision_arguments(
+            semantic_decision_policy_artifact=getattr(self, "semantic_decision_policy_artifact", None),
+            semantic_decision_policy_sha256=getattr(self, "semantic_decision_policy_sha256", None),
+            semantic_decision_nomination_artifact=getattr(self, "semantic_decision_nomination_artifact", None),
+            semantic_decision_nomination_sha256=nomination_sha256,
+            disable_semantic_typed_nomination=getattr(self, "disable_semantic_typed_nomination", False),
+            **({"semantic_retrieval_query_reference": True}
+               if getattr(self, "semantic_retrieval_query_reference", False) else {}),
+            semantic_decision_max_calls=getattr(self, "semantic_decision_max_calls", 3),
+            semantic_decision_max_total_input_tokens=getattr(self, "semantic_decision_max_total_input_tokens", None))
+
         from .terminal_setup_cache_advice import validate_setup_cache_selection
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
             getattr(self, "setup_cache_selection", None))
+        self._checked_decision_selection(manifest)
         planning_mode = self._checked_planning_mode()
         require_planning_archive(manifest, planning_mode)
         retrieval_revision = require_retrieval_revision(manifest, self.arm,
@@ -519,20 +1061,58 @@ class FullSupervisorAgent(BaseAgent):
         reply_mode = validate_coding_reply_mode(getattr(self, "coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
             arm=self.arm, provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         require_coding_reply_archive(manifest, reply_mode)
+        tool_output = validate_tool_output_policy(
+            getattr(self, "tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_tool_output_archive(manifest, tool_output)
+        source_view_advisory = validate_source_view_advisory_policy(
+            getattr(self, "source_view_advisory_policy", DEFAULT_SOURCE_VIEW_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_source_view_advisory_archive(manifest, source_view_advisory)
+        repository_source = validate_repository_source_policy(
+            getattr(self, "repository_source_policy", DEFAULT_REPOSITORY_SOURCE_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"], source_view_advisory_policy=source_view_advisory)
+        require_repository_source_archive(manifest, repository_source, archive=self.runtime_archive / "runtime.tar.gz")
+        source_input = validate_source_input_policy(
+            getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
+            semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW))
+        query_reference = validate_query_reference_policy(
+            getattr(self, "query_reference_policy", DEFAULT_QUERY_REFERENCE_POLICY), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
+            semantic_metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            source_input_policy=getattr(self, "source_input_policy", DEFAULT_SOURCE_INPUT_POLICY))
+        require_source_input_archive(manifest, source_input)
+        require_query_reference_archive(manifest, query_reference)
         metadata_view = validate_semantic_metadata_view(
             getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=self.arm,
             transport_schema=transport,
             provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         require_semantic_metadata_archive(manifest, metadata_view)
+        working_set = self._checked_semantic_working_set()
+        require_semantic_working_set_archive(manifest, working_set)
+        grok_turns = self._checked_grok_coding_max_turns()
+        require_grok_coding_archive(manifest, grok_turns)
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
         require_capsule_selection_archive(manifest, capsule_selection)
+        capsule_budget = self._checked_capsule_budget()
+        require_capsule_budget_archive(manifest, capsule_budget)
         source_view = validate_source_view_profile(
             getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE), arm=self.arm)
         source_policy = self._checked_source_view_policy(source_view)
+        from .terminal_source_view_policy import validate_source_context_combination
+        validate_source_context_combination(source_view_profile=source_view,
+            source_view_advisory_policy=source_view_advisory, repository_source_policy=repository_source,
+            source_input_policy=source_input, query_reference_policy=query_reference,
+            capsule_selection=capsule_selection,
+            semantic_context_profile=getattr(self, "semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE))
         source_edit = self._checked_source_edit_mode(source_view)
         require_source_edit_archive(manifest, source_edit)
         require_source_view_archive(manifest, source_view, getattr(self, "resource_profile", None))
+        semantic_profile = validate_semantic_context_profile(
+            getattr(self, "semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE), arm=self.arm)
+        require_semantic_context_archive(manifest, semantic_profile)
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
         from .terminal_worker_capability import require_worker_capability
@@ -546,36 +1126,62 @@ class FullSupervisorAgent(BaseAgent):
         public = self.logs_dir / "instruction.md"
         public.write_text(instruction)
         instruction_path = ROOT + "/instruction.md"
-        await environment.upload_file(public, instruction_path)
+        uploads = [("instruction_upload", public, instruction_path)]
         # Owner state contains signing keys. Export only the explicit public
         # result and bounded process diagnostics; never download the state tree.
-        state = ROOT + "/state/benchmark"
+        run_id = uuid.uuid4().hex
+        state = ROOT + "/state/benchmark-" + run_id
         report_path = state + "-result.json"
         profile = getattr(self, "resource_profile", None)
         budget = execution_budget(profile)
         argv = [PYTHON, "-P", "-m", "benchmarks.agent_supervisor.container_coding.terminal_container_supervisor",
                 "--instruction", instruction_path, "--state", state,
                 "--arm", self.arm, "--timeout-seconds", str(budget["driver_seconds"])]
+        argv += prompt_tokenizer_arguments(
+            prompt_tokenizer_artifact=getattr(self, "prompt_tokenizer_artifact", None),
+            prompt_tokenizer_sha256=getattr(self, "prompt_tokenizer_sha256", None),
+            max_input_tokens=getattr(self, "max_input_tokens", None))
+        argv += semantic_arguments + decision_arguments + doctor_arguments
+        if getattr(self, "semantic_retrieval_query_reference", False):
+            argv += ["--semantic-retrieval-query-reference"]
         provider_profile = getattr(self, "provider_profile", None)
         if provider_profile is not None:
             argv += ["--provider-profile", provider_profile]
         if source_edit != DEFAULT_SOURCE_EDIT_MODE:
             argv += ["--source-edit-mode", source_edit]
+        if working_set != DEFAULT_SEMANTIC_WORKING_SET:
+            argv += ["--semantic-working-set", working_set]
+        if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
+            argv += ["--grok-coding-max-turns", str(grok_turns)]
         if planning_mode != DEFAULT_PLANNING_MODE:
             argv += ["--planning-mode", planning_mode]
         if numerical_profile is not None:
             argv += ["--numerical-formalization-profile", numerical_profile]
         if transport != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
             argv += ["--semantic-transport-schema", transport]
+        if tool_output != DEFAULT_TOOL_OUTPUT_POLICY:
+            argv += ["--tool-output-policy", tool_output]
+        if repository_source != DEFAULT_REPOSITORY_SOURCE_POLICY:
+            argv += ["--repository-source-policy", repository_source]
+        if source_view_advisory != DEFAULT_SOURCE_VIEW_POLICY:
+            argv += ["--source-view-advisory-policy", source_view_advisory]
+        if source_input != DEFAULT_SOURCE_INPUT_POLICY:
+            argv += ["--source-input-policy", source_input]
+        if query_reference != DEFAULT_QUERY_REFERENCE_POLICY:
+            argv += ["--query-reference-policy", query_reference]
         if reply_mode != DEFAULT_CODING_REPLY_MODE:
             argv += ["--coding-reply-mode", reply_mode]
         if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
             argv += ["--semantic-metadata-view", metadata_view]
         if capsule_selection != DEFAULT_CAPSULE_SELECTION:
             argv += ["--capsule-selection", capsule_selection]
+        if capsule_budget != DEFAULT_CAPSULE_BUDGET:
+            argv += ["--capsule-budget", capsule_budget]
         if source_view != DEFAULT_SOURCE_VIEW_PROFILE:
             argv += ["--source-view-profile", source_view]
         argv += source_view_policy_argv(source_policy, profile=source_view)
+        if semantic_profile != DEFAULT_SEMANTIC_CONTEXT_PROFILE:
+            argv += ["--semantic-context-profile", semantic_profile]
         if getattr(self, "metadata_census_only", False):
             argv += ["--metadata-census-only"]
         task_profile = getattr(self, "task_profile", None)
@@ -584,7 +1190,7 @@ class FullSupervisorAgent(BaseAgent):
             task_profile = validate_task_profile(task_profile, instruction=instruction)
             artifact = self.logs_dir / "task-profile.json"
             artifact.write_text(json.dumps(task_profile, sort_keys=True, allow_nan=False) + "\n")
-            await environment.upload_file(artifact, ROOT + "/task-profile.json")
+            uploads.append(("task_profile_upload", artifact, ROOT + "/task-profile.json"))
             argv += ["--task-profile", ROOT + "/task-profile.json"]
         if profile is not None:
             argv += ["--resource-profile", profile]
@@ -594,7 +1200,7 @@ class FullSupervisorAgent(BaseAgent):
             artifact.write_text(json.dumps(requirement_contract, sort_keys=True,
                                            separators=(",", ":"), allow_nan=False) + "\n")
             requirement_path = ROOT + "/intent-requirements.json"
-            await environment.upload_file(artifact, requirement_path)
+            uploads.append(("requirement_upload", artifact, requirement_path))
             argv += ["--intent-requirement-contract", requirement_path]
         if retrieval_revision:
             argv += ["--model-snapshot", ROOT + "/models/embedding", "--model-revision", retrieval_revision]
@@ -607,14 +1213,23 @@ class FullSupervisorAgent(BaseAgent):
             manifest, self.arm, getattr(self, "resource_profile", None))
         argv += source384_arguments
         argv += numerical_arguments
-        context.metadata = {"arm": self.arm, "task_completed": False, "official_reward": None,
+        context.metadata = {"adapter_run_id": run_id, "arm": self.arm, "task_completed": False, "official_reward": None,
                             "provider_profile": resolve_provider_profile(provider_profile),
                             **semantic_transport_selection(transport),
                             **coding_reply_selection(reply_mode),
+                            **tool_output_selection(tool_output),
+                            **source_view_advisory_selection(source_view_advisory),
+                            **repository_source_selection(repository_source),
+                            **source_input_selection(source_input),
+                            **query_reference_selection(query_reference),
                             **semantic_metadata_observation(metadata_view),
                             **capsule_selection_observation(capsule_selection),
+                            **capsule_budget_observation(capsule_budget),
                             **source_view_observation(source_view, source_policy),
                             **source_edit_observation(source_edit),
+                            **semantic_context_selection(semantic_profile),
+                            **semantic_working_set_observation(working_set),
+                            **grok_coding_selection(grok_turns),
                             **numerical_observation(numerical_profile, self.arm),
                             **planning_observation(planning_mode),
                             **_intent_selection(requirement_contract, planning_mode=planning_mode),
@@ -628,30 +1243,155 @@ class FullSupervisorAgent(BaseAgent):
                             "admission_environment": admission_environment(profile),
                             **({"setup_cache": self.setup_cache_receipt} if hasattr(self, "setup_cache_receipt") else {}),
                             "planning_and_cold_index_charged_to_agent_time": True}
+        if nomination_source is not None or getattr(self, "semantic_decision_nomination_artifact", None) is not None:
+            context.metadata["disable_semantic_typed_nomination"] = getattr(
+                self, "disable_semantic_typed_nomination", False)
+            context.metadata["semantic_decision_typed_nomination_expected"] = not getattr(
+                self, "disable_semantic_typed_nomination", False)
+        if getattr(self, "semantic_native_input", False):
+            context.metadata["semantic_native_input_requested"] = True
+        if getattr(self, "semantic_retrieval_query_reference", False):
+            context.metadata["semantic_retrieval_query_reference_requested"] = True
         if task_profile is not None:
             context.metadata["task_profile"] = task_profile
             context.metadata["public_output_capture"] = "not_selected_for_generic_profile"
-        try:
-            if task_profile is None:
-                context.metadata["public_input_capture"] = await asyncio.wait_for(
-                    capture_public_inputs(environment, self.logs_dir), timeout=5)
-        except Exception as exc:
-            context.metadata["public_input_capture_error"] = type(exc).__name__
+        context.n_input_tokens = context.n_cache_tokens = context.n_output_tokens = None
+        deadline = _AdapterRunDeadline(context.metadata, resource_profile=profile, started=run_started)
         error = None
+        report = None
+        driver_started = False
+        nomination_stage = None
         try:
-            result = await environment.exec(command=shlex.join(argv), cwd="/app", user="supervisor",
-                                            env={**runtime_environment(), **admission_environment(profile)},
-                                            timeout_sec=budget["exec_seconds"])
+            if nomination_source is not None:
+                nomination_stage = "nomination_capture"
+                delivery = {
+                    "schema": "terminal-semantic-decision-nomination-delivery@1",
+                    "status": "preparing", "stage": nomination_stage, "published": False,
+                    "sha256": nomination_sha256,
+                    "provider_called": False, "completion_authority": False,
+                }
+                context.metadata["semantic_decision_nomination_delivery"] = delivery
+                raw_nomination = read_nomination_source(
+                    source=nomination_source, expected_sha256=nomination_sha256)
+                snapshot_directory = self.logs_dir.absolute() / ("decision-nomination-" + run_id)
+                snapshot_directory.mkdir(mode=0o755)
+                snapshot = capture_nomination_snapshot(source=nomination_source,
+                    expected_sha256=nomination_sha256, directory=snapshot_directory)
+                if verify_nomination_snapshot(snapshot, directory=snapshot_directory) != raw_nomination:
+                    raise ValueError("captured nomination changed before staging")
+                locations = nomination_delivery_arguments(root=ROOT, run_id=run_id,
+                    expected_sha256=nomination_sha256, expected_bytes=len(raw_nomination))
+                expected_receipt = {
+                    "schema": "terminal-semantic-decision-nomination-delivery@1",
+                    "artifact": locations["artifact"], "sha256": nomination_sha256,
+                    "bytes": len(raw_nomination), "provider_called": False,
+                    "completion_authority": False,
+                }
+                delivery.update(artifact=locations["artifact"], bytes=len(raw_nomination))
+
+                async def execute_nomination(operation):
+                    command = nomination_delivery_command(python=PYTHON,
+                        operation=operation, root=ROOT, run_id=run_id,
+                        expected_sha256=nomination_sha256, expected_bytes=len(raw_nomination))
+                    result = await environment.exec(command=shlex.join(command), cwd=ROOT,
+                        user="root", env=runtime_environment(), timeout_sec=15)
+                    _retain_nomination_publisher_result(result, operation=operation,
+                        artifact=snapshot_directory / ("publisher-" + operation + ".json"))
+                    return _nomination_delivery_receipt(result, dict(expected_receipt,
+                        operation=operation, published=operation == "publish"))
+
+                async def upload_nomination():
+                    # Verify immediately before Harbor opens the immutable
+                    # snapshot. The root publisher rechecks the uploaded bytes.
+                    if verify_nomination_snapshot(snapshot, directory=snapshot_directory) != raw_nomination:
+                        raise ValueError("captured nomination changed before upload")
+                    return await environment.upload_file(Path(snapshot["artifact"]), locations["temporary"])
+
+                nomination_stage = "nomination_prepare"
+                delivery["stage"] = nomination_stage
+                await deadline.stage(nomination_stage, lambda: execute_nomination("prepare"),
+                    maximum=15, reserve=ADAPTER_FINALIZATION_SECONDS)
+                nomination_stage = "nomination_upload"
+                delivery["stage"] = nomination_stage
+                await deadline.stage(nomination_stage, upload_nomination,
+                    maximum=15, reserve=ADAPTER_FINALIZATION_SECONDS)
+                nomination_stage = "nomination_publish"
+                delivery["stage"] = nomination_stage
+                receipt = await deadline.stage(nomination_stage, lambda: execute_nomination("publish"),
+                    maximum=15, reserve=ADAPTER_FINALIZATION_SECONDS)
+                delivery.update(receipt, status="published")
+                argv += semantic_decision_arguments(
+                    semantic_decision_nomination_artifact=receipt["artifact"],
+                    semantic_decision_nomination_sha256=nomination_sha256,
+                    disable_semantic_typed_nomination=getattr(self, "disable_semantic_typed_nomination", False),
+                    **({"semantic_retrieval_query_reference": True}
+                       if getattr(self, "semantic_retrieval_query_reference", False) else {}),
+                    semantic_decision_max_calls=getattr(self, "semantic_decision_max_calls", 3),
+                    semantic_decision_max_total_input_tokens=getattr(
+                        self, "semantic_decision_max_total_input_tokens", None))
+                nomination_stage = None
+            for stage, source, target in uploads:
+                await deadline.stage(stage,
+                    lambda source=source, target=target: environment.upload_file(source, target),
+                    reserve=ADAPTER_FINALIZATION_SECONDS)
+            try:
+                if task_profile is None:
+                    context.metadata["public_input_capture"] = await deadline.stage(
+                        "public_input_capture", lambda: capture_public_inputs(environment, self.logs_dir),
+                        maximum=PUBLIC_EXPORT_SECONDS, reserve=ADAPTER_FINALIZATION_SECONDS)
+            except Exception as exc:
+                context.metadata["public_input_capture_error"] = type(exc).__name__
+            driver_seconds = deadline.driver_seconds()
+            argv[argv.index("--timeout-seconds") + 1] = str(driver_seconds)
+            driver_started = True
+            result = await deadline.stage("driver", lambda: environment.exec(
+                command=shlex.join(argv), cwd="/app", user="supervisor",
+                env={**runtime_environment(), **admission_environment(profile)},
+                timeout_sec=driver_seconds + deadline.exec_grace),
+                maximum=driver_seconds + deadline.exec_grace,
+                reserve=ADAPTER_FINALIZATION_SECONDS)
             (self.logs_dir / "supervisor.stdout").write_text(result.stdout or "")
             (self.logs_dir / "supervisor.stderr").write_text(result.stderr or "")
             context.metadata["driver_returncode"] = result.return_code
         except BaseException as exc:
             error = exc
-            context.metadata["driver_error_type"] = type(exc).__name__
+            context.metadata["adapter_error_type"] = type(exc).__name__
+            if nomination_stage is not None:
+                context.metadata["semantic_decision_nomination_delivery"].update(
+                    status="failed", stage=nomination_stage, error_type=type(exc).__name__[:128])
+            if driver_started:
+                context.metadata["driver_error_type"] = type(exc).__name__
         finally:
             try:
-                await asyncio.wait_for(environment.download_file(report_path, self.logs_dir / "supervisor-result.json"), timeout=5)
+                await deadline.stage("report_export", lambda: environment.download_file(
+                    report_path, self.logs_dir / "supervisor-result.json"), maximum=PUBLIC_EXPORT_SECONDS,
+                    # Retain native usage before optional replay evidence. If
+                    # time is tight, evidence may abstain while admission and
+                    # public outputs keep their original cleanup allowance.
+                    reserve=2 * PUBLIC_EXPORT_SECONDS + ADAPTER_RECEIPT_MARGIN_SECONDS)
                 report = json.loads((self.logs_dir / "supervisor-result.json").read_text())
+                provider_stop = provider_stop_observation(report)
+                if provider_stop is not None:
+                    context.metadata["provider_stop"] = provider_stop
+                if capsule_budget != DEFAULT_CAPSULE_BUDGET:
+                    expected_budget = capsule_budget_observation(capsule_budget)
+                    context.metadata["capsule_budget_runtime_declared_matches"] = all(
+                        type(report.get(key)) is type(value) and report.get(key) == value
+                        for key, value in expected_budget.items())
+                    # A treatment mismatch does not erase provider usage. The
+                    # outer collector separately refuses a complete matched receipt.
+                if working_set != DEFAULT_SEMANTIC_WORKING_SET:
+                    expected_working_set = semantic_working_set_observation(working_set)
+                    context.metadata["semantic_working_set_runtime_declared_matches"] = all(
+                        type(report.get(key)) is type(value) and report.get(key) == value
+                        for key, value in expected_working_set.items())
+                if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
+                    context.metadata["grok_coding_runtime_declared_matches"] = (
+                        type(report.get("grok_coding_max_turns")) is int
+                        and report["grok_coding_max_turns"] == grok_turns)
+                    context.metadata["grok_coding_runtime_policy_matches"] = grok_coding_runtime_matches(report, grok_turns)
+                    context.metadata["grok_coding_not_applicable_provider_free"] = (
+                        grok_coding_not_applicable_provider_free(report, grok_turns))
                 usage = measured_usage(report)
                 populate_harbor_usage(context, usage)
                 context.metadata.update(task_completed=report["task_completed"], usage=usage,
@@ -660,23 +1400,53 @@ class FullSupervisorAgent(BaseAgent):
                                             "intent_preplanning", report.get("intent_preplanning")),
                                         requirement_coverage=(report.get("planning") or {}).get("requirement_coverage"),
                                         error=report.get("error"), remaining_processes=report.get("remaining_processes"))
-            except Exception as exc:
+            except (Exception, asyncio.CancelledError) as exc:
                 context.metadata["report_unavailable"] = type(exc).__name__
+                if isinstance(exc, asyncio.CancelledError) and error is None:
+                    error = exc
+            receipt = report.get("context_replay_evidence") if type(report) is dict else None
+            if receipt is not None:
+                try:
+                    if type(receipt) is not dict:
+                        raise ValueError("context replay evidence receipt must be an object")
+                    if receipt.get("status") == "exported":
+                        context.metadata["context_replay_evidence"] = await deadline.stage(
+                            "context_replay_evidence_export", lambda: _download_context_replay_evidence(
+                                environment, state=state, receipt=receipt, output=self.logs_dir),
+                            maximum=PUBLIC_EXPORT_SECONDS,
+                            reserve=2 * PUBLIC_EXPORT_SECONDS + ADAPTER_RECEIPT_MARGIN_SECONDS)
+                    else:
+                        context.metadata["context_replay_evidence"] = {
+                            "status": "unavailable", "reason": "owner_export_unavailable", "verified": False}
+                except (Exception, asyncio.CancelledError) as exc:
+                    context.metadata["context_replay_evidence"] = {
+                        "status": "unavailable", "reason": "delivery_unavailable", "verified": False,
+                        "error_type": type(exc).__name__}
+                    if isinstance(exc, asyncio.CancelledError) and error is None:
+                        error = exc
             # This envelope contains public task inputs, the admitted goal
             # graph, and signatures, never the profile's private signing key.
             # Retain it even when later native materialization fails.
             try:
-                await asyncio.wait_for(environment.download_file(state + "/admission.json",
-                    self.logs_dir / "admission.json"), timeout=5)
+                await deadline.stage("admission_export", lambda: environment.download_file(
+                    state + "/admission.json", self.logs_dir / "admission.json"),
+                    maximum=PUBLIC_EXPORT_SECONDS,
+                    reserve=PUBLIC_EXPORT_SECONDS + ADAPTER_RECEIPT_MARGIN_SECONDS)
                 context.metadata["signed_admission_exported"] = True
-            except Exception as exc:
+            except (Exception, asyncio.CancelledError) as exc:
                 context.metadata["signed_admission_exported"] = False
                 context.metadata["admission_export_error"] = type(exc).__name__
+                if isinstance(exc, asyncio.CancelledError) and error is None:
+                    error = exc
             try:
                 if task_profile is None:
-                    context.metadata["public_output_evidence"] = await asyncio.wait_for(
-                        export_public_outputs(environment, self.logs_dir), timeout=5)
-            except Exception as exc:
+                    context.metadata["public_output_evidence"] = await deadline.stage(
+                        "public_output_export", lambda: export_public_outputs(environment, self.logs_dir),
+                        maximum=PUBLIC_EXPORT_SECONDS)
+            except (Exception, asyncio.CancelledError) as exc:
                 context.metadata["public_output_export_error"] = type(exc).__name__
+                if isinstance(exc, asyncio.CancelledError) and error is None:
+                    error = exc
+            deadline.finish()
         if error is not None:
             raise error

@@ -1,0 +1,20 @@
+{
+  "schema": "grok-usage-observation-size-check@1",
+  "fixture_kind": "authored validator-accepted large numeric fields; not a live trace",
+  "snapshot_bytes": 68274,
+  "callback_snapshot_bytes": 2449,
+  "runner_callback_line_bytes": 2798,
+  "callback_contains_usage_rows": false,
+  "coding_budget_seconds": 1800,
+  "callback_interval_seconds": 5.0,
+  "callback_count_conservative": 362,
+  "callback_lines_bytes_362": 1012876,
+  "snapshot_plus_362_callbacks_bytes": 1081150,
+  "outer_whole_log_limit_bytes": 8000000,
+  "context_audit_file_limit_bytes": 2000000,
+  "scope": "Telemetry contribution only; other log contents and complete invocation receipt add bytes and are not bounded by this measurement.",
+  "production_sha256": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "c82fe62bd1dc63e96fd4e5f282d12951b115478b0df9f6393d3602bad0c95408",
+    "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/cli_runtime/grok_stream_usage.py": "e0a30b1c7acfb45c47c8510093b21ffa650380646247c23963026e0a06831c06"
+  }
+}

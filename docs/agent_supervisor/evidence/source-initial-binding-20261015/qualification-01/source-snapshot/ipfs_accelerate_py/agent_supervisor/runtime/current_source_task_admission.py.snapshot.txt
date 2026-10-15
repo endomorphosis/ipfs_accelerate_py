@@ -1,0 +1,463 @@
+"""One live native task admission for an existing owner's source reader.
+
+This host-only handle retains the actual coordinator and typed gateway. It
+does not allocate a worktree, authenticate a coding child, compile a context,
+or create a database, CAS, gateway or owner. Source binding remains bind-once;
+a failure after publication never silently rolls it back or rebinds it.
+"""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import stat
+import threading
+
+from ..merge.database_coordination import ProcessSerializedDatabaseCoordinator
+from ..task_sources import typed_state_owner as typed
+from ..task_sources.control_plane_contracts import canonical_json_bytes, content_identity
+from .current_source_lookup import CurrentSourceLookup, _SourceBindingAttempt
+from .numerical_obligation_client import process_identity
+from .quack_state_server import QuackStateServer, ServerLifecycle
+from .repository_source_inventory import _BoundCAS, _cid, _input_guard
+from .repository_source_scope import RepositorySourceScope, nominate_source_scope
+
+SCHEMA = "supervisor-native-source-task-admission@1"
+NOMINATED_SCOPE_SCHEMA = "supervisor-native-nominated-source-scope@1"
+_SEAL = object()
+_CLAIM_FIELDS = frozenset(("attempt_id", "claim_id", "attempt_number", "lease_id",
+                         "owner_session_id", "fencing_token", "fence_epoch"))
+
+
+class CurrentSourceTaskAdmissionError(ValueError):
+    """The retained task/claim/source binding is no longer admitted."""
+
+
+def _need(value, reason):
+    if not value:
+        raise CurrentSourceTaskAdmissionError(reason)
+
+
+def _owned_file(path):
+    _need(isinstance(path, Path), "native authority path required")
+    _need(path.is_absolute() and path.resolve(strict=True) == path,
+          "native authority path changed")
+    parent = path.parent.lstat()
+    _need(stat.S_ISDIR(parent.st_mode) and parent.st_uid == os.geteuid()
+          and not parent.st_mode & 0o022, "native authority parent must remain owner controlled")
+    info = path.lstat()
+    _need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid()
+          and info.st_nlink == 1 and not info.st_mode & 0o022,
+          "native authority requires an existing owner regular file")
+    return (path, info.st_dev, info.st_ino, info.st_uid, stat.S_IMODE(info.st_mode),
+            parent.st_dev, parent.st_ino, parent.st_uid, stat.S_IMODE(parent.st_mode))
+
+
+class NativeSourceTaskAdmission:
+    """Exact host-issued handle; serialized snapshots cannot admit anything."""
+
+    def __init__(self, seal, *, server, attempt_authority, task_cid,
+                 expected_claim_identity, peer_identity, client_id):
+        _need(seal is _SEAL and type(self) is NativeSourceTaskAdmission,
+              "native source task admission must be captured by the host")
+        _need(type(server) is QuackStateServer
+              and type(attempt_authority) is ProcessSerializedDatabaseCoordinator,
+              "original server and native process-serialized coordinator required")
+        _cid(task_cid)
+        _need(type(expected_claim_identity) is dict
+              and set(expected_claim_identity) == _CLAIM_FIELDS,
+              "exact seven-field native claim identity required")
+        claim = typed._validated_database_claim_identity(expected_claim_identity)
+        _need(type(peer_identity) is tuple and len(peer_identity) == 3
+              and all(type(value) is int for value in peer_identity)
+              and peer_identity[0] > 0 and peer_identity[1] == os.geteuid()
+              and peer_identity[2] > 0, "actual owner-UID kernel peer tuple required")
+        _need(type(client_id) is str and client_id.startswith("database-implementation-daemon:")
+              and len(client_id.encode()) <= 1024 and not any(c in client_id for c in "\0\r\n"),
+              "expected owner-attested native daemon client required")
+        self._seal, self._server, self._coordinator = seal, server, attempt_authority
+        self._claim = dict(task_cid=task_cid, **claim)
+        self._claim_bytes = canonical_json_bytes(self._claim)
+        self._peer, self._client_id, self._owner_pid = peer_identity, client_id, os.getpid()
+        self._lock, self._checking = threading.RLock(), False
+        self._source = self._source_refs = self._source_bytes = None
+        self._binding_in_progress = False
+        self._nominated_source_scope = self._original_nominated_source_scope = None
+        self._nominated_scope_checking = False
+        self._snapshot = self._grant = None
+        self._original_snapshot = self._original_grant = None
+        with server._lock:
+            _need(server.lifecycle is ServerLifecycle.READY, "native source owner is not ready")
+            server.ready()
+            self._gateway, self._connection, self._owner_lock = (
+                server._command_gateway, server._connection, server._lock)
+            _need(type(self._gateway) is typed.TypedStateOwnerGateway
+                  and self._gateway._connection is self._connection
+                  and self._gateway._transaction_lock is self._owner_lock,
+                  "exact original native gateway required")
+            self._identity = server.identity
+            self._server_config = server.config
+            self._owner_bytes = canonical_json_bytes(dict(self._gateway.identity))
+            self._control_identity = _owned_file(Path(server.config.database_path))
+        self._coordinator_identity = _owned_file(attempt_authority.database_path)
+        self._coordinator_config = self._config()
+        self._original = (server, self._gateway, self._connection, self._owner_lock,
+                          attempt_authority, self._identity)
+        self.require_current()
+
+    def _config(self):
+        c = self._coordinator
+        return (c.database_path, c.serialization_lock_path, c._state_lock, c._clock_ms,
+                c._default_lease_ms, c._lock_timeout_seconds, c._require_existing_authority)
+
+    def _retained(self):
+        _need(self._seal is _SEAL and type(self) is NativeSourceTaskAdmission
+              and os.getpid() == self._owner_pid
+              and all(left is right for left, right in zip(self._original,
+                  (self._server, self._gateway, self._connection, self._owner_lock,
+                   self._coordinator, self._identity)))
+              and self._server.lifecycle is ServerLifecycle.READY
+              and self._server._command_gateway is self._gateway
+              and self._server._connection is self._connection
+              and self._server._lock is self._owner_lock
+              and self._server.identity is self._identity
+              and self._server.config is self._server_config
+              and _owned_file(Path(self._server.config.database_path)) == self._control_identity
+              and self._identity.process_birth.pid == self._owner_pid
+              and self._gateway._connection is self._connection
+              and self._gateway._transaction_lock is self._owner_lock
+              and canonical_json_bytes(dict(self._gateway.identity)) == self._owner_bytes,
+              "native source task original owner changed")
+        # Do not acquire the coordinator lifecycle lock while SERVER is held.
+        # execute_with_task_claim_fence independently requires the open adapter.
+        _need(type(self._coordinator) is ProcessSerializedDatabaseCoordinator
+              and not self._coordinator._closed and self._config() == self._coordinator_config
+              and _owned_file(self._coordinator.database_path) == self._coordinator_identity,
+              "native source task coordinator changed or closed")
+        _need(canonical_json_bytes(self._claim) == self._claim_bytes,
+              "native source task claim selection changed")
+        _need(self._snapshot is self._original_snapshot and self._grant is self._original_grant,
+              "native source task captured snapshot changed")
+
+    def _native(self, *, _checked_at_ms=None):
+        self._retained()
+        self._gateway._require_live_server_binding()
+        generation = self._connection.execute(
+            "SELECT generation, fence_epoch, database_uuid FROM store_generations "
+            "ORDER BY generation DESC LIMIT 1").fetchone()
+        owner = self._gateway.identity
+        _need(generation is not None and tuple(generation[index] for index in range(3))
+              == (owner["generation"], owner["fence_epoch"], owner["database_uuid"]),
+              "native source task owner generation or fence changed")
+        peer = process_identity(self._peer[0])
+        _need((peer["pid"], peer["uid"], peer["start_time_ticks"]) == self._peer,
+              "native source task daemon died or changed")
+        rows = self._connection.execute(
+            "SELECT task_alias, status, revision, body_json FROM tasks WHERE task_cid = ? LIMIT 2",
+            [self._claim["task_cid"]]).fetchall()
+        _need(len(rows) == 1, "native source task absent or ambiguous")
+        alias, status, revision, raw = (rows[0][index] for index in range(4))
+        _need(type(alias) is str and 0 < len(alias.encode()) <= 4096
+              and status == "in_progress" and type(revision) is int and revision >= 1,
+              "native source task is not the current in-progress task")
+        body, canonical = typed._closed_canonical_json_object(raw,
+            noun="native source task full body", maximum_bytes=256 * 1024)
+        receipt = body.get("completion_receipt")
+        _need(type(receipt) is dict
+              and receipt.get("operation") == "database_attempt_admitted"
+              and receipt.get("claim_phase_schema") == typed.TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+              and receipt.get("attempt_execution_phase") == "claimed"
+              and type(receipt.get("attempt_execution_revision")) is int
+              and receipt["attempt_execution_revision"] == 1,
+              "native source task lacks its admitted provider claim")
+        _need(canonical_json_bytes(typed._validated_database_claim_identity(receipt))
+              == canonical_json_bytes({key: self._claim[key] for key in _CLAIM_FIELDS}),
+              "native source task receipt claim differs")
+        attestation = typed._validated_database_claim_process_attestation(receipt)
+        with self._gateway._grants_lock:
+            grants = [g for g in self._gateway._grants.values()
+                      if g.grant_id == attestation["grant_id"]]
+        _need(len(grants) == 1, "native source task active daemon grant unavailable")
+        grant = self._gateway._require_active_grant(grants[0], peer_identity=self._peer,
+            _checked_at_ms=_checked_at_ms)
+        _need(grant.client_id == self._client_id and (self._grant is None
+              or grant.grant_id == self._grant.grant_id), "native source task daemon grant changed")
+        typed._require_database_claim_process_attestation(receipt, grant=grant)
+        material = dict(schema=SCHEMA, task_cid=self._claim["task_cid"], task_alias=alias,
+            task_revision=revision, expected_task_body_cid=content_identity(body),
+            claim_identity={key: self._claim[key] for key in _CLAIM_FIELDS},
+            task_content_read_only=True, proof_authority=False, execution_authority=False,
+            completion_authority=False, allocation_ownership_verified=False)
+        observed = (canonical_json_bytes(material), canonical.encode())
+        _need(self._snapshot is None or observed == self._snapshot,
+              "native source task revision, phase or full body changed")
+        self._retained()
+        return observed, grant
+
+    def require_current(self):
+        """Check COOR then SERVER; same owned live lease/grant renewal is allowed."""
+        with self._lock:
+            _need(not self._checking, "native source task admission reentry refused")
+            self._checking = True
+            try:
+                self._retained()
+                def checked(_lease):
+                    with self._owner_lock:
+                        before, grant = self._native()
+                        after, current = self._native()
+                        _need(before == after and grant.grant_id == current.grant_id,
+                              "native source task changed during its fence")
+                        return after, current
+                observed, grant = self._coordinator.execute_with_task_claim_fence(self._claim, checked)
+                with self._owner_lock:
+                    final, current = self._native()
+                    _need(final == observed and current.grant_id == grant.grant_id,
+                          "native source task changed after its coordinator fence")
+                self._retained()
+                if self._snapshot is None:
+                    self._snapshot, self._grant = observed, grant
+                    self._original_snapshot, self._original_grant = observed, grant
+                return json.loads(self._snapshot[0])
+            finally:
+                self._checking = False
+
+    def _require_source_binding_transaction(self):
+        """Decline borrowed transactions before any native SQL or claim fence."""
+        with self._owner_lock:
+            self._retained()
+            _need(getattr(self._connection, "in_transaction", None) is False,
+                  "native source binding requires an inactive original transaction")
+
+    def bind_current_source_lookup(self, *, repository, cas, expected_inventory_cid,
+                                   request, limits, context_cid, allowed_paths,
+                                   max_response_bytes=16384, max_slice_bytes=4096,
+                                   _binding_attempt=None):
+        """Host supplies source/workspace policy; no allocation authority is inferred."""
+        with self._lock:
+            _need(not self._binding_in_progress and self._source is None,
+                  "native source task bind is already consumed or in progress")
+            self._require_source_binding_transaction()
+            self._binding_in_progress = True
+            try:
+                return self._bind_current_source_lookup(repository=repository, cas=cas,
+                    expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
+                    context_cid=context_cid, allowed_paths=allowed_paths,
+                    max_response_bytes=max_response_bytes, max_slice_bytes=max_slice_bytes,
+                    _binding_attempt=_binding_attempt)
+            finally:
+                self._binding_in_progress = False
+
+    def _bind_current_source_lookup(self, *, repository, cas, expected_inventory_cid,
+                                    request, limits, context_cid, allowed_paths,
+                                    max_response_bytes, max_slice_bytes, input_guard=None,
+                                    _binding_attempt=None):
+        """Keep task serialization; enter native fences without holding SERVER."""
+        attempt = _SourceBindingAttempt() if _binding_attempt is None else _binding_attempt
+        _need(type(attempt) is _SourceBindingAttempt and not attempt._started
+              and attempt._published is None, "fresh exact source binding attempt required")
+        if input_guard is not None:
+            input_guard()
+        before = self.require_current()
+
+        def unlocked():
+            if input_guard is not None:
+                input_guard()
+            _need(self.require_current() == before, "native task changed before source publication")
+            if input_guard is not None:
+                input_guard()
+
+        def locked(checked_at_ms):
+            if input_guard is not None:
+                input_guard()
+            observed, _grant = self._native(_checked_at_ms=checked_at_ms)
+            _need(json.loads(observed[0]) == before,
+                  "native task changed after source binding fences")
+            if input_guard is not None:
+                input_guard()
+
+        attempt._add_checks(unlocked, locked)
+        with self._owner_lock:
+            _need(self._gateway._current_source_lookup is None,
+                  "native source lookup is already bound")
+        try:
+            self._server.bind_current_source_lookup(repository=repository, cas=cas,
+                expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
+                task_cid=before["task_cid"], task_revision=before["task_revision"],
+                expected_task_body_cid=before["expected_task_body_cid"], context_cid=context_cid,
+                allowed_paths=allowed_paths, max_response_bytes=max_response_bytes,
+                max_slice_bytes=max_slice_bytes, _binding_attempt=attempt)
+        finally:
+            publication = attempt._published
+            if publication is not None:
+                _need(publication[0] is attempt and publication[1] is self._gateway
+                      and self._gateway._current_source_lookup_publication is publication,
+                      "original source publication witness changed")
+                service, body, original_cas, root = publication[4:]
+                self._source, self._source_refs = service, (service, original_cas, root)
+                self._source_bytes = body
+                service._native_source_task_admission = self
+        if input_guard is not None:
+            input_guard()
+        with self._owner_lock:
+            self.require_source_binding(server=self._server, service=self._source)
+        self.require_current()
+        if input_guard is not None:
+            input_guard()
+        return json.loads(self._source_bytes)
+
+    def bind_nominated_current_source_lookup(self, *, scope, expected_scope_cid,
+                                             repository, cas, expected_inventory_cid,
+                                             request, limits, context_cid,
+                                             max_response_bytes=16384, max_slice_bytes=4096,
+                                             _binding_attempt=None):
+        """Cold-replay a pinned historical subset before the existing native bind.
+
+        The host independently supplies the nomination CID, retained inventory,
+        request, limits, repository and context. Required/program roles are an
+        explicit reviewed host policy; this does not validate a signed Terminal
+        profile, admit an allocation, or compile/adopt a worker context.
+        """
+        with self._lock:
+            _need(not self._binding_in_progress and self._source is None,
+                  "native source task bind is already consumed or in progress")
+            self._require_source_binding_transaction()
+            self._binding_in_progress = True
+            frozen = None
+            paths = None
+            try:
+                _need(type(scope) is RepositorySourceScope,
+                      "exact immutable repository source nomination required")
+                expected = _cid(expected_scope_cid)
+                guard = _input_guard(request, limits)
+                value = scope.observation()
+                frozen = canonical_json_bytes(value)
+                _need(value["scope_cid"] == expected,
+                      "source nomination differs from independently pinned scope")
+                _need(_cid(expected_inventory_cid) == value["source_inventory_cid"],
+                      "source nomination differs from independently pinned inventory")
+                paths = tuple(row["raw_path_hex"] for row in value["selected"])
+                required = tuple(value["required_paths"])
+                program = tuple(value["program_paths"])
+
+                retained_store = _BoundCAS(cas, guard)
+
+                def checked_inputs():
+                    retained_store.check()
+                    _need(canonical_json_bytes(scope.observation()) == frozen,
+                          "source nomination changed during native admission")
+
+                checked_inputs()
+                self.require_current()
+                checked_inputs()
+                restored = nominate_source_scope(cas=cas,
+                    expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
+                    selected_paths=paths, required_paths=required, program_paths=program)
+                checked_inputs()
+                _need(canonical_json_bytes(restored.observation()) == frozen,
+                      "source nomination differs from independent retained inventory replay")
+                return self._bind_current_source_lookup(repository=repository, cas=cas,
+                    expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
+                    context_cid=context_cid, allowed_paths=paths,
+                    max_response_bytes=max_response_bytes, max_slice_bytes=max_slice_bytes,
+                    input_guard=checked_inputs, _binding_attempt=_binding_attempt)
+            finally:
+                if (type(self._source) is CurrentSourceLookup
+                        and frozen is not None and paths is not None):
+                    # A published native reader remains consumed even when a
+                    # post-publication guard raises. Retain the attempted join;
+                    # its public observation must still pass all live checks.
+                    captured = (scope, frozen, expected_scope_cid, paths,
+                                self._source, self._source_bytes, cas)
+                    self._nominated_source_scope = self._original_nominated_source_scope = captured
+                self._binding_in_progress = False
+
+    def require_nominated_source_scope(self):
+        """Observe the same live claim/reader join; the snapshot is not a grant."""
+        with self._lock:
+            _need(not self._binding_in_progress,
+                  "source nomination binding is still in progress")
+            _need(not self._nominated_scope_checking, "nominated source scope observation reentry refused")
+            self._nominated_scope_checking = True
+            try:
+                retained = self._nominated_source_scope
+                _need(type(retained) is tuple and len(retained) == 7
+                      and retained is self._original_nominated_source_scope,
+                      "native source reader has no retained nomination join")
+                scope, frozen, expected, paths, source, binding_bytes, cas = retained
+
+                def checked_join():
+                    self._retained()
+                    _need(type(scope) is RepositorySourceScope and source is self._source
+                          and source._store.cas is cas and self._source_bytes == binding_bytes,
+                          "original nominated source reader changed")
+                    value = scope.observation()
+                    _need(canonical_json_bytes(value) == frozen and value["scope_cid"] == expected
+                          and paths == tuple(row["raw_path_hex"] for row in value["selected"])
+                          and paths == source._paths,
+                          "retained source nomination or selected path scope changed")
+                    with self._owner_lock:
+                        self.require_source_binding(server=self._server, service=source)
+                        binding = source.binding(self._gateway.identity)
+                    _need(canonical_json_bytes(binding) == binding_bytes
+                          and binding["source_inventory_cid"] == value["source_inventory_cid"]
+                          and binding["source_request"] == value["request"]
+                          and source._scope["source_limits"] == value["source_limits"]
+                          and binding["expected_tree"] == value["git_tree"],
+                          "native source binding differs from historical nomination")
+                    return value, binding
+
+                checked_join()
+                task = self.require_current()
+                value, binding = checked_join()
+                source._check_source()
+                # The native reader independently replays its original retained
+                # CAS. No read capability, worker identity, or allocation follows.
+                source._load()
+                source._check_source()
+                self.require_current()
+                value, binding = checked_join()
+                source._check_source()
+                value, binding = checked_join()
+                _need(all(binding[key] == task[key] for key in
+                          ("task_cid", "task_revision", "expected_task_body_cid")),
+                      "nominated source task snapshot changed")
+                return dict(schema=NOMINATED_SCOPE_SCHEMA,
+                    source_scope_cid=value["scope_cid"], frontier_cid=value["frontier_cid"],
+                    source_inventory_cid=value["source_inventory_cid"],
+                    native_snapshot_cid=value["native_snapshot_cid"], population_cid=value["population_cid"],
+                    historical_request_task_id=value["request"]["task_id"],
+                    selected_count=value["selected_count"], selected_bytes=value["selected_bytes"],
+                    frontier_count=value["frontier_count"], frontier_status_counts=dict(value["frontier_status_counts"]),
+                    allowed_paths_cid=binding["allowed_paths_cid"], source_binding_cid=binding["binding_cid"],
+                    task_cid=binding["task_cid"], task_revision=binding["task_revision"],
+                    expected_task_body_cid=binding["expected_task_body_cid"], context_cid=binding["context_cid"],
+                    nomination_historical_only=True, native_source_binding_verified=True,
+                    native_task_admission_verified=True, read_only=True,
+                    allocation_ownership_verified=False, compiled_context_verified=False,
+                    coding_process_verified=False, proof_authority=False, execution_authority=False,
+                    completion_authority=False, omission_authority=False)
+            finally:
+                self._nominated_scope_checking = False
+
+    def require_source_binding(self, *, server, service):
+        """Source join only; caller holding SERVER must not acquire COOR here."""
+        self._retained()
+        _need(server is self._server and service is self._source
+              and type(service) is CurrentSourceLookup and self._source_refs is not None
+              and getattr(service, "_native_source_task_admission", None) is self
+              and service is self._source_refs[0] and service._store.cas is self._source_refs[1]
+              and service._root == self._source_refs[2], "native source task binding changed")
+        self._gateway._assert_current_source_binding(service)
+        actual = canonical_json_bytes(service.binding(self._gateway.identity))
+        _need(actual == self._source_bytes, "native source task canonical binding changed")
+        value, task = json.loads(actual), json.loads(self._snapshot[0])
+        _need(all(value[key] == task[key] for key in
+                  ("task_cid", "task_revision", "expected_task_body_cid")),
+              "native source task binding belongs to another task snapshot")
+
+
+def capture_native_source_task_admission(*, server, attempt_authority, task_cid,
+                                        expected_claim_identity, peer_identity, client_id):
+    return NativeSourceTaskAdmission(_SEAL, server=server, attempt_authority=attempt_authority,
+        task_cid=task_cid, expected_claim_identity=expected_claim_identity,
+        peer_identity=peer_identity, client_id=client_id)

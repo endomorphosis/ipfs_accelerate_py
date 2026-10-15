@@ -1,0 +1,41 @@
+{
+  "schema": "legal-autoformalization-bootstrap-sources/v1",
+  "campaign_id": "legal-autoformalization-convergence-bootstrap-20261013",
+  "workspace_root": "/home/barberb/lift_coding",
+  "datasets_root": "/home/barberb/lift_coding/.worktrees/indexed-coverage-datasets-20261013",
+  "accelerator_root": "/home/barberb/lift_coding/.worktrees/legal-autoformalization-supervisor-20261013",
+  "stale_datasets_root": "/home/barberb/lift_coding/external/ipfs_datasets",
+  "canonical_accelerator_root": "/home/barberb/lift_coding/external/ipfs_accelerate",
+  "original_plan_sha256": "56917e387649c03a0d483b1d3a4592dc146edf37de892782431f991a47269fcb",
+  "original_plan_path": "/home/barberb/lift_coding/implementation_plan/legal_autoformalization_convergence_20261013/tasks.json",
+  "runtime_base_commit": "5ad92f61bb643d4138749d3df16663a2af1c79c1",
+  "read_only_source_roots": [
+    "/home/barberb/lift_coding"
+  ],
+  "bootstrap_profile": {
+    "cpu_slots_per_inventory": 1,
+    "memory_mib_per_inventory": 1024,
+    "max_parallel_inventory": 3,
+    "training_allowed": false,
+    "model_inference_allowed": false,
+    "corpus_rescan_allowed": false
+  },
+  "original_task_acceptance": "Inventory-only bootstrap specialization; original plan task acceptance is separate and may remain partial.",
+  "prior_supervisor_attempt_receipts": [
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-launch-20261013-01/runtime/20261013T081003Z-ab4892762ecf/receipt.json",
+      "sha256": "43e4cc47113518ab3ba7f7a17afd2cc26dc7761aae8daed81572baed8255fa63",
+      "wrapper_pid": 892372,
+      "returncode": 143,
+      "execution_generation": 1
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-launch-20261013-01/runtime/20261013T082715Z-154edb3d60da/receipt.json",
+      "sha256": "c21a655733f8b2d509752d857deaaf391c1a24307b4f064e3282e0df25f08e09",
+      "wrapper_pid": 1178410,
+      "returncode": 143,
+      "execution_generation": 1
+    }
+  ],
+  "execution_mode": "deterministic-only"
+}

@@ -1,0 +1,111 @@
+"""Initial source binding on genuine owner/task/allocation resources.
+
+The native DuckDB owner, task/claim/grants, Portal allocation/lifecycle and
+Git/CAS are real. Existing listener/deployment UID metadata remains an authored
+host seam. These owner-side cases create no broker, child or worker admission
+and execute no source, provider, model or solver. Sequential checks establish
+no filesystem writer lease or universal callback-safety qualification.
+"""
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.runtime import current_source_lookup as lookup
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import canonical_json_bytes
+from test.api.test_current_source_worktree_allocation import _allocation_case
+from test.api.test_native_nominated_source_allocation_custody import source_files
+
+
+DIAGNOSTIC = "initial source binding CAS replay must release SERVER"
+ROUTES = ("allocation", "task", "server", "gateway")
+
+
+@pytest.fixture
+def unbound_allocation(tmp_path, monkeypatch):
+    with _allocation_case(tmp_path, monkeypatch, defer_source_binding=True,
+                          source_files=source_files()) as case:
+        assert case.native.server._command_gateway._current_source_lookup is None
+        assert case.native.handle._source is case.guard._lookup is None
+        yield case
+
+
+def initial_bind(case, route):
+    native = case.native
+    if route == "allocation":
+        return case.guard.bind_current_source_lookup(**case.source_binding)
+    if route == "task":
+        return native.handle.bind_current_source_lookup(repository=native.workspace, **case.source_binding)
+    current = native.handle.require_current()
+    arguments = dict(case.source_binding, repository=native.workspace,
+        task_cid=current["task_cid"], task_revision=current["task_revision"],
+        expected_task_body_cid=current["expected_task_body_cid"])
+    if route == "server":
+        return native.server.bind_current_source_lookup(**arguments)
+    assert route == "gateway"
+    return native.server._command_gateway.bind_current_source_lookup(**arguments)
+
+
+@pytest.mark.parametrize("route", ROUTES)
+def test_initial_binding_cas_callback_reenters_native_fences_after_server_release(
+        unbound_allocation, monkeypatch, route):
+    case, native = unbound_allocation, unbound_allocation.native
+    gateway = native.server._command_gateway
+    original_lock, original_connection = native.server._lock, native.server._connection
+    original_load, original_get = lookup.CurrentSourceLookup._load, native.retained.cas.get
+    grants_before = frozenset(grant.grant_id for grant in gateway._grants.values())
+    endpoints = native.factory["boundary"].parent / "worker-observations"
+    endpoints_before = set(endpoints.iterdir())
+    state = dict(active=False, loads=0, reached=[], completed=[])
+
+    def replay(reader):
+        targeted = reader._root == native.workspace
+        if targeted:
+            state["active"] = True
+            state["loads"] += 1
+        try:
+            return original_load(reader)
+        finally:
+            if targeted:
+                state["active"] = False
+
+    def cas_get(cid):
+        value = original_get(cid)
+        if state["active"] and not state["reached"]:
+            state["reached"].append(cid)
+            # Diagnose every known SERVER recursion layer before acquiring
+            # COOR through the original native handles, avoiding deadlock.
+            assert not original_lock._is_owned(), DIAGNOSTIC
+            assert native.handle.require_current()["task_cid"] == native.task_cid
+            assert case.guard.require_current()["allocation_ownership_verified"] is True
+            state["completed"].append(cid)
+        return value
+
+    monkeypatch.setattr(lookup.CurrentSourceLookup, "_load", replay)
+    monkeypatch.setattr(native.retained.cas, "get", cas_get)
+    binding = initial_bind(case, route)
+    service = gateway._current_source_lookup
+    assert type(service) is lookup.CurrentSourceLookup
+    assert state["loads"] >= 1 and not state["active"]
+    assert state["reached"] == state["completed"] and len(state["reached"]) == 1
+    assert service._root == native.workspace and service._store.cas is native.retained.cas
+    assert service._paths == case.source_binding["allowed_paths"]
+    assert canonical_json_bytes(binding) == gateway._current_source_lookup_binding
+    assert binding["task_cid"] == native.task_cid and binding["allowed_path_count"] == 1
+    assert native.server._lock is gateway._transaction_lock is original_lock
+    assert native.server._connection is gateway._connection is original_connection
+    assert service._continuations == {} and service._active_read is None
+    assert frozenset(grant.grant_id for grant in gateway._grants.values()) == grants_before
+    assert set(endpoints.iterdir()) == endpoints_before
+    if route in {"task", "allocation"}:
+        assert native.handle._source is service
+        assert service._native_source_task_admission is native.handle
+    else:
+        assert native.handle._source is None
+        assert getattr(service, "_native_source_task_admission", None) is None
+    if route == "allocation":
+        assert case.guard._lookup is service
+        assert service._native_source_worktree_allocation is case.guard
+    else:
+        assert case.guard._lookup is None
+        assert getattr(service, "_native_source_worktree_allocation", None) is None
+    assert native.session is None
+    assert native.daemon.provider_invocation_recorded(native.attempt.attempt_id,
+        idempotency_key="provider:" + native.attempt.attempt_id) is None

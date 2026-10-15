@@ -4173,7 +4173,14 @@ def reconciliation_guardrail_records(
                 ],
             }
     else:
-        for item in cleanup.get("skipped", []):
+        # Maintenance boundaries use ``skipped`` as a boolean flag, whereas
+        # completed cleanup scans use it for per-worktree records. A skipped
+        # scan supplies no new dirty-worktree evidence; keep its original
+        # payload intact so guardrail retirement still fails closed.
+        skipped_records = cleanup.get("skipped", [])
+        if not isinstance(skipped_records, (list, tuple)):
+            skipped_records = ()
+        for item in skipped_records:
             if not isinstance(item, Mapping) or str(item.get("reason") or "") != "dirty_worktree":
                 continue
             dirty_redundancy = item.get("dirty_redundancy") or {}

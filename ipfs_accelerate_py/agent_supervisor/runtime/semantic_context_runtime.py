@@ -15,6 +15,9 @@ import time
 from typing import Sequence
 import uuid
 
+LEGACY_SELECTOR = "lexical-query-symbol-name@1"
+INDEXED_SELECTOR = "duckdb-query-symbol-name@1"
+
 
 def _encoded(value, *, pretty=False):
     return json.dumps(
@@ -102,7 +105,8 @@ def _doctor_for_scope(*, sources, manifest, scope_cid, repository_id, program_pa
 
 def _worker_payload(*, base, sources, manifest, required, state, bundle, view, provider,
                     worker_query, worker_capsule_limit, worker_max_bytes, context_input_tokens,
-                    worker_retrieval=None, worker_ranked_symbol_ids=None):
+                    worker_retrieval=None, worker_ranked_symbol_ids=None,
+                    worker_selector=LEGACY_SELECTOR):
     from .semantic_capsule_selection import select_worker_capsules
     from ..semantic_state.context_pack import pack_context
     from ..context.context_contracts import ContextBudget
@@ -110,15 +114,28 @@ def _worker_payload(*, base, sources, manifest, required, state, bundle, view, p
     selected, scope_cid = tuple(sorted(sources)), base["scope_cid"]
     deferred = set(base.get("task_data_projection", {}).get("raw_source_fetch_required", {}))
     full_capsule_count = len(state.symbols)
+    if worker_retrieval is not None and worker_selector != LEGACY_SELECTOR:
+        raise ValueError("verified retrieval and indexed candidate ranking are separate policies")
+    ranking = None
+    candidate_snapshot = None
+    if worker_query and worker_selector == INDEXED_SELECTOR:
+        from .semantic_candidate_index import build_candidate_rows, rank_candidate_ids
+
+        rows = build_candidate_rows(symbols=state.symbols, bundle=bundle, scope_cid=scope_cid)
+        ranking = rank_candidate_ids(rows=rows, repository_id=state.repository_id,
+            scope_cid=scope_cid, semantic_root_cid=view.root.root_cid, query=worker_query)
+        candidate_snapshot = {"schema": "supervisor-semantic-candidates@1", "rows": rows}
+    selection_policy = {} if ranking is None else {"ranked_symbol_ids": ranking}
     capsules, admissions, selected_symbols = select_worker_capsules(
         bundle=bundle, view=view, provider=provider, symbols=state.symbols,
         sources=sources, required=required, worker_query=worker_query,
         worker_capsule_limit=worker_capsule_limit, worker_max_bytes=worker_max_bytes,
+        **selection_policy,
         **({"worker_ranked_symbol_ids": worker_ranked_symbol_ids} if worker_retrieval is not None else {}))
     projection = None
     if worker_query:
         projection = {"schema": "supervisor-semantic-worker-projection@1",
-            "selector": "lexical-query-symbol-name@1", "query": worker_query,
+            "selector": worker_selector, "query": worker_query,
             "max_capsules": worker_capsule_limit, "max_bytes": worker_max_bytes,
             "full_capsule_count": full_capsule_count, "selected_capsule_count": len(capsules),
             "omitted_capsule_count": full_capsule_count - len(capsules),
@@ -133,6 +150,8 @@ def _worker_payload(*, base, sources, manifest, required, state, bundle, view, p
                 selector="verified-retrieval-symbol-rank@1", retrieval=dict(worker_retrieval),
                 ranked_symbol_ids=list(worker_ranked_symbol_ids),
                 unranked_policy="lexical-query-symbol-name@1")
+        if candidate_snapshot is not None:
+            projection["candidate_snapshot_cid"] = cid_for_payload(candidate_snapshot)
     raw_scope_payload = {"schema": "required-source-set@1", "sources": {p: manifest[p] for p in required}}
     raw_scope = cid_for_payload(raw_scope_payload)
     delta_payload = {"schema": "initial-context-scan@1", "scope_cid": scope_cid}
@@ -220,6 +239,7 @@ def prepare_semantic_context(
     worker_capsule_limit: int = 8,
     worker_max_bytes: int = 32768,
     worker_retrieval: dict | None = None,
+    worker_selector: str = LEGACY_SELECTOR,
     max_payload_bytes: int = 2_000_000,
     observation_role: str = "coding",
     _refresh_lineage: dict | None = None,
@@ -263,6 +283,11 @@ def prepare_semantic_context(
     program = _program_paths(program_paths, selected)
     if worker_retrieval is not None and (program is None or not worker_query):
         raise ValueError("retrieval-ranked capsules require explicit program paths and query")
+    if (worker_selector not in (LEGACY_SELECTOR, INDEXED_SELECTOR)
+            or (worker_query and worker_selector == INDEXED_SELECTOR and program is None)):
+        raise ValueError("indexed selection requires an explicit replayable program scope")
+    if worker_retrieval is not None and worker_selector != LEGACY_SELECTOR:
+        raise ValueError("verified retrieval and indexed candidate ranking are separate policies")
     if type(defer_task_data) is not bool or (defer_task_data and not worker_query):
         raise ValueError("deferred task data requires an explicit bounded worker projection")
     if not objective.strip() or not task_id.strip():
@@ -383,11 +408,17 @@ def prepare_semantic_context(
         state=state, bundle=bundle, view=view, provider=provider,
         worker_query=worker_query, worker_capsule_limit=worker_capsule_limit,
         worker_max_bytes=worker_max_bytes, context_input_tokens=context_input_tokens,
-        worker_retrieval=worker_retrieval, worker_ranked_symbol_ids=ranked_ids)
+        worker_retrieval=worker_retrieval, worker_ranked_symbol_ids=ranked_ids,
+        worker_selector=worker_selector)
     capsules = payload["capsules"]
     if (len(compact) > max_payload_bytes or packed.budget_exceeded
             or (projection is not None and len(compact) > worker_max_bytes)):
-        raise ValueError("worker context exceeds configured budget")
+        raise ValueError(
+            "worker context exceeds configured budget: "
+            f"payload_bytes={len(compact)}, max_payload_bytes={max_payload_bytes}, "
+            f"worker_max_bytes={worker_max_bytes if projection is not None else None}, "
+            f"selected_capsules={len(capsules)}, pack_budget_exceeded={packed.budget_exceeded}"
+        )
     if any((repository / name).read_bytes() != raw for name, raw in sources.items()):
         raise ValueError("source changed during context preparation")
     # Observe the final selection after exact-byte repacking. This sidecar is
@@ -477,6 +508,15 @@ def prepare_semantic_context(
     ]
     if selection_bytes is not None:
         catalogs.append(("metadata", output / selection_ref["artifact"], selection_ref["cid"]))
+    if projection is not None and worker_selector == INDEXED_SELECTOR:
+        from .semantic_candidate_index import build_candidate_rows, rank_candidate_ids
+
+        rows = build_candidate_rows(symbols=state.symbols, bundle=bundle, scope_cid=scope_cid)
+        rank_candidate_ids(rows=rows, repository_id=state.repository_id, scope_cid=scope_cid,
+            semantic_root_cid=root_cid, query=worker_query, database_path=meta.duckdb_path)
+        catalogs.append(("ast", meta.duckdb_path, projection["candidate_snapshot_cid"]))
+        snapshot = {"schema": "supervisor-semantic-candidates@1", "rows": rows}
+        (blocks / projection["candidate_snapshot_cid"]).write_bytes(canonicalize_artifact(snapshot))
     for kind, locator, ref in catalogs:
         catalog = meta.register_catalog(
             kind=kind,
@@ -532,15 +572,20 @@ class SemanticContextStale(ValueError):
 
 
 def _validate_retrieval_projection(projection, *, explicit):
-    """Keep @1 unchanged; @2 requires a closed native-retrieval selection."""
+    """Validate indexed/lexical @1 and closed native-retrieval @2 independently."""
     if projection.get("schema") == "supervisor-semantic-worker-projection@1":
-        if (projection.get("selector") != "lexical-query-symbol-name@1"
+        if (projection.get("selector") not in (LEGACY_SELECTOR, INDEXED_SELECTOR)
+                or (projection.get("selector") == INDEXED_SELECTOR and (not explicit
+                    or type(projection.get("candidate_snapshot_cid")) is not str
+                    or not projection["candidate_snapshot_cid"]))
+                or (projection.get("selector") == LEGACY_SELECTOR and "candidate_snapshot_cid" in projection)
                 or any(key in projection for key in ("retrieval", "ranked_symbol_ids", "unranked_policy"))):
             raise ValueError("legacy worker projection cannot carry retrieval ranking")
         return
     selection = projection.get("retrieval")
     ranked = projection.get("ranked_symbol_ids")
-    if (not explicit or projection.get("schema") != "supervisor-semantic-worker-projection@2"
+    if (not explicit or "candidate_snapshot_cid" in projection
+            or projection.get("schema") != "supervisor-semantic-worker-projection@2"
             or projection.get("selector") != "verified-retrieval-symbol-rank@1"
             or projection.get("unranked_policy") != "lexical-query-symbol-name@1"
             or type(selection) is not dict or set(selection) != {"artifact", "sha256"}
@@ -667,7 +712,8 @@ def _validate_program_payload(payload, *, sources=None, repository=None, histori
         worker_query=policy.get("query", ""), worker_capsule_limit=policy.get("max_capsules", 8),
         worker_max_bytes=policy.get("max_bytes", 32768),
         context_input_tokens=payload["preparation_bounds"]["context_input_tokens"],
-        worker_retrieval=policy.get("retrieval"), worker_ranked_symbol_ids=ranked_ids)
+        worker_retrieval=policy.get("retrieval"), worker_ranked_symbol_ids=ranked_ids,
+        worker_selector=(LEGACY_SELECTOR if "retrieval" in policy else policy.get("selector", LEGACY_SELECTOR)))
     if _encoded(rebuilt) != _encoded(payload) or packed.budget_exceeded:
         raise ValueError("explicit semantic producer capsules or context packing differ")
     return program
@@ -725,6 +771,7 @@ def _load_semantic_payload(
     projection = payload.get("worker_projection")
     if projection is not None and (
         not isinstance(projection, dict)
+        or (projection.get("selector") == INDEXED_SELECTOR and not explicit)
         or projection.get("semantic_equivalence_claimed") is not False
         or projection.get("completion_authority") is not False
         or not isinstance(projection.get("query"), str)
@@ -913,6 +960,8 @@ def resolve_semantic_worker_context(
         worker_max_bytes=previous.get("worker_projection", {}).get("max_bytes", 32768),
         **({"worker_retrieval": previous["worker_projection"]["retrieval"]}
            if "retrieval" in previous.get("worker_projection", {}) else {}),
+        worker_selector=(LEGACY_SELECTOR if "retrieval" in previous.get("worker_projection", {})
+            else previous.get("worker_projection", {}).get("selector", LEGACY_SELECTOR)),
         **program_kwargs,
     )
     refreshed_artifact = (output / "worker-context.json").relative_to(root).as_posix()

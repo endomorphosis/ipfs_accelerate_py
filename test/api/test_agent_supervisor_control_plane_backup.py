@@ -14,8 +14,11 @@ partial restore, schema version, server stopped, stale client, backup age.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -251,12 +254,13 @@ def _prepare_db(tmp_path: Path) -> tuple[Path, Path, Path]:
     return db, backup_root, state_dir
 
 
-def _lease(db: Path):
+def _lease(db: Path, *, clock=None):
     return acquire_maintenance_lease(
         db,
         owner_session_id="session:backup-operator",
         process_birth_id="birth:backup-operator",
         scope=DEFAULT_MAINTENANCE_SCOPE,
+        clock=clock,
     )
 
 
@@ -493,6 +497,80 @@ def test_corrupt_backup_fails_independent_verification(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("require_maintenance_lease", [True, False])
+@pytest.mark.parametrize("rehearsal", [False, True])
+@pytest.mark.parametrize("alternate_destination", [False, True])
+def test_restore_refuses_missing_authority_database_before_any_restore_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    require_maintenance_lease: bool,
+    rehearsal: bool,
+    alternate_destination: bool,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import control_plane_backup
+
+    db, backup_root, state_dir = _prepare_db(tmp_path)
+    service = _service(db, backup_root, state_dir)
+    lease = _lease(db)
+    snapshot = service.create_backup(maintenance_lease=lease)
+    assert service.verify_backup(snapshot).verified
+    # Retain a real historical lease and genuine backup, but remove their live
+    # authority. Do not create an initial store or restore authority from it.
+    db.unlink()
+    destination = tmp_path / "alternate" / "control.duckdb"
+
+    def inventory() -> dict[str, str]:
+        return {
+            str(path.relative_to(tmp_path)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        }
+
+    retained = inventory()
+
+    def forbidden_io(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("missing authority reached backup or database I/O")
+
+    monkeypatch.setattr(control_plane_backup, "open_duckdb_connection", forbidden_io)
+    monkeypatch.setattr(control_plane_backup, "_replace_database_files", forbidden_io)
+    monkeypatch.setattr(service, "verify_backup", forbidden_io)
+    monkeypatch.setattr(service, "rotate_generation", forbidden_io)
+    with pytest.raises(ControlPlaneBackupOwnershipError, match="existing authoritative"):
+        service.restore(
+            snapshot,
+            maintenance_lease=lease,
+            require_maintenance_lease=require_maintenance_lease,
+            rehearsal=rehearsal,
+            destination=destination if alternate_destination else None,
+        )
+    assert not db.exists()
+    assert not destination.parent.exists()
+    assert inventory() == retained
+
+
+@pytest.mark.parametrize("mapping_record", [False, True])
+def test_required_maintenance_lease_refuses_missing_authority_database(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mapping_record: bool,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import control_plane_backup
+
+    db, backup_root, state_dir = _prepare_db(tmp_path)
+    service = _service(db, backup_root, state_dir)
+    lease = _lease(db)
+    record = lease.to_dict() if mapping_record else lease
+    db.unlink()
+
+    def forbidden_open(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("missing lease authority opened a replacement database")
+
+    monkeypatch.setattr(control_plane_backup, "open_duckdb_connection", forbidden_open)
+    with pytest.raises(ControlPlaneBackupOwnershipError, match="authority database is missing"):
+        service._require_active_maintenance_lease(record)
+    assert not db.exists()
+
+
 def test_restore_reproduces_roots_and_invalidates_pre_rotation_writers(
     tmp_path: Path,
 ) -> None:
@@ -646,7 +724,8 @@ def test_retention_prunes_old_backups(tmp_path: Path) -> None:
         state_dir=state_dir,
         clock=_clock,
     )
-    lease = _lease(db)
+    lease = _lease(db, clock=lambda: datetime.fromtimestamp(
+        _clock(), tz=timezone.utc).isoformat().replace("+00:00", "Z"))
     try:
         ids: list[str] = []
         for index in range(4):
@@ -736,3 +815,108 @@ def test_lock_held_blocks_direct_file_maintenance(tmp_path: Path) -> None:
     finally:
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         handle.close()
+
+
+_BACKUP_LEASE_MUTATIONS = (
+    ("lease_id", "mlease:other"), ("scope", "other-scope"),
+    ("owner_session_id", "session:other"), ("process_birth_id", "birth:other"),
+    ("fencing_token", 2), ("fence_epoch", 2),
+    ("acquired_at", "2023-11-14T22:13:19Z"),
+    ("expires_at", "2023-11-14T22:14:20Z"),
+    ("state", "released"), ("revision", 1),
+    ("extension_schema", "unsupported-validity@99"), ("extension_json", "{}"),
+    ("released_at", "2023-11-14T22:13:21Z"),
+)
+
+
+@pytest.mark.parametrize("mapping_record", [False, True])
+@pytest.mark.parametrize("field,value", _BACKUP_LEASE_MUTATIONS)
+def test_marked_backup_refuses_every_changed_authority_field(
+    tmp_path: Path, mapping_record: bool, field: str, value: Any,
+) -> None:
+    db, backup_root, state_dir = _prepare_db(tmp_path)
+    lease = acquire_maintenance_lease(
+        db, owner_session_id="session:validity", process_birth_id="birth:validity",
+        ttl_seconds=30, clock=lambda: "2023-11-14T22:13:20Z",
+    )
+    service = ControlPlaneBackup(database_path=db, backup_root=backup_root,
+        state_dir=state_dir, clock=lambda: 1_700_000_000.0)
+    forged = replace(lease, **{field: value})
+    supplied = forged.to_dict() if mapping_record else forged
+    with pytest.raises(ControlPlaneBackupOwnershipError):
+        service.create_backup(maintenance_lease=supplied)
+    assert tuple(backup_root.iterdir()) == ()
+    with open_duckdb_connection(db) as connection:
+        native = dict(connection.execute("SELECT * FROM maintenance_leases").fetchone())
+    assert native["state"] == "active" and native["revision"] == 0
+    assert native["owner_session_id"] == "session:validity"
+    release_maintenance_lease(db, lease)
+
+
+@pytest.mark.parametrize("epoch", [1_699_999_999.0, 1_700_000_030.0, 1_700_000_031.0])
+def test_marked_backup_refuses_before_acquisition_and_at_or_after_expiry(tmp_path: Path, epoch: float) -> None:
+    db, backup_root, state_dir = _prepare_db(tmp_path)
+    lease = acquire_maintenance_lease(
+        db, owner_session_id="session:validity", process_birth_id="birth:validity",
+        ttl_seconds=30, clock=lambda: "2023-11-14T22:13:20Z",
+    )
+    service = ControlPlaneBackup(database_path=db, backup_root=backup_root,
+        state_dir=state_dir, clock=lambda: epoch)
+    with pytest.raises(ControlPlaneBackupOwnershipError):
+        service.create_backup(maintenance_lease=lease)
+    assert tuple(backup_root.iterdir()) == ()
+    release_maintenance_lease(db, lease)
+
+
+def test_marked_backup_accepts_fractional_time_before_deadline(tmp_path: Path) -> None:
+    db, backup_root, state_dir = _prepare_db(tmp_path)
+    lease = acquire_maintenance_lease(
+        db, owner_session_id="session:validity", process_birth_id="birth:validity",
+        ttl_seconds=30, clock=lambda: "2023-11-14T22:13:20.500000Z",
+    )
+    now = {"epoch": 1_700_000_030.499999}
+    service = ControlPlaneBackup(database_path=db, backup_root=backup_root,
+        state_dir=state_dir, clock=lambda: now["epoch"])
+    assert service._require_active_maintenance_lease(lease) == lease
+    now["epoch"] = 1_700_000_030.5
+    with pytest.raises(ControlPlaneBackupOwnershipError, match="expired"):
+        service._require_active_maintenance_lease(lease)
+    release_maintenance_lease(db, lease)
+
+
+def test_marked_backup_refuses_stripped_marker(tmp_path: Path) -> None:
+    db, backup_root, state_dir = _prepare_db(tmp_path)
+    lease = _lease(db)
+    stripped = replace(lease, extension_schema="", extension_json="{}")
+    service = _service(db, backup_root, state_dir)
+    with pytest.raises(ControlPlaneBackupOwnershipError):
+        service.create_backup(maintenance_lease=stripped)
+    assert tuple(backup_root.iterdir()) == ()
+    release_maintenance_lease(db, lease)
+
+
+def test_legacy_backup_equal_timestamps_are_not_reinterpreted_as_expiry(tmp_path: Path) -> None:
+    db, backup_root, state_dir = _prepare_db(tmp_path)
+    lease = _lease(db)
+    legacy = replace(lease, acquired_at="1970-01-01T00:00:00Z",
+        expires_at="1970-01-01T00:00:00Z", extension_schema="", extension_json="{}")
+    with open_duckdb_connection(db) as connection:
+        connection.execute("UPDATE maintenance_leases SET acquired_at = ?, expires_at = ?, extension_schema = '', extension_json = '{}' WHERE lease_id = ?",
+                           [legacy.acquired_at, legacy.expires_at, legacy.lease_id])
+    service = _service(db, backup_root, state_dir)
+    snapshot = service.create_backup(maintenance_lease=legacy)
+    assert service.verify_backup(snapshot).verified
+    release_maintenance_lease(db, legacy)
+
+
+def test_marked_backup_refuses_active_native_row_with_release_timestamp(tmp_path: Path) -> None:
+    db, backup_root, state_dir = _prepare_db(tmp_path)
+    lease = _lease(db)
+    with open_duckdb_connection(db) as connection:
+        connection.execute("UPDATE maintenance_leases SET released_at = ? WHERE lease_id = ?",
+                           [lease.acquired_at, lease.lease_id])
+    altered = replace(lease, released_at=lease.acquired_at)
+    service = _service(db, backup_root, state_dir)
+    with pytest.raises(ControlPlaneBackupOwnershipError, match="release timestamp"):
+        service.create_backup(maintenance_lease=altered)
+    assert tuple(backup_root.iterdir()) == ()

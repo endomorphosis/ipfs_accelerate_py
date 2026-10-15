@@ -1,0 +1,20 @@
+{
+  "corrected_source_sha256": "9ae4bd51d2f2fe762e5abfe3f9187d776f8062af0af325d79192029603b7d19a",
+  "correction": "Use valid one-item policy and an explicit higher-value advisory to defer the optional proof handle. Use valid1 in the in-place value-policy drift control.",
+  "failure": "EvidenceValuePolicy(max_optional_items=0) refused before bridge because minimum is1",
+  "original_attempt": "qualification-01",
+  "original_raw_evidence_preserved": true,
+  "original_result": {
+    "errors": 0,
+    "failures": 1,
+    "skipped": 0,
+    "tests": 3
+  },
+  "original_source_sha256": "16d2934c11436840d9c4be4f2fbe763f980334956488cb1069c82c1a3b606717",
+  "production_source_changed": false,
+  "recorded_at_utc": "2026-10-14T08:08:29.695289+00:00",
+  "runner_change": "Print selected targets instead of suites; record interpreter/platform and four installed package versions in subsequent attempts.",
+  "schema": "repository-proof-context-fixture-correction@1",
+  "static_new_cases": 38,
+  "tests_executed_by_repair": false
+}

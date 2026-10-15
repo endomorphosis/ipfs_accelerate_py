@@ -1,0 +1,73 @@
+{
+  "actual_solver_or_kernel_executions_in_review": 0,
+  "additional_test_execution_in_review": false,
+  "authored_prover_transcripts": true,
+  "ci_observer_static_review": {
+    "bytes": 5187,
+    "closing_run_attempt_and_completed_job_check_join": true,
+    "exclusive_public_metadata_output": true,
+    "executed_in_review": false,
+    "independent_exact_head_required": true,
+    "material_blockers_found": false,
+    "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/observe_hosted_ci.py",
+    "read_only_api": true,
+    "sha256": "37111d7cece618c72a9d8606c4c128f10e81e3fe04fd4109fb1eef187e0e8486",
+    "workflow_dispatch_or_rerun": false
+  },
+  "completion_authority": false,
+  "execution_authority": false,
+  "files": [
+    {
+      "bytes": 24157,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_context.py",
+      "sha256": "8190c300d54ae2ad023fa8e720f0772519956b67de8722c39087a04e8c364558"
+    },
+    {
+      "bytes": 17258,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_context_projection.py",
+      "sha256": "a830f856f61a89d7b0607d77c626b818d678eabaf6b0f3a1a03babfb328c8180"
+    },
+    {
+      "bytes": 23845,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_proof_source_binding.py",
+      "sha256": "0ec97f6fdd0df8b68961a759e3898bc9ac52a041a83462de0af1318ce4e1548f"
+    },
+    {
+      "bytes": 27770,
+      "path": "test/api/test_repository_proof_context.py",
+      "sha256": "95e1cbbac63d0a0fe3dff354d95b5858431e74ee2385ca0f3b1f4084d012c661"
+    },
+    {
+      "bytes": 14105,
+      "path": "docs/agent_supervisor/evidence/repository-proof-context-20261014/doc_qualification_runner.py",
+      "sha256": "b31871ae7da2fd595892bb06f34b407e7d962e8c20d6aa32ac44bbf7261ae48d"
+    }
+  ],
+  "independent_reviewers": [
+    "signed_scope_architecture",
+    "scope_context_consumers",
+    "signed_profile_contract"
+  ],
+  "parent_checker": {
+    "bytes": 26580,
+    "path": "/home/barberb/lift_coding/.worktrees/repository-proof-context-root-20261014/artifacts/repository-proof-context-publication-20261014/publication_checker.py",
+    "sha256": "af2a5e0994a603d7b58a536afaa88540b510e6f6aed4409c44189d6dabdb6fa6"
+  },
+  "pending": "Complete actual five-suite qualification, final docs gates and fresh-main publication checks.",
+  "prequalification_corrections": [
+    "Close proof eligibility after native source observations and finish with callback-free complete filesystem source fence.",
+    "Snapshot caller references/core/request/update bytes and retained compiler policy around callbacks.",
+    "Accept only exact compiler-deferred optional proof handle, retaining all required conditions.",
+    "Use dataclasses.asdict for expansion requests and provider_input_payload property for render.",
+    "Bind publication documentation to exact selected qualification and immutable Git bytes.",
+    "Require hosted CI summary coherence with raw run/job/check identities and statuses."
+  ],
+  "recorded_at_utc": "2026-10-14T08:22:35.072679+00:00",
+  "review_found_no_material_static_blocker": true,
+  "review_scope": "source composition, public projection, complete signed-source correspondence, authored controls, documentation and publication checker",
+  "schema": "repository-proof-context-static-review@1",
+  "static_review_complete": true,
+  "static_review_is_execution": false,
+  "total_session_token_savings_established": false,
+  "whole_program_proved": false
+}

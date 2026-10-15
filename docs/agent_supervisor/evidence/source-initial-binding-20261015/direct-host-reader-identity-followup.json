@@ -1,0 +1,51 @@
+{
+  "affected_scope": "Direct host gateway reader lifetime identity between operations; in-flight read capture detects substitution. Existing native task/allocation/broker guards independently require the original literal reader and do not adopt the replacement.",
+  "authority_distinction": "Direct host source.get already checks native generation/task body and its scoped source-only grant, rather than native admission claim/allocation lifecycle. This observation is not a new native-claim bypass.",
+  "children_launched": 0,
+  "completion_authority": false,
+  "current_increment_scope": "Initial retained-CAS binding detachment and exact native publication/finally custody. The published reader replacement tests deliberately observe that task/allocation joins retain only the original candidate.",
+  "execution_authority": false,
+  "implemented": false,
+  "model_calls": 0,
+  "observation": "Gateway _assert_current_source_binding checks its current literal slot and canonical owner/binding, but does not require the slot to be the service retained in the original publication witness. An internal host substitution of a genuine equal-binding reader between requests can satisfy that direct-host check.",
+  "observed_at_utc": "2026-10-15T00:16:51.177313+00:00",
+  "production_changes": 0,
+  "proof_authority": false,
+  "proposed_change": [
+    "Require the original private publication and attempt identities in the direct gateway binding assertion, joining original service, connection, canonical owner/binding, CAS and root.",
+    "Preserve exact native post-publication consumption even if a later assertion refuses a substituted current slot.",
+    "Reject a direct host operation after between-request replacement without adopting the substitute or mutating original continuation state."
+  ],
+  "proposed_regression": "Use a genuine direct-host owner, existing retained CAS and scoped client. Complete a first source.get, construct a separate genuine equal-binding reader, substitute the current slot between requests, and require the next request to refuse while preserving original cursor/publication/native markers. Include positive original-reader and existing initial-binding post-publication failure controls.",
+  "provider_calls": 0,
+  "qualification_required": "Fresh baseline and complete affected owner/query/binding/native suites against the actual fixed dependency revisions; current passing counts cannot qualify this proposed change.",
+  "regression_design_guard": "The exposure control must use a fresh offset-zero source.get without a continuation after between-request replacement; otherwise the replacement reader's empty registry can already reject an original continuation and mask the lifetime identity gap. Verify original continuation state independently.",
+  "schema": "source-direct-host-reader-identity-followup@1",
+  "solver_calls": 0,
+  "source_bindings": [
+    {
+      "bytes": 632387,
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "sha256": "c4f36b90309cd720e240d6a5c61e245145e9a83ee7d6074e93db85ba902da8c9"
+    },
+    {
+      "bytes": 27590,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+      "sha256": "4c1ca46146c37bc2f7c9957b4637aaefed3b98364e1c3855f5db041961e0811f"
+    },
+    {
+      "bytes": 31563,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+      "sha256": "07ddf2cff87f0b55e4eb7c039af021854691e6b3e2f6528f12989aab20dbdcd5"
+    },
+    {
+      "bytes": 31183,
+      "path": "test/api/test_source_initial_binding.py",
+      "sha256": "28a5071a8d511cf3b0aa054f6732322a232cbbcf99972d85783c7cec591a8dff"
+    }
+  ],
+  "status": "proposal_only",
+  "tests_executed": 0,
+  "total_session_token_savings_established": false,
+  "training_steps": 0
+}

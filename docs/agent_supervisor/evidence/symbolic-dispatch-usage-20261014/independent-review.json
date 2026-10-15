@@ -1,0 +1,109 @@
+{
+  "base_commit": "59c1eb176fdd2095f184f27d6576ffaa92be2246",
+  "caveats": [
+    "This is source review, not runtime qualification; reviewer ran no tests, model calls, benchmark trials or container services.",
+    "Root owns final integration test execution and validation of the exact bytes in production_files.",
+    "Callback size reduction addresses repeated-history amplification, not a guarantee that all output from arbitrary-duration invocations fits the driver 8,000,000-byte whole-log cap.",
+    "Usage event ordinals are observations, not authenticated turn identifiers. Event values cannot be summed into a bill or substituted for the final-envelope contract.",
+    "No token savings, task success, proof discharge or applicability to largest-eigenval follows from these implementation changes.",
+    "Doctor fallback configuration validity remains enforced; a provider-incompatible ordinary-completion mode is still invalid before route execution."
+  ],
+  "checkout": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013",
+  "checks": [
+    {
+      "detail": "Supported model representation controls no longer veto checked Doctor candidate routes. Closed mode and combination checks still execute, candidate_ready and zero provider calls remain required, candidate handoff argv remains separate, and existing materialization/source/independent-validation paths remain in force.",
+      "id": "doctor_route_contract_preserved",
+      "result": "pass"
+    },
+    {
+      "detail": "Requested controls remain in the report. not_applicable context/source observations require a matching materialization schema, task identity, commit for doctor_candidate, exact zero calls, false authority, successful cleanup, planning-only provider receipts, and no unreceipted attempt. Missing or contradictory evidence does not become zero usage or successful completion.",
+      "id": "doctor_nonapplication_observation",
+      "result": "pass"
+    },
+    {
+      "detail": "Current progress @2 requires closed nested usage observations with exact constants, first 128 rows, explicit omitted counts, closed counter names, integer bounds, finite observation times, strict event/frame ordinals and independent nested copies. Provider strings, identifiers, arguments, thoughts, source text and unknown fields are not exported.",
+      "id": "usage_snapshot_closed_and_bounded",
+      "result": "pass"
+    },
+    {
+      "detail": "Historical progress @1 is accepted with its exact historical field set and no fabricated usage history. Final native accounting continues to use the separate terminal-envelope projector; event rows do not establish usage completeness, additive totals, cache semantics, billing or authenticated turn identities.",
+      "id": "usage_snapshot_backward_compatibility",
+      "result": "pass"
+    },
+    {
+      "detail": "Prior diagnostic finding resolved: after_final rows now require parent final-event time, non-earlier elapsed time, a monotone true suffix, and retained after-final count no greater than parent events_after_final. Existing parent validation joins final_event_seconds to final_envelope_observed. Observed usage event count cannot exceed frame count.",
+      "id": "usage_final_boundary_join",
+      "result": "pass"
+    },
+    {
+      "detail": "Transport callbacks and the router progress emitter both use grok_stream_progress_summary, which validates input, removes usage rows and returns closed count-only @1. Final result/receipt retain bounded @2 rows. Thus repeated five-second callbacks do not repeatedly serialize the full history into worker logs.",
+      "id": "callback_history_amplification",
+      "result": "pass"
+    },
+    {
+      "detail": "The new grok_stream_usage.py module is included in the current worker capability source inventory.",
+      "id": "archive_dependency",
+      "result": "pass"
+    }
+  ],
+  "completion_authority": false,
+  "context_recommendation": {
+    "conversation_limit": "Existing compiler retry deltas do not control the native CLI internal conversation turns.",
+    "deployment_status": "not_enabled",
+    "existing_smallest_projection": "An explicit worker_capsule_limit of one or two using prepare_semantic_context and existing semantic_capsule_selection can reduce selected advisory evidence while retaining the full index, source manifest, admission checks and explicit omissions.",
+    "explanation": "semantic_router_translation removes native semantic evidence rows before inserting translated_semantic. Source384 learned candidates and deterministic numerical summaries are different evidence and cannot be dropped as duplicates.",
+    "priority_this_turn": "Preserve provider-free Doctor completion and collect bounded numeric usage events before claiming a new context optimization.",
+    "requirements_before_live": "Bind the selection as an explicit benchmark treatment and measure complete authored real-router input bytes plus retrieval behavior before live use. Do not reclassify required formalization references as optional or claim a lossless reduction.",
+    "wholesale_capsule_duplication_found": false
+  },
+  "method": "read_only_source_review",
+  "production_edits_by_reviewer": false,
+  "production_files": [
+    {
+      "bytes": 90038,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "78ec4d9b4ebe3fa57075b99191a326655dbbc70669b343bc5b84a4b4b837ceaf"
+    },
+    {
+      "bytes": 20670,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "f92679d11c62e1be8c261c589504e77d96411f56a5937830fa0d0f4fd61c5be6"
+    },
+    {
+      "bytes": 21633,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py",
+      "sha256": "12e407ecf7b82924c37901d14bc43d3f4ea8080b438fabaf1d1e3f92dab6d875"
+    },
+    {
+      "bytes": 6412,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "sha256": "56a57bd6a752603538c9ba31ea15d88d144c0b6908f35f79e823f6467b3694c3"
+    },
+    {
+      "bytes": 69042,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "ad39baad4ba8c72031f1905ac1a500eabf2d82ee45c803b205ad60e1e964967d"
+    },
+    {
+      "bytes": 22048,
+      "path": "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+      "sha256": "c82fe62bd1dc63e96fd4e5f282d12951b115478b0df9f6393d3602bad0c95408"
+    },
+    {
+      "bytes": 7739,
+      "path": "ipfs_accelerate_py/cli_runtime/grok_stream_usage.py",
+      "sha256": "e0a30b1c7acfb45c47c8510093b21ffa650380646247c23963026e0a06831c06"
+    }
+  ],
+  "resolved_findings": [
+    "after_final previously had only a Boolean type check and could contradict the parent final-event observation; explicit parent joins now reject those contradictions.",
+    "Repeated full event-history callbacks could amplify logs enough to exceed the benchmark collector whole-log cap; callbacks now carry validated count-only summaries."
+  ],
+  "reviewed_at_utc": "2026-10-14T01:55:10.854584+00:00",
+  "reviewer": "/root/bounded_context",
+  "reviewer_model_calls": 0,
+  "reviewer_tests_run": 0,
+  "schema": "bounded-context-growth-independent-review@1",
+  "status": "no_blocking_findings_in_reviewed_diff",
+  "token_savings_established": false
+}

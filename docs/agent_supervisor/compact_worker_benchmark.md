@@ -139,3 +139,227 @@ context growth. The subsequent
 distinguishes refused reads from refused edit operations for future runs; it
 does not reconstruct the missing operation labels or per-turn token values in
 these three trials.
+
+## Follow-up: preserve symbolic dispatch and diagnose event growth
+
+The follow-up implementation fixes a conflict between symbolic completion and
+model-only controls. A checked `doctor_candidate` or `doctor_contract_candidate`
+can now proceed when a supported compact source, metadata or reply treatment is
+configured for the model fallback. Previously these settings could reject the
+provider-free route during implementation setup. The signed candidate handoff,
+source checks, independent validations and completion rules remain in force.
+Invalid fallback configurations are still rejected.
+
+The report preserves the requested controls and marks them
+`not_applicable_provider_free`. Source-view observations only adopt that status
+when a matching successful Doctor materialization, cleanup and absence of coding
+provider attempts are observed. A missing or contradictory receipt remains
+unavailable. This fixes a route-selection failure; it does not show that Doctor
+could solve `largest-eigenval`, whose observed dispatch was a model residual.
+
+Grok stream observations now retain at most the first 128 usage events, with
+numeric counters, event ordinals, timing and explicit omission counts. Missing
+counter fields remain null. Historical progress records retain their original
+shape without invented event histories. Event counters are not summed or used
+to replace the existing final-envelope accounting: their cumulative/per-response,
+cache and auxiliary-model semantics remain unverified. Progress updates carry
+counts only; the final receipt retains the detailed bounded history once, to
+avoid growing the worker log through repeated copies.
+
+The context audit found that semantic translation already removes the original
+semantic evidence row before inserting translated capsules. There is no
+wholesale duplicate capsule copy to remove. The native Source384 and numerical
+summaries contain different evidence. Existing compiler retry deltas do not
+control the native CLI's internal conversation. A future explicit limit of one
+or two selected capsules can use the existing bounded selection API while
+retaining the full index and source checks, but that is an advisory-evidence
+ablation and may increase retrieval calls. It has not been enabled by this fix.
+
+The [follow-up qualification](evidence/symbolic-dispatch-usage-20261014/README.md)
+records 691 distinct passing tests, including the actual Doctor proof-to-completion
+join and bounded stream observations through the router and comparison reader.
+These tests made no model calls and did not rerun the live benchmark; the token
+scores above remain the last measured observations.
+
+## Follow-up: bounded initial capsule selection
+
+The next implementation adds frozen `one-capsule@1` and `two-capsules@1` budgets
+for one signed task in the full indexed arm. The legacy maximum of eight remains
+the default. Full native indexes, required raw inputs and source checks stay
+intact; publication refresh rejects changes to the selected policy. Other arms
+and multi-task profiles refuse these explicit budgets before initialization.
+
+In two small authored repositories, one selected capsule reduced the complete
+coding prompt by 30.78–31.17%, and two reduced it by 20.45–20.71%. The existing
+byte budget selected four capsules in both legacy cases. These measurements
+use real indexed preparation and router dispatch with an authored provider,
+declared-contract planning and no learned Source384 inference. They measure
+UTF-8 bytes, not live tokens or benchmark performance.
+
+The [capsule-budget qualification](evidence/capsule-budget-20261014/README.md)
+records 440 passing tests with unchanged sources, exact measurements and scope.
+It also checks retrieval of omitted functions through current candidate capsules
+and refusal of stale generations. That API rebuilds structural capsules rather
+than restoring exact baseline or learned outputs; it requires source views and
+has a smaller symbol limit than initial indexing. A one-capsule budget can also
+change model-planning evidence. Additional retrieval or coding turns could
+offset the initial byte reduction, so total token benefit still requires a live
+comparison. The three earlier benchmark scores are unchanged.
+
+## Follow-up: registered capsule comparisons and retrieval observations
+
+`terminal_capsule_budget_matrix` prepares a bounded comparison of `legacy`,
+`one-capsule@1` and `two-capsules@1`. It registers every output and receipt path
+before preflight, including slots whose preparation fails. Three repeats rotate
+each budget through every execution position. This is a deterministic schedule,
+not randomization. The default common settings use declared-contract planning
+and the existing five-CPU, 20-GiB coding600 resource profile. Preparation runs
+Harbor dry-runs serially and launches no providers or containers.
+
+Use a newly built runtime archive containing the current sources. Additional
+options are a JSON object of `full_supervisor_benchmark.prepare` arguments;
+the matrix owns `arm`, `capsule_budget`, task, archive and output selection.
+For example, a model-planning comparison uses a separate `--options` file
+containing `{"planning_mode":"model"}`. Provider, source representation,
+retrieval policy, checkpoints and all other settings must remain common within
+a matrix. Declared-contract results belong to a separate planning experiment
+from the historical model-planning results above. Nondefault tasks require
+their reviewed task profile. For the example below, save an options file with
+`{"task_profile":"/path/to/reviewed-largest-eigenval-profile.json"}`.
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_capsule_budget_matrix \
+  --dataset /path/to/terminal-bench-2 \
+  --archive /path/to/current-runtime \
+  --task largest-eigenval \
+  --options /path/to/capsule-options.json \
+  --output /path/to/new-capsule-matrix \
+  --repeats 3
+```
+
+`matrix.json` contains the ordered `execute_argv` for every slot and a
+`collect_argv` containing every registered receipt path. `preflight.json`
+records preparation outcomes. Execute prepared slots one at a time using the
+existing full-supervisor command. Its shared provider cooldown, resource limits
+and one-shot invocation checks remain in effect. A provider deferral is an
+unexecuted slot; keep it in the comparison. Do not replay an already invoked
+trial to replace an unsuccessful result. The matrix generator itself neither
+executes these commands nor enforces scheduling if an operator launches them
+independently.
+
+The dedicated `terminal_capsule_budget_comparison` collector reads the receipt
+and its frozen `preparation.json` and `config.json` siblings. It permits only
+capsule-budget and job/output naming differences, independently retaining the
+generic collector's budget-mismatch result. It compares runtime archives,
+assets, declared settings, original task integrity, realized capsule counts,
+runtime budget declarations and provider identities. Missing receipts, absent
+trials, failed attempts, incomplete usage and unavailable official rewards
+remain visible. Duplicate observations do not double-charge an invocation.
+
+```bash
+python -m benchmarks.agent_supervisor.container_coding.terminal_capsule_budget_comparison \
+  --legacy /path/to/legacy/receipt.json \
+  --one /path/to/one/receipt.json \
+  --two /path/to/two/receipt.json \
+  --output /path/to/new-comparison
+```
+
+Repeat each budget flag to include all its registered attempts. The matrix's
+generated collection command does this automatically. Complete native-token
+differences require matching experiment settings, equal distinct trial counts,
+official success for all observed trials, no missing registered trials and
+complete native usage. Known partial counters remain subtotals. Prompt bytes
+and stream snapshots never become token totals. Even a qualified descriptive
+difference does not establish causal savings, exhaustive pipeline cost or a
+verified bill. The collector does not independently prove preregistration or
+that every real-world attempt was supplied.
+
+Repository-source audit summaries now retain optional, content-free retrieval
+observations: successful and empty queries/expansions, candidate/capsule counts,
+generation-binding observations and stale-generation/source/root refusals.
+These summaries survive private journal cleanup. Historical observations remain
+unknown for retrieval. A successful expansion records a prepared tool response;
+it does not establish worker receipt, model attention, identity with an omitted initial
+capsule, a proof, task completion or token savings. Initial context and source
+sessions can have different native identities, so consumers must query current
+session handles and bind relevant symbols by source identity.
+
+The live token figures earlier in this document remain unchanged. These tools
+support the next experiment; their authored qualification is not a new live
+Terminal Bench result.
+
+The [qualification](evidence/capsule-comparison-retrieval-20261014/qualification.json)
+records 793 distinct passing tests. The combined suite passed 630 checks and
+reused five AST test seals; those five then passed against a fresh dedicated
+cache. The remaining 158 checks cover the existing capsule budgets and context
+path. Tested Python source hashes stayed unchanged during final verification.
+The new runner/stdio cases recover an initially omitted symbol with either one
+or two initial capsules, read its exact source, refresh after an external edit,
+and refuse stale source, generation and root handles. Provider responses are
+authored. The retained [census](evidence/capsule-comparison-retrieval-20261014/prompt-census.json)
+again measures roughly 31% and 21% smaller initial prompt bytes; it does not
+measure full-session provider token savings.
+
+## Follow-up: indexed definition reads in the worker edit loop
+
+For an invocation using repository-source tools, `repository_read` accepts an
+optional `symbol_id` from the current `repository_context_query` or
+`repository_symbols` result. It resolves the exact native identity without a
+list-result limit, checks the retained original file hash, and matches the
+native source span to a supported Python definition. The response includes a
+verified local `symbol`, such as `Counter.square`, usable by
+`repository_replace_symbol`. Workers no longer have to infer edit names from
+module-qualified index names or reread every definition in a file to obtain an
+edit selector.
+
+The worker passes the read's `generation`, `path`, `symbol`, `source_sha256`
+(as `expected_sha256`) and returned `representation` to the existing guarded
+replacement tool. The representation matters when a compact request falls
+back to original text: replaying that exact definition should preserve the
+canonical bytes. Real changes still use a disposable preflight, whole-file hash
+checks, canonical replacement and a refreshed native index. Stable native IDs
+can survive a body change; they never substitute for a current generation or
+file hash. A change elsewhere in the checkout also invalidates a targeted read.
+
+Definition reads include decorators and dedent the selected code. They omit
+surrounding imports, enclosing class context and adjacent comments. Compact
+reads also omit internal comments and formatting. Ask for `original` to inspect
+the selected definition's original text; omit `symbol_id` to read the complete
+file. Respect capsule requirements for raw source. Nested functions, conditional
+definitions, ambiguous names and unsupported languages require full-file reads
+and the existing canonical editing workflow. Comment-only changes still require
+a direct original-source edit followed by `repository_refresh`.
+
+Compact definition rendering must reduce content bytes. When an owner-selected
+local tokenizer is configured, the server additionally requires a strict
+reduction in the complete MCP reply's token count, including identifier and
+metadata overhead. It rechecks source freshness after counting. These tools
+remain part of the selected repository-source policy; this change neither
+intercepts arbitrary terminal reads nor demonstrates live model adoption.
+
+`test_repository_source_symbol_stdio.py` exercises the real supervisor route,
+child MCP, native index, targeted read, canonical edit, successor query, stale
+read refusal, full-file fallback and caller behavior on authored source. Its
+JUnit `symbol_read_wire_comparison` property records complete request/reply
+bytes and explicitly labelled fixture-tokenizer counts for full-original,
+full-compact and definition-compact reads of the same 32-definition file. That
+local read comparison excludes the common preceding query, tool registration,
+model reasoning, history replay and subsequent task work. It is not a live
+Terminal Bench result or a full-session token-savings claim.
+
+Fresh runtime qualification uses `repository-source-runtime-probe@2`. The
+installed-runtime probe exercises the indexed definition read/edit path and
+validates its retained retrieval audit, in addition to the existing full-file,
+cache and generation checks. Historical `@1` receipts can be reviewed with an
+explicit legacy option, but do not qualify the current deployment. Build a new
+archive to include the helper and updated source pins before a live comparison.
+
+The [qualification](evidence/symbol-workflow-20261014/qualification.json)
+records 703 passing checks: 655 with retained JUnit logs and 48 renderer/session
+checks reported by delegated test runs. No failures or skips remained. The
+[wire comparison](evidence/symbol-workflow-20261014/wire-comparison.json)
+measured 4,463 request/reply bytes for a full original read, 2,029 for a full
+compact read and 767 for a compact definition read. The latter is a 62.2%
+reduction relative to the full compact operation in this authored fixture.
+All 18 changed Python files retained identical hashes during final checks.
+No fresh runtime archive, container trial or live provider call was performed.

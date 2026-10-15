@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="4" time="421.210" timestamp="2026-10-14T08:08:31.077331+00:00" hostname="spark-b271"><testcase classname="test.api.test_repository_proof_context" name="test_compile_render_reuses_owners_without_reexecuting_authored_provers" time="112.495" /><testcase classname="test.api.test_repository_proof_context" name="test_budget_omits_optional_digest_without_omitting_complete_conditions" time="87.158" /><testcase classname="test.api.test_repository_proof_context" name="test_native_expansion_and_retry_preserve_conditions_and_every_caller_requirement" time="54.981"><failure message="assert []">test/api/test_repository_proof_context.py:271: in test_native_expansion_and_retry_preserve_conditions_and_every_caller_requirement
+    handle = native_handle(parent)
+             ^^^^^^^^^^^^^^^^^^^^^
+test/api/test_repository_proof_context.py:190: in native_handle
+    assert values
+E   assert []</failure></testcase><testcase classname="test.api.test_repository_proof_context" name="test_independent_security_ir_residuals_survive_projection" time="102.889" /></testsuite></testsuites>

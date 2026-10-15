@@ -1,0 +1,21 @@
+{
+  "authentication_authority": false,
+  "cli_version": "1.0.46",
+  "completion_authority": false,
+  "execution_authority": false,
+  "model": "grok-4.7",
+  "models_observed": 4,
+  "native_catalog_commands": 1,
+  "native_command": "models",
+  "native_exit_code": 0,
+  "proof_authority": false,
+  "provider": "grok_cli",
+  "reason": "catalog_observed",
+  "schema": "terminal-grok-credential-readiness@1",
+  "scope": "isolated_worker_credential_copy",
+  "selected_model_observed": true,
+  "status": "ready",
+  "stderr_bytes": 0,
+  "stdout_bytes": 150,
+  "text_generation_calls": 0
+}

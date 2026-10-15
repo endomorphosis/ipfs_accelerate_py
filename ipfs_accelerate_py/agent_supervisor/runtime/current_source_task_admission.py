@@ -16,7 +16,7 @@ import threading
 from ..merge.database_coordination import ProcessSerializedDatabaseCoordinator
 from ..task_sources import typed_state_owner as typed
 from ..task_sources.control_plane_contracts import canonical_json_bytes, content_identity
-from .current_source_lookup import CurrentSourceLookup
+from .current_source_lookup import CurrentSourceLookup, _SourceBindingAttempt
 from .numerical_obligation_client import process_identity
 from .quack_state_server import QuackStateServer, ServerLifecycle
 from .repository_source_inventory import _BoundCAS, _cid, _input_guard
@@ -139,7 +139,7 @@ class NativeSourceTaskAdmission:
         _need(self._snapshot is self._original_snapshot and self._grant is self._original_grant,
               "native source task captured snapshot changed")
 
-    def _native(self):
+    def _native(self, *, _checked_at_ms=None):
         self._retained()
         self._gateway._require_live_server_binding()
         generation = self._connection.execute(
@@ -178,7 +178,8 @@ class NativeSourceTaskAdmission:
             grants = [g for g in self._gateway._grants.values()
                       if g.grant_id == attestation["grant_id"]]
         _need(len(grants) == 1, "native source task active daemon grant unavailable")
-        grant = self._gateway._require_active_grant(grants[0], peer_identity=self._peer)
+        grant = self._gateway._require_active_grant(grants[0], peer_identity=self._peer,
+            _checked_at_ms=_checked_at_ms)
         _need(grant.client_id == self._client_id and (self._grant is None
               or grant.grant_id == self._grant.grant_id), "native source task daemon grant changed")
         typed._require_database_claim_process_attestation(receipt, grant=grant)
@@ -220,51 +221,84 @@ class NativeSourceTaskAdmission:
             finally:
                 self._checking = False
 
+    def _require_source_binding_transaction(self):
+        """Decline borrowed transactions before any native SQL or claim fence."""
+        with self._owner_lock:
+            self._retained()
+            _need(getattr(self._connection, "in_transaction", None) is False,
+                  "native source binding requires an inactive original transaction")
+
     def bind_current_source_lookup(self, *, repository, cas, expected_inventory_cid,
                                    request, limits, context_cid, allowed_paths,
-                                   max_response_bytes=16384, max_slice_bytes=4096):
+                                   max_response_bytes=16384, max_slice_bytes=4096,
+                                   _binding_attempt=None):
         """Host supplies source/workspace policy; no allocation authority is inferred."""
         with self._lock:
             _need(not self._binding_in_progress and self._source is None,
                   "native source task bind is already consumed or in progress")
+            self._require_source_binding_transaction()
             self._binding_in_progress = True
             try:
                 return self._bind_current_source_lookup(repository=repository, cas=cas,
                     expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
                     context_cid=context_cid, allowed_paths=allowed_paths,
-                    max_response_bytes=max_response_bytes, max_slice_bytes=max_slice_bytes)
+                    max_response_bytes=max_response_bytes, max_slice_bytes=max_slice_bytes,
+                    _binding_attempt=_binding_attempt)
             finally:
                 self._binding_in_progress = False
 
     def _bind_current_source_lookup(self, *, repository, cas, expected_inventory_cid,
                                     request, limits, context_cid, allowed_paths,
-                                    max_response_bytes, max_slice_bytes, input_guard=None):
-        """Bind under the caller's task lock and whole-operation reentry guard."""
+                                    max_response_bytes, max_slice_bytes, input_guard=None,
+                                    _binding_attempt=None):
+        """Keep task serialization; enter native fences without holding SERVER."""
+        attempt = _SourceBindingAttempt() if _binding_attempt is None else _binding_attempt
+        _need(type(attempt) is _SourceBindingAttempt and not attempt._started
+              and attempt._published is None, "fresh exact source binding attempt required")
         if input_guard is not None:
             input_guard()
         before = self.require_current()
-        if input_guard is not None:
-            input_guard()
+
+        def unlocked():
+            if input_guard is not None:
+                input_guard()
+            _need(self.require_current() == before, "native task changed before source publication")
+            if input_guard is not None:
+                input_guard()
+
+        def locked(checked_at_ms):
+            if input_guard is not None:
+                input_guard()
+            observed, _grant = self._native(_checked_at_ms=checked_at_ms)
+            _need(json.loads(observed[0]) == before,
+                  "native task changed after source binding fences")
+            if input_guard is not None:
+                input_guard()
+
+        attempt._add_checks(unlocked, locked)
         with self._owner_lock:
             _need(self._gateway._current_source_lookup is None,
                   "native source lookup is already bound")
-            try:
-                self._server.bind_current_source_lookup(repository=repository, cas=cas,
-                    expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
-                    task_cid=before["task_cid"], task_revision=before["task_revision"],
-                    expected_task_body_cid=before["expected_task_body_cid"], context_cid=context_cid,
-                    allowed_paths=allowed_paths, max_response_bytes=max_response_bytes,
-                    max_slice_bytes=max_slice_bytes)
-            finally:
-                # Preserve an actually published reader even if its last
-                # native validation raises; there is no rollback/rebind.
-                service = self._gateway._current_source_lookup
-                if type(service) is CurrentSourceLookup:
-                    self._source, self._source_refs = service, (service, cas, service._root)
-                    self._source_bytes = self._gateway._current_source_lookup_binding
-                    service._native_source_task_admission = self
-            if input_guard is not None:
-                input_guard()
+        try:
+            self._server.bind_current_source_lookup(repository=repository, cas=cas,
+                expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
+                task_cid=before["task_cid"], task_revision=before["task_revision"],
+                expected_task_body_cid=before["expected_task_body_cid"], context_cid=context_cid,
+                allowed_paths=allowed_paths, max_response_bytes=max_response_bytes,
+                max_slice_bytes=max_slice_bytes, _binding_attempt=attempt)
+        finally:
+            publication = attempt._published
+            if publication is not None:
+                _need(publication[0] is attempt and publication[1] is self._gateway
+                      and self._gateway._current_source_lookup_publication is publication,
+                      "original source publication witness changed")
+                service, body, original_cas, root = publication[4:]
+                self._source, self._source_refs = service, (service, original_cas, root)
+                self._source_bytes = body
+                service._native_source_task_admission = self
+        if input_guard is not None:
+            input_guard()
+        with self._owner_lock:
             self.require_source_binding(server=self._server, service=self._source)
         self.require_current()
         if input_guard is not None:
@@ -274,7 +308,8 @@ class NativeSourceTaskAdmission:
     def bind_nominated_current_source_lookup(self, *, scope, expected_scope_cid,
                                              repository, cas, expected_inventory_cid,
                                              request, limits, context_cid,
-                                             max_response_bytes=16384, max_slice_bytes=4096):
+                                             max_response_bytes=16384, max_slice_bytes=4096,
+                                             _binding_attempt=None):
         """Cold-replay a pinned historical subset before the existing native bind.
 
         The host independently supplies the nomination CID, retained inventory,
@@ -285,6 +320,7 @@ class NativeSourceTaskAdmission:
         with self._lock:
             _need(not self._binding_in_progress and self._source is None,
                   "native source task bind is already consumed or in progress")
+            self._require_source_binding_transaction()
             self._binding_in_progress = True
             frozen = None
             paths = None
@@ -323,10 +359,9 @@ class NativeSourceTaskAdmission:
                     expected_inventory_cid=expected_inventory_cid, request=request, limits=limits,
                     context_cid=context_cid, allowed_paths=paths,
                     max_response_bytes=max_response_bytes, max_slice_bytes=max_slice_bytes,
-                    input_guard=checked_inputs)
+                    input_guard=checked_inputs, _binding_attempt=_binding_attempt)
             finally:
                 if (type(self._source) is CurrentSourceLookup
-                        and self._gateway._current_source_lookup is self._source
                         and frozen is not None and paths is not None):
                     # A published native reader remains consumed even when a
                     # post-publication guard raises. Retain the attempted join;

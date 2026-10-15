@@ -8,8 +8,10 @@ Lifecycle for every chargeable supervisor provider call:
 Exact request/attempt replay cannot reinvoke or recharge a terminal outcome.
 Pre-dispatch cancellation releases the reservation; post-dispatch timeout or
 cancel conservatively settles because the provider may still charge.  Enforce
-mode fails closed on unknown or stale coordination unless a reviewed degraded
-budget permits local/deterministic fallback.
+mode requires an injected coordinator. Unknown or stale coordination fails
+closed unless an existing coordinator uses the reviewed degraded fallback.
+Unacknowledged settlement retains its reservation for reconciliation and
+never creates a successful settlement receipt.
 
 This module is pure on cold import: no network, provider, process, database,
 or secret-store I/O.  Usage receipts remain operational evidence only and never
@@ -638,6 +640,11 @@ class ProviderExecutionRequest(_ExecutionContract):
                 "usage_revision stale relative to bridge scope",
                 reason_codes=("stale_usage_revision",),
             )
+        if bridge_scope.admission_revision != self.bridge.admission_revision:
+            _fail(
+                "admission_revision stale relative to bridge scope",
+                reason_codes=("stale_admission_revision",),
+            )
         if (
             bridge_scope.lease_id != self.bridge.lease_id
             or bridge_scope.fence_id != self.bridge.fence_id
@@ -728,6 +735,7 @@ class ProviderExecutionRequest(_ExecutionContract):
             "attempt_key": self.attempt_key,
             "catalog_revision": self.bridge.catalog_revision,
             "usage_revision": self.bridge.usage_revision,
+            **({"admission_revision": self.bridge.admission_revision} if self.bridge.admission_revision else {}),
             "endpoint_scope_id": self.bridge.endpoint_scope_id,
             "deadline_at": self.bridge.deadline_at,
             "lease_id": self.bridge.lease_id,
@@ -762,6 +770,7 @@ class ProviderExecutionRequest(_ExecutionContract):
             "attempt_key",
             "catalog_revision",
             "usage_revision",
+            "admission_revision",
             "endpoint_scope_id",
             "deadline_at",
             "lease_id",
@@ -800,6 +809,8 @@ class ProviderExecutionRequest(_ExecutionContract):
             estimate=payload.get("estimate"),
         )
         _claim(payload, result.content_id, "content_id", "request_content_id")
+        if "admission_revision" in payload and payload["admission_revision"] != result.bridge.admission_revision:
+            _fail("admission_revision differs from bridge", reason_codes=("stale_admission_revision",))
         return result
 
 
@@ -1043,7 +1054,13 @@ class ProviderInvoker(Protocol):
 
 
 class UsageCoordinatorLike(Protocol):
-    """Minimal coordinator surface used by the gateway (injection boundary)."""
+    """Trusted coordinator injection with acknowledged reservation operations.
+
+    Dispatch acknowledgement carries the matching reservation_id and a held
+    or pending state. Settlement acknowledgement additionally carries finite
+    charged UsageVector, a terminal state, and a nonempty event_id. Concrete
+    endpoint coordinator records and equivalently structured adapters work.
+    """
 
     def reserve(
         self,
@@ -1057,6 +1074,7 @@ class UsageCoordinatorLike(Protocol):
         lease_id: Optional[str] = None,
         estimate: Any = None,
         expected_usage_revision: Optional[str] = None,
+        expected_admission_revision: Optional[str] = None,
         ttl_ms: int = 30_000,
         caller_budget: Any = None,
         fence: Optional[int] = None,
@@ -1089,8 +1107,10 @@ class ProviderExecutionGateway:
     """Atomic estimate → reserve → invoke → settle gateway.
 
     Exact attempt replay returns the terminal result without reinvoke/recharge.
-    Inject a coordinator and invoker for live paths; omit them for hermetic
-    offline simulation (simulated reserve only, no network).
+    Enforce mode requires a coordinator. Tests that intentionally simulate
+    accounting without a coordinator must select a non-enforcing mode.
+    A per-call invoker can bind a consumer while retaining this gateway's
+    replay state, provided the gateway has no configured invoker.
     """
 
     requirement_id = RESERVATION_AWARE_PROVIDER_EXECUTION_REQUIREMENT_ID
@@ -1120,18 +1140,32 @@ class ProviderExecutionGateway:
     def coordinator(self) -> Optional[UsageCoordinatorLike]:
         return self._coordinator
 
+    @property
+    def has_invoker(self) -> bool:
+        return self._invoker is not None
+
+    @staticmethod
+    def _cache_key(request: ProviderExecutionRequest) -> str:
+        # Caller idempotency strings are not globally unique. Bind replay to
+        # the exact immutable execution contract, including provider and scope.
+        return request.request_content_id
+
     def invoke_count(self, attempt_key: str) -> int:
         with self._lock:
             return int(self._invoke_counts.get(attempt_key, 0))
 
-    def execute(self, request: ProviderExecutionRequest) -> ProviderExecutionResult:
+    def execute(
+        self, request: ProviderExecutionRequest, *, invoker: Optional[ProviderInvoker] = None
+    ) -> ProviderExecutionResult:
         if not isinstance(request, ProviderExecutionRequest):
             _fail(
                 "request must be ProviderExecutionRequest",
                 reason_codes=("invalid_request",),
             )
-        attempt_key = request.attempt_key
-        request_key = request.request_key
+        if invoker is not None and self._invoker is not None:
+            _fail("only one invoker may own execution", reason_codes=("invoker_conflict",))
+        attempt_key = self._cache_key(request)
+        request_key = attempt_key
 
         with self._lock:
             # Cache/batch/single-flight: identical request keys share outcome
@@ -1151,9 +1185,10 @@ class ProviderExecutionGateway:
             self._in_flight.add(attempt_key)
 
         try:
-            result = self._execute_unlocked(request)
-            with self._lock:
-                self._single_flight[request_key] = result
+            result = self._execute_unlocked(request, invoker=invoker)
+            if result.phase is not ProviderExecutionPhase.DENIED:
+                with self._lock:
+                    self._single_flight[request_key] = result
             return result
         finally:
             with self._lock:
@@ -1196,12 +1231,36 @@ class ProviderExecutionGateway:
             mode=prior.mode,
         )
 
-    def _execute_unlocked(self, request: ProviderExecutionRequest) -> ProviderExecutionResult:
+    def _execute_unlocked(
+        self, request: ProviderExecutionRequest, *, invoker: Optional[ProviderInvoker] = None
+    ) -> ProviderExecutionResult:
         mode = request.mode
         coordination = self._resolve_coordination(request)
 
         if mode is ProviderExecutionMode.OFF:
-            return self._off_mode_execute(request)
+            return self._off_mode_execute(request, invoker=invoker)
+
+        if mode is ProviderExecutionMode.ENFORCE and (
+            self._coordinator is None or coordination is CoordinationState.SIMULATED
+        ):
+            return self._terminal(
+                request,
+                phase=ProviderExecutionPhase.DENIED,
+                final_status=SupervisorUsageFinalStatus.CAPACITY_UNAVAILABLE,
+                granted=False,
+                reason_codes=("coordination_fail_closed", "coordinator_required"),
+                coordination_state=CoordinationState.UNAVAILABLE,
+            )
+
+        if mode is ProviderExecutionMode.ENFORCE and self._invoker is None and invoker is None:
+            return self._terminal(
+                request,
+                phase=ProviderExecutionPhase.DENIED,
+                final_status=SupervisorUsageFinalStatus.REJECTED,
+                granted=False,
+                reason_codes=("invoker_required",),
+                coordination_state=coordination,
+            )
 
         if coordination in {
             CoordinationState.UNKNOWN,
@@ -1209,6 +1268,21 @@ class ProviderExecutionGateway:
             CoordinationState.UNAVAILABLE,
         }:
             if mode is ProviderExecutionMode.ENFORCE:
+                if request.bridge.admission_revision:
+                    # A reviewed local fallback budget cannot satisfy or
+                    # replace a supplied endpoint stored-state precondition.
+                    return self._terminal(
+                        request,
+                        phase=ProviderExecutionPhase.DENIED,
+                        final_status=SupervisorUsageFinalStatus.CAPACITY_UNAVAILABLE,
+                        granted=False,
+                        reason_codes=(
+                            "coordination_fail_closed",
+                            "admission_revision_requires_coordination",
+                            coordination.value,
+                        ),
+                        coordination_state=coordination,
+                    )
                 if not request.degraded_budget_id:
                     return self._terminal(
                         request,
@@ -1221,7 +1295,7 @@ class ProviderExecutionGateway:
                         ),
                         coordination_state=coordination,
                     )
-                return self._degraded_local_execute(request, coordination)
+                return self._degraded_local_execute(request, coordination, invoker=invoker)
             # observe/shadow/assist: continue with simulated coordination.
             coordination = CoordinationState.SIMULATED
 
@@ -1256,19 +1330,27 @@ class ProviderExecutionGateway:
 
         # Pre-dispatch cancel after reserve: full release.
         if request.cancelled and not request.post_dispatch:
-            self._release_or_cancel(
+            cleanup = self._release_or_cancel(
                 reservation_id,
                 reason="pre_dispatch_cancelled",
                 post_dispatch=False,
                 coordination=coordination,
             )
+            if cleanup.get("state") != "released":
+                return self._terminal(
+                    request, phase=ProviderExecutionPhase.FAILED,
+                    final_status=SupervisorUsageFinalStatus.UNKNOWN, granted=True,
+                    reservation_id=reservation_id, usage_revision=usage_revision,
+                    reason_codes=("release_unconfirmed", "reconciliation_required"),
+                    coordination_state=coordination,
+                )
             receipt = self._build_receipt(
                 request,
                 reservation_id=reservation_id,
                 usage_revision=usage_revision,
                 units=UsageVector(),
                 final_status=SupervisorUsageFinalStatus.RELEASED,
-                event_ids=(),
+                event_ids=tuple(cleanup.get("event_ids") or ()),
             )
             return self._terminal(
                 request,
@@ -1283,6 +1365,26 @@ class ProviderExecutionGateway:
             )
 
         dispatched = self._mark_dispatched(reservation_id, coordination)
+        if coordination is CoordinationState.AVAILABLE and not dispatched:
+            # A failed acknowledgement may have followed a committed dispatch
+            # mark. Let the coordinator choose release versus conservative
+            # charge; never invoke on an unconfirmed mark.
+            cleanup = self._release_or_cancel(
+                reservation_id, reason="dispatch_mark_failed", post_dispatch=True,
+                coordination=coordination,
+            )
+            pending = cleanup.get("state") == "failed"
+            return self._terminal(
+                request,
+                phase=ProviderExecutionPhase.FAILED,
+                final_status=SupervisorUsageFinalStatus.UNKNOWN if pending else SupervisorUsageFinalStatus.FAILED,
+                granted=True,
+                reservation_id=reservation_id,
+                usage_revision=str(cleanup.get("usage_revision") or usage_revision),
+                reason_codes=("dispatch_mark_failed", "reconciliation_required" if pending else "not_invoked"),
+                settled=cleanup.get("charged") if not pending else UsageVector(),
+                coordination_state=coordination,
+            )
 
         # Post-dispatch cancel/timeout: conservative settle (provider may charge).
         if request.cancelled or request.timeout_expired:
@@ -1296,6 +1398,14 @@ class ProviderExecutionGateway:
                 ),
                 coordination=coordination,
             )
+            if settlement.get("pending_reconciliation"):
+                return self._terminal(
+                    request, phase=ProviderExecutionPhase.FAILED,
+                    final_status=SupervisorUsageFinalStatus.UNKNOWN, granted=True,
+                    reservation_id=reservation_id, usage_revision=usage_revision,
+                    reason_codes=("settlement_failed", "reconciliation_required"),
+                    coordination_state=coordination,
+                )
             units = settlement.get("charged") or estimate.requested
             event_ids = settlement.get("event_ids") or ()
             receipt = self._build_receipt(
@@ -1326,7 +1436,7 @@ class ProviderExecutionGateway:
             )
 
         try:
-            observation = self._invoke(request)
+            observation = self._invoke(request, invoker=invoker)
         except Exception as exc:
             # Unknown side effects after dispatch: cancel conservatively.
             settlement = self._conservative_settle(
@@ -1343,13 +1453,26 @@ class ProviderExecutionGateway:
                 granted=True,
                 reservation_id=reservation_id,
                 usage_revision=str(settlement.get("usage_revision") or usage_revision),
-                reason_codes=("invoke_failed", type(exc).__name__.casefold()),
+                reason_codes=("invoke_failed", type(exc).__name__.casefold()) + (
+                    ("reconciliation_required",) if settlement.get("pending_reconciliation") else ()
+                ),
                 observation={"error_class": type(exc).__name__},
                 settled=units,
                 coordination_state=coordination,
             )
 
-        settled_units = self._observation_units(observation, estimate)
+        try:
+            settled_units = self._observation_units(observation, estimate)
+        except Exception:
+            # The provider callback already returned. Malformed usage cannot
+            # turn into a free retry or an invented settlement.
+            return self._terminal(
+                request, phase=ProviderExecutionPhase.FAILED,
+                final_status=SupervisorUsageFinalStatus.UNKNOWN, granted=True,
+                reservation_id=reservation_id, usage_revision=usage_revision,
+                reason_codes=("invalid_usage_observation", "reconciliation_required"),
+                coordination_state=coordination,
+            )
         settlement = self._commit(
             reservation_id,
             units=settled_units,
@@ -1357,6 +1480,14 @@ class ProviderExecutionGateway:
             coordination=coordination,
         )
         usage_revision = str(settlement.get("usage_revision") or usage_revision)
+        if settlement.get("pending_reconciliation"):
+            return self._terminal(
+                request, phase=ProviderExecutionPhase.FAILED,
+                final_status=SupervisorUsageFinalStatus.UNKNOWN, granted=True,
+                reservation_id=reservation_id, usage_revision=usage_revision,
+                reason_codes=("settlement_failed", "reconciliation_required"),
+                coordination_state=coordination,
+            )
         event_ids = tuple(settlement.get("event_ids") or ())
         if settlement.get("charged") is not None:
             settled_units = settlement["charged"]
@@ -1402,7 +1533,9 @@ class ProviderExecutionGateway:
             return CoordinationState.SIMULATED
         return CoordinationState.AVAILABLE
 
-    def _off_mode_execute(self, request: ProviderExecutionRequest) -> ProviderExecutionResult:
+    def _off_mode_execute(
+        self, request: ProviderExecutionRequest, *, invoker: Optional[ProviderInvoker] = None
+    ) -> ProviderExecutionResult:
         """Legacy-compatible path: invoke without reservation/settlement."""
 
         if request.cancelled:
@@ -1415,7 +1548,7 @@ class ProviderExecutionGateway:
                 coordination_state=CoordinationState.SIMULATED,
             )
         try:
-            observation = self._invoke(request)
+            observation = self._invoke(request, invoker=invoker)
         except Exception as exc:
             return self._terminal(
                 request,
@@ -1441,6 +1574,8 @@ class ProviderExecutionGateway:
         self,
         request: ProviderExecutionRequest,
         coordination: CoordinationState,
+        *,
+        invoker: Optional[ProviderInvoker] = None,
     ) -> ProviderExecutionResult:
         if not request.degraded_budget_id:
             return self._terminal(
@@ -1452,7 +1587,7 @@ class ProviderExecutionGateway:
                 coordination_state=coordination,
             )
         try:
-            observation = self._invoke(request)
+            observation = self._invoke(request, invoker=invoker)
         except Exception as exc:
             return self._terminal(
                 request,
@@ -1506,12 +1641,24 @@ class ProviderExecutionGateway:
                 "usage_revision": request.bridge.usage_revision,
                 "reason_codes": ("simulated_reserve",),
             }
+        try:
+            caller_budget = self._caller_budget(request, estimate)
+        except ProviderExecutionError as exc:
+            return {"granted": False, "reason_codes": exc.reason_codes}
         fence_value: Optional[int] = None
         try:
             fence_value = int(request.bridge.fence_id)
         except (TypeError, ValueError):
             fence_value = None
         try:
+            # A stable admission pin is an explicit new contract. Legacy
+            # callers keep their observational pin; never remove a supplied
+            # pin or retry without it when an owner lacks the new parameter.
+            revision_arguments = (
+                {"expected_admission_revision": request.bridge.admission_revision}
+                if request.bridge.admission_revision
+                else {"expected_usage_revision": request.bridge.usage_revision}
+            )
             decision = self._coordinator.reserve(
                 request.bridge.endpoint_scope_id,
                 estimate.requested,
@@ -1521,10 +1668,10 @@ class ProviderExecutionGateway:
                 owner_id=self._owner_id,
                 lease_id=request.bridge.lease_id or None,
                 estimate=estimate,
-                expected_usage_revision=request.bridge.usage_revision,
                 ttl_ms=self._reservation_ttl_ms,
-                caller_budget=estimate.requested,
+                caller_budget=caller_budget,
                 fence=fence_value,
+                **revision_arguments,
             )
         except Exception as exc:
             name = type(exc).__name__.casefold()
@@ -1541,6 +1688,16 @@ class ProviderExecutionGateway:
                 "reason_codes": ("reserve_failed", name),
             }
         granted = bool(getattr(decision, "granted", False))
+        if granted and getattr(decision, "replayed", False):
+            # A previous gateway/process may own a live or already-dispatched
+            # reservation. Ledger replay alone cannot authorize reinvocation.
+            return {
+                "granted": False,
+                "reservation_id": str(getattr(decision, "reservation_id", None) or ""),
+                "reason_codes": ("reservation_replay_requires_reconciliation",),
+            }
+        if granted and not getattr(decision, "reservation_id", None):
+            return {"granted": False, "reason_codes": ("missing_reservation_id",)}
         return {
             "granted": granted,
             "reservation_id": str(getattr(decision, "reservation_id", None) or ""),
@@ -1549,6 +1706,45 @@ class ProviderExecutionGateway:
             ),
             "reason_codes": tuple(getattr(decision, "reason_codes", ()) or ()),
         }
+
+    @staticmethod
+    def _caller_budget(request: ProviderExecutionRequest, estimate: UsageEstimate) -> UsageVector:
+        """Project supplied lineage ceilings into a request-local upper bound.
+
+        This does not track remaining parent/run allowance. Shared window
+        occupancy stays with configured endpoint limits in the coordinator.
+        Every supplied ancestor on this request's path can only lower the
+        local bound, including different windows on the same dimension.
+        """
+        def find_path(node: SupervisorUsageEnvelope) -> tuple[SupervisorUsageEnvelope, ...]:
+            if node.envelope_id == request.bridge.envelope_id:
+                return (node,)
+            for child in node.children:
+                found = find_path(child)
+                if found:
+                    return (node,) + found
+            return ()
+
+        path = find_path(request.envelope)
+        if not path or path[-1].scope != request.bridge.scope:
+            _fail("request envelope scope mismatch", reason_codes=("envelope_mismatch",))
+        ceilings: dict[tuple[UsageDimension, Optional[str]], int] = {}
+        for node in path:
+            for limit in node.budget.limits:
+                key = (limit.dimension, limit.currency)
+                ceilings[key] = min(ceilings.get(key, limit.ceiling), limit.ceiling)
+        for entry in estimate.requested.entries:
+            key = (entry.dimension, entry.currency)
+            if key not in ceilings:
+                _fail("usage dimension has no envelope ceiling", reason_codes=("budget_dimension_missing",))
+            if entry.amount.kind is not QuantityKind.FINITE:
+                _fail("reservation estimate must be finite", reason_codes=("invalid_estimate",))
+            if int(entry.amount.value or 0) > ceilings[key]:
+                _fail("request exceeds envelope ceiling", reason_codes=("caller_budget_exceeded",))
+        return UsageVector(entries=tuple(
+            UsageVectorEntry(dimension=dimension, amount=Quantity.finite(ceiling), currency=currency)
+            for (dimension, currency), ceiling in ceilings.items()
+        ))
 
     def _mark_dispatched(self, reservation_id: str, coordination: CoordinationState) -> bool:
         if (
@@ -1559,10 +1755,39 @@ class ProviderExecutionGateway:
         ):
             return False
         try:
-            self._coordinator.mark_dispatched(reservation_id)
-            return True
+            acknowledgement = self._coordinator.mark_dispatched(reservation_id)
+            state = getattr(acknowledgement, "state", None)
+            state = getattr(state, "value", state)
+            return (
+                getattr(acknowledgement, "reservation_id", None) == reservation_id
+                and state in {"held", "pending"}
+            )
         except Exception:
             return False
+
+    @staticmethod
+    def _settlement_acknowledgement(
+        settlement: Any, reservation_id: str, *, allowed_states: frozenset[str]
+    ) -> dict[str, Any]:
+        state = getattr(settlement, "state", None)
+        state = getattr(state, "value", state)
+        charged = getattr(settlement, "charged", None)
+        event_id = getattr(settlement, "event_id", None)
+        if (
+            getattr(settlement, "reservation_id", None) != reservation_id
+            or state not in allowed_states
+            or not isinstance(charged, UsageVector)
+            or any(entry.amount.kind is not QuantityKind.FINITE for entry in charged.entries)
+            or not isinstance(event_id, str)
+            or not event_id.strip()
+        ):
+            _fail("unconfirmed usage settlement", reason_codes=("invalid_settlement_acknowledgement",))
+        return {
+            "charged": charged,
+            "event_ids": (_text(event_id, "event_id"),),
+            "usage_revision": _optional_text(getattr(settlement, "usage_revision", ""), "usage_revision"),
+            "state": state,
+        }
 
     def _release_or_cancel(
         self,
@@ -1592,20 +1817,10 @@ class ProviderExecutionGateway:
                     settlement = self._coordinator.release(reservation_id, reason=reason)
                 except Exception:
                     settlement = self._coordinator.cancel(reservation_id, reason=reason)
-            return {
-                "charged": getattr(settlement, "charged", UsageVector()) or UsageVector(),
-                "event_ids": (
-                    (str(getattr(settlement, "event_id", "")),)
-                    if getattr(settlement, "event_id", None)
-                    else ()
-                ),
-                "usage_revision": str(getattr(settlement, "usage_revision", "") or ""),
-                "state": str(
-                    getattr(getattr(settlement, "state", None), "value", "")
-                    or getattr(settlement, "state", "")
-                    or ""
-                ),
-            }
+            return self._settlement_acknowledgement(
+                settlement, reservation_id,
+                allowed_states=frozenset({"committed", "released", "expired"}),
+            )
         except Exception:
             return {
                 "charged": UsageVector(),
@@ -1637,37 +1852,16 @@ class ProviderExecutionGateway:
             }
         try:
             settlement = self._coordinator.cancel(reservation_id, reason=reason)
-            charged = getattr(settlement, "charged", None) or estimate.requested
-            return {
-                "charged": charged if isinstance(charged, UsageVector) else _usage_vector(charged),
-                "event_ids": (
-                    (str(getattr(settlement, "event_id", "")),)
-                    if getattr(settlement, "event_id", None)
-                    else ()
-                ),
-                "usage_revision": str(getattr(settlement, "usage_revision", "") or ""),
-            }
+            return self._settlement_acknowledgement(
+                settlement, reservation_id, allowed_states=frozenset({"committed"}),
+            )
         except Exception:
-            try:
-                settlement = self._coordinator.commit(reservation_id, actual=estimate.requested)
-                charged = getattr(settlement, "charged", None) or estimate.requested
-                return {
-                    "charged": charged
-                    if isinstance(charged, UsageVector)
-                    else _usage_vector(charged),
-                    "event_ids": (
-                        (str(getattr(settlement, "event_id", "")),)
-                        if getattr(settlement, "event_id", None)
-                        else ()
-                    ),
-                    "usage_revision": str(getattr(settlement, "usage_revision", "") or ""),
-                }
-            except Exception:
-                return {
-                    "charged": estimate.requested,
-                    "event_ids": (),
-                    "usage_revision": "",
-                }
+            return {
+                "charged": UsageVector(),
+                "event_ids": (),
+                "usage_revision": "",
+                "pending_reconciliation": True,
+            }
 
     def _commit(
         self,
@@ -1694,41 +1888,36 @@ class ProviderExecutionGateway:
                 actual=units,
                 observation_id=observation_id,
             )
-            charged = getattr(settlement, "charged", None) or units
-            return {
-                "charged": charged if isinstance(charged, UsageVector) else _usage_vector(charged),
-                "event_ids": (
-                    (str(getattr(settlement, "event_id", "")),)
-                    if getattr(settlement, "event_id", None)
-                    else ()
-                ),
-                "usage_revision": str(getattr(settlement, "usage_revision", "") or ""),
-            }
+            return self._settlement_acknowledgement(
+                settlement, reservation_id, allowed_states=frozenset({"committed"}),
+            )
         except Exception:
-            # Residual hold must not leak.
-            try:
-                self._coordinator.release(reservation_id, reason="settle_fallback")
-            except Exception:
-                pass
+            # The callback may already have incurred a charge. Preserve the
+            # reservation for reconciliation/reclamation and do not manufacture
+            # a successful receipt from an unacknowledged settlement.
             return {
-                "charged": units,
+                "charged": UsageVector(),
                 "event_ids": (),
                 "usage_revision": "",
+                "pending_reconciliation": True,
             }
 
-    def _invoke(self, request: ProviderExecutionRequest) -> dict[str, Any]:
+    def _invoke(
+        self, request: ProviderExecutionRequest, *, invoker: Optional[ProviderInvoker] = None
+    ) -> dict[str, Any]:
         with self._lock:
             self._invoke_counts[request.attempt_key] = (
                 int(self._invoke_counts.get(request.attempt_key, 0)) + 1
             )
-        if self._invoker is None:
+        selected_invoker = self._invoker if self._invoker is not None else invoker
+        if selected_invoker is None:
             return {
                 "provider_id": request.provider_id,
                 "endpoint_scope_id": request.bridge.endpoint_scope_id,
                 "status": "simulated_ok",
                 "units": request.effective_estimate().requested.to_dict(),
             }
-        raw = self._invoker(request)
+        raw = selected_invoker(request)
         if not isinstance(raw, Mapping):
             _fail(
                 "invoker must return a mapping observation",
@@ -1871,12 +2060,13 @@ class ProviderExecutionGateway:
             coordination_state=coordination_state,
             mode=request.mode,
         )
-        with self._lock:
-            self._terminals[request.attempt_key] = _TerminalRecord(
-                result=result,
-                finished_at=float(self._clock()),
-                invoke_count=int(self._invoke_counts.get(request.attempt_key, 0)),
-            )
+        if phase is not ProviderExecutionPhase.DENIED:
+            with self._lock:
+                self._terminals[self._cache_key(request)] = _TerminalRecord(
+                    result=result,
+                    finished_at=float(self._clock()),
+                    invoke_count=int(self._invoke_counts.get(request.attempt_key, 0)),
+                )
         return result
 
 

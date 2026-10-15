@@ -1,0 +1,3652 @@
+{
+  "schema": "legal-autoformalization-plan/v1",
+  "campaign_id": "legal-autoformalization-convergence-20261013",
+  "created_utc": "2026-10-13T06:59:34.162154+00:00",
+  "goals": [
+    {
+      "id": "LAC-G000",
+      "parent": null,
+      "title": "Source faithful legal formalization from spans to doctrines",
+      "acceptance": [
+        "Every frozen source unit has an explicit disposition; accepted spans, graphs and doctrines meet independent source-fidelity, scoped-consistency and checked-lowering gates; unknown or disputed material remains visible."
+      ]
+    },
+    {
+      "id": "LAC-G010",
+      "parent": "LAC-G000",
+      "title": "Preserve current evidence and source identities",
+      "acceptance": [
+        "All child subgoals have current content-bound acceptance evidence; completed task status alone is insufficient."
+      ]
+    },
+    {
+      "id": "LAC-G011",
+      "parent": "LAC-G010",
+      "title": "Source inventory and archive reconciliation",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-003: Every source and archived observation is accounted for with exact release/physical occurrence identity, not text-only deduplication.",
+        "LAC-003: Resume pending identity hypotheses and full outside-target identities without rewriting original IDs; ambiguous aliases retain evidence and unresolved disposition.",
+        "LAC-005: Report counts and complete identities by source length, cross-reference/exception density and profile; retain all out-of-profile cases.",
+        "LAC-005: Every class has an explicit existing route, extension task or unsupported disposition; no easy-rule selection hides remaining paragraph meaning."
+      ]
+    },
+    {
+      "id": "LAC-G012",
+      "parent": "LAC-G010",
+      "title": "Training lineage and replay",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-002: Every retained candidate has exact checkpoint/container/state/producer/recipe/update/exposure identities and original qualification status.",
+        "LAC-002: Detect equivalent already-executed experiments; latest temporal CE and margin, structured continuation, split features and curriculum fits cannot be redispatched as novel work.",
+        "LAC-004: Reproduce retained complete outputs and casewise metrics within each declared numerical contract; selected aliases do not count as replications.",
+        "LAC-004: Wrong loader/profile/source pins refuse; no rejected model becomes default; source-only models retain disabled latent provenance."
+      ]
+    },
+    {
+      "id": "LAC-G013",
+      "parent": "LAC-G010",
+      "title": "Execution source and capability pins",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-001: Record full commits, trees and source-file digests; explicitly distinguish stale external checkout from newer datasets worktrees.",
+        "LAC-001: Detect newer work before sealing; no reset, dirty auto-commit, lease takeover or reuse of old August authority pins.",
+        "LAC-006: Runtime capability is separated from declared schema and prior receipt; absent tools create named task blockers.",
+        "LAC-006: Bind source/raw384/core384/trained384/768D/4096D separately; no width-based compatibility or historical artifact substitution."
+      ]
+    },
+    {
+      "id": "LAC-G020",
+      "parent": "LAC-G000",
+      "title": "Establish source grounded semantic supervision",
+      "acceptance": [
+        "All child subgoals have current content-bound acceptance evidence; completed task status alone is insufficient."
+      ]
+    },
+    {
+      "id": "LAC-G021",
+      "parent": "LAC-G020",
+      "title": "Complete legal context and source classification",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-010: Exact character and UTF8 byte offsets round-trip to immutable document bytes, including repeated identical mentions.",
+        "LAC-010: Missing, stale or inaccessible context remains an open obligation; retrieved locator evidence is never automatically an attachment.",
+        "LAC-011: Constructed amendment fragments and abbreviations cannot become obligations solely from nonempty syntax.",
+        "LAC-011: List fragments and pronouns either bind to explicit complete context or abstain; complete source coverage remains measurable."
+      ]
+    },
+    {
+      "id": "LAC-G022",
+      "parent": "LAC-G020",
+      "title": "Independent review and interpretation admission",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-012: Source/context/target hashes and reviewer independence are checked; an input match or two model agreements cannot create reviewed legal gold.",
+        "LAC-012: Unanswered, reviewed-absent, ambiguous and alternative interpretation labels remain distinct; no label mask promotion occurs in the recorder itself.",
+        "LAC-014: Each admitted target has complete source/context coverage, named interpretation profile, authority and adjudication evidence.",
+        "LAC-014: Every accepted semantic record requires independent source/context/target evidence; novel or disputed readings require independent adjudication. An exact template match alone cannot admit meaning."
+      ]
+    },
+    {
+      "id": "LAC-G023",
+      "parent": "LAC-G020",
+      "title": "Exposure safe partitions and benchmarks",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-013: Existing eight law rows and all exposed authored panels remain development regressions; fresh confirmation references stay sealed until model/policy freeze.",
+        "LAC-013: Giant connected components use documented direction-aware boundaries and context-only allowances; every cross-split dependency is audited rather than pretending independence.",
+        "LAC-015: Freeze raw predictions before scoring and separate fresh confirmation from exposed diagnostics; group-level denominators and uncertainty are reported.",
+        "LAC-015: Mutation targets require reviewer or checked semantic evidence; different surface strings are not automatically different meanings."
+      ]
+    },
+    {
+      "id": "LAC-G030",
+      "parent": "LAC-G000",
+      "title": "Represent complete legal meaning in typed IR",
+      "acceptance": [
+        "All child subgoals have current content-bound acceptance evidence; completed task status alone is insufficient."
+      ]
+    },
+    {
+      "id": "LAC-G031",
+      "parent": "LAC-G030",
+      "title": "Typed semantics and evidence contracts",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-020: Evidence dimensions separately record source identity, context closure, reviewed fidelity, typing, lowering, kernel result and consistency scope; no universal correct boolean.",
+        "LAC-020: Backward compatibility and loss reports are explicit; unsupported expressive classes refuse instead of erasing meaning."
+      ]
+    },
+    {
+      "id": "LAC-G032",
+      "parent": "LAC-G030",
+      "title": "Scope quantification and multiple statements",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-021: Every semantic field survives codec encode/decode, including numeric/list/binder structure; deterministic serialization and stable IDs are tested.",
+        "LAC-021: Existing single-rule vocabularies and flat composition remain supported profiles; no checkpoint metadata relabeling broadens capability.",
+        "LAC-022: Identical phrases in distinct positions stay distinct; shared versus local attachments are explicit.",
+        "LAC-022: Legal-effective time, event time, relative clocks and duration ownership cannot be substituted for each other; unresolved bindings block dependent acceptance."
+      ]
+    },
+    {
+      "id": "LAC-G033",
+      "parent": "LAC-G030",
+      "title": "Source coverage and semantic oracles",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-023: Report omitted, invented, duplicated, unsupported and unresolved meaning-bearing units as failures or explicit gaps.",
+        "LAC-023: Source copying, retrieval reconstruction, fingerprint equality and shared-compiler agreement receive separate metrics and cannot confer semantic review.",
+        "LAC-024: Each layer rejects its relevant defect and preserves the original failed attempt; independent fixtures test behavior rather than mirroring implementation.",
+        "LAC-024: All released profiles have positive, unsupported, ambiguous and negative cases with complete denominators."
+      ]
+    },
+    {
+      "id": "LAC-G040",
+      "parent": "LAC-G000",
+      "title": "Improve decoding using the existing training frontier",
+      "acceptance": [
+        "All child subgoals have current content-bound acceptance evidence; completed task status alone is insufficient."
+      ]
+    },
+    {
+      "id": "LAC-G041",
+      "parent": "LAC-G040",
+      "title": "Temporal features and retention",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-030: Exact initial full-head parity is measured over the retained 392 sources; all protected parent tensors/scores remain unchanged.",
+        "LAC-030: New schema records extra parameters/compute and genuine optimizer state; initialization algebra is not substituted for measured parity.",
+        "LAC-031: Require 96/96 legacy raw/joint retention, zero old permission reversal/abstention and protected-head invariance before promotion consideration.",
+        "LAC-031: Fresh grouped statutory temporal and whole-rule measures improve without casewise unexplained regressions; a failed fit is retained and not automatically retried with more steps.",
+        "LAC-031: Audit the child input/open manifest against split capabilities: no confirmation target bytes or undeclared diagnostic labels were available before candidate freeze."
+      ]
+    },
+    {
+      "id": "LAC-G042",
+      "parent": "LAC-G040",
+      "title": "Role assignment and qualifier attachment",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-032: Improve selected actor/action/object and whole-rule correctness on fresh groups while preserving baseline-correct IDs and refusal floors.",
+        "LAC-032: Ranking-loss coverage gains already observed are controls; no broad hinge/presence sweep is called novel without a new mechanism.",
+        "LAC-032: Audit the child input/open manifest against split capabilities: no confirmation target bytes or undeclared diagnostic labels were available before candidate freeze.",
+        "LAC-033: Report presence and ownership separately; correct temporal presence with the wrong deadline remains incorrect.",
+        "LAC-033: Protect permissions and earlier exact cases; reject diagnostic-ID exceptions or thresholds fitted on confirmation data.",
+        "LAC-033: Audit the child input/open manifest against split capabilities: no confirmation target bytes or undeclared diagnostic labels were available before candidate freeze."
+      ]
+    },
+    {
+      "id": "LAC-G043",
+      "parent": "LAC-G040",
+      "title": "Multi rule generation latent utility and rejection",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-034: Run zero/disabled/permuted controls on fresh groups and report source encoding plus decoder cost; frozen raw-trained-decoder perturbations alone do not establish comparative utility.",
+        "LAC-034: Adopt latent conditioning only if fresh semantic/attachment quality and calibration improve with uncertainty reported and no retention failure.",
+        "LAC-034: Audit the child input/open manifest against split capabilities: no confirmation target bytes or undeclared diagnostic labels were available before candidate freeze.",
+        "LAC-035: Free-running output covers complete supported paragraphs and scopes; teacher-forced CE is diagnostic.",
+        "LAC-035: Explicit targets, fresh splits and runtime compatibility precede fitting; no single easy rule or capped list is counted as a complete paragraph.",
+        "LAC-035: Audit the child input/open manifest against split capabilities: no confirmation target bytes or undeclared diagnostic labels were available before candidate freeze.",
+        "LAC-036: Fresh confirmation is opened only after candidates and thresholds freeze; any subsequent tuning requires a new confirmation cohort.",
+        "LAC-036: All accepted outputs satisfy record-level gates; aggregate accuracy or loss never overrides a failed critical modality, scope, provenance or lowering check."
+      ]
+    },
+    {
+      "id": "LAC-G050",
+      "parent": "LAC-G000",
+      "title": "Aggregate spans into scoped semantic graphs",
+      "acceptance": [
+        "All child subgoals have current content-bound acceptance evidence; completed task status alone is insufficient."
+      ]
+    },
+    {
+      "id": "LAC-G051",
+      "parent": "LAC-G050",
+      "title": "Mention concept and assertion identity",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-040: No surface-string global merging; identity binds jurisdiction, instrument, edition, applicability and definition scope.",
+        "LAC-040: AST-to-graph-to-AST is lossless with explicit ordered arguments, operators and scope; asserted, proposed and reviewed edges stay distinguishable.",
+        "LAC-041: Ambiguous references retain alternatives and unresolved status; actor, office, organization and current officeholder are not conflated.",
+        "LAC-041: Every accepted resolution has exact mention anchors, applicable definition/identity evidence and independent target evaluation."
+      ]
+    },
+    {
+      "id": "LAC-G052",
+      "parent": "LAC-G050",
+      "title": "Definitions and dependency closure",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-042: Means, includes and deeming do not silently become the same biconditional; recursion, cross-references and external scope are explicit.",
+        "LAC-042: Definitions carry versioned applicability and exact source coverage; no unreviewed caller declaration becomes accepted meaning.",
+        "LAC-043: Interrupted work resumes deterministically and detects unresolved external references/cycles without dropping them.",
+        "LAC-043: Accepted closure has zero dangling required semantic references; reaching hop/job bounds yields incomplete, not complete."
+      ]
+    },
+    {
+      "id": "LAC-G053",
+      "parent": "LAC-G050",
+      "title": "Lossless graph composition and invalidation",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-044: Every accepted assertion reconstructs the complete typed AST and provenance; failures stay quarantined with original candidates.",
+        "LAC-044: All attached span/context generations agree; partial sections remain partial, and section completion requires complete source-unit dispositions.",
+        "LAC-045: No stale accepted dependent survives a changed input; unaffected roots remain reusable.",
+        "LAC-045: Graph consistency, a failed proof or model disagreement is never auto-promoted to legal gold; repair labels name structural, reviewed or checked authority.",
+        "LAC-046: Independent gold references and seeded cross-section errors are evaluated with all failed/unknown units in denominators.",
+        "LAC-046: Graph-isomorphism equality is separated from source legal fidelity and doctrine correctness."
+      ]
+    },
+    {
+      "id": "LAC-G060",
+      "parent": "LAC-G000",
+      "title": "Check consistency within explicit legal theories",
+      "acceptance": [
+        "All child subgoals have current content-bound acceptance evidence; completed task status alone is insufficient."
+      ]
+    },
+    {
+      "id": "LAC-G061",
+      "parent": "LAC-G060",
+      "title": "Applicability authority and conflict semantics",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-050: Actor/action/object, joint conditions and temporal/jurisdiction overlap are required for actual conflict witnesses.",
+        "LAC-050: Violation versus contradiction, permission strengths, power and constitutive rules are profile-specific; unknown facts are not false and different conditions are not automatically incompatible.",
+        "LAC-051: The presence of any exception or priority never resolves a conflict by itself; applicable resolution and its provenance are replayable.",
+        "LAC-051: Rank scores and arbitrary hierarchy integers cannot select authority; disjoint scopes/editions and unresolved disputes remain distinct."
+      ]
+    },
+    {
+      "id": "LAC-G062",
+      "parent": "LAC-G060",
+      "title": "Checked witnesses and nonvacuous theories",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-052: Return checked_consistent_within_scope, conflict_witness, unknown or unsupported with exact model/profile/bounds; timeout is never consistent.",
+        "LAC-052: Seeded contradictions are detected and disjoint-condition false positives refused. Report vacuity separately; do not invent existence assumptions or reject a faithful conditional norm merely because applicability can be empty. Timeout or vacuous implication cannot earn source-correctness credit.",
+        "LAC-054: Each resolution has an explicit reviewed correction, source-backed priority/exception, separate theory or unresolved disposition.",
+        "LAC-054: Original norms, failed interpretations and rejected repairs remain reproducible; models cannot resolve legal disputes by consensus."
+      ]
+    },
+    {
+      "id": "LAC-G063",
+      "parent": "LAC-G060",
+      "title": "Incremental global composition",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-053: Every cross-shard symbol and premise belongs to the accepted snapshot; missing neighbors prevent a global-scope claim.",
+        "LAC-053: Whole-scope checks match incremental results on bounded fixtures and pilot; local consistency never implies global consistency without composition evidence.",
+        "LAC-055: Unknown/conflicting/unsupported theories remain published as gaps or separate alternatives, not accepted unconditional axioms.",
+        "LAC-055: A corpus snapshot lists exact checked scope and assumptions; every accepted change revalidates impacted consistency obligations."
+      ]
+    },
+    {
+      "id": "LAC-G070",
+      "parent": "LAC-G000",
+      "title": "Compile and check the unified Lean corpus",
+      "acceptance": [
+        "All child subgoals have current content-bound acceptance evidence; completed task status alone is insufficient."
+      ]
+    },
+    {
+      "id": "LAC-G071",
+      "parent": "LAC-G070",
+      "title": "Supported semantics and modular lowering",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-060: Every supported AST constructor has typed lowering and preservation obligations; missing family/construct is an explicit gap.",
+        "LAC-060: Opaque atom reification, fingerprint theorems and source-text transport cannot count as semantic lowering.",
+        "LAC-061: Module manifests bind complete source/AST/graph/translation identities; no hard cap silently truncates clauses or term users.",
+        "LAC-061: Statute declarations and interpretation assumptions stay distinct from derived theorems; all unsupported constructs refuse."
+      ]
+    },
+    {
+      "id": "LAC-G072",
+      "parent": "LAC-G070",
+      "title": "Kernel checking and assumption auditing",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-062: Reject sorry/sorryAx/admit or unauthorized custom axioms, including transitive imports; standard logical axioms are explicitly allowlisted by profile.",
+        "LAC-062: Every theorem binds the exact proposition and premise snapshot; build success alone is separate from proof and source-meaning evidence.",
+        "LAC-063: All expected .olean modules exist and match the declaration manifest; no stale/fingerprint-only artifact receives semantic proof credit.",
+        "LAC-063: Failed builds retain diagnostics and repair tasks; provider text or a prior build cannot confer current admission."
+      ]
+    },
+    {
+      "id": "LAC-G073",
+      "parent": "LAC-G070",
+      "title": "Cross module preservation and rebuilds",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-064: Source/definition/authority changes invalidate exact theorem consumers; clean and incremental builds have equivalent declarations and checked assumptions.",
+        "LAC-064: Hash equality only proves identity; source review and semantic translation obligations remain explicit."
+      ]
+    },
+    {
+      "id": "LAC-G080",
+      "parent": "LAC-G000",
+      "title": "Compose reviewed legal doctrines",
+      "acceptance": [
+        "All child subgoals have current content-bound acceptance evidence; completed task status alone is insufficient."
+      ]
+    },
+    {
+      "id": "LAC-G081",
+      "parent": "LAC-G080",
+      "title": "Doctrine provenance and authority",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-070: Statutory theories, inferred organizational clusters and case-derived doctrines have distinct authority classes.",
+        "LAC-070: No doctrine is asserted solely because spans cluster in embedding space; every normative proposition has identified premises or explicit unproved interpretation.",
+        "LAC-071: Case precedential force is explicitly reviewed; statutes alone cannot establish a claim about a court holding.",
+        "LAC-071: New source classes have their own intake/version/exposure contracts; unresolved authority is preserved."
+      ]
+    },
+    {
+      "id": "LAC-G082",
+      "parent": "LAC-G080",
+      "title": "Derivations defeaters and alternative theories",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-072: Each step names premises, substitutions, applicability and authority; missing premises produce open obligations.",
+        "LAC-072: Generate positive, negative and boundary scenarios including exceptions and competing interpretations; no new rule is invented to complete an argument.",
+        "LAC-073: Doctrine proofs replay under exact accepted source and theory roots; inconsistent premises cannot make arbitrary consequences appear valid.",
+        "LAC-073: Where source-faithful interpretation cannot be mechanically checked, independent review remains required and the proof claim stays conditional."
+      ]
+    },
+    {
+      "id": "LAC-G083",
+      "parent": "LAC-G080",
+      "title": "Doctrinal evaluation and change impact",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-074: Every accepted doctrine has reviewed meaning, provenance, qualified supported derivations and explicit unresolved alternatives.",
+        "LAC-074: Contrary authority and source amendments trigger doctrine invalidation; a user query cannot silently switch jurisdiction or legal time.",
+        "LAC-075: Every affected doctrine reopens after a relevant amendment, overruling or interpretation change; unaffected roots remain reusable.",
+        "LAC-075: Published doctrine completeness identifies the exact source corpus and checked coverage rather than claiming universal doctrine discovery."
+      ]
+    },
+    {
+      "id": "LAC-G090",
+      "parent": "LAC-G000",
+      "title": "Execute bounded parallel supervisor campaigns",
+      "acceptance": [
+        "All child subgoals have current content-bound acceptance evidence; completed task status alone is insufficient."
+      ]
+    },
+    {
+      "id": "LAC-G091",
+      "parent": "LAC-G090",
+      "title": "Task transport and evidence bound completion",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-080: Native parsing agrees with JSON hierarchy/DAG and outputs; no generic JSON ingest path may silently drop outputs/acceptance metadata.",
+        "LAC-080: Create a separate campaign namespace/state root; old boards/providers/configurations are untouched and validate operations with hidden meta-index writes are identified.",
+        "LAC-080: Materialize repository-specific boards or fully qualified umbrella/submodule paths; custom Repository metadata alone cannot select a worker checkout. Freeze actual executable validation commands before dispatch.",
+        "LAC-081: Task status alone cannot satisfy semantic goals; accepted result binds task revision, inputs, code, lease fence, outputs, commands, coverage and independent acceptance.",
+        "LAC-081: Duplicate/stale attempts cannot overwrite accepted roots; model/provider output cannot self-attest correctness."
+      ]
+    },
+    {
+      "id": "LAC-G092",
+      "parent": "LAC-G090",
+      "title": "Resources leases and isolated workers",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-082: Start at three implementation lanes and one independent validation role, with numerical/prover concurrency limited by measured capacity.",
+        "LAC-082: Own leases, process groups and integration worktrees only; no cap increase, foreign cleanup, shared mutable model or hidden provider fallback.",
+        "LAC-082: Translate file-level exclusive keys to actual shared lease claims and test collisions; declarations in this plan alone do not enforce exclusion. Serialize shared-code bootstrap work until claims are qualified.",
+        "LAC-084: No lost source dispositions, duplicated accepted effects, torn result acceptance or stale lease commit after restart.",
+        "LAC-084: Disjoint jobs overlap safely; shared schema/corpus/promotion owners serialize, with original failed attempts retained."
+      ]
+    },
+    {
+      "id": "LAC-G093",
+      "parent": "LAC-G090",
+      "title": "Repair priorities and recovery",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-083: All priority terms and stable tie breaks are recorded; repeated no-progress tasks stop at finite budgets and become explicit capability/review work.",
+        "LAC-083: Refill cannot rewrite protected goals, policies, splits or completed history; deterministic sharding avoids duplicate source generations.",
+        "LAC-085: Coverage and correctness are separate at every layer; pending/unreviewed/unknown cases remain in denominators.",
+        "LAC-085: Metrics are bound to exact release/profile/exposure/checkpoint roots; no extrapolated all-law accuracy from authored panels."
+      ]
+    },
+    {
+      "id": "LAC-G100",
+      "parent": "LAC-G000",
+      "title": "Converge through measured corpus releases",
+      "acceptance": [
+        "All child subgoals have current content-bound acceptance evidence; completed task status alone is insufficient."
+      ]
+    },
+    {
+      "id": "LAC-G101",
+      "parent": "LAC-G100",
+      "title": "Connected neighborhood pilots",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-090: Validate transport, dependency and rejection paths with missing references and seeded conflicts; fixture success is explicitly not statutory qualification.",
+        "LAC-090: Produce one complete trace and executable contract failures for every layer, enabling parallel owners to integrate early.",
+        "LAC-091: All accepted spans/edges/doctrines have complete source-review, dependency, consistency and checked-lowering evidence; every rejected item has an actionable disposition.",
+        "LAC-091: Independent replay reproduces accepted roots and invalidates seeded defects; release may remain partial with known gaps."
+      ]
+    },
+    {
+      "id": "LAC-G102",
+      "parent": "LAC-G100",
+      "title": "Corpus scale coverage and freshness",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-092: Every frozen source occurrence has exactly one current disposition; aggregate counts reconcile with the source inventory.",
+        "LAC-092: Scale has no looser correctness gate; unsupported construction classes create bounded extension goals rather than becoming accepted by volume.",
+        "LAC-093: No stale span, graph assertion, theorem or doctrine remains accepted after a relevant change.",
+        "LAC-093: Retention, source fidelity and full checked-scope coverage are replayed on changed closures; unknown external changes remain visible."
+      ]
+    },
+    {
+      "id": "LAC-G103",
+      "parent": "LAC-G100",
+      "title": "Release reproducibility and remaining gaps",
+      "acceptance": [
+        "All assigned tasks pass their executable acceptance criteria with exact input identities and independently checked results.",
+        "LAC-094: Redownload/readback hashes and clean build instructions are reviewable; prior releases/checkpoints remain preserved.",
+        "LAC-094: Publication is a separate configured action; preparation grants no new semantic, proof or default-model authority.",
+        "LAC-095: The root goal is complete only when its exact declared scope and gates are met; a drained board or exhausted budget is not completion.",
+        "LAC-095: Do not claim every legal interpretation is correct; enumerate the accepted theory/profile corpus and remaining interpretation/authority gaps."
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "LAC-001",
+      "goal_id": "LAC-G013",
+      "title": "Freeze current repository authorities and effective trees",
+      "depends_on": [],
+      "repository": "ipfs_accelerate_py",
+      "lane": "control",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Reconcile current root, datasets and accelerator HEADs, effective files, dirty changes, submodule links and live campaigns. Establish a new isolated integration branch from reviewed current work; preserve older PGIR campaigns and user work.",
+      "existing_owners": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-001"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-001/result.json"
+      ],
+      "acceptance": [
+        "Record full commits, trees and source-file digests; explicitly distinguish stale external checkout from newer datasets worktrees.",
+        "Detect newer work before sealing; no reset, dirty auto-commit, lease takeover or reuse of old August authority pins."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_accelerate_py:supervisor",
+        "result:LAC-001:input_root",
+        "path:ipfs_accelerate_py:data/legal_autoformalization_convergence/LAC-001"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-002",
+      "goal_id": "LAC-G012",
+      "title": "Reconcile all training histories into an immutable lineage DAG",
+      "depends_on": [],
+      "repository": "ipfs_datasets_py",
+      "lane": "evidence",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Extend the saved June, AF029, September and October run inventories through the latest completed run. Distinguish proposals, executed updates, baseline replays, rejected endpoints, selected states, warm starts and complete optimizer resumes.",
+      "existing_owners": [
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_split_features.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-002"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-002/result.json"
+      ],
+      "acceptance": [
+        "Every retained candidate has exact checkpoint/container/state/producer/recipe/update/exposure identities and original qualification status.",
+        "Detect equivalent already-executed experiments; latest temporal CE and margin, structured continuation, split features and curriculum fits cannot be redispatched as novel work."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:training",
+        "result:LAC-002:input_root",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-002"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-003",
+      "goal_id": "LAC-G011",
+      "title": "Reconcile pinned span and entity cache denominators",
+      "depends_on": [],
+      "repository": "ipfs_datasets_py",
+      "lane": "data",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Reuse the all-span scan and archive identity recovery; reconcile manifest namespaces, 443904 archived IDs, 3840988 regenerated source occurrences, 64969 exact joins and 378935 unresolved archive IDs as separate historical populations. Reobserve current pin contents.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/paired_span_census.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legacy_span_intake.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-003"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-003/result.json"
+      ],
+      "acceptance": [
+        "Every source and archived observation is accounted for with exact release/physical occurrence identity, not text-only deduplication.",
+        "Resume pending identity hypotheses and full outside-target identities without rewriting original IDs; ambiguous aliases retain evidence and unresolved disposition."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "io_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:source",
+        "result:LAC-003:input_root",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-003"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-004",
+      "goal_id": "LAC-G012",
+      "title": "Replay current retained baseline checkpoints",
+      "depends_on": [
+        "LAC-001",
+        "LAC-002",
+        "LAC-006",
+        "LAC-082"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "evidence",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Load original source-only parent, structured Adam continuation, frozen-head model, split model, temporal CE/margin and compatible native-vector endpoints through their original runtime closures. Reuse immutable source caches.",
+      "existing_owners": [
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_split_features.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-004"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-004/result.json"
+      ],
+      "acceptance": [
+        "Reproduce retained complete outputs and casewise metrics within each declared numerical contract; selected aliases do not count as replications.",
+        "Wrong loader/profile/source pins refuse; no rejected model becomes default; source-only models retain disabled latent provenance."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "model_screen",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:training",
+        "result:LAC-004:input_root",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-004"
+      ],
+      "gate": "numerical",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-005",
+      "goal_id": "LAC-G011",
+      "title": "Inventory representability and missing context across the corpus",
+      "depends_on": [
+        "LAC-001",
+        "LAC-003"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "data",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Classify source units by operative norm, definition, scope, amendment/history, constitutive rule, procedure, cross-reference, ambiguity and unsupported grammar. Separate source classification proposals from reviewed labels.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/paired_span_census.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legacy_span_intake.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-005"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-005/result.json"
+      ],
+      "acceptance": [
+        "Report counts and complete identities by source length, cross-reference/exception density and profile; retain all out-of-profile cases.",
+        "Every class has an explicit existing route, extension task or unsupported disposition; no easy-rule selection hides remaining paragraph meaning."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:source",
+        "result:LAC-005:input_root",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-005"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-006",
+      "goal_id": "LAC-G013",
+      "title": "Bind source and tool capability manifests",
+      "depends_on": [
+        "LAC-001",
+        "LAC-003"
+      ],
+      "repository": "ipfs_accelerate_py",
+      "lane": "control",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Pin current dataset revisions, exact model/encoder assets, tokenizers, projection identities, runtime source closure, compiler families, Lean binaries/toolchain and optional solver capabilities. Probe capabilities without starting services.",
+      "existing_owners": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-006"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-006/result.json"
+      ],
+      "acceptance": [
+        "Runtime capability is separated from declared schema and prior receipt; absent tools create named task blockers.",
+        "Bind source/raw384/core384/trained384/768D/4096D separately; no width-based compatibility or historical artifact substitution."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_accelerate_py:supervisor",
+        "result:LAC-006:input_root",
+        "path:ipfs_accelerate_py:data/legal_autoformalization_convergence/LAC-006"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-010",
+      "goal_id": "LAC-G021",
+      "title": "Extend complete statutory context packets",
+      "depends_on": [
+        "LAC-001",
+        "LAC-003",
+        "LAC-005"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "data",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Reuse complete official document extraction, coherent spans, list lead-ins and context packets. Add explicit dependency slots for definitions, authority, antecedents, shared qualifiers, temporal origins and referenced provisions.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+        "ipfs_datasets_py/logic/formalization/coherent_spans.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+        "ipfs_datasets_py/logic/formalization/coherent_spans.py",
+        "data/legal_autoformalization_convergence/LAC-010"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-010/result.json"
+      ],
+      "acceptance": [
+        "Exact character and UTF8 byte offsets round-trip to immutable document bytes, including repeated identical mentions.",
+        "Missing, stale or inaccessible context remains an open obligation; retrieved locator evidence is never automatically an attachment."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:context",
+        "result:LAC-010:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/formalization/coherent_spans.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-010"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-011",
+      "goal_id": "LAC-G021",
+      "title": "Build context aware source units and classification routes",
+      "depends_on": [
+        "LAC-010",
+        "LAC-005"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "data",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Route sentence spans with required paragraph/section context and controlled legal source-kind classification; preserve amendment/editorial history separately from operative norms.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+        "ipfs_datasets_py/logic/formalization/coherent_spans.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+        "ipfs_datasets_py/logic/formalization/coherent_spans.py",
+        "data/legal_autoformalization_convergence/LAC-011"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-011/result.json"
+      ],
+      "acceptance": [
+        "Constructed amendment fragments and abbreviations cannot become obligations solely from nonempty syntax.",
+        "List fragments and pronouns either bind to explicit complete context or abstain; complete source coverage remains measurable."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:context",
+        "result:LAC-011:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/formalization/coherent_spans.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-011"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-012",
+      "goal_id": "LAC-G022",
+      "title": "Authenticate independent review and adjudication records",
+      "depends_on": [
+        "LAC-010",
+        "LAC-006"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "review",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "manual",
+      "objective": "Extend existing statutory_review_recording and review workflow with authenticated reviewer identities, independent first submissions, disagreement, adjudication scope and separately versioned label admission. Existing caller declarations remain inert.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "ipfs_datasets_py/logic/autoformal/legal_review_admission.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "ipfs_datasets_py/logic/autoformal/legal_review_admission.py",
+        "data/legal_autoformalization_convergence/LAC-012"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-012/result.json"
+      ],
+      "acceptance": [
+        "Source/context/target hashes and reviewer independence are checked; an input match or two model agreements cannot create reviewed legal gold.",
+        "Unanswered, reviewed-absent, ambiguous and alternative interpretation labels remain distinct; no label mask promotion occurs in the recorder itself."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:review",
+        "result:LAC-012:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_review_admission.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-012"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-013",
+      "goal_id": "LAC-G023",
+      "title": "Freeze provision and dependency grouped splits",
+      "depends_on": [
+        "LAC-003",
+        "LAC-010",
+        "LAC-012"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "data",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Build leakage/exposure closure over document versions, overlapping spans, aliases, amendments, paraphrases, shared templates, definitions and cross-reference groups. Partition before fitting codecs, normalizers or retrieval indexes.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/paired_span_census.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legacy_span_intake.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/paired_span_census.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legacy_span_intake.py",
+        "data/legal_autoformalization_convergence/LAC-013"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-013/result.json"
+      ],
+      "acceptance": [
+        "Existing eight law rows and all exposed authored panels remain development regressions; fresh confirmation references stay sealed until model/policy freeze.",
+        "Giant connected components use documented direction-aware boundaries and context-only allowances; every cross-split dependency is audited rather than pretending independence."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:source",
+        "result:LAC-013:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/paired_span_census.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/optimizers/logic_theorem_optimizer/legacy_span_intake.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-013"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-014",
+      "goal_id": "LAC-G022",
+      "title": "Adjudicate a first connected statutory supervision cohort",
+      "depends_on": [
+        "LAC-011",
+        "LAC-012",
+        "LAC-013"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "review",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "manual",
+      "objective": "Prepare roughly 16 independent section neighborhoods/up to 32 initial spans, expanding by representability rather than forced quotas. Review actors, relations, polarity, force, qualifiers, quantifiers, attachments and definition scope.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "ipfs_datasets_py/logic/autoformal/legal_review_admission.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "ipfs_datasets_py/logic/autoformal/legal_review_admission.py",
+        "data/legal_autoformalization_convergence/LAC-014"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-014/result.json"
+      ],
+      "acceptance": [
+        "Each admitted target has complete source/context coverage, named interpretation profile, authority and adjudication evidence.",
+        "Every accepted semantic record requires independent source/context/target evidence; novel or disputed readings require independent adjudication. An exact template match alone cannot admit meaning."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "review_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:review",
+        "result:LAC-014:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_review_admission.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-014"
+      ],
+      "gate": "semantic_review",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-015",
+      "goal_id": "LAC-G023",
+      "title": "Build fresh semantic benchmarks and perturbation oracles",
+      "depends_on": [
+        "LAC-013",
+        "LAC-014"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "evaluation",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Create independently reviewed span, section and connected-neighborhood evaluation packs with mutation cases for negation, roles, exceptions, quantification, dates, permissions, amendments and referenced definitions.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "ipfs_datasets_py/logic/autoformal/legal_review_admission.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-015"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-015/result.json"
+      ],
+      "acceptance": [
+        "Freeze raw predictions before scoring and separate fresh confirmation from exposed diagnostics; group-level denominators and uncertainty are reported.",
+        "Mutation targets require reviewer or checked semantic evidence; different surface strings are not automatically different meanings."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:review",
+        "result:LAC-015:input_root",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-015"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-020",
+      "goal_id": "LAC-G031",
+      "title": "Version typed legal semantics and the evidence vector",
+      "depends_on": [
+        "LAC-001",
+        "LAC-005",
+        "LAC-010"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "semantics",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Extend existing LegalIR contracts with sorts, variables, predicates/relations, quantities, quantifiers, Boolean scope, O/P/F plus explicitly supported powers/constitutive profiles, jurisdiction and legal/event time. Keep source provenance adjacent to semantic AST.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/extended_contracts.py",
+        "ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/extended_contracts.py",
+        "ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py",
+        "data/legal_autoformalization_convergence/LAC-020"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-020/result.json"
+      ],
+      "acceptance": [
+        "Evidence dimensions separately record source identity, context closure, reviewed fidelity, typing, lowering, kernel result and consistency scope; no universal correct boolean.",
+        "Backward compatibility and loss reports are explicit; unsupported expressive classes refuse instead of erasing meaning."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:ir",
+        "result:LAC-020:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/extended_contracts.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-020"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-021",
+      "goal_id": "LAC-G032",
+      "title": "Extend multi statement grammar and decoder representability",
+      "depends_on": [
+        "LAC-020",
+        "LAC-011"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "semantics",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Reuse grouped decoders, ExtendedLegalIR and checked rule-list composition to support ordered norms, definitions, shared arguments, nested scopes and typed references in versioned profiles.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/legal_rule_list_composition.py",
+        "ipfs_datasets_py/logic/autoformal/legal_checked_flat_composition_v3.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_rule_list_composition.py",
+        "ipfs_datasets_py/logic/autoformal/legal_checked_flat_composition_v3.py",
+        "data/legal_autoformalization_convergence/LAC-021"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-021/result.json"
+      ],
+      "acceptance": [
+        "Every semantic field survives codec encode/decode, including numeric/list/binder structure; deterministic serialization and stable IDs are tested.",
+        "Existing single-rule vocabularies and flat composition remain supported profiles; no checkpoint metadata relabeling broadens capability."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:multi",
+        "result:LAC-021:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_rule_list_composition.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_checked_flat_composition_v3.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-021"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-022",
+      "goal_id": "LAC-G032",
+      "title": "Bind qualifiers quantifiers and repeated occurrences",
+      "depends_on": [
+        "LAC-020",
+        "LAC-010"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "semantics",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Extend canonical statement scope, symbol binding and temporal occurrence owners so conditions, exceptions, times, negation and quantifiers attach to exact rule/subexpression occurrences.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+        "ipfs_datasets_py/logic/legal_ir/canonical_symbol_bindings.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+        "ipfs_datasets_py/logic/legal_ir/canonical_symbol_bindings.py",
+        "data/legal_autoformalization_convergence/LAC-022"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-022/result.json"
+      ],
+      "acceptance": [
+        "Identical phrases in distinct positions stay distinct; shared versus local attachments are explicit.",
+        "Legal-effective time, event time, relative clocks and duration ownership cannot be substituted for each other; unresolved bindings block dependent acceptance."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:scope",
+        "result:LAC-022:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/canonical_symbol_bindings.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-022"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-023",
+      "goal_id": "LAC-G033",
+      "title": "Measure complete source coverage and semantic preservation",
+      "depends_on": [
+        "LAC-020",
+        "LAC-021",
+        "LAC-022",
+        "LAC-015"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "evaluation",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Implement proposition/facet coverage and source-map checks across span-to-IR, IR-to-controlled-text and recompiled IR. Extend semantic_integrity without treating roundtrip identity as source equivalence.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+        "ipfs_datasets_py/logic/legal_ir/canonical_symbol_bindings.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+        "ipfs_datasets_py/logic/legal_ir/canonical_symbol_bindings.py",
+        "data/legal_autoformalization_convergence/LAC-023"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-023/result.json"
+      ],
+      "acceptance": [
+        "Report omitted, invented, duplicated, unsupported and unresolved meaning-bearing units as failures or explicit gaps.",
+        "Source copying, retrieval reconstruction, fingerprint equality and shared-compiler agreement receive separate metrics and cannot confer semantic review."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:scope",
+        "result:LAC-023:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/canonical_symbol_bindings.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-023"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-024",
+      "goal_id": "LAC-G033",
+      "title": "Create adversarial cross layer regression fixtures",
+      "depends_on": [
+        "LAC-020",
+        "LAC-022",
+        "LAC-015"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "evaluation",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Add fixtures where syntax succeeds but meaning changes: O/P/F swaps, vacuous conditions, impossible definitions, wrong objects, wrong editions, misplaced exceptions and omitted cross references.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/extended_contracts.py",
+        "ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/extended_contracts.py",
+        "ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py",
+        "data/legal_autoformalization_convergence/LAC-024"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-024/result.json"
+      ],
+      "acceptance": [
+        "Each layer rejects its relevant defect and preserves the original failed attempt; independent fixtures test behavior rather than mirroring implementation.",
+        "All released profiles have positive, unsupported, ambiguous and negative cases with complete denominators."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:ir",
+        "result:LAC-024:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/extended_contracts.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-024"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-030",
+      "goal_id": "LAC-G041",
+      "title": "Implement the new temporal token attention comparison",
+      "depends_on": [
+        "LAC-004",
+        "LAC-020"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "training_temporal",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Implement the already-proposed attention-versus-mean pooling comparison on frozen split features. Start with zero query, copied mean block and zero attention block; keep margin objective out of this first pooling test.",
+      "existing_owners": [
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_temporal_adapter.py",
+        "ipfs_datasets_py/logic/legal_ir/temporal_bindings.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_temporal_adapter.py",
+        "ipfs_datasets_py/logic/legal_ir/temporal_bindings.py",
+        "data/legal_autoformalization_convergence/LAC-030"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-030/result.json"
+      ],
+      "acceptance": [
+        "Exact initial full-head parity is measured over the retained 392 sources; all protected parent tensors/scores remain unchanged.",
+        "New schema records extra parameters/compute and genuine optimizer state; initialization algebra is not substituted for measured parity."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:temporal",
+        "result:LAC-030:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_temporal_adapter.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/temporal_bindings.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-030"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-031",
+      "goal_id": "LAC-G041",
+      "title": "Run finite temporal feature cells and replicate finalists",
+      "depends_on": [
+        "LAC-030",
+        "LAC-014",
+        "LAC-015",
+        "LAC-081",
+        "LAC-082"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "training_temporal",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Execute matched mean/attention CE screening with identical data/order/updates, then preregistered independent seeds for a meaningful development finalist. Include event-owner and duration-in-name counterexamples.",
+      "existing_owners": [
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_temporal_adapter.py",
+        "ipfs_datasets_py/logic/legal_ir/temporal_bindings.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_temporal_adapter.py",
+        "ipfs_datasets_py/logic/legal_ir/temporal_bindings.py",
+        "data/legal_autoformalization_convergence/LAC-031"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-031/result.json"
+      ],
+      "acceptance": [
+        "Require 96/96 legacy raw/joint retention, zero old permission reversal/abstention and protected-head invariance before promotion consideration.",
+        "Fresh grouped statutory temporal and whole-rule measures improve without casewise unexplained regressions; a failed fit is retained and not automatically retried with more steps.",
+        "Audit the child input/open manifest against split capabilities: no confirmation target bytes or undeclared diagnostic labels were available before candidate freeze."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "model_screen",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:temporal",
+        "result:LAC-031:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_temporal_adapter.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/temporal_bindings.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-031"
+      ],
+      "gate": "numerical",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields.",
+        "Numerical-child allowlist: TRAIN targets and declared development references only. Exclude sealed confirmation target containers and target-bearing context bundles; inference accepts source-only inputs."
+      ]
+    },
+    {
+      "id": "LAC-032",
+      "goal_id": "LAC-G042",
+      "title": "Diagnose and improve final role assignment",
+      "depends_on": [
+        "LAC-004",
+        "LAC-014",
+        "LAC-015",
+        "LAC-022",
+        "LAC-081",
+        "LAC-082"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "training_roles",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Separate topK gold coverage, independent rank one, compatible assignment oracle and actual joint selection. Compare a learned complete-assignment scorer against the unchanged selector on competing actors, objects and repeated mentions.",
+      "existing_owners": [
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_formula.py",
+        "ipfs_datasets_py/logic/legal_ir/statutory_source_review.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_formula.py",
+        "ipfs_datasets_py/logic/legal_ir/statutory_source_review.py",
+        "data/legal_autoformalization_convergence/LAC-032"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-032/result.json"
+      ],
+      "acceptance": [
+        "Improve selected actor/action/object and whole-rule correctness on fresh groups while preserving baseline-correct IDs and refusal floors.",
+        "Ranking-loss coverage gains already observed are controls; no broad hinge/presence sweep is called novel without a new mechanism.",
+        "Audit the child input/open manifest against split capabilities: no confirmation target bytes or undeclared diagnostic labels were available before candidate freeze."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "model_screen",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:roles",
+        "result:LAC-032:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_formula.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/statutory_source_review.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-032"
+      ],
+      "gate": "numerical",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields.",
+        "Numerical-child allowlist: TRAIN targets and declared development references only. Exclude sealed confirmation target containers and target-bearing context bundles; inference accepts source-only inputs."
+      ]
+    },
+    {
+      "id": "LAC-033",
+      "goal_id": "LAC-G042",
+      "title": "Train qualifier presence and ownership separately",
+      "depends_on": [
+        "LAC-004",
+        "LAC-014",
+        "LAC-015",
+        "LAC-021",
+        "LAC-022",
+        "LAC-081",
+        "LAC-082"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "training_scope",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Compare presence, boundary and attachment heads with frozen-modality controls, nested/shared qualifiers and conditions containing dates. Train only against representable reviewed targets.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+        "ipfs_datasets_py/logic/legal_ir/canonical_symbol_bindings.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+        "ipfs_datasets_py/logic/legal_ir/canonical_symbol_bindings.py",
+        "data/legal_autoformalization_convergence/LAC-033"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-033/result.json"
+      ],
+      "acceptance": [
+        "Report presence and ownership separately; correct temporal presence with the wrong deadline remains incorrect.",
+        "Protect permissions and earlier exact cases; reject diagnostic-ID exceptions or thresholds fitted on confirmation data.",
+        "Audit the child input/open manifest against split capabilities: no confirmation target bytes or undeclared diagnostic labels were available before candidate freeze."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "model_screen",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:scope",
+        "result:LAC-033:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/canonical_symbol_bindings.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-033"
+      ],
+      "gate": "numerical",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields.",
+        "Numerical-child allowlist: TRAIN targets and declared development references only. Exclude sealed confirmation target containers and target-bearing context bundles; inference accepts source-only inputs."
+      ]
+    },
+    {
+      "id": "LAC-034",
+      "goal_id": "LAC-G043",
+      "title": "Measure authentic autoencoder contribution under matched training",
+      "depends_on": [
+        "LAC-004",
+        "LAC-006",
+        "LAC-014",
+        "LAC-015",
+        "LAC-021",
+        "LAC-081",
+        "LAC-082"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "training_latent",
+      "priority": "P1",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Compare source-only, authentic raw-vector, TRAIN-only PCA and learned-latent decoders under matched grammar, data, initialization/updates/selection and inference budgets. Begin with compatible 384D/768D; other widths require genuine producer/profile support.",
+      "existing_owners": [
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_split_features.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_split_features.py",
+        "data/legal_autoformalization_convergence/LAC-034"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-034/result.json"
+      ],
+      "acceptance": [
+        "Run zero/disabled/permuted controls on fresh groups and report source encoding plus decoder cost; frozen raw-trained-decoder perturbations alone do not establish comparative utility.",
+        "Adopt latent conditioning only if fresh semantic/attachment quality and calibration improve with uncertainty reported and no retention failure.",
+        "Audit the child input/open manifest against split capabilities: no confirmation target bytes or undeclared diagnostic labels were available before candidate freeze."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "model_screen",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:training",
+        "result:LAC-034:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_split_features.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-034"
+      ],
+      "gate": "numerical",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields.",
+        "Numerical-child allowlist: TRAIN targets and declared development references only. Exclude sealed confirmation target containers and target-bearing context bundles; inference accepts source-only inputs."
+      ]
+    },
+    {
+      "id": "LAC-035",
+      "goal_id": "LAC-G043",
+      "title": "Train richer rule and definition output profiles",
+      "depends_on": [
+        "LAC-021",
+        "LAC-022",
+        "LAC-014",
+        "LAC-015",
+        "LAC-081",
+        "LAC-082"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "training_structure",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Extend existing source/formula and grouped heads with typed multi-rule, shared-argument and source-bound definition-reference targets; use ordered-rule curriculum and compatible old-bank rehearsal.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/legal_rule_list_composition.py",
+        "ipfs_datasets_py/logic/autoformal/legal_checked_flat_composition_v3.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_rule_list_composition.py",
+        "ipfs_datasets_py/logic/autoformal/legal_checked_flat_composition_v3.py",
+        "data/legal_autoformalization_convergence/LAC-035"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-035/result.json"
+      ],
+      "acceptance": [
+        "Free-running output covers complete supported paragraphs and scopes; teacher-forced CE is diagnostic.",
+        "Explicit targets, fresh splits and runtime compatibility precede fitting; no single easy rule or capped list is counted as a complete paragraph.",
+        "Audit the child input/open manifest against split capabilities: no confirmation target bytes or undeclared diagnostic labels were available before candidate freeze."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "model_screen",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:multi",
+        "result:LAC-035:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_rule_list_composition.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_checked_flat_composition_v3.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-035"
+      ],
+      "gate": "numerical",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields.",
+        "Numerical-child allowlist: TRAIN targets and declared development references only. Exclude sealed confirmation target containers and target-bearing context bundles; inference accepts source-only inputs."
+      ]
+    },
+    {
+      "id": "LAC-036",
+      "goal_id": "LAC-G043",
+      "title": "Calibrate abstention and select candidates by independent gates",
+      "depends_on": [
+        "LAC-031",
+        "LAC-032",
+        "LAC-033",
+        "LAC-034",
+        "LAC-035",
+        "LAC-023",
+        "LAC-015"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "evaluation",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Compare retained and new models with declared semantic, casewise retention, unsupported-emission, calibration, coverage and resource gates. Keep no-go/inconclusive as first-class outcomes.",
+      "existing_owners": [
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_split_features.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-036"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-036/result.json"
+      ],
+      "acceptance": [
+        "Fresh confirmation is opened only after candidates and thresholds freeze; any subsequent tuning requires a new confirmation cohort.",
+        "All accepted outputs satisfy record-level gates; aggregate accuracy or loss never overrides a failed critical modality, scope, provenance or lowering check."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:training",
+        "result:LAC-036:input_root",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-036"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-040",
+      "goal_id": "LAC-G051",
+      "title": "Define graph identities and typed assertion envelopes",
+      "depends_on": [
+        "LAC-020",
+        "LAC-010"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "graph_schema",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Extend meta ontology and EntityCache with distinct source occurrence, mention, scoped concept, definition, rule, interpretation, assertion and theorem identities. Preserve the original source graph.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "data/legal_autoformalization_convergence/LAC-040"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-040/result.json"
+      ],
+      "acceptance": [
+        "No surface-string global merging; identity binds jurisdiction, instrument, edition, applicability and definition scope.",
+        "AST-to-graph-to-AST is lossless with explicit ordered arguments, operators and scope; asserted, proposed and reviewed edges stay distinguishable."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:graph",
+        "result:LAC-040:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-040"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-041",
+      "goal_id": "LAC-G051",
+      "title": "Resolve mentions and legal symbols with evidence",
+      "depends_on": [
+        "LAC-040",
+        "LAC-022",
+        "LAC-014"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "graph_resolution",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Extend scoped symbol resolution with aliases, antecedents, institutional roles and typed relation arguments; retrieve candidates from the entity cache and context index without granting identity by similarity.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/integration/reasoning/legal_ir_symbols.py",
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_bridge.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/integration/reasoning/legal_ir_symbols.py",
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_bridge.py",
+        "data/legal_autoformalization_convergence/LAC-041"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-041/result.json"
+      ],
+      "acceptance": [
+        "Ambiguous references retain alternatives and unresolved status; actor, office, organization and current officeholder are not conflated.",
+        "Every accepted resolution has exact mention anchors, applicable definition/identity evidence and independent target evaluation."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:symbols",
+        "result:LAC-041:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/integration/reasoning/legal_ir_symbols.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_source_definition_bridge.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-041"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-042",
+      "goal_id": "LAC-G052",
+      "title": "Extend definitions beyond bounded unary declarations",
+      "depends_on": [
+        "LAC-040",
+        "LAC-021",
+        "LAC-014"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "graph_definitions",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Extend existing source definition/norm bridges to explicit inclusions, exclusions, non-exhaustive includes, relational definitions and incorporated definitions, each under a supported interpretation profile.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_bridge.py",
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_bridge.py",
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "data/legal_autoformalization_convergence/LAC-042"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-042/result.json"
+      ],
+      "acceptance": [
+        "Means, includes and deeming do not silently become the same biconditional; recursion, cross-references and external scope are explicit.",
+        "Definitions carry versioned applicability and exact source coverage; no unreviewed caller declaration becomes accepted meaning."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:definition",
+        "result:LAC-042:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_bridge.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-042"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-043",
+      "goal_id": "LAC-G052",
+      "title": "Compute resumable semantic dependency closure",
+      "depends_on": [
+        "LAC-041",
+        "LAC-042",
+        "LAC-010"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "graph_definitions",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Extend assign_definition_closure with persisted frontier, strongly connected components, dependencies, known bounds and incomplete-closure status; process cross-section dependencies in finite jobs.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "data/legal_autoformalization_convergence/LAC-043"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-043/result.json"
+      ],
+      "acceptance": [
+        "Interrupted work resumes deterministically and detects unresolved external references/cycles without dropping them.",
+        "Accepted closure has zero dangling required semantic references; reaching hop/job bounds yields incomplete, not complete."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_medium",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:graph",
+        "result:LAC-043:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-043"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-044",
+      "goal_id": "LAC-G053",
+      "title": "Aggregate qualified spans into section semantic graphs",
+      "depends_on": [
+        "LAC-040",
+        "LAC-041",
+        "LAC-042",
+        "LAC-043",
+        "LAC-023"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "graph_composition",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Attach supported rules and definitions to source-bound graph assertions with role, qualifier, quantifier and dependency edges; retain proposed output in a separate admission view.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "data/legal_autoformalization_convergence/LAC-044"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-044/result.json"
+      ],
+      "acceptance": [
+        "Every accepted assertion reconstructs the complete typed AST and provenance; failures stay quarantined with original candidates.",
+        "All attached span/context generations agree; partial sections remain partial, and section completion requires complete source-unit dispositions."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:graph",
+        "result:LAC-044:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-044"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-045",
+      "goal_id": "LAC-G053",
+      "title": "Invalidate derived graphs and train from verified failures",
+      "depends_on": [
+        "LAC-044",
+        "LAC-081"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "graph_incremental",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Maintain reverse indexes so changed source, definition, interpretation, checkpoint, authority or policy invalidates exact descendant assertions and theorem dependencies. Produce repair examples with authority preserved.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "data/legal_autoformalization_convergence/LAC-045"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-045/result.json"
+      ],
+      "acceptance": [
+        "No stale accepted dependent survives a changed input; unaffected roots remain reusable.",
+        "Graph consistency, a failed proof or model disagreement is never auto-promoted to legal gold; repair labels name structural, reviewed or checked authority."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:graph",
+        "result:LAC-045:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-045"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-046",
+      "goal_id": "LAC-G053",
+      "title": "Evaluate graph resolution and composition independently",
+      "depends_on": [
+        "LAC-044",
+        "LAC-045",
+        "LAC-015",
+        "LAC-024"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "evaluation",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Create reviewed connected-neighborhood graphs and measure mention identity, definition scope, missing/extra edges, attachment, closure completeness and AST preservation.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/integration/reasoning/legal_ir_symbols.py",
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_bridge.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/integration/reasoning/legal_ir_symbols.py",
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_bridge.py",
+        "data/legal_autoformalization_convergence/LAC-046"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-046/result.json"
+      ],
+      "acceptance": [
+        "Independent gold references and seeded cross-section errors are evaluated with all failed/unknown units in denominators.",
+        "Graph-isomorphism equality is separated from source legal fidelity and doctrine correctness."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:symbols",
+        "result:LAC-046:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/integration/reasoning/legal_ir_symbols.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_source_definition_bridge.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-046"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-050",
+      "goal_id": "LAC-G061",
+      "title": "Define scoped legal theory and conflict profiles",
+      "depends_on": [
+        "LAC-020",
+        "LAC-022"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "consistency_semantics",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Specify jurisdiction, effective interval, legal authority, deontic force, open-world facts, defeasibility and interpretation alternatives for each theory. Treat existing norm-conflict detection as candidate generation. Implement schemas and inert constructed profiles first; reviewed real-source profile instantiation is required downstream, not to write the schema.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/typed_adapter.py",
+        "ipfs_datasets_py/logic/legal_ir/constraint_query.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/typed_adapter.py",
+        "ipfs_datasets_py/logic/legal_ir/constraint_query.py",
+        "data/legal_autoformalization_convergence/LAC-050"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-050/result.json"
+      ],
+      "acceptance": [
+        "Actor/action/object, joint conditions and temporal/jurisdiction overlap are required for actual conflict witnesses.",
+        "Violation versus contradiction, permission strengths, power and constitutive rules are profile-specific; unknown facts are not false and different conditions are not automatically incompatible."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:consistency",
+        "result:LAC-050:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/typed_adapter.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/constraint_query.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-050"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-051",
+      "goal_id": "LAC-G061",
+      "title": "Require actual applicability and precedence witnesses",
+      "depends_on": [
+        "LAC-050",
+        "LAC-043",
+        "LAC-014"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "consistency_semantics",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Extend constraint_query and temporal authority with source-backed exception/override witnesses, effective-date reasoning, delegated authority and explicit competing interpretations.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/integration/reasoning/legal_ir_temporal_authority.py",
+        "ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/integration/reasoning/legal_ir_temporal_authority.py",
+        "ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py",
+        "data/legal_autoformalization_convergence/LAC-051"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-051/result.json"
+      ],
+      "acceptance": [
+        "The presence of any exception or priority never resolves a conflict by itself; applicable resolution and its provenance are replayable.",
+        "Rank scores and arbitrary hierarchy integers cannot select authority; disjoint scopes/editions and unresolved disputes remain distinct."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:authority",
+        "result:LAC-051:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/integration/reasoning/legal_ir_temporal_authority.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-051"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-052",
+      "goal_id": "LAC-G062",
+      "title": "Check consistency nonvacuity and counterexamples",
+      "depends_on": [
+        "LAC-050",
+        "LAC-051",
+        "LAC-044",
+        "LAC-006",
+        "LAC-060"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "consistency_solver",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Route supported theories to existing bounded solvers/checkers. Check reachable applicability, inhabited defined categories, impossible conditions and candidate conflicts; retain unsat cores or countermodels.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/typed_adapter.py",
+        "ipfs_datasets_py/logic/legal_ir/constraint_query.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/typed_adapter.py",
+        "ipfs_datasets_py/logic/legal_ir/constraint_query.py",
+        "data/legal_autoformalization_convergence/LAC-052"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-052/result.json"
+      ],
+      "acceptance": [
+        "Return checked_consistent_within_scope, conflict_witness, unknown or unsupported with exact model/profile/bounds; timeout is never consistent.",
+        "Seeded contradictions are detected and disjoint-condition false positives refused. Report vacuity separately; do not invent existence assumptions or reject a faithful conditional norm merely because applicability can be empty. Timeout or vacuous implication cannot earn source-correctness credit."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "prover_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:consistency",
+        "result:LAC-052:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/typed_adapter.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/constraint_query.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-052"
+      ],
+      "gate": "solver",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-053",
+      "goal_id": "LAC-G063",
+      "title": "Compose global closures across graph shards",
+      "depends_on": [
+        "LAC-043",
+        "LAC-045",
+        "LAC-052",
+        "LAC-081"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "consistency_incremental",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Schedule dependency/SCC-aware checks across shards with interface assumptions and closure certificates. Extend check frontiers after changes instead of concatenating locally consistent outputs.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "data/legal_autoformalization_convergence/LAC-053"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-053/result.json"
+      ],
+      "acceptance": [
+        "Every cross-shard symbol and premise belongs to the accepted snapshot; missing neighbors prevent a global-scope claim.",
+        "Whole-scope checks match incremental results on bounded fixtures and pilot; local consistency never implies global consistency without composition evidence."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_medium",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:graph",
+        "result:LAC-053:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-053"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-054",
+      "goal_id": "LAC-G062",
+      "title": "Manage contradiction and interpretation review queues",
+      "depends_on": [
+        "LAC-052",
+        "LAC-051",
+        "LAC-012"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "review",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "manual",
+      "objective": "Turn minimal conflict witnesses into review tasks linking exact spans, definitions, profiles and authority alternatives. Preserve conflicting law and alternative theories rather than deleting rules to manufacture consistency.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "ipfs_datasets_py/logic/autoformal/legal_review_admission.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "ipfs_datasets_py/logic/autoformal/legal_review_admission.py",
+        "data/legal_autoformalization_convergence/LAC-054"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-054/result.json"
+      ],
+      "acceptance": [
+        "Each resolution has an explicit reviewed correction, source-backed priority/exception, separate theory or unresolved disposition.",
+        "Original norms, failed interpretations and rejected repairs remain reproducible; models cannot resolve legal disputes by consensus."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "review_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:review",
+        "result:LAC-054:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_review_admission.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-054"
+      ],
+      "gate": "semantic_review",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-055",
+      "goal_id": "LAC-G063",
+      "title": "Gate global semantic graph admission",
+      "depends_on": [
+        "LAC-046",
+        "LAC-053",
+        "LAC-054",
+        "LAC-024",
+        "LAC-064"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "evaluation",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Implement admission for a declared complete jurisdiction/time/profile closure with reviewed source meaning, checked dependencies and consistency evidence.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/typed_adapter.py",
+        "ipfs_datasets_py/logic/legal_ir/constraint_query.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/typed_adapter.py",
+        "ipfs_datasets_py/logic/legal_ir/constraint_query.py",
+        "data/legal_autoformalization_convergence/LAC-055"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-055/result.json"
+      ],
+      "acceptance": [
+        "Unknown/conflicting/unsupported theories remain published as gaps or separate alternatives, not accepted unconditional axioms.",
+        "A corpus snapshot lists exact checked scope and assumptions; every accepted change revalidates impacted consistency obligations."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:consistency",
+        "result:LAC-055:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/typed_adapter.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/constraint_query.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-055"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-060",
+      "goal_id": "LAC-G071",
+      "title": "Specify semantic Lean lowering contracts",
+      "depends_on": [
+        "LAC-020",
+        "LAC-021",
+        "LAC-050",
+        "LAC-006"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "lean_semantics",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Reuse existing source-family and definition/norm lowerings with a declared semantic prelude for sorts, quantities, deontic/temporal/defeasible profiles and translation classes.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/legal_source_family_bridge.py",
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_lake.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_source_family_bridge.py",
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_lake.py",
+        "data/legal_autoformalization_convergence/LAC-060"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-060/result.json"
+      ],
+      "acceptance": [
+        "Every supported AST constructor has typed lowering and preservation obligations; missing family/construct is an explicit gap.",
+        "Opaque atom reification, fingerprint theorems and source-text transport cannot count as semantic lowering."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:lean",
+        "result:LAC-060:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_source_family_bridge.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_lake.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-060"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-061",
+      "goal_id": "LAC-G071",
+      "title": "Generate namespaced concept definition and rule modules",
+      "depends_on": [
+        "LAC-060",
+        "LAC-040",
+        "LAC-043"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "lean_compiler",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Build a common Lean package using graph dependency roots, deterministic names, imports and per-theory namespaces. Handle recursive definitions through declared semantics and SCC modules.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/legal_source_family_bridge.py",
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_lake.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_source_family_bridge.py",
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_lake.py",
+        "data/legal_autoformalization_convergence/LAC-061"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-061/result.json"
+      ],
+      "acceptance": [
+        "Module manifests bind complete source/AST/graph/translation identities; no hard cap silently truncates clauses or term users.",
+        "Statute declarations and interpretation assumptions stay distinct from derived theorems; all unsupported constructs refuse."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:lean",
+        "result:LAC-061:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_source_family_bridge.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_lake.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-061"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-062",
+      "goal_id": "LAC-G072",
+      "title": "Attach proof obligations and audit kernel assumptions",
+      "depends_on": [
+        "LAC-060",
+        "LAC-006",
+        "LAC-081"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "lean_checker",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Reuse the kernel Lean backend and existing tactician/hammer proposal interfaces for exact theorem/import/proof/toolchain checking and #print axioms audits.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/backends/kernel/lean.py",
+        "ipfs_datasets_py/logic/autoformal/legal_family_routes.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/backends/kernel/lean.py",
+        "ipfs_datasets_py/logic/autoformal/legal_family_routes.py",
+        "data/legal_autoformalization_convergence/LAC-062"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-062/result.json"
+      ],
+      "acceptance": [
+        "Reject sorry/sorryAx/admit or unauthorized custom axioms, including transitive imports; standard logical axioms are explicitly allowlisted by profile.",
+        "Every theorem binds the exact proposition and premise snapshot; build success alone is separate from proof and source-meaning evidence."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "prover_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:kernel",
+        "result:LAC-062:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/backends/kernel/lean.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_family_routes.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-062"
+      ],
+      "gate": "solver",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-063",
+      "goal_id": "LAC-G072",
+      "title": "Execute real bounded Lean builds",
+      "depends_on": [
+        "LAC-061",
+        "LAC-062",
+        "LAC-044",
+        "LAC-082"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "lean_checker",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Build exact generated semantic modules through the existing installed pinned toolchain and actual declared Lake target; capture output modules, failures, binary hashes and axiom reports.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/backends/kernel/lean.py",
+        "ipfs_datasets_py/logic/autoformal/legal_family_routes.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/backends/kernel/lean.py",
+        "ipfs_datasets_py/logic/autoformal/legal_family_routes.py",
+        "data/legal_autoformalization_convergence/LAC-063"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-063/result.json"
+      ],
+      "acceptance": [
+        "All expected .olean modules exist and match the declaration manifest; no stale/fingerprint-only artifact receives semantic proof credit.",
+        "Failed builds retain diagnostics and repair tasks; provider text or a prior build cannot confer current admission."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "prover_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:kernel",
+        "result:LAC-063:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/backends/kernel/lean.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_family_routes.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-063"
+      ],
+      "gate": "solver",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-064",
+      "goal_id": "LAC-G073",
+      "title": "Check graph to Lean composition and incremental rebuilds",
+      "depends_on": [
+        "LAC-063",
+        "LAC-053",
+        "LAC-045"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "lean_compiler",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Prove supported AST/graph/lowering preservation properties and check cross-module dependency bindings; rebuild changed descendants and compare with a clean build.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/legal_source_family_bridge.py",
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_lake.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_source_family_bridge.py",
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_lake.py",
+        "data/legal_autoformalization_convergence/LAC-064"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-064/result.json"
+      ],
+      "acceptance": [
+        "Source/definition/authority changes invalidate exact theorem consumers; clean and incremental builds have equivalent declarations and checked assumptions.",
+        "Hash equality only proves identity; source review and semantic translation obligations remain explicit."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "prover_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:lean",
+        "result:LAC-064:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_source_family_bridge.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_lake.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-064"
+      ],
+      "gate": "solver",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-070",
+      "goal_id": "LAC-G081",
+      "title": "Define doctrine records and source authority boundaries",
+      "depends_on": [
+        "LAC-020",
+        "LAC-050",
+        "LAC-012"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "doctrine_schema",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Add a doctrine composition layer over existing LegalIR rather than a new logic family. Bind doctrine propositions to sources, jurisdiction, time, interpretation, prerequisites, defeaters and derivation DAGs.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/extended_contracts.py",
+        "ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/extended_contracts.py",
+        "ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py",
+        "data/legal_autoformalization_convergence/LAC-070"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-070/result.json"
+      ],
+      "acceptance": [
+        "Statutory theories, inferred organizational clusters and case-derived doctrines have distinct authority classes.",
+        "No doctrine is asserted solely because spans cluster in embedding space; every normative proposition has identified premises or explicit unproved interpretation."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:ir",
+        "result:LAC-070:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/extended_contracts.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/logic_slice_v2.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-070"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-071",
+      "goal_id": "LAC-G081",
+      "title": "Prepare authoritative doctrine source packets",
+      "depends_on": [
+        "LAC-070",
+        "LAC-010",
+        "LAC-013",
+        "LAC-014"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "review",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "manual",
+      "objective": "Start with one reviewed connected statutory doctrine neighborhood. For case-derived extensions, pin full judgments and record court, holding/dictum, procedural posture, date, jurisdiction and subsequent treatment.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+        "ipfs_datasets_py/logic/formalization/coherent_spans.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+        "ipfs_datasets_py/logic/formalization/coherent_spans.py",
+        "data/legal_autoformalization_convergence/LAC-071"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-071/result.json"
+      ],
+      "acceptance": [
+        "Case precedential force is explicitly reviewed; statutes alone cannot establish a claim about a court holding.",
+        "New source classes have their own intake/version/exposure contracts; unresolved authority is preserved."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "review_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:context",
+        "result:LAC-071:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/formalization/coherent_spans.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-071"
+      ],
+      "gate": "semantic_review",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-072",
+      "goal_id": "LAC-G082",
+      "title": "Compose doctrine candidates and counterexample obligations",
+      "depends_on": [
+        "LAC-071",
+        "LAC-044",
+        "LAC-051",
+        "LAC-060"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "doctrine_reasoning",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Construct source-grounded doctrine arguments from accepted concepts, definitions and norms using explicit inference rules, assumptions and defeaters; retrieval/model output remains proposed.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_bridge.py",
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_bridge.py",
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "data/legal_autoformalization_convergence/LAC-072"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-072/result.json"
+      ],
+      "acceptance": [
+        "Each step names premises, substitutions, applicability and authority; missing premises produce open obligations.",
+        "Generate positive, negative and boundary scenarios including exceptions and competing interpretations; no new rule is invented to complete an argument."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:definition",
+        "result:LAC-072:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_source_definition_norm_bridge.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-072"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-073",
+      "goal_id": "LAC-G082",
+      "title": "Check doctrine derivations in separate legal theories",
+      "depends_on": [
+        "LAC-072",
+        "LAC-055",
+        "LAC-063",
+        "LAC-062"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "doctrine_reasoning",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Check supported doctrine consequences under explicit premise/interpretation contexts and retain alternative theories, proof obligations, countermodels and unknown outcomes.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/backends/kernel/lean.py",
+        "ipfs_datasets_py/logic/autoformal/legal_family_routes.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/backends/kernel/lean.py",
+        "ipfs_datasets_py/logic/autoformal/legal_family_routes.py",
+        "data/legal_autoformalization_convergence/LAC-073"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-073/result.json"
+      ],
+      "acceptance": [
+        "Doctrine proofs replay under exact accepted source and theory roots; inconsistent premises cannot make arbitrary consequences appear valid.",
+        "Where source-faithful interpretation cannot be mechanically checked, independent review remains required and the proof claim stays conditional."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "prover_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:kernel",
+        "result:LAC-073:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/backends/kernel/lean.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_family_routes.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-073"
+      ],
+      "gate": "solver",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-074",
+      "goal_id": "LAC-G083",
+      "title": "Evaluate and review doctrine fidelity",
+      "depends_on": [
+        "LAC-073",
+        "LAC-071",
+        "LAC-015",
+        "LAC-054"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "review",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "manual",
+      "objective": "Independently review the doctrinal statement, scope, supporting authority, exceptions and derived scenarios; compare complete doctrine outcomes rather than isolated sentence scores.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "ipfs_datasets_py/logic/autoformal/legal_review_admission.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "ipfs_datasets_py/logic/autoformal/legal_review_admission.py",
+        "data/legal_autoformalization_convergence/LAC-074"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-074/result.json"
+      ],
+      "acceptance": [
+        "Every accepted doctrine has reviewed meaning, provenance, qualified supported derivations and explicit unresolved alternatives.",
+        "Contrary authority and source amendments trigger doctrine invalidation; a user query cannot silently switch jurisdiction or legal time."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "review_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:review",
+        "result:LAC-074:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/legal_review_admission.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-074"
+      ],
+      "gate": "semantic_review",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-075",
+      "goal_id": "LAC-G083",
+      "title": "Propagate doctrinal change and regression evidence",
+      "depends_on": [
+        "LAC-074",
+        "LAC-045",
+        "LAC-064"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "doctrine_incremental",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Extend reverse dependencies from source units through definitions/rules/theories to doctrine claims and checked consequences; add source-update and conflicting-authority regressions.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py"
+      ],
+      "owned_paths": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "data/legal_autoformalization_convergence/LAC-075"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-075/result.json"
+      ],
+      "acceptance": [
+        "Every affected doctrine reopens after a relevant amendment, overruling or interpretation change; unaffected roots remain reusable.",
+        "Published doctrine completeness identifies the exact source corpus and checked coverage rather than claiming universal doctrine discovery."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:graph",
+        "result:LAC-075:input_root",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "path:ipfs_datasets_py:ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-075"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-080",
+      "goal_id": "LAC-G091",
+      "title": "Validate native supervisor planning and import compatibility",
+      "depends_on": [
+        "LAC-001",
+        "LAC-006"
+      ],
+      "repository": "ipfs_accelerate_py",
+      "lane": "control",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Compile this authoring manifest to actual Markdown task/objective projections and verify current parsers, task identity, supported CLI transport, dependency semantics and metadata preservation before any ingest.",
+      "existing_owners": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-080"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-080/result.json"
+      ],
+      "acceptance": [
+        "Native parsing agrees with JSON hierarchy/DAG and outputs; no generic JSON ingest path may silently drop outputs/acceptance metadata.",
+        "Create a separate campaign namespace/state root; old boards/providers/configurations are untouched and validate operations with hidden meta-index writes are identified.",
+        "Materialize repository-specific boards or fully qualified umbrella/submodule paths; custom Repository metadata alone cannot select a worker checkout. Freeze actual executable validation commands before dispatch."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_accelerate_py:supervisor",
+        "result:LAC-080:input_root",
+        "path:ipfs_accelerate_py:data/legal_autoformalization_convergence/LAC-080"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-081",
+      "goal_id": "LAC-G091",
+      "title": "Bind executable jobs and evidence based completion",
+      "depends_on": [
+        "LAC-080"
+      ],
+      "repository": "ipfs_accelerate_py",
+      "lane": "control",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Use current supervisor task/result CAS, leases, worktree isolation and serialized merges. Add thin adapters for data, model, graph, review and prover jobs with immutable typed results and explicit checker roles. Bootstrap the generic envelope from existing runtime primitives; register LegalIR-specific checker payloads only after LAC-020 seals their contract.",
+      "existing_owners": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py"
+      ],
+      "owned_paths": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+        "data/legal_autoformalization_convergence/LAC-081"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-081/result.json"
+      ],
+      "acceptance": [
+        "Task status alone cannot satisfy semantic goals; accepted result binds task revision, inputs, code, lease fence, outputs, commands, coverage and independent acceptance.",
+        "Duplicate/stale attempts cannot overwrite accepted roots; model/provider output cannot self-attest correctness."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_accelerate_py:results",
+        "result:LAC-081:input_root",
+        "path:ipfs_accelerate_py:ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py",
+        "path:ipfs_accelerate_py:ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+        "path:ipfs_accelerate_py:data/legal_autoformalization_convergence/LAC-081"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-082",
+      "goal_id": "LAC-G092",
+      "title": "Admit resources and reviewer capabilities per stage",
+      "depends_on": [
+        "LAC-080",
+        "LAC-006"
+      ],
+      "repository": "ipfs_accelerate_py",
+      "lane": "control",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Map the proposed resource classes onto existing resource_scheduler and local training guardian, prove capacity from current telemetry and charge retained storage. Separate code workers, numerical jobs, checkers and independent reviewers.",
+      "existing_owners": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py"
+      ],
+      "owned_paths": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+        "data/legal_autoformalization_convergence/LAC-082"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-082/result.json"
+      ],
+      "acceptance": [
+        "Start at three implementation lanes and one independent validation role, with numerical/prover concurrency limited by measured capacity.",
+        "Own leases, process groups and integration worktrees only; no cap increase, foreign cleanup, shared mutable model or hidden provider fallback.",
+        "Translate file-level exclusive keys to actual shared lease claims and test collisions; declarations in this plan alone do not enforce exclusion. Serialize shared-code bootstrap work until claims are qualified."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_accelerate_py:resources",
+        "result:LAC-082:input_root",
+        "path:ipfs_accelerate_py:ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+        "path:ipfs_accelerate_py:ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+        "path:ipfs_accelerate_py:data/legal_autoformalization_convergence/LAC-082"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-083",
+      "goal_id": "LAC-G093",
+      "title": "Prioritize bounded repair and corpus shard tasks",
+      "depends_on": [
+        "LAC-081",
+        "LAC-082",
+        "LAC-003",
+        "LAC-005"
+      ],
+      "repository": "ipfs_accelerate_py",
+      "lane": "control",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Use objective graph/backlog refinery to generate immutable bounded shard jobs by missing dependency fanout, uncertainty, construction rarity, conflict severity and expected validated coverage per cost.",
+      "existing_owners": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py"
+      ],
+      "owned_paths": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py",
+        "data/legal_autoformalization_convergence/LAC-083"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-083/result.json"
+      ],
+      "acceptance": [
+        "All priority terms and stable tie breaks are recorded; repeated no-progress tasks stop at finite budgets and become explicit capability/review work.",
+        "Refill cannot rewrite protected goals, policies, splits or completed history; deterministic sharding avoids duplicate source generations."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_accelerate_py:supervisor",
+        "result:LAC-083:input_root",
+        "path:ipfs_accelerate_py:ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "path:ipfs_accelerate_py:ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py",
+        "path:ipfs_accelerate_py:data/legal_autoformalization_convergence/LAC-083"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-084",
+      "goal_id": "LAC-G092",
+      "title": "Test interruption stale leases and concurrent writes",
+      "depends_on": [
+        "LAC-081",
+        "LAC-082",
+        "LAC-083"
+      ],
+      "repository": "ipfs_accelerate_py",
+      "lane": "control",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Inject failures across inference, graph aggregation, proof checks, source refresh, merge and manifest sealing; resume from durable cursors with accepted-result compare-and-swap.",
+      "existing_owners": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py"
+      ],
+      "owned_paths": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+        "data/legal_autoformalization_convergence/LAC-084"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-084/result.json"
+      ],
+      "acceptance": [
+        "No lost source dispositions, duplicated accepted effects, torn result acceptance or stale lease commit after restart.",
+        "Disjoint jobs overlap safely; shared schema/corpus/promotion owners serialize, with original failed attempts retained."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_accelerate_py:results",
+        "result:LAC-084:input_root",
+        "path:ipfs_accelerate_py:ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py",
+        "path:ipfs_accelerate_py:ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+        "path:ipfs_accelerate_py:data/legal_autoformalization_convergence/LAC-084"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Isolated task worktree edits within declared ownership; additive versioned schemas and retained evidence."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-085",
+      "goal_id": "LAC-G093",
+      "title": "Expose cross layer convergence metrics and repair queues",
+      "depends_on": [
+        "LAC-023",
+        "LAC-046",
+        "LAC-052",
+        "LAC-081",
+        "LAC-083"
+      ],
+      "repository": "ipfs_accelerate_py",
+      "lane": "evaluation",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Report source denominator and exclusive dispositions, reviewed/accepted coverage, semantic precision/abstention, graph closure, conflicts, Lean obligations, doctrine status and CPU/GPU/prover/review cost.",
+      "existing_owners": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-085"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-085/result.json"
+      ],
+      "acceptance": [
+        "Coverage and correctness are separate at every layer; pending/unreviewed/unknown cases remain in denominators.",
+        "Metrics are bound to exact release/profile/exposure/checkpoint roots; no extrapolated all-law accuracy from authored panels."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_accelerate_py:supervisor",
+        "result:LAC-085:input_root",
+        "path:ipfs_accelerate_py:data/legal_autoformalization_convergence/LAC-085"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-090",
+      "goal_id": "LAC-G101",
+      "title": "Run an early end to end constructed neighborhood",
+      "depends_on": [
+        "LAC-020",
+        "LAC-022",
+        "LAC-040",
+        "LAC-050",
+        "LAC-060",
+        "LAC-070",
+        "LAC-081",
+        "LAC-082"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "integration",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Wire a small constructed neighborhood with definitions, cross-section reference, exception, two norms and one derived statutory doctrine fixture through source-to-IR-to-graph-to-Lean interfaces before broad fitting.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-090"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-090/result.json"
+      ],
+      "acceptance": [
+        "Validate transport, dependency and rejection paths with missing references and seeded conflicts; fixture success is explicitly not statutory qualification.",
+        "Produce one complete trace and executable contract failures for every layer, enabling parallel owners to integrate early."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_medium",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:graph",
+        "result:LAC-090:input_root",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-090"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-091",
+      "goal_id": "LAC-G101",
+      "title": "Qualify a connected real law pilot",
+      "depends_on": [
+        "LAC-014",
+        "LAC-015",
+        "LAC-023",
+        "LAC-044",
+        "LAC-046",
+        "LAC-055",
+        "LAC-064",
+        "LAC-074",
+        "LAC-084",
+        "LAC-090"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "integration",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Process a bounded reviewed statutory neighborhood through the actual best supported route; deterministic compiler and selected learned routes are compared without requiring a learned winner.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-091"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-091/result.json"
+      ],
+      "acceptance": [
+        "All accepted spans/edges/doctrines have complete source-review, dependency, consistency and checked-lowering evidence; every rejected item has an actionable disposition.",
+        "Independent replay reproduces accepted roots and invalidates seeded defects; release may remain partial with known gaps."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_medium",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:graph",
+        "result:LAC-091:input_root",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-091"
+      ],
+      "gate": "pilot",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-092",
+      "goal_id": "LAC-G102",
+      "title": "Roll out by complete title and dependency neighborhoods",
+      "depends_on": [
+        "LAC-091",
+        "LAC-036",
+        "LAC-083",
+        "LAC-085"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "integration",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Expand from the qualified pilot into bounded section/title/dependency shards, then other admitted legal corpora. Use existing caches and restartable workers; prioritize shared definitions and high-fanout repairs.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/paired_span_census.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legacy_span_intake.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-092"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-092/result.json"
+      ],
+      "acceptance": [
+        "Every frozen source occurrence has exactly one current disposition; aggregate counts reconcile with the source inventory.",
+        "Scale has no looser correctness gate; unsupported construction classes create bounded extension goals rather than becoming accepted by volume."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "io_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:source",
+        "result:LAC-092:input_root",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-092"
+      ],
+      "gate": "rollout",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-093",
+      "goal_id": "LAC-G102",
+      "title": "Run continuous amendment and authority refresh checks",
+      "depends_on": [
+        "LAC-092",
+        "LAC-045",
+        "LAC-053",
+        "LAC-064",
+        "LAC-075",
+        "LAC-084"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "integration",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Create new immutable generations for source amendments, definition changes, authority changes and model/semantic-profile updates; process reverse dependency closure and compare unchanged roots.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/autoformal/paired_span_census.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legacy_span_intake.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-093"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-093/result.json"
+      ],
+      "acceptance": [
+        "No stale span, graph assertion, theorem or doctrine remains accepted after a relevant change.",
+        "Retention, source fidelity and full checked-scope coverage are replayed on changed closures; unknown external changes remain visible."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "io_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:source",
+        "result:LAC-093:input_root",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-093"
+      ],
+      "gate": "rollout",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-094",
+      "goal_id": "LAC-G103",
+      "title": "Prepare reproducible corpus and model release manifests",
+      "depends_on": [
+        "LAC-091",
+        "LAC-085",
+        "LAC-064",
+        "LAC-075"
+      ],
+      "repository": "ipfs_accelerate_py",
+      "lane": "release",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "auto",
+      "objective": "Prepare versioned source/cache/graph/Lean/model/evaluation manifests, model and dataset cards, known-gap inventories and exact dependency/toolchain recipes using existing release helpers.",
+      "existing_owners": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-094"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-094/result.json"
+      ],
+      "acceptance": [
+        "Redownload/readback hashes and clean build instructions are reviewable; prior releases/checkpoints remain preserved.",
+        "Publication is a separate configured action; preparation grants no new semantic, proof or default-model authority."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "cpu_small",
+      "exclusive_keys": [
+        "code:ipfs_accelerate_py:results",
+        "result:LAC-094:input_root",
+        "path:ipfs_accelerate_py:data/legal_autoformalization_convergence/LAC-094"
+      ],
+      "gate": "implementation",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    },
+    {
+      "id": "LAC-095",
+      "goal_id": "LAC-G103",
+      "title": "Perform independent final acceptance and residual goal audit",
+      "depends_on": [
+        "LAC-092",
+        "LAC-093",
+        "LAC-094",
+        "LAC-036",
+        "LAC-055",
+        "LAC-074"
+      ],
+      "repository": "ipfs_datasets_py",
+      "lane": "review",
+      "priority": "P0",
+      "status": "todo",
+      "completion": "manual",
+      "objective": "Review all goal evidence against the frozen source scope and explicitly report accepted coverage, remaining ambiguous/unsupported/conflicting cases, fresh evaluation, resources and next bounded goals.",
+      "existing_owners": [
+        "ipfs_datasets_py/logic/legal_ir/statutory_review_recording.py",
+        "ipfs_datasets_py/logic/autoformal/legal_review_admission.py"
+      ],
+      "owned_paths": [
+        "data/legal_autoformalization_convergence/LAC-095"
+      ],
+      "outputs": [
+        "data/legal_autoformalization_convergence/LAC-095/result.json"
+      ],
+      "acceptance": [
+        "The root goal is complete only when its exact declared scope and gates are met; a drained board or exhausted budget is not completion.",
+        "Do not claim every legal interpretation is correct; enumerate the accepted theory/profile corpus and remaining interpretation/authority gaps."
+      ],
+      "validation": [
+        "Run focused existing owner tests plus new behavioral cases for these acceptance criteria.",
+        "Replay the result independently from immutable inputs; record command, coverage, failures, and output hashes."
+      ],
+      "resource_profile": "review_bounded",
+      "exclusive_keys": [
+        "code:ipfs_datasets_py:review",
+        "result:LAC-095:input_root",
+        "path:ipfs_datasets_py:data/legal_autoformalization_convergence/LAC-095"
+      ],
+      "gate": "release",
+      "allowed_effects": [
+        "Task-specific evidence, job packets and new bounded test/driver files within the owned directory; existing_owners are read-only context. Production-owner changes require a separately scoped implementation task."
+      ],
+      "inputs": [
+        "Accepted dependency result roots; exact source tree and producer closure; current campaign policy.",
+        "References to upstream results are identities, not permission to expose all upstream payloads; materialize only role-authorized fields."
+      ]
+    }
+  ],
+  "resource_profiles": {
+    "cpu_small": {
+      "cpu_slots": 2,
+      "memory_mib": 4096,
+      "wall_seconds": 1800,
+      "gpu": 0,
+      "retained_storage_mib": 1024
+    },
+    "cpu_medium": {
+      "cpu_slots": 4,
+      "memory_mib": 12288,
+      "wall_seconds": 3600,
+      "gpu": 0,
+      "retained_storage_mib": 4096
+    },
+    "io_bounded": {
+      "cpu_slots": 2,
+      "memory_mib": 4096,
+      "wall_seconds": 3600,
+      "gpu": 0,
+      "retained_storage_mib": 8192
+    },
+    "model_screen": {
+      "cpu_slots": 2,
+      "memory_mib": 1536,
+      "wall_seconds": 300,
+      "gpu": 0,
+      "retained_storage_mib": 200,
+      "note": "Initial finite cell ceiling follows latest retained runs; admit measured preparation separately; repeat cells only under the sealed experiment budget."
+    },
+    "prover_bounded": {
+      "cpu_slots": 2,
+      "memory_mib": 4096,
+      "wall_seconds": 1800,
+      "per_obligation_seconds": 60,
+      "gpu": 0,
+      "retained_storage_mib": 1024
+    },
+    "review_bounded": {
+      "cpu_slots": 1,
+      "memory_mib": 1024,
+      "wall_seconds": 1800,
+      "gpu": 0,
+      "retained_storage_mib": 256,
+      "note": "Reviewer availability is an external capability; timing out never grants review. Human work may be resumed as a separately leased packet."
+    }
+  },
+  "policy": {
+    "status": "prepared_not_launched",
+    "initial_scope": "Pinned US Code source and span/entity caches; other legal corpora and case law require separately admitted source generations.",
+    "correctness": "All accepted records pass their applicable evidence vector; ambiguous, conflicting, unknown and unsupported material stays explicit. No promise that arbitrary natural-language interpretation is mechanically decidable.",
+    "source_semantic_admission": "Every accepted semantic record carries independent authenticated source/context/target review, or an independently qualified proof-carrying restricted-grammar checker applied to that exact record. Template matching and model consensus alone cannot admit meaning; checker-derived evidence is never labeled human review.",
+    "global_consistency": "Checked consistency of a complete declared jurisdiction/time/profile/dependency theory. Competing historical or interpretive theories remain separate; actual source conflict is preserved.",
+    "launch_gate": "LAC-001 and LAC-006 freeze current authorities; LAC-080 verifies actual supervisor transport; LAC-081/082 bind execution/results/resources. This plan starts no campaign.",
+    "independent_review": "The producer cannot accept its own result. Authentication and competence scope are part of semantic review; model consensus is not independent legal authority.",
+    "finite_budgets": {
+      "max_attempts_per_task_input": 3,
+      "max_no_progress_refills": 2,
+      "initial_implementation_lanes": 3,
+      "independent_validation_roles": 1,
+      "numerical_jobs_default": 1,
+      "provider_model": "Existing explicitly capability-probed configuration; no new model or fallback assumed."
+    },
+    "checkpoint_policy": "Warm starts and full optimizer resumes are separately named; use exact compatible donor and declared loader. Never overwrite historical checkpoints.",
+    "unknown_policy": "Timeout, missing context, solver unknown, exhausted budget and reviewer unavailability cannot satisfy a correctness gate.",
+    "protected_artifacts": [
+      "plan.md",
+      "goals.objectives.md",
+      "tasks.todo.md",
+      "tasks.json",
+      "campaign.json",
+      "evidence_baseline.json",
+      "validate_plan.py"
+    ],
+    "numerical_input_isolation": "TRAIN/development targets only inside numerical children; confirmation references and target-bearing context are held by an independent scorer until candidate/policy freeze. Upstream result identity does not grant blanket payload access.",
+    "bootstrap_allowlist": [
+      "LAC-001",
+      "LAC-002",
+      "LAC-003",
+      "LAC-005",
+      "LAC-006",
+      "LAC-080",
+      "LAC-081",
+      "LAC-082"
+    ],
+    "bootstrap_execution": "Finite inventory/code-only work under existing supervisor tests, current resource admission and independent review. No bulk numerical/corpus/Lean dispatch until LAC-080/081/082 pass; setup cannot depend on its own future adapters.",
+    "projection_materialization": "Native Markdown is structurally validated planning input. LAC-080 must bind checkout-relative ownership and real executable validation commands before live dispatch; custom resource/exclusion/gate metadata is otherwise advisory."
+  }
+}

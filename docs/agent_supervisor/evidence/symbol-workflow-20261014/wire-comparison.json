@@ -1,0 +1,36 @@
+{
+  "definition_vs_whole_compact_bytes_reduction_fraction": 0.6219812715623461,
+  "definitions": 32,
+  "observations": {
+    "definition_compact": {
+      "fixture_reply_tokens": 84,
+      "fixture_request_tokens": 58,
+      "reply_bytes": 518,
+      "representation": "compact",
+      "request_and_reply_bytes": 767,
+      "request_bytes": 249
+    },
+    "whole_compact": {
+      "fixture_reply_tokens": 471,
+      "fixture_request_tokens": 52,
+      "reply_bytes": 1858,
+      "representation": "compact",
+      "request_and_reply_bytes": 2029,
+      "request_bytes": 171
+    },
+    "whole_original": {
+      "fixture_reply_tokens": 823,
+      "fixture_request_tokens": 52,
+      "reply_bytes": 4291,
+      "representation": "original",
+      "request_and_reply_bytes": 4463,
+      "request_bytes": 172
+    }
+  },
+  "provider_usage_measured": false,
+  "schema": "authored-symbol-read-wire-comparison@1",
+  "scope": "one repository_read request and complete reply per arm; identical preceding query excluded",
+  "terminal_bench_success_measured": false,
+  "tokenizer": "authored-tiny-wordlevel-fixture",
+  "total_session_token_savings": null
+}

@@ -1,0 +1,445 @@
+{
+  "artifacts": [
+    {
+      "bytes": 15879,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/candidate-broker-01.log",
+      "sha256": "6088267f9284e162a42dffcc09db6ce95833587fa80a18cd3cf5c79f509c1233"
+    },
+    {
+      "bytes": 16982,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/candidate-broker-01.xml",
+      "sha256": "ac120d606bd579e9553ccbb40b28eea031b89b7692519cf91e108d17688f8f4e"
+    },
+    {
+      "bytes": 110,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/candidate-broker-02.log",
+      "sha256": "d6a5dc24b57b16144197ffd0091f970c6763283463e7f436e9b645131e597056"
+    },
+    {
+      "bytes": 3901,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/candidate-broker-02.xml",
+      "sha256": "2c6918fc1da96bb013eb8bbfc679493ec37cc22d0c7803f5a9f61dfb24af4ecb"
+    },
+    {
+      "bytes": 570,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/candidate-client-01-result.json",
+      "sha256": "60c0373a295a9dc93394f5aca66a270daa7cf372bd79ba5bd922184d79463c78"
+    },
+    {
+      "bytes": 939,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/candidate-client-01.log",
+      "sha256": "a51dd9458c872fc93f77e0b4b23e5d6eb4fc4df987661bab3b7f6d5d37d3d2fc"
+    },
+    {
+      "bytes": 27688,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/candidate-client-01.xml",
+      "sha256": "40fc77a4f4f3495c85c2077e350d63844db538ed76c7c73ae1e1ce8c223362af"
+    },
+    {
+      "bytes": 569,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/candidate-client-02-result.json",
+      "sha256": "dc08238dac07995bac979b1a9e81c5ae57dbb6ba171624b6ef70e21f8e1aa650"
+    },
+    {
+      "bytes": 260,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/candidate-client-02.log",
+      "sha256": "a25788ecc2f8d29f81c99ce8982f491f1ad3e895a0b5a8b967584a5afff5c0fa"
+    },
+    {
+      "bytes": 27422,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/candidate-client-02.xml",
+      "sha256": "bb54f2f7c9532315db1a8741a4ec12c1aa66ab6683505506d06d5b27323fce85"
+    },
+    {
+      "bytes": 1031,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-01.log",
+      "sha256": "bc762473d34cd770703a8c0232cbd6914ee6c1928b65191e843f49728b9ef195"
+    },
+    {
+      "bytes": 1768,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-01.xml",
+      "sha256": "76326616cda29c35ba776ada6a726d899f2aac37e9ba085110f16e135dc98361"
+    },
+    {
+      "bytes": 2862,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-02.log",
+      "sha256": "15c46d352bce0540b7093e608e1bb871710c30bf6fa93d3d0e842eb4b0921784"
+    },
+    {
+      "bytes": 7066,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-02.xml",
+      "sha256": "ca8d2e52b8ccc6d1a911409a3995cc9828c0622f98ad17d511e923ef667fa386"
+    },
+    {
+      "bytes": 100,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-03.log",
+      "sha256": "0931c10839a12a9f334be727c7269b089c571924ef8a6416e6ebf6a23f625e3b"
+    },
+    {
+      "bytes": 2451,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-03.xml",
+      "sha256": "4fd4605d5d3f65a41404d5da968d8f4013196533cadd78c763d5ff77d1d63e4f"
+    },
+    {
+      "bytes": 544,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-result-01.json",
+      "sha256": "bf86dc606738d002e980e7f9d3c7f3638788505648bbb7754e7c5ee75e8fa25b"
+    },
+    {
+      "bytes": 545,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-result-02.json",
+      "sha256": "dd3044452489d9f9bf07ff8222da836a9c0339214f29d4cfe5448c3c51074781"
+    },
+    {
+      "bytes": 528,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-result-03.json",
+      "sha256": "883ac0062607d4479d190895eacf1f060ee581d3742bd6296d993d34f488f322"
+    },
+    {
+      "bytes": 1168,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-source-pins-01.json",
+      "sha256": "9b7a40b46324824a44224265a383759fe6d5998848d89125c1d639c6e9775201"
+    },
+    {
+      "bytes": 1441,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-source-pins-02.json",
+      "sha256": "73f8428d48acde7706fab7d85658bf49ca61fe2455c284dcc9d99934177576e0"
+    },
+    {
+      "bytes": 1441,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/native-pipeline-source-pins-03.json",
+      "sha256": "7348ebbb2e43705511d81d927b46d8b6356f2cf056d847004d3165d5efb6489b"
+    },
+    {
+      "bytes": 15734,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/prompt-01.log",
+      "sha256": "114ccdb66b8265888e56d9d0fe9cf439b2b57489ea314e8b922fff5a149ccd3a"
+    },
+    {
+      "bytes": 9968,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/prompt-01.xml",
+      "sha256": "541479930e0bc933575b19b6f5cde429841d50ad8219b2c18069d0d124eac755"
+    },
+    {
+      "bytes": 110,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/prompt-02.log",
+      "sha256": "8e8d2381a0bb206f07419aa8301e56500ba75dc73b5d5924beecd9f4d8663502"
+    },
+    {
+      "bytes": 3937,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/prompt-02.xml",
+      "sha256": "a8e487b79c3f81a7a8d1649b9160d546053dfc193d6b22d480f5735da34c1496"
+    },
+    {
+      "bytes": 832,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/qualification-01.log",
+      "sha256": "22543484e826fc650c734190aa49f23b65dcab5bc67949917c1c85900b4df0c6"
+    },
+    {
+      "bytes": 114746,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/qualification-01.xml",
+      "sha256": "9017bd0a77ac2c1006169a3d4c1b0e0f5c192eb3b73473a78a246772b8e3e18a"
+    },
+    {
+      "bytes": 2351,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/qualification-result-01.json",
+      "sha256": "56413747065124e2714eb2b847d8e755f11f938e8ef98fe199fba1a5c70db53d"
+    },
+    {
+      "bytes": 3241,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/qualification-source-pins-01.json",
+      "sha256": "f0b26ac0d9b561753a5e30300c9ca21276273b559cbbacfe4a5f6c801c1dda22"
+    },
+    {
+      "bytes": 4572,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/qualify-01.py",
+      "sha256": "ae3c4ca7677d9c7cde38c5765097affd673d38b156e0d04dade765fe55105034"
+    },
+    {
+      "bytes": 5492,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/record-qualification.py",
+      "sha256": "7eb0b78654cb682a4729988e9bbb8b500ab256d684fc5bb9dfd49a317eae2e89"
+    },
+    {
+      "bytes": 2704,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/run-native-pipeline-01.py",
+      "sha256": "13cf7b756b67b5a8a09a7dfe7e8f1793c89409d224b037b08a235cd1f81c7418"
+    },
+    {
+      "bytes": 2704,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/run-native-pipeline-02.py",
+      "sha256": "dfbad505dc4ebb98a5b7cb65fd23071e5d452d372b134482d5c2cb60d1ea1c6c"
+    },
+    {
+      "bytes": 2704,
+      "path": "/home/barberb/lift_coding/artifacts/candidate-admission-20261014/run-native-pipeline-03.py",
+      "sha256": "8dccc6d747cf4e8de328b1f9bc6ace81adfa2193418e493a4ada5445bd5ea87a"
+    }
+  ],
+  "base_commit": "b6656b3622e4516a5540bd313a23da51ded8292f",
+  "behavior": {
+    "descriptor_schema": "supervisor-worker-candidate-round-descriptor@1",
+    "emitted_lean_binding_change": "SelectionMax -> SelectionMin; prepared_not_built",
+    "exact_native_artifacts_reused": true,
+    "initial_instruction_capture_wired": true,
+    "missing_doctor_residual": "Original launch preserved; candidate requirement capture unavailable.",
+    "no_serialized_checkpoint_admission": true,
+    "ordinary_source_client_rejects_candidate_descriptor": true,
+    "original_deadline_preserved": true,
+    "prepared_candidate_prompt_refused_by_ordinary_router": true,
+    "preserved_original_inputs": [
+      "exact native prompt and suffix",
+      "selected native public-instruction block"
+    ],
+    "prompt_schema": "supervisor-owner-candidate-router-input@1",
+    "read_scope": "Pinned working source and native candidate artifacts only.",
+    "required_text_truncated": false,
+    "source_cursor_admission": "Fresh per session; successful delivery required; prior-session replay refused."
+  },
+  "history": [
+    {
+      "counts": {
+        "failed": 18,
+        "passed": 6
+      },
+      "failed_cases": [
+        "api.test_worker_candidate_round_broker::test_new_session_has_separate_candidate_binding_and_keeps_baseline_stale",
+        "api.test_worker_candidate_round_broker::test_serves_retained_native_artifacts_without_rebuilding_or_promoting",
+        "api.test_worker_candidate_round_broker::test_source_cursors_are_bound_to_delivery_and_this_fresh_session",
+        "api.test_worker_candidate_round_broker::test_candidate_artifact_cursors_cannot_cross_new_sessions",
+        "api.test_worker_candidate_round_broker::test_server_refuses_other_contracts_before_source_work[foreign_generation]",
+        "api.test_worker_candidate_round_broker::test_server_refuses_other_contracts_before_source_work[unpinned]",
+        "api.test_worker_candidate_round_broker::test_server_refuses_other_contracts_before_source_work[baseline]",
+        "api.test_worker_candidate_round_broker::test_server_refuses_other_contracts_before_source_work[discovery]",
+        "api.test_worker_candidate_round_broker::test_server_refuses_other_contracts_before_source_work[edit]",
+        "api.test_worker_candidate_round_broker::test_server_refuses_other_contracts_before_source_work[semantic]",
+        "api.test_worker_candidate_round_broker::test_retained_snapshot_drift_refuses_delivery[candidate]",
+        "api.test_worker_candidate_round_broker::test_retained_snapshot_drift_refuses_delivery[canonical]",
+        "api.test_worker_candidate_round_broker::test_retained_snapshot_drift_refuses_delivery[support]",
+        "api.test_worker_candidate_round_broker::test_retained_snapshot_drift_refuses_delivery[deleted]",
+        "api.test_worker_candidate_round_broker::test_retained_snapshot_drift_refuses_delivery[producer]",
+        "api.test_worker_candidate_round_broker::test_retained_snapshot_drift_refuses_delivery[descriptor]",
+        "api.test_worker_candidate_round_broker::test_session_close_cleans_transport_and_preserves_advisory_accounting",
+        "api.test_worker_candidate_round_broker::test_real_registered_descendant_retrieves_fresh_source_and_candidate_summary"
+      ],
+      "junit": "candidate-broker-01.xml"
+    },
+    {
+      "counts": {
+        "passed": 25
+      },
+      "failed_cases": [],
+      "junit": "candidate-broker-02.xml"
+    },
+    {
+      "counts": {
+        "failed": 1,
+        "passed": 180
+      },
+      "failed_cases": [
+        "api.test_worker_candidate_round_client::test_cli_uses_separate_candidate_environment_and_generation[args0]"
+      ],
+      "junit": "candidate-client-01.xml"
+    },
+    {
+      "counts": {
+        "passed": 181
+      },
+      "failed_cases": [],
+      "junit": "candidate-client-02.xml"
+    },
+    {
+      "counts": {
+        "failed": 1,
+        "passed": 5
+      },
+      "failed_cases": [
+        "api.test_candidate_round_native_pipeline::test_failed_child_to_native_prompt_and_isolated_candidate_reader"
+      ],
+      "junit": "native-pipeline-01.xml"
+    },
+    {
+      "counts": {
+        "failed": 1,
+        "passed": 11
+      },
+      "failed_cases": [
+        "api.test_candidate_round_native_pipeline::test_failed_child_to_native_prompt_and_isolated_candidate_reader"
+      ],
+      "junit": "native-pipeline-02.xml"
+    },
+    {
+      "counts": {
+        "passed": 13
+      },
+      "failed_cases": [],
+      "junit": "native-pipeline-03.xml"
+    },
+    {
+      "counts": {
+        "error": 10,
+        "passed": 14
+      },
+      "failed_cases": [
+        "api.test_owner_candidate_round_prompt::test_real_signed_public_requirement_block_is_retained_after_implementation_edits",
+        "api.test_owner_candidate_round_prompt::test_prepared_public_prompt_refuses_canonical_requirement_or_candidate_drift[source]",
+        "api.test_owner_candidate_round_prompt::test_prepared_public_prompt_refuses_canonical_requirement_or_candidate_drift[artifact]",
+        "api.test_owner_candidate_round_prompt::test_prepared_public_prompt_refuses_canonical_requirement_or_candidate_drift[head]",
+        "api.test_owner_candidate_round_prompt::test_prepared_public_prompt_refuses_canonical_requirement_or_candidate_drift[native_prompt]",
+        "api.test_owner_candidate_round_prompt::test_prepared_public_prompt_refuses_canonical_requirement_or_candidate_drift[candidate]",
+        "api.test_owner_candidate_round_prompt::test_capture_after_source_edits_refused[native]",
+        "api.test_owner_candidate_round_prompt::test_capture_after_source_edits_refused[public]",
+        "api.test_owner_candidate_round_prompt::test_required_prompt_bytes_are_never_truncated_to_fit",
+        "api.test_owner_candidate_round_prompt::test_public_capture_uses_native_current_source_loader_and_rejects_bad_nomination"
+      ],
+      "junit": "prompt-01.xml"
+    },
+    {
+      "counts": {
+        "passed": 24
+      },
+      "failed_cases": [],
+      "junit": "prompt-02.xml"
+    },
+    {
+      "counts": {
+        "passed": 669
+      },
+      "failed_cases": [],
+      "junit": "qualification-01.xml"
+    }
+  ],
+  "history_notes": [
+    "candidate-broker-01 and native-pipeline-01 exposed AF_UNIX socket path overflow from the new longer prefix. Production prefix shortened to round-view so previously fitting boundaries still fit.",
+    "prompt-01: ten authored setup errors used an overlong temporary boundary path; corrected to a short temporary path.",
+    "candidate-client-01: one authored CLI mock parameter collided with source-query path; renamed the fixture parameter, with production unchanged.",
+    "native-pipeline-02 requested a page larger than the existing transport bound. The E2E now uses MAX_FRAME_BYTES and real continuations to reassemble and verify complete native artifacts.",
+    "Final qualification repeats the corrected new cases and existing affected router/source/owner contracts against frozen sources and pinned dependencies."
+  ],
+  "limitations": {
+    "accepted_candidate_proof_index_published": false,
+    "automatic_coding_continuation_enabled": false,
+    "candidate_formalization_handoff_implemented": false,
+    "candidate_prompt_dispatch_usable": false,
+    "candidate_reply_grammar_implemented": false,
+    "doctor_residual_capture_implemented": false,
+    "finite_proof_or_numerical_retry_admission_implemented": false,
+    "hard_native_scan_deadline": false,
+    "live_comparison_blocker": "Prior live Grok comparison was authentication-blocked; access was not requalified here.",
+    "live_provider_calls": 0,
+    "net_token_savings_established": false,
+    "new_terminal_bench_run": false,
+    "new_token_score": null,
+    "new_training_or_formal_prover_run": false,
+    "owner_next_child_admission_implemented": false,
+    "prior_baseline_gaps": "See ../coding-checkpoints-20261014/qualification.json.",
+    "whole_supervisor_suite_green": false
+  },
+  "qualification": {
+    "argv": [
+      "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "--tb=short",
+      "--color=no",
+      "-o",
+      "log_cli=false",
+      "-o",
+      "addopts=",
+      "test/api/test_candidate_round_native_pipeline.py",
+      "test/api/test_owner_candidate_round_prompt.py",
+      "test/api/test_worker_candidate_round_broker.py",
+      "test/api/test_worker_candidate_round_client.py",
+      "test/api/test_owner_candidate_round_context.py",
+      "test/api/test_owner_candidate_round_checkpoint.py",
+      "test/api/test_owner_candidate_refresh_e2e.py",
+      "test/api/test_worker_source_broker.py",
+      "test/api/test_worker_source_client.py",
+      "test/api/test_worker_source_discovery_transport.py",
+      "test/api/test_worker_candidate_context_client.py",
+      "test/api/test_worker_candidate_context_admission.py",
+      "test/api/test_router_public_instruction.py",
+      "test/api/test_router_implementation_runner.py",
+      "test/api/test_semantic_router_integration.py",
+      "test/api/test_grok_container_router.py",
+      "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py",
+      "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py",
+      "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_worker_wiring.py",
+      "--junitxml=/home/barberb/lift_coding/artifacts/candidate-admission-20261014/qualification-01.xml"
+    ],
+    "counts": {
+      "passed": 669
+    },
+    "dependencies": {
+      "ipfs_datasets_py": {
+        "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+        "tracked_status": ""
+      },
+      "ipfs_kit_py": {
+        "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+        "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+        "tracked_status": ""
+      }
+    },
+    "dependencies_unchanged": true,
+    "dependency_import_origins": {
+      "ipfs_datasets_py": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit/ipfs_kit_py/__init__.py"
+    },
+    "exit_code": 0,
+    "live_provider_calls": 0,
+    "seconds": 539.164339747047,
+    "source_pins_unchanged": true
+  },
+  "schema": "candidate-round-preparation-qualification@1",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py": "a610cce5de4ae03593691b53761098465cc54dcd0ef0ca96a6750ba584805603",
+    "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_worker_wiring.py": "66b765c70a18bb806431fe7eabb032527d00e7660441430bd5b2f45929debc86",
+    "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py": "8da11782e0452d6d05de039b8f35c0060dab21cef580ab94585538cfb995a214",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_prompt.py": "a3f85057af4f5b1e2afde7cf05bc1f65066cc4c8ca99a244be0ead9a3d641d9d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "e9d4af0f9442c4b39db57b0818da6d7f2addb424815d323bd015a76883d94aae",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_round_broker.py": "c926f8ea9a7a4fe6eeed2fc90baf9ecbd000f475cd076807bfdb9d624e4fc730",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_round_client.py": "4a2ce59f24a0bd5ed66d75e93e3de161e846a888ed9f930ecd67868a86155ac7",
+    "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": "f76763ea8ca218a68f96a7e502af4722defdad20465018dba09ee265bd90780c",
+    "test/api/test_candidate_round_native_pipeline.py": "ea1a55ad060730f6bc5d35295791f357d177f54d66410a0c3e51c22571794cde",
+    "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+    "test/api/test_owner_candidate_refresh_e2e.py": "494b9dce290ef6d4f71dc06ff74e8dd1e928dca35fb8f6dcf0c6c921cc797350",
+    "test/api/test_owner_candidate_round_checkpoint.py": "570b40f5e918f204716fb8b27a2dae76db18dab845965b937d5b1dda33ea7234",
+    "test/api/test_owner_candidate_round_context.py": "9d156bb8a0f834de47177b2804c95fa649617c67cdfc655a03e2ee74b1ac6f1f",
+    "test/api/test_owner_candidate_round_prompt.py": "1fb93d5746af577a5d509801c1447d74d55022164baa3e8899ec0ca641975d8f",
+    "test/api/test_router_implementation_runner.py": "e02ebf6a530912f0ddd1070b258e3b8c01d64f418adf2592a2714e7d7ef9504a",
+    "test/api/test_router_public_instruction.py": "ecd9b19b485185447c6e8ef96dc652c60eaf99916dd63dc2cfb91bdbc257c28b",
+    "test/api/test_semantic_router_integration.py": "8be5d5f73fa57a005572bec790d88b1f3485ca3e0e5b5e2116b6eb76f07c4d03",
+    "test/api/test_worker_candidate_context_admission.py": "f485409f0577b7bd20d9aa9e28585452f6132ce8b440ea9c4efb5152d77ce0b7",
+    "test/api/test_worker_candidate_context_client.py": "e89f2f2679421fa1699984049c491dabe30dd15d6e182649a7cd1a2c5c32625c",
+    "test/api/test_worker_candidate_round_broker.py": "bb9c7fbb02fac1085fdba46ce5ce623a6b938b070e60f6a4c880df0d7a15dc83",
+    "test/api/test_worker_candidate_round_client.py": "971d606b56b73825d82884d69c9078bc0c132b2882d66bfe5e08aacc13217631",
+    "test/api/test_worker_source_broker.py": "e8d53fe0d857d6f5ab5dcc67c6a71c0b4ef83e12099f987d38e737040c8ea55a",
+    "test/api/test_worker_source_client.py": "5708108bf1c885f7e3f41dc9c141f5e4e8bd9e377a9a7773da9d31900a56b5ef",
+    "test/api/test_worker_source_discovery_transport.py": "fad8cbcda6c2c481231ae832bbe5e69651c9083ee9eddf44f5ba1bb0f00a93b6"
+  },
+  "test_environment": {
+    "authored_paths": [
+      "local cross-UID/path admission",
+      "test source programs and signing profiles"
+    ],
+    "pytest_addopts_override": "",
+    "pytest_plugin_autoload": false,
+    "real_paths": [
+      "sealed owner stdin",
+      "source broker factory",
+      "signed public instruction loader",
+      "Git source edits",
+      "waited failed child",
+      "native snapshot/capsule/formal grammar",
+      "second registered Python -I descendant",
+      "descriptor hash/mode/lifetime checks",
+      "owner socket peer and PID ancestry",
+      "page framing and bounded continuations",
+      "closed audit accounting"
+    ],
+    "required_ast_sealing": "Required by test/conftest.py; not disabled."
+  }
+}

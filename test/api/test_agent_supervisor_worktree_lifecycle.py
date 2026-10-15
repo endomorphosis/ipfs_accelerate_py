@@ -7,6 +7,7 @@ import json
 import multiprocessing as mp
 import os
 from pathlib import Path
+import subprocess
 
 import ipfs_accelerate_py.agent_supervisor.worktree_lifecycle as lifecycle_module
 import pytest
@@ -2135,6 +2136,88 @@ def test_quarantine_marker_corruption_fails_cleanup_closed(
         store.evaluate_cleanup(branch=record.branch)
     assert receipt["terminalized"] is False
     assert store.load_workspace(workspace) == record
+
+
+def _linked_checkout_quarantine_fixture(tmp_path: Path):
+    store, workspace, record, exact, authority = _quarantine_fixture(tmp_path)
+    for args in (
+        ("init", "-q"),
+        (
+            "-c", "user.name=Lifecycle Test", "-c",
+            "user.email=lifecycle@example.invalid", "commit", "-q",
+            "--allow-empty", "-m", "Initialize linked lifecycle fixture",
+        ),
+    ):
+        subprocess.run(
+            ("git", *args), cwd=store.repo_root, check=True,
+            capture_output=True, text=True,
+        )
+    peer_root = tmp_path / "linked-checkout"
+    subprocess.run(
+        ("git", "worktree", "add", "--detach", str(peer_root), "HEAD"),
+        cwd=store.repo_root, check=True, capture_output=True, text=True,
+    )
+    receipt = store.quarantine_exact_dead_owner(
+        workspace, fence_authority=authority, **exact,
+    )
+    peer = WorktreeLifecycleStore(
+        repo_root=peer_root, store_dir=store.store_dir,
+        clock=store.clock, proc_root=store.proc_root,
+    )
+    return store, peer, workspace, record, receipt
+
+
+def test_quarantine_inventory_authenticates_linked_checkout_root(
+    tmp_path: Path,
+) -> None:
+    store, peer, workspace, record, receipt = (
+        _linked_checkout_quarantine_fixture(tmp_path)
+    )
+    original = store.quarantine_path_for(workspace).read_bytes()
+
+    assert peer.iter_quarantines() == (receipt,)
+    assert peer.quarantines_for_task_attempt(
+        canonical_task_cid=record.canonical_task_cid,
+        task_id=record.task_id, attempt=record.attempt,
+    ) == (receipt,)
+    assert peer.evaluate_cleanup(branch=record.branch).allowed is False
+    assert peer.evaluate_cleanup(branch=record.branch).reason == (
+        "quarantined_worktree_retained"
+    )
+    with pytest.raises(WorktreeLifecycleError, match="binding is invalid"):
+        peer.load_quarantine(workspace)
+    assert store.load_quarantine(workspace) == receipt
+    assert store.quarantine_path_for(workspace).read_bytes() == original
+
+
+def test_quarantine_inventory_rejects_unrelated_repository_root(
+    tmp_path: Path,
+) -> None:
+    store, _, _, _, _ = _linked_checkout_quarantine_fixture(tmp_path)
+    unrelated_root = tmp_path / "unrelated"
+    subprocess.run(
+        ("git", "init", "-q", str(unrelated_root)), check=True,
+        capture_output=True, text=True,
+    )
+    unrelated = WorktreeLifecycleStore(
+        repo_root=unrelated_root, store_dir=store.store_dir,
+    )
+    with pytest.raises(WorktreeLifecycleError, match="binding is invalid"):
+        unrelated.iter_quarantines()
+
+
+@pytest.mark.parametrize("corruption", ["malformed", "mode"])
+def test_linked_checkout_quarantine_inventory_retains_fail_closed_validation(
+    tmp_path: Path, corruption: str,
+) -> None:
+    store, peer, workspace, _, _ = _linked_checkout_quarantine_fixture(tmp_path)
+    marker = store.quarantine_path_for(workspace)
+    if corruption == "malformed":
+        marker.write_text("{}", encoding="utf-8")
+    else:
+        marker.chmod(0o644)
+    with pytest.raises(WorktreeLifecycleError, match="quarantine"):
+        peer.iter_quarantines()
 
 
 def test_quarantine_refuses_alive_owner_and_fence_mismatch(

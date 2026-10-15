@@ -1,0 +1,131 @@
+{
+  "files": [
+    {
+      "bytes": 59614,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py",
+      "sha256": "fba2883f6139b7f6e781d3cbb3858e2d3ec2bf695d51f6e4a9fbac49e2c25d9c"
+    },
+    {
+      "bytes": 20619,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "b28b0c53789f7974bc0944829dfc732a8331c3ab22841f238152a31e71b5ef48"
+    },
+    {
+      "bytes": 2282,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/benchmarks/agent_supervisor/container_coding/native_usage_accounting.py",
+      "sha256": "a21c831eed08c9c1692121f912000ebc03a7c7d04adf9a68fd0dcba0d61cc67e"
+    },
+    {
+      "bytes": 294621,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "sha256": "a8928c0e227dcbb0f7b31f877713c0fdeeb37699d110404cfc638ac4a1995b90"
+    },
+    {
+      "bytes": 48931,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+      "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e"
+    },
+    {
+      "bytes": 48928,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "sha256": "e487cc4a2126397568324c016b43e1d9025db9ff95b256842781e7e566a5860e"
+    },
+    {
+      "bytes": 43934,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "47d0526ca1e4000c94f76f881e5207645cfff60169796ed5e8b49fa32e8b3d6e"
+    },
+    {
+      "bytes": 4187,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py",
+      "sha256": "fe97b2b2b89c9095a4e9ef61fc89e32e24560b9f07108fed478d8e2ecb21abe6"
+    },
+    {
+      "bytes": 22048,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+      "sha256": "c82fe62bd1dc63e96fd4e5f282d12951b115478b0df9f6393d3602bad0c95408"
+    },
+    {
+      "bytes": 7739,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/ipfs_accelerate_py/cli_runtime/grok_stream_usage.py",
+      "sha256": "e0a30b1c7acfb45c47c8510093b21ffa650380646247c23963026e0a06831c06"
+    },
+    {
+      "bytes": 28602,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-token-growth-20261013/test/api/test_semantic_router_translation.py",
+      "sha256": "90251862dfcf8b67ab5340a562f89729762e757de6c637c21c4acac29dc2715b"
+    },
+    {
+      "bytes": 4118,
+      "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/observe_initial_context.py",
+      "sha256": "578cc490457131efd941b2e8f43beabc8b498f206dc249634053460029ed895b"
+    },
+    {
+      "bytes": 31642,
+      "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/read_live_pair.py",
+      "sha256": "b5c3f2fb4f1947b73f52a0ee3c005149bf615c1a57798d443c21549033b3b2c9"
+    },
+    {
+      "bytes": 17877,
+      "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/test_read_live_pair.py",
+      "sha256": "dd992886ca32f600ce248d9be86a946007ea703e73b9c3fcfdccd4e18421f300"
+    },
+    {
+      "bytes": 30486,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/collect_live_readout.py",
+      "sha256": "79c0edcc6eda284ac13f2f0eb3d3341a84125523d377530b4f4dbb5cabb19a10"
+    },
+    {
+      "bytes": 5978,
+      "path": "/home/barberb/lift_coding/artifacts/repeated-compact-edits-20261013/collect_native_shape.py",
+      "sha256": "5911e857dbf0d8e4a397e80b4152a093cb4e5f270dfcf183a5c0fe1addb86c32"
+    }
+  ],
+  "limitations": [
+    "Artifact reader only; launch/archive verifier owns execution custody.",
+    "No provider invocation, billing total or efficiency advantage is established by these offline tests."
+  ],
+  "schema": "capsule-budget-live-reporting-code-freeze@1",
+  "validation": {
+    "counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 24
+    },
+    "earlier_test_attempts": [
+      {
+        "attempt": "readout-tests-01",
+        "reason": "pytest absent without configured environment; no tests collected"
+      },
+      {
+        "attempt": "readout-tests-02",
+        "failures": 0,
+        "reason": "Before adding initial-context join and real native producer census cases",
+        "tests": 22
+      }
+    ],
+    "junit": {
+      "bytes": 4016,
+      "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/readout-tests-03.xml",
+      "sha256": "0002f1e9b9d16591166c549803b7ba4767b91beeb34a5c7ccdef1723a16af445"
+    },
+    "provider_calls": 0,
+    "source_pin_stage": "Frozen immediately after the successful authored test run, before any live launch.",
+    "stderr": {
+      "bytes": 0,
+      "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/readout-tests-03.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stdout": {
+      "bytes": 99,
+      "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/readout-tests-03.stdout",
+      "sha256": "4e601f47900544d28f9a117e267bba2995e41b1f9f529c6a380650933542c774"
+    },
+    "test_result": {
+      "bytes": 279,
+      "path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/readout-tests-03-result.json",
+      "sha256": "b16b4091ec84d933934992e36ac5ea2ff948594ffc1ac1dbb4f9ee7934e54e38"
+    }
+  }
+}

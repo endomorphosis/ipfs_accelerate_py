@@ -176,11 +176,20 @@ def _projection(payload, capsules, sources):
         "unsupported native worker projection schema")
     if schema.endswith("@2"):
         fields.update(("retrieval", "ranked_symbol_ids", "unranked_policy"))
+    indexed = (schema == "supervisor-semantic-worker-projection@1"
+        and value.get("selector") == "duckdb-query-symbol-name@1")
+    if indexed:
+        # The native indexed selector carries its complete candidate snapshot
+        # identity. Observe that identity without treating SQL state or this
+        # sidecar as source/admission authority; the producer replays sources.
+        _need(payload.get("schema") == "supervisor-semantic-worker-context@2",
+            "indexed selection requires an explicit native program scope")
+        fields.add("candidate_snapshot_cid")
     if "exact_byte_budget_repacked" in value:
         fields.add("exact_byte_budget_repacked")
     _closed(value, fields)
     expected_selector = ("verified-retrieval-symbol-rank@1" if schema.endswith("@2")
-        else "lexical-query-symbol-name@1")
+        else "duckdb-query-symbol-name@1" if indexed else "lexical-query-symbol-name@1")
     _need(value["selector"] == expected_selector and value["semantic_equivalence_claimed"] is False
         and value["completion_authority"] is False, "native projection policy or authority differs")
     query = value["query"]
@@ -209,6 +218,8 @@ def _projection(payload, capsules, sources):
     result.update(projection_schema=schema, selector=expected_selector, query_sha256=_sha(query.encode()),
         max_capsules=value["max_capsules"], max_bytes=value["max_bytes"], full_capsule_count=full,
         selected_capsule_count=count, omitted_capsule_count=full - count, exact_byte_budget_repacked=repacked)
+    if indexed:
+        result["candidate_snapshot_cid"] = _text(value["candidate_snapshot_cid"])
     if schema.endswith("@2"):
         retrieval = value["retrieval"]
         _closed(retrieval, ("artifact", "sha256"))

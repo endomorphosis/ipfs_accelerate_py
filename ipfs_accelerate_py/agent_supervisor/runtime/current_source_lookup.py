@@ -154,6 +154,22 @@ def _count_response(result, request_id):
     raise CurrentSourceLookupError("response byte accounting failed")
 
 
+class _SourceBindingAttempt:
+    """Private one-attempt custody; serialized observations cannot replace it."""
+
+    __slots__ = ("_checks", "_started", "_published")
+
+    def __init__(self):
+        self._checks = ()
+        self._started = False
+        self._published = None
+
+    def _add_checks(self, unlocked, locked):
+        _require(not self._started and self._published is None,
+                 "source binding attempt is already consumed")
+        self._checks += ((unlocked, locked),)
+
+
 class CurrentSourceLookup:
     """Host-admitted public path scope on the existing source store and owner."""
 
@@ -161,6 +177,25 @@ class CurrentSourceLookup:
                  limits=SourceInventoryLimits(), task_cid, task_revision,
                  expected_task_body_cid, context_cid, allowed_paths,
                  max_response_bytes=16384, max_slice_bytes=4096):
+        self._configure(repository, cas=cas, expected_inventory_cid=expected_inventory_cid,
+            request=request, limits=limits, task_cid=task_cid, task_revision=task_revision,
+            expected_task_body_cid=expected_task_body_cid, context_cid=context_cid,
+            allowed_paths=allowed_paths, max_response_bytes=max_response_bytes,
+            max_slice_bytes=max_slice_bytes)
+        self._replay_binding()
+
+    @classmethod
+    def _binding_candidate(cls, **configuration):
+        """Configure the literal candidate without entering retained CAS."""
+        _require(cls is CurrentSourceLookup, "exact source reader type required")
+        service = cls.__new__(cls)
+        service._configure(**configuration)
+        return service
+
+    def _configure(self, repository, *, cas, expected_inventory_cid, request,
+                   limits=SourceInventoryLimits(), task_cid, task_revision,
+                   expected_task_body_cid, context_cid, allowed_paths,
+                   max_response_bytes=16384, max_slice_bytes=4096):
         self._guard = _input_guard(request, limits)
         self._request = SourceInventoryRequest(**asdict(request))
         self._limits = SourceInventoryLimits(**asdict(limits))
@@ -201,6 +236,10 @@ class CurrentSourceLookup:
         self._scope_bytes = canonical_json_bytes(self._scope)
         self._binding = None
         self._continuations = {}
+        self._active_read = None
+
+    def _replay_binding(self):
+        """Replay original retained source before publication, without SERVER."""
         self._check_source()
         restored = self._load()
         _require(set(self._paths).issubset(e.entry.raw_path_hex for e in restored.entries),
@@ -335,7 +374,11 @@ class CurrentSourceLookup:
                 os.close(fd)
         self._check()
 
-    def execute(self, payload, *, owner_identity, grant, connection, request_id):
+    def _prepare_read(self, payload, *, owner_identity, grant, connection,
+                      request_id, checked_at_ms):
+        """Capture one private read under the owner's original SERVER lock."""
+        _require(self._active_read is None, "current source read is already active")
+        _require(type(checked_at_ms) is int and checked_at_ms >= 0, "invalid source clock sample")
         payload = _payload(payload)
         binding = self.binding(owner_identity)
         _require(payload["binding_cid"] == binding["binding_cid"], "lookup binding differs")
@@ -349,14 +392,65 @@ class CurrentSourceLookup:
         expected_cursor = None if offset == 0 else _cursor(binding["binding_cid"], grant.grant_id,
             payload["raw_path_hex"], payload["source_cid"], offset, payload["max_bytes"])
         _require(payload["continuation"] == expected_cursor, "continuation binding differs")
-        now = int(time.time() * 1000)
-        self._continuations = {key: expiry for key, expiry in self._continuations.items() if expiry > now}
-        _require(offset == 0 or (grant.grant_id, expected_cursor) in self._continuations,
+        live = {key: expiry for key, expiry in self._continuations.items() if expiry > checked_at_ms}
+        _require(offset == 0 or (grant.grant_id, expected_cursor) in live,
                  "continuation was not issued to this caller")
-        _require(len(self._continuations) < 4096, "continuation population exceeds bound")
-        self.check_native(connection, owner_identity)
-        self._check_source()
+        _require(len(live) < 4096, "continuation population exceeds bound")
+        state = dict(service=self, payload=payload, payload_bytes=canonical_json_bytes(payload),
+            binding=binding, binding_bytes=canonical_json_bytes(binding),
+            owner=json.loads(canonical_json_bytes(dict(owner_identity))), connection=connection,
+            grant=grant, grant_bytes=canonical_json_bytes(grant.public_dict()), request_id=request_id,
+            registry=self._continuations,
+            registry_before=dict(self._continuations), phase="prepared")
+        state["original"] = (connection, grant, request_id,
+            canonical_json_bytes(state["owner"]), state["payload_bytes"], state["binding_bytes"],
+            self._continuations, tuple(self._continuations.items()))
+        self._active_read = state
+        try:
+            self._read_current(state)
+            self.check_native(connection, state["owner"])
+            self._check_source()
+            self._read_current(state)
+            return state
+        except BaseException:
+            self._discard_read(state)
+            raise
+
+    def _read_current(self, state):
+        _require(self._active_read is state and state["service"] is self,
+                 "original current source read changed")
+        self._check()
+        original = state["original"]
+        _require(state["connection"] is original[0] and state["grant"] is original[1]
+                 and state["request_id"] == original[2]
+                 and canonical_json_bytes(state["owner"]) == original[3]
+                 and state["payload_bytes"] == original[4] and state["binding_bytes"] == original[5]
+                 and self._continuations is original[6]
+                 and tuple(self._continuations.items()) == original[7],
+                 "original current source read witnesses changed")
+        _require(canonical_json_bytes(state["payload"]) == state["payload_bytes"]
+                 and canonical_json_bytes(state["binding"]) == state["binding_bytes"]
+                 and canonical_json_bytes(self.binding(state["owner"])) == state["binding_bytes"]
+                 and canonical_json_bytes(state["grant"].public_dict()) == state["grant_bytes"]
+                 and self._continuations is state["registry"]
+                 and self._continuations == state["registry_before"],
+                 "current source read inputs or continuation registry changed")
+
+    def _replay_read(self, state):
+        """Only retained CAS replay; the gateway releases SERVER first."""
+        self._read_current(state)
+        _require(state["phase"] == "prepared", "source read replay is out of order")
         restored = self._load()
+        self._read_current(state)
+        state["restored"], state["phase"] = restored, "replayed"
+
+    def _stage_read(self, state):
+        """Build response bytes privately; no cursor is consumed or issued."""
+        self._read_current(state)
+        _require(state["phase"] == "replayed", "source read staging is out of order")
+        payload, binding, grant = state["payload"], state["binding"], state["grant"]
+        connection, owner_identity = state["connection"], state["owner"]
+        request_id, offset, restored = state["request_id"], payload["offset"], state["restored"]
         selected = next(e for e in restored.entries if e.entry.raw_path_hex == payload["raw_path_hex"])
         _require(selected.entry.git_mode in ("100644", "100755") and selected.data is not None,
                  "only regular source files are admitted; other kinds require separate scope")
@@ -395,14 +489,62 @@ class CurrentSourceLookup:
             result, size = response(count)
         _require(size <= binding["max_response_bytes"] and (count > 0 or not data),
                  "complete response envelope cannot fit host bound")
-        self.check_native(connection, owner_identity)
+        state["selected"], state["response"] = selected, dict(ok=True, result=result)
+        state["response_bytes"], state["phase"] = canonical_json_bytes(state["response"]), "staged"
+        self._close_read(state)
+
+    def _close_read(self, state):
+        self._read_current(state)
+        _require(state["phase"] == "staged", "source read closing is out of order")
+        self.check_native(state["connection"], state["owner"])
         self._check_source()
-        self._working_file(selected.entry, data)  # After native/storage callbacks.
-        if expected_cursor is not None:
-            self._continuations.pop((grant.grant_id, expected_cursor), None)
-        if result["next_continuation"] is not None:
-            self._continuations[grant.grant_id, result["next_continuation"]] = grant.expires_at
-        return dict(ok=True, result=result)
+        selected = state["selected"]
+        self._working_file(selected.entry, selected.data)
+        self._read_current(state)
+        _require(canonical_json_bytes(state["response"]) == state["response_bytes"],
+                 "staged current source response changed")
+
+    def _publish_read(self, state, *, checked_at_ms):
+        """Commit bounded cursors only after the gateway's closing authority checks."""
+        self._read_current(state)
+        _require(state["phase"] == "staged"
+                 and canonical_json_bytes(state["response"]) == state["response_bytes"],
+                 "source read publication is out of order or changed")
+        _require(type(checked_at_ms) is int and checked_at_ms >= 0, "invalid source clock sample")
+        grant, cursor = state["grant"], state["payload"]["continuation"]
+        live = {key: expiry for key, expiry in self._continuations.items() if expiry > checked_at_ms}
+        _require(cursor is None or (grant.grant_id, cursor) in live,
+                 "continuation was not issued to this caller")
+        _require(checked_at_ms < grant.expires_at and len(live) < 4096,
+                 "source grant expired or continuation population exceeds bound")
+        if cursor is not None:
+            del live[grant.grant_id, cursor]
+        successor = state["response"]["result"]["next_continuation"]
+        if successor is not None:
+            live[grant.grant_id, successor] = grant.expires_at
+        result = json.loads(state["response_bytes"])
+        self._continuations.clear()
+        self._continuations.update(live)
+        state["phase"] = "published"
+        self._discard_read(state)
+        return result
+
+    def _discard_read(self, state):
+        if self._active_read is state:
+            self._active_read = None
+
+    def execute(self, payload, *, owner_identity, grant, connection, request_id):
+        """Compatibility entry point; the wire gateway uses the detached phases."""
+        state = self._prepare_read(payload, owner_identity=owner_identity, grant=grant,
+            connection=connection, request_id=request_id, checked_at_ms=int(time.time() * 1000))
+        try:
+            self._replay_read(state)
+            self._stage_read(state)
+            closing_time = int(time.time() * 1000)
+            self._close_read(state)
+            return self._publish_read(state, checked_at_ms=closing_time)
+        finally:
+            self._discard_read(state)
 
 
 def validate_source_response(response, *, payload, owner_identity, grant):

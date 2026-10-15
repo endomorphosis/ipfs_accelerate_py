@@ -1,0 +1,59 @@
+{
+  "appended_target": "test/api/test_current_source_task_admission.py",
+  "appended_target_already_in_inventory": true,
+  "baseline_commands": {
+    "bytes": 220614,
+    "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/commands.json",
+    "sha256": "1dbe9bb6f0851991943d38093d27d8c75f261a735d15a768e02e39a0563cfef8"
+  },
+  "baseline_commands_rewritten": false,
+  "expanded_roster": {
+    "bytes": 683,
+    "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/targets.json",
+    "sha256": "a49a2df4c413ce89c113666eb0aadb5ca00f7d9cf81977a295dfa63a356ffb67"
+  },
+  "expanded_roster_count": 13,
+  "historical_control_promoted_to_pass": false,
+  "original_roster": [
+    "test/api/test_source_initial_binding.py",
+    "test/api/test_source_query_replay.py",
+    "test/api/test_current_source_lookup.py",
+    "test/api/test_source_worker_construction.py",
+    "test/api/test_native_source_worker_delivery.py",
+    "test/api/test_source_lookup_worker_channel.py",
+    "test/api/test_native_source_worker_spawn.py",
+    "test/api/test_native_source_worker_spawn_custody.py",
+    "test/api/test_native_source_worker_spawn_lock_order.py",
+    "test/api/test_native_nominated_source_allocation.py",
+    "test/api/test_native_nominated_source_allocation_custody.py",
+    "test/api/test_current_source_worktree_allocation.py"
+  ],
+  "original_roster_basis": {
+    "bytes": 586,
+    "composition": "new initial-binding test followed by the exact eleven prior query-phase full modules",
+    "path": "docs/agent_supervisor/evidence/source-query-replay-20261014/targets.json",
+    "revision": "55c42dd740d75c3ba04d6991c90cf0aa0dccd8a9",
+    "sha256": "c04c794694fb40823e34dc9bf336fbc0aefba8a207ae667bb19684da44bf9827"
+  },
+  "original_roster_count": 12,
+  "original_roster_snapshot": {
+    "bytes": 631,
+    "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/source-snapshot/targets.json.snapshot.txt",
+    "sha256": "d4664781a92e4f895dcbcbfdf014e073bb2ac1ee11c63d176ad1e3cbb275dcb9"
+  },
+  "qualification_driver": {
+    "bytes": 11587,
+    "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification_runner.py",
+    "sha256": "248587f815e2e81d3bd7850c9e5b10048b2020e556f3a85770c6f839b3b4df1b"
+  },
+  "qualification_driver_changed": false,
+  "reason": "Qualify the complete native task-admission module because initial source binding changes its binder deeply.",
+  "recorded_at_utc": "2026-10-15T00:05:26.785528+00:00",
+  "schema": "source-initial-binding-roster-migration@1",
+  "source_inventory": {
+    "bytes": 34420,
+    "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/source-inventory.json",
+    "sha256": "670dad6e1d57a42f2ed908d721bad798de90d632011b1c693573d78e8a000cc8"
+  },
+  "source_inventory_changed": false
+}

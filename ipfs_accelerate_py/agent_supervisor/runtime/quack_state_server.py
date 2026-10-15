@@ -34,7 +34,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -4567,13 +4567,34 @@ class QuackStateServer:
         bind(**binding)
         _mirror_quack_owner_legacy_queue_scope()
 
-    def bind_current_source_lookup(self, **configuration: Any) -> dict[str, Any]:
-        """Bind source.get to this ready owner's existing gateway and CAS."""
-        with self._lock:
+    def bind_current_source_lookup(self, *, _binding_attempt=None, **configuration: Any) -> dict[str, Any]:
+        """Retain the ready owner while releasing SERVER for source replay."""
+        lock = self._lock
+        with lock:
             if self._lifecycle is not ServerLifecycle.READY or self._command_gateway is None:
                 raise QuackStateServerNotRunningError("current source binding requires a ready state owner")
+            if getattr(self._connection, "in_transaction", None) is not False:
+                raise QuackStateServerControlError("source binding requires an inactive original transaction")
             self.ready()
-            return self._command_gateway.bind_current_source_lookup(**configuration)
+            gateway, connection, identity, config = (
+                self._command_gateway, self._connection, self._identity, self.config)
+            owner = canonical_json_bytes(identity.to_dict())
+            policy = json.dumps(asdict(config), sort_keys=True, default=str)
+            transport, vault = self.transport, self._vault
+
+            def current():
+                if (self._lock is not lock or self._lifecycle is not ServerLifecycle.READY
+                        or self._command_gateway is not gateway or self._connection is not connection
+                        or self._identity is not identity or self.config is not config
+                        or json.dumps(asdict(config), sort_keys=True, default=str) != policy
+                        or canonical_json_bytes(identity.to_dict()) != owner
+                        or self.transport is not transport or self._vault is not vault
+                        or gateway._transaction_lock is not lock or gateway._connection is not connection):
+                    raise QuackStateServerControlError("original current source server binding changed")
+
+            current()
+        return gateway.bind_current_source_lookup(_binding_attempt=_binding_attempt,
+            _server_guard=current, **configuration)
 
     def issue_typed_client_grant_record(
         self,

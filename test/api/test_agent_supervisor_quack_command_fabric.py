@@ -467,15 +467,23 @@ def test_remote_daemon_task_read_crosses_exact_quack_owner_transaction(
         poll_interval_ms=5,
     )
     owner_errors: list[BaseException] = []
+    owner_stop = threading.Event()
+    owner_workers: list[threading.Thread] = []
 
     def owner_tick() -> None:
         try:
-            time.sleep(0.05)
-            fabric.apply_pending()
+            # Poll actual ingress until work arrives within the unchanged
+            # receipt wait budget; authorization may take longer than 50ms.
+            owner_deadline = time.monotonic() + 5.0
+            while not owner_stop.is_set() and time.monotonic() < owner_deadline:
+                if fabric.apply_pending():
+                    return
+                owner_stop.wait(0.005)
         except BaseException as exc:  # pragma: no cover - asserted below
             owner_errors.append(exc)
 
     worker = threading.Thread(target=owner_tick, daemon=True)
+    owner_workers.append(worker)
     worker.start()
     try:
         result = transport.dispatch("task.get", {"task_cid": "task:fabric:1"})
@@ -487,6 +495,7 @@ def test_remote_daemon_task_read_crosses_exact_quack_owner_transaction(
         assert not worker.is_alive()
         assert owner_errors == []
         second_worker = threading.Thread(target=owner_tick, daemon=True)
+        owner_workers.append(second_worker)
         second_worker.start()
         with pytest.raises(
             QuackDaemonGatewayError,
@@ -598,8 +607,14 @@ def test_remote_daemon_task_read_crosses_exact_quack_owner_transaction(
             transport.dispatch("task.get", {"task_cid": "task:fabric:1"})
         assert time.monotonic() - monotonic_started < 1.0
     finally:
-        transport.close()
-        fabric.stop()
+        owner_stop.set()
+        for owner_worker in owner_workers:
+            owner_worker.join(timeout=5)
+        try:
+            transport.close()
+        finally:
+            fabric.stop()
+        assert all(not item.is_alive() for item in owner_workers)
 
 
 def test_two_clients_duplicate_receipt_restart_and_clean_stop(tmp_path: Path) -> None:
@@ -1023,3 +1038,113 @@ def test_signed_command_rejects_token_only_forgery_and_expiry() -> None:
         verify_authorized_state_command(forged, policy=policy, now_ms=time.time_ns() // 1_000_000)
     with pytest.raises(QuackCommandAuthorizationError, match="expired"):
         verify_authorized_state_command(valid, policy=policy, now_ms=valid.expires_at_ms)
+
+
+@pytest.mark.parametrize("invalid", ["SELECT 1", "executor_insert_task_revision_history; DROP TABLE tasks", "unknown_owner_operation"])
+def test_private_owner_named_operations_reject_sql_and_unknown_names(tmp_path: Path, invalid: str) -> None:
+    duckdb, _artifact = _exact_runtime()
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_command_fabric import (
+        _PrivateOwnerOperationConnection, QuackCommandFabricStateError,
+    )
+    operational = tmp_path / "private-operational.duckdb"
+    _provision_operational(duckdb, operational)
+    connection = _PrivateOwnerOperationConnection(duckdb.connect(str(operational)))
+    try:
+        connection.execute("BEGIN TRANSACTION")
+        with pytest.raises(QuackCommandFabricStateError, match="unknown"):
+            connection.execute_operation(invalid, ("task:fabric:1", 0))
+        assert connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM task_revisions").fetchone()[0] == 0
+        connection.rollback()
+    finally:
+        connection.close()
+
+
+def test_private_owner_named_operation_requires_active_same_transaction(tmp_path: Path) -> None:
+    duckdb, _artifact = _exact_runtime()
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_command_fabric import (
+        _PrivateOwnerOperationConnection, QuackCommandFabricStateError,
+    )
+    operational = tmp_path / "private-operational.duckdb"
+    _provision_operational(duckdb, operational)
+    connection = _PrivateOwnerOperationConnection(duckdb.connect(str(operational)))
+    operation = "executor_insert_task_revision_history"
+    try:
+        assert not callable(connection.execute_operation)
+        with pytest.raises(QuackCommandFabricStateError, match="active transaction"):
+            connection._execute_transaction_operation(operation, ("task:fabric:1", 0))
+        connection.execute("BEGIN TRANSACTION")
+        retained = connection.execute_operation
+        assert callable(retained)
+        assert retained("load_store_generation", ()).fetchone()[0] == 1
+        connection.execute("UPDATE tasks SET status = 'claimed', revision = 1 WHERE task_cid = ?", ["task:fabric:1"])
+        assert connection.execute_operation(operation, ("task:fabric:1", 1)).fetchone()[0] == 1
+        assert connection.execute("SELECT status FROM task_revisions WHERE task_cid = ? AND revision = 1", ["task:fabric:1"]).fetchone()[0] == "claimed"
+        connection.rollback()
+        assert connection.execute("SELECT status FROM tasks").fetchone()[0] == "ready"
+        assert connection.execute("SELECT COUNT(*) FROM task_revisions").fetchone()[0] == 0
+        assert not callable(connection.execute_operation)
+        with pytest.raises(QuackCommandFabricStateError, match="active transaction"):
+            retained(operation, ("task:fabric:1", 0))
+    finally:
+        connection.close()
+    assert not callable(connection.execute_operation)
+    with pytest.raises(QuackCommandFabricStateError, match="active transaction"):
+        retained(operation, ("task:fabric:1", 0))
+
+
+def test_private_owner_catalog_operation_rejects_wrong_parameter_count_and_bootstrap(tmp_path: Path) -> None:
+    duckdb, _artifact = _exact_runtime()
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_command_fabric import (
+        _PrivateOwnerOperationConnection, QuackCommandFabricStateError,
+    )
+    operational = tmp_path / "private-operational.duckdb"
+    _provision_operational(duckdb, operational)
+    connection = _PrivateOwnerOperationConnection(duckdb.connect(str(operational)))
+    try:
+        connection.execute("BEGIN TRANSACTION")
+        with pytest.raises(QuackCommandFabricStateError, match="parameter count"):
+            connection.execute_operation("executor_insert_task_revision_history", ("task:fabric:1",))
+        with pytest.raises(QuackCommandFabricStateError, match="bootstrap"):
+            connection.execute_operation("seed_store_generation", ())
+        assert connection.execute("SELECT COUNT(*) FROM task_revisions").fetchone()[0] == 0
+        connection.rollback()
+    finally:
+        connection.close()
+
+
+def test_private_owner_client_lifecycle_keeps_existing_closed_templates_outside_transaction(tmp_path: Path) -> None:
+    duckdb, _artifact = _exact_runtime()
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_command_fabric import (
+        _PrivateOwnerOperationConnection,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_repository import QuackStateRepository
+
+    operational = tmp_path / "private-operational.duckdb"
+    _provision_operational(duckdb, operational)
+    connections = []
+
+    def private_connection(_endpoint):
+        connection = _PrivateOwnerOperationConnection(duckdb.connect(str(operational)))
+        connections.append(connection)
+        return connection
+
+    repository = QuackStateRepository("quack:127.0.0.1:1", owner_id="private-lifecycle-test",
+        connection_factory=private_connection, seed_generation=False)
+    try:
+        repository.attach()
+        assert len(connections) == 1
+        assert not callable(connections[0].execute_operation)
+        assert repository.load_generation().generation == 1
+        assert repository.get_task("task:fabric:1")["status"] == "ready"
+        assert repository.client.session is not None
+        transaction = repository.transaction(expected_generation=repository.load_generation())
+        transaction.begin()
+        assert callable(connections[0].execute_operation)
+        assert transaction.execute_named_operation("load_store_generation", ()).fetchone()[0] == 1
+        transaction.rollback()
+        assert not callable(connections[0].execute_operation)
+        assert repository.get_task("task:fabric:1")["status"] == "ready"
+    finally:
+        repository.close()
+    assert not callable(connections[0].execute_operation)

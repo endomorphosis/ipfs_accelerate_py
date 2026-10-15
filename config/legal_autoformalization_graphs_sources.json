@@ -1,0 +1,192 @@
+{
+  "schema": "legal-autoformalization-graphs-sources/v1",
+  "campaign_id": "legal-autoformalization-graphs-20261013",
+  "datasets": {
+    "root": "/home/barberb/lift_coding/.worktrees/legal-autoformalization-graph-contracts-20261013",
+    "commit": "96bcee21651763994c2fb7f5e631594924547f78",
+    "expected_branch": "agent/legal-autoformalization-graph-contracts-20261013"
+  },
+  "prior_foundations_completion": {
+    "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-foundations-20261013-01/completion.json",
+    "sha256": "325a1f334d694e5e36bda84af409c4928e443b85b09f9a267e68d528a9ca0a60",
+    "bytes": 11568
+  },
+  "original_plan": {
+    "path": "/home/barberb/lift_coding/implementation_plan/legal_autoformalization_convergence_20261013/tasks.json",
+    "sha256": "56917e387649c03a0d483b1d3a4592dc146edf37de892782431f991a47269fcb",
+    "bytes": 190570
+  },
+  "immutable_inputs": [
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+      "sha256": "552091318e59718c6111eeaad26e4b03185929558dad3c75fe00b8845d8bc2cd",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/autoformal/legal_graph_dependencies.py",
+      "sha256": "86cb7c3b09102a94237d0455d610d437e558cca4250242201becd06c775ca2e8",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/autoformal/legal_semantic_graph.py",
+      "sha256": "4baaba35b1f1615bb37a42e542fd28c58996919eb24f4662f374428b181933be",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+      "sha256": "596f008d7e26b24a951da4fa9ba2c85c20b927e2c54f7b3786d4f8a813f78cd2",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/legal_ir/canonical_contracts.py",
+      "sha256": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+      "sha256": "5b90021bffd9a29327490788e9a9eee9ba1788679c5adae6a02e84be9a718c6a",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_split_features.py",
+      "sha256": "886a0cde9924dceb5f5a4b655a995eb60a8f3fb954408d991fe4b4eb23ade0cd",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_temporal_attention.py",
+      "sha256": "fb8670887177ac56379fa76dc9efe310b3a5d598f09c21a3d47e5bf960bc1731",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/autoformal/test_entity_cache_graph_adapter.py",
+      "sha256": "f90f10c9babff8def7c91429ac8a837d491a9cfbdfe8d7e2978e4078e6d3051c",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/autoformal/test_legal_graph_dependencies.py",
+      "sha256": "7034d445e68638f3d49d0403da5fd2555707a155ee090666a20c02ebb711f556",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/autoformal/test_legal_semantic_graph.py",
+      "sha256": "064a6b32bbd4b6089abb40c20ff236dad7dedfa3a2b273059a7c50fa1668bb05",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/test_entity_cache.py",
+      "sha256": "4e11fc2a109e7904a1baf4b44cdc704fc983e5d5a29d3caceaf876f595733a85",
+      "role": "source_contract_or_qualification_test"
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/optimizers/logic_theorem_optimizer/test_legal_span_temporal_attention_contracts.py",
+      "sha256": "c56a9d49f60c32bba0e4f7e44e271815e42c523e75977fa60cea96d32325834f",
+      "role": "source_contract_or_qualification_test"
+    }
+  ],
+  "jobs": {
+    "LAC-S3-040": {
+      "code_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_semantic_graph.py",
+        "ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+        "ipfs_datasets_py/logic/legal_ir/canonical_contracts.py",
+        "ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_temporal_attention.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_split_features.py"
+      ],
+      "test_paths": [
+        "tests/unit/logic/autoformal/test_legal_semantic_graph.py",
+        "tests/unit/optimizers/logic_theorem_optimizer/test_legal_span_temporal_attention_contracts.py"
+      ],
+      "minimum_tests": 41,
+      "kind": "pytest",
+      "timeout_seconds": 180,
+      "python_executable": "/home/barberb/lift_coding/.venv/bin/python",
+      "python_executable_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+    },
+    "LAC-S3-044": {
+      "code_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_semantic_graph.py",
+        "ipfs_datasets_py/logic/autoformal/legal_statutory_context.py",
+        "ipfs_datasets_py/logic/legal_ir/canonical_contracts.py",
+        "ipfs_datasets_py/logic/legal_ir/canonical_statement_scope.py",
+        "ipfs_datasets_py/logic/autoformal/entity_cache.py",
+        "ipfs_datasets_py/logic/autoformal/legal_graph_dependencies.py"
+      ],
+      "test_paths": [
+        "tests/unit/logic/autoformal/test_entity_cache_graph_adapter.py",
+        "tests/unit/logic/test_entity_cache.py"
+      ],
+      "minimum_tests": 106,
+      "kind": "pytest",
+      "timeout_seconds": 180,
+      "python_executable": "/home/barberb/lift_coding/.venv/bin/python",
+      "python_executable_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+    },
+    "LAC-S3-045": {
+      "code_paths": [
+        "ipfs_datasets_py/logic/autoformal/legal_graph_dependencies.py"
+      ],
+      "test_paths": [
+        "tests/unit/logic/autoformal/test_legal_graph_dependencies.py"
+      ],
+      "minimum_tests": 18,
+      "kind": "pytest",
+      "timeout_seconds": 180,
+      "python_executable": "/home/barberb/lift_coding/.venv/bin/python",
+      "python_executable_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+    }
+  },
+  "external_evidence": [
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-graphs-20261013-01/training-frontier-audit.json",
+      "sha256": "ee9afbd58e7f67ba91249123e51e25ae89abe43ed8283f0614a07d46a55f332a",
+      "bytes": 67413
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-graphs-20261013-01/entity-cache-schema-inventory.json",
+      "sha256": "7bfdf984989c63a8ea4f244e5c19d8bcaaf775d3724240e0d6faaa4ba95c7b78",
+      "bytes": 1447
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-graphs-20261013-01/entity-cache-parquet-footer.bin",
+      "sha256": "010f71e319d3cedaf263804b724446439a404cae028d64ca15b068814a5efbb7",
+      "bytes": 15893
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/legal-autoformalization-graphs-20261013-01/entity-cache-footer-observation.json",
+      "sha256": "8d75bdfe8af042f9590145be15ad4c255c149c7b532ab005f45d24c9a9123448",
+      "bytes": 424
+    }
+  ],
+  "upstream_observation": {
+    "datasets_origin_main": "7e60814a93fb81604092a0e0627fbc1996e644b7",
+    "accelerator_origin_main": "f7cf87104e079d1159226c137449e29bf98bfd40",
+    "role": "current fetched refs at observation; no runtime or legal authority",
+    "refs_rechecked_utc": "2026-10-13T16:00:54.705466+00:00"
+  },
+  "acceptance": {
+    "original_tasks": "partial",
+    "graph_status": "proposed_unreviewed",
+    "full_corpus_backfill": false,
+    "semantic_admission": false,
+    "Lean_kernel_admission": false
+  },
+  "qualification_scope_notes": {
+    "LAC-S3-040": "22 proposed graph cases plus19 detached upstream temporal-attention source contracts; no numerical runtime or checkpoint qualification",
+    "LAC-S3-044": "16 graph adapter/integration cases plus90 existing EntityCache v2 compatibility cases; explicit typed occurrences rather than direct bulkcachebackfill",
+    "LAC-S3-045": "18 exact declared dependency/invalidation cases; no exhaustive legal dependency inventory"
+  }
+}

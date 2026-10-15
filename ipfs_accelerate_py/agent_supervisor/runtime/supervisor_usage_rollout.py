@@ -471,6 +471,11 @@ class HarnessState:
     def usage_revision(self, scope_id: str) -> str:
         return self.coordinator.snapshot(scope_id).usage_revision
 
+    def admission_snapshot(self, scope_id: str):
+        """Read observational and stable admission identities together."""
+
+        return self.coordinator.admission_snapshot(scope_id)
+
     def headroom_requests(self, scope_id: str) -> int:
         snap = self.coordinator.snapshot(scope_id)
         for entry in snap.headroom:
@@ -523,6 +528,7 @@ def _lineage_for(
     request_id: str,
     endpoint_scope_id: str,
     usage_revision: str,
+    admission_revision: str = "",
     attempt: int = 1,
     lane: str = "usage-rollout",
     fence_id: str = "1",
@@ -539,6 +545,7 @@ def _lineage_for(
         "policy_revision": "policy:supervisor-usage-rollout@1",
         "catalog_revision": catalog_revision,
         "usage_revision": usage_revision,
+        "admission_revision": admission_revision,
         "supervisor_run_id": "",
         "goal_id": "",
         "objective_id": "",
@@ -671,13 +678,15 @@ def _execution_request(
     tree_id: str = "tree:supervisor-usage-rollout",
 ) -> ProviderExecutionRequest:
     scope = harness.scopes[scope_key]
-    usage_revision = harness.usage_revision(scope.scope_id)
+    admission = harness.admission_snapshot(scope.scope_id)
+    usage_revision = admission.snapshot.usage_revision
     request_env = _lineage_for(
         stage=stage,
         task_id=f"task:{stage.value}",
         request_id=request_id,
         endpoint_scope_id=scope.scope_id,
         usage_revision=usage_revision,
+        admission_revision=admission.admission_revision,
         attempt=attempt,
         observation_label=observation_label,
         tree_id=tree_id,
@@ -689,6 +698,7 @@ def _execution_request(
         endpoint_scope_id=scope.scope_id,
         catalog_revision=request_env.scope.catalog_revision,
         usage_revision=usage_revision,
+        admission_revision=admission.admission_revision,
         estimated=estimated,
         request_id=request_id,
         attempt=attempt,
@@ -1866,7 +1876,7 @@ def run_chaos_population(
         invoker=_ok_invoker(),
         owner_id="crash-restart",
         single_flight_outcomes={
-            crash_req.request_key: crash_first,
+            crash_req.request_content_id: crash_first,
         },
     )
     crash_second = crash_gw2.execute(crash_req)

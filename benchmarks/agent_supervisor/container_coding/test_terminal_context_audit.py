@@ -75,7 +75,7 @@ def compiled(tmp_path):
         "model_prompt_sha256": sha(model), "model_prompt_bytes": len(model.encode()),
         "workspace_advisory_sha256": sha(header), "workspace_advisory_bytes": len(header.encode())}
     return {"state": state, "capsule": capsule, "receipts": [receipt],
-            "workspace_root": workspace_root, "query": query}
+            "workspace_root": workspace_root, "query": query, "native": native}
 
 
 def observe(fixture):
@@ -119,9 +119,82 @@ def test_generic_retrieval_scope_must_match_instruction_bound_signed_profile(com
 
 def test_actual_bounded_child_process_roundtrip(compiled):
     result = audit.collect_terminal_context_audit(state=compiled["state"],
-        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"], timeout_seconds=10)
+        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"])
     assert result["status"] == "verified_all_observed_model_inputs", result
     assert result["provider_calls"] == 0
+
+
+@pytest.mark.parametrize("selected", ["artifact-preview@1", "artifact-preview@2"])
+def test_output_policy_exact_audit_survives_removed_worker_and_store(compiled, selected):
+    from ipfs_accelerate_py.agent_supervisor.runtime.tool_output_policy import create_binding
+    receipt = compiled["receipts"][0]
+    binding = create_binding(workspace=Path(receipt["workspace"]), requested_policy=selected)
+    model, advisory = render_model_prompt(prompt=compiled["native"], purpose="coding",
+        workspace=Path(receipt["workspace"]), tool_output_binding=binding)
+    receipt.update(provider="codex_cli", tool_output_policy=binding,
+        model_prompt_sha256=sha(model), model_prompt_bytes=len(model.encode()),
+        workspace_advisory_sha256=sha(advisory), workspace_advisory_bytes=len(advisory.encode()))
+    result = audit.collect_terminal_context_audit(state=compiled["state"],
+        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"])
+    assert result["all_observed_coding_inputs_verified"] is True, result
+    assert result["matches"][0]["model_input_checks"]["tool_output_helper_source"] is True
+    assert not Path(binding["store_path"]).exists()
+    assert not compiled["workspace_root"].exists()
+    assert binding["store_path"] not in json.dumps(result)
+
+
+@pytest.mark.skipif(not hasattr(os, "sched_getaffinity"), reason="CPU affinity is unavailable")
+def test_actual_child_roundtrip_on_one_available_cpu(compiled):
+    """A restricted child uses the production ceiling without generating load."""
+    original = os.sched_getaffinity(0)
+    if not original:
+        pytest.skip("no available CPU affinity")
+    before = copy.deepcopy(compiled["receipts"])
+    try:
+        os.sched_setaffinity(0, {min(original)})
+        result = audit.collect_terminal_context_audit(state=compiled["state"],
+            receipts=compiled["receipts"], workspace_root=compiled["workspace_root"],
+            timeout_seconds=audit.MAX_AUDIT_SECONDS)
+    finally:
+        os.sched_setaffinity(0, original)
+    assert result["status"] == "verified_all_observed_model_inputs", result
+    assert result["provider_calls"] == 0
+    assert compiled["receipts"] == before
+
+
+@pytest.mark.parametrize("budget", [True, False, None, "30", float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_or_nonnumeric_budget_never_spawns(compiled, monkeypatch, budget):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("invalid audit budget launched a child")
+    monkeypatch.setattr(audit, "_bounded_audit_child", forbidden)
+    result = audit.collect_terminal_context_audit(state=compiled["state"],
+        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"], timeout_seconds=budget)
+    assert result["status"] == "unknown"
+    assert result["reason"] == "audit_budget_invalid"
+
+
+@pytest.mark.parametrize("budget", [-1., 0., .099])
+def test_exhausted_budget_never_spawns(compiled, monkeypatch, budget):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("exhausted audit budget launched a child")
+    monkeypatch.setattr(audit, "_bounded_audit_child", forbidden)
+    result = audit.collect_terminal_context_audit(state=compiled["state"],
+        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"], timeout_seconds=budget)
+    assert result["status"] == "unknown"
+    assert result["reason"] == "audit_budget_unavailable"
+
+
+@pytest.mark.parametrize("requested, expected", [(1.5, 1.5), (30., 30.), (90., 30.), (10**400, 30.)])
+def test_collector_honors_remaining_budget_and_hard_ceiling(compiled, monkeypatch, requested, expected):
+    monkeypatch.setattr(audit.time, "monotonic", lambda: 100.)
+    calls = []
+    def collect(*args, **kwargs):
+        calls.append(kwargs["timeout"])
+        return 0, json.dumps(audit._base()).encode()
+    monkeypatch.setattr(audit, "_bounded_audit_child", collect)
+    audit.collect_terminal_context_audit(state=compiled["state"],
+        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"], timeout_seconds=requested)
+    assert calls == [expected]
 
 
 def test_owner_child_does_not_import_from_task_working_directory(compiled, tmp_path, monkeypatch):
@@ -242,12 +315,13 @@ def test_inventory_bound_abstains(compiled, monkeypatch):
 
 
 def test_timeout_is_unknown_and_does_not_modify_receipts(compiled, monkeypatch):
+    monkeypatch.setattr(audit.time, "monotonic", lambda: 100.)
     before = copy.deepcopy(compiled["receipts"])
     def timeout(*args, **kwargs):
         assert args[0][:3] == [sys.executable, "-B", "-P"]
         assert kwargs["timeout"] == .5
         raise subprocess.TimeoutExpired("audit", .5)
-    monkeypatch.setattr(audit.subprocess, "run", timeout)
+    monkeypatch.setattr(audit, "_bounded_audit_child", timeout)
     result = audit.collect_terminal_context_audit(state=compiled["state"],
         receipts=compiled["receipts"], workspace_root=compiled["workspace_root"], timeout_seconds=.5)
     assert result["status"] == "unknown" and result["reason"] == "audit_timeout"
@@ -274,7 +348,7 @@ def test_finalization_without_remaining_budget_does_not_spawn(compiled, monkeypa
     report = {"arm": "full", "provider_invocations": compiled["receipts"]}
     def forbidden(*args, **kwargs):
         raise AssertionError("child started after deadline")
-    monkeypatch.setattr(audit.subprocess, "run", forbidden)
+    monkeypatch.setattr(audit, "_bounded_audit_child", forbidden)
     _final_context_audit(report, state=compiled["state"], deadline=time.monotonic())
     assert report["context_input_audit"]["reason"] == "audit_budget_unavailable"
 
@@ -640,15 +714,19 @@ result.update(received_provider=receipt['provider'], received_model=receipt['mod
     reconstructed_model_sha256=hashlib.sha256(model.encode()).hexdigest(), checks=checks)
 print(json.dumps(result))
 """
-    def child(argv, *, input, **kwargs):
-        assert argv[:4] == [sys.executable, "-B", "-P", "-m"]
-        rows = json.loads(input)
+    def child(argv, *, input_bytes, timeout, limit, environment):
+        assert argv[:3] == [sys.executable, "-B", "-P"]
+        assert Path(argv[3]) == Path(audit.__file__).resolve()
+        rows = json.loads(input_bytes)
         captured.extend(rows)
         body = dict(receipt=rows[0], prompt=case["prompt"], repository=str(case["repository"]),
                     workspace_root=str(case["workspace"].parent))
-        return native_run([sys.executable, "-B", "-P", "-c", code],
-                          input=json.dumps(body).encode(), **kwargs)
-    monkeypatch.setattr(audit.subprocess, "run", child)
+        process = native_run([sys.executable, "-B", "-P", "-c", code],
+            input=json.dumps(body).encode(), capture_output=True, timeout=timeout,
+            env=environment, check=False)
+        assert len(process.stdout) <= limit
+        return process.returncode, process.stdout
+    monkeypatch.setattr(audit, "_bounded_audit_child", child)
     result = audit.collect_terminal_context_audit(state=tmp_path / "state", receipts=[receipt],
         workspace_root=case["workspace"].parent, timeout_seconds=10)
     assert captured[0]["provider"] == result["received_provider"] == receipt["provider"]

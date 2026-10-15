@@ -1,0 +1,192 @@
+"""Retain one native source construction qualification or an unpatched control.
+
+Uses fixed existing checkouts and private test state. Shared refs are observed;
+fixed execution HEAD/index and listed source bytes are mandatory guards.
+"""
+from __future__ import annotations
+
+import argparse
+import collections
+import datetime
+import hashlib
+import importlib.metadata
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import subprocess
+import sys
+import tempfile
+import time
+import xml.etree.ElementTree as ET
+
+PHASE = Path(__file__).resolve().parent
+ROOT = PHASE.parents[3]
+BASE = 'e21d6e7b41f14f3994b0fd8556bfcd341d9e888c'
+EXECUTION_REVISION = BASE
+DATASETS = Path('/home/barberb/lift_coding/.worktrees/router-source-delivery-fences-datasets-20261014')
+DATASETS_REVISION = '4b50ae4aac65da9166bd3b24608f32ba7e9fb23d'
+KIT = Path('/home/barberb/lift_coding/.worktrees/repository-proof-context-kit-20261014')
+KIT_REVISION = '40c98c71b95be750509ffdb21e7e5494d91b4e79'
+PRODUCTION = 'ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py'
+NEW_TEST = 'test/api/test_source_worker_construction.py'
+RUNNER = str(Path(__file__).relative_to(ROOT))
+TARGETS = json.loads((PHASE / 'targets.json').read_bytes())
+
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def git(root, *args):
+    return subprocess.check_output(['git', '--no-optional-locks', *args], cwd=root)
+
+
+def utc():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def write(path, data):
+    path.write_text(json.dumps(data, sort_keys=True, indent=2) + '\n')
+
+
+def states():
+    return {str(root): dict(head=git(root, 'rev-parse', 'HEAD').decode().strip(),
+        index_sha256=sha(git(root, 'ls-files', '--stage', '-z')),
+        refs_sha256=sha(git(root, 'for-each-ref', '--format=%(refname) %(objectname)')))
+        for root in (ROOT, DATASETS, KIT)}
+
+
+def bindings():
+    rows = []
+    names = json.loads((PHASE / 'source-inventory.json').read_bytes())
+    assert len(names) == len({(row['repository'], row['path']) for row in names})
+    for name in names:
+        repository, path = name['repository'], name['path']
+        root = ROOT if repository == 'accelerator' else DATASETS
+        raw = (root / path).read_bytes()
+        row = dict(name, source_checkout=str(root), bytes=len(raw), sha256=sha(raw))
+        if repository != 'accelerator' or path not in (PRODUCTION, NEW_TEST, RUNNER):
+            revision = EXECUTION_REVISION if repository == 'accelerator' else DATASETS_REVISION
+            assert raw == git(root, 'show', revision + ':' + path), path
+            row['matches_immutable_git_object'] = True
+        rows.append(row)
+    return rows
+
+
+def main():
+    global EXECUTION_REVISION
+    parser = argparse.ArgumentParser()
+    parser.add_argument('attempt')
+    parser.add_argument('--baseline-node')
+    args = parser.parse_args()
+    assert re.fullmatch(r'(?:baseline|qualification)-[0-9]{2,3}', args.attempt)
+    baseline = args.attempt.startswith('baseline-')
+    assert baseline == bool(args.baseline_node)
+    EXECUTION_REVISION = git(ROOT, 'rev-parse', 'HEAD').decode().strip()
+    subprocess.run(['git', 'merge-base', '--is-ancestor', BASE, EXECUTION_REVISION], cwd=ROOT, check=True)
+    if baseline:
+        assert EXECUTION_REVISION == BASE
+        assert args.baseline_node.startswith(NEW_TEST + '::')
+        assert (ROOT / PRODUCTION).read_bytes() == git(ROOT, 'show', BASE + ':' + PRODUCTION)
+    assert git(ROOT, 'rev-parse', 'HEAD').decode().strip() == EXECUTION_REVISION
+    assert git(DATASETS, 'rev-parse', 'HEAD').decode().strip() == DATASETS_REVISION
+    assert git(KIT, 'rev-parse', 'HEAD').decode().strip() == KIT_REVISION
+    attempt = PHASE / args.attempt
+    attempt.mkdir(exist_ok=False)
+    before, before_git = bindings(), states()
+    snapshots = []
+    for name in (PRODUCTION, NEW_TEST, RUNNER):
+        raw = (ROOT / name).read_bytes()
+        target = attempt / 'source-snapshot' / (name + '.snapshot.txt')
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+        snapshots.append(dict(path=name, bytes=len(raw), sha256=sha(raw),
+                              snapshot=str(target.relative_to(ROOT))))
+    # Native fixture sockets include per-test directories; keep the private
+    # root short enough for the platform's Unix-domain pathname bound.
+    private = Path(tempfile.mkdtemp(prefix='swc-'))
+    updates = dict(PYTHONDONTWRITEBYTECODE='1', PYTHONUNBUFFERED='1', PYTHONHASHSEED='0',
+        PYTEST_DISABLE_PLUGIN_AUTOLOAD='1', IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI='0', IPFS_KIT_DISABLE='1',
+        HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1', HF_DATASETS_OFFLINE='1', TOKENIZERS_PARALLELISM='false',
+        OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', MKL_NUM_THREADS='1', NUMEXPR_NUM_THREADS='1',
+        PYTHONPATH=os.pathsep.join(map(str, (ROOT, DATASETS, KIT))),
+        IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR=str(private / 'orchestration'),
+        IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=str(private / 'seal.duckdb'))
+    removed = ('IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET', 'IPFS_ACCELERATE_AGENT_QUACK_TOKEN',
+        'IPFS_ACCELERATE_META_INDEX_DUCKDB', 'IPFS_ACCELERATE_META_INDEX_DUCKLAKE',
+        'PYTEST_ADDOPTS', 'PYTEST_PLUGINS', 'IPFS_TEST_PROOF_REUSE_MODE')
+    env = os.environ.copy()
+    for name in removed:
+        env.pop(name, None)
+    env.update(updates)
+    targets = [args.baseline_node] if baseline else TARGETS
+    argv = [sys.executable, '-B', '-m', 'pytest', '-c', 'pytest.ini', *targets, '--color=no',
+        '--basetemp=' + str(private / 'pytest-temp'), '-o', 'log_cli=false',
+        '-o', 'cache_dir=' + str(private / 'pytest-cache'), '--tb=short', '--maxfail=1',
+        '--junitxml=' + str(attempt / 'junit.xml')]
+    record = dict(schema='source-worker-construction-qualification@1', status='running',
+        started_at_utc=utc(), accelerator_base=BASE, accelerator_execution_head=EXECUTION_REVISION,
+        datasets_execution_revision=DATASETS_REVISION, kit_execution_revision=KIT_REVISION,
+        before=before, git_state_before=before_git, targets=targets, argv=argv, cwd=str(ROOT),
+        pytest_invocations=1, separate_collection=False, baseline_control=baseline,
+        interpreter=sys.executable, interpreter_version=sys.version, platform=platform.platform(),
+        distribution_versions={name: importlib.metadata.version(name)
+                               for name in ('pytest', 'duckdb', 'cryptography', 'numpy')},
+        source_binding_scope='listed_dependencies_not_complete_import_closure',
+        frozen_changed_source_snapshots=snapshots, environment_updates=updates,
+        inherited_environment_names_removed=list(removed), private_runtime_directory=str(private),
+        authored_listener_and_deployment_metadata_seams=True, actual_inert_child_probes=not baseline,
+        provider_calls=0, model_calls=0, training_steps=0, solver_calls=0, docker_run=False,
+        target_program_executions=0, worker_uid_qualified=False,
+        production_coding_child_adoption=False, universal_cas_callback_safety=False,
+        proof_authority=False, execution_authority=False, completion_authority=False,
+        official_task_result=None, total_session_token_savings_established=False,
+        runtime_databases_published=False, previous_counts_added=False)
+    write(attempt / 'commands.json', record)
+    print('Starting ' + args.attempt + ': ' + str(len(targets)) + ' targets, '
+          + str(len(before)) + ' listed source bindings', flush=True)
+    started = time.monotonic()
+    with (attempt / 'tests.stdout.log').open('wb') as stdout, (attempt / 'tests.stderr.log').open('wb') as stderr:
+        result = subprocess.run(argv, cwd=ROOT, env=env, stdout=stdout, stderr=stderr)
+    record.update(pytest_exit_code=result.returncode, completed_at_utc=utc(),
+                  elapsed_seconds=round(time.monotonic() - started, 3))
+    record['after'], record['git_state_after'] = bindings(), states()
+    record['source_before_after_equal'] = record['before'] == record['after']
+    record['fixed_heads_and_indexes_unchanged'] = all(
+        all(before_git[root][key] == record['git_state_after'][root][key]
+            for key in ('head', 'index_sha256')) for root in before_git)
+    record['observed_shared_ref_changes'] = [dict(path=root, before=before_git[root]['refs_sha256'],
+        after=record['git_state_after'][root]['refs_sha256'], actor_attributed=False)
+        for root in before_git if before_git[root]['refs_sha256'] != record['git_state_after'][root]['refs_sha256']]
+    for name in ('tests.stdout.log', 'tests.stderr.log', 'junit.xml'):
+        raw = (attempt / name).read_bytes()
+        record[name] = dict(bytes=len(raw), sha256=sha(raw))
+    text = (attempt / 'tests.stdout.log').read_text(errors='replace')
+    counts = re.findall(r'^(?:collecting \.\.\. )?collected ([0-9]+) items?\s*$', text, re.M)
+    document = ET.parse(attempt / 'junit.xml').getroot()
+    cases = [(row.get('classname'), row.get('name')) for row in document.iter('testcase')]
+    outcome = dict(tests=len(cases), failures=sum(1 for _ in document.iter('failure')),
+                   errors=sum(1 for _ in document.iter('error')), skipped=sum(1 for _ in document.iter('skipped')))
+    record.update(junit=outcome, collected_tests=int(counts[0]) if len(counts) == 1 else None,
+        distinct_junit_cases=len(set(cases)), suites=dict(collections.Counter(suite for suite, _ in cases)))
+    guards = (record['source_before_after_equal'] and record['fixed_heads_and_indexes_unchanged']
+              and len(counts) == 1 and int(counts[0]) == len(cases) == len(set(cases)))
+    if baseline:
+        expected = (guards and result.returncode == 1 and outcome == dict(tests=1, failures=1, errors=0, skipped=0)
+                    and 'broker construction replay must release SERVER' in text)
+        record['status'] = 'expected_regression' if expected else 'fail'
+    else:
+        expected_suites = {path[:-3].replace('/', '.') for path in TARGETS}
+        expected = (guards and result.returncode == 0 and len(cases) > 0 and outcome['failures'] == 0
+                    and outcome['errors'] == 0 and outcome['skipped'] == 0
+                    and set(record['suites']) == expected_suites)
+        record['status'] = 'pass' if expected else 'fail'
+    write(attempt / 'commands.json', record)
+    print(json.dumps({key: record[key] for key in ('status', 'pytest_exit_code', 'junit', 'elapsed_seconds')}), flush=True)
+    return 0 if expected else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

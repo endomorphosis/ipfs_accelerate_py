@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.provider_execution import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_execution import (
     ProviderExecutionGateway,
     ProviderExecutionPhase,
 )
-from ipfs_accelerate_py.agent_supervisor.provider_usage_migration import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_usage_migration import (
     COMPLETE_PROVIDER_CALLSITE_GOAL_ID,
     COMPLETE_PROVIDER_CALLSITE_REQUIREMENT_ID,
     DEFAULT_NON_METERABLE_ENFORCE_CEILING_REQUESTS,
@@ -53,6 +53,17 @@ from ipfs_accelerate_py.agent_supervisor.provider_usage_migration import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _coordinated_context(consumer_id, provider_id):
+    """Real in-memory endpoint ledger, with no live provider or disk state."""
+    from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_usage_rollout import build_harness
+
+    harness = build_harness()
+    scope = harness.scopes["primary"].scope_id
+    context = build_consumer_call_context(consumer_id=consumer_id, provider_id=provider_id,
+        endpoint_scope_id=scope, usage_revision=harness.usage_revision(scope), fence_id="1")
+    return context, ProviderExecutionGateway(coordinator=harness.coordinator)
 
 
 def test_requirement_and_authority_bounds() -> None:
@@ -118,10 +129,9 @@ def test_enforce_mode_supplies_envelope_and_consumes_receipt() -> None:
         calls["n"] += 1
         return '{"ok": true}'
 
-    context = build_consumer_call_context(
-        consumer_id=ConsumerId.PROMPT_GOAL_PLANNER,
-        provider_id="provider:simulated",
-        estimated_requests=1,
+    context, gateway = _coordinated_context(
+        ConsumerId.PROMPT_GOAL_PLANNER,
+        "provider:authored-test-double",
     )
     lineage = build_request_lineage_envelope(context)
     leaf = request_leaf_envelope(lineage)
@@ -139,6 +149,7 @@ def test_enforce_mode_supplies_envelope_and_consumes_receipt() -> None:
         context=context,
         invoke=invoke,
         mode=SupervisorUsageMode.ENFORCE,
+        gateway=gateway,
     )
     assert result.metered is True
     assert result.usage_receipt is not None
@@ -163,13 +174,14 @@ def test_dispatch_does_not_retry_side_effecting_work() -> None:
         consumer_id=ConsumerId.RESCUE_PLANNER,
         provider_id="provider:once",
     )
+    gateway = ProviderExecutionGateway()
     first = dispatch_migrated_provider_call(
         context=context,
         invoke=invoke,
         mode=SupervisorUsageMode.ASSIST,
+        gateway=gateway,
     )
     # Exact replay through the same gateway attempt key must not re-invoke.
-    gateway = ProviderExecutionGateway()
     # Rebuild an identical context (same idempotency) and force same attempt.
     second = dispatch_migrated_provider_call(
         context=context,
@@ -178,10 +190,11 @@ def test_dispatch_does_not_retry_side_effecting_work() -> None:
         gateway=gateway,
     )
     assert first.text == "once"
-    assert second.text == "once"
-    # Each dispatch builds a new gateway unless shared; still one invoke per
-    # dispatch, never an internal double invoke.
-    assert calls["n"] == 2
+    assert second.text == ""
+    assert second.execution_result.replayed is True
+    assert second.usage_receipt == first.usage_receipt
+    assert "generated_text_unavailable" in second.reason_codes
+    assert calls["n"] == 1
 
 
 def test_non_meterable_child_result_and_enforce_ceiling() -> None:
@@ -201,7 +214,7 @@ def test_non_meterable_child_result_and_enforce_ceiling() -> None:
     )
     assert admitted.ceiling_requests == DEFAULT_NON_METERABLE_ENFORCE_CEILING_REQUESTS
 
-    from ipfs_accelerate_py.agent_supervisor.provider_usage_migration import (
+    from ipfs_accelerate_py.agent_supervisor.runtime.provider_usage_migration import (
         MAX_NON_METERABLE_ENFORCE_CEILING_REQUESTS,
     )
 
@@ -237,9 +250,9 @@ def test_extract_child_usage_and_reset_metadata() -> None:
 
 
 def test_consume_usage_receipt_rejects_drop_and_authority() -> None:
-    context = build_consumer_call_context(
-        consumer_id=ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT,
-        provider_id="provider:x",
+    context, gateway = _coordinated_context(
+        ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT,
+        "provider:authored-test-double",
     )
 
     def invoke() -> str:
@@ -249,6 +262,7 @@ def test_consume_usage_receipt_rejects_drop_and_authority() -> None:
         context=context,
         invoke=invoke,
         mode=SupervisorUsageMode.ENFORCE,
+        gateway=gateway,
     )
     assert result.execution_result is not None
     receipt = consume_usage_receipt(
@@ -257,11 +271,11 @@ def test_consume_usage_receipt_rejects_drop_and_authority() -> None:
     )
     assert receipt.request_id == context.request_id
 
-    from ipfs_accelerate_py.agent_supervisor.provider_execution import (
+    from ipfs_accelerate_py.agent_supervisor.runtime.provider_execution import (
         ProviderExecutionResult,
     )
 
-    from ipfs_accelerate_py.agent_supervisor.provider_usage import (
+    from ipfs_accelerate_py.agent_supervisor.runtime.provider_usage import (
         SupervisorUsageFinalStatus,
     )
 
@@ -339,7 +353,7 @@ def plan():
 
 def test_ast_inventory_accepts_migrated_consumer_fixture() -> None:
     migrated = """
-from ipfs_accelerate_py.agent_supervisor.provider_usage_migration import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_usage_migration import (
     dispatch_migrated_provider_call,
     ConsumerId,
 )
@@ -371,21 +385,21 @@ def test_repository_inventory_covers_in_scope_consumers() -> None:
 def test_build_callsite_inventory_reports_receipt_drop_fixture() -> None:
     sources = {
         IN_SCOPE_CONSUMER_MODULES[ConsumerId.TASK_PROPOSAL_ROUTER]: """
-from ipfs_accelerate_py.agent_supervisor.provider_usage_migration import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_usage_migration import (
     dispatch_migrated_provider_call,
 )
 def go():
     return dispatch_migrated_provider_call
 """,
         IN_SCOPE_CONSUMER_MODULES[ConsumerId.PROMPT_GOAL_PLANNER]: """
-from ipfs_accelerate_py.agent_supervisor.provider_execution import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_execution import (
     ProviderExecutionGateway,
 )
 def go():
     return ProviderExecutionGateway
 """,
         IN_SCOPE_CONSUMER_MODULES[ConsumerId.RESCUE_PLANNER]: """
-from ipfs_accelerate_py.agent_supervisor.provider_usage_migration import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_usage_migration import (
     consume_usage_receipt,
 )
 def go():
@@ -417,46 +431,27 @@ def test_migration_status_for_each_consumer() -> None:
         assert Path(REPO_ROOT / status["module_path"]).is_file()
 
 
-def test_declared_flat_surfaces_export_migration_status() -> None:
-    import importlib.util
+def test_canonical_consumer_modules_match_migration_status() -> None:
+    import importlib
 
-    flat_paths = {
-        ConsumerId.TASK_PROPOSAL_ROUTER: (
-            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/task_proposal_router.py"
-        ),
-        ConsumerId.PROMPT_GOAL_PLANNER: (
-            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py"
-        ),
-        ConsumerId.RESCUE_PLANNER: (
-            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/rescue_planner.py"
-        ),
-        ConsumerId.LEANSTRAL_PROOF_PROVIDER: (
-            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/leanstral_proof_provider.py"
-        ),
-        ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT: (
-            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/leanstral_goal_development.py"
-        ),
-    }
-    for consumer, path in flat_paths.items():
+    # Retired flat files are not the source of truth after the domain-layout
+    # cutover.  Keep coverage of every consumer and its importable real owner.
+    assert set(IN_SCOPE_CONSUMER_MODULES) == set(ConsumerId)
+    for consumer, relative_path in IN_SCOPE_CONSUMER_MODULES.items():
+        path = REPO_ROOT / relative_path
         assert path.is_file(), path
-        source = path.read_text(encoding="utf-8")
-        assert "ASI_168" in source or "migration_status_for" in source
-        assert consumer.value in source or consumer.value.replace("_", "-") in source
-
-    # Package imports resolve to landed modules and remain importable.
-    for stem in (
-        "task_proposal_router",
-        "prompt_goal_planner",
-        "rescue_planner",
-        "leanstral_proof_provider",
-        "leanstral_goal_development",
-    ):
-        module = __import__(
-            f"ipfs_accelerate_py.agent_supervisor.{stem}",
-            fromlist=["*"],
-        )
-        assert module is not None
+        module_name = relative_path.removesuffix(".py").replace("/", ".")
+        module = importlib.import_module(module_name)
+        assert Path(module.__file__).resolve() == path.resolve()
         assert any(not name.startswith("__") for name in dir(module))
+        source = path.read_text(encoding="utf-8")
+        assert "provider_usage_migration" in source
+        assert consumer.value in source or f"ConsumerId.{consumer.name}" in source
+        status = migration_status_for(consumer)
+        assert status["consumer_id"] == consumer.value
+        assert status["module_path"] == relative_path
+        assert status["migrated"] is True
+        assert status["is_completion_evidence"] is False
 
 
 def test_consumer_modules_import_migration_helpers() -> None:
@@ -477,6 +472,6 @@ def test_consumer_modules_import_migration_helpers() -> None:
 def test_cold_import_is_provider_free() -> None:
     import importlib
 
-    module = importlib.import_module("ipfs_accelerate_py.agent_supervisor.provider_usage_migration")
+    module = importlib.import_module("ipfs_accelerate_py.agent_supervisor.runtime.provider_usage_migration")
     assert module.COMPLETE_PROVIDER_CALLSITE_REQUIREMENT_ID
     assert module.MIGRATION_IS_COMPLETION_EVIDENCE is False

@@ -19,15 +19,21 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping, Sequence
+
+if TYPE_CHECKING:
+    from ..runtime.batch_provider_usage import BatchProviderUsageBinding
 
 from ..context.context_compiler import (
     ContextCompileResult,
     ContextCompiler,
+    CalibratedTokenEstimator,
+    EvidenceExpansionRequest,
     build_text_context_references,
     render_context_capsule,
 )
 from ..context.context_contracts import ContextBudget
+from .repository_planning_context import RepositoryPlanningContext
 from .plan_evaluator import (
     ANALYSIS_PROPOSAL_JSON_SCHEMA,
     PLAN_BRANCH_JSON_SCHEMA,
@@ -212,6 +218,12 @@ class TaskProposalRouterConfig:
         compare=False,
     )
     decision_runtime: Any = field(default=None, repr=False, compare=False)
+    repository_context: RepositoryPlanningContext | None = field(
+        default=None, repr=False, compare=False,
+    )
+    batch_usage_binding: BatchProviderUsageBinding | None = field(
+        default=None, repr=False, compare=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -290,6 +302,9 @@ class TaskProposalRouteSpec:
     default_model: str = "gpt-5.3-codex-spark"
     default_max_new_tokens: int = 2048
     default_timeout_seconds: int = 300
+    batch_usage_binding: BatchProviderUsageBinding | None = field(
+        default=None, repr=False, compare=False,
+    )
 
 
 def _repo_path(repo_root: Path, path: Path | str) -> Path:
@@ -449,6 +464,7 @@ def build_task_proposal_router_cli_config(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
     decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
@@ -479,6 +495,7 @@ def build_task_proposal_router_cli_config(
             provider_max_input_tokens=provider_max_input_tokens,
             context_tokenizer=context_tokenizer,
             provider_batch_scheduler=provider_batch_scheduler,
+            batch_usage_binding=batch_usage_binding,
             decision_runtime=decision_runtime,
         ),
         description=description,
@@ -520,6 +537,7 @@ def run_configured_task_proposal_router_cli(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
     default_model: str = "gpt-5.3-codex-spark",
@@ -552,6 +570,7 @@ def run_configured_task_proposal_router_cli(
             provider_max_input_tokens=provider_max_input_tokens,
             context_tokenizer=context_tokenizer,
             provider_batch_scheduler=provider_batch_scheduler,
+            batch_usage_binding=batch_usage_binding,
             provider_env=provider_env,
             model_env=model_env,
             default_model=default_model,
@@ -598,6 +617,7 @@ def build_configured_task_proposal_router_runner(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
     decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
@@ -631,6 +651,7 @@ def build_configured_task_proposal_router_runner(
             provider_max_input_tokens=provider_max_input_tokens,
             context_tokenizer=context_tokenizer,
             provider_batch_scheduler=provider_batch_scheduler,
+            batch_usage_binding=batch_usage_binding,
             decision_runtime=decision_runtime,
             provider_env=provider_env,
             model_env=model_env,
@@ -669,6 +690,7 @@ def build_repo_task_proposal_router_runner(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
     decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
@@ -713,6 +735,7 @@ def build_repo_task_proposal_router_runner(
         provider_max_input_tokens=provider_max_input_tokens,
         context_tokenizer=context_tokenizer,
         provider_batch_scheduler=provider_batch_scheduler,
+        batch_usage_binding=batch_usage_binding,
         decision_runtime=decision_runtime,
         provider_env=provider_env,
         model_env=model_env,
@@ -758,6 +781,7 @@ def build_repo_task_proposal_route_runner(
     provider_max_input_tokens: int | None = None,
     context_tokenizer: Any = None,
     provider_batch_scheduler: ProviderBatchScheduler | None = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
     decision_runtime: Any = None,
     provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
     model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
@@ -824,6 +848,7 @@ def build_repo_task_proposal_route_runner(
         provider_max_input_tokens=provider_max_input_tokens,
         context_tokenizer=context_tokenizer,
         provider_batch_scheduler=provider_batch_scheduler,
+        batch_usage_binding=batch_usage_binding,
         decision_runtime=decision_runtime,
         provider_env=provider_env,
         model_env=model_env,
@@ -876,6 +901,7 @@ def build_repo_task_proposal_route_runner_from_spec(
         provider_max_input_tokens=route_spec.provider_max_input_tokens,
         context_tokenizer=route_spec.context_tokenizer,
         provider_batch_scheduler=route_spec.provider_batch_scheduler,
+        batch_usage_binding=route_spec.batch_usage_binding,
         decision_runtime=route_spec.decision_runtime,
         provider_env=route_spec.provider_env,
         model_env=route_spec.model_env,
@@ -969,6 +995,25 @@ def compile_task_proposal_context(
     context_id: str,
     max_new_tokens: int,
 ) -> ContextCompileResult:
+    """Compile planning context; the running consumer retains its source fence."""
+    result, adapter = _prepare_task_proposal_context(
+        config, task=task, plan_text=plan_text, repository_tree_id=repository_tree_id,
+        context_id=context_id, max_new_tokens=max_new_tokens,
+    )
+    if adapter is not None:
+        adapter.close()
+    return result
+
+
+def _prepare_task_proposal_context(
+    config: TaskProposalRouterConfig,
+    *,
+    task: object,
+    plan_text: str,
+    repository_tree_id: str,
+    context_id: str,
+    max_new_tokens: int,
+) -> tuple[ContextCompileResult, Any]:
     """Compile one immutable planning core plus ranked roadmap chunks."""
 
     if not isinstance(plan_text, str):
@@ -998,7 +1043,16 @@ def compile_task_proposal_context(
             ).encode("utf-8")
         ).hexdigest()
     )
-    repository_id = _router_repository_id(config.repo_root)
+    binding = config.repository_context
+    if binding is not None:
+        if not isinstance(binding, RepositoryPlanningContext):
+            raise TaskProposalRouterError("invalid repository planning context")
+        binding.validate_paths(config)
+        if plan_text != binding.read_text(config.plan_path):
+            raise TaskProposalRouterError("planning roadmap differs from the source snapshot")
+        repository_id, repository_tree_id = binding.identity()
+    else:
+        repository_id = _router_repository_id(config.repo_root)
     roadmap_references = build_text_context_references(
         plan_text,
         reference_prefix="roadmap",
@@ -1024,11 +1078,11 @@ def compile_task_proposal_context(
         max_input_tokens=max(1, int(configured_input)),
         reserved_output_tokens=max(0, int(max_new_tokens)),
         reserved_tool_tokens=max(0, int(config.context_reserved_tool_tokens)),
-        max_items=256,
-        max_item_bytes=16_384,
+        max_items=128 if binding is not None else 256,
+        max_item_bytes=65_536 if binding is not None else 16_384,
         max_serialized_bytes=262_144,
         max_depth=12,
-        max_text_bytes=8_192,
+        max_text_bytes=61_440 if binding is not None else 8_192,
     )
     compiler = ContextCompiler(
         budget,
@@ -1036,15 +1090,11 @@ def compile_task_proposal_context(
         provider_context_window=config.provider_context_window,
         provider_max_input_tokens=config.provider_max_input_tokens,
     )
-    result = compiler.compile(
-        repository_id=repository_id,
-        tree_id=repository_tree_id,
+    arguments = dict(
         objective_id=task_id,
         objective_revision=context_id,
         policy_id="policy:task-proposal-router",
         policy_revision=policy_revision,
-        caller="agent-supervisor:task-proposal-router",
-        stage="planning",
         goal={
             "task_id": task_id,
             "title": _task_value(task, "title"),
@@ -1074,6 +1124,22 @@ def compile_task_proposal_context(
             ),
             "response_schema": TASK_IMPLEMENTATION_PROPOSAL_JSON_SCHEMA,
         },
+    )
+    if binding is not None:
+        required = binding.required_evidence()
+        adapter = binding.session.context_adapter(compiler)
+        result = adapter.compile(
+            **arguments, generation=binding.generation, query=binding.query,
+            unresolved_question=binding.unresolved_question, limit=binding.query_limit,
+            required_evidence=required,
+            required_reference_ids=tuple(ref.reference_id for ref in required),
+            required_coverage_ids=tuple(sorted({c for ref in required for c in ref.coverage_ids})),
+            optional_evidence=roadmap_references,
+        )
+        return result, adapter
+    result = compiler.compile(
+        **arguments, repository_id=repository_id, tree_id=repository_tree_id,
+        caller="agent-supervisor:task-proposal-router", stage="planning",
         evidence=roadmap_references,
     )
     try:
@@ -1093,7 +1159,7 @@ def compile_task_proposal_context(
         )
     except Exception:
         pass
-    return result
+    return result, None
 
 
 def _proposal_json_depth(value: Any, depth: int = 0) -> int:
@@ -1349,6 +1415,19 @@ def build_task_implementation_proposal_contract(
     )
 
 
+def _bound_batch_scheduler(
+    binding: BatchProviderUsageBinding,
+    scheduler: ProviderBatchScheduler | None,
+) -> ProviderBatchScheduler:
+    from ..runtime.batch_provider_usage import BatchProviderUsageBinding
+
+    if not isinstance(binding, BatchProviderUsageBinding):
+        raise ValueError("batch_usage_binding must be BatchProviderUsageBinding")
+    if scheduler is not None and scheduler is not binding.scheduler:
+        raise ValueError("batch_usage_binding cannot use a different scheduler")
+    return binding.scheduler
+
+
 def _call_text_provider(
     prompt: str,
     invocation: Any,
@@ -1361,6 +1440,7 @@ def _call_text_provider(
     provenance: Mapping[str, Any] | None = None,
     usage_consumer_id: str = "task_proposal_router",
     usage_migrate: bool = True,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
 ) -> tuple[str, ProviderBatchResult | None]:
     """Dispatch text directly or through the shared admitted provider stream.
 
@@ -1375,40 +1455,82 @@ def _call_text_provider(
 
     provider_id = str(invocation.provider or "llm_router:auto")
     provenance_map = dict(provenance or {})
+    bound_consumer = None
+    if batch_usage_binding is not None:
+        from ..runtime.provider_usage_migration import ConsumerId
+
+        scheduler = _bound_batch_scheduler(batch_usage_binding, scheduler)
+        if (invocation.allow_local_fallback
+                or getattr(invocation, "allow_cross_provider_fallback", None) is True):
+            raise ValueError("batch_usage_binding requires provider fallback to be disabled")
+        bound_consumer = ConsumerId(str(
+            provenance_map.get("usage_consumer_id") or usage_consumer_id
+        ))
+        for name, value in (
+            ("context_limit", context_limit),
+            ("max_new_tokens", invocation.max_new_tokens),
+            ("timeout_seconds", invocation.timeout_seconds),
+        ):
+            if type(value) is not int or value <= 0:
+                raise ValueError(f"batch_usage_binding requires a positive integer {name}")
+        grace = getattr(invocation, "timeout_grace_seconds", 0)
+        if type(grace) is not int or grace < 0:
+            raise ValueError("batch_usage_binding requires a nonnegative timeout grace")
 
     def _legacy_dispatch() -> tuple[str, ProviderBatchResult | None]:
         if scheduler is None:
             return call_llm_router(prompt, invocation), None
         prompt_bytes = prompt.encode("utf-8", errors="surrogatepass")
-        result = scheduler.execute(
-            ProviderBatchRequest(
-                request_id=f"{route}:{uuid.uuid4().hex}",
-                payload=prompt,
-                provider_id=provider_id,
-                route=route,
-                model=str(invocation.model_name),
-                operation=operation,
-                context_limit=max(0, int(context_limit)),
-                policy={
-                    "allow_local_fallback": bool(invocation.allow_local_fallback),
-                    "reject_effective_provider_name": (invocation.reject_effective_provider_name),
-                    "required_effective_providers": tuple(invocation.required_effective_providers),
-                    "response_contract": response_contract,
-                },
-                generation_settings={
-                    "temperature": float(invocation.temperature),
-                    "backend": str(invocation.backend_default),
-                },
-                token_budget=max(0, int(invocation.max_new_tokens)),
-                timeout_ms=max(1, int(invocation.timeout_seconds) * 1_000),
-                provenance={
-                    **provenance_map,
-                    "route": route,
-                    "response_contract": response_contract,
-                    "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
-                    "prompt_bytes": len(prompt_bytes),
-                },
-            )
+        request = ProviderBatchRequest(
+            request_id=f"{route}:{uuid.uuid4().hex}",
+            payload=prompt,
+            provider_id=provider_id,
+            route=route,
+            model=str(invocation.model_name),
+            operation=operation,
+            # This conservative accounting ceiling does not relax the
+            # caller's independently checked prompt/context policy.
+            context_limit=(
+                max(int(context_limit), len(prompt_bytes))
+                if batch_usage_binding is not None else max(0, int(context_limit))
+            ),
+            policy={
+                "allow_local_fallback": bool(invocation.allow_local_fallback),
+                "reject_effective_provider_name": (invocation.reject_effective_provider_name),
+                "required_effective_providers": (
+                    (provider_id,) if batch_usage_binding is not None
+                    else tuple(invocation.required_effective_providers)
+                ),
+                "response_contract": response_contract,
+                **({"allow_cross_provider_fallback": False} if batch_usage_binding is not None else {}),
+            },
+            generation_settings={
+                "temperature": float(invocation.temperature),
+                "backend": str(invocation.backend_default),
+                **({
+                    "allow_local_fallback": False,
+                    "allow_cross_provider_fallback": False,
+                    "disable_model_retry": True,
+                    "max_new_tokens": int(invocation.max_new_tokens),
+                } if batch_usage_binding is not None else {}),
+            },
+            token_budget=max(0, int(invocation.max_new_tokens)),
+            timeout_ms=max(1, (
+                int(invocation.timeout_seconds)
+                + (int(getattr(invocation, "timeout_grace_seconds", 0))
+                   if batch_usage_binding is not None else 0)
+            ) * 1_000),
+            provenance={
+                **provenance_map,
+                "route": route,
+                "response_contract": response_contract,
+                "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
+                "prompt_bytes": len(prompt_bytes),
+            },
+        )
+        result = (
+            batch_usage_binding.execute(request, consumer_id=bound_consumer)
+            if batch_usage_binding is not None else scheduler.execute(request)
         )
         if not result.successful:
             raise TaskProposalRouterError(
@@ -1423,6 +1545,8 @@ def _call_text_provider(
             )
         return result.output, result
 
+    if batch_usage_binding is not None:
+        return _legacy_dispatch()
     mode_raw = (
         str(os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")).strip().casefold()
     )
@@ -1490,17 +1614,27 @@ def run_task_proposal_router(
 ) -> dict[str, object]:
     """Prepare or generate an LLM implementation proposal for one task."""
 
-    from ..todo_daemon.implementation_daemon import parse_task_file
+    from ..todo_daemon.implementation_daemon import parse_task_file, parse_task_text
     from ..todo_daemon.llm import LlmRouterInvocation
 
-    tasks = parse_task_file(config.task_board_path, config.task_header_prefix)
+    binding = config.repository_context
+    if binding is not None:
+        if not isinstance(binding, RepositoryPlanningContext):
+            raise TaskProposalRouterError("invalid repository planning context")
+        binding.validate_paths(config)
+        tasks = parse_task_text(binding.read_text(config.task_board_path),
+                                path=config.task_board_path,
+                                task_header_prefix=config.task_header_prefix)
+        plan_text = binding.read_text(config.plan_path)
+    else:
+        tasks = parse_task_file(config.task_board_path, config.task_header_prefix)
+        plan_text = config.plan_path.read_text(encoding="utf-8")
     selected = select_proposal_task(
         tasks,
         task_id,
         open_statuses=config.open_statuses,
         no_open_task_message=config.no_open_task_message,
     )
-    plan_text = config.plan_path.read_text(encoding="utf-8")
     context_id = str(
         getattr(selected, "canonical_task_cid", "")
         or getattr(selected, "canonical_task_key", "")
@@ -1516,7 +1650,7 @@ def run_task_proposal_router(
             )
         ),
     )
-    compiled_context = compile_task_proposal_context(
+    compiled_context, repository_adapter = _prepare_task_proposal_context(
         config,
         task=selected,
         plan_text=plan_text,
@@ -1524,153 +1658,219 @@ def run_task_proposal_router(
         context_id=context_id,
         max_new_tokens=max_new_tokens,
     )
-    prompt = render_context_capsule(compiled_context.capsule)
-    payload: dict[str, object] = {
-        "task_id": _task_value(selected, "task_id"),
-        "title": _task_value(selected, "title"),
-        "provider": provider or None,
-        "model": model,
-        "prompt_chars": len(prompt),
-        "generate": bool(generate),
-        "llm_router_importable": True,
-        "context_capsule_id": compiled_context.capsule.capsule_id,
-        "context_input_tokens": compiled_context.capsule.input_tokens,
-        "context_input_limit": compiled_context.receipt.effective_input_limit,
-        "context_truncated": compiled_context.capsule.truncated,
-        "context_estimator": compiled_context.receipt.estimator_name,
-        "context_estimator_error_bps": (compiled_context.receipt.estimator_error_bps),
-        "context_decisions": [decision.to_dict() for decision in compiled_context.decisions],
-    }
-    runtime_payload = {
-        "task_id": _task_value(selected, "task_id"),
-        "context_id": context_id,
-        "repository_tree_id": repository_tree_id,
-        "context_capsule_id": compiled_context.capsule.capsule_id,
-        "generate": bool(generate),
-    }
-    _route_decision_runtime(
-        config.decision_runtime,
-        "task_proposal",
-        runtime_payload,
-    )
-    if not generate:
-        return payload
-
-    invocation = LlmRouterInvocation(
-        repo_root=config.repo_root,
-        model_name=model,
-        provider=provider or None,
-        allow_local_fallback=bool(allow_local_fallback),
-        timeout_seconds=int(timeout_seconds),
-        max_new_tokens=int(max_new_tokens),
-        reject_effective_provider_name=None if allow_local_fallback else "local_hf",
-    )
-    raw_proposal, batch_result = _route_decision_runtime(
-        config.decision_runtime,
-        "task_proposal",
-        {**runtime_payload, "operation": "task_implementation_proposal.v1"},
-        lambda: _call_text_provider(
-            prompt,
-            invocation,
-            scheduler=config.provider_batch_scheduler,
-            route="task-proposal-router",
-            operation="task_implementation_proposal.v1",
-            context_limit=compiled_context.receipt.effective_input_limit,
-            response_contract=TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
-            provenance={
-                "task_id": _task_value(selected, "task_id"),
-                "repository_tree_id": repository_tree_id,
-                "context_id": context_id,
-                "context_capsule_id": compiled_context.capsule.capsule_id,
-            },
-        ),
-    )
-    if batch_result is not None:
-        payload["provider_batch"] = batch_result.to_dict()
-    task_name = (_task_value(selected, "task_id") or "task").lower()
-    context_receipt_path = config.artifact_dir / f"{task_name}-context-receipt.json"
-    _route_decision_runtime(
-        config.decision_runtime,
-        "file_mutation",
-        {
-            **runtime_payload,
-            "path": _artifact_relative_path(context_receipt_path, config.repo_root),
-            "artifact_kind": "context_receipt",
-        },
-        lambda: (
-            config.artifact_dir.mkdir(parents=True, exist_ok=True),
-            context_receipt_path.write_text(
-                compiled_context.receipt.to_json() + "\n",
-                encoding="utf-8",
-            ),
-        )[-1],
-        mutation=True,
-    )
-    payload["context_receipt"] = _artifact_relative_path(context_receipt_path, config.repo_root)
     try:
-        proposal = parse_task_implementation_proposal(
-            raw_proposal,
-            expected_task_id=_task_value(selected, "task_id"),
-            expected_repository_tree_id=repository_tree_id,
-            expected_context_id=context_id,
-            allowed_paths=_task_values(selected, "outputs"),
-            allowed_validation_commands=_task_values(selected, "validation"),
+        provider_capsule = compiled_context.capsule
+        expansion = None
+        if binding is not None:
+            repository_tree_id = provider_capsule.tree_id
+            if binding.expansion_reference_ids:
+                expansion = repository_adapter.expand_for_question(
+                    provider_capsule,
+                    EvidenceExpansionRequest(binding.unresolved_question.strip(), binding.expansion_reference_ids),
+                    generation=binding.generation,
+                )
+                provider_capsule = expansion.reconstructed_capsule
+
+        def source_fence():
+            if repository_adapter is not None:
+                binding.validate_paths(config)
+                repository_adapter.validate_current(provider_capsule, generation=binding.generation)
+
+        def checked_write(callback):
+            # The runtime can delay before authorizing a write. Check inside its
+            # callback as well as at the provider response boundary.
+            source_fence()
+            return callback()
+
+        def write_artifact(path, text):
+            if binding is not None:
+                from .repository_planning_artifacts import write_repository_planning_artifact
+                if path.parent != config.artifact_dir:
+                    raise TaskProposalRouterError("invalid repository planning artifact name")
+                return write_repository_planning_artifact(
+                    directory=config.artifact_dir, name=path.name, text=text,
+                    excluded_roots=(binding.session.workspace, binding.session.state_dir),
+                )
+            config.artifact_dir.mkdir(parents=True, exist_ok=True)
+            return path.write_text(text, encoding="utf-8")
+
+        task_name = (_task_value(selected, "task_id") or "task").lower()
+        if binding is not None and re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,127}", task_name) is None:
+            raise TaskProposalRouterError("invalid repository planning artifact name")
+
+        prompt = render_context_capsule(provider_capsule)
+        if binding is not None and len(prompt) > 60_000:
+            raise TaskProposalRouterError("complete repository context exceeds the provider prompt limit",
+                                          reason_code="repository_prompt_limit")
+        prompt_tokens = (CalibratedTokenEstimator(config.context_tokenizer).estimate(prompt)
+                         if config.context_tokenizer is not None else None)
+        payload: dict[str, object] = {
+            "task_id": _task_value(selected, "task_id"),
+            "title": _task_value(selected, "title"),
+            "provider": provider or None,
+            "model": model,
+            "prompt_chars": len(prompt),
+            "prompt_bytes": len(prompt.encode("utf-8")),
+            "prompt_tokens": prompt_tokens,
+            "generate": bool(generate),
+            "llm_router_importable": True,
+            "context_capsule_id": provider_capsule.capsule_id,
+            "context_input_tokens": provider_capsule.input_tokens,
+            "context_input_limit": compiled_context.receipt.effective_input_limit,
+            "context_truncated": provider_capsule.truncated,
+            "context_estimator": compiled_context.receipt.estimator_name,
+            "context_estimator_error_bps": (compiled_context.receipt.estimator_error_bps),
+            "context_decisions": [decision.to_dict() for decision in compiled_context.decisions],
+        }
+        if expansion is not None:
+            payload["context_expansion_receipt_id"] = expansion.receipt.content_id
+            payload["context_expansion_decisions"] = [item.to_dict() for item in expansion.receipt.decisions]
+        context_receipt_text = compiled_context.receipt.to_json()
+        if binding is not None:
+            context_receipt_text = json.dumps({
+                "schema": "repository-planning-consumer-receipt@1",
+                "compilation": compiled_context.receipt.to_dict(),
+                "expansion": expansion.receipt.to_dict() if expansion is not None else None,
+                "provider_capsule_id": provider_capsule.capsule_id,
+                "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+                "prompt_bytes": len(prompt.encode("utf-8")), "prompt_tokens": prompt_tokens,
+                "delivery": "full_context_per_stateless_call",
+                "proof_authority": False, "completion_authority": False,
+            }, sort_keys=True, separators=(",", ":"))
+        runtime_payload = {
+            "task_id": _task_value(selected, "task_id"),
+            "context_id": context_id,
+            "repository_tree_id": repository_tree_id,
+            "context_capsule_id": provider_capsule.capsule_id,
+            "generate": bool(generate),
+        }
+        _route_decision_runtime(
+            config.decision_runtime,
+            "task_proposal",
+            runtime_payload,
         )
-    except TaskProposalRouterError as exc:
-        rejection_path = config.artifact_dir / f"{task_name}-proposal-rejection.json"
+        if not generate:
+            source_fence()
+            return payload
+
+        invocation = LlmRouterInvocation(
+            repo_root=config.repo_root,
+            model_name=model,
+            provider=provider or None,
+            allow_local_fallback=bool(allow_local_fallback),
+            timeout_seconds=int(timeout_seconds),
+            max_new_tokens=int(max_new_tokens),
+            reject_effective_provider_name=None if allow_local_fallback else "local_hf",
+        )
+        def dispatch_provider():
+            # Admission/backoff inside the existing provider route can delay after
+            # this check. The response fence refuses results from a changed tree.
+            source_fence()
+            result = _call_text_provider(
+                prompt,
+                invocation,
+                scheduler=config.provider_batch_scheduler,
+                batch_usage_binding=config.batch_usage_binding,
+                route="task-proposal-router",
+                operation="task_implementation_proposal.v1",
+                context_limit=compiled_context.receipt.effective_input_limit,
+                response_contract=TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
+                provenance={
+                    "task_id": _task_value(selected, "task_id"),
+                    "repository_tree_id": repository_tree_id,
+                    "context_id": context_id,
+                    "context_capsule_id": provider_capsule.capsule_id,
+                },
+            )
+            source_fence()
+            return result
+
+        raw_proposal, batch_result = _route_decision_runtime(
+            config.decision_runtime,
+            "task_proposal",
+            {**runtime_payload, "operation": "task_implementation_proposal.v1"},
+            dispatch_provider,
+        )
+        if batch_result is not None:
+            payload["provider_batch"] = batch_result.to_dict()
+        context_receipt_path = config.artifact_dir / f"{task_name}-context-receipt.json"
         _route_decision_runtime(
             config.decision_runtime,
             "file_mutation",
             {
                 **runtime_payload,
-                "path": _artifact_relative_path(rejection_path, config.repo_root),
-                "artifact_kind": "proposal_rejection",
+                "path": _artifact_relative_path(context_receipt_path, config.repo_root),
+                "artifact_kind": "context_receipt",
             },
-            lambda: rejection_path.write_text(
-                json.dumps(
-                    {
-                        "schema": ("ipfs_accelerate_py/agent-supervisor/task-proposal-rejection@1"),
-                        "accepted": False,
-                        "task_id": _task_value(selected, "task_id"),
-                        "repository_tree_id": repository_tree_id,
-                        "context_id": context_id,
-                        "reason_codes": [exc.reason_code],
-                        "proof_authoritative": False,
-                        "completion_authoritative": False,
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n",
-                encoding="utf-8",
-            ),
+            lambda: checked_write(lambda: write_artifact(context_receipt_path, context_receipt_text + "\n")),
             mutation=True,
         )
-        raise TaskProposalRouterError(
-            f"{exc}; compact rejection: "
-            f"{_artifact_relative_path(rejection_path, config.repo_root)}",
-            reason_code=exc.reason_code,
-        ) from exc
-    output_path = config.artifact_dir / f"{task_name}-proposal.json"
-    _route_decision_runtime(
-        config.decision_runtime,
-        "file_mutation",
-        {
-            **runtime_payload,
-            "path": _artifact_relative_path(output_path, config.repo_root),
-            "artifact_kind": "task_proposal",
-        },
-        lambda: output_path.write_text(
-            json.dumps(proposal, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        ),
-        mutation=True,
-    )
-    payload["artifact"] = _artifact_relative_path(output_path, config.repo_root)
-    payload["proposal_schema"] = TASK_IMPLEMENTATION_PROPOSAL_SCHEMA
-    payload["repository_tree_id"] = repository_tree_id
-    payload["context_id"] = context_id
-    return payload
+        payload["context_receipt"] = _artifact_relative_path(context_receipt_path, config.repo_root)
+        try:
+            proposal = parse_task_implementation_proposal(
+                raw_proposal,
+                expected_task_id=_task_value(selected, "task_id"),
+                expected_repository_tree_id=repository_tree_id,
+                expected_context_id=context_id,
+                allowed_paths=_task_values(selected, "outputs"),
+                allowed_validation_commands=_task_values(selected, "validation"),
+            )
+        except TaskProposalRouterError as exc:
+            rejection_path = config.artifact_dir / f"{task_name}-proposal-rejection.json"
+            _route_decision_runtime(
+                config.decision_runtime,
+                "file_mutation",
+                {
+                    **runtime_payload,
+                    "path": _artifact_relative_path(rejection_path, config.repo_root),
+                    "artifact_kind": "proposal_rejection",
+                },
+                lambda: checked_write(lambda: write_artifact(rejection_path,
+                    json.dumps(
+                        {
+                            "schema": ("ipfs_accelerate_py/agent-supervisor/task-proposal-rejection@1"),
+                            "accepted": False,
+                            "task_id": _task_value(selected, "task_id"),
+                            "repository_tree_id": repository_tree_id,
+                            "context_id": context_id,
+                            "reason_codes": [exc.reason_code],
+                            "proof_authoritative": False,
+                            "completion_authoritative": False,
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n",
+                )),
+                mutation=True,
+            )
+            raise TaskProposalRouterError(
+                f"{exc}; compact rejection: "
+                f"{_artifact_relative_path(rejection_path, config.repo_root)}",
+                reason_code=exc.reason_code,
+            ) from exc
+        output_path = config.artifact_dir / f"{task_name}-proposal.json"
+        _route_decision_runtime(
+            config.decision_runtime,
+            "file_mutation",
+            {
+                **runtime_payload,
+                "path": _artifact_relative_path(output_path, config.repo_root),
+                "artifact_kind": "task_proposal",
+            },
+            lambda: checked_write(lambda: write_artifact(output_path,
+                json.dumps(proposal, indent=2, sort_keys=True) + "\n",
+            )),
+            mutation=True,
+        )
+        payload["artifact"] = _artifact_relative_path(output_path, config.repo_root)
+        payload["proposal_schema"] = TASK_IMPLEMENTATION_PROPOSAL_SCHEMA
+        payload["repository_tree_id"] = repository_tree_id
+        payload["context_id"] = context_id
+        return payload
+    finally:
+        if repository_adapter is not None:
+            repository_adapter.close()
 
 
 def build_task_proposal_router_parser(
@@ -1774,8 +1974,15 @@ class StructuredPlanRouterConfig:
     )
     decision_runtime: Any = field(default=None, repr=False, compare=False)
     cancellation: Any = field(default=None, repr=False, compare=False)
+    batch_usage_binding: BatchProviderUsageBinding | None = field(
+        default=None, repr=False, compare=False,
+    )
 
     def __post_init__(self) -> None:
+        if self.batch_usage_binding is not None:
+            _bound_batch_scheduler(self.batch_usage_binding, self.provider_batch_scheduler)
+            if self.allow_local_fallback:
+                raise ValueError("batch_usage_binding requires local fallback to be disabled")
         if int(self.branch_count) < 1:
             raise ValueError("branch_count must be at least 1")
         if int(self.max_new_tokens) < 1:
@@ -2449,6 +2656,7 @@ def _default_structured_router(
         prompt,
         invocation,
         scheduler=config.provider_batch_scheduler,
+        batch_usage_binding=config.batch_usage_binding,
         route=route,
         operation=operation,
         context_limit=min(context_limits),
@@ -2474,6 +2682,8 @@ def generate_structured_plan_branches(
     """Generate validated branches, falling back without blocking ready work."""
 
     resolved_config = config or StructuredPlanRouterConfig()
+    if resolved_config.batch_usage_binding is not None and router is not None:
+        raise ValueError("batch_usage_binding cannot be combined with a custom router")
     count = int(branch_count if branch_count is not None else resolved_config.branch_count)
     if count < 1:
         raise ValueError("branch_count must be at least 1")
@@ -2653,6 +2863,8 @@ def generate_analysis_proposals(
 
     limits = AnalysisEscalationPolicy.from_value(policy)
     resolved = config or StructuredPlanRouterConfig()
+    if resolved.batch_usage_binding is not None and router is not None:
+        raise ValueError("batch_usage_binding cannot be combined with a custom router")
     desired = min(resolved.branch_count, max(1, limits.max_novel_proposals))
     prompt = build_analysis_proposal_prompt(
         context,

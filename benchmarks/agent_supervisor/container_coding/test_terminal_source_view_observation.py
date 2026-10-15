@@ -267,6 +267,66 @@ def test_missing_selected_router_session_cannot_report_zero(profile, status, mon
     assert result["status"] == status and result["counts"] is None
 
 
+def _provider_free_report(route):
+    requested = dict(semantic_transport_schema="supervisor-semantic-router-input@1",
+        semantic_metadata_view="common-bindings-instruction@1", coding_reply_mode="legacy",
+        source_view_profile="python-comments@1", source_edit_mode="mapped-span@2", source_view_policy=None)
+    return dict(arm="full", provider_invocations=[], implementation_route=route,
+        worker_cleanup_returncode=0, source_view_profile=requested["source_view_profile"],
+        source_edit_mode=requested["source_edit_mode"],
+        semantic_metadata_view={"requested_mode": requested["semantic_metadata_view"]},
+        coding_control_application=dict(schema="terminal-coding-control-application@1",
+            status="not_applicable_provider_free", implementation_route=route, requested=requested,
+            model_coding_dispatched=False, token_savings_established=False, completion_authority=False),
+        doctor_dispatch=dict(route=route, status="candidate_ready", provider_calls=0,
+            task_cid="authored-task", candidate_commit="a" * 40),
+        doctor_invocations=[dict(schema=("native-doctor-candidate-materialization@1"
+            if route == "doctor_candidate" else "native-doctor-contract-candidate-materialization@1"),
+            status="candidate_materialized", task_cid="authored-task", candidate_commit="a" * 40,
+            provider_calls=0, publication_authority=False, completion_authority=False)])
+
+
+@pytest.mark.parametrize("route", ["doctor_candidate", "doctor_contract_candidate"])
+def test_observed_doctor_makes_model_views_inapplicable_without_zero_counts(route, monkeypatch):
+    from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
+    from benchmarks.agent_supervisor.container_coding import terminal_context_audit as audit
+    report = _provider_free_report(route)
+    monkeypatch.setattr(collector, "_open_directory", lambda *_: pytest.fail("inapplicable view reached private IO"))
+    monkeypatch.setattr(audit, "collect_terminal_context_audit", lambda **_: pytest.fail("inapplicable input reached replay"))
+    observed = collector.collect(parent=Path("/absent"), scope=None, report=report)
+    assert observed["status"] == "not_applicable"
+    assert observed["reason"] == "provider_free_doctor_materialization_observed"
+    assert observed["counts"] is observed["provider_tokens"] is None
+    assert observed["completion_authority"] is observed["total_token_savings_measured"] is False
+    driver._final_context_audit(report, state=Path("/absent"), deadline=0)
+    assert report["context_input_audit"]["status"] == "not_applicable"
+    assert report["context_input_audit"]["any_model_input_verified"] is None
+
+
+@pytest.mark.parametrize("change", ["no_application", "route_only", "no_receipt", "foreign_task",
+    "foreign_commit", "wrong_receipt", "provider_call", "boolean_calls", "coding_receipt",
+    "missing_provider_attempt", "false_like_attempt", "failed_cleanup", "requested_drift", "authority"])
+def test_doctor_label_cannot_hide_missing_or_conflicting_model_evidence(change):
+    report = _provider_free_report("doctor_candidate")
+    if change == "no_application": report.pop("coding_control_application")
+    elif change == "route_only": report.pop("doctor_dispatch")
+    elif change == "no_receipt": report.pop("doctor_invocations")
+    elif change == "foreign_task": report["doctor_invocations"][0]["task_cid"] = "foreign-task"
+    elif change == "foreign_commit": report["doctor_invocations"][0]["candidate_commit"] = "b" * 40
+    elif change == "wrong_receipt": report["doctor_invocations"][0]["schema"] = "router-implementation-invocation@1"
+    elif change == "provider_call": report["doctor_invocations"][0]["provider_calls"] = 1
+    elif change == "boolean_calls": report["doctor_invocations"][0]["provider_calls"] = False
+    elif change == "coding_receipt": report["provider_invocations"] = [{"phase": "coding"}]
+    elif change == "missing_provider_attempt": report["unreceipted_provider_attempt"] = {"phase": "coding"}
+    elif change == "false_like_attempt": report["unreceipted_provider_attempt"] = 0
+    elif change == "failed_cleanup": report["worker_cleanup_returncode"] = 1
+    elif change == "requested_drift": report["source_view_profile"] = "identity@1"
+    elif change == "authority": report["coding_control_application"]["completion_authority"] = True
+    assert collector.provider_free_coding_application_observed(report) is False
+    observed = collector.collect(parent=Path("/absent"), scope=None, report=report)
+    assert observed["status"] == "unavailable" and observed["counts"] is None
+
+
 @pytest.mark.parametrize("change", ["alias", "semantic", "scope", "prompt", "manifest", "profile", "selected_profile",
     "disabled", "workspace", "boundary", "owner", "guidance", "guidance_bytes", "schema", "extra",
     "phase", "duplicate", "descriptor", "cleanup", "inflight", "stopped", "incomplete", "sum",

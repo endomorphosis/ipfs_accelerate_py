@@ -389,6 +389,49 @@ def test_actual_router_counts_each_complete_arm_once_and_fallback_stays_native(d
     assert receipt["usage"] == legacy["usage"]
 
 
+@pytest.mark.parametrize("selected", ["native", "semantic", "semantic_metadata"])
+def test_complete_input_selector_retains_only_selected_metadata_displacement(dispatch_case, selected):
+    from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import PromptTokenCounter
+
+    case = dispatch_case
+    invoke(case)
+    semantic_input = case["calls"][-1][0]
+    _, candidate = invoke(case, semantic_metadata_view="common-bindings@1")
+    metadata_input = case["calls"][-1][0]
+    assert candidate["semantic_metadata_view"]["selected_mode"] == "common-bindings@1"
+    assert semantic_input != metadata_input
+    def count(text):
+        if selected == "native":
+            return 1  # Exact ties must select the native capsule input.
+        wanted = semantic_input if selected == "semantic" else metadata_input
+        return 1 if text == wanted else 100
+    tokenizer = PromptTokenCounter(provider="codex_cli", model="authored-model",
+        tokenizer_id="authored", tokenizer_revision="representation-selection", special_token_policy="none",
+        count_tokens=count)
+
+    _, receipt = invoke(case, semantic_metadata_view="common-bindings@1", prompt_token_counter=tokenizer)
+
+    assert receipt["prompt_selection"]["selected_representation"] == selected
+    assert ("representation_displacement" in receipt) is (selected == "semantic_metadata")
+    assert ("semantic_metadata_view" in receipt) is (selected == "semantic_metadata")
+    assert ("semantic_prompt_components" in receipt) is (selected != "native")
+    assert (receipt["semantic_translation"] is not None) is (selected != "native")
+    if selected != "semantic_metadata":
+        assert receipt["semantic_metadata_candidate"] == candidate["semantic_metadata_view"]
+        assert "semantic_metadata_native_coding_reply_contract" not in receipt
+    parsed = audit._receipt({**receipt, "phase": "coding"}, case["workspace"].parent)
+    projected, _, checks = audit._model_projection(
+        rendered=case["prompt"], receipt=parsed, repository=case["repository"])
+    assert projected == case["calls"][-1][0] and all(checks.values()), checks
+    assert ("representation_displacement_receipt" in checks) is (selected == "semantic_metadata")
+    assert receipt["completion_authority"] is False
+    if selected != "semantic_metadata":
+        orphaned = {**receipt, "phase": "coding",
+            "representation_displacement": candidate["representation_displacement"]}
+        with pytest.raises(ValueError, match="requires retained metadata selection"):
+            audit._receipt(orphaned, case["workspace"].parent)
+
+
 def test_census_keeps_its_original_shape_and_does_not_dispatch_provider(dispatch_case):
     case = dispatch_case
     _, receipt = invoke(case, semantic_metadata_view="common-bindings@1", census_only=True)

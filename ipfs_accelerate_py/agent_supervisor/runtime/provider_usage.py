@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, ClassVar, Final, Optional
 
+from ipfs_accelerate_py.endpoint_usage.admission import validate_admission_revision
 from ipfs_accelerate_py.endpoint_usage.identity import (
     assert_no_prompt_media_or_output,
     contains_bearer_url,
@@ -211,6 +212,16 @@ def _text(value: Any, name: str, *, required: bool = True, maximum: int = MAX_TE
 
 def _optional_text(value: Any, name: str, *, maximum: int = MAX_TEXT_BYTES) -> str:
     return _text(value, name, required=False, maximum=maximum)
+
+
+def _admission_revision(value: Any) -> str:
+    if value is None or value == "":
+        return ""
+    try:
+        return validate_admission_revision(value)
+    except (TypeError, ValueError):
+        _fail("admission_revision must be a stable endpoint admission identity")
+    raise AssertionError("unreachable")
 
 
 def _integer(
@@ -597,9 +608,11 @@ class SupervisorUsageScope(_UsageContract):
     lease_id: str
     fence_id: str
     parent_scope_id: str = ""
+    admission_revision: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "level", _enum(self.level, SupervisorUsageLevel, "level"))
+        object.__setattr__(self, "admission_revision", _admission_revision(self.admission_revision))
         for name in (
             "repository_id",
             "state_id",
@@ -707,6 +720,7 @@ class SupervisorUsageScope(_UsageContract):
             and self.policy_revision == other.policy_revision
             and self.catalog_revision == other.catalog_revision
             and self.usage_revision == other.usage_revision
+            and self.admission_revision == other.admission_revision
         )
 
     def is_child_of(self, parent: "SupervisorUsageScope") -> bool:
@@ -760,6 +774,7 @@ class SupervisorUsageScope(_UsageContract):
             "request_id": self.request_id,
             "catalog_revision": self.catalog_revision,
             "usage_revision": self.usage_revision,
+            **({"admission_revision": self.admission_revision} if self.admission_revision else {}),
             "endpoint_scope_id": self.endpoint_scope_id,
             "caller_id": self.caller_id,
             "deadline_at": self.deadline_at,
@@ -792,6 +807,7 @@ class SupervisorUsageScope(_UsageContract):
             "request_id",
             "catalog_revision",
             "usage_revision",
+            "admission_revision",
             "endpoint_scope_id",
             "caller_id",
             "deadline_at",
@@ -822,6 +838,7 @@ class SupervisorUsageScope(_UsageContract):
             request_id=payload.get("request_id", ""),
             catalog_revision=payload.get("catalog_revision", ""),
             usage_revision=payload.get("usage_revision", ""),
+            admission_revision=payload.get("admission_revision", ""),
             endpoint_scope_id=payload.get("endpoint_scope_id", ""),
             caller_id=payload.get("caller_id", ""),
             deadline_at=payload.get("deadline_at", ""),
@@ -913,6 +930,7 @@ class SupervisorUsageEnvelope(_UsageContract):
                     if (
                         child.scope.catalog_revision != self.scope.catalog_revision
                         or child.scope.usage_revision != self.scope.usage_revision
+                        or child.scope.admission_revision != self.scope.admission_revision
                         or child.scope.tree_id != self.scope.tree_id
                         or child.scope.policy_revision != self.scope.policy_revision
                     ):
@@ -1015,6 +1033,7 @@ def build_child_envelope(
         "request_id": parent_scope.request_id,
         "catalog_revision": parent_scope.catalog_revision,
         "usage_revision": parent_scope.usage_revision,
+        "admission_revision": parent_scope.admission_revision,
         "endpoint_scope_id": parent_scope.endpoint_scope_id,
         "caller_id": parent_scope.caller_id,
         "deadline_at": parent_scope.deadline_at,
@@ -1030,6 +1049,7 @@ def build_child_envelope(
             if (
                 child_scope.catalog_revision != parent.scope.catalog_revision
                 or child_scope.usage_revision != parent.scope.usage_revision
+                or child_scope.admission_revision != parent.scope.admission_revision
                 or child_scope.tree_id != parent.scope.tree_id
                 or child_scope.policy_revision != parent.scope.policy_revision
             ):
@@ -1065,9 +1085,11 @@ class SupervisorToEndpointRequest(_UsageContract):
     deadline_at: str
     lease_id: str
     fence_id: str
+    admission_revision: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "scope", _scope(self.scope))
+        object.__setattr__(self, "admission_revision", _admission_revision(self.admission_revision))
         if self.scope.level is not SupervisorUsageLevel.REQUEST:
             _fail("endpoint bridge request requires request-level scope")
         for name in (
@@ -1097,6 +1119,8 @@ class SupervisorToEndpointRequest(_UsageContract):
             _fail("catalog_revision is stale relative to supervisor scope")
         if self.scope.usage_revision != self.usage_revision:
             _fail("usage_revision is stale relative to supervisor scope")
+        if self.scope.admission_revision != self.admission_revision:
+            _fail("admission_revision is stale relative to supervisor scope")
         if self.scope.attempt != self.attempt:
             _fail("attempt is foreign to supervisor scope")
         if self.scope.idempotency_key != self.idempotency_key:
@@ -1119,6 +1143,7 @@ class SupervisorToEndpointRequest(_UsageContract):
             "endpoint_scope_id": self.endpoint_scope_id,
             "catalog_revision": self.catalog_revision,
             "usage_revision": self.usage_revision,
+            **({"admission_revision": self.admission_revision} if self.admission_revision else {}),
             "estimated": self.estimated.to_dict(),
             "request_id": self.request_id,
             "attempt": self.attempt,
@@ -1140,6 +1165,7 @@ class SupervisorToEndpointRequest(_UsageContract):
             "endpoint_scope_id",
             "catalog_revision",
             "usage_revision",
+            "admission_revision",
             "estimated",
             "request_id",
             "attempt",
@@ -1163,6 +1189,7 @@ class SupervisorToEndpointRequest(_UsageContract):
             endpoint_scope_id=payload.get("endpoint_scope_id", ""),
             catalog_revision=payload.get("catalog_revision", ""),
             usage_revision=payload.get("usage_revision", ""),
+            admission_revision=payload.get("admission_revision", ""),
             estimated=payload.get("estimated", {}),
             request_id=payload.get("request_id", ""),
             attempt=payload.get("attempt", 0),

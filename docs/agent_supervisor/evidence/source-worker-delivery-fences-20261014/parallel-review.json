@@ -1,0 +1,123 @@
+{
+  "complete_parallel_coverage_claimed": false,
+  "completion_authority": false,
+  "execution_authority": false,
+  "findings": [
+    "No equivalent explicit native permission delegation and cross-process task/allocation/signed-context coding-child handoff was found in the surveyed named worktrees.",
+    "Reuse already published c030bf5b1b native broker spawn guards, ba63f2f78f allocation nomination join, and 9caa792f5a task nomination join.",
+    "Candidate dispatch and reporting add genuine separate WorkerSourceBroker lifecycle work; those new modules were absent from the observed cached main. Older native files inherited by those branches are not unmerged native features.",
+    "World invocation replay already matches the observed main; the new world retention and candidate reporting modules have separate publication scope.",
+    "Permission delegation, real wrapper/child provenance and independent signed profile @4/compiled instruction @5 joins remained proposed at this survey boundary."
+  ],
+  "foreign_worktrees_modified": false,
+  "network_queries": false,
+  "note": "Dated survey metadata is not a native admission or a new qualification. Review input commits remain distinct from subsequent execution pins.",
+  "observed_cached_main": "09ad10bd0e6694db7b0570614ab289184a0713c5",
+  "prior_published_child": "cb104896f55a28352feb8cd35c4b9991144c933a",
+  "process_or_environment_values_exported": false,
+  "product_imports": false,
+  "proof_authority": false,
+  "recorded_at_utc": "2026-10-14T17:04:15.398816+00:00",
+  "refs_mutated": false,
+  "review_kind": "bounded_static_Git_and_targeted_file_survey",
+  "schema": "source-worker-delivery-parallel-review@1",
+  "source_observations": [
+    {
+      "bytes": 42011,
+      "finding": "published native pre-spawn and postbirth guard",
+      "git_blob": "047996c5e8ebc67bd723dc2f1d03b786a6f55e1e",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "revision": "09ad10bd0e6694db7b0570614ab289184a0713c5",
+      "sha256": "29023a1bddcba90bf23496cb2293611d4c95d7d3c82b382d52d708e0dfa75e13"
+    },
+    {
+      "bytes": 30908,
+      "finding": "published allocation and nomination join",
+      "git_blob": "e3be439af7a835beaca8a7a675fa59a94c4765d3",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+      "revision": "09ad10bd0e6694db7b0570614ab289184a0713c5",
+      "sha256": "4597ee652dc5818ff990abf668b31fa2b84a0c14e626c490c29b86ee5af74916"
+    },
+    {
+      "bytes": 25857,
+      "finding": "published original task claim and nomination join",
+      "git_blob": "5fd963f94a3273afffd5f24ac28c42f314efcef0",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+      "revision": "09ad10bd0e6694db7b0570614ab289184a0713c5",
+      "sha256": "eece603dcd9f72d28d9aa572934fd23785f87602ecb36d8c0c2e2d97e0712df5"
+    },
+    {
+      "bytes": 9698,
+      "finding": "permission and cross-process joins explicitly remain proposed",
+      "git_blob": "0d6d4d51bedd389a1b0c3fe5c6006d45fde601c3",
+      "path": "docs/agent_supervisor/evidence/native-source-worker-spawn-20261014/README.md",
+      "revision": "09ad10bd0e6694db7b0570614ab289184a0713c5",
+      "sha256": "d1cb6a2e115042e7c5189714776afb73e8c93a99ab54d3f24ef966be956997c6"
+    },
+    {
+      "bytes": 28184,
+      "finding": "separate exact WorkerSourceBroker launch/retirement/continuation",
+      "git_blob": "6b8e318f9b02529569a61842f556af17e853a6ba",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch.py",
+      "revision": "79f089c6f28f28f3f5adade4979aed115a039223",
+      "sha256": "ec4c796e3835555bd2608675f25e960fecfb2293812efbb33d0ed011c3481ce3"
+    },
+    {
+      "bytes": 5673,
+      "finding": "separate candidate child waits and retirement",
+      "git_blob": "3ec7982f7c0da32fae0ca11e132dace6f2452bfc",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_monitor.py",
+      "revision": "79f089c6f28f28f3f5adade4979aed115a039223",
+      "sha256": "78df074a5c40a0cba146f861b0d4aba654b5d483a1de765c01a4e837fb879ab8"
+    },
+    {
+      "bytes": 42342,
+      "finding": "ordinary candidate chmods remain incompatible with retained native allocation modes",
+      "git_blob": "ea9e82ba148e9a5fe9cd8c4f699f5ced4c1bc4d1",
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "revision": "79f089c6f28f28f3f5adade4979aed115a039223",
+      "sha256": "4fc7d37f0215bfff7fec277576d9e14749c3295cb6b66c89e354798526ac978c"
+    },
+    {
+      "bytes": 61007,
+      "finding": "dated candidate continuation qualification and limitations",
+      "git_blob": "d711fbae919b2d190161353ba16bfb415dc66651",
+      "path": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "revision": "79f089c6f28f28f3f5adade4979aed115a039223",
+      "sha256": "cfb708ab8e98eb2e04a693a4f91d586f9201545e71a9522b84adba3d56b1d3da"
+    },
+    {
+      "bytes": 13689,
+      "finding": "separate retained candidate round audit",
+      "git_blob": "18bd50cd222f25e87391a86e656b172102c52b94",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch_audit.py",
+      "revision": "259b3ae686337830211893f7e585b66ecf1601e9",
+      "sha256": "7af52704136d04981f3100f582a93794a60191f0e728b1df8dac3d970c0a5831"
+    },
+    {
+      "bytes": 10527,
+      "finding": "separate candidate lifecycle observation",
+      "git_blob": "80dfbc55b996a75d72a92a5176787c8f88c9fa7d",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_lifecycle.py",
+      "revision": "259b3ae686337830211893f7e585b66ecf1601e9",
+      "sha256": "a096c3275464c0d467ca282c78a1adab149ee8ef1004d77e9e2295bb20b90bbf"
+    },
+    {
+      "bytes": 11184,
+      "finding": "world invocation retention, not native permission or claim admission",
+      "git_blob": "b1254d68b1cc358c618e29259a728007c4bab343",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_artifact_retention.py",
+      "revision": "ddc25a16ed4d73e64e59c8c7edff5ad237b0d85b",
+      "sha256": "784aded308021dcf84e17a17b2d6cd4c98eb5cbc8f6ea507bda6e73423752351"
+    },
+    {
+      "bytes": 92275,
+      "finding": "already included maintenance/private-owner named-operation work",
+      "git_blob": "ea4e02724f322b66daee2f100c7a55421c6ab0c5",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/control_plane_backup.py",
+      "revision": "877160abca74ad97e164e47e2685b4173371d5af",
+      "sha256": "0c0c55a813770e6d6e00e8ca51c39dfefcdf0d875cb5b86169d5205efbefca10"
+    }
+  ],
+  "tests_executed": false
+}

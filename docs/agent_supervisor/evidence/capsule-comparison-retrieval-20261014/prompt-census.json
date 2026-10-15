@@ -1,0 +1,136 @@
+[
+  {
+    "evidence": {
+      "benchmark_reward_measured": false,
+      "caveat": "Authored inputs and provider; native indexed pipeline and dispatch. Independent identities per profile.",
+      "end_to_end_token_savings_claimed": false,
+      "external_model_calls": 0,
+      "functions": 4,
+      "observations": [
+        {
+          "authored_coding_dispatches": 1,
+          "capsule_budget": "legacy",
+          "complete_prompt_bytes": 47808,
+          "complete_prompt_sha256": "b5c5588b7fbec99d037e87a2b74dfd53a4af0cb21d7472bc15d051dbb5926810",
+          "full_capsules": 5,
+          "initial_indexes_reused": true,
+          "maximum_capsules": 8,
+          "new_embedding_calls": 0,
+          "omitted_capsules": 1,
+          "planning_provider_calls": 0,
+          "required_core_unchanged_by_transport": true,
+          "required_raw_bytes": 1794,
+          "selected_capsules": 4,
+          "semantic_bytes": 27501
+        },
+        {
+          "authored_coding_dispatches": 1,
+          "capsule_budget": "one-capsule@1",
+          "complete_prompt_bytes": 32907,
+          "complete_prompt_sha256": "63f3da93212cb4099074c7663b98a4999c3fc91b7718b06b03d42bb87775f501",
+          "full_capsules": 5,
+          "initial_indexes_reused": true,
+          "maximum_capsules": 1,
+          "new_embedding_calls": 0,
+          "omitted_capsules": 4,
+          "planning_provider_calls": 0,
+          "required_core_unchanged_by_transport": true,
+          "required_raw_bytes": 1794,
+          "selected_capsules": 1,
+          "semantic_bytes": 12048
+        },
+        {
+          "authored_coding_dispatches": 1,
+          "capsule_budget": "two-capsules@1",
+          "complete_prompt_bytes": 37909,
+          "complete_prompt_sha256": "0cbbe26c381e78d7d4ee1cb4cf1fe749ae196628482cd8839ed34abc84fb6972",
+          "full_capsules": 5,
+          "initial_indexes_reused": true,
+          "maximum_capsules": 2,
+          "new_embedding_calls": 0,
+          "omitted_capsules": 3,
+          "planning_provider_calls": 0,
+          "required_core_unchanged_by_transport": true,
+          "required_raw_bytes": 1794,
+          "selected_capsules": 2,
+          "semantic_bytes": 17221
+        }
+      ],
+      "provider_usage_measurements": false,
+      "required_raw_equal_across_profiles": true,
+      "schema": "terminal-capsule-budget-census@1",
+      "semantic_transport_schema": "supervisor-semantic-router-input@1",
+      "source384_inference_included": false,
+      "worker_max_bytes": 32768
+    },
+    "kind": "capsule_budget_census",
+    "test": "test_capsule_budget_reduces_real_indexed_router_input_without_dropping_required_core[4]"
+  },
+  {
+    "evidence": {
+      "benchmark_reward_measured": false,
+      "caveat": "Authored inputs and provider; native indexed pipeline and dispatch. Independent identities per profile.",
+      "end_to_end_token_savings_claimed": false,
+      "external_model_calls": 0,
+      "functions": 8,
+      "observations": [
+        {
+          "authored_coding_dispatches": 1,
+          "capsule_budget": "legacy",
+          "complete_prompt_bytes": 48408,
+          "complete_prompt_sha256": "b45447fad431c3a7b7c9350a71bb799f6bfaf133ecbc352e735d1993b6d4e454",
+          "full_capsules": 9,
+          "initial_indexes_reused": true,
+          "maximum_capsules": 8,
+          "new_embedding_calls": 0,
+          "omitted_capsules": 5,
+          "planning_provider_calls": 0,
+          "required_core_unchanged_by_transport": true,
+          "required_raw_bytes": 1794,
+          "selected_capsules": 4,
+          "semantic_bytes": 27501
+        },
+        {
+          "authored_coding_dispatches": 1,
+          "capsule_budget": "one-capsule@1",
+          "complete_prompt_bytes": 33508,
+          "complete_prompt_sha256": "5d66515606b4e549f9cd6418ef744f6aeee1ce957bfe0f7080da0b1b1f7471d2",
+          "full_capsules": 9,
+          "initial_indexes_reused": true,
+          "maximum_capsules": 1,
+          "new_embedding_calls": 0,
+          "omitted_capsules": 8,
+          "planning_provider_calls": 0,
+          "required_core_unchanged_by_transport": true,
+          "required_raw_bytes": 1794,
+          "selected_capsules": 1,
+          "semantic_bytes": 12048
+        },
+        {
+          "authored_coding_dispatches": 1,
+          "capsule_budget": "two-capsules@1",
+          "complete_prompt_bytes": 38510,
+          "complete_prompt_sha256": "bc82bc2cb09d8cdd0ee8bf0c86cddf245c02170f76bd6558ab91d8f54ca9cfb2",
+          "full_capsules": 9,
+          "initial_indexes_reused": true,
+          "maximum_capsules": 2,
+          "new_embedding_calls": 0,
+          "omitted_capsules": 7,
+          "planning_provider_calls": 0,
+          "required_core_unchanged_by_transport": true,
+          "required_raw_bytes": 1794,
+          "selected_capsules": 2,
+          "semantic_bytes": 17221
+        }
+      ],
+      "provider_usage_measurements": false,
+      "required_raw_equal_across_profiles": true,
+      "schema": "terminal-capsule-budget-census@1",
+      "semantic_transport_schema": "supervisor-semantic-router-input@1",
+      "source384_inference_included": false,
+      "worker_max_bytes": 32768
+    },
+    "kind": "capsule_budget_census",
+    "test": "test_capsule_budget_reduces_real_indexed_router_input_without_dropping_required_core[8]"
+  }
+]

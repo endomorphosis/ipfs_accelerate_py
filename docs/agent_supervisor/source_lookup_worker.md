@@ -54,6 +54,7 @@ session = start_source_lookup_worker_broker(
 )
 
 # Within the supervisor's existing child-custody and credential-scrub lifecycle:
+session.require_before_spawn()
 child = subprocess.Popen(
     [owner_entry, *ordinary_coding_arguments, *session.extra_argv],
     cwd=allocated_worktree,
@@ -82,6 +83,127 @@ are checked again around each native read. A changed gateway, source binding,
 public descriptor or protected endpoint refuses reuse. This version supports
 one existing source binding per gateway lifetime; it does not discover another
 owner or silently rebind a task.
+
+## Construct the source session before publishing endpoints
+
+The broker captures the original owner, gateway, source reader, connection,
+lock and CAS under SERVER before invoking caller-backed replay. It retains the
+original binding/owner bytes and copies the admitted request, limits, paths and
+bounds. Canonical reader initialization and the second source-reference replay
+then run outside SERVER, allowing a retained-CAS callback to enter the native
+coordinator without reversing the claim lock order.
+
+Before issuing a source proxy grant, the broker repeats the native task,
+allocation and nomination fence outside SERVER, checks the protected boundary
+and parent, then closes original custody and complete source populations under
+SERVER. These detached checks cannot adopt a replacement source or CAS. The
+broker opens its genuine typed proxy client outside SERVER and repeats the
+closing checks, including the exact active proxy grant, before binding its
+public socket, writing the descriptor or starting the serving thread.
+
+A pre-grant refusal creates no proxy or public endpoint. A refusal after client
+opening revokes that exact new proxy and closes its transport; the original
+native reader, task/allocation markers and bind-once state remain retained. This
+does not create another owner or CAS, rebind source, launch a coding child or
+grant proof/execution/completion authority. The
+[constructor evidence](evidence/source-worker-construction-20261014/README.md)
+keeps first/second replay checks and late client cleanup separate from actual
+worker-UID admission. Initial native reader binding and privileged `source.get`
+transactions remain separate callback boundaries. The checks provide no
+filesystem writer lease.
+
+## Detach native source-query replay
+
+The native typed gateway now captures its original SERVER, connection, source
+reader, store/CAS, owner/binding bytes, issued grant and continuation registry
+before source-specific callbacks. A short-held private guard installs one busy
+marker, then releases its lock; overlapping or nested source reads refuse before
+waiting for SERVER. A renewal completed before capture remains usable. Replacing
+the captured grant during a read refuses that read.
+
+Source-specific clock samples and the retained reader's CAS load run outside
+SERVER and the grants lock. The original connection must report exactly false
+for `in_transaction` before and after detachment; missing or unsupported states
+refuse. This read opens no transaction and never rolls back somebody else's
+transaction. Unrelated operations and initial source binding retain their own
+contracts.
+
+The replay result and response remain private. Original identities, native task
+revision/body, source population, exact selected working bytes, active grant and
+registry contents close on the original connection after callbacks. Publication
+then prunes expired cursors, consumes the predecessor derived from the retained
+request, and issues a bounded successor. Refusal publishes no successor and
+preserves the predecessor. Payload/response schemas, conservative envelope
+halving, UTF-8/base64 handling and byte/wire accounting remain unchanged.
+
+The [query regression phase](evidence/source-query-replay-20261014/README.md)
+retains its unpatched control and qualified source snapshots separately from
+constructor, launch and delivery evidence. This is owner-side source custody;
+it does not authenticate a separate worker UID, grant proof or execution
+authority, establish a writer lease or measure complete-session token savings.
+The standalone reader compatibility method requires its caller's connection
+serialization; the native gateway uses the detached phases described here.
+
+## Check before launch and before registration
+
+`require_before_spawn()` checks the original broker, descriptor and endpoint,
+current native task/allocation handles and complete canonical and allocated
+source. If a historical nomination is retained, it repeats that exact live join.
+CAS replay runs outside SERVER so a callback can enter the coordinator; the
+closing native and physical source checks follow that replay.
+The trusted launcher calls this method immediately before its literal `Popen`.
+The method does not select an executable, authorize a provider command or replace
+the launcher's credential and child-cleanup policy.
+
+For sessions carrying native task or allocation handles, `note_spawned()` requires
+that successful preparation. It accepts the actual `subprocess.Popen` object,
+observes a live direct-child birth and checks its allocated working directory.
+It repeats current native and source checks after birth, then rechecks the same
+kernel identity before enabling peer reads. A PID dictionary, serialized
+observation or unrelated process cannot replace the launched child. Reentry,
+second registration and stale prepared state refuse. Legacy sessions without
+native handles retain their existing registration path.
+
+A prelaunch refusal must prevent `Popen`. A closing refusal happens after a
+child exists: the session closes and revokes its proxy grant, remains unregistered,
+and retains the actual child for the launcher's cleanup responsibility. The
+launcher must terminate/reap that child and its workers even when registration
+raises. Broker closure cleans up its transport and grant; it does not terminate
+the child. These sequential checks do not exclude filesystem writers or undo
+effects that a child performed before a closing refusal.
+
+The [native spawn qualification](evidence/native-source-worker-spawn-20261014/README.md)
+uses real inert direct children with native claim, nomination and allocation
+fixtures. It does not qualify a worker UID, a provider child or deployed Terminal
+adoption. The deployment wrapper has a distinct parent process, and its
+group-writable candidate permission transition changes the retained allocation
+witnesses. Both need their own explicit admission.
+
+## Close source delivery after broker replay
+
+Each broker-owned selected-source replay runs outside SERVER, so a retained-CAS
+callback can enter the native coordinator without reversing the claim lock
+order. The broker repeats the current task/allocation fence after that replay,
+then checks its protected endpoints and original custody. The final locked
+section performs detached native, allocation and nomination checks, checks the
+complete source population in both checkouts, and verifies the selected original
+bytes in both roots. It invokes no retained-CAS replay or coordinator fence.
+
+This closing section is shared with the existing launch checks. It runs before
+the backend call and again before projecting a validated reply for delivery.
+A pre-backend refusal incurs no source RPC. A post-backend refusal preserves the
+validated native response/wire byte charge even though no success is returned.
+Neither result supplies proof, execution, completion, edit or omission authority.
+
+The [delivery regression evidence](evidence/source-worker-delivery-fences-20261014/README.md)
+keeps the unpatched lock-order control and new callback/refusal cases separate.
+These are owner-side reads; they do not authenticate a worker peer or activate
+the deployed coding handoff. That delivery phase does not qualify constructor
+replay; the separate constructor section above describes its closing checks.
+Initial native binding and the privileged `source.get` gateway retain their
+separate lock/transaction contracts. These increments do not establish universal
+callback safety. The source checks remain
+sequential and provide no filesystem writer lease.
 
 ## Nominated scope and managed allocation
 
@@ -268,3 +390,45 @@ this source reader. Keep required facts inline until actual model-access and
 omission experiments qualify the change. Compare complete rendered inputs and
 all native planning/coding/lookup/continuation/repair usage, including refusals
 and unknown usage, against official rewards before claiming lower total tokens.
+
+
+## Publish the initial native source reader
+
+Initial binding now separates private reader configuration from retained-CAS
+replay. The gateway captures its original SERVER lock, connection and identity,
+then configures the exact candidate with copied request/limits, physical source
+store and scope witnesses. A short-held busy marker refuses overlapping binds
+or source reads before they wait for SERVER. An early gate checks the
+original connection before ready/native SQL and coordinator fences on the
+respective server/task/allocation routes. It must have an inactive transaction;
+refusal never rolls back a borrowed transaction.
+
+The original reader's inventory replay runs outside SERVER. Existing task and
+allocation binders contribute their retained native fences outside SERVER, then
+closing checks revalidate original owner/candidate/server custody, native task
+rows and complete current source before publication on the original connection.
+A private literal publication witness lets task/allocation finally paths retain
+only the candidate this attempt published. A replacement gateway reader cannot
+be adopted. Publication consumes the binding even if a later assertion raises;
+a refusal before publication installs no reader for this attempt and preserves
+any competing genuine reader. Its native markers stay empty, and retry requires
+the gateway still to be unbound. Direct gateway/server calls do not gain native
+task or allocation authority from detached metadata.
+
+The [initial-binding evidence](evidence/source-initial-binding-20261015/README.md)
+keeps its unpatched control, original target snapshot, complete task-admission
+module and current regression result separate from earlier source-query and
+broker phases. No proxy grant, endpoint or coding child is created by this
+binder. Public binding/response schemas and existing source budgets remain
+unchanged; the publication witness is not a serialized admission capability.
+
+After detached native fences, the source-binding phase samples its final clock
+outside SERVER and supplies that finite sample to closing task/grant and
+allocation checks. Existing native fences and default clock callbacks retain
+their contracts. These lease observations remain sequential. Reentry through
+the supported CAS seam does not establish safety for every arbitrary clock/native
+callback, exclude filesystem writers or guarantee atomic delivery-time expiry.
+This owner-side boundary supplies no separate worker-UID, native coding-child,
+proof, execution, completion or measured token-saving result. Explicit permission
+delegation, daemon/wrapper/child provenance and independently admitted signed
+compiled context remain required before a deployed native worker trial.

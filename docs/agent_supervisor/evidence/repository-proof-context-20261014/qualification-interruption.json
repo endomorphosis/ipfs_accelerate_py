@@ -1,0 +1,20 @@
+{
+  "attempt": "qualification-02",
+  "collected": 180,
+  "complete_run": false,
+  "elapsed_seconds": 423.164,
+  "followup": "Correct exact authored symbol query and rerun complete roster with --maxfail=1; no production changes planned.",
+  "interruption": "SIGINT sent only to owned pytestchild728912 after checking its exact private basetemp argument; normal runner completion retained",
+  "junit": {
+    "errors": 0,
+    "failures": 1,
+    "skipped": 0,
+    "tests": 4
+  },
+  "passing_qualification": false,
+  "raw_artifacts_preserved": true,
+  "reason": "Stop after fixture failure: queryclean returned no exact symbol candidates, so native_handle asserted before expansion.",
+  "recorded_at_utc": "2026-10-14T08:17:02.750521+00:00",
+  "schema": "repository-proof-context-interrupted-qualification@1",
+  "source_before_after_equal": true
+}

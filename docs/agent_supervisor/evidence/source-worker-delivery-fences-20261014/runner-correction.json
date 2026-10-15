@@ -1,0 +1,15 @@
+{
+  "baseline_status_preserved": true,
+  "changed_runtime_source": false,
+  "changed_tests": false,
+  "exact_diff": "--- retained-first-runner\n+++ current-runner\n@@ -99,7 +99,9 @@\n         target.write_bytes(raw)\n         snapshots.append(dict(path=name, bytes=len(raw), sha256=sha(raw),\n                               snapshot=str(target.relative_to(ROOT))))\n-    private = Path(tempfile.mkdtemp(prefix='source-worker-delivery-' + args.attempt + '-'))\n+    # Native fixture sockets include per-test directories; keep the private\n+    # root short enough for the platform's Unix-domain pathname bound.\n+    private = Path(tempfile.mkdtemp(prefix='swd-'))\n     updates = dict(PYTHONDONTWRITEBYTECODE='1', PYTHONUNBUFFERED='1', PYTHONHASHSEED='0',\n         PYTEST_DISABLE_PLUGIN_AUTOLOAD='1', IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI='0', IPFS_KIT_DISABLE='1',\n         HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1', HF_DATASETS_OFFLINE='1', TOKENIZERS_PARALLELISM='false',\n",
+  "failed_attempt": "qualification-01/commands.json",
+  "failed_attempt_status_preserved": true,
+  "followup_attempt": "qualification-02/commands.json",
+  "new_runner": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification_runner.py",
+  "new_runner_sha256": "4bfcad092377018c55b054f116e726e548fab34a7e8bfae5ad633a627af1fabf",
+  "old_runner_sha256": "5d9d4d73aec6bf2ef16da944e64959b98f0146f073545d1ed75a4ab1a34c77ed",
+  "old_runner_snapshot": "docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification-01/source-snapshot/docs/agent_supervisor/evidence/source-worker-delivery-fences-20261014/qualification_runner.py.snapshot.txt",
+  "reason": "shorten_private_temp_root_for_unix_domain_socket_path_bound",
+  "schema": "source-worker-delivery-runner-correction@1"
+}

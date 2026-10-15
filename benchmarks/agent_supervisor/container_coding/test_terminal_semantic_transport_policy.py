@@ -193,7 +193,7 @@ def test_collection_retains_frozen_transport_and_detects_preparation_drift(tmp_p
 ])
 def test_route_builder_refuses_inapplicable_opt_in(repository, doctor):
     from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import implementation_argv
-    with pytest.raises(ValueError, match="semantic model-router coding route"):
+    with pytest.raises(ValueError, match="candidate required|semantic model-router coding route"):
         implementation_argv(router=Path("/router"), model="pinned", reasoning="high", timeout=30,
             semantic_repository=repository, doctor=doctor, semantic_transport_schema=COMPACT)
 

@@ -1,0 +1,168 @@
+{
+  "artifact_root": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014",
+  "credential_contents_or_digests_included": false,
+  "members": [
+    {
+      "bytes": 809,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-preparation/control-audit.json",
+      "path": "control-audit.json",
+      "sha256": "212b4992394d6a94b6c75cc6602951538ae6f25fe6c63715a62c6b2d1af7ae19"
+    },
+    {
+      "bytes": 2006,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/provider-readiness/grok-metadata-precheck.json",
+      "path": "initial-readiness.json",
+      "sha256": "68de070341f33b32042042187c62df2e6f9a5b9fda2923701bb180b976d234b9"
+    },
+    {
+      "bytes": 1303,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/tests/script-tests-02-result.json",
+      "path": "launch-tests.json",
+      "sha256": "4d1d600d300d9bdbc15e5359c10e4cd8632dd493ec7ae879b6d26d3370fb2ea1"
+    },
+    {
+      "bytes": 1442,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/initial-context-observation.json",
+      "path": "legacy-initial-context.json",
+      "sha256": "03abbe9bdeea8a7df01bb5b3e5345446bdc8876d733a1cb0900155a4e6cb6153"
+    },
+    {
+      "bytes": 707,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/launch-result.json",
+      "path": "legacy-launch.json",
+      "sha256": "4b711704fb04dc66556d5064e890d0c37ca24532e6510246627060dffd259c13"
+    },
+    {
+      "bytes": 580,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-legacy-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__WBeUrpM/agent/provider-readiness/readiness.json",
+      "path": "legacy-readiness.json",
+      "sha256": "eacb49bda378dce1fc959ee05038091b51d31c755b27cc690e838e3251c5e6d2"
+    },
+    {
+      "bytes": 718,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-one-capsule-01/launch-result.json",
+      "path": "one-capsule-launch.json",
+      "sha256": "88b3ce3a934d45b6f6323003d82da3b37b8c3a4a4fd4fd7b569d56dba253cf24"
+    },
+    {
+      "bytes": 597,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-trials/grok-one-capsule-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__oKbEStw/agent/provider-readiness/readiness.json",
+      "path": "one-capsule-readiness.json",
+      "sha256": "1571b30d197db079f6032abf7051cc7bd285caf95747cc484b5273e15b5bcdd1"
+    },
+    {
+      "bytes": 81972,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/pair-lock.json",
+      "path": "pair-lock.json",
+      "sha256": "01bd3ab0bc782f8a8755cc4bec670b889e3e0c8db151f5c8720bcd3f59872e6d"
+    },
+    {
+      "bytes": 2024,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/provider-readiness-after-failure-01/grok-metadata-precheck.json",
+      "path": "post-failure-readiness.json",
+      "sha256": "d86b7f5a6e80c6500b4b39bca3d32e030354043e9dab30e591a54858ec622a5c"
+    },
+    {
+      "bytes": 77244,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/readout-final-01.json",
+      "path": "readout.json",
+      "sha256": "0b4dfaf7673329d392cdc7c14032bd4bf10c2e456c3281af4089af495473e4f1"
+    },
+    {
+      "bytes": 7210,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/recipe.json",
+      "path": "recipe.json",
+      "sha256": "9c3bda868b85d13f3d15c728114c7b410201338d4091c3e0e644880e6a9d57aa"
+    },
+    {
+      "bytes": 5937,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/reporting-freeze.json",
+      "path": "reporting-freeze.json",
+      "sha256": "1dec89d63da6e8462acee071b14bb8cc7bffcda3cd21e32b5c82a0b627866347"
+    },
+    {
+      "bytes": 279,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/readout-tests-03-result.json",
+      "path": "reporting-tests.json",
+      "sha256": "b16b4091ec84d933934992e36ac5ea2ff948594ffc1ac1dbb4f9ee7934e54e38"
+    },
+    {
+      "bytes": 12278,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/resource-policy-audit.json",
+      "path": "resource-policy-audit.json",
+      "sha256": "f1d696f7b947187da7b9cb48921907310821b8f15076966985adb3361cfc4254"
+    },
+    {
+      "bytes": 983,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/live-preparation/verification-result.json",
+      "path": "runtime-verification.json",
+      "sha256": "e2f3d3d010b725fb040c7296aaf8bc6e14732bfd2b858b1303cc2c135be1810a"
+    },
+    {
+      "bytes": 9088,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/campaign_common.py",
+      "path": "scripts/campaign_common.py",
+      "sha256": "9cdc8c69bbdacd5eb75838e8b2fcae42e4282aa11bfd1db086f05234a7f10486"
+    },
+    {
+      "bytes": 4118,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/observe_initial_context.py",
+      "path": "scripts/observe_initial_context.py",
+      "sha256": "578cc490457131efd941b2e8f43beabc8b498f206dc249634053460029ed895b"
+    },
+    {
+      "bytes": 12225,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/prepare_pair.py",
+      "path": "scripts/prepare_pair.py",
+      "sha256": "f32da7fa56a5511a4e0cfccedc3361e83b78420d61ff0155cf6e11f92d32648a"
+    },
+    {
+      "bytes": 31642,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/read_live_pair.py",
+      "path": "scripts/read_live_pair.py",
+      "sha256": "b5c3f2fb4f1947b73f52a0ee3c005149bf615c1a57798d443c21549033b3b2c9"
+    },
+    {
+      "bytes": 4549,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/run_locked_trial.py",
+      "path": "scripts/run_locked_trial.py",
+      "sha256": "8e5b2b71210dfaaadda75a0f48891f55a819cded5d3973ea0c0259ecf5fcd317"
+    },
+    {
+      "bytes": 3932,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/verify_runtime.py",
+      "path": "scripts/verify_runtime.py",
+      "sha256": "6b900b2c954d0f2f4d774b565a51570d4abb0159c9b8728134b37f4010f576f6"
+    },
+    {
+      "bytes": 1829,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/tests/script-tests-02.stderr",
+      "path": "tests/launch.stderr",
+      "sha256": "b1945d38da9a027c5812df19495de57e92a7acc63e8a719d191964a2a99cbaed"
+    },
+    {
+      "bytes": 4016,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/readout-tests-03.xml",
+      "path": "tests/reporting.xml",
+      "sha256": "0002f1e9b9d16591166c549803b7ba4767b91beeb34a5c7ccdef1723a16af445"
+    },
+    {
+      "bytes": 7822,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/tests/test_campaign_scripts.py",
+      "path": "tests/test_campaign_scripts.py",
+      "sha256": "ee069fefb9161dab47c7d59e9319de23f773989e29bc660661af4229cf0a1bea"
+    },
+    {
+      "bytes": 17877,
+      "original_path": "/home/barberb/lift_coding/artifacts/capsule-budget-live-20261014/test_read_live_pair.py",
+      "path": "tests/test_read_live_pair.py",
+      "sha256": "dd992886ca32f600ce248d9be86a946007ea703e73b9c3fcfdccd4e18421f300"
+    }
+  ],
+  "private_owner_database_or_signing_keys_included": false,
+  "provider_calls_by_curation": 0,
+  "provider_transcripts_included": false,
+  "runtime_archive_included": false,
+  "schema": "capsule-budget-live-retained-evidence@1",
+  "source_commit": "eff8ef3ecc"
+}

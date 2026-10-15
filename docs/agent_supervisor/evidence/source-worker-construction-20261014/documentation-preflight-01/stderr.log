@@ -1,0 +1,18 @@
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/.worktrees/source-worker-construction-20261014/docs/agent_supervisor/evidence/source-worker-construction-20261014/release_checker.py", line 491, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/home/barberb/lift_coding/.worktrees/source-worker-construction-20261014/docs/agent_supervisor/evidence/source-worker-construction-20261014/release_checker.py", line 421, in main
+    before, before_refs = guard(checker, excluded)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/.worktrees/source-worker-construction-20261014/docs/agent_supervisor/evidence/source-worker-construction-20261014/release_checker.py", line 385, in guard
+    selected = qualification()
+               ^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/.worktrees/source-worker-construction-20261014/docs/agent_supervisor/evidence/source-worker-construction-20261014/release_checker.py", line 320, in qualification
+    records = [(path, attempt_record(path, listed)) for path in attempts]
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/.worktrees/source-worker-construction-20261014/docs/agent_supervisor/evidence/source-worker-construction-20261014/release_checker.py", line 246, in attempt_record
+    need(report["observed_shared_ref_changes"] == observed, "shared-ref observations differ")
+  File "/home/barberb/lift_coding/.worktrees/source-worker-construction-20261014/docs/agent_supervisor/evidence/source-worker-construction-20261014/release_checker.py", line 69, in need
+    raise ValueError(reason)
+ValueError: shared-ref observations differ

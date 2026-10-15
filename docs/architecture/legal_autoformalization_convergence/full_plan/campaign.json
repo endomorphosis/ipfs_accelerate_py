@@ -1,0 +1,76 @@
+{
+  "schema": "legal-autoformalization-campaign-template/v1",
+  "status": "prepared_not_launched",
+  "native_runtime": "ipfs_accelerate_py agent_supervisor",
+  "board_namespace": "legal-autoformalization-convergence-20261013",
+  "authoring_manifest": "tasks.json",
+  "task_board": "tasks.todo.md",
+  "task_header_prefix": "## LAC-",
+  "objective_heap": "goals.objectives.md",
+  "task_transport": "Native Markdown projection; tasks.json is an authoring contract, not claimed native ingest schema.",
+  "source_authority": "Must be materialized by LAC-001 and LAC-006; observed snapshots do not grant launch authority.",
+  "parallelism": {
+    "max_attempts_per_task_input": 3,
+    "max_no_progress_refills": 2,
+    "initial_implementation_lanes": 3,
+    "independent_validation_roles": 1,
+    "numerical_jobs_default": 1,
+    "provider_model": "Existing explicitly capability-probed configuration; no new model or fallback assumed."
+  },
+  "resource_profiles": {
+    "cpu_small": {
+      "cpu_slots": 2,
+      "memory_mib": 4096,
+      "wall_seconds": 1800,
+      "gpu": 0,
+      "retained_storage_mib": 1024
+    },
+    "cpu_medium": {
+      "cpu_slots": 4,
+      "memory_mib": 12288,
+      "wall_seconds": 3600,
+      "gpu": 0,
+      "retained_storage_mib": 4096
+    },
+    "io_bounded": {
+      "cpu_slots": 2,
+      "memory_mib": 4096,
+      "wall_seconds": 3600,
+      "gpu": 0,
+      "retained_storage_mib": 8192
+    },
+    "model_screen": {
+      "cpu_slots": 2,
+      "memory_mib": 1536,
+      "wall_seconds": 300,
+      "gpu": 0,
+      "retained_storage_mib": 200,
+      "note": "Initial finite cell ceiling follows latest retained runs; admit measured preparation separately; repeat cells only under the sealed experiment budget."
+    },
+    "prover_bounded": {
+      "cpu_slots": 2,
+      "memory_mib": 4096,
+      "wall_seconds": 1800,
+      "per_obligation_seconds": 60,
+      "gpu": 0,
+      "retained_storage_mib": 1024
+    },
+    "review_bounded": {
+      "cpu_slots": 1,
+      "memory_mib": 1024,
+      "wall_seconds": 1800,
+      "gpu": 0,
+      "retained_storage_mib": 256,
+      "note": "Reviewer availability is an external capability; timing out never grants review. Human work may be resumed as a separately leased packet."
+    }
+  },
+  "initial_ready_task_ids": [
+    "LAC-001",
+    "LAC-002",
+    "LAC-003"
+  ],
+  "writer_policy": "Resource/owner leases and isolated task worktrees; serialized semantic/schema promotion and merge queue.",
+  "completion_policy": "LAC-081 result verifier plus role-appropriate independent semantic/kernel/consistency evidence.",
+  "publication_policy": "Prepared artifacts only until separately configured release action; no historical assets overwritten.",
+  "launch_started": false
+}

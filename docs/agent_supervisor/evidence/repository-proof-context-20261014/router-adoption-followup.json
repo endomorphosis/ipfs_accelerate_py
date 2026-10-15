@@ -1,0 +1,69 @@
+{
+  "affected_opt_in_combination": {
+    "public_instruction_schema": "@5",
+    "semantic_working_set": "capsule-references@1"
+  },
+  "complete_session_token_savings_established": false,
+  "demonstrated_exploit": false,
+  "existing_protections_retained": [
+    "Capsule broker selected semantic table/view/boundary/descriptor/peer currentness before and after retrieval",
+    "Independent native source lookup launch/root custody when actually used"
+  ],
+  "missing_closing_join": "After working-set RPC, repeat original @5 artifact SHA/context/task/signature/profile, complete signed canonical and allocated inventories/baseline HEAD, compiled required/program scope and selected source bytes/modes.",
+  "observed_at_utc": "2026-10-14T09:15:30.665376+00:00",
+  "ordering": [
+    {
+      "line": 1322,
+      "operation": "independent @5 instruction load/closing replay before working-set RPC",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+    },
+    {
+      "line": 1341,
+      "operation": "request_page callback/transport",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+    },
+    {
+      "line": 1366,
+      "operation": "generate_text without intervening independent @5 replay",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+    }
+  ],
+  "preferred_next_repair": "Move or repeat the closing @5 load/receipt comparison after successful working-set preflight and before generate_text.",
+  "provider_calls_in_review": 0,
+  "qualified_by_current_five_suite_roster": false,
+  "required_controls": [
+    "Actual @5 + capsule-references positive path",
+    "RPC-return mutation of selected/support/profile/omitted source in both signed checkouts",
+    "RPC-return mutation of compiled instruction artifact",
+    "Zero provider calls on each refusal",
+    "Preserve existing native owner/grant/spawn currentness and required context"
+  ],
+  "reviewed_incoming_revision": "2b24fde95f2938f2265d85d7351814abdca0d104",
+  "router_changed_by_this_increment": false,
+  "schema": "repository-proof-context-router-adoption-followup@1",
+  "scope": "static_ordering_review_not_exploit_or_router_execution",
+  "source_git_objects": [
+    {
+      "bytes": 103510,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "d8e26e61b87ea403213a6d3713a2190491af278a34f37312279f34d0fc36494c"
+    },
+    {
+      "bytes": 35515,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "c8ef9c0285e8dbaa99e0f3b6b0ac4b3131e4c10b0bea9d912632ca64062d28b2"
+    },
+    {
+      "bytes": 21669,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "sha256": "877a156e7d4d8eb0b06d437b09d0e7bee956d71ed69c30cb41775bfd2a4f6115"
+    },
+    {
+      "bytes": 42011,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source_lookup_worker_broker.py",
+      "sha256": "29023a1bddcba90bf23496cb2293611d4c95d7d3c82b382d52d708e0dfa75e13"
+    }
+  ],
+  "status": "pending_bounded_router_qualification_before_trusted_consumer_adoption",
+  "tests_executed_in_review": false
+}

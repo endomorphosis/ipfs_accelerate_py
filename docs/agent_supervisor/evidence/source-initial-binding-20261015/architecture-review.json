@@ -1,0 +1,55 @@
+{
+  "schema": "source-initial-binding-architecture-review@1",
+  "method": "Read-only production diff/source inspection and stdlib AST/hash checks",
+  "status": "no_concrete_blocker_in_reviewed_paths",
+  "reviewed_base": "55c42dd740d75c3ba04d6991c90cf0aa0dccd8a9",
+  "source_hash_scope": "Exact working source bodies; runtime qualification and publication are separate",
+  "reviewed_sources": [
+    {"path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py", "bytes": 34858, "sha256": "41efe72f36e43f06d55eb23170e0a814c2c990cc0b8063424d41fd974733f0f8"},
+    {"path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py", "bytes": 27590, "sha256": "4c1ca46146c37bc2f7c9957b4637aaefed3b98364e1c3855f5db041961e0811f"},
+    {"path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py", "bytes": 31563, "sha256": "07ddf2cff87f0b55e4eb7c039af021854691e6b3e2f6528f12989aab20dbdcd5"},
+    {"path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py", "bytes": 240765, "sha256": "b8e2f56a8d45b79a5a3cd9a0baf31c4d3b2397a990060faca7bb123cd2593a8a"},
+    {"path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py", "bytes": 632387, "sha256": "c4f36b90309cd720e240d6a5c61e245145e9a83ee7d6074e93db85ba902da8c9"}
+  ],
+  "resolved_findings": [
+    {"finding": "Native binders could enter SQL/COOR before detecting an active borrowed transaction", "resolution": "Task plain/nominated entry points and allocation check original owner custody and connection.in_transaction is False before initial native fences. Server checks before ready SQL; gateway repeats after detached replay. No transaction repair/BEGIN probe."},
+    {"finding": "Allocation's final observation sampled a clock after the task's closing grant check", "resolution": "Gateway samples final time outside SERVER after unlocked native checks. Binding-only task _native and allocation _observe receive that sample, avoiding a later supported wall-clock callback before static closing/source/publication checks. Other native clock contracts keep their defaults."},
+    {"finding": "Post-constructor observations alone could accept replaced candidate inputs", "resolution": "Private configure creates the exact candidate under SERVER before retained CAS. Gateway pins candidate/store/CAS/guard/request/limits/registry and canonical owner-bound body; invokes the original input guard and verifies server policy again after replay."},
+    {"finding": "Native finally paths formerly discovered whichever genuine reader occupied the gateway slot", "resolution": "Gateway installs an exact private attempt publication tuple alongside literal reader fields before post-publication assertions. Task/allocation finally consume only that attempt's witness, identity-joined to the gateway publication record; replacing the current reader does not make the replacement adoptable."}
+  ],
+  "reviewed_properties": [
+    "Public CurrentSourceLookup construction retains configure then complete-source/replay/subset/full-source order. Private _binding_candidate configures without retained CAS; _replay_binding performs the original replay checks.",
+    "Known task/server/gateway SERVER acquisitions end before candidate replay. Actual task/allocation COOR fences run in unlocked checks; closing locked checks enter no COOR or retained CAS.",
+    "Gateway bind/read share a short-held busy mutex. Original ticket/check tuple identity is checked; teardown clears only its own active bind ticket. Native task/allocation serialization and consumed-state guards remain.",
+    "Canonical server configuration is deeply detached; original server/gateway/connection/identity/config/transport/vault objects remain joined. Candidate owner/body and empty cursor/read state must match before and after callbacks.",
+    "Closing binding-specific native grant/task/allocation checks precede complete committed-source validation, including omitted paths. Static owner/candidate checks then precede literal publication.",
+    "Prepublication failure publishes nothing and releases only attempt guards, allowing a repaired public retry. Own publication followed by failure retains exact consumed task/allocation/nomination joins; no alternate-reader discovery, clearing or rebind fallback.",
+    "Existing public binding and source.get response/cursor contracts remain. Binding creates no proxy grant, worker endpoint, descriptor, process, new CAS or replacement native database."
+  ],
+  "finite_assumptions_and_limits": [
+    "The reviewed gateway path and known wrappers release their own SERVER acquisitions. A caller adding an outer SERVER recursion is outside this finite claim; the implementation does not unlock arbitrary caller-owned recursion.",
+    "Task/allocation RLocks remain held over the operation. Same-thread native observer callbacks are supported by their existing reentry rules; arbitrary callback-created threads waiting on those locks are not claimed nonblocking.",
+    "Only the binding closing clock is detached through the new checked-time parameters. Readiness transport, ordinary native fences/default clocks and arbitrary replaced Python methods are not covered by a universal callback-safety claim.",
+    "Physical/source/native checks are sequential observations, not a filesystem writer lease or atomic transaction over Git, COOR, grant memory and filesystem state.",
+    "Host fixtures and authored listener/deployment metadata do not qualify deployed worker UID access, cross-process permission handoff, coding-child adoption, signed compiled context, proof execution or official-task completion.",
+    "This review does not attest a complete import closure, learned IR reconstruction, changed checkpoints/embeddings, model gains, complete model usage or token savings."
+  ],
+  "reviewer_execution": {
+    "runtime_tests": 0,
+    "product_imports": 0,
+    "providers_models_solvers": 0,
+    "native_owners_or_children_launched": 0,
+    "runtime_qualification_claimed": false,
+    "source_edits": false,
+    "git_mutations": false
+  },
+  "historical_baseline_observation": {
+    "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/commands.json",
+    "recorded_status": "expected_regression",
+    "recorded_elapsed_seconds": 23.079,
+    "recorded_tests": 1,
+    "recorded_failures": 1,
+    "promoted_to_pass": false,
+    "executed_by_reviewer": false
+  }
+}

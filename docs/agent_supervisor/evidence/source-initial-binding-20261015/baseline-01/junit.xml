@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="21.180" timestamp="2026-10-15T00:01:49.931378+00:00" hostname="spark-b271"><testcase classname="test.api.test_source_initial_binding" name="test_initial_binding_cas_callback_reenters_native_fences_after_server_release[allocation]" time="3.408"><failure message="AssertionError: initial source binding CAS replay must release SERVER&#10;assert not True&#10; +  where True = &lt;built-in method _is_owned of _thread.RLock object at 0xe85318639280&gt;()&#10; +    where &lt;built-in method _is_owned of _thread.RLock object at 0xe85318639280&gt; = &lt;locked _thread.RLock object owner=255457177663264 count=3 at 0xe85318639280&gt;._is_owned">test/api/test_source_initial_binding.py:83: in test_initial_binding_cas_callback_reenters_native_fences_after_server_release
+    binding = initial_bind(case, route)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_source_initial_binding.py:33: in initial_bind
+    return case.guard.bind_current_source_lookup(**case.source_binding)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:333: in bind_current_source_lookup
+    return self._bind_source_lookup(cas=cas, arguments=dict(
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py:373: in _bind_source_lookup
+    result = binder(repository=self._workspace, cas=cas, **arguments)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:232: in bind_current_source_lookup
+    return self._bind_current_source_lookup(repository=repository, cas=cas,
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py:252: in _bind_current_source_lookup
+    self._server.bind_current_source_lookup(repository=repository, cas=cas,
+ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py:4576: in bind_current_source_lookup
+    return self._command_gateway.bind_current_source_lookup(**configuration)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py:5558: in bind_current_source_lookup
+    service = CurrentSourceLookup(**configuration)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py:206: in __init__
+    restored = self._load()
+               ^^^^^^^^^^^^
+test/api/test_source_initial_binding.py:64: in replay
+    return original_load(reader)
+           ^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py:242: in _load
+    result = load_source_inventory(cas=self._store.cas, expected_inventory_cid=self._inventory_cid,
+ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py:342: in load_source_inventory
+    return _replay(store, cid, store.get(cid), request, limits)
+                               ^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_source_inventory.py:180: in get
+    value = self.cas.get(_cid(cid))
+            ^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_source_initial_binding.py:75: in cas_get
+    assert not original_lock._is_owned(), DIAGNOSTIC
+E   AssertionError: initial source binding CAS replay must release SERVER
+E   assert not True
+E    +  where True = &lt;built-in method _is_owned of _thread.RLock object at 0xe85318639280&gt;()
+E    +    where &lt;built-in method _is_owned of _thread.RLock object at 0xe85318639280&gt; = &lt;locked _thread.RLock object owner=255457177663264 count=3 at 0xe85318639280&gt;._is_owned</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,37 @@
+{
+  "base_commit": "9a1a846f6169444a5a2c7fc7e94bd4b70e6cf856",
+  "external_model_calls": 0,
+  "implementation_commit": "bda0e7fa0458cf41bbaef064e1b6bc86fda8c519",
+  "limitations": [
+    "Authored source and provider; real indexed preparation, admission, context compilation and router dispatch.",
+    "Census measures complete UTF-8 input bytes, not model tokens, benchmark correctness or billing.",
+    "Independent native identities per profile; not replay of prior live benchmark prompts.",
+    "Learned Source384 inference is not included in this census.",
+    "Retrieval uses a real registered child and Unix socket but authored same-UID/container admission.",
+    "Native capsule selection remains byte-bounded; a maximum of 8 selected only 4 in both census cases.",
+    "Candidate retrieval rebuilds current structural capsules; it does not restore exact baseline IDs or learned decoder outputs.",
+    "Explicit budgets support one signed task in the full indexed arm. Other arms and multi-task profiles refuse."
+  ],
+  "new_daemon_start_qualification": false,
+  "new_live_benchmark_trials": 0,
+  "production_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "b28b0c53789f7974bc0944829dfc732a8331c3ab22841f238152a31e71b5ef48",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "5d18101c31c52075b17c277de7a8a7adccf5fd363c94469136c996da2cd224c7",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "e59808627812d901d278da8fc5f2e27800c71d60f2ea295795ea0ed2a63ff60a",
+    "benchmarks/agent_supervisor/container_coding/terminal_capsule_selection_policy.py": "99c15d47099d8de2d054ba4a6ad0ae3b70ed3ddcb8f2bcda8bb129906ab64eb2",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "51530084c76214b7ba6e4fb6fae12051eb5d0ab7fff433622610fc715dc13697",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "2a68809b7c2944396e8c1110591bb89a2e053337dfa31adc6755150601e26f6f",
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "6573b11ced30912f986e1dfb7360bdbe5ee1b47842a9625f6960a360bd6f83a0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "ded65665d1eaa9146a01919215085df164a15daf3510bfaaf09cff85acf7e7d6"
+  },
+  "schema": "capsule-budget-qualification@1",
+  "selected_run": "final-01",
+  "status": "passed",
+  "test_ledger_sha256": "d2d14bdfbad29d63133497b956280dc16d9c15f0c6f9e4dd64a15969174759a7",
+  "tested_production_pins_match_final": true,
+  "tests": {
+    "distinct_passed": 440,
+    "files": 14
+  },
+  "token_savings_claimed": false
+}

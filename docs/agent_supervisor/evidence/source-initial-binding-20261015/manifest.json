@@ -1,0 +1,255 @@
+{
+  "accelerator_base": "55c42dd740d75c3ba04d6991c90cf0aa0dccd8a9",
+  "accelerator_execution_head": "55c42dd740d75c3ba04d6991c90cf0aa0dccd8a9",
+  "baseline_control": "baseline-01",
+  "baseline_counted_as_pass": false,
+  "completion_authority": false,
+  "created_at_utc": "2026-10-15T00:39:37.270473+00:00",
+  "datasets_execution_path": "/home/barberb/lift_coding/.worktrees/source-query-replay-datasets-20261014",
+  "datasets_execution_revision": "f4a823231ad52c9252504810a1b00ed4738346b6",
+  "documentation_anchors": 18,
+  "documentation_relative_links": 121,
+  "documentation_workflow_blocks": 4,
+  "elapsed_seconds": 1691.656,
+  "execution_authority": false,
+  "files": [
+    {
+      "bytes": 10077,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/README.md",
+      "sha256": "551c3ab6e8bd13190453c1dc549d8e8b8cdc39296bda37ee64c3a2eded5d6bd7"
+    },
+    {
+      "bytes": 6454,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/architecture-review.json",
+      "sha256": "29e4060df9c1453252f612c32e295e7acae6830fa20a86f8c53cb6d327f9ca13"
+    },
+    {
+      "bytes": 220614,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/commands.json",
+      "sha256": "1dbe9bb6f0851991943d38093d27d8c75f261a735d15a768e02e39a0563cfef8"
+    },
+    {
+      "bytes": 3818,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/junit.xml",
+      "sha256": "65c1ef0274eeb8a003cc89aa3bf15992ff4e364d4b02809e3d9c8d0d48d27f9a"
+    },
+    {
+      "bytes": 11587,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/source-snapshot/docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification_runner.py.snapshot.txt",
+      "sha256": "248587f815e2e81d3bd7850c9e5b10048b2020e556f3a85770c6f839b3b4df1b"
+    },
+    {
+      "bytes": 33198,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py.snapshot.txt",
+      "sha256": "8fc15bf41c2b264f12dc07033298aa113a8877e6227f421c00261474d94c1bcd"
+    },
+    {
+      "bytes": 25857,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py.snapshot.txt",
+      "sha256": "eece603dcd9f72d28d9aa572934fd23785f87602ecb36d8c0c2e2d97e0712df5"
+    },
+    {
+      "bytes": 30908,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py.snapshot.txt",
+      "sha256": "4597ee652dc5818ff990abf668b31fa2b84a0c14e626c490c29b86ee5af74916"
+    },
+    {
+      "bytes": 239330,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py.snapshot.txt",
+      "sha256": "31a03fd79b6e8a74644d73693322e5709961a2fa620f471997643dde7c534d78"
+    },
+    {
+      "bytes": 627164,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py.snapshot.txt",
+      "sha256": "9b41186cf0c900ffe36e27bf4202350a5ab398b9d6c6153ecb3b10ae82b58c6b"
+    },
+    {
+      "bytes": 631,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/source-snapshot/targets.json.snapshot.txt",
+      "sha256": "d4664781a92e4f895dcbcbfdf014e073bb2ac1ee11c63d176ad1e3cbb275dcb9"
+    },
+    {
+      "bytes": 5609,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/source-snapshot/test/api/test_source_initial_binding.py.snapshot.txt",
+      "sha256": "46f3fdd73101085368238ae0776bdcd47e033c75f468458855c678ba455a6d46"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 26540,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/baseline-01/tests.stdout.log",
+      "sha256": "af4e24a9e27096824fbbb9b43180913467926dd11abab3b1652be11af679395e"
+    },
+    {
+      "bytes": 3838,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/direct-host-reader-identity-followup.json",
+      "sha256": "5d603a3e290169b6ce1fee9e4623cbcaf1f6e0d1b924ab4c4d0be30698cefb84"
+    },
+    {
+      "bytes": 294924,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/documentation-checks.json",
+      "sha256": "b9271a41db1370272db3925a52d7bb3c97d1fee37178ffa5f237bc60d7a6a296"
+    },
+    {
+      "bytes": 3093,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/documentation-workflow.log",
+      "sha256": "0ebfc1a9dcb919fe67f7ed629b01f249037028b678e87adb2d511186070675c4"
+    },
+    {
+      "bytes": 4627,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/parallel-survey.json",
+      "sha256": "5dee80d271617517da8c9276ce559c273c60c5006073dfeb9c85f7b4c967bffd"
+    },
+    {
+      "bytes": 222757,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification-01/commands.json",
+      "sha256": "576bcb69693faa41383496bbfcb383ebf886266b3f30d8098228751b1309efa8"
+    },
+    {
+      "bytes": 50601,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification-01/junit.xml",
+      "sha256": "f3807e5630d77c387201e3548ba23b666bea8a4c1e769e9e84e694d5cacd5d94"
+    },
+    {
+      "bytes": 11587,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification-01/source-snapshot/docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification_runner.py.snapshot.txt",
+      "sha256": "248587f815e2e81d3bd7850c9e5b10048b2020e556f3a85770c6f839b3b4df1b"
+    },
+    {
+      "bytes": 34858,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py.snapshot.txt",
+      "sha256": "41efe72f36e43f06d55eb23170e0a814c2c990cc0b8063424d41fd974733f0f8"
+    },
+    {
+      "bytes": 27590,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py.snapshot.txt",
+      "sha256": "4c1ca46146c37bc2f7c9957b4637aaefed3b98364e1c3855f5db041961e0811f"
+    },
+    {
+      "bytes": 31563,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py.snapshot.txt",
+      "sha256": "07ddf2cff87f0b55e4eb7c039af021854691e6b3e2f6528f12989aab20dbdcd5"
+    },
+    {
+      "bytes": 240765,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py.snapshot.txt",
+      "sha256": "b8e2f56a8d45b79a5a3cd9a0baf31c4d3b2397a990060faca7bb123cd2593a8a"
+    },
+    {
+      "bytes": 632387,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification-01/source-snapshot/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py.snapshot.txt",
+      "sha256": "c4f36b90309cd720e240d6a5c61e245145e9a83ee7d6074e93db85ba902da8c9"
+    },
+    {
+      "bytes": 31183,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification-01/source-snapshot/test/api/test_source_initial_binding.py.snapshot.txt",
+      "sha256": "28a5071a8d511cf3b0aa054f6732322a232cbbcf99972d85783c7cec591a8dff"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification-01/tests.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 44823,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification-01/tests.stdout.log",
+      "sha256": "114d107f644dd560089f176bf8c46699c51209389a3f78681589301e88feb454"
+    },
+    {
+      "bytes": 11587,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/qualification_runner.py",
+      "sha256": "248587f815e2e81d3bd7850c9e5b10048b2020e556f3a85770c6f839b3b4df1b"
+    },
+    {
+      "bytes": 36713,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/release_checker.py",
+      "sha256": "c2e2bb6c1c856bd7f3d44e458f852c2c8f4fa514130e0f56afbe89a18097d157"
+    },
+    {
+      "bytes": 34420,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/source-inventory.json",
+      "sha256": "670dad6e1d57a42f2ed908d721bad798de90d632011b1c693573d78e8a000cc8"
+    },
+    {
+      "bytes": 2842,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/target-roster-migration.json",
+      "sha256": "9ca5001e371821295fe759ffe3501d2ba1165fbe3bc99314382d6d3cd5d78189"
+    },
+    {
+      "bytes": 683,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/targets.json",
+      "sha256": "a49a2df4c413ce89c113666eb0aadb5ca00f7d9cf81977a295dfa63a356ffb67"
+    },
+    {
+      "bytes": 29729,
+      "path": "docs/agent_supervisor/evidence/source-initial-binding-20261015/worker-permission-followup.json",
+      "sha256": "419c96810301c0bc8797b9aa686e1db24d4a52f871e0f888fbfda883b637c8d5"
+    },
+    {
+      "bytes": 95902,
+      "path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "sha256": "63243ea1c9cc0d51e126634da935ede010e18941083e23a3ee4157fec2f8850c"
+    },
+    {
+      "bytes": 26041,
+      "path": "docs/agent_supervisor/source_lookup_worker.md",
+      "sha256": "ae047c0bdd8bb11be9ce8f6680ba0fa98cc8c7a376922b083a8950666174b595"
+    },
+    {
+      "bytes": 34858,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_lookup.py",
+      "sha256": "41efe72f36e43f06d55eb23170e0a814c2c990cc0b8063424d41fd974733f0f8"
+    },
+    {
+      "bytes": 27590,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
+      "sha256": "4c1ca46146c37bc2f7c9957b4637aaefed3b98364e1c3855f5db041961e0811f"
+    },
+    {
+      "bytes": 31563,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py",
+      "sha256": "07ddf2cff87f0b55e4eb7c039af021854691e6b3e2f6528f12989aab20dbdcd5"
+    },
+    {
+      "bytes": 240765,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "sha256": "b8e2f56a8d45b79a5a3cd9a0baf31c4d3b2397a990060faca7bb123cd2593a8a"
+    },
+    {
+      "bytes": 632387,
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "sha256": "c4f36b90309cd720e240d6a5c61e245145e9a83ee7d6074e93db85ba902da8c9"
+    },
+    {
+      "bytes": 31183,
+      "path": "test/api/test_source_initial_binding.py",
+      "sha256": "28a5071a8d511cf3b0aa054f6732322a232cbbcf99972d85783c7cec591a8dff"
+    }
+  ],
+  "followups_implemented": false,
+  "kit_execution_revision": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "manifest_self_excluded": true,
+  "model_calls": 0,
+  "new_cases": 32,
+  "new_suite_child_processes_launched": false,
+  "preserved_evidence_revision": "55c42dd740d75c3ba04d6991c90cf0aa0dccd8a9",
+  "previous_test_counts_aggregated": false,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "retained_suites_include_actual_inert_child_probes": true,
+  "runtime_databases_published": false,
+  "schema": "source-initial-binding-manifest@1",
+  "selected_documentation_checks": "documentation-checks.json",
+  "selected_qualification": "qualification-01",
+  "selected_tests": 299,
+  "solver_calls": 0,
+  "source_binding_scope": "listed_dependencies_not_complete_import_closure",
+  "source_bindings": 279,
+  "suites": 13,
+  "total_session_token_savings_established": false,
+  "training_steps": 0,
+  "worker_uid_qualified": false
+}

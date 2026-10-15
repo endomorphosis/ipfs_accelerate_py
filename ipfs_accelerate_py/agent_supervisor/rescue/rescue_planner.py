@@ -22,7 +22,10 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
+
+if TYPE_CHECKING:
+    from ..runtime.batch_provider_usage import BatchProviderUsageBinding
 
 from ..prompt.prompt_workflow import (
     PROGRAMMATIC_RECOVERY_EXHAUSTION_SCHEMA,
@@ -1696,8 +1699,22 @@ class RescuePlanner:
         state: RescuePlannerState | None = None,
         clock_ms: Callable[[], int] | None = None,
         provider_batch_scheduler: Any = None,
+        batch_usage_binding: BatchProviderUsageBinding | None = None,
     ) -> None:
         self.policy = policy or RescuePlannerPolicy()
+        if batch_usage_binding is not None:
+            from ..runtime.batch_provider_usage import BatchProviderUsageBinding
+
+            if not isinstance(batch_usage_binding, BatchProviderUsageBinding):
+                raise RescuePlannerError("batch_usage_binding must be BatchProviderUsageBinding")
+            if provider is not None:
+                raise RescuePlannerError("batch_usage_binding cannot use a custom provider")
+            if (provider_batch_scheduler is not None
+                    and provider_batch_scheduler is not batch_usage_binding.scheduler):
+                raise RescuePlannerError("batch_usage_binding cannot use a different scheduler")
+            provider_batch_scheduler = batch_usage_binding.scheduler
+        self.batch_usage_binding = batch_usage_binding
+        self._batch_usage_attribution = None
         self.provider = provider
         self.state = state or RescuePlannerState()
         self.operation_catalog = _closed_operation_catalog(operation_catalog)
@@ -1708,6 +1725,12 @@ class RescuePlanner:
             raise RescuePlannerError(
                 "policy operations are missing from the provided operation catalog"
             )
+
+    @property
+    def batch_usage_attribution(self) -> Any:
+        """Latest exact logical batch attribution, without prompt or output text."""
+
+        return self._batch_usage_attribution
 
     def _no_plan(
         self,
@@ -1921,11 +1944,13 @@ class RescuePlanner:
         mode_raw = (
             str(os.environ.get("IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE", "off")).strip().casefold()
         )
-        if mode_raw in {"", "off"}:
-            response, _ = _call_text_provider(
+        if self.batch_usage_binding is not None or mode_raw in {"", "off"}:
+            response, batch_result = _call_text_provider(
                 prompt,
                 invocation,
                 scheduler=self.provider_batch_scheduler,
+                batch_usage_binding=self.batch_usage_binding,
+                usage_consumer_id="rescue_planner",
                 route=DEFAULT_RESCUE_ROUTE,
                 operation="rescue_plan.v1",
                 context_limit=prompt_token_limit,
@@ -1933,6 +1958,10 @@ class RescuePlanner:
                 provenance={"proposal_only": True},
                 usage_migrate=False,
             )
+            if self.batch_usage_binding is not None and batch_result is not None:
+                self._batch_usage_attribution = self.batch_usage_binding.attribution_for(
+                    batch_result.request_id,
+                )
             return response
 
         from ..runtime.provider_usage_migration import (
@@ -2308,6 +2337,8 @@ def plan_rescue(
     provider: RescueProvider | None = None,
     state: RescuePlannerState | None = None,
     clock_ms: Callable[[], int] | None = None,
+    provider_batch_scheduler: Any = None,
+    batch_usage_binding: BatchProviderUsageBinding | None = None,
 ) -> RescuePlanningResult:
     """Functional entry point for one bounded rescue proposal."""
 
@@ -2316,6 +2347,8 @@ def plan_rescue(
         provider=provider,
         state=state,
         clock_ms=clock_ms,
+        provider_batch_scheduler=provider_batch_scheduler,
+        batch_usage_binding=batch_usage_binding,
     ).plan(request)
 
 

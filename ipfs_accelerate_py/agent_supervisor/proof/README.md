@@ -49,6 +49,7 @@ Formal verification and attestation: prover contracts, caches, capabilities, and
 | `logic_translation_validation` | `proof/logic_translation_validation.py` |
 | `multi_prover_resources` | `proof/multi_prover_resources.py` |
 | `multi_prover_router` | `proof/multi_prover_router.py` |
+| `native_formalization_profile` | `proof/native_formalization_profile.py` |
 | `bounded_expert_iteration` | `proof/bounded_expert_iteration.py` |
 | `proof_attestation` | `proof/proof_attestation.py` |
 | `proof_authority_security` | `proof/proof_authority_security.py` |
@@ -110,3 +111,31 @@ registry fields to a native payload is insufficient. This refusal neither
 supplies independent owner review nor authenticates a grant or proof. Planning
 admission still requires the bound owner materials and verifier; Lean admission
 still requires the recorded `lake build <Lib>` at the generated scope.
+
+## Native legacy observations
+
+`native_formalization_profile.NativeFormalizationProfile(declaration, artifact)`
+captures concrete Intent/Security declarations and their actual native
+`FormalizationArtifact` outputs from the pinned datasets tree. It retains the
+complete native dictionaries, including legacy expressions, text, confidence,
+control/effect links, source maps, assumptions, obligations and diagnostics.
+Native identity preimages, native JSON bytes and the profile transport hash
+have separate bindings. `decode_native_formalization_profile()` refuses
+duplicate/nonfinite/oversize JSON, mismatched identities, changed serializer
+source snapshots and readback that repairs the supplied encoding or fields.
+The profile is bounded to 2 MiB and never truncates a semantic record.
+
+Select `/home/barberb/lift_coding/external/ipfs_datasets` before importing
+datasets; the profile refuses foreign loaded origins and does not switch
+trees. Source pins describe current serialization code, not the original
+compiler invocation or source authenticity. Creating the profile does not
+invoke a compiler, model, provider, prover, database or owner verifier.
+
+Every profile remains `unsupported_for_operational_admission`. Its frontier
+distinguishes legacy JSON from validated typed expressions, keeps opaque and
+unsupported diagnostics, and reports missing independent source/effect/state
+and grant bindings. Native `typed_fact`, review labels, initial state and
+policy `allow` declarations gain no authority. This is not a registry provider
+or a replacement normalized IR adapter. Reuse existing artifact custody and
+the independent `OwnerAdmissionMaterialVerifier` for later owner integration;
+neither a successful serialization roundtrip nor a typed AST admits Lean.

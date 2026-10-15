@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
+from importlib.machinery import ModuleSpec
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -29,13 +32,22 @@ MAX_RECEIPTS = 16
 MAX_DEPTH = 32
 MAX_REQUEST_BYTES = 65_536
 MAX_RESULT_BYTES = 262_144
+MAX_CENSUS_BYTES = 131_072
+MAX_AUDIT_SECONDS = 30.0
 RECEIPT_FIELDS = (
     "schema", "phase", "invocation_id", "purpose", "workspace",
     "prompt_sha256", "prompt_bytes", "native_prompt_sha256", "native_prompt_bytes",
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context", "source_view_retrieval", "representation_displacement", "terminal_semantic_scope_dispatch_rechecked", "semantic_prompt_components")
+TRANSLATION_FIELDS = ('router_prompt_sha256', 'router_prompt_bytes', 'semantic_translation', 'doctor_residual_context', 'public_instruction', 'coding_reply_contract', 'semantic_metadata_view', 'semantic_metadata_native_coding_reply_contract', 'source_formalization_context', 'source_view_retrieval', 'representation_displacement', 'terminal_semantic_scope_dispatch_rechecked', 'semantic_prompt_components', 'tool_output_policy', 'source_view_advisory_policy', 'repository_source_policy', 'source_input_policy', 'source_input_view', 'source_input_dispatched', 'query_reference_policy', 'query_reference_view', 'query_reference_selected', 'query_reference_dispatched', 'query_reference_provider_attempted', 'semantic_working_set', 'semantic_working_set_preflight')
+
+DECISION_REPORT_FIELDS = (
+    "semantic_decision_dialogues", "semantic_decision_dialogue_expected",
+    "semantic_decision_owner_bindings", "semantic_decision_owner_binding_expected",
+    "semantic_decision_expected_task_id", "semantic_decision_nomination_sha256",
+    "semantic_decision_typed_nomination_expected",
+)
 
 
 def _semantic_prompt_components(value):
@@ -142,11 +154,60 @@ def _terminal_scope_inclusion(value):
         _digest(value[key])
 
 
+def source_input_audit_binding_sha256(item: dict) -> str:
+    """Bind a successful audit to its complete bounded coding receipt projection.
+
+    This digest is an audit join key, not evidence of successful reconstruction
+    by itself. Keep it outside the boolean model-input checks.
+    """
+    if (type(item) is not dict or item.get("schema") != "router-implementation-invocation@1"
+            or item.get("phase") != "coding" or item.get("purpose") != "coding"
+            or item.get("provider") != "codex_cli" or item.get("source_input_view") is None
+            or type(item.get("source_input_dispatched")) is not bool):
+        raise ValueError("source input audit binding requires an explicit coding receipt")
+    projection = {key: item[key] for key in RECEIPT_FIELDS}
+    projection.update({key: item[key] for key in TRANSLATION_FIELDS if key in item})
+    projection["provider"] = item["provider"]
+    raw = json.dumps({"schema": "terminal-source-input-audit-binding@1", "receipt": projection},
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    if len(raw) > MAX_REQUEST_BYTES:
+        raise ValueError("source input audit binding exceeds receipt bound")
+    return _sha(raw)
+
+
+def query_reference_audit_binding_sha256(item: dict) -> str:
+    """Bind a successful audit to its complete bounded coding receipt projection.
+
+    This digest is an audit join key, not evidence of successful reconstruction
+    by itself. Keep it outside the boolean model-input checks.
+    """
+    if (type(item) is not dict or item.get("schema") != "router-implementation-invocation@1"
+            or item.get("phase") != "coding" or item.get("purpose") != "coding"
+            or item.get("provider") != "codex_cli" or item.get("query_reference_view") is None
+            or type(item.get("query_reference_dispatched")) is not bool
+            or type(item.get("query_reference_provider_attempted")) is not bool
+            or type(item.get("query_reference_selected")) is not bool):
+        raise ValueError("query reference audit binding requires an explicit coding receipt")
+    projection = {key: item[key] for key in RECEIPT_FIELDS}
+    projection.update({key: item[key] for key in TRANSLATION_FIELDS if key in item})
+    projection["provider"] = item["provider"]
+    raw = json.dumps({"schema": "terminal-query-reference-audit-binding@1", "receipt": projection},
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    if len(raw) > MAX_REQUEST_BYTES:
+        raise ValueError("query reference audit binding exceeds receipt bound")
+    return _sha(raw)
+
+
 def _base(status="unknown", reason="observation_unavailable") -> dict:
     return {"schema": SCHEMA, "status": status, "reason": reason,
         "any_native_input_verified": None, "any_model_input_verified": None,
         "all_observed_coding_inputs_verified": None,
         "capsules": [], "invocations": [], "matches": [], "read_errors": [],
+        "rendered_input_census": {"schema": "terminal-rendered-input-census@1",
+            "status": "unavailable", "reason": "no_exact_model_input",
+            "observations": [], "unavailable": [], "provider_calls": 0,
+            "verified_invocation_count": 0, "observed_invocation_count": 0,
+            "raw_content_exported": False, "token_savings_established": False},
         "world_scope": "sealed historical capture; claims may supersede its intent revision",
         "input_scope": "router task prompt; provider harness/system context is outside this digest",
         "raw_prompts_exported": False, "provider_calls": 0,
@@ -352,10 +413,20 @@ def _token_selection_receipt(metadata: dict, item: dict) -> None:
 def _receipt(item: dict, workspace_root: Path) -> dict:
     if not isinstance(item, dict) or item.get("schema") != "router-implementation-invocation@1":
         raise ValueError("invalid router receipt")
+    if "world_task_packet" in item:
+        # World input has a dedicated frozen artifact route. Never drop its
+        # marker and audit it as the legacy rendered-capsule prompt, even if
+        # a caller supplies matching legacy hashes.
+        raise ValueError("world task packet requires qualified Terminal Bench replay")
     if item.get("phase") != "coding" or item.get("purpose") != "coding":
         raise ValueError("non-coding router receipt")
     result = {key: item[key] for key in RECEIPT_FIELDS}
     result.update({key: item[key] for key in TRANSLATION_FIELDS if key in item})
+    # Historical dialogue joins require the independently recorded route. A
+    # selected policy cannot supply a missing provider or model identity.
+    for field in ("provider", "model"):
+        if field in item:
+            result[field] = _identity(item[field])
     if "source_formalization_context" in result:
         _formalization_receipt(result["source_formalization_context"])
     _identity(result["invocation_id"])
@@ -378,8 +449,34 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
             raise ValueError("semantic component census requires its translated input")
         _semantic_prompt_components(result["semantic_prompt_components"])
     instruction = result.get("public_instruction")
+    source_input = result.get("source_input_view")
+    query_reference = result.get("query_reference_view")
+    if query_reference is not None or result.get("query_reference_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.query_reference_policy import validate_bound_receipt
+        validate_bound_receipt(result.get("query_reference_policy"), query_reference,
+            semantic_metadata_view="legacy" if result.get("semantic_metadata_view") is None else "common-bindings@1",
+            source_input_policy=result.get("source_input_policy", "legacy"))
+        if (item.get("provider") != "codex_cli" or type(result.get("query_reference_selected")) is not bool
+                or type(result.get("query_reference_dispatched")) is not bool
+                or type(result.get("query_reference_provider_attempted")) is not bool
+                or result["query_reference_selected"] is not translated
+                or result["query_reference_dispatched"] and (not result["query_reference_selected"]
+                    or not result["query_reference_provider_attempted"])):
+            raise ValueError("invalid query reference coding selection")
+        result["provider"] = item["provider"]
+    if source_input is not None or result.get("source_input_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_input_policy import validate_bound_receipt
+        validate_bound_receipt(result.get("source_input_policy"), source_input,
+            semantic_metadata_view="legacy" if result.get("semantic_metadata_view") is None else "common-bindings@1")
+        if item.get("provider") != "codex_cli":
+            raise ValueError("source input requires the Codex coding route")
+        result["provider"] = item["provider"]
+        if type(result.get("source_input_dispatched")) is not bool:
+            raise ValueError("source input requires explicit provider boundary observation")
+        if source_input["factor_ast"] and not translated:
+            raise ValueError("source input AST references require semantic transport")
     router_bytes = result.get("router_prompt_bytes", result["native_prompt_bytes"])
-    if translated or instruction is not None:
+    if translated or instruction is not None or source_input is not None or query_reference is not None:
         _digest(result["router_prompt_sha256"])
         if type(router_bytes) is not int or not 0 < router_bytes <= 262_144:
             raise ValueError("invalid translated input byte count")
@@ -398,12 +495,12 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                 != "supervisor-semantic-router-input@1"):
             raise ValueError("invalid semantic transport version")
         _identity(translation["translation_cid"])
-    elif instruction is None and (router_bytes != result["native_prompt_bytes"]
+    elif instruction is None and source_input is None and query_reference is None and (router_bytes != result["native_prompt_bytes"]
           or result.get("router_prompt_sha256", result["native_prompt_sha256"]) != result["native_prompt_sha256"]):
         raise ValueError("unexplained router projection")
     residual = result.get("doctor_residual_context")
     if residual is not None:
-        if (not translated or not isinstance(residual, dict)
+        if ((not translated and source_input is None and query_reference is None) or not isinstance(residual, dict)
                 or residual.get("schema") != "doctor-residual-router-context@1"
                 or residual.get("candidate_only") is not True):
             raise ValueError("invalid Doctor residual receipt")
@@ -450,7 +547,57 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
             and (instruction is None or instruction.get("schema") != "supervisor-public-instruction-inclusion@5")):
         raise ValueError("signed Terminal dispatch replay requires its versioned instruction receipt")
     reply = result.get("coding_reply_contract")
+    if result.get("repository_source_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_policy import validate_binding as validate_repository_binding
+        if item.get("provider") != "codex_cli" or result.get("source_view_advisory_policy") is not None:
+            raise ValueError("repository source tools require an exclusive Codex coding route")
+        validate_repository_binding(result["repository_source_policy"], workspace=workspace)
+    if result.get("source_view_advisory_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import validate_binding as validate_source_binding
+        if item.get("provider") != "codex_cli":
+            raise ValueError("source view guidance requires the Codex coding route")
+        validate_source_binding(result["source_view_advisory_policy"], workspace=workspace)
+    if result.get("tool_output_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.tool_output_policy import validate_binding
+        if item.get("provider") != "codex_cli":
+            raise ValueError("tool output guidance requires the Codex coding route")
+        validate_binding(result["tool_output_policy"], workspace=workspace)
     metadata = result.get("semantic_metadata_view")
+    working_set = result.get("semantic_working_set")
+    preflight = result.get("semantic_working_set_preflight")
+    if preflight is not None and working_set is None:
+        raise ValueError("working set preflight requires its projection")
+    if working_set is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_working_set import validate_working_set_selection_receipt
+        validate_working_set_selection_receipt(working_set)
+        if (not translated or metadata is not None or result.get("source_view_retrieval", {}).get("schema")
+                != "worker-source-dispatch-observation@4"
+                or working_set["selected_complete_bytes"] != result["model_prompt_bytes"]
+                or working_set["selected_complete_sha256"] != result["model_prompt_sha256"]):
+            raise ValueError("working set requires its exact semantic retrieval and provider input")
+        binding = working_set["view_receipt"]["binding"]
+        source = result["source_view_retrieval"]
+        if (binding["descriptor_sha256"] != source.get("descriptor_sha256")
+                or binding["descriptor_session_id"] != source.get("session_id")
+                or binding["semantic_evidence_mode"] != source.get("semantic_evidence_mode")
+                or any(value != source.get(key) for key, value in binding["semantic_binding"].items())):
+            raise ValueError("working set differs from its source session")
+        if working_set["selected_mode"] != "legacy":
+            if (type(preflight) is not dict or set(preflight) != {"schema", "requests", "session_id",
+                    "capsule_index", "capsule_sha256", "response_bytes", "response_sha256",
+                    "provider_input_bytes", "source_freshness_checked", "proof_authority"}
+                    or preflight["schema"] != "supervisor-semantic-working-set-preflight@1"
+                    or type(preflight["requests"]) is not int or preflight["requests"] != 1
+                    or type(preflight["capsule_index"]) is not int or preflight["capsule_index"] != 0
+                    or preflight["session_id"] != source["session_id"]
+                    or type(preflight["response_bytes"]) is not int or not 1 <= preflight["response_bytes"] <= 4096
+                    or type(preflight["provider_input_bytes"]) is not int or preflight["provider_input_bytes"] != 0
+                    or preflight["source_freshness_checked"] is not True or preflight["proof_authority"] is not False):
+                raise ValueError("selected working set lacks its bounded endpoint preflight")
+            _digest(preflight["capsule_sha256"])
+            _digest(preflight["response_sha256"])
+        elif preflight is not None:
+            raise ValueError("unchanged prompt has an unexpected working set preflight")
     if metadata is not None:
         if (not translated or result["semantic_translation"]["schema"] != "supervisor-semantic-router-encoding@1"
                 or type(metadata) is not dict
@@ -533,6 +680,8 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
 def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
                       formalization: dict | None = None, token_counter=None):
     """Reconstruct historical provider bytes without granting freshness."""
+    if "world_task_packet" in receipt:
+        raise ValueError("world task packet requires qualified Terminal Bench replay")
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
     translated = receipt.get("semantic_translation") is not None
     router_prompt, checks = rendered, {}
@@ -563,6 +712,41 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             if _semantic_prompt_components(census):
                 checks["semantic_prompt_components"] = _same_json(census,
                     census_semantic_router_prompt(encoded=encoded))
+    source_input = receipt.get("source_input_view")
+    query_reference = receipt.get("query_reference_view")
+    if query_reference is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.query_reference_policy import validate_bound_receipt
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_query_reference import project_semantic_query_reference
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation import replay_semantic_router_prompt_for_audit
+        validate_bound_receipt(receipt.get("query_reference_policy"), query_reference,
+            semantic_metadata_view="legacy" if receipt.get("semantic_metadata_view") is None else "common-bindings@1",
+            source_input_policy=receipt.get("source_input_policy", "legacy"))
+        if repository is None:
+            raise ValueError("query reference requires retained canonical source blocks")
+        reference_encoded = encoded if translated else replay_semantic_router_prompt_for_audit(
+            prompt=rendered, repository=repository, transport_schema=query_reference["source_transport_schema"])
+        projected = project_semantic_query_reference(provider_prompt=reference_encoded.provider_prompt)
+        checks["query_reference_projection"] = _same_json(projected.receipt, query_reference)
+        checks["query_reference_selection"] = receipt.get("query_reference_selected") is translated
+        checks["query_reference_dispatch"] = receipt.get("query_reference_dispatched") is translated
+        checks["query_reference_provider_attempted"] = receipt.get("query_reference_provider_attempted") is True
+        if translated:
+            router_prompt = projected.provider_prompt
+    if source_input is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_input_policy import validate_bound_receipt
+        from ipfs_accelerate_py.agent_supervisor.runtime.source_input_view import replay_source_input_view_for_audit
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation import replay_semantic_router_prompt_for_audit
+        validate_bound_receipt(receipt.get("source_input_policy"), source_input,
+            semantic_metadata_view="legacy" if receipt.get("semantic_metadata_view") is None else "common-bindings@1")
+        if repository is None:
+            raise ValueError("source input requires retained canonical source blocks")
+        source_encoded = encoded if translated else replay_semantic_router_prompt_for_audit(
+            prompt=rendered, repository=repository, transport_schema=source_input["source_transport_schema"])
+        projected = replay_source_input_view_for_audit(encoded=source_encoded, repository=repository, receipt=source_input)
+        router_prompt = projected.provider_prompt if translated else rendered + projected.block
+        checks["source_input_projection"] = True
+        checks["source_input_positive_inclusion"] = True
+        checks["source_input_dispatched"] = receipt.get("source_input_dispatched") is True
     source_views = receipt.get("source_view_retrieval")
     source_guidance = None
     if source_views is not None:
@@ -581,9 +765,11 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             from .terminal_source_edit_policy import DEFAULT_SOURCE_EDIT_MODE, validate_source_edit_mode
             mode = validate_source_edit_mode(source_views.get("source_edit_mode", "disabled"),
                 source_view_profile=source_views["profile"])
-            if source_views.get("schema") != "worker-source-dispatch-observation@3" or mode == DEFAULT_SOURCE_EDIT_MODE:
+            if (source_views.get("schema") not in {"worker-source-dispatch-observation@3", "worker-source-dispatch-observation@4"}
+                    or source_views.get("schema") == "worker-source-dispatch-observation@3" and mode == DEFAULT_SOURCE_EDIT_MODE):
                 raise ValueError("mapped source guidance requires its explicit dispatch schema and mode")
-            edit_options["source_edit_mode"] = mode
+            if mode != DEFAULT_SOURCE_EDIT_MODE:
+                edit_options["source_edit_mode"] = mode
         advice = guidance(source_views["profile"], **edit_options)
         source_guidance = advice
         checks["source_view_semantic_binding"] = all(source_views.get(key) == value for key, value in expected.items())
@@ -593,7 +779,7 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
     residual = receipt.get("doctor_residual_context")
     if residual is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.doctor_residual_context import load_doctor_residual_advisory
-        if not translated or repository is None:
+        if (not translated and source_input is None and query_reference is None) or repository is None:
             raise ValueError("Doctor residual requires a canonical semantic repository")
         advisory, observed = load_doctor_residual_advisory(artifact=Path(residual["artifact"]),
             expected_sha256=residual["artifact_sha256"], repository=repository,
@@ -621,18 +807,33 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             checks["public_instruction_terminal_semantic_scope"] = _same_json(
                 observed.get("terminal_semantic_scope"), instruction.get("terminal_semantic_scope"))
             checks["terminal_semantic_scope_dispatch_observed"] = receipt.get("terminal_semantic_scope_dispatch_rechecked") is True
-    if translated or instruction is not None:
+    if (translated or instruction is not None or source_input is not None or query_reference is not None) and receipt.get("semantic_working_set") is None:
         checks.update(router_prompt_sha256=_sha(router_prompt.encode()) == receipt["router_prompt_sha256"],
             router_prompt_bytes=len(router_prompt.encode()) == receipt["router_prompt_bytes"])
     model, advisory = render_model_prompt(prompt=router_prompt, purpose="coding",
-        workspace=Path(receipt["workspace"]), semantic_transport=translated)
+        workspace=Path(receipt["workspace"]), semantic_transport=translated,
+        tool_output_binding=receipt.get("tool_output_policy"),
+        source_view_binding=receipt.get("source_view_advisory_policy"),
+        repository_source_binding=receipt.get("repository_source_policy"))
+    if receipt.get("repository_source_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime import repository_source_mcp
+        source = Path(repository_source_mcp.__file__).read_bytes()
+        checks["repository_source_helper_source"] = _sha(source) == receipt["repository_source_policy"]["helper_sha256"]
+    if receipt.get("source_view_advisory_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime import code_source_view
+        source = Path(code_source_view.__file__).read_bytes()
+        checks["source_view_helper_source"] = _sha(source) == receipt["source_view_advisory_policy"]["helper_sha256"]
+    if receipt.get("tool_output_policy") is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime import tool_output_artifact
+        source = Path(tool_output_artifact.__file__).read_bytes()
+        checks["tool_output_helper_source"] = _sha(source) == receipt["tool_output_policy"]["helper_sha256"]
     reply = receipt.get("coding_reply_contract")
     if reply is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.coding_reply_contract import apply_coding_reply_contract
         model, expected = apply_coding_reply_contract(model_prompt=model, mode=reply["mode"],
             purpose="coding", provider="codex_cli")
         baseline_reply = expected
-        if receipt.get("semantic_metadata_view") is None:
+        if receipt.get("semantic_metadata_view") is None and receipt.get("semantic_working_set") is None:
             for field in expected:
                 if field != "response_validated":
                     checks["coding_reply_" + field] = reply[field] == expected[field]
@@ -663,7 +864,10 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             raise ValueError("metadata audit differs from reconstructed native transport")
         candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
         candidate, candidate_advisory = render_model_prompt(prompt=candidate_router, purpose="coding",
-            workspace=Path(receipt["workspace"]), semantic_transport=True)
+            workspace=Path(receipt["workspace"]), semantic_transport=True,
+            tool_output_binding=receipt.get("tool_output_policy"),
+            source_view_binding=receipt.get("source_view_advisory_policy"),
+            repository_source_binding=receipt.get("repository_source_policy"))
         if candidate_advisory != advisory:
             raise ValueError("metadata audit changed workspace advisory")
         if reply is not None:
@@ -732,6 +936,41 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             for field in selected_reply:
                 if field != "response_validated":
                     checks["metadata_selected_coding_reply_" + field] = reply[field] == selected_reply[field]
+    working_set = receipt.get("semantic_working_set")
+    if working_set is not None:
+        if not translated or metadata is not None or source_views is None:
+            raise ValueError("working set audit requires its original semantic source route")
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_working_set import (
+            replay_semantic_working_set_for_audit, select_working_set,
+        )
+        view = replay_semantic_working_set_for_audit(encoded, working_set["view_receipt"])
+        if working_set["selected_mode"] != "legacy":
+            reference = json.loads(view.provider_prompt)["working_set"]["capsule_references"][0]
+            checks["semantic_working_set_preflight_capsule"] = all(
+                receipt["semantic_working_set_preflight"][key] == reference[key]
+                for key in ("capsule_index", "capsule_sha256"))
+        if not router_prompt.startswith(encoded.provider_prompt):
+            raise ValueError("working set audit differs from reconstructed transport")
+        candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
+        candidate, candidate_advisory = render_model_prompt(prompt=candidate_router, purpose="coding",
+            workspace=Path(receipt["workspace"]), semantic_transport=True)
+        if candidate_advisory != advisory:
+            raise ValueError("working set audit changed workspace advisory")
+        if reply is not None:
+            candidate, candidate_reply = apply_coding_reply_contract(model_prompt=candidate,
+                mode=reply["mode"], purpose="coding", provider="codex_cli")
+        selection = select_working_set(view, native_complete_prompt=model, candidate_complete_prompt=candidate)
+        checks["semantic_working_set_selection_receipt"] = _same_json(working_set, selection.receipt)
+        model = selection.provider_prompt
+        if selection.selected_mode != "legacy":
+            router_prompt = candidate_router
+        checks.update(router_prompt_sha256=_sha(router_prompt.encode()) == receipt["router_prompt_sha256"],
+            router_prompt_bytes=len(router_prompt.encode()) == receipt["router_prompt_bytes"])
+        if reply is not None:
+            selected_reply = candidate_reply if selection.selected_mode != "legacy" else baseline_reply
+            for field in selected_reply:
+                if field != "response_validated":
+                    checks["working_set_coding_reply_" + field] = reply[field] == selected_reply[field]
     checks.update(model_prompt_sha256=_sha(model.encode()) == receipt["model_prompt_sha256"],
         model_prompt_bytes=len(model.encode()) == receipt["model_prompt_bytes"],
         workspace_advisory_sha256=_sha(advisory.encode()) == receipt["workspace_advisory_sha256"],
@@ -961,11 +1200,247 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, 
     return result, rendered, dispatch
 
 
-def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path) -> dict:
+def _decision_auditor():
+    """Load the sibling observer from the trusted owner's actual directory."""
+    spec = importlib.util.spec_from_file_location("_terminal_owner_decision_input_audit",
+        Path(__file__).resolve().with_name("semantic_decision_input_audit.py"))
+    if spec is None or spec.loader is None:
+        raise ValueError("dialogue input audit owner unavailable")
+    owner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(owner)
+    return owner.audit_semantic_decision_dialogue
+
+def _typed_nomination_auditor():
+    """Load the sibling lineage observer from the trusted owner directory."""
+    spec = importlib.util.spec_from_file_location("_terminal_owner_typed_nomination_audit",
+        Path(__file__).resolve().with_name("semantic_decision_input_audit.py"))
+    if spec is None or spec.loader is None:
+        raise ValueError("typed nomination input audit owner unavailable")
+    owner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(owner)
+    return owner.audit_semantic_typed_nomination_lineage
+
+def _typed_nomination_population(*, report, originals, repository, workspace_root):
+    """Replay sidecars outside the bounded IPC; return only computed summaries."""
+    verifications, issues = [], []
+    if report.get("semantic_decision_typed_nomination_expected") is not True:
+        return verifications, issues
+
+    def issue(reason, **ordinals):
+        if len(issues) < MAX_RECEIPTS:
+            issues.append({"reason": reason, **ordinals})
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_decision_usage import (
+        _dialogue_owner_key, _owner_binding_key, _valid_owner_binding,
+    )
+    owners = report.get("semantic_decision_owner_bindings", [])
+    dialogues = report.get("semantic_decision_dialogues", [])
+    if (type(owners) is not list or type(dialogues) is not list
+            or len(owners) > MAX_RECEIPTS or len(dialogues) > MAX_RECEIPTS):
+        issue("invalid_typed_nomination_owner_or_dialogue_population")
+        return verifications, issues
+    expected_task = report.get("semantic_decision_expected_task_id")
+    origin_pin = report.get("semantic_decision_nomination_sha256")
+    seen = []
+    auditor = None
+    for ordinal, owner in enumerate(owners):
+        if owner in seen:
+            continue
+        seen.append(owner)
+        if not _valid_owner_binding(owner) or "typed_nomination" not in owner:
+            issue("invalid_or_missing_typed_nomination_binding", owner_binding_ordinal=ordinal)
+            continue
+        # A copied receipt hash is not an input anchor. The complete literal
+        # prompt must have been independently reconstructed by _capsule first.
+        captured = [(row, prompt) for row, prompt in originals
+                    if row["native_prompt_sha256"] == owner["native_prompt_sha256"]
+                    and row["native_prompt_bytes"] == owner["native_prompt_bytes"]]
+        prompts = {prompt for _, prompt in captured}
+        if len(prompts) != 1 or repository is None:
+            issue("typed_nomination_original_native_context_unavailable", owner_binding_ordinal=ordinal)
+            continue
+        matching = []
+        for dialogue in dialogues:
+            if (type(dialogue) is dict and dialogue.get("schema") == "supervisor-semantic-decision-dialogue@1"
+                    and _dialogue_owner_key(dialogue) == _owner_binding_key(owner)
+                    and dialogue not in matching):
+                matching.append(dialogue)
+        if len(matching) != 1:
+            issue("typed_nomination_dialogue_owner_join_unavailable", owner_binding_ordinal=ordinal)
+            continue
+        try:
+            if auditor is None:
+                auditor = _typed_nomination_auditor()
+            verification = auditor(
+                native_prompt=next(iter(prompts)), owner_binding=owner, dialogue=matching[0],
+                repository=repository, workspace_root=workspace_root,
+                expected_origin_nomination_sha256=origin_pin, expected_task_id=expected_task,
+            )
+        except Exception as error:
+            issue("typed_nomination_historical_verification_unavailable",
+                  owner_binding_ordinal=ordinal, error_type=type(error).__name__)
+        else:
+            verifications.append(verification)
+    return verifications, issues
+
+def _bounded_request(value):
+    """Bound new dialogue observations before allocating their JSON envelope."""
+    pending, cells, text_bytes = [(value, 0)], 0, 0
+    while pending:
+        item, depth = pending.pop()
+        cells += 1
+        if cells > 8192 or depth > MAX_DEPTH:
+            raise ValueError("audit request structure exceeds bound")
+        if type(item) is str:
+            if len(item) > MAX_REQUEST_BYTES:
+                raise ValueError("audit request text exceeds bound")
+            text_bytes += len(item.encode())
+            if text_bytes > MAX_REQUEST_BYTES:
+                raise ValueError("audit request text exceeds bound")
+        elif type(item) is dict:
+            if len(item) > 8192:
+                raise ValueError("audit request object exceeds bound")
+            for key, child in item.items():
+                if type(key) is not str:
+                    raise ValueError("audit request keys must be strings")
+                pending.extend(((key, depth + 1), (child, depth + 1)))
+        elif type(item) is list:
+            if len(item) > 8192:
+                raise ValueError("audit request list exceeds bound")
+            pending.extend((child, depth + 1) for child in item)
+        elif type(item) is int:
+            if item.bit_length() > 64:
+                raise ValueError("audit request integer exceeds bound")
+        elif type(item) is float and not math.isfinite(item):
+            raise ValueError("audit request number must be finite")
+        elif item is not None and type(item) not in {bool, float}:
+            raise ValueError("unsupported audit request value")
+
+def _decision_population(*, report: dict, receipts: list[dict], originals: list,
+        repository: Path | None, workspace_root: Path) -> tuple[dict, list]:
+    """Join historical round replay to independently collected coding receipts."""
+    value = {"schema": "terminal-semantic-decision-input-population-audit@1",
+        "status": "unverified", "dialogue_expected": report.get("semantic_decision_dialogue_expected") is True,
+        "dialogues": [], "issues": [], "observed_dialogue_count": 0,
+        "all_recorded_dialogue_inputs_verified": False,
+        "all_observed_dialogue_inputs_verified": False,
+        "all_native_invocations_matched": False,
+        "provider_calls": 0, "raw_prompts_exported": False,
+        "source_freshness_revalidated": False, "token_savings_established": False,
+        "completion_authority": False}
+    matches = []
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_decision_usage import semantic_decision_accounting_inputs
+        if "semantic_decision_typed_nomination_expected" in report:
+            verifications, typed_issues = _typed_nomination_population(
+                report=report, originals=originals, repository=repository, workspace_root=workspace_root,
+            )
+            value["typed_nomination_verifications"] = verifications
+            value["issues"].extend(typed_issues)
+        # The observer's computed summaries are intentionally not accepted in
+        # the caller's request. Feed the fresh result to the same pure coverage
+        # join used later by final-report/Harbor accounting.
+        audit_view = {"schema": SCHEMA, "provider_calls": 0, "raw_prompts_exported": False,
+                      "completion_authority": False, "semantic_decision_inputs": value}
+        _, coverage = semantic_decision_accounting_inputs({
+            **report, "provider_invocations": receipts, "context_input_audit": audit_view,
+        })
+        value["receipt_binding_coverage"] = coverage
+        value["receipt_binding_coverage_complete"] = (
+            coverage["all_attempts_receipted"] and coverage["provider_call_count_complete"]
+            and coverage.get("owner_binding_coverage_complete", True) and not coverage["issues"])
+        dialogues = report.get("semantic_decision_dialogues", [])
+        if type(dialogues) is not list or len(dialogues) > MAX_RECEIPTS:
+            raise ValueError("bounded dialogue population required")
+        if not dialogues:
+            value["issues"].append({"reason": "expected_dialogue_missing" if value["dialogue_expected"]
+                                    else "no_dialogue_observation"})
+            return value, matches
+        audit_dialogue = _decision_auditor()
+        captured = {row["native_prompt_sha256"]: (row, prompt) for row, prompt in originals}
+        seen = set()
+        candidates = []
+        for ordinal, dialogue in enumerate(dialogues):
+            if type(dialogue) is not dict:
+                value["issues"].append({"dialogue_ordinal": ordinal, "reason": "invalid_dialogue_observation"})
+                continue
+            fingerprint = _sha(json.dumps(dialogue, sort_keys=True, allow_nan=False).encode())
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            value["observed_dialogue_count"] += 1
+            launch = dialogue.get("worker_launch")
+            original = captured.get(launch.get("original_native_prompt_sha256")) if type(launch) is dict else None
+            if original is None or repository is None:
+                value["issues"].append({"dialogue_ordinal": ordinal, "reason": "original_native_context_unavailable"})
+                continue
+            observed, prompt = original
+            replay = audit_dialogue(native_prompt=prompt, dialogue=dialogue,
+                repository=repository, workspace_root=workspace_root)
+            value["dialogues"].append(replay)
+            for attempt in replay.get("attempts", []):
+                invocation_hash = attempt.get("native_invocation_id_sha256")
+                if (attempt.get("model_input_verified") is not True
+                        or attempt.get("provider_receipt_binding_validated") is not True
+                        or attempt.get("provider_dispatch_reported") is not True
+                        or not isinstance(invocation_hash, str)):
+                    continue
+                rows = [row for row in receipts if _sha(row["invocation_id"].encode()) == invocation_hash]
+                if len(rows) != 1:
+                    continue
+                row = rows[0]
+                checks = {
+                    "historical_round_reconstructed": True,
+                    "provider_model": row.get("provider") == dialogue.get("provider") and row.get("model") == dialogue.get("model"),
+                    "workspace": row["workspace"] == dialogue.get("workspace"),
+                    "prompt_sha256": row["native_prompt_sha256"] == attempt.get("prompt_sha256"),
+                    "prompt_bytes": row["native_prompt_bytes"] == attempt.get("prompt_bytes"),
+                    "model_prompt_sha256": row["model_prompt_sha256"] == attempt.get("model_prompt_sha256"),
+                    "model_prompt_bytes": row["model_prompt_bytes"] == attempt.get("model_prompt_bytes"),
+                }
+                if all(checks.values()):
+                    candidates.append({"capsule_id": observed["capsule_id"],
+                        "invocation_id": row["invocation_id"], "workspace_sha256": _sha(row["workspace"].encode()),
+                        "native_prompt_sha256": row["native_prompt_sha256"], "native_prompt_bytes": row["native_prompt_bytes"],
+                        "original_native_prompt_sha256": observed["native_prompt_sha256"],
+                        "model_prompt_sha256": row["model_prompt_sha256"], "model_prompt_bytes": row["model_prompt_bytes"],
+                        "model_input_checks": checks, "model_input_verified": True,
+                        "historical_dialogue_replay": True})
+        for match in candidates:
+            if sum(row["invocation_id"] == match["invocation_id"] for row in candidates) == 1:
+                matches.append(match)
+            else:
+                value["issues"].append({"reason": "ambiguous_native_invocation_join"})
+        value["all_recorded_dialogue_inputs_verified"] = (
+            len(value["dialogues"]) == value["observed_dialogue_count"] and bool(value["dialogues"])
+            and all(row.get("all_recorded_round_inputs_verified") is True for row in value["dialogues"]))
+        value["all_native_invocations_matched"] = (bool(receipts)
+            and {row["invocation_id"] for row in matches} == {row["invocation_id"] for row in receipts})
+        value["all_observed_dialogue_inputs_verified"] = (
+            value["all_recorded_dialogue_inputs_verified"] and value["all_native_invocations_matched"]
+            and value["receipt_binding_coverage_complete"] and not value["issues"])
+        value["status"] = ("verified_all_observed_dialogue_inputs" if value["all_observed_dialogue_inputs_verified"]
+            else "verified_some_recorded_dialogue_inputs" if any(row.get("verified_round_count", 0) for row in value["dialogues"])
+            else "unverified")
+    except Exception as error:
+        value["issues"].append({"reason": "dialogue_input_audit_unavailable", "error_type": type(error).__name__})
+    return value, matches
+
+def _audit_legacy_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path,
+        decision_report: dict | None = None) -> dict:
     """Read historical evidence and compare exact native and model input bytes."""
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
 
     result = _base()
+    if decision_report is not None:
+        _validate_decision_report(decision_report)
+        _bounded_request({"receipts": receipts, "decision_report": decision_report})
+        result["semantic_decision_inputs"] = {
+            "schema": "terminal-semantic-decision-input-population-audit@1",
+            "status": "unavailable", "reason": "native_capsule_unavailable",
+            "dialogue_expected": decision_report.get("semantic_decision_dialogue_expected") is True,
+            "all_observed_dialogue_inputs_verified": False, "provider_calls": 0,
+            "raw_prompts_exported": False, "completion_authority": False}
     if len(receipts) > MAX_RECEIPTS:
         raise ValueError("receipt inventory exceeds audit bound")
     parsed, seen = [], set()
@@ -980,7 +1455,7 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
         except (ValueError, KeyError, TypeError):
             result["read_errors"].append({"kind": "receipt", "error_type": "InvalidReceipt"})
     result["usable_coding_receipts"] = len(parsed)
-    if not parsed:
+    if not parsed and decision_report is None:
         result["reason"] = "no_usable_coding_receipt"
         return result
     result["invocations"] = [{"invocation_id": row["invocation_id"],
@@ -990,6 +1465,8 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
             "semantic_prompt_components_verified": None}
             if "semantic_prompt_components" in row else {})} for row in parsed]
     root_fd = _open_directory(state)
+    originals = []
+    census_seen, census_bytes = set(), 0
     try:
         expected_raw = _read_at(root_fd, "context-result.json")
         prepared_raw = _read_at(root_fd, "prepared.json")
@@ -1005,6 +1482,9 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
                 result["capsules"].append(observed)
                 if not observed["all_context_checks_passed"]:
                     continue
+                # Keep authenticated native bytes independently of any router
+                # receipt. Decision packets need their original parent anchor.
+                originals.append((observed, rendered))
                 for receipt in parsed:
                     if (observed["native_prompt_sha256"] != receipt["native_prompt_sha256"]
                             or observed["native_prompt_bytes"] != receipt["native_prompt_bytes"]):
@@ -1012,7 +1492,7 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
                     model, advisory, checks = _model_projection(rendered=rendered, receipt=receipt,
                         repository=Path(prepared["repository"]) if prepared.get("repository") else None,
                         formalization=formalization)
-                    result["matches"].append({"capsule_id": observed["capsule_id"],
+                    match = {"capsule_id": observed["capsule_id"],
                         "invocation_id": receipt["invocation_id"],
                         "workspace_sha256": _sha(receipt["workspace"].encode()),
                         "native_prompt_sha256": observed["native_prompt_sha256"],
@@ -1020,11 +1500,50 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
                         "model_prompt_sha256": _sha(model.encode()), "model_prompt_bytes": len(model.encode()),
                         "workspace_advisory_sha256": _sha(advisory.encode()),
                         "workspace_advisory_bytes": len(advisory.encode()),
-                        "model_input_checks": checks, "model_input_verified": all(checks.values())})
+                        "model_input_checks": checks, "model_input_verified": all(checks.values())}
+                    if match["model_input_verified"] and receipt.get("source_input_view") is not None:
+                        match["source_input_audit_binding_sha256"] = source_input_audit_binding_sha256(receipt)
+                    if match["model_input_verified"] and receipt.get("query_reference_view") is not None:
+                        match["query_reference_audit_binding_sha256"] = query_reference_audit_binding_sha256(receipt)
+                    result["matches"].append(match)
+                    # Census only the exact selected message. Retried invocations
+                    # are distinct; duplicate stored capsules are not deliveries.
+                    if match["model_input_verified"] and receipt["invocation_id"] not in census_seen:
+                        census_seen.add(receipt["invocation_id"])
+                        try:
+                            from ipfs_accelerate_py.agent_supervisor.runtime.rendered_input_census import census_rendered_input
+                            census = census_rendered_input(model_prompt=model,
+                                workspace_advisory=advisory, invocation_id=receipt["invocation_id"])
+                            size = len(json.dumps(census, sort_keys=True).encode())
+                            if census_bytes + size > MAX_CENSUS_BYTES:
+                                raise ValueError("census result budget unavailable")
+                        except Exception:
+                            # Diagnostic limits must not demote verified input or
+                            # change usage, success, completion or provider work.
+                            result["rendered_input_census"]["unavailable"].append({
+                                "invocation_id_sha256": _sha(receipt["invocation_id"].encode()),
+                                "reason": "census_bound_or_input_unavailable"})
+                        else:
+                            census_bytes += size
+                            result["rendered_input_census"]["observations"].append(census)
             except Exception as error:
                 result["read_errors"].append({"kind": "capsule", "error_type": type(error).__name__})
     finally:
         os.close(root_fd)
+    if decision_report is not None:
+        population, round_matches = _decision_population(report=decision_report, receipts=parsed,
+            originals=originals, repository=Path(prepared["repository"]) if prepared.get("repository") else None,
+            workspace_root=workspace_root)
+        result["semantic_decision_inputs"] = population
+        for match in round_matches:
+            if not any(row["invocation_id"] == match["invocation_id"] and row["model_input_verified"]
+                       for row in result["matches"]):
+                result["matches"].append(match)
+            if match["invocation_id"] not in census_seen:
+                census_seen.add(match["invocation_id"])
+                result["rendered_input_census"]["unavailable"].append({
+                    "invocation_id_sha256": _sha(match["invocation_id"].encode()),
+                    "reason": "dialogue_packet_census_not_supported"})
     for invocation in result["invocations"]:
         matching = [row for row in result["matches"] if row["invocation_id"] == invocation["invocation_id"]]
         if "semantic_prompt_components" in invocation:
@@ -1040,8 +1559,98 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
             else "model_projection_mismatch" if matching else "no_exact_stored_capsule_match")
     result["any_native_input_verified"] = any(row["native_input_verified"] for row in result["invocations"])
     result["any_model_input_verified"] = any(row["model_input_verified"] for row in result["invocations"])
-    result["all_observed_coding_inputs_verified"] = (len(parsed) == len(receipts)
-        and all(row["model_input_verified"] for row in result["invocations"]))
+    result["all_observed_coding_inputs_verified"] = (bool(parsed) and len(parsed) == len(receipts)
+        and all(row["model_input_verified"] for row in result["invocations"])
+        and (decision_report is None or result["semantic_decision_inputs"]["all_observed_dialogue_inputs_verified"]))
+    result["status"] = ("verified_all_observed_model_inputs" if result["all_observed_coding_inputs_verified"]
+        else "verified_some_observed_model_inputs" if result["any_model_input_verified"]
+        else "verified_native_input_only" if result["any_native_input_verified"] else "unverified")
+    result["reason"] = "per_invocation_context_and_input_comparison"
+    census = result["rendered_input_census"]
+    census["verified_invocation_count"] = len(census_seen)
+    while True:
+        census["observed_invocation_count"] = len(census["observations"])
+        if census["observations"]:
+            census["status"] = ("complete_for_verified_inputs" if len(census["observations"]) == len(census_seen)
+                else "partial_for_verified_inputs")
+            census["reason"] = "one_observation_per_exact_verified_router_invocation"
+        elif census_seen:
+            census["status"], census["reason"] = "unavailable", "census_bound_or_input_unavailable"
+        # Enrichment yields its budget before the collector's existing bound;
+        # never replace an otherwise available input audit with census output.
+        if not census["observations"] or len(json.dumps(result, sort_keys=True).encode()) <= MAX_RESULT_BYTES:
+            break
+        removed = census["observations"].pop()
+        census["unavailable"].append({"invocation_id_sha256": removed["invocation_id_sha256"],
+            "reason": "audit_result_budget_unavailable"})
+    if len(json.dumps(result, sort_keys=True).encode()) > MAX_RESULT_BYTES:
+        # Even an empty diagnostic envelope may exceed the remaining space.
+        # Its absence leaves the existing audit report and verdict intact.
+        result.pop("rendered_input_census")
+    return result
+
+
+def _validate_decision_report(value):
+    if type(value) is not dict or not set(value) <= set(DECISION_REPORT_FIELDS):
+        raise ValueError("closed dialogue observation report required")
+    _bounded_request(value)
+
+
+def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path,
+        decision_report: dict | None = None) -> dict:
+    """Audit each explicit input route while retaining exact receipt population."""
+    if len(receipts) > MAX_RECEIPTS:
+        raise ValueError("receipt inventory exceeds audit bound")
+    world = [row for row in receipts if isinstance(row, dict) and "world_task_packet" in row]
+    if decision_report is not None:
+        _validate_decision_report(decision_report)
+    if not world:
+        return _audit_legacy_terminal_context(state=state, receipts=receipts, workspace_root=workspace_root,
+            decision_report=decision_report)
+    from .terminal_world_packet_audit import audit_world_terminal_context
+
+    identities = [row.get("invocation_id") for row in receipts if isinstance(row, dict)]
+    strings = [value for value in identities if type(value) is str]
+    if len(strings) != len(set(strings)):
+        result = _base(status="unverified", reason="duplicate_router_invocation")
+        result.update(coding_receipts_seen=len(receipts), usable_coding_receipts=0,
+            all_observed_coding_inputs_verified=False,
+            read_errors=[{"kind": "receipt", "error_type": "DuplicateInvocation"}])
+        return result
+    legacy = [row for row in receipts if not isinstance(row, dict) or "world_task_packet" not in row]
+    world_result = audit_world_terminal_context(state=state, receipts=world, workspace_root=workspace_root)
+    if not legacy and decision_report is None:
+        return world_result
+    # A world marker never becomes a legacy receipt. An expected dialogue with
+    # no legacy invocation remains independently unverified.
+    legacy_result = _audit_legacy_terminal_context(state=state, receipts=legacy, workspace_root=workspace_root,
+        decision_report=decision_report)
+    result = _base()
+    for key in ("capsules", "invocations", "matches", "read_errors"):
+        result[key] = legacy_result[key] + world_result[key]
+    result["world_packet_replays"] = world_result["world_packet_replays"]
+    if "semantic_decision_inputs" in legacy_result:
+        result["semantic_decision_inputs"] = legacy_result["semantic_decision_inputs"]
+    if "rendered_input_census" in legacy_result:
+        result["rendered_input_census"] = legacy_result["rendered_input_census"]
+    result["coding_receipts_seen"] = len(receipts)
+    result["usable_coding_receipts"] = sum(row.get("usable_coding_receipts", 0)
+        for row in (legacy_result, world_result))
+    for key in ("context_result_sha256", "prepared_state_sha256"):
+        values = [row[key] for row in (legacy_result, world_result) if key in row]
+        if len(set(values)) > 1:
+            result["read_errors"].append({"kind": "state", "error_type": "ChangedBetweenRoutes"})
+        elif values:
+            result[key] = values[0]
+    result["any_native_input_verified"] = any(row.get("native_input_verified") is True
+        for row in result["invocations"])
+    result["any_model_input_verified"] = any(row.get("model_input_verified") is True
+        for row in result["invocations"])
+    result["all_observed_coding_inputs_verified"] = (
+        result["usable_coding_receipts"] == len(receipts)
+        and legacy_result["all_observed_coding_inputs_verified"] is True
+        and world_result["all_observed_coding_inputs_verified"] is True
+        and not any(row["error_type"] == "ChangedBetweenRoutes" for row in result["read_errors"]))
     result["status"] = ("verified_all_observed_model_inputs" if result["all_observed_coding_inputs_verified"]
         else "verified_some_observed_model_inputs" if result["any_model_input_verified"]
         else "verified_native_input_only" if result["any_native_input_verified"] else "unverified")
@@ -1050,20 +1659,45 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
 
 
 def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
-        workspace_root: Path, timeout_seconds: float = 3.0) -> dict:
-    """Run in a time-bounded child; collection failure cannot affect completion."""
+        workspace_root: Path, timeout_seconds: float = MAX_AUDIT_SECONDS,
+        decision_report: dict | None = None) -> dict:
+    """Run in a bounded child, with the caller's remaining cleanup allowance.
+
+    The default is a ceiling rather than a reserved allocation. Owners with an
+    enclosing deadline must pass their remaining time after cleanup reserves.
+    Invalid or exhausted budgets never launch a child or affect completion.
+    """
     started = time.monotonic()
+    if (type(timeout_seconds) not in (int, float)
+            or (type(timeout_seconds) is float and not math.isfinite(timeout_seconds))):
+        return _base(reason="audit_budget_invalid")
     if timeout_seconds < .1:
         return _base(reason="audit_budget_unavailable")
     try:
+        if type(receipts) is not list or len(receipts) > MAX_RECEIPTS:
+            return _base(reason="audit_request_exceeds_bound")
+        if decision_report is not None and type(decision_report) is not dict:
+            raise ValueError("dialogue observation report must be an object")
+        selected = ({key: decision_report[key] for key in DECISION_REPORT_FIELDS if key in decision_report}
+                    if decision_report is not None else None)
         rows = []
         for row in receipts:
             if not isinstance(row, dict) or row.get("phase") != "coding":
                 continue
-            fields = (*RECEIPT_FIELDS, *TRANSLATION_FIELDS)
+            if "world_task_packet" in row:
+                from .terminal_world_packet_audit import project_world_receipt
+                try:
+                    rows.append(project_world_receipt(row, workspace_root=workspace_root))
+                except (ValueError, KeyError, TypeError):
+                    return _base(reason="world_task_packet_replay_unqualified")
+                continue
+            fields = (*RECEIPT_FIELDS, *TRANSLATION_FIELDS, "provider", "model")
             # The child must verify ordinary completion against the recorded
             # provider. Never infer a missing provider from the selected mode.
-            if row.get("coding_reply_contract") is not None:
+            if (row.get("coding_reply_contract") is not None or row.get("tool_output_policy") is not None
+                    or row.get("source_view_advisory_policy") is not None or row.get("source_input_view") is not None
+                    or row.get("repository_source_policy") is not None
+                    or row.get("query_reference_view") is not None):
                 fields += ("provider",)
             metadata = row.get("semantic_metadata_view")
             if (type(metadata) is dict
@@ -1075,20 +1709,28 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
             if "representation_displacement" in row:
                 fields += ("provider", "model")
             rows.append({key: row[key] for key in fields if key in row})
-        request = json.dumps(rows).encode()
+        envelope = rows if selected is None else {"receipts": rows, "decision_report": selected}
+        try:
+            _bounded_request(envelope)
+        except ValueError:
+            return _base(reason="audit_request_exceeds_bound")
+        request = json.dumps(envelope, allow_nan=False).encode()
         if len(rows) > MAX_RECEIPTS or len(request) > MAX_REQUEST_BYTES:
             return _base(reason="audit_request_exceeds_bound")
-        if not rows:
+        if not rows and selected is None:
             return _base(reason="no_coding_receipt")
         # The owner may still have the task checkout as cwd. Never prepend
         # that worker-controlled directory to the trusted module search path.
-        process = subprocess.run([sys.executable, "-B", "-P", "-m", __name__, "--state", str(state),
-            "--workspace-root", str(workspace_root)], input=request, capture_output=True,
-            timeout=min(10.0, timeout_seconds), check=False,
-            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
-        if process.returncode or len(process.stdout) > MAX_RESULT_BYTES:
+        remaining = min(MAX_AUDIT_SECONDS, timeout_seconds) - (time.monotonic() - started)
+        if remaining < .1:
+            return _base(reason="audit_budget_unavailable")
+        returncode, output = _bounded_audit_child(
+            [sys.executable, "-B", "-P", str(Path(__file__).resolve()), "--state", str(state),
+             "--workspace-root", str(workspace_root)], input_bytes=request, timeout=remaining,
+            limit=MAX_RESULT_BYTES, environment={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        if returncode:
             return _base(reason="audit_process_unavailable")
-        result = _json(process.stdout)
+        result = _json(output)
         if not isinstance(result, dict) or result.get("schema") != SCHEMA:
             return _base(reason="audit_result_invalid")
         result["seconds"] = time.monotonic() - started
@@ -1101,19 +1743,98 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
         return result
 
 
+def _bounded_audit_child(command, *, input_bytes, timeout, limit, environment):
+    """Use the genuine bounded pipe/group primitive from our trusted sibling."""
+    path = Path(__file__).resolve().with_name("terminal_context_evidence.py")
+    spec = importlib.util.spec_from_file_location("_terminal_owner_evidence_transport", path)
+    if spec is None or spec.loader is None:
+        raise ValueError("audit bounded owner transport unavailable")
+    owner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(owner)
+    if Path(owner.__file__).resolve() != path:
+        raise ValueError("audit bounded owner transport differs")
+    return owner._bounded_child(command, timeout=timeout, limit=limit,
+        environment=environment, input_bytes=input_bytes)
+
+
+def _pin_owner_runtime():
+    """Load the actual supervisor package for this trusted standalone child.
+
+    The datasets tree is first for datasets imports, but it also vendors another
+    supervisor checkout. Neither that runtime nor task cwd owns this audit.
+    Existing foreign imports are refused rather than replaced in a live process.
+    """
+    package = Path(__file__).resolve().parents[3] / "ipfs_accelerate_py"
+    initializer = package / "__init__.py"
+    loaded = sys.modules.get("ipfs_accelerate_py")
+    if loaded is None:
+        spec = importlib.util.spec_from_file_location("ipfs_accelerate_py", initializer,
+            submodule_search_locations=[str(package)])
+        if spec is None or spec.loader is None:
+            raise ValueError("audit owner runtime unavailable")
+        loaded = importlib.util.module_from_spec(spec)
+        sys.modules["ipfs_accelerate_py"] = loaded
+        spec.loader.exec_module(loaded)
+    if (Path(getattr(loaded, "__file__", "")).resolve() != initializer
+            or [Path(path).resolve() for path in getattr(loaded, "__path__", ())] != [package]):
+        raise ValueError("audit owner runtime differs")
+
+    # These are genuine owner package/namespace locations, not a worker cwd or
+    # datasets' other benchmarks package. Refuse a previously foreign import.
+    source = Path(__file__).resolve().parents[3]
+    for name, directory in (("benchmarks", source/"benchmarks"),
+            ("benchmarks.agent_supervisor", source/"benchmarks/agent_supervisor"),
+            ("benchmarks.agent_supervisor.container_coding", Path(__file__).resolve().parent)):
+        initializer = directory/"__init__.py"
+        module = sys.modules.get(name)
+        if module is None:
+            if initializer.is_file():
+                spec = importlib.util.spec_from_file_location(name, initializer,
+                    submodule_search_locations=[str(directory)])
+            else:
+                spec = ModuleSpec(name, loader=None, is_package=True)
+                spec.submodule_search_locations = [str(directory)]
+            if spec is None or (initializer.is_file() and spec.loader is None):
+                raise ValueError("audit owner benchmark namespace unavailable")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            if spec.loader is not None:
+                spec.loader.exec_module(module)
+        if ([Path(path).resolve() for path in getattr(module, "__path__", ())] != [directory]
+                or initializer.is_file() and Path(getattr(module, "__file__", "")).resolve() != initializer):
+            raise ValueError("audit owner benchmark namespace differs")
+    if __name__ == "__main__":
+        global __package__
+        __package__ = "benchmarks.agent_supervisor.container_coding"
+        canonical = __package__ + ".terminal_context_audit"
+        existing = sys.modules.get(canonical)
+        if existing is not None and existing is not sys.modules[__name__]:
+            raise ValueError("audit owner module already differs")
+        sys.modules[canonical] = sys.modules[__name__]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", required=True, type=Path)
     parser.add_argument("--workspace-root", required=True, type=Path)
     args = parser.parse_args()
     try:
+        _pin_owner_runtime()
         raw = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
         if len(raw) > MAX_REQUEST_BYTES:
             raise ValueError("audit request exceeds bound")
-        receipts = _json(raw)
-        if not isinstance(receipts, list):
+        supplied = _json(raw)
+        decision_report = None
+        if type(supplied) is dict and set(supplied) == {"receipts", "decision_report"}:
+            receipts, decision_report = supplied["receipts"], supplied["decision_report"]
+            _validate_decision_report(decision_report)
+        else:
+            receipts = supplied
+        if type(receipts) is not list:
             raise ValueError("audit receipts must be a list")
-        result = audit_terminal_context(state=args.state, receipts=receipts, workspace_root=args.workspace_root)
+        _bounded_request(supplied)
+        result = audit_terminal_context(state=args.state, receipts=receipts, workspace_root=args.workspace_root,
+            decision_report=decision_report)
     except Exception as error:
         result = _base(reason="audit_unavailable")
         result["error_type"] = type(error).__name__
