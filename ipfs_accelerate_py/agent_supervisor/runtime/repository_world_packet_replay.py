@@ -18,7 +18,7 @@ from ..procedure_compiler.world_model import RepositoryWorldState
 from ..proof.formal_verification_contracts import content_identity
 from .repository_world_packet import (
     ARTIFACT_SCHEMA, REPLAY_MAX_BYTES, PreparedRepositoryWorldPacket,
-    _render_repository_world_packet,
+    _render_repository_world_packet, _residual_binding_arguments, _residual_recipe,
 )
 from .supervisor_meta_index import public_replay_without_metadata
 
@@ -34,6 +34,7 @@ _RECIPE_FIELDS = frozenset({"generation", "task_id", "task_text",
     "acceptance_ids", "allowed_effects", "write_paths", "current_world", "max_bytes"})
 _SEQUENCES = ("unresolved_obligations", "validation_commands", "proof_obligations",
               "acceptance_ids", "allowed_effects", "write_paths")
+_OPTIONAL_RECIPE_FIELDS = frozenset({"validation_profile", "residual_context"})
 
 
 class RepositoryWorldPacketReplayError(ValueError):
@@ -231,8 +232,8 @@ def replay_repository_world_packet(data: bytes, *, expected_sha256: str) -> Repl
         _require(set(artifact) == _ARTIFACT_FIELDS and artifact["schema"] == ARTIFACT_SCHEMA
                  and artifact["mode"] == "historical_only", "artifact_schema")
         recipe = artifact["recipe"]
-        _require(type(recipe) is dict and set(recipe) in
-                 (_RECIPE_FIELDS, _RECIPE_FIELDS | {"validation_profile"}), "recipe_schema")
+        _require(type(recipe) is dict and _RECIPE_FIELDS <= set(recipe)
+                 and set(recipe) <= _RECIPE_FIELDS | _OPTIONAL_RECIPE_FIELDS, "recipe_schema")
         if "validation_profile" in recipe:
             _require(type(recipe["validation_profile"]) is str
                      and recipe["validation_profile"] == "read_only_observation@1",
@@ -254,8 +255,27 @@ def replay_repository_world_packet(data: bytes, *, expected_sha256: str) -> Repl
                 arguments["current_world"] = world
             intent_receipt = artifact["packet_receipt"].get("intent_world")
             _recorded_intent_receipt(capsule, recipe, intent_receipt)
+            residual_context = None
+            if "residual_context" in arguments:
+                from .repository_residual_context import replay_repository_residual_context
+                recorded = arguments.pop("residual_context")
+                _require(type(recorded) is dict and set(recorded) == {
+                    "record", "record_sha256", "packet_id", "context_id",
+                    "packet_sha256", "context_sha256"}, "residual_context_schema")
+                _require(type(recorded["record_sha256"]) is str
+                         and hashlib.sha256(_canonical_bytes(recorded["record"])).hexdigest()
+                         == recorded["record_sha256"], "residual_record_pin")
+                residual_context = replay_repository_residual_context(recorded["record"],
+                    **_residual_binding_arguments(capsule, task_id=arguments["task_id"],
+                        write_paths=arguments["write_paths"],
+                        validation_commands=arguments["validation_commands"],
+                        acceptance_ids=arguments["acceptance_ids"]))
+                _require(_canonical_bytes(recorded) == _canonical_bytes(_residual_recipe(residual_context)),
+                         "residual_component_pins")
             prompt, receipt, native_packet = _render_repository_world_packet(
-                compilation=compilation, intent_world_receipt=intent_receipt, **arguments)
+                compilation=compilation, intent_world_receipt=intent_receipt,
+                **({"_residual_context": residual_context} if residual_context is not None else {}),
+                **arguments)
         _require(type(artifact["prompt"]) is str and prompt == artifact["prompt"], "prompt_mismatch")
         _require(_canonical_bytes(native_packet) == _canonical_bytes(artifact["native_packet"]),
                  "native_packet_mismatch")
@@ -274,6 +294,8 @@ def replay_repository_world_packet(data: bytes, *, expected_sha256: str) -> Repl
             provider_dispatch_verified=False, provider_input_tokens=None,
             full_session_token_savings=None, proof_authority=False,
             execution_authority=False, completion_authority=False)
+        if "residual_context" in receipt:
+            historical["residual_context"] = receipt["residual_context"]
         return ReplayedRepositoryWorldPacket(prompt, recipe["task_text"], expected_sha256,
             _canonical_bytes(receipt).decode("utf-8"), _canonical_bytes(historical).decode("utf-8"))
     except RepositoryWorldPacketReplayError:

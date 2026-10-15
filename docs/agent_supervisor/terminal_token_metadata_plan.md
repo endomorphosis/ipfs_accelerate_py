@@ -7,6 +7,14 @@ results should identify which obligations remain, and semantic capsules should
 give the model the relevant current evidence without repeating its bookkeeping.
 Minification is a representation step within that workflow.
 
+The October 15 [residual request path](world_residual_requests.md) reuses an
+existing sealed residual packet to focus optional source retrieval. It retains
+the full task, required evidence and original validations, then dispatches
+through the current router and durable attempt journal. Qualification measures
+the complete rendered input, including the residual itself: narrow baseline
+retrieval can make this input larger. Selection remains explicit, and complete
+native session savings remain unqualified.
+
 The October 15 [local tokenizer selection path](metadata_tokenizer_selection.md)
 adds an explicit pinned counter to the container supervisor, router worker and
 historical context audit. It compares complete original and compact coding

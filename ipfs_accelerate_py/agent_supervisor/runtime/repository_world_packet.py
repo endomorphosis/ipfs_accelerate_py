@@ -17,6 +17,7 @@ import weakref
 
 from ..context.context_compiler import ContextCompileResult
 from ..context.context_contracts import ContextCapsule
+from ..planning.residual_llm_packet import ResidualLlmPacket
 from ..procedure_compiler.world_model import RepositoryWorldState, WorldProjectionStatus
 from ..prompt.delta_task_packet import (
     DeltaTaskPacketRequest, PacketBudget, admit_provider_packet, build_delta_task_packet,
@@ -93,6 +94,23 @@ def _texts(value, name, *, maximum=64, required=False):
     _require(len(value) == len(set(value)), "duplicate_" + name)
     _require(not required or bool(value), "missing_" + name)
     return value
+
+
+def _residual_binding_arguments(capsule, *, task_id, write_paths,
+                                validation_commands, acceptance_ids):
+    """Bind candidate diagnostics to the independently retained task scope."""
+    return dict(expected_task_id=task_id, repository_id=capsule.repository_id,
+        tree_id=capsule.tree_id, policy_id=capsule.policy_id,
+        policy_revision=capsule.policy_revision, write_paths=write_paths,
+        validation_commands=validation_commands, acceptance_ids=acceptance_ids)
+
+
+def _residual_recipe(binding):
+    """Keep the complete sealed packet host-side with separate component pins."""
+    record, receipt = binding.record, binding.receipt
+    return dict(record=record, record_sha256=_sha(_json(record)),
+        packet_id=binding.packet_id, context_id=binding.context_id,
+        packet_sha256=receipt["packet_sha256"], context_sha256=receipt["context_sha256"])
 
 
 def repository_world_task_binding(task_id: str, task_text: str,
@@ -188,6 +206,8 @@ def _render_repository_world_packet(
     intent_world_receipt: dict | None = None,
     validation_profile: str | None = None,
     max_bytes: int = 65536,
+    residual_packet: ResidualLlmPacket | None = None,
+    _residual_context=None,
 ) -> tuple[str, dict, dict]:
     """Pure native reconstruction shared by live admission and historical replay.
 
@@ -206,6 +226,10 @@ def _render_repository_world_packet(
     _require(validation_profile is None or type(validation_profile) is str
              and validation_profile == "read_only_observation@1", "invalid_world_packet_validation_profile")
     readonly = validation_profile == "read_only_observation@1"
+    _require(residual_packet is None or _residual_context is None,
+             "world_packet_duplicate_residual_context")
+    _require(not readonly or residual_packet is None and _residual_context is None,
+             "world_packet_readonly_residual_refused")
     validations = _texts(validation_commands, "validation_commands", required=not readonly)
     proofs = _texts(proof_obligations, "proof_obligations")
     acceptances = _texts(acceptance_ids, "acceptance_ids")
@@ -291,6 +315,26 @@ def _render_repository_world_packet(
                         for reference in capsule.evidence)
         task_cid = "sha256:" + _sha(_json(dict(task_id=task_id, task_text=task_text,
             objective_id=capsule.objective_id, objective_revision=capsule.objective_revision)))
+        residual_context = _residual_context
+        residual_receipt, failure = None, None
+        if residual_packet is not None or residual_context is not None:
+            from .repository_residual_context import (
+                prepare_repository_residual_context, validate_repository_residual_context,
+            )
+            residual_arguments = _residual_binding_arguments(capsule, task_id=task_id,
+                write_paths=paths, validation_commands=validations, acceptance_ids=acceptances)
+            if residual_context is None:
+                residual_context = prepare_repository_residual_context(
+                    residual_packet=residual_packet, **residual_arguments)
+            residual_receipt = validate_repository_residual_context(
+                residual_context, **residual_arguments)
+            # Transport the existing renderer exactly once. The complete sealed
+            # packet remains in the private historical recipe, not a second
+            # model-facing copy. Its stage label grants no native authority.
+            failure = dict(failure_id=residual_context.packet_id,
+                summary="Residual nomination context for the current task.",
+                residual_context=residual_context.context)
+        residual_options = {"latest_failure": failure} if failure is not None else {}
         request = DeltaTaskPacketRequest(
             task_cid=task_cid, repository_id=capsule.repository_id, tree_id=capsule.tree_id,
             context_cid=capsule.capsule_id, policy_id=capsule.policy_id,
@@ -304,9 +348,13 @@ def _render_repository_world_packet(
             require_validation=not readonly, require_proof=bool(proofs),
             budget=PacketBudget(max_bytes=max_bytes, max_tokens=262144,
                                 max_rows=512, max_items=512),
+            **residual_options,
         )
         _require(request.allowed_effects == effects and request.write_paths == paths,
                  "world_packet_scope_normalized")
+        if failure is not None:
+            _require(_json(_plain(request.latest_failure)) == _json(failure),
+                     "world_packet_residual_context_transformed")
         packet = build_delta_task_packet(request)
         _require(not packet.frontier.has_more and not packet.frontier.omitted_item_ids
                  and not packet.resolved_delta, "world_packet_omitted_context")
@@ -320,6 +368,10 @@ def _render_repository_world_packet(
                                 if member["kind"] == "obligation"]
         _require(_json(retained_obligations) == _json(_plain(request.open_obligations)),
                  "world_packet_obligations_transformed")
+        if failure is not None:
+            retained_failures = [member["payload"] for member in members if member["kind"] == "failure"]
+            _require(_json(retained_failures) == _json([failure]),
+                     "world_packet_residual_context_transformed")
         _require(tuple(admitted["requirements"]["validation_commands"]) == validations
                  and tuple(admitted["requirements"]["proof_obligations"]) == proofs
                  and tuple(admitted["requirements"]["acceptance_ids"]) == acceptances,
@@ -347,6 +399,8 @@ def _render_repository_world_packet(
     )
     if intent_world_receipt is not None:
         receipt["intent_world"] = intent_world_receipt
+    if residual_receipt is not None:
+        receipt["residual_context"] = residual_receipt
     if readonly:
         receipt.update(validation_profile=validation_profile, native_validation_count=0,
             native_validation_coverage="no_native_validation_commands_declared",
@@ -365,6 +419,7 @@ def prepare_repository_world_packet(
     intent_world_observation: RepositoryIntentWorldObservation | None = None,
     validation_profile: str | None = None,
     max_bytes: int = 65536,
+    residual_packet: ResidualLlmPacket | None = None,
 ) -> PreparedRepositoryWorldPacket:
     """Admit a complete packet through current native owners, then seal it.
 
@@ -374,7 +429,12 @@ def prepare_repository_world_packet(
     """
     _require(type(adapter) is RepositoryContextAdapter
              and isinstance(compilation, ContextCompileResult), "invalid_world_packet_owners")
+    _require(residual_packet is None or type(residual_packet) is ResidualLlmPacket,
+             "world_packet_exact_residual_required")
+    _require(residual_packet is None or validation_profile != "read_only_observation@1",
+             "world_packet_readonly_residual_refused")
     capsule = compilation.capsule
+    residual_context = None
     with public_replay_without_metadata():
         adapter.compiler.verify_compile_result(compilation)
         adapter.validate_current(capsule, generation=generation)
@@ -401,12 +461,22 @@ def prepare_repository_world_packet(
             current_world=current_world, max_bytes=max_bytes)
         if validation_profile is not None:
             arguments["validation_profile"] = validation_profile
+        if residual_packet is not None:
+            from .repository_residual_context import prepare_repository_residual_context
+            residual_context = prepare_repository_residual_context(
+                residual_packet=residual_packet, **_residual_binding_arguments(capsule,
+                    task_id=task_id, write_paths=write_paths,
+                    validation_commands=validation_commands, acceptance_ids=acceptance_ids))
         prompt, receipt, native_packet = _render_repository_world_packet(
-            compilation=compilation, intent_world_receipt=intent_world_receipt, **arguments)
+            compilation=compilation, intent_world_receipt=intent_world_receipt,
+            **({"_residual_context": residual_context} if residual_context is not None else {}),
+            **arguments)
         adapter.validate_current(capsule, generation=generation)
 
     recipe = _plain(dict(arguments, current_world=(
         None if current_world is None else current_world.to_record())))
+    if residual_context is not None:
+        recipe["residual_context"] = _residual_recipe(residual_context)
     replay_material = _json(dict(schema=ARTIFACT_SCHEMA, mode="historical_only",
         capsule=_plain(capsule.to_record()),
         compilation_receipt=_plain(compilation.receipt.to_record()), recipe=recipe,
