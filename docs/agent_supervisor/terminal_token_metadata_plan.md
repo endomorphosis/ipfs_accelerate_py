@@ -11,8 +11,10 @@ The October 15 [local tokenizer selection path](metadata_tokenizer_selection.md)
 adds an explicit pinned counter to the container supervisor, router worker and
 historical context audit. It compares complete original and compact coding
 prompts using a local estimate, while retaining defaults and native accounting.
-It does not establish provider tokenizer equivalence or workflow savings; Harbor
-asset staging and a fresh controlled live pair remain separate work.
+The subsequent Harbor integration stages the pinned assets, binds them into
+declared controls and checks the isolated worker's tokenizer runtime before
+planning. Provider tokenizer equivalence and a fresh controlled live pair remain
+unqualified; these local checks establish no complete-workflow savings.
 
 The [October 13 complete-context comparison](context_projection_pair.md) now
 measures the existing lossless metadata projection with identical source reads.

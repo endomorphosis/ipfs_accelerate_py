@@ -312,6 +312,7 @@ class FullSupervisorAgent(BaseAgent):
                  source_input_policy: str = DEFAULT_SOURCE_INPUT_POLICY,
                  query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+                 semantic_metadata_tokenizer: dict | None = None,
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                  capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                  source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -385,6 +386,22 @@ class FullSupervisorAgent(BaseAgent):
         if metadata_census_only and self.tool_output_policy != DEFAULT_TOOL_OUTPUT_POLICY:
             raise ValueError("tool output policy requires an executed coding route")
         self.metadata_census_only = metadata_census_only
+        self.semantic_metadata_tokenizer = None
+        self._metadata_tokenizer_snapshot = None
+        self._metadata_tokenizer_remote_ready = False
+        if semantic_metadata_tokenizer is not None:
+            from .terminal_metadata_tokenizer_bundle import read_metadata_tokenizer_bundle
+            snapshot = read_metadata_tokenizer_bundle(semantic_metadata_tokenizer, arm=arm,
+                provider=selected_provider["provider"], model=self.model_name,
+                semantic_metadata_view=self.semantic_metadata_view,
+                semantic_transport_schema=self.semantic_transport_schema,
+                metadata_census_only=metadata_census_only)
+            self.semantic_metadata_tokenizer = snapshot.selection()
+            self._metadata_tokenizer_snapshot = snapshot
+            self._frozen_metadata_tokenizer_selection = json.dumps(snapshot.selection(), sort_keys=True,
+                separators=(",", ":"), allow_nan=False)
+            self._frozen_metadata_tokenizer_route = (arm, selected_provider["provider"], self.model_name,
+                self.semantic_metadata_view, self.semantic_transport_schema, metadata_census_only)
         self.numerical_formalization_profile = validate_numerical_profile(numerical_formalization_profile)
         if type(disable_intent_autoencoder) is not bool:
             raise ValueError("Intent ablation switch must be boolean")
@@ -466,12 +483,42 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("prepared source view policy changed")
         return selected
 
+    def _checked_metadata_tokenizer(self):
+        """Revalidate captured bytes and frozen route without original files."""
+        selection = getattr(self, "semantic_metadata_tokenizer", None)
+        snapshot = getattr(self, "_metadata_tokenizer_snapshot", None)
+        if selection is None and snapshot is None:
+            if getattr(self, "_frozen_metadata_tokenizer_selection", None) is not None:
+                raise ValueError("prepared metadata tokenizer selection changed")
+            return None
+        from .terminal_metadata_tokenizer_bundle import (
+            validate_metadata_tokenizer_selection, verify_metadata_tokenizer_bundle_snapshot,
+        )
+        provider = resolve_provider_profile(getattr(self, "provider_profile", None))
+        route = (self.arm, provider["provider"], self.model_name,
+            getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+            getattr(self, "metadata_census_only", False))
+        if self.model_name != provider["model"] or route != getattr(self, "_frozen_metadata_tokenizer_route", None):
+            raise ValueError("prepared metadata tokenizer route changed")
+        selected = validate_metadata_tokenizer_selection(selection, arm=self.arm,
+            provider=provider["provider"], model=self.model_name, semantic_metadata_view=route[3],
+            semantic_transport_schema=route[4], metadata_census_only=route[5])
+        if (selected is None or json.dumps(selected, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                != getattr(self, "_frozen_metadata_tokenizer_selection", None)):
+            raise ValueError("prepared metadata tokenizer selection changed")
+        return verify_metadata_tokenizer_bundle_snapshot(snapshot, expected_selection=selected)
+
     async def setup(self, environment):
+        tokenizer_snapshot = self._checked_metadata_tokenizer()
         from .terminal_setup_cache_advice import (
             validate_setup_cache_selection, validate_setup_cache_prerequisites, apply_setup_cache_advice,
         )
         selection = getattr(self, "setup_cache_selection", None)
         manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
+        if tokenizer_snapshot is not None:
+            from .terminal_metadata_tokenizer_bundle import require_metadata_tokenizer_archive
+            require_metadata_tokenizer_archive(manifest, tokenizer_snapshot.selection())
         from .terminal_worker_capability import require_worker_capability
         require_worker_capability(manifest, getattr(self, "resource_profile", None))
         require_planning_archive(manifest, self._checked_planning_mode())
@@ -547,6 +594,13 @@ class FullSupervisorAgent(BaseAgent):
         boundary = self.logs_dir / "worker-boundary"
         deployed_boundary = await deploy_worker_boundary(environment, output=boundary,
             **({"provider": "grok_cli"} if selected_provider["provider"] == "grok_cli" else {}))
+        if tokenizer_snapshot is not None:
+            from .terminal_metadata_tokenizer_deployment import deploy_metadata_tokenizer_bundle
+            tokenizer_snapshot = self._checked_metadata_tokenizer()
+            require_metadata_tokenizer_archive(manifest, tokenizer_snapshot.selection())
+            self._metadata_tokenizer_deployment = await deploy_metadata_tokenizer_bundle(environment,
+                snapshot=tokenizer_snapshot, output=self.logs_dir / "metadata-tokenizer-deployment")
+            self._metadata_tokenizer_remote_ready = True
         if getattr(self, "metadata_census_only", False):
             if validate_source384_binding(manifest) is None:
                 raise ValueError("live census requires current Source384 assets")
@@ -571,9 +625,15 @@ class FullSupervisorAgent(BaseAgent):
                 resource_profile=getattr(self, "resource_profile", None))
 
     async def run(self, instruction: str, environment, context: AgentContext):
+        tokenizer_snapshot = self._checked_metadata_tokenizer()
+        if tokenizer_snapshot is not None and getattr(self, "_metadata_tokenizer_remote_ready", False) is not True:
+            raise ValueError("metadata tokenizer deployment must be verified before execution")
         from .terminal_setup_cache_advice import validate_setup_cache_selection
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
             getattr(self, "setup_cache_selection", None))
+        if tokenizer_snapshot is not None:
+            from .terminal_metadata_tokenizer_bundle import require_metadata_tokenizer_archive
+            require_metadata_tokenizer_archive(manifest, tokenizer_snapshot.selection())
         planning_mode = self._checked_planning_mode()
         require_planning_archive(manifest, planning_mode)
         retrieval_revision = require_retrieval_revision(manifest, self.arm,
@@ -642,6 +702,11 @@ class FullSupervisorAgent(BaseAgent):
             manifest, self.arm, getattr(self, "resource_profile", None))
         if getattr(self, "setup_cache_selection", None) is not None and numerical_assets["selected"]:
             raise ValueError("setup cache is not qualified for learned numerical selection")
+        if tokenizer_snapshot is not None:
+            from .terminal_metadata_tokenizer_deployment import verify_deployed_metadata_tokenizer_bundle
+            self._metadata_tokenizer_deployment = await verify_deployed_metadata_tokenizer_bundle(environment,
+                snapshot=self._checked_metadata_tokenizer())
+            tokenizer_snapshot = self._checked_metadata_tokenizer()
         public = self.logs_dir / "instruction.md"
         public.write_text(instruction)
         instruction_path = ROOT + "/instruction.md"
@@ -680,6 +745,11 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--coding-reply-mode", reply_mode]
         if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
             argv += ["--semantic-metadata-view", metadata_view]
+        if tokenizer_snapshot is not None:
+            from .terminal_metadata_tokenizer_deployment import metadata_tokenizer_remote_descriptor
+            artifact, digest = metadata_tokenizer_remote_descriptor(tokenizer_snapshot)
+            argv += ["--semantic-metadata-tokenizer-artifact", artifact,
+                     "--semantic-metadata-tokenizer-sha256", digest]
         if capsule_selection != DEFAULT_CAPSULE_SELECTION:
             argv += ["--capsule-selection", capsule_selection]
         if capsule_budget != DEFAULT_CAPSULE_BUDGET:
@@ -721,6 +791,9 @@ class FullSupervisorAgent(BaseAgent):
         argv += source384_arguments
         argv += numerical_arguments
         context.metadata = {"arm": self.arm, "task_completed": False, "official_reward": None,
+                            **({"semantic_metadata_tokenizer_bundle": tokenizer_snapshot.observation(),
+                                "semantic_metadata_tokenizer_deployment": dict(self._metadata_tokenizer_deployment)}
+                               if tokenizer_snapshot is not None else {}),
                             "provider_profile": resolve_provider_profile(provider_profile),
                             **semantic_transport_selection(transport),
                             **coding_reply_selection(reply_mode),

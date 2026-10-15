@@ -14,6 +14,8 @@ SEMANTIC_METADATA_VIEWS = (DEFAULT_SEMANTIC_METADATA_VIEW, COMMON_BINDINGS_METAD
                            INSTRUCTION_METADATA_VIEW, CAPSULE_COLUMNS_METADATA_VIEW)
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_metadata_tokenizer_bundle.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_metadata_tokenizer_deployment.py",
     "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
     "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
     "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",

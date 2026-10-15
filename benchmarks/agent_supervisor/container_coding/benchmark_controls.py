@@ -16,6 +16,7 @@ NUMERICAL_SCHEMA = "terminal-benchmark-declared-controls@2"
 PLANNING_SCHEMA = "terminal-benchmark-declared-controls@3"
 SOURCE_EDIT_SCHEMA = "terminal-benchmark-declared-controls@4"
 CAPSULE_BUDGET_SCHEMA = "terminal-benchmark-declared-controls@5"
+METADATA_TOKENIZER_SCHEMA = "terminal-benchmark-declared-controls@6"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 JOB_KEYS = ("n_attempts", "n_concurrent_trials", "retry", "timeout_multiplier",
             "agent_timeout_multiplier", "agent_setup_timeout_multiplier",
@@ -94,7 +95,7 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "capsule_budget", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode", "semantic_context_profile", "tool_output_policy", "source_view_advisory_policy", "repository_source_policy", "source_input_policy", "query_reference_policy"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "semantic_metadata_tokenizer", "numerical_formalization_profile", "capsule_selection", "capsule_budget", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode", "semantic_context_profile", "tool_output_policy", "source_view_advisory_policy", "repository_source_policy", "source_input_policy", "query_reference_policy"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         from .terminal_source_view_policy import validate_source_context_combination
         validate_source_context_combination(**{key: kwargs[key] for key in (
@@ -244,6 +245,24 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
     if capsule_budget != DEFAULT_CAPSULE_BUDGET:
         controls["schema"] = CAPSULE_BUDGET_SCHEMA
         controls.setdefault("experimental_controls_sha256", {})["capsule_budget"] = _digest(capsule_budget)
+    kwargs = agent.get("kwargs", {})
+    if "semantic_metadata_tokenizer" in kwargs:
+        if kwargs["semantic_metadata_tokenizer"] is None:
+            raise ValueError("explicit metadata tokenizer selection required")
+        from .benchmark_provider_profile import resolve_provider_profile
+        from .terminal_metadata_tokenizer_bundle import read_metadata_tokenizer_bundle
+
+        route = resolve_provider_profile(kwargs.get("provider_profile"))
+        snapshot = read_metadata_tokenizer_bundle(kwargs["semantic_metadata_tokenizer"],
+            arm=kwargs.get("arm"), provider=route["provider"], model=route["model"],
+            semantic_metadata_view=kwargs.get("semantic_metadata_view", "legacy"),
+            semantic_transport_schema=kwargs.get("semantic_transport_schema", "supervisor-semantic-router-input@1"))
+        controls["schema"] = METADATA_TOKENIZER_SCHEMA
+        # Bundle paths belong to the exact config digest. This experimental
+        # control binds the full descriptor/asset/manifest pins and policy
+        # identity without treating a different staging directory as content.
+        controls.setdefault("experimental_controls_sha256", {})["semantic_metadata_tokenizer"] = (
+            _digest(snapshot.observation()))
     controls["sha256"] = _digest(controls)
     return controls
 
@@ -254,7 +273,15 @@ def validate_controls(value):
             "agent_controls_sha256", "sha256"}
     if not isinstance(value, dict):
         return False
-    if value.get("schema") == CAPSULE_BUDGET_SCHEMA:
+    if value.get("schema") == METADATA_TOKENIZER_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict or "semantic_metadata_tokenizer" not in experiment
+                or set(experiment) - {"semantic_metadata_tokenizer", "capsule_budget", "source_edit_mode",
+                                      "planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())):
+            return False
+    elif value.get("schema") == CAPSULE_BUDGET_SCHEMA:
         keys.add("experimental_controls_sha256")
         experiment = value.get("experimental_controls_sha256")
         if (type(experiment) is not dict or "capsule_budget" not in experiment

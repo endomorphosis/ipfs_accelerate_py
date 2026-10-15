@@ -92,6 +92,102 @@ MAX_TASK_PROFILE_BYTES = 65536
 MAX_SOURCE_VIEW_POLICY_BYTES = 65536
 
 
+def _metadata_tokenizer_configuration(value, *, arm, provider_profile, semantic_metadata_view,
+                                     semantic_transport_schema, verify=True):
+    """Check an explicit staged selection without discovering a tokenizer."""
+    if value is None:
+        return None, None
+    from .terminal_metadata_tokenizer_bundle import (
+        validate_metadata_tokenizer_selection, read_metadata_tokenizer_bundle,
+    )
+
+    provider = resolve_provider_profile(provider_profile)
+    options = dict(arm=arm, provider=provider["provider"], model=provider["model"],
+        semantic_metadata_view=semantic_metadata_view, semantic_transport_schema=semantic_transport_schema)
+    selected = validate_metadata_tokenizer_selection(value, **options)
+    snapshot = read_metadata_tokenizer_bundle(selected, **options) if verify else None
+    return selected, snapshot
+
+
+def _metadata_tokenizer_prepared_state(prepared, config, *, strict=False):
+    """Keep missing or edited selections observable; execution refuses them."""
+    kwargs = config["agents"][0].get("kwargs", {})
+    fields = {"semantic_metadata_tokenizer", "semantic_metadata_tokenizer_bundle"}
+    controls = prepared.get("comparison_controls")
+    experimental = controls.get("experimental_controls_sha256", {}) if type(controls) is dict else {}
+    present = (bool(fields & set(prepared)) or "semantic_metadata_tokenizer" in kwargs
+        or type(experimental) is dict and "semantic_metadata_tokenizer" in experimental)
+    if not present:
+        return None, None, True, False
+    try:
+        if (not fields.issubset(prepared) or "semantic_metadata_tokenizer" not in kwargs
+                or prepared["semantic_metadata_tokenizer"] is None
+                or kwargs["semantic_metadata_tokenizer"] is None):
+            raise ValueError("prepared metadata tokenizer selection missing")
+        selected, snapshot = _metadata_tokenizer_configuration(prepared["semantic_metadata_tokenizer"],
+            arm=prepared["arm"], provider_profile=prepared.get("provider_profile"),
+            semantic_metadata_view=prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            semantic_transport_schema=prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA))
+        configured, _ = _metadata_tokenizer_configuration(kwargs["semantic_metadata_tokenizer"],
+            arm=prepared["arm"], provider_profile=kwargs.get("provider_profile"),
+            semantic_metadata_view=kwargs.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            semantic_transport_schema=kwargs.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA))
+        same = (selected == configured and benchmark_controls._digest(snapshot.observation()) ==
+            benchmark_controls._digest(prepared["semantic_metadata_tokenizer_bundle"]))
+        if not same:
+            raise ValueError("prepared metadata tokenizer selection or bundle changed")
+        return selected, snapshot, True, True
+    except (KeyError, TypeError, ValueError, OSError):
+        if strict:
+            raise ValueError("prepared metadata tokenizer selection or bundle changed") from None
+        return prepared.get("semantic_metadata_tokenizer"), None, False, True
+
+
+def _metadata_tokenizer_dispatch_observation(report, snapshot):
+    """Join recorded runtime provenance to independently retained bundle pins."""
+    report = report if type(report) is dict else {}
+    population = report.get("provider_invocations")
+    bounded = type(population) is list and len(population) <= 4096
+    rows = ([row for row in population if type(row) is dict and row.get("phase") == "coding"]
+        if bounded else [])
+    valid_population = bounded and all(type(row) is dict for row in population)
+    expected = None
+    if snapshot is not None:
+        manifest = snapshot.manifest()
+        expected = dict(schema="supervisor-semantic-metadata-tokenizer-provenance@1",
+            **{key: manifest[key] for key in ("backend", "provider", "model", "tokenizer_id",
+                "tokenizer_revision", "special_token_policy", "descriptor_sha256", "asset_sha256",
+                "tokenizers_version", "qualification", "compatibility_basis")},
+            counter_tokenizer_revision=manifest["tokenizer_revision"] + "/special-policy-sha256:" +
+                hashlib.sha256(manifest["special_token_policy"].encode()).hexdigest(),
+            measurement_scope="complete-rendered-prompt-text@1", provider_tokenizer_equivalence_verified=False,
+            provider_usage_verified=False, provider_ingestion_verified=False,
+            complete_run_token_savings_claimed=False, completion_authority=False)
+    observations = []
+    identities = []
+    for row in rows:
+        identity = row.get("invocation_id")
+        valid_id = type(identity) is str and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/@+\-]{0,255}", identity)
+        identities.append(identity if valid_id else None)
+        source = row.get("semantic_metadata_tokenizer_source")
+        matched = (expected is not None and type(source) is dict and set(source) == set(expected)
+            and all(type(source[key]) is type(value) and source[key] == value for key, value in expected.items())
+            and row.get("provider") == expected["provider"] and row.get("model") == expected["model"]
+            and row.get("semantic_metadata_tokenizer_dispatch_rechecked") is True)
+        observations.append(dict(invocation_id=identity if valid_id else None,
+            retained_bundle_provenance_matches=bool(valid_id and matched)))
+    matched = (valid_population and bool(rows) and None not in identities
+        and len(identities) == len(set(identities))
+        and report.get("unreceipted_provider_attempt", False) is False
+        and all(row["retained_bundle_provenance_matches"] for row in observations))
+    return dict(schema="terminal-metadata-tokenizer-dispatch-observation@1",
+        coding_receipts_seen=len(rows), invocations=observations,
+        all_recorded_provenance_matches_retained_bundle=matched,
+        tokenizer_runtime_replayed=False, provider_execution_authenticated=False,
+        provider_ingestion_verified=False, billing_total_verified=False,
+        token_savings_established=False, completion_authority=False)
+
+
 def _load_source_view_policy(path: Path | None) -> dict | None:
     if path is None:
         return None
@@ -273,6 +369,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+               semantic_metadata_tokenizer: dict | None = None,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -282,6 +379,9 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                numerical_formalization_profile: str | None = None,
                planning_mode: str = DEFAULT_PLANNING_MODE,
                model_revision: str = "") -> dict:
+    tokenizer_selection, _ = _metadata_tokenizer_configuration(semantic_metadata_tokenizer,
+        arm=arm, provider_profile=provider_profile, semantic_metadata_view=semantic_metadata_view,
+        semantic_transport_schema=semantic_transport_schema)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract,
         task_profile=task_profile)
     validate_semantic_context_profile(semantic_context_profile, arm=arm)
@@ -348,6 +448,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
         config["agents"][0]["kwargs"]["intent_requirement_contract"] = _transport_intent_contract(intent_requirement_contract)
     if task_profile is not None:
         config["agents"][0]["kwargs"]["task_profile"] = _transport_task_profile(task_profile)
+    if tokenizer_selection is not None:
+        config["agents"][0]["kwargs"]["semantic_metadata_tokenizer"] = tokenizer_selection
     if resource_profile is not None:
         config["agents"][0]["kwargs"]["resource_profile"] = resource_profile
     if setup_cache_selection is not None:
@@ -392,6 +494,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             query_reference_policy: str = DEFAULT_QUERY_REFERENCE_POLICY,
             coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+            semantic_metadata_tokenizer_artifact: Path | None = None,
+            semantic_metadata_tokenizer_sha256: str | None = None,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
             capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
             source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -426,6 +530,30 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
     validate_semantic_metadata_view(semantic_metadata_view, arm=arm,
         transport_schema=semantic_transport_schema, provider=selected_provider["provider"])
+    tokenizer_selection = None
+    tokenizer_snapshot = None
+    tokenizer_requested = (semantic_metadata_tokenizer_artifact is not None
+        or semantic_metadata_tokenizer_sha256 is not None)
+    if tokenizer_requested:
+        if (semantic_metadata_tokenizer_artifact is None
+                or type(semantic_metadata_tokenizer_sha256) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", semantic_metadata_tokenizer_sha256) is None):
+            raise ValueError("explicit metadata tokenizer artifact and SHA-256 required")
+        if (arm != "full" or semantic_metadata_view == DEFAULT_SEMANTIC_METADATA_VIEW
+                or semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA):
+            raise ValueError("metadata tokenizer requires the original full semantic coding route")
+        output = output.absolute()
+        if output.exists() or output.resolve() != output:
+            raise ValueError("fresh trial output required")
+        output.mkdir(parents=True)
+        from .terminal_metadata_tokenizer_bundle import stage_metadata_tokenizer_bundle
+
+        tokenizer_selection = stage_metadata_tokenizer_bundle(artifact=semantic_metadata_tokenizer_artifact,
+            expected_sha256=semantic_metadata_tokenizer_sha256, output=output / "metadata-tokenizer-bundle",
+            provider=selected_provider["provider"], model=selected_provider["model"])
+        tokenizer_selection, tokenizer_snapshot = _metadata_tokenizer_configuration(tokenizer_selection,
+            arm=arm, provider_profile=provider_profile, semantic_metadata_view=semantic_metadata_view,
+            semantic_transport_schema=semantic_transport_schema)
     from harbor.models.job.config import JobConfig
     dataset = dataset.resolve(strict=True)
     task = _task_path(dataset, task_name)
@@ -437,7 +565,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     validate_planning_mode(planning_mode, task_profile=selected_task_profile)
     archive = archive.resolve(strict=True)
     output = output.absolute()
-    if output.exists() or output.resolve() != output:
+    if (not tokenizer_requested and output.exists()) or output.resolve() != output:
         raise ValueError("fresh trial output required")
     manifest = json.loads((archive / "manifest.json").read_text())
     if _hash(archive / "runtime.tar.gz") != manifest["archive_sha256"]:
@@ -454,6 +582,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_source_input_archive(manifest, source_input_policy)
     require_query_reference_archive(manifest, query_reference_policy)
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
+    if tokenizer_selection is not None:
+        from .terminal_metadata_tokenizer_bundle import require_metadata_tokenizer_archive
+        require_metadata_tokenizer_archive(manifest, tokenizer_selection)
     require_capsule_selection_archive(manifest, capsule_selection)
     require_capsule_budget_archive(manifest, capsule_budget)
     require_source_view_archive(manifest, source_view_profile, resource_profile)
@@ -516,6 +647,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         source_input_policy=source_input_policy,
         query_reference_policy=query_reference_policy,
         semantic_metadata_view=semantic_metadata_view,
+        **({"semantic_metadata_tokenizer": tokenizer_selection} if tokenizer_selection is not None else {}),
         capsule_selection=capsule_selection,
         capsule_budget=capsule_budget,
         source_view_profile=source_view_profile,
@@ -528,7 +660,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     if (selected_source384 is not None or selected_numerical is not None) and arm == "full":
         validate_resource_profile(declared_config, resource_profile)
     config = JobConfig.model_validate(declared_config, extra="forbid")
-    output.mkdir(parents=True)
+    if not tokenizer_requested:
+        output.mkdir(parents=True)
     wire = benchmark_controls.canonicalize_serialized_retry_sets(
         config.model_dump(mode="json", context={"redact_sensitive_env": False}))
     _json(output / "config.json", wire)
@@ -539,6 +672,10 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     (output / "dry-run.stderr").write_text(dry.stderr)
     if _task_hashes(task) != task_hashes:
         raise ValueError("original task changed during supervisor preflight")
+    if tokenizer_selection is not None:
+        _, tokenizer_snapshot = _metadata_tokenizer_configuration(tokenizer_selection,
+            arm=arm, provider_profile=provider_profile, semantic_metadata_view=semantic_metadata_view,
+            semantic_transport_schema=semantic_transport_schema)
     sources = {str(path): _hash(path) for path in Path(__file__).parent.glob("*.py")}
     result = {"schema": "terminal-full-supervisor-preparation@1", "prepared": dry.returncode == 0,
               "arm": arm, "task": task_name, "dataset": str(dataset), "archive": str(archive),
@@ -559,6 +696,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **source_input_selection(source_input_policy),
               **query_reference_selection(query_reference_policy),
               **semantic_metadata_observation(semantic_metadata_view),
+              **({"semantic_metadata_tokenizer": tokenizer_selection,
+                  "semantic_metadata_tokenizer_bundle": tokenizer_snapshot.observation()}
+                 if tokenizer_selection is not None else {}),
               **capsule_selection_observation(capsule_selection),
               **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view_profile, source_view_policy),
@@ -726,6 +866,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
+    tokenizer_selection, tokenizer_snapshot, tokenizer_unchanged, tokenizer_present = (
+        _metadata_tokenizer_prepared_state(prepared, config))
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     profile = prepared_provider_identity(prepared, config)
@@ -862,6 +1004,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                           if tool_output != DEFAULT_TOOL_OUTPUT_POLICY else {}),
                        **({"semantic_metadata_dispatch": _metadata_dispatch_observation(report, metadata_view)}
                           if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW else {}),
+                       **({"semantic_metadata_tokenizer_dispatch":
+                            _metadata_tokenizer_dispatch_observation(report, tokenizer_snapshot)}
+                          if tokenizer_present else {}),
                        **({"semantic_context_profile_matches": isinstance(report, dict)
                            and report.get("semantic_context_profile") == semantic_profile}
                           if semantic_profile != DEFAULT_SEMANTIC_CONTEXT_PROFILE else {})})
@@ -896,6 +1041,10 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **({"tool_output_config_unchanged": configured_tool_output == tool_output}
                  if "tool_output_policy" in prepared or "tool_output_policy" in config["agents"][0].get("kwargs", {}) else {}),
               **semantic_metadata_observation(metadata_view),
+              **({"semantic_metadata_tokenizer": tokenizer_selection,
+                  "semantic_metadata_tokenizer_bundle": prepared.get("semantic_metadata_tokenizer_bundle"),
+                  "semantic_metadata_tokenizer_config_unchanged": tokenizer_unchanged}
+                 if tokenizer_present else {}),
               **capsule_selection_observation(capsule_selection),
               **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view, source_policy),
@@ -936,6 +1085,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and configured_transport == transport and configured_reply_mode == reply_mode
                   and configured_numerical == numerical_profile and configured_planning == planning_mode
                   and configured_metadata_view == metadata_view
+                  and tokenizer_unchanged
+                  and (not tokenizer_present or trials[0]["semantic_metadata_tokenizer_dispatch"][
+                      "all_recorded_provenance_matches_retained_bundle"] is True)
                   and configured_capsules == capsule_selection
                   and configured_capsule_budget == capsule_budget
                   and (capsule_budget == DEFAULT_CAPSULE_BUDGET or budget_runtime_matches is True)
@@ -977,6 +1129,7 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
+    _metadata_tokenizer_prepared_state(prepared, config, strict=True)
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
@@ -1120,6 +1273,9 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     require_source_input_archive(current_manifest, source_input)
     require_query_reference_archive(current_manifest, query_reference)
     require_semantic_metadata_archive(current_manifest, metadata_view)
+    if prepared.get("semantic_metadata_tokenizer") is not None:
+        from .terminal_metadata_tokenizer_bundle import require_metadata_tokenizer_archive
+        require_metadata_tokenizer_archive(current_manifest, prepared["semantic_metadata_tokenizer"])
     require_capsule_selection_archive(current_manifest, capsule_selection)
     require_capsule_budget_archive(current_manifest, capsule_budget)
     require_source_view_archive(current_manifest, source_view,
@@ -1139,6 +1295,9 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     require_semantic_transport_archive(json.loads((Path(prepared["archive"]) / "manifest.json").read_text()), transport)
     if any(_hash(Path(path)) != value for path, value in prepared["host_source_sha256"].items()):
         raise ValueError("host adapter changed; prepare a new immutable trial")
+    # Close the local bundle observation immediately before the existing
+    # one-shot Harbor invocation. The adapter checks again before deployment.
+    _metadata_tokenizer_prepared_state(prepared, config, strict=True)
     with (output / "invocation.json").open("x") as stream:
         json.dump({"started_at": datetime.now().astimezone().isoformat(), "command": prepared["command"]}, stream)
     started = time.monotonic()
@@ -1262,6 +1421,10 @@ def main():
     parser.add_argument("--semantic-metadata-view", choices=SEMANTIC_METADATA_VIEWS,
         default=DEFAULT_SEMANTIC_METADATA_VIEW,
         help="Experimental readable coding metadata view; planning unchanged and selection frozen by preparation")
+    parser.add_argument("--semantic-metadata-tokenizer-artifact", type=Path,
+        help="Explicit local owner descriptor staged during prepare; no asset discovery")
+    parser.add_argument("--semantic-metadata-tokenizer-sha256",
+        help="Independent SHA-256 of the selected owner descriptor")
     parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
         help="Experimental source-bound capsule ranking; requires an explicit public task profile and is frozen by preparation")
     parser.add_argument("--capsule-budget", choices=CAPSULE_BUDGETS, default=DEFAULT_CAPSULE_BUDGET,
@@ -1309,6 +1472,9 @@ def main():
         parser.error("coding reply mode is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
         parser.error("semantic metadata view is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and (args.semantic_metadata_tokenizer_artifact is not None
+            or args.semantic_metadata_tokenizer_sha256 is not None):
+        parser.error("metadata tokenizer is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_selection != DEFAULT_CAPSULE_SELECTION:
         parser.error("capsule selection is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_budget != DEFAULT_CAPSULE_BUDGET:
@@ -1339,6 +1505,8 @@ def main():
                          source_input_policy=args.source_input_policy,
                          query_reference_policy=args.query_reference_policy,
                          semantic_metadata_view=args.semantic_metadata_view,
+                         semantic_metadata_tokenizer_artifact=args.semantic_metadata_tokenizer_artifact,
+                         semantic_metadata_tokenizer_sha256=args.semantic_metadata_tokenizer_sha256,
                          semantic_context_profile=args.semantic_context_profile,
                          capsule_selection=args.capsule_selection,
                          capsule_budget=args.capsule_budget,

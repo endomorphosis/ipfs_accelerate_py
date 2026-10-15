@@ -58,10 +58,41 @@ workflow cost. Preserve actual native session receipts and all attempts through
 the [session accounting path](world_benchmark_session_accounting.md) for a paired
 benchmark. Do not adopt a default based on a smaller initial prompt.
 
-This increment exposes the container and worker command-line path. Harbor
-configuration does not yet stage these owner-provisioned assets or expose the
-new descriptor pair. A Harbor experiment requires an explicit, pinned deployment
-extension and a fresh runtime archive; old archives are historical evidence.
+Harbor preparation now accepts the descriptor pair and stages a private portable
+bundle. With the existing dataset, archive and task arguments, select:
+
+```text
+--semantic-metadata-view capsule-columns@1
+--semantic-metadata-tokenizer-artifact /absolute/path/owner-tokenizer.json
+--semantic-metadata-tokenizer-sha256 <full SHA-256 of original descriptor bytes>
+```
+
+These new Harbor arguments apply to `prepare`. Subsequent execution uses the
+retained `semantic_metadata_tokenizer` selection in the prepared configuration.
+The full indexed arm and original semantic transport are required. Omission
+keeps the existing configuration and deployment behavior.
+
+The bundle retains the original descriptor, a relocated descriptor, the exact
+tokenizer JSON and a manifest. Only the relocated descriptor's `asset_path`
+changes, to `tokenizer.json`. Original and relocated descriptor hashes stay
+distinct. Controls schema `terminal-benchmark-declared-controls@6` binds the
+manifest, both descriptors, asset, runtime version, tokenizer identity and
+special-token policy. Preparation, execution, collection and the adapter check
+the retained selection against these pins; source paths are not needed after
+capture. Failed staging and validation evidence is retained.
+
+The adapter uploads captured descriptor and asset bytes to
+`/opt/ipfs-supervisor/metadata-tokenizers/<manifest-sha256>/`, outside the task
+workspace. Root checks the fixed file population, hashes, ownership and modes,
+then publishes the files as root-owned `0444` under a `0555` directory. The
+isolated worker must load the pinned tokenizer with its installed runtime and
+encode a fixed probe before planning starts. The same checks run before coding
+dispatch. Receipt fields cannot choose upload targets or grant file access.
+
+A fresh runtime archive must include the bundle and deployment helpers and
+current consumers. Old archives remain historical evidence. Qualification uses
+the actual protected-file handoff and worker load in a cached Docker image;
+it does not launch a complete Harbor trial or establish native model ingestion.
 
 Private qualification artifacts are retained at
 `/home/barberb/lift_coding/artifacts/metadata-tokenizer-selection-20261015-01`.
@@ -78,3 +109,20 @@ context exactly and matched the complete prompt captured at the scripted
 provider seam. No new benchmark model calls, training, downloads or Harbor
 trials were launched. The offline report's full SHA-256 is
 `51ec6fe6daf647fe7de335ae50087e40d48f3a5de9315272e0a2a32671258831`.
+
+Harbor staging evidence is retained separately at
+`/home/barberb/lift_coding/artifacts/harbor-metadata-tokenizer-20261015-01`.
+Its isolated Docker check loads an authored tokenizer as worker UID 1001 after
+the original input paths have been renamed. It refuses a changed remote asset
+before another worker probe. The first two Docker fixture attempts and a fixed
+Harbor metadata initialization failure remain in that evidence directory.
+
+The final Harbor integration passes 579 distinct bundle, adapter, configuration,
+controls, dispatch and audit tests, with no skipped cases. Its final Docker
+handoff also rejects corruption that preserves the asset's byte count. Strict
+settlement tests reject missing or Boolean exit codes and integer values in
+Boolean verification fields. All five owned Docker fixture containers were
+removed, and the shared native resource policy stayed unchanged. No benchmark
+model calls, Harbor trials, training or downloads were launched. The final
+Docker report SHA-256 is
+`8f5c4f508234ff2e13274f17c32064c88566609a3010092091cdee8b428843c3`.
