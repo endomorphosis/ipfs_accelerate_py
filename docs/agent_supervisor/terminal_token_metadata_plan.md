@@ -1368,3 +1368,58 @@ default. Matched native token/reward trials remain a later measurement gate.
 
 Qualification results and explicit limitations are retained in
 [qualification.json](evidence/native-candidate-admission-20261015/qualification.json).
+
+## October 15: candidate dispatch through the existing router
+
+The host candidate launcher now accepts a `CandidateDispatchBroker` bound to
+the exact live `NativeCandidateRoundAdmission`. This extends the existing
+candidate read service with a distinct version-two descriptor and a closed
+check/consume operation. A version-one read descriptor still supplies no
+dispatch permission. Both endpoints retain the original snapshot generation;
+neither refreshes a changed candidate or publishes an accepted index.
+
+The dispatch service retains the complete candidate prompt hash and length,
+original requirements binding, context, owner attempt, original deadline, and
+explicit owner-selected Codex model, timeout, reasoning effort and output cap.
+It accepts requests only from the registered child's kernel ancestry through
+the existing UID, process-birth and Unix peer checks. The server replays the
+actual native admission, including its task claim, grant, run lease and source
+generation. It consumes the provider permit once before closing checks and
+response delivery. A failed check after consumption or a lost response leaves
+that permit spent; retrying the RPC cannot create a second invocation.
+
+`prepare_candidate_router_input(...)` creates a worker-local typed input from
+that protected descriptor and an authenticated owner exchange, retaining the
+exact stdin bytes. Serialized observations and candidate JSON are insufficient.
+`router_implementation_runner.run(candidate_round_input=...)` accepts this
+separate route only for isolated Codex coding with the matching worker attempt
+and policy. The ordinary raw-candidate refusal remains. The route preserves
+the complete original requirements, treats retained baseline evidence as
+historical, and adds the candidate read client's guidance. It excludes baseline
+translation, public-source currentness checks and unrelated projection routes.
+An explicitly selected tokenizer may measure the complete rendered prompt;
+the automatic ordinary-prompt tokenizer is not selected for this route.
+
+The runner consumes the live permit immediately before its existing provider
+call, after provider initialization, prompt measurement and descriptor-context
+entry. The actual timeout is capped by the original remaining deadline. Its
+ordinary invocation receipt and worker-attempt label retain usage and failures.
+An authorization request whose reply is lost records consumption as unknown,
+with zero router calls; it does not prove that the owner permit stayed unused.
+The dispatch observation itself cannot attest model execution, proof acceptance
+or completion. Reader transport is retired through the existing launcher.
+
+The explicit host CLI uses `--candidate-dispatch-descriptor` and
+`--candidate-dispatch-descriptor-sha256` together with the existing owner-attempt
+and isolated-boundary arguments. No installed Terminal wrapper or default retry
+policy enables these arguments automatically. The live native owner and the
+original worker census still have to share a genuine ownership scope; copying
+their identifiers into the separate deployed wrapper cannot establish it.
+The writable-allocation delegation, quantitative resource reservation and
+production absolute-deadline handoff described above remain required before
+production use. Matched TerminalBench token/reward trials remain outstanding.
+
+Qualification distinguishes actual native state, local processes and Unix
+transport from authored same-UID deployment admission and provider stubs. No
+external provider or target program is invoked. Results and limitations are in
+[qualification.json](evidence/native-candidate-router-20261015/qualification.json).

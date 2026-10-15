@@ -73,8 +73,12 @@ def run_native_candidate_round_worker(*, admission, source_broker, command,
     """
     _need(type(admission) is NativeCandidateRoundAdmission,
         "exact native candidate admission required")
-    _need(type(source_broker) is WorkerCandidateRoundBroker
-        and source_broker._snapshot is admission.candidate_prompt._snapshot,
+    admitted_broker = type(source_broker) is WorkerCandidateRoundBroker
+    if not admitted_broker:
+        from .candidate_dispatch_broker import CandidateDispatchBroker
+        admitted_broker = (type(source_broker) is CandidateDispatchBroker
+            and source_broker._admission is admission)
+    _need(admitted_broker and source_broker._snapshot is admission.candidate_prompt._snapshot,
         "fresh candidate reader must belong to the admitted prompt")
     _need(admission.process is None and source_broker._process is None
         and not source_broker._registered.is_set() and not source_broker._closed,

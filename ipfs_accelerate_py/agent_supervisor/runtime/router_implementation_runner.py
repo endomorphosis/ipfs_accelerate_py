@@ -23,6 +23,7 @@ import uuid
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
+    from .candidate_dispatch_client import AdmittedCandidateRouterInput
     from .repository_world_packet import PreparedRepositoryWorldPacket
     from .semantic_metadata_view import SemanticMetadataTokenCounter
 
@@ -46,6 +47,17 @@ def _numerical_descriptor_environment(path, digest):
 @contextmanager
 def _source_descriptor_environment(path, digest):
     with _descriptor_environment(path, digest, SOURCE_DESCRIPTOR_ENV, SOURCE_DESCRIPTOR_DIGEST_ENV):
+        yield
+
+
+@contextmanager
+def _candidate_descriptor_environment(candidate_input):
+    if candidate_input is None:
+        yield
+        return
+    from .worker_candidate_round_client import DESCRIPTOR_ENV, DIGEST_ENV
+    with _descriptor_environment(candidate_input.descriptor_path,
+            candidate_input.descriptor_sha256, DESCRIPTOR_ENV, DIGEST_ENV):
         yield
 
 
@@ -597,6 +609,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "terminal_semantic_scope_currentness",
     "world_task_packet", "world_task_packet_currentness", "world_packet_audit_admission",
+    "candidate_dispatch",
     "semantic_metadata_view", "semantic_working_set",
     "semantic_metadata_census",
     "prompt_tokenizer", "prompt_selection",
@@ -623,6 +636,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "numerical_obligation_client.py", "source_lookup_worker_client.py", "worker_source_client.py",
     "local_prompt_tokenizer.py",
     "repository_world_packet.py", "repository_world_artifact_store.py",
+    "candidate_dispatch_client.py",
 })
 
 
@@ -843,10 +857,41 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         world_packet_audit_directory: Path | None = None,
         codex_cli_literal_response: bool = False,
         owner_worker_attempt_id: str | None = None,
+        candidate_round_input: AdmittedCandidateRouterInput | None = None,
         receipt_observer: Callable[[dict], None] | None = None) -> tuple[str, dict]:
     """Dispatch once; an optional owner-prepared packet replaces task context."""
     failure_phase = "runner_initialization"
-    _refuse_candidate_preparation(prompt)
+    if candidate_round_input is None:
+        _refuse_candidate_preparation(prompt)
+        from .worker_candidate_round_client import DESCRIPTOR_ENV, DIGEST_ENV
+        if any(key in os.environ for key in (DESCRIPTOR_ENV, DIGEST_ENV)):
+            raise ValueError("candidate descriptor environment requires explicit authenticated input")
+    else:
+        from .candidate_dispatch_client import AdmittedCandidateRouterInput
+        if type(candidate_round_input) is not AdmittedCandidateRouterInput:
+            raise ValueError("exact authenticated candidate router input required")
+        # A current native owner, rather than the candidate's advisory JSON,
+        # supplies the separate permission to attempt this provider invocation.
+        if (purpose != "coding" or provider != "codex_cli" or census_only is not False
+                or container_boundary is None or not container_boundary_sha256
+                or owner_worker_attempt_id is None or semantic_repository is not None
+                or world_task_packet is not None or world_packet_audit_directory is not None
+                or semantic_transport_schema != "supervisor-semantic-router-input@1"
+                or semantic_metadata_token_counter is not None
+                or source_view_profile != "disabled" or source_edit_mode != "disabled"
+                or grok_coding_max_turns != 128
+                or any(value is not None for value in (
+                    source_formalization_handoff, source_formalization_handoff_sha256,
+                    numerical_obligation_descriptor, numerical_obligation_descriptor_sha256,
+                    source_lookup_descriptor, source_lookup_descriptor_sha256,
+                    source_view_descriptor, source_view_descriptor_sha256,
+                    doctor_residual_artifact, public_instruction_artifact))
+                or any((doctor_residual_sha256, doctor_residual_task_cid,
+                    public_instruction_sha256, public_instruction_task_cid))
+                or any(value != "legacy" for value in (semantic_metadata_view,
+                    semantic_working_set, tool_output_policy, source_view_advisory_policy,
+                    repository_source_policy, source_input_policy, query_reference_policy))):
+            raise ValueError("candidate input requires an independently selected isolated Codex coding route")
     if owner_worker_attempt_id is not None:
         if (type(owner_worker_attempt_id) is not str or len(owner_worker_attempt_id) != 32
                 or any(char not in "0123456789abcdef" for char in owner_worker_attempt_id)):
@@ -1004,6 +1049,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                                                  compatibility_basis="owner_declaration")
         tokenizer_source = local.provenance()
     elif (prompt_token_counter is None and purpose == "coding"
+            and candidate_round_input is None
             and semantic_repository is None and world_task_packet is None and not census_only
             and not source_lookup_selected
             and all(policy == "legacy" for policy in (
@@ -1049,6 +1095,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     top = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
     if Path(top).resolve() != root:
         raise ValueError("implementation must start at its allocated Git worktree root")
+    candidate_receipt = None
+    if candidate_round_input is not None:
+        failure_phase = "candidate_dispatch"
+        candidate_receipt = AdmittedCandidateRouterInput.validate_for_run(candidate_round_input,
+            prompt=prompt, provider=provider, model=model, timeout=timeout,
+            max_output_tokens=max_output_tokens, reasoning_effort=reasoning_effort,
+            workspace=root, boundary_sha256=container_boundary_sha256,
+            worker_attempt_id=owner_worker_attempt_id)
     failure_phase = "semantic_context"
     encoded = None
     semantic_component_census = None
@@ -1056,6 +1110,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     residual_advisory = ""
     router_prompt = prompt
     required_suffix = ""
+    if candidate_round_input is not None:
+        required_suffix = "\n\n" + AdmittedCandidateRouterInput.guidance(candidate_round_input)
+        router_prompt += required_suffix
     world_packet_receipt = None
     world_packet_artifact = None
     world_packet_artifact_sha256 = None
@@ -1109,7 +1166,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             }
     failure_phase = "source_formalization_context"
     from .source_formalization_context import validate_source_formalization_context
-    formalization_receipt = validate_source_formalization_context(
+    formalization_receipt = None if candidate_round_input is not None else validate_source_formalization_context(
         prompt=prompt, repository=semantic_repository, workspace=root,
         boundary=container_boundary, boundary_sha256=container_boundary_sha256 or None,
         handoff=source_formalization_handoff, handoff_sha256=source_formalization_handoff_sha256)
@@ -1484,6 +1541,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         # Observation join only: this caller-supplied label grants no child
         # launch, retry, task, proof, settlement, or completion authority.
         receipt["owner_worker_attempt_id"] = owner_worker_attempt_id
+    if candidate_receipt is not None:
+        receipt["candidate_round_dispatch"] = dict(candidate_receipt,
+            dispatch_requested=False, dispatch_consumed=False, provider_attempted=False)
     if coding_reply_receipt is not None:
         receipt["coding_reply_contract"] = coding_reply_receipt
     if world_packet_receipt is not None:
@@ -1689,6 +1749,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         with _numerical_descriptor_environment(numerical_obligation_descriptor,
                                                numerical_obligation_descriptor_sha256), \
                 _source_descriptor_environment(source_view_descriptor, source_view_descriptor_sha256), \
+                _candidate_descriptor_environment(candidate_round_input), \
                 _source_lookup_descriptor_environment(source_lookup_descriptor,
                                                       source_lookup_descriptor_sha256):
             if scoped_instruction:
@@ -1707,6 +1768,21 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                     raise ValueError("signed Terminal scope requires the current allocated worktree")
                 receipt["terminal_semantic_scope_dispatch_rechecked"] = True
             failure_phase = "provider_invocation"
+            if candidate_round_input is not None:
+                # Owner replays native claims, source generation and deadline
+                # after all initialization and descriptor-context callbacks.
+                # A lost reply or later provider failure cannot restore this
+                # one-use permit. Keep zero router calls on authorization loss.
+                failure_phase = "candidate_dispatch"
+                receipt["candidate_round_dispatch"].update(
+                    dispatch_requested=True, dispatch_consumed=None)
+                candidate_dispatch = AdmittedCandidateRouterInput.authorize_dispatch(
+                    candidate_round_input, invocation_id=invocation)
+                timeout = min(timeout, candidate_dispatch["timeout_seconds"])
+                receipt["timeout_seconds"] = timeout
+                receipt["candidate_round_dispatch"].update(candidate_dispatch,
+                    dispatch_consumed=True, provider_attempted=True)
+                failure_phase = "provider_invocation"
             if source_input_view is not None:
                 receipt["source_input_dispatched"] = True
             if query_reference_view is not None:
@@ -1919,6 +1995,9 @@ def main():
     parser.add_argument("--container-boundary-sha256", default="")
     parser.add_argument("--owner-worker-attempt-id",
                         help="Owner worker attempt observation identity; grants no launch or retry authority")
+    parser.add_argument("--candidate-dispatch-descriptor", type=Path,
+                        help="Explicit native-owner candidate dispatch endpoint")
+    parser.add_argument("--candidate-dispatch-descriptor-sha256")
     parser.add_argument("--semantic-repository", type=Path)
     parser.add_argument("--source-formalization-handoff", type=Path)
     parser.add_argument("--source-formalization-handoff-sha256")
@@ -1961,8 +2040,18 @@ def main():
         parser.error("both tokenizer binding arguments require nonempty values")
     if args.max_input_tokens is not None and args.max_input_tokens < 1:
         parser.error("max-input-tokens must be positive")
+    if ((args.candidate_dispatch_descriptor is None)
+            != (args.candidate_dispatch_descriptor_sha256 is None)
+            or args.candidate_dispatch_descriptor_sha256 == ""):
+        parser.error("both candidate dispatch binding arguments require nonempty values")
     try:
         prompt = sys.stdin.buffer.read(256_001).decode("utf-8")
+        candidate_input = None
+        if args.candidate_dispatch_descriptor is not None:
+            from .candidate_dispatch_client import prepare_candidate_router_input
+            candidate_input = prepare_candidate_router_input(
+                descriptor_path=args.candidate_dispatch_descriptor,
+                descriptor_sha256=args.candidate_dispatch_descriptor_sha256, prompt=prompt)
         output, _ = run(prompt=prompt, provider=args.provider, model=args.model,
                         timeout=args.timeout, max_output_tokens=args.max_output_tokens,
                         budget_profile=args.budget_profile,
@@ -1970,6 +2059,7 @@ def main():
                         container_boundary=args.container_boundary,
                         container_boundary_sha256=args.container_boundary_sha256,
                         owner_worker_attempt_id=args.owner_worker_attempt_id,
+                        candidate_round_input=candidate_input,
                         purpose=args.purpose, semantic_repository=args.semantic_repository,
                         source_formalization_handoff=args.source_formalization_handoff,
                         source_formalization_handoff_sha256=args.source_formalization_handoff_sha256,

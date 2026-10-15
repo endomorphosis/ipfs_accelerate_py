@@ -1,0 +1,9 @@
+{
+  "schema": "bounded-validation-interruption-audit@1",
+  "interrupted_run": "native-dispatch-pipeline-v01",
+  "timeout_seconds": 240,
+  "actual_model_calls": 0,
+  "matching_remaining_fixture_children": [],
+  "matching_requires": "exact Python -I -c argv, authored child script marker and interrupted fixture argument path",
+  "note": "The inert child installs a 25-second alarm; no broad process-name matching or termination was used."
+}
