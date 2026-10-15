@@ -925,6 +925,20 @@ def markdown(comparison: dict) -> str:
                 call["native_usage_complete_observed"], call["token_count_scope"],
                 *(_token_cell(call, key) for key in TOKENS)]
             lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    tool_events = [(row, call, (call.get("native_grok_progress") or {}).get("tool_event_observations"))
+                   for row, call in calls]
+    tool_events = [(row, call, census) for row, call, census in tool_events if census is not None]
+    if tool_events:
+        lines += ["", "Tool-event bytes describe retained CLI output events. Payload sizes use canonical JSON; frame sizes use exact line bytes excluding LF. rawOutput and content are separate channels that may overlap and must not be added as unique output. Repeated event bytes do not establish provider history resends, tokens, or savings. Provider request and history-resend sizes remain unknown.", "",
+                  "| Trial | Invocation | Events observed | Events retained | Events omitted | Call identities retained | Frame bytes retained | rawInput bytes retained | rawOutput bytes retained | content bytes retained | Repeated rawOutput bytes | Repeated content bytes | Event observation complete |",
+                  "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"]
+        for row, call, census in tool_events:
+            payloads = census["payloads"]
+            values = [row["trial"], call["invocation_id"], *(census[key] for key in (
+                "observed_events", "retained_events", "omitted_events", "call_identities", "retained_frame_bytes")),
+                *(payloads[key]["canonical_json_bytes"] for key in ("input", "output", "content")),
+                *(payloads[key]["repeated_bytes"] for key in ("output", "content")), census["observation_complete"]]
+            lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
     archives = [row for row in supervised if row["runtime_archive_sha256"] is not None]
     if archives:
         lines += ["", "Runtime archive provenance is projected from retained agent metadata. The comparison implementation has its own source SHA256 in comparison.json; it may postdate these immutable runtimes.", "",

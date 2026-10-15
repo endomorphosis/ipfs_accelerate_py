@@ -80,6 +80,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/ipfs_accelerate_py/llm_router.py',
         'source/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py',
         'source/ipfs_accelerate_py/cli_runtime/grok_stream_usage.py',
+        'source/ipfs_accelerate_py/cli_runtime/grok_tool_events.py',
         'source/ipfs_accelerate_py/cli_runtime/cli_metadata.py',
         'source/ipfs_accelerate_py/cli_runtime/grok_native_usage.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py',
@@ -88,7 +89,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
 
 
 @pytest.mark.parametrize('name', ['terminal_container_supervisor.py', 'terminal_output_observation.py',
-    'llm_router.py', 'grok_stream_capture.py', 'grok_stream_usage.py', 'cli_metadata.py', 'grok_native_usage.py',
+    'llm_router.py', 'grok_stream_capture.py', 'grok_stream_usage.py', 'grok_tool_events.py', 'cli_metadata.py', 'grok_native_usage.py',
     'source_formalization_context.py', 'validation_runtime.py', 'representation_displacement.py',
     'numerical_obligation_broker.py', 'numerical_obligation_client.py', 'source_view_policy.py',
     'context_selection_observation.py', 'worker_source_request_observation.py'])

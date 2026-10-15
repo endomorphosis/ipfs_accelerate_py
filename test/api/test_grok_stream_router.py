@@ -213,6 +213,8 @@ def test_callback_error_does_not_trigger_reinvocation_or_change_result(provider,
 
 @pytest.mark.parametrize("options", [
     {"grok_stream_progress": 1},
+    {"grok_tool_event_census": True},
+    {"grok_stream_progress": True, "grok_tool_event_census": 1},
     {"grok_progress_callback": lambda _: None},
     {"grok_stream_progress": True, "grok_progress_callback": "not callable"},
     {"grok_stream_progress": True, "response_format": {"type": "json_object"}},
@@ -256,3 +258,41 @@ def test_partial_usage_stream_survives_timeout_without_inventing_final_accountin
     assert progress["response_usable"] is False
     assert progress["usage_observations"]["rows"][0]["usage"]["input_tokens"] == 12
     assert "private" not in json.dumps(progress)
+
+
+@pytest.mark.parametrize("timed_out", [False, True])
+def test_tool_census_opt_in_survives_real_cli_and_tls_without_changing_usage(provider, tmp_path, timed_out):
+    from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_usage_receipt
+    frames = [
+        {"type": "tool_call", "toolCallId": "PRIVATE-CALL", "toolName": "read_file",
+         "status": "pending", "rawInput": {"path": "PRIVATE-PATH"}},
+        {"type": "tool_call_update", "toolCallId": "PRIVATE-CALL", "status": "completed",
+         "rawOutput": {"text": "PRIVATE-OUTPUT"}, "content": [{"type": "text", "text": "PRIVATE-CONTENT"}]},
+        {"type": "text", "data": "authored response"}, end(),
+    ]
+    callbacks = []
+    argv = command(tmp_path, frames, suffix="time.sleep(30)\n" if timed_out else "")
+    def generate():
+        return provider.generate("private prompt", timeout=0.3 if timed_out else 3,
+            grok_cli_cmd=argv, grok_stream_progress=True, grok_tool_event_census=True,
+            grok_progress_callback=callbacks.append)
+    if timed_out:
+        with pytest.raises(subprocess.TimeoutExpired):
+            generate()
+    else:
+        assert generate() == "authored response"
+    observation = get_last_cli_observation("grok_cli")
+    progress = observation["native_grok_progress"]
+    assert progress["schema"] == "native-grok-stream-progress@4"
+    assert progress["timed_out"] is timed_out
+    assert progress["response_usable"] is (not timed_out)
+    assert "tool_event_observations" in progress
+    assert callbacks and all(row["schema"] == "native-grok-stream-progress@1" for row in callbacks)
+    assert all("tool_event_observations" not in row for row in callbacks)
+    usage = grok_usage_receipt(observation)
+    assert usage["usage"] == {"input_tokens": 12, "output_tokens": 4}
+    assert usage["observed_final_usage_records"] == 1
+    assert usage["usage_complete_observed"] is None
+    assert usage["billing_total_verified"] is False
+    assert "PRIVATE" not in json.dumps([progress, *callbacks])
+    assert not Path((tmp_path / "prompt_path").read_text()).exists()

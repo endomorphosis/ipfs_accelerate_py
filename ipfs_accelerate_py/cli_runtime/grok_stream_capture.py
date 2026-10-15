@@ -22,6 +22,7 @@ from .grok_stream_usage import GrokUsageEventObserver, validate_grok_usage_event
 LEGACY_SCHEMA = "native-grok-stream-progress@1"
 USAGE_SCHEMA = "native-grok-stream-progress@2"
 SCHEMA = "native-grok-stream-progress@3"
+TOOL_EVENTS_SCHEMA = "native-grok-stream-progress@4"
 MAX_FRAME_BYTES = 256 * 1024
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 CALLBACK_INTERVAL_SECONDS = 5.0
@@ -107,11 +108,13 @@ def validate_grok_stream_progress(value: object) -> dict:
     if type(value) is not dict:
         raise ValueError("invalid Grok progress fields")
     schema = value.get("schema")
-    if type(schema) is not str or schema not in {LEGACY_SCHEMA, USAGE_SCHEMA, SCHEMA}:
+    if type(schema) is not str or schema not in {LEGACY_SCHEMA, USAGE_SCHEMA, SCHEMA, TOOL_EVENTS_SCHEMA}:
         raise ValueError("invalid Grok progress schema")
     keys = _KEYS if schema == LEGACY_SCHEMA else _KEYS | {"usage_observations"}
-    if schema == SCHEMA:
+    if schema in {SCHEMA, TOOL_EVENTS_SCHEMA}:
         keys |= {"terminal_rejection"}
+    if schema == TOOL_EVENTS_SCHEMA:
+        keys |= {"tool_event_observations"}
     if set(value) != keys:
         raise ValueError("invalid Grok progress fields")
     for key, expected in _CONSTANTS.items():
@@ -161,7 +164,7 @@ def validate_grok_stream_progress(value: object) -> dict:
             observed_events=value["event_counts"]["usage"], frames=value["frames"],
             duration_seconds=value["duration_seconds"], final_event_seconds=value["final_event_seconds"],
             events_after_final=value["events_after_final"])
-    if schema == SCHEMA:
+    if schema in {SCHEMA, TOOL_EVENTS_SCHEMA}:
         rejection = value["terminal_rejection"]
         if rejection is not None:
             rejection = _validate_terminal_rejection(rejection)
@@ -174,6 +177,10 @@ def validate_grok_stream_progress(value: object) -> dict:
                     or not value["final_event_seconds"] <= rejection["elapsed_seconds"] <= value["duration_seconds"]):
                 raise ValueError("inconsistent Grok terminal rejection observation")
         result["terminal_rejection"] = rejection
+    if schema == TOOL_EVENTS_SCHEMA:
+        from .grok_tool_events import validate_grok_tool_events
+        result["tool_event_observations"] = validate_grok_tool_events(
+            value["tool_event_observations"], stream_state=value)
     return result
 
 
@@ -187,6 +194,7 @@ def grok_stream_progress_summary(value: object) -> dict:
     result = validate_grok_stream_progress(value)
     result.pop("usage_observations", None)
     result.pop("terminal_rejection", None)
+    result.pop("tool_event_observations", None)
     result["schema"] = LEGACY_SCHEMA
     return validate_grok_stream_progress(result)
 
@@ -236,9 +244,12 @@ def _nonfinite(_value):
 
 
 class GrokStreamParser:
-    """Incremental LF parser. Snapshots contain counts/times, never model data."""
+    """Incremental LF parser with optional closed tool-event sizes and hashes."""
 
-    def __init__(self, *, max_frame_bytes: int = MAX_FRAME_BYTES, max_text_bytes: int = MAX_TEXT_BYTES):
+    def __init__(self, *, max_frame_bytes: int = MAX_FRAME_BYTES, max_text_bytes: int = MAX_TEXT_BYTES,
+                 tool_event_census: bool = False):
+        if type(tool_event_census) is not bool:
+            raise ValueError("explicit Boolean tool-event census selection required")
         if any(type(n) is not int or n < 1 for n in (max_frame_bytes, max_text_bytes)):
             raise ValueError("positive stream bounds required")
         if max_frame_bytes > MAX_FRAME_BYTES or max_text_bytes > MAX_TEXT_BYTES:
@@ -252,11 +263,17 @@ class GrokStreamParser:
         self._final_payload = None
         self._end_trailer_seen = False
         self._usage_observer = GrokUsageEventObserver()
+        self._tool_observer = None
+        if tool_event_census:
+            from .grok_tool_events import GrokToolEventObserver
+            self._tool_observer = GrokToolEventObserver()
         self._state = {**_CONSTANTS, **dict.fromkeys(_COUNTERS, 0), **dict.fromkeys(_TIMES),
                        **dict.fromkeys(_BOOLS, False), "returncode": None, "timeout_phase": "none",
                        "terminal_rejection": None,
                        "final_event_type": None, "final_reason_code": "unknown", "event_counts": dict.fromkeys(_EVENTS, 0),
                        "tool_name_counts": dict.fromkeys(_TOOLS, 0), "tool_status_counts": dict.fromkeys(_STATUSES, 0)}
+        if tool_event_census:
+            self._state["schema"] = TOOL_EVENTS_SCHEMA
 
     def _inc(self, key, count=1, *, bucket=None):
         target = self._state if bucket is None else self._state[bucket]
@@ -477,6 +494,11 @@ class GrokStreamParser:
             else:
                 self._inc("discarded_text_bytes", len(encoded))
         elif bucket in {"tool_call", "tool_call_update"}:
+            if self._tool_observer is not None:
+                # The parser receives exact line bytes before decoding. LF is
+                # the separator and is excluded; CR and other whitespace stay.
+                self._tool_observer.observe(event, frame_bytes=len(line), frame_ordinal=self._state["frames"],
+                    elapsed_seconds=elapsed_seconds, after_final=after_final)
             if bucket == "tool_call":
                 name = event.get("toolName")
                 self._inc(name if type(name) is str and name in _TOOLS else "unknown", bucket="tool_name_counts")
@@ -531,6 +553,8 @@ class GrokStreamParser:
             and state["process_exit_observed"] and not state["timed_out"])
         state["response_usable"] = bool(state["stream_complete"] and state["returncode"] == 0 and state["final_event_type"] == "end"
             and state["final_reason_code"] == "end_turn" and state["retained_text_bytes"] > 0)
+        if self._tool_observer is not None:
+            state["tool_event_observations"] = self._tool_observer.snapshot(stream_state=state)
         return validate_grok_stream_progress(state)
 
 
@@ -548,19 +572,22 @@ class GrokStreamResult:
 
 def capture_grok_stream(command: Sequence[str], *, env: Mapping[str, str] | None,
                         timeout: float, cwd: str | os.PathLike | None = None,
-                        progress_callback: Callable[[dict], None] | None = None) -> GrokStreamResult:
+                        progress_callback: Callable[[dict], None] | None = None,
+                        tool_event_census: bool = False) -> GrokStreamResult:
     """Drain both pipes under one deadline; kill/reap only this owned child.
 
     Descendant custody belongs to the calling runtime. An inherited descendant
     pipe cannot extend this deadline or become a successful partial response.
     Callback exceptions are diagnostic failures; cancellation still propagates
     through owned-child cleanup. Stream event origin is not authenticated.
+    The optional tool-event census measures observed stdout events, not provider
+    requests or history resends, and is omitted from count-only callbacks.
     """
     if not _number(timeout) or timeout <= 0:
         raise ValueError("positive finite Grok stream timeout required")
     if progress_callback is not None and not callable(progress_callback):
         raise ValueError("Grok progress callback must be callable")
-    parser = GrokStreamParser()
+    parser = GrokStreamParser(tool_event_census=tool_event_census)
     started = time.monotonic()
     deadline = started + timeout
     last_callback = -CALLBACK_INTERVAL_SECONDS

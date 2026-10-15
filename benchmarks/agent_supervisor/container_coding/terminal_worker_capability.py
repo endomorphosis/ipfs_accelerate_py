@@ -47,6 +47,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/llm_router.py",
     "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
     "ipfs_accelerate_py/cli_runtime/grok_stream_usage.py",
+    "ipfs_accelerate_py/cli_runtime/grok_tool_events.py",
     "ipfs_accelerate_py/cli_runtime/cli_metadata.py",
     "ipfs_accelerate_py/cli_runtime/grok_native_usage.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py",

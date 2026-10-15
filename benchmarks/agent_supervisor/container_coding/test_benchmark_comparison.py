@@ -371,6 +371,54 @@ def test_terminal_rejection_survives_comparison_without_creating_native_usage():
     assert _invocations({"provider_invocations": [row]})[0]["native_grok_progress"] is None
 
 
+def test_tool_events_reach_comparison_as_separate_byte_channels_without_token_promotion(tmp_path):
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    parser = GrokStreamParser(tool_event_census=True)
+    for identity in ("PRIVATE-CALL-1", "PRIVATE-CALL-2"):
+        for event in (
+            {"type": "tool_call", "toolName": "read_file", "toolCallId": identity,
+             "status": "pending", "rawInput": {"path": "PRIVATE-PATH"}},
+            {"type": "tool_call_update", "toolCallId": identity, "status": "completed",
+             "rawOutput": {"text": "PRIVATE-OUTPUT"}, "content": [{"text": "PRIVATE-CONTENT"}]},
+        ):
+            parser.feed((json.dumps(event) + "\n").encode())
+    progress = parser.snapshot()
+    invocation = _grok_invocation("tool-census", True)
+    invocation["native_grok_progress"] = progress
+    receipt = _receipt(tmp_path, "tool-census.json", SUPERVISOR, [{"trial": "tool-census",
+        "supervisor": {"task_completed": False, "provider_invocations": [invocation, invocation]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    call, = row["invocations"]
+    census = call["native_grok_progress"]["tool_event_observations"]
+    assert census["retained_events"] == census["observed_events"] == 4
+    assert census["call_identities"] == 2
+    assert census["payloads"]["output"]["cross_call_repeated_events"] == 1
+    assert census["payloads"]["content"]["cross_call_repeated_events"] == 1
+    assert census["provider_request_bytes"] is census["history_resend_bytes"] is None
+    assert census["request_history_complete"] is False
+    assert row["tokens"]["total_tokens"] == call["tokens"]["total_tokens"] == 42
+    rendered = markdown(result)
+    assert "rawOutput bytes retained" in rendered and "content bytes retained" in rendered
+    assert "must not be added as unique output" in rendered
+    assert "do not establish provider history resends" in rendered
+    assert "PRIVATE" not in json.dumps(result) + rendered
+
+
+@pytest.mark.parametrize("with_legacy_progress", [False, True])
+def test_missing_tool_census_does_not_invent_zero_history_or_table(tmp_path, with_legacy_progress):
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    invocation = _grok_invocation("legacy-tool-census", True)
+    if with_legacy_progress:
+        invocation["native_grok_progress"] = GrokStreamParser().snapshot()
+    receipt = _receipt(tmp_path, "legacy-tool-census.json", SUPERVISOR, [{"trial": "legacy-tool-census",
+        "supervisor": {"task_completed": False, "provider_invocations": [invocation]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    assert "rawOutput bytes retained" not in markdown(result)
+    call, = result["rows"][1]["invocations"]
+    assert "tool_event_observations" not in (call["native_grok_progress"] or {})
+
+
 def test_symbolic_coding_does_not_invent_provider_calls_or_learned_proof(tmp_path):
     receipt = _receipt(tmp_path, "symbolic.json", SUPERVISOR, [{
         "trial": "symbolic", "reward": {"reward": 1}, "supervisor": {
