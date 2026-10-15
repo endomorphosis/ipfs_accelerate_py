@@ -1,0 +1,28 @@
+FROM python:3.12-slim-bookworm
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends git z3 cvc5 sudo procps \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir pytest==9.1.1 duckdb==1.5.5 numpy==2.4.6 \
+    multiformats==0.3.1.post4 requests==2.34.2 anyio==4.14.2 cryptography==49.0.0
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.13.0+cpu
+RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin supervisor \
+    && chmod 0700 /home/supervisor \
+    && python -m venv --system-site-packages /opt/ipfs-supervisor/venv \
+    && useradd --uid 1001 --gid supervisor --home-dir /opt/ipfs-supervisor/worker-home \
+       --shell /usr/sbin/nologin benchmarkworker \
+    && install -d -o root -g root -m 0755 /opt/ipfs-supervisor/bin \
+    && install -d -o supervisor -g supervisor -m 0750 /opt/ipfs-supervisor/worktrees \
+    && install -d -o supervisor -g supervisor -m 0700 /opt/ipfs-supervisor/state \
+    && install -d -o supervisor -g supervisor -m 0755 /opt/ipfs-supervisor/finite-handoffs \
+    && install -d -o benchmarkworker -g supervisor -m 0700 /opt/ipfs-supervisor/worker-home
+COPY --from=ducklake-extension /ducklake.duckdb_extension /opt/ducklake.duckdb_extension
+COPY --from=ducklake-extension /httpfs.duckdb_extension /opt/httpfs.duckdb_extension
+COPY --from=ducklake-extension /quack.duckdb_extension /opt/quack.duckdb_extension
+RUN python -c "from pathlib import Path; import duckdb,platform; connection=duckdb.connect(); machine={'aarch64':'linux_arm64','x86_64':'linux_amd64'}[platform.machine().lower()]; target=Path('/home/supervisor/.duckdb/extensions')/('v'+duckdb.__version__)/machine; target.mkdir(parents=True,exist_ok=True); names=('ducklake','httpfs','quack'); [(target/(name+'.duckdb_extension')).write_bytes((Path('/opt')/(name+'.duckdb_extension')).read_bytes()) for name in names]; [connection.execute(\"LOAD '/opt/\"+name+\".duckdb_extension'\") for name in names]; assert all((target/(name+'.duckdb_extension')).is_file() for name in names); connection.close()"
+ENV PYTHONPATH=/opt/ipfs-supervisor/source:/opt/ipfs-supervisor/datasets:/opt/ipfs-supervisor/kit \
+    PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+    HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false \
+    OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+USER supervisor
+WORKDIR /opt/ipfs-supervisor/source
+ENTRYPOINT ["/opt/ipfs-supervisor/venv/bin/python"]

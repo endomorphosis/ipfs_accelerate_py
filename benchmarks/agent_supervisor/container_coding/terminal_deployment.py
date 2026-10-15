@@ -1077,6 +1077,10 @@ def build_runtime_archive(
                 continue
             add(path, destination + "/" + relative.as_posix())
         if package == "ipfs_accelerate_py":
+            # Keep these imports bound to the packaged benchmark tree even
+            # when a site package also provides a regular `benchmarks` package.
+            for relative in ("benchmarks/__init__.py", "benchmarks/agent_supervisor/__init__.py"):
+                add(checkout / relative, "source/" + relative)
             for path in sorted(
                 (checkout / "benchmarks/agent_supervisor/container_coding").glob("*.py")
             ):

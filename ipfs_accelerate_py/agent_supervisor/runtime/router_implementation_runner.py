@@ -239,6 +239,8 @@ class PromptTokenCounter:
     tokenizer_revision: str
     special_token_policy: str
     count_tokens: Callable[[str], int] = field(repr=False, compare=False)
+    count_kind: str = "tokenizer"
+    compatibility_basis: str = "caller_declaration"
 
     def __post_init__(self):
         for name, value in self.binding().items():
@@ -246,6 +248,15 @@ class PromptTokenCounter:
                 raise ValueError(f"explicit {name} token-counter binding required")
         if not callable(self.count_tokens):
             raise ValueError("token counter requires a callable")
+        if type(self.count_kind) is not str or self.count_kind not in {"tokenizer", "estimate"}:
+            raise ValueError("token counter requires a tokenizer or estimate count kind")
+        if (type(self.compatibility_basis) is not str or not self.compatibility_basis.strip()
+                or self.compatibility_basis != self.compatibility_basis.strip()):
+            raise ValueError("explicit tokenizer compatibility basis required")
+
+    @property
+    def count_field(self) -> str:
+        return "estimated_input_tokens" if self.count_kind == "estimate" else "input_tokens"
 
     def binding(self) -> dict:
         return {name: getattr(self, name) for name in (
@@ -258,7 +269,7 @@ class PromptTokenCounter:
         return count
 
 
-def select_model_prompt(*, native_complete_prompt: str, candidate_complete_prompt: str | None,
+def _select_complete_model_prompt(*, native_complete_prompt: str, candidate_complete_prompt: str | None,
                         provider: str, model: str, token_counter: PromptTokenCounter | None,
                         max_input_tokens: int | None = None,
                         native_output_schema: dict | None = None,
@@ -301,6 +312,7 @@ def select_model_prompt(*, native_complete_prompt: str, candidate_complete_promp
         raise ValueError("native output schema exceeds its byte bound")
     schema_tokens = None
     status, error_type = "unavailable", None
+    count_field = token_counter.count_field if token_counter is not None else "input_tokens"
     if token_counter is not None:
         try:
             counts = {name: token_counter.count(text) for name, text in rendered.items()}
@@ -309,23 +321,29 @@ def select_model_prompt(*, native_complete_prompt: str, candidate_complete_promp
             status = "failed"
             error_type = type(error).__name__ if type(error).__name__ in RUNNER_FAILURE_TYPES else "other"
         else:
-            status = "measured"
+            status = "estimated" if token_counter.count_kind == "estimate" else "measured"
             for name, count in counts.items():
-                candidates[name].update(content_tokens=count, input_tokens=count + schema_tokens)
-    if max_input_tokens is not None and status != "measured":
+                if status == "estimated":
+                    candidates[name].update(estimated_content_tokens=count,
+                                            estimated_input_tokens=count + schema_tokens)
+                else:
+                    candidates[name].update(content_tokens=count, input_tokens=count + schema_tokens)
+    count_available = status in {"measured", "estimated"}
+    if max_input_tokens is not None and not count_available:
         raise ValueError("complete prompt token budget requires a working pinned local counter")
     selected, reason = "native", "semantic_not_requested"
     if candidate_complete_prompt is not None:
-        reason = "native_not_larger" if status == "measured" else "tokenizer_" + status
-        if status == "measured":
+        reason = "native_not_larger" if count_available else "tokenizer_" + status
+        if count_available:
             for name, candidate in candidates.items():
-                if (candidate["input_tokens"] < candidates[selected]["input_tokens"]
+                if (candidate[count_field] < candidates[selected][count_field]
                         and candidate["model_prompt_bytes"] <= MAX_MODEL_PROMPT_BYTES):
-                    selected, reason = name, "candidate_strictly_fewer_content_tokens"
+                    selected, reason = name, ("candidate_strictly_fewer_estimated_content_tokens"
+                        if status == "estimated" else "candidate_strictly_fewer_content_tokens")
     chosen = candidates[selected]
     if chosen["model_prompt_bytes"] > MAX_MODEL_PROMPT_BYTES:
         raise ValueError("model prompt with all required instructions exceeds its byte bound")
-    if max_input_tokens is not None and chosen["input_tokens"] > max_input_tokens:
+    if max_input_tokens is not None and chosen[count_field] > max_input_tokens:
         raise ValueError("model prompt with all required instructions exceeds its token budget")
     receipt = {
         "schema": "supervisor-model-prompt-selection@1", "selected_representation": selected,
@@ -333,15 +351,183 @@ def select_model_prompt(*, native_complete_prompt: str, candidate_complete_promp
         "measurement_error_type": error_type,
         "tokenizer_binding": token_counter.binding() if token_counter is not None else None,
         "count_scope": "rendered_user_prompt_and_separate_native_output_schema",
-        "native_output_schema_tokens": schema_tokens,
+        "native_output_schema_tokens": schema_tokens if status != "estimated" else None,
         "native_output_schema_sha256": hashlib.sha256(schema_text.encode()).hexdigest() if schema_text else None,
         "selected_content_tokens": chosen["content_tokens"], "selected_input_tokens": chosen["input_tokens"],
+        "token_count_kind": token_counter.count_kind if token_counter is not None else None,
+        "tokenizer_compatibility_basis": token_counter.compatibility_basis if token_counter is not None else None,
+        "selected_estimated_content_tokens": chosen.get("estimated_content_tokens"),
+        "token_budget_basis": ("estimated_content_tokens" if status == "estimated"
+                               else "local_tokenizer_content_tokens") if max_input_tokens is not None else None,
+        "token_budget_guaranteed": False,
         "max_input_tokens": max_input_tokens, "max_prompt_bytes": MAX_MODEL_PROMPT_BYTES,
         "provider_framing_measured": False, "provider_tokenizer_equivalence_verified": False,
         "total_session_token_savings": None, "completion_authority": False,
     }
+    if status == "estimated":
+        receipt.update(token_count_kind="estimate",
+            tokenizer_compatibility_basis=token_counter.compatibility_basis,
+            estimated_native_output_schema_tokens=schema_tokens,
+            selected_estimated_content_tokens=chosen["estimated_content_tokens"],
+            selected_estimated_input_tokens=chosen["estimated_input_tokens"],
+            token_budget_basis="estimated_content_tokens" if max_input_tokens is not None else None,
+            token_budget_guaranteed=False)
     return rendered[selected], receipt
 
+
+def _select_legacy_model_prompt(*, native_prompt: str, semantic_prompt: str | None,
+                        suffix: str, purpose: str, workspace: Path,
+                        provider: str, model: str,
+                        token_counter: PromptTokenCounter | None = None,
+                        max_input_tokens: int | None = None,
+                        max_prompt_bytes: int = MAX_MODEL_PROMPT_BYTES) -> tuple[str, str, str, dict]:
+    """Measure both full wires and select a strictly smaller supported transport.
+
+    Semantic identity/currentness and exact restoration must already have been
+    verified by the encoder. Required residual/instruction text is appended
+    verbatim to both alternatives before measurement. Unknown counts retain
+    native context. Estimated counts may guide selection and a labelled budget;
+    they cannot guarantee the provider's token ceiling.
+    """
+    if (isinstance(max_prompt_bytes, bool) or not isinstance(max_prompt_bytes, int)
+            or not 1 <= max_prompt_bytes <= MAX_MODEL_PROMPT_BYTES):
+        raise ValueError("model prompt byte bound cannot exceed its existing ceiling")
+    if max_input_tokens is not None and (
+            isinstance(max_input_tokens, bool) or not isinstance(max_input_tokens, int)
+            or max_input_tokens < 1):
+        raise ValueError("complete prompt token budget must be a positive integer")
+    if token_counter is not None and (
+            not isinstance(token_counter, PromptTokenCounter)
+            or token_counter.provider != provider or token_counter.model != model):
+        raise ValueError("token counter differs from the pinned provider/model")
+
+    rendered = {}
+    candidates = {}
+    count_field = token_counter.count_field if token_counter is not None else "input_tokens"
+    for name, prompt in (("native", native_prompt), ("semantic", semantic_prompt)):
+        if prompt is None:
+            continue
+        router_prompt = prompt + suffix
+        model_prompt, advisory = render_model_prompt(
+            prompt=router_prompt, purpose=purpose, workspace=workspace,
+            semantic_transport=name == "semantic")
+        rendered[name] = (model_prompt, router_prompt, advisory)
+        candidates[name] = {
+            "model_prompt_sha256": hashlib.sha256(model_prompt.encode()).hexdigest(),
+            "model_prompt_bytes": len(model_prompt.encode()), "input_tokens": None,
+        }
+        if count_field == "estimated_input_tokens":
+            candidates[name][count_field] = None
+
+    measurement_status = "unavailable"
+    measurement_error_type = None
+    if token_counter is not None:
+        try:
+            counts = {name: token_counter.count(values[0]) for name, values in rendered.items()}
+        except Exception as error:
+            measurement_status = "failed"
+            measurement_error_type = type(error).__name__
+        else:
+            measurement_status = "estimated" if count_field == "estimated_input_tokens" else "measured"
+            for name, count in counts.items():
+                candidates[name][count_field] = count
+    count_available = measurement_status in {"measured", "estimated"}
+    if max_input_tokens is not None and not count_available:
+        raise ValueError("complete prompt token budget requires a working pinned local counter")
+
+    selected = "native"
+    reason = "semantic_not_requested"
+    if "semantic" in candidates:
+        reason = "tokenizer_" + measurement_status if not count_available else "native_not_larger"
+        if count_available:
+            semantic = candidates["semantic"]
+            if (semantic[count_field] < candidates["native"][count_field]
+                    and semantic["model_prompt_bytes"] <= max_prompt_bytes):
+                selected = "semantic"
+                reason = ("semantic_strictly_fewer_estimated_content_tokens" if measurement_status == "estimated"
+                          else "semantic_strictly_fewer_content_tokens")
+    chosen = candidates[selected]
+    if chosen["model_prompt_bytes"] > max_prompt_bytes:
+        raise ValueError("model prompt with all required instructions exceeds its byte bound")
+    if max_input_tokens is not None and chosen[count_field] > max_input_tokens:
+        raise ValueError("model prompt with all required instructions exceeds its token budget")
+    receipt = {
+        "schema": "supervisor-model-prompt-selection@2",
+        "selected_representation": selected, "selection_reason": reason,
+        "candidates": candidates, "measurement_status": measurement_status,
+        "measurement_error_type": measurement_error_type,
+        "tokenizer_binding": token_counter.binding() if token_counter is not None else None,
+        "token_count_kind": token_counter.count_kind if token_counter is not None else None,
+        "tokenizer_compatibility_basis": token_counter.compatibility_basis if token_counter is not None else None,
+        "count_scope": "rendered_user_prompt_only",
+        "selected_content_tokens": chosen["input_tokens"],
+        "selected_estimated_content_tokens": chosen.get("estimated_input_tokens"),
+        "token_budget_basis": ("estimated_content_tokens" if count_field == "estimated_input_tokens"
+                               else "local_tokenizer_content_tokens") if max_input_tokens is not None else None,
+        "token_budget_guaranteed": False,
+        "max_input_tokens": max_input_tokens, "max_prompt_bytes": max_prompt_bytes,
+        "total_session_token_savings": None, "completion_authority": False,
+    }
+    return (*rendered[selected], receipt)
+
+
+_PROMPT_ARGUMENT_UNSET = object()
+
+
+def select_model_prompt(*,
+                        native_complete_prompt=_PROMPT_ARGUMENT_UNSET,
+                        candidate_complete_prompt=_PROMPT_ARGUMENT_UNSET,
+                        native_output_schema=_PROMPT_ARGUMENT_UNSET,
+                        semantic_complete_prompt=_PROMPT_ARGUMENT_UNSET,
+                        candidate_representation=_PROMPT_ARGUMENT_UNSET,
+                        native_prompt=_PROMPT_ARGUMENT_UNSET,
+                        semantic_prompt=_PROMPT_ARGUMENT_UNSET,
+                        suffix=_PROMPT_ARGUMENT_UNSET,
+                        purpose=_PROMPT_ARGUMENT_UNSET,
+                        workspace=_PROMPT_ARGUMENT_UNSET,
+                        max_prompt_bytes=_PROMPT_ARGUMENT_UNSET,
+                        provider: str, model: str,
+                        token_counter=_PROMPT_ARGUMENT_UNSET,
+                        max_input_tokens: int | None = None):
+    """Admit exactly one of the complete-input and legacy rendered-input APIs.
+
+    Explicit None is supplied, rather than omitted. Complete-input callers keep
+    their two-value result; legacy callers retain the existing four-value result.
+    Unknown keywords are rejected by this signature, and mixed forms are refused.
+    """
+    complete_supplied = any(value is not _PROMPT_ARGUMENT_UNSET for value in (
+        native_complete_prompt, candidate_complete_prompt, native_output_schema,
+        semantic_complete_prompt, candidate_representation))
+    legacy_supplied = any(value is not _PROMPT_ARGUMENT_UNSET for value in (
+        native_prompt, semantic_prompt, suffix, purpose, workspace, max_prompt_bytes))
+    if complete_supplied and legacy_supplied:
+        raise TypeError("mixed complete and legacy prompt-selection forms")
+    if complete_supplied:
+        if any(value is _PROMPT_ARGUMENT_UNSET for value in (
+                native_complete_prompt, candidate_complete_prompt, token_counter)):
+            raise TypeError("complete prompt selection requires native, candidate and token counter")
+        return _select_complete_model_prompt(
+            native_complete_prompt=native_complete_prompt,
+            candidate_complete_prompt=candidate_complete_prompt,
+            provider=provider, model=model, token_counter=token_counter,
+            max_input_tokens=max_input_tokens,
+            native_output_schema=(None if native_output_schema is _PROMPT_ARGUMENT_UNSET
+                                  else native_output_schema),
+            semantic_complete_prompt=(None if semantic_complete_prompt is _PROMPT_ARGUMENT_UNSET
+                                      else semantic_complete_prompt),
+            candidate_representation=("semantic" if candidate_representation is _PROMPT_ARGUMENT_UNSET
+                                      else candidate_representation))
+    if not legacy_supplied or any(value is _PROMPT_ARGUMENT_UNSET for value in (
+            native_prompt, semantic_prompt, suffix, purpose, workspace)):
+        raise TypeError("legacy prompt selection requires native, semantic, suffix, purpose and workspace")
+    return _select_legacy_model_prompt(
+        native_prompt=native_prompt, semantic_prompt=semantic_prompt,
+        suffix=suffix, purpose=purpose, workspace=workspace,
+        provider=provider, model=model,
+        token_counter=None if token_counter is _PROMPT_ARGUMENT_UNSET else token_counter,
+        max_input_tokens=max_input_tokens,
+        max_prompt_bytes=(MAX_MODEL_PROMPT_BYTES if max_prompt_bytes is _PROMPT_ARGUMENT_UNSET
+                          else max_prompt_bytes))
 
 def _measure_world_packet_prompt(*, model_prompt, provider, model, token_counter,
                                  max_input_tokens, native_output_schema):
@@ -351,9 +537,10 @@ def _measure_world_packet_prompt(*, model_prompt, provider, model, token_counter
         provider=provider, model=model, token_counter=token_counter,
         max_input_tokens=max_input_tokens, native_output_schema=native_output_schema,
     )
-    return {
+    receipt = {
         "schema": "supervisor-world-task-prompt-measurement@1",
-        "measurement_kind": "declared_local_tokenizer",
+        "measurement_kind": ("declared_local_estimate" if measured["measurement_status"] == "estimated"
+                             else "declared_local_tokenizer"),
         "model_prompt_sha256": hashlib.sha256(model_prompt.encode()).hexdigest(),
         "model_prompt_bytes": len(model_prompt.encode()),
         **{name: measured[name] for name in (
@@ -367,6 +554,12 @@ def _measure_world_packet_prompt(*, model_prompt, provider, model, token_counter
         "provider_tool_schemas_measured": False,
         "provider_internal_history_measured": False,
     }
+    if measured["measurement_status"] == "estimated":
+        receipt.update({name: measured[name] for name in (
+            "token_count_kind", "tokenizer_compatibility_basis", "estimated_native_output_schema_tokens",
+            "selected_estimated_content_tokens", "selected_estimated_input_tokens",
+            "token_budget_basis", "token_budget_guaranteed")})
+    return receipt
 
 
 def _grok_progress_emitter(invocation_id: str):
@@ -647,7 +840,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         prompt_tokenizer_artifact: Path | None = None, prompt_tokenizer_sha256: str = "",
         max_input_tokens: int | None = None,
         world_task_packet: PreparedRepositoryWorldPacket | None = None,
-        world_packet_audit_directory: Path | None = None) -> tuple[str, dict]:
+        world_packet_audit_directory: Path | None = None,
+        codex_cli_literal_response: bool = False,
+        receipt_observer: Callable[[dict], None] | None = None) -> tuple[str, dict]:
     """Dispatch once; an optional owner-prepared packet replaces task context."""
     failure_phase = "runner_initialization"
     _refuse_candidate_preparation(prompt)
@@ -657,6 +852,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     from ipfs_accelerate_py.router_deps import RouterDeps
 
     failure_phase = "argument_validation"
+    if type(codex_cli_literal_response) is not bool:
+        raise ValueError("Codex literal response must be an explicit Boolean")
+    if codex_cli_literal_response and provider != "codex_cli":
+        raise ValueError("Codex literal response requires the Codex CLI provider")
+    if receipt_observer is not None and not callable(receipt_observer):
+        raise ValueError("explicit receipt observer callback required")
     if world_packet_audit_directory is not None and world_task_packet is None:
         raise ValueError("world packet audit capture requires a prepared world packet")
     if world_task_packet is not None:
@@ -791,8 +992,21 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         from .local_prompt_tokenizer import load_owner_prompt_tokenizer
         local = load_owner_prompt_tokenizer(artifact=prompt_tokenizer_artifact,
             expected_sha256=prompt_tokenizer_sha256, provider=provider, model=model)
-        prompt_token_counter = PromptTokenCounter(**local.binding(), count_tokens=local.count)
+        prompt_token_counter = PromptTokenCounter(**local.binding(), count_tokens=local.count,
+                                                 compatibility_basis="owner_declaration")
         tokenizer_source = local.provenance()
+    elif (prompt_token_counter is None and purpose == "coding"
+            and semantic_repository is None and world_task_packet is None and not census_only
+            and not source_lookup_selected
+            and all(policy == "legacy" for policy in (
+                semantic_metadata_view, semantic_working_set, tool_output_policy,
+                source_view_advisory_policy, repository_source_policy, source_input_policy,
+                query_reference_policy, coding_reply_mode))):
+        # Default calibration is confined to the ordinary coding route. Prepared
+        # world/semantic and explicitly selected source/tool routes retain their
+        # existing owner-controlled measurement and selection contracts.
+        from .automatic_prompt_tokenizer import resolve_prompt_tokenizer
+        prompt_token_counter, tokenizer_source = resolve_prompt_tokenizer(provider=provider, model=model)
     failure_phase = "planning_contract"
     response_format = None
     task_contract = None
@@ -1380,6 +1594,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     tool_output_store_identity = None
     source_view_store_identity = None
     repository_store_identity = None
+    pending_provider_error = None
     try:
         if repository_source_binding is not None:
             failure_phase = "repository_source_store"
@@ -1497,6 +1712,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 # native receipt. Cached response text cannot replay those effects.
                 side_effecting=True,
                 task_kind="coding", allocation_path="cli", allocation_session_id=invocation,
+                codex_cli_literal_response=codex_cli_literal_response,
+                **({"temperature": 0} if provider == "codex_cli" else {}),
                 **provider_options,
             )
         failure_phase = "provider_result_validation"
@@ -1548,6 +1765,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["status"] = "provider_returned"
         return output, receipt
     except BaseException as error:
+        pending_provider_error = error
         receipt.update(status="failed", error_type=type(error).__name__, failure_phase=failure_phase)
         if failure_phase == "provider_invocation":
             receipt["provider_failure"] = _provider_failure_diagnostic(error, provider=provider)
@@ -1561,103 +1779,114 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 }
         raise
     finally:
-        if repository_source_binding is not None:
-            from .repository_source_policy import finish_runtime_store
-            repository_source_binding["usage"] = finish_runtime_store(repository_source_binding,
-                expected_identity=repository_store_identity)
-        if source_view_binding is not None:
-            from .source_view_policy import finish_audit_store
-            source_view_binding["usage"] = finish_audit_store(source_view_binding, workspace=root,
-                expected_identity=source_view_store_identity)
-        if tool_output_binding is not None:
-            try:
-                from .tool_output_artifact import summarize_store
-                tool_output_binding["usage"] = summarize_store(Path(tool_output_binding["store_path"]))
-            except Exception:
-                # Worker-writable diagnostics cannot mask a provider failure
-                # or grant task/completion authority.
-                tool_output_binding["usage"] = {"status": "unavailable", "helper_operations_observed": None}
-            usage = tool_output_binding["usage"]
-            if "helper_operations_observed" not in usage:
-                usage["helper_operations_observed"] = bool(usage.get("capture_count", 0) or usage.get("read_count", 0))
-            usage["store_cleanup_complete"] = False
-            usage["artifacts_retained_after_invocation"] = None
-            if tool_output_store_identity is not None:
-                try:
-                    from .tool_output_artifact import remove_store
-                    cleanup = remove_store(Path(tool_output_binding["store_path"]),
-                        expected_identity=tool_output_store_identity)
-                    usage["store_cleanup_complete"] = cleanup["removed"] is True
-                    if cleanup["removed"] is True:
-                        usage["artifacts_retained_after_invocation"] = False
-                except Exception:
-                    usage["store_cleanup_error"] = "cleanup_unavailable"
-        observation = get_last_cli_observation(provider)
-        # Keep native categories intact; do not add cached tokens to input or
-        # infer a missing total. Provider failures remain measured attempts.
-        receipt["usage"] = {key: observation[key] for key in (
-            "prompt_tokens", "completion_tokens", "cached_tokens", "reasoning_tokens",
-            "total_cost_usd", "model_id", "session_id", "thread_id", "num_turns", "exit_code", "timed_out",
-            "codex_output_schema_sha256", "codex_output_schema_bytes",
-            "codex_repository_source_config_sha256", "codex_repository_source_configured",
-        ) if key in observation}
-        if provider == "codex_cli":
-            from .codex_usage_receipt import recover_codex_usage
-            receipt["native_rollout_usage"] = recover_codex_usage(
-                home=Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex"),
-                thread_id=str(observation.get("thread_id") or observation.get("session_id") or ""),
-                workspace=root)
-        else:
-            from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_outcome_receipt, grok_usage_receipt
-            receipt["native_rollout_usage"] = grok_usage_receipt(observation)
-            receipt["native_provider_outcome"] = grok_outcome_receipt(observation)
-            if purpose == "coding" and observation.get("native_grok_progress") is not None:
-                try:
-                    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import validate_grok_stream_progress
-                    receipt["native_grok_progress"] = validate_grok_stream_progress(observation["native_grok_progress"])
-                except Exception:
-                    receipt["native_grok_progress_error"] = "invalid_observation"
-            if receipt["native_provider_outcome"]["stop_reason"] != "unknown":
-                receipt["usage"]["stop_reason"] = receipt["native_provider_outcome"]["stop_reason"]
-        if world_packet_artifact is not None:
-            try:
-                from .repository_world_artifact_store import store_repository_world_invocation_artifact
-                receipt["world_packet_replay_artifact"] = store_repository_world_invocation_artifact(
-                    directory=world_packet_audit_directory, expected_identity=world_packet_store_identity,
-                    packet_artifact=world_packet_artifact,
-                    expected_packet_sha256=world_packet_artifact_sha256, invocation_receipt=receipt)
-            except Exception:
-                # Optional retained observation cannot mask a provider success,
-                # failure, or rate limit. Never print artifact bodies or paths.
-                receipt["world_packet_replay_capture"] = {
-                    "schema": "repository-world-invocation-capture@1", "status": "unavailable",
-                    "reason": "artifact_capture_failed", "raw_content_exported": False,
-                    "completion_authority": False,
-                }
-        receipt["seconds"] = time.monotonic() - started
         try:
-            from .context_delivery_accounting import observe_invocation
-            receipt["context_delivery_observation"] = observe_invocation(receipt)
-        except Exception:
-            # Accounting is a derived observation. It must not replace a
-            # provider failure, change its counters, or prevent publication.
-            receipt["context_delivery_observation"] = {
-                "schema": "supervisor-context-delivery-invocation@1",
-                "status": "unavailable", "reason": "observer_unavailable",
-                "observation_only": True, "completion_authority": False,
-                "provider_ingestion_verified": False,
-                "total_token_savings_measured": False,
-                "raw_content_exported": False,
-            }
+            if repository_source_binding is not None:
+                from .repository_source_policy import finish_runtime_store
+                repository_source_binding["usage"] = finish_runtime_store(repository_source_binding,
+                    expected_identity=repository_store_identity)
+            if source_view_binding is not None:
+                from .source_view_policy import finish_audit_store
+                source_view_binding["usage"] = finish_audit_store(source_view_binding, workspace=root,
+                    expected_identity=source_view_store_identity)
+            if tool_output_binding is not None:
+                try:
+                    from .tool_output_artifact import summarize_store
+                    tool_output_binding["usage"] = summarize_store(Path(tool_output_binding["store_path"]))
+                except Exception:
+                    # Worker-writable diagnostics cannot mask a provider failure
+                    # or grant task/completion authority.
+                    tool_output_binding["usage"] = {"status": "unavailable", "helper_operations_observed": None}
+                usage = tool_output_binding["usage"]
+                if "helper_operations_observed" not in usage:
+                    usage["helper_operations_observed"] = bool(usage.get("capture_count", 0) or usage.get("read_count", 0))
+                usage["store_cleanup_complete"] = False
+                usage["artifacts_retained_after_invocation"] = None
+                if tool_output_store_identity is not None:
+                    try:
+                        from .tool_output_artifact import remove_store
+                        cleanup = remove_store(Path(tool_output_binding["store_path"]),
+                            expected_identity=tool_output_store_identity)
+                        usage["store_cleanup_complete"] = cleanup["removed"] is True
+                        if cleanup["removed"] is True:
+                            usage["artifacts_retained_after_invocation"] = False
+                    except Exception:
+                        usage["store_cleanup_error"] = "cleanup_unavailable"
+            observation = get_last_cli_observation(provider)
+            # Keep native categories intact; do not add cached tokens to input or
+            # infer a missing total. Provider failures remain measured attempts.
+            receipt["usage"] = {key: observation[key] for key in (
+                "prompt_tokens", "completion_tokens", "cached_tokens", "reasoning_tokens",
+                "total_cost_usd", "model_id", "session_id", "thread_id", "num_turns", "exit_code", "timed_out",
+                "codex_output_schema_sha256", "codex_output_schema_bytes",
+                "codex_repository_source_config_sha256", "codex_repository_source_configured",
+            ) if key in observation}
+            if provider == "codex_cli":
+                from .codex_usage_receipt import recover_codex_usage
+                receipt["native_rollout_usage"] = recover_codex_usage(
+                    home=Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex"),
+                    thread_id=str(observation.get("thread_id") or observation.get("session_id") or ""),
+                    workspace=root)
+            else:
+                from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_outcome_receipt, grok_usage_receipt
+                receipt["native_rollout_usage"] = grok_usage_receipt(observation)
+                receipt["native_provider_outcome"] = grok_outcome_receipt(observation)
+                if purpose == "coding" and observation.get("native_grok_progress") is not None:
+                    try:
+                        from ipfs_accelerate_py.cli_runtime.grok_stream_capture import validate_grok_stream_progress
+                        receipt["native_grok_progress"] = validate_grok_stream_progress(observation["native_grok_progress"])
+                    except Exception:
+                        receipt["native_grok_progress_error"] = "invalid_observation"
+                if receipt["native_provider_outcome"]["stop_reason"] != "unknown":
+                    receipt["usage"]["stop_reason"] = receipt["native_provider_outcome"]["stop_reason"]
+            if world_packet_artifact is not None:
+                try:
+                    from .repository_world_artifact_store import store_repository_world_invocation_artifact
+                    receipt["world_packet_replay_artifact"] = store_repository_world_invocation_artifact(
+                        directory=world_packet_audit_directory, expected_identity=world_packet_store_identity,
+                        packet_artifact=world_packet_artifact,
+                        expected_packet_sha256=world_packet_artifact_sha256, invocation_receipt=receipt)
+                except Exception:
+                    # Optional retained observation cannot mask a provider success,
+                    # failure, or rate limit. Never print artifact bodies or paths.
+                    receipt["world_packet_replay_capture"] = {
+                        "schema": "repository-world-invocation-capture@1", "status": "unavailable",
+                        "reason": "artifact_capture_failed", "raw_content_exported": False,
+                        "completion_authority": False,
+                    }
+            receipt["seconds"] = time.monotonic() - started
+            try:
+                from .context_delivery_accounting import observe_invocation
+                receipt["context_delivery_observation"] = observe_invocation(receipt)
+            except Exception:
+                # Accounting is a derived observation. It must not replace a
+                # provider failure, change its counters, or prevent publication.
+                receipt["context_delivery_observation"] = {
+                    "schema": "supervisor-context-delivery-invocation@1",
+                    "status": "unavailable", "reason": "observer_unavailable",
+                    "observation_only": True, "completion_authority": False,
+                    "provider_ingestion_verified": False,
+                    "total_token_savings_measured": False,
+                    "raw_content_exported": False,
+                }
+        finally:
+            if previous is None:
+                os.environ.pop("ipfs_accelerate_py_CODEX_SANDBOX", None)
+            else:
+                os.environ["ipfs_accelerate_py_CODEX_SANDBOX"] = previous
+            if previous_bytecode is None:
+                os.environ.pop("PYTHONDONTWRITEBYTECODE", None)
+            else:
+                os.environ["PYTHONDONTWRITEBYTECODE"] = previous_bytecode
+        if receipt_observer is not None:
+            try:
+                receipt_observer(json.loads(json.dumps(receipt)))
+            except BaseException as observer_error:
+                receipt["receipt_observer_error_type"] = type(observer_error).__name__
+                # Diagnostic callbacks cannot replace a pending provider failure.
+                # A fresh interruption still propagates after environment cleanup.
+                if not isinstance(observer_error, Exception) and pending_provider_error is None:
+                    raise
         print(json.dumps(receipt, sort_keys=True), flush=True)
-        if previous is None:
-            os.environ.pop("ipfs_accelerate_py_CODEX_SANDBOX", None)
-        else:
-            os.environ["ipfs_accelerate_py_CODEX_SANDBOX"] = previous
-        if previous_bytecode is None:
-            os.environ.pop("PYTHONDONTWRITEBYTECODE", None)
-        else:
-            os.environ["PYTHONDONTWRITEBYTECODE"] = previous_bytecode
 
 
 def main():

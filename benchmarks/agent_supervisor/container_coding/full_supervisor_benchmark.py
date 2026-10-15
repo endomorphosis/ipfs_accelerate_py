@@ -9,13 +9,15 @@ from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
 
 import argparse
 from datetime import datetime
+from collections.abc import Mapping
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
+import tarfile
 import time
 
 from benchmarks.agent_supervisor.container_coding.native_codex_baseline import (
@@ -94,12 +96,365 @@ from .terminal_numerical_policy import (
     numerical_observation, require_numerical_archive,
 )
 
+from .container_worker_deployment import (
+    doctor_dispatch_arguments, prompt_tokenizer_arguments, semantic_context_arguments,
+    semantic_decision_arguments, validate_legacy_semantic_route,
+)
+from .semantic_decision_nomination_delivery import (
+    capture_nomination_snapshot, host_nomination_path, read_nomination_source,
+    verify_nomination_snapshot,
+)
+
 ADAPTER = "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"
 INTENT_SOURCE_PATH = ".supervisor-instruction.md"
 MAX_INTENT_CONTRACT_BYTES = 4 * 1024 * 1024
 MAX_PUBLIC_INSTRUCTION_BYTES = 32768
 MAX_TASK_PROFILE_BYTES = 65536
 MAX_SOURCE_VIEW_POLICY_BYTES = 65536
+
+
+MAX_RUNTIME_MANIFEST_BYTES = 32 * 1024 * 1024
+MAX_RUNTIME_ARCHIVE_MEMBERS = 100000
+MAX_RUNTIME_ARCHIVE_UNCOMPRESSED_BYTES = 16 * 1024 * 1024 * 1024
+MAX_TIMEOUT_RUNTIME_SOURCE_BYTES = 2 * 1024 * 1024
+TIMEOUT_RUNTIME_SOURCE_NAMES = (
+    "timeout_policy.py",
+    "terminal_container_supervisor.py",
+    "terminal_indexed_preparation.py",
+    "container_worker_deployment.py",
+)
+TIMEOUT_RUNTIME_ARCHIVE_PREFIX = "source/benchmarks/agent_supervisor/container_coding/"
+DECISION_RUNTIME_SOURCE_NAMES = (
+    "semantic_decision_worker.py", "semantic_decision_owner.py", "semantic_decision_provider.py",
+    "semantic_decision_dialogue.py", "semantic_decision_packet.py",
+    "semantic_decision_usage.py", "semantic_projection_dispatch.py",
+    "semantic_router_translation.py", "semantic_context_projection.py",
+    "router_implementation_runner.py", "automatic_prompt_tokenizer.py",
+    "local_prompt_tokenizer.py", "container_worker_boundary.py",
+    "doctor_residual_context.py", "router_public_instruction.py",
+    "cumulative_usage_reconciliation.py", "multi_supervisor_runner.py",
+    "semantic_typed_owner_policy.py", "semantic_typed_source_context.py",
+    "semantic_typed_dependency_proposal.py", "semantic_typed_nomination_lineage.py",
+    "semantic_selection_relation_audit.py", "semantic_selection_dependency_audit.py",
+)
+DECISION_RUNTIME_ARCHIVE_PREFIX = "source/ipfs_accelerate_py/agent_supervisor/runtime/"
+DECISION_BENCHMARK_SOURCE_NAMES = (
+    "terminal_doctor_dispatch.py", "terminal_context_audit.py", "terminal_context_evidence.py",
+    "semantic_decision_input_audit.py", "automatic_tokenizer_audit.py",
+    "semantic_decision_nomination_delivery.py", "full_supervisor_harbor_agent.py",
+    "terminal_deployment.py",
+)
+
+
+
+def _decision_runtime_sources(*, retrieval_query_reference: bool = False) -> dict[str, Path]:
+    """Declared worker dependencies, argv adapter and historical input observers."""
+    runtime = Path(__file__).resolve().parents[3] / "ipfs_accelerate_py/agent_supervisor/runtime"
+    sources = {DECISION_RUNTIME_ARCHIVE_PREFIX + name: runtime / name for name in DECISION_RUNTIME_SOURCE_NAMES}
+    sources.update({TIMEOUT_RUNTIME_ARCHIVE_PREFIX + name: Path(__file__).with_name(name)
+                    for name in DECISION_BENCHMARK_SOURCE_NAMES})
+    sources["source/ipfs_accelerate_py/agent_supervisor/analysis/semantic_dependency_graph.py"] = (
+        runtime.parent / "analysis/semantic_dependency_graph.py")
+    if type(retrieval_query_reference) is not bool:
+        raise ValueError("retrieval query reference must be boolean")
+    if retrieval_query_reference:
+        sources.update({DECISION_RUNTIME_ARCHIVE_PREFIX + name: runtime / name for name in (
+            "semantic_retrieval_query_reference.py", "code_retrieval_context.py", "task_context_bundle.py",
+        )})
+    return sources
+
+def _require_current_decision_runtime_pins(pins, *, native_input: bool = False,
+                                         retrieval_query_reference: bool = False) -> None:
+    route = "native input" if native_input else "decision"
+    failure = f"runtime {route} source pins differ; prepare a new immutable trial"
+    sources = _decision_runtime_sources(**({"retrieval_query_reference": True}
+        if retrieval_query_reference else {}))
+    if type(pins) is not dict or set(pins) != set(sources):
+        raise ValueError(failure)
+    for name, source in sources.items():
+        if (source.is_symlink() or not source.is_file()
+                or not 0 < source.stat().st_size <= MAX_TIMEOUT_RUNTIME_SOURCE_BYTES
+                or _hash(source) != pins[name]):
+            raise ValueError(failure)
+
+def _require_current_timeout_runtime(
+    archive: Path, manifest: dict, *, selected_sources: Mapping[str, Path] | None = None,
+) -> dict[str, str]:
+    """Bind deadline and optional selected-route sources to archive bytes.
+
+    The decision list is a bounded capability check over declared direct
+    dependencies, not a proof of the complete imported dependency closure.
+    """
+    failure = ("runtime selected decision sources differ; rebuild the runtime archive" if selected_sources is not None
+               else "runtime deadline sources differ; rebuild the runtime archive")
+    if (type(manifest) is not dict
+            or manifest.get("schema") != "terminal-supervisor-runtime-archive@1"
+            or type(manifest.get("files")) is not list
+            or len(manifest["files"]) > MAX_RUNTIME_ARCHIVE_MEMBERS):
+        raise ValueError(failure)
+    expected = {}
+    for name in TIMEOUT_RUNTIME_SOURCE_NAMES:
+        source = Path(__file__).with_name(name)
+        size = source.stat().st_size
+        if not 0 < size <= MAX_TIMEOUT_RUNTIME_SOURCE_BYTES:
+            raise ValueError(failure)
+        expected[TIMEOUT_RUNTIME_ARCHIVE_PREFIX + name] = (size, _hash(source))
+    if selected_sources is not None:
+        maximum_selected_sources = len(_decision_runtime_sources(retrieval_query_reference=True))
+        if not isinstance(selected_sources, Mapping) or not 1 <= len(selected_sources) <= maximum_selected_sources:
+            raise ValueError(failure)
+        for name, source in selected_sources.items():
+            if type(name) is not str:
+                raise ValueError(failure)
+            path = PurePosixPath(name)
+            if (not name.startswith("source/") or path.is_absolute() or ".." in path.parts
+                    or path.as_posix() != name or name in expected):
+                raise ValueError(failure)
+            source = Path(source)
+            if source.is_symlink() or not source.is_file():
+                raise ValueError(failure)
+            size = source.stat().st_size
+            if not 0 < size <= MAX_TIMEOUT_RUNTIME_SOURCE_BYTES:
+                raise ValueError(failure)
+            expected[name] = (size, _hash(source))
+    required_rows = {}
+    for row in manifest["files"]:
+        if type(row) is not dict:
+            raise ValueError(failure)
+        name = row.get("path")
+        if type(name) is not str:
+            raise ValueError(failure)
+        if name in expected:
+            if name in required_rows:
+                raise ValueError(failure)
+            size, digest = expected[name]
+            if (type(row.get("bytes")) is not int or row["bytes"] != size
+                    or row.get("sha256") != digest):
+                raise ValueError(failure)
+            required_rows[name] = row
+    if required_rows.keys() != expected.keys():
+        raise ValueError(failure)
+    observed = set()
+    count = total_size = 0
+    try:
+        with tarfile.open(archive / "runtime.tar.gz", mode="r|gz") as bundle:
+            for member in bundle:
+                count += 1
+                total_size += member.size
+                path = PurePosixPath(member.name)
+                if (count > MAX_RUNTIME_ARCHIVE_MEMBERS
+                        or total_size > MAX_RUNTIME_ARCHIVE_UNCOMPRESSED_BYTES
+                        or member.size < 0 or not member.isfile()
+                        or path.is_absolute() or ".." in path.parts
+                        or member.name != path.as_posix()):
+                    raise ValueError(failure)
+                if member.name not in expected:
+                    continue
+                size, digest = expected[member.name]
+                if member.name in observed or member.size != size:
+                    raise ValueError(failure)
+                stream = bundle.extractfile(member)
+                if stream is None:
+                    raise ValueError(failure)
+                with stream:
+                    raw = stream.read(size + 1)
+                if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
+                    raise ValueError(failure)
+                observed.add(member.name)
+    except (OSError, tarfile.TarError, EOFError) as error:
+        raise ValueError(failure) from error
+    if observed != expected.keys():
+        raise ValueError(failure)
+    return {name: digest for name, (_, digest) in expected.items()}
+
+def _prompt_options(arm: str, *,
+                    prompt_tokenizer_artifact: str | Path | None = None,
+                    prompt_tokenizer_sha256: str | None = None,
+                    max_input_tokens: int | None = None,
+                    semantic_slot_policy_revision: str = "legacy@1",
+                    semantic_context_projection: bool = False,
+                    semantic_native_input: bool = False,
+                    semantic_decision_policy_artifact: str | Path | None = None,
+                    semantic_decision_policy_sha256: str | None = None,
+                    semantic_decision_nomination_artifact: str | Path | None = None,
+                    semantic_decision_nomination_source: str | Path | None = None,
+                    semantic_decision_nomination_sha256: str | None = None,
+                    disable_semantic_typed_nomination: bool = False,
+                    semantic_retrieval_query_reference: bool = False,
+                    semantic_decision_max_calls: int = 3,
+                    semantic_decision_max_total_input_tokens: int | None = None) -> dict:
+    """Validate requested options without reading or staging assets."""
+    if arm not in {"full", "no-index"}:
+        raise ValueError("unknown supervisor ablation")
+    if type(semantic_native_input) is not bool:
+        raise ValueError("native input control must be boolean")
+    if type(semantic_retrieval_query_reference) is not bool:
+        raise ValueError("retrieval query reference must be boolean")
+    prompt_tokenizer_arguments(prompt_tokenizer_artifact=prompt_tokenizer_artifact,
+                              prompt_tokenizer_sha256=prompt_tokenizer_sha256,
+                              max_input_tokens=max_input_tokens)
+    semantic_arguments = semantic_context_arguments(
+        semantic_slot_policy_revision=semantic_slot_policy_revision,
+        semantic_context_projection=semantic_context_projection,
+        **({"semantic_native_input": semantic_native_input} if semantic_native_input is not False else {}))
+    if semantic_arguments and arm != "full":
+        raise ValueError("semantic context options require the full indexed arm")
+    nomination_artifact = semantic_decision_nomination_artifact
+    if semantic_decision_nomination_source is not None:
+        if (semantic_decision_nomination_artifact is not None
+                or semantic_decision_policy_artifact is not None
+                or semantic_decision_policy_sha256 is not None):
+            raise ValueError("host nomination source cannot combine with child-local decision artifacts")
+        nomination_artifact = host_nomination_path(semantic_decision_nomination_source)
+    decision_arguments = semantic_decision_arguments(
+        semantic_decision_policy_artifact=semantic_decision_policy_artifact,
+        semantic_decision_policy_sha256=semantic_decision_policy_sha256,
+        semantic_decision_nomination_artifact=nomination_artifact,
+        semantic_decision_nomination_sha256=semantic_decision_nomination_sha256,
+        disable_semantic_typed_nomination=disable_semantic_typed_nomination,
+        **({"semantic_retrieval_query_reference": semantic_retrieval_query_reference}
+           if semantic_retrieval_query_reference is not False else {}),
+        semantic_decision_max_calls=semantic_decision_max_calls,
+        semantic_decision_max_total_input_tokens=semantic_decision_max_total_input_tokens)
+    if decision_arguments and arm != "full":
+        raise ValueError("semantic decision options require the full indexed arm")
+    if decision_arguments and semantic_arguments:
+        raise ValueError("semantic decision options cannot combine with semantic context alternatives")
+    options = {
+        "prompt_tokenizer_artifact": (
+            str(prompt_tokenizer_artifact) if prompt_tokenizer_artifact is not None else None
+        ),
+        "prompt_tokenizer_sha256": prompt_tokenizer_sha256,
+        "max_input_tokens": max_input_tokens,
+        "semantic_slot_policy_revision": semantic_slot_policy_revision,
+        "semantic_context_projection": semantic_context_projection,
+    }
+    if semantic_native_input:
+        options["semantic_native_input"] = True
+    if decision_arguments:
+        options.update(
+            semantic_decision_max_calls=semantic_decision_max_calls,
+            semantic_decision_max_total_input_tokens=semantic_decision_max_total_input_tokens)
+        if semantic_decision_nomination_source is not None:
+            options.update(
+                semantic_decision_nomination_source=str(nomination_artifact),
+                semantic_decision_nomination_sha256=semantic_decision_nomination_sha256)
+        elif semantic_decision_nomination_artifact is not None:
+            options.update(
+                semantic_decision_nomination_artifact=str(semantic_decision_nomination_artifact),
+                semantic_decision_nomination_sha256=semantic_decision_nomination_sha256)
+        else:
+            options.update(
+                semantic_decision_policy_artifact=str(semantic_decision_policy_artifact),
+                semantic_decision_policy_sha256=semantic_decision_policy_sha256)
+    if nomination_artifact is not None:
+        options["disable_semantic_typed_nomination"] = disable_semantic_typed_nomination
+    if semantic_retrieval_query_reference:
+        options["semantic_retrieval_query_reference"] = True
+    return options
+
+def _prompt_option_observation(prepared: dict, agent_kwargs: dict | None) -> dict:
+    """Report requested configuration independently of actual router selection."""
+    legacy_keys = (
+        "prompt_tokenizer_artifact", "prompt_tokenizer_sha256", "max_input_tokens",
+        "semantic_slot_policy_revision", "semantic_context_projection",
+    )
+    native_keys = (*legacy_keys, "semantic_native_input")
+    budget_keys = ("semantic_decision_max_calls", "semantic_decision_max_total_input_tokens")
+    policy_keys = (*legacy_keys, *budget_keys, "semantic_decision_policy_artifact", "semantic_decision_policy_sha256")
+    nomination_keys = (*legacy_keys, *budget_keys, "semantic_decision_nomination_artifact", "semantic_decision_nomination_sha256")
+    source_keys = (*legacy_keys, *budget_keys, "semantic_decision_nomination_source", "semantic_decision_nomination_sha256")
+    typed_nomination_keys = (*nomination_keys, "disable_semantic_typed_nomination")
+    typed_source_keys = (*source_keys, "disable_semantic_typed_nomination")
+    retrieval_nomination_keys = (*typed_nomination_keys, "semantic_retrieval_query_reference")
+    retrieval_source_keys = (*typed_source_keys, "semantic_retrieval_query_reference")
+    keys = (*policy_keys, "semantic_native_input", "semantic_decision_nomination_artifact",
+            "semantic_decision_nomination_source", "semantic_decision_nomination_sha256",
+            "disable_semantic_typed_nomination", "semantic_retrieval_query_reference")
+    pinned = "prompt_comparison_options" in prepared
+    if type(agent_kwargs) is not dict:
+        return {
+            "prompt_comparison_options": None,
+            "prompt_comparison_options_valid": None if agent_kwargs is None else False,
+            "prompt_comparison_basis": "unavailable_configuration",
+            "prompt_comparison_config_unchanged": None if agent_kwargs is None else False,
+        }
+    try:
+        configured = _prompt_options(prepared["arm"], **{
+            key: agent_kwargs[key] for key in keys if key in agent_kwargs
+        })
+        renderer_options = {key: agent_kwargs[key] for key in (
+            'semantic_transport_schema',
+            'semantic_metadata_view',
+            'semantic_working_set',
+            'source_view_profile',
+            'source_edit_mode',
+            'source_view_policy',
+            'coding_reply_mode',
+            'tool_output_policy',
+            'source_view_advisory_policy',
+            'repository_source_policy',
+            'source_input_policy',
+            'query_reference_policy',
+            'semantic_context_profile',
+            'capsule_selection',
+            'capsule_budget',
+            'metadata_census_only',
+        ) if key in agent_kwargs}
+        renderer_options["provider"] = resolve_provider_profile(agent_kwargs.get("provider_profile"))["provider"]
+        validate_legacy_semantic_route(policyoptions=configured, rendereroptions=renderer_options)
+        expected = prepared.get("prompt_comparison_options")
+        matches = None
+        if pinned:
+            matches = False
+            if type(expected) is dict and set(expected) in (
+                    set(legacy_keys), set(native_keys), set(policy_keys), set(nomination_keys),
+                    set(source_keys), set(typed_nomination_keys), set(typed_source_keys),
+                    set(retrieval_nomination_keys), set(retrieval_source_keys)):
+                # Older option records retain their closed key sets; the
+                # current API supplies its documented false opt-out default.
+                canonical_expected = _prompt_options(prepared["arm"], **expected)
+                matches = canonical_expected == configured
+        valid = True
+    except (TypeError, ValueError):
+        configured, matches, valid = None, False, False
+    return {
+        "prompt_comparison_options": configured,
+        "prompt_comparison_options_valid": valid,
+        "prompt_comparison_basis": (
+            "preparation" if pinned else "retained_configuration_without_preparation_pin"
+        ),
+        "prompt_comparison_config_unchanged": matches,
+        **({"semantic_native_input_requested": True}
+           if configured is not None and configured.get("semantic_native_input") is True else {}),
+        **({"semantic_retrieval_query_reference_requested": True}
+           if configured is not None and configured.get("semantic_retrieval_query_reference") is True else {}),
+    }
+
+def _doctor_policy_observation(prepared: dict, agent_kwargs: dict | None) -> dict:
+    """Observe requested dispatch policy, independently of the executed route."""
+    if type(agent_kwargs) is not dict:
+        return {
+            "doctor_dispatch_policy": None,
+            "doctor_dispatch_policy_valid": None if agent_kwargs is None else False,
+            "doctor_dispatch_policy_config_unchanged": None if agent_kwargs is None else False,
+        }
+    policy = agent_kwargs.get("doctor_dispatch_policy", "auto")
+    try:
+        doctor_dispatch_arguments(arm=prepared["arm"], doctor_dispatch_policy=policy)
+        matches = None
+        if "doctor_dispatch_policy" in prepared:
+            expected = prepared["doctor_dispatch_policy"]
+            doctor_dispatch_arguments(arm=prepared["arm"], doctor_dispatch_policy=expected)
+            matches = expected == policy
+        valid = True
+    except (TypeError, ValueError):
+        policy, matches, valid = None, False, False
+    return {
+        "doctor_dispatch_policy": policy,
+        "doctor_dispatch_policy_valid": valid,
+        "doctor_dispatch_policy_config_unchanged": matches,
+    }
 
 
 def _load_source_view_policy(path: Path | None) -> dict | None:
@@ -293,7 +648,57 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
                numerical_formalization_profile: str | None = None,
                planning_mode: str = DEFAULT_PLANNING_MODE,
+               prompt_tokenizer_artifact: str | Path | None = None,
+               prompt_tokenizer_sha256: str | None = None,
+               max_input_tokens: int | None = None,
+               semantic_slot_policy_revision: str = "legacy@1",
+               semantic_context_projection: bool = False,
+               semantic_native_input: bool = False,
+               semantic_decision_policy_artifact: str | Path | None = None,
+               semantic_decision_policy_sha256: str | None = None,
+               semantic_decision_nomination_artifact: str | Path | None = None,
+               semantic_decision_nomination_source: str | Path | None = None,
+               semantic_decision_nomination_sha256: str | None = None,
+               disable_semantic_typed_nomination: bool = False,
+               semantic_retrieval_query_reference: bool = False,
+               semantic_decision_max_calls: int = 3,
+               semantic_decision_max_total_input_tokens: int | None = None,
+               doctor_dispatch_policy: str = "auto",
                model_revision: str = "") -> dict:
+    doctor_arguments = doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
+    options = _prompt_options(arm, prompt_tokenizer_artifact=prompt_tokenizer_artifact,
+        prompt_tokenizer_sha256=prompt_tokenizer_sha256, max_input_tokens=max_input_tokens,
+        semantic_slot_policy_revision=semantic_slot_policy_revision,
+        semantic_context_projection=semantic_context_projection,
+        semantic_native_input=semantic_native_input,
+        semantic_decision_policy_artifact=semantic_decision_policy_artifact,
+        semantic_decision_policy_sha256=semantic_decision_policy_sha256,
+        semantic_decision_nomination_artifact=semantic_decision_nomination_artifact,
+        semantic_decision_nomination_source=semantic_decision_nomination_source,
+        semantic_decision_nomination_sha256=semantic_decision_nomination_sha256,
+        disable_semantic_typed_nomination=disable_semantic_typed_nomination,
+        **({"semantic_retrieval_query_reference": semantic_retrieval_query_reference}
+           if semantic_retrieval_query_reference is not False else {}),
+        semantic_decision_max_calls=semantic_decision_max_calls,
+        semantic_decision_max_total_input_tokens=semantic_decision_max_total_input_tokens)
+    validate_legacy_semantic_route(policyoptions=options, rendereroptions={
+        "semantic_transport_schema": semantic_transport_schema,
+        "semantic_metadata_view": semantic_metadata_view,
+        "semantic_working_set": semantic_working_set,
+        "source_view_profile": source_view_profile,
+        "source_edit_mode": source_edit_mode,
+        "source_view_policy": source_view_policy,
+        "coding_reply_mode": coding_reply_mode,
+        "tool_output_policy": tool_output_policy,
+        "source_view_advisory_policy": source_view_advisory_policy,
+        "repository_source_policy": repository_source_policy,
+        "source_input_policy": source_input_policy,
+        "query_reference_policy": query_reference_policy,
+        "semantic_context_profile": semantic_context_profile,
+        "capsule_selection": capsule_selection,
+        "capsule_budget": capsule_budget,
+        "provider": resolve_provider_profile(provider_profile)["provider"],
+    })
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract,
         task_profile=task_profile)
     validate_semantic_context_profile(semantic_context_profile, arm=arm)
@@ -373,6 +778,12 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
         from .terminal_setup_cache_advice import _selection_shape
         _selection_shape(setup_cache_selection)
         config["agents"][0]["kwargs"]["setup_cache_selection"] = json.loads(json.dumps(setup_cache_selection))
+    defaults = _prompt_options(arm)
+    config["agents"][0]["kwargs"].update({
+        key: value for key, value in options.items() if key not in defaults or value != defaults[key]
+    })
+    if doctor_arguments:
+        config["agents"][0]["kwargs"]["doctor_dispatch_policy"] = doctor_dispatch_policy
     return config
 
 
@@ -418,7 +829,60 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
             semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
             numerical_formalization_profile: str | None = None,
+            prompt_tokenizer_artifact: str | Path | None = None,
+            prompt_tokenizer_sha256: str | None = None,
+            max_input_tokens: int | None = None,
+            semantic_slot_policy_revision: str = "legacy@1",
+            semantic_context_projection: bool = False,
+            semantic_native_input: bool = False,
+            semantic_decision_policy_artifact: str | Path | None = None,
+            semantic_decision_policy_sha256: str | None = None,
+            semantic_decision_nomination_artifact: str | Path | None = None,
+            semantic_decision_nomination_source: str | Path | None = None,
+            semantic_decision_nomination_sha256: str | None = None,
+            disable_semantic_typed_nomination: bool = False,
+            semantic_retrieval_query_reference: bool = False,
+            semantic_decision_max_calls: int = 3,
+            semantic_decision_max_total_input_tokens: int | None = None,
+            doctor_dispatch_policy: str = "auto",
             planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
+    doctor_arguments = doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
+    options = _prompt_options(arm, prompt_tokenizer_artifact=prompt_tokenizer_artifact,
+        prompt_tokenizer_sha256=prompt_tokenizer_sha256, max_input_tokens=max_input_tokens,
+        semantic_slot_policy_revision=semantic_slot_policy_revision,
+        semantic_context_projection=semantic_context_projection,
+        semantic_native_input=semantic_native_input,
+        semantic_decision_policy_artifact=semantic_decision_policy_artifact,
+        semantic_decision_policy_sha256=semantic_decision_policy_sha256,
+        semantic_decision_nomination_artifact=semantic_decision_nomination_artifact,
+        semantic_decision_nomination_source=semantic_decision_nomination_source,
+        semantic_decision_nomination_sha256=semantic_decision_nomination_sha256,
+        disable_semantic_typed_nomination=disable_semantic_typed_nomination,
+        **({"semantic_retrieval_query_reference": semantic_retrieval_query_reference}
+           if semantic_retrieval_query_reference is not False else {}),
+        semantic_decision_max_calls=semantic_decision_max_calls,
+        semantic_decision_max_total_input_tokens=semantic_decision_max_total_input_tokens)
+    validate_legacy_semantic_route(policyoptions=options, rendereroptions={
+        "semantic_transport_schema": semantic_transport_schema,
+        "semantic_metadata_view": semantic_metadata_view,
+        "semantic_working_set": semantic_working_set,
+        "source_view_profile": source_view_profile,
+        "source_edit_mode": source_edit_mode,
+        "source_view_policy": source_view_policy,
+        "coding_reply_mode": coding_reply_mode,
+        "tool_output_policy": tool_output_policy,
+        "source_view_advisory_policy": source_view_advisory_policy,
+        "repository_source_policy": repository_source_policy,
+        "source_input_policy": source_input_policy,
+        "query_reference_policy": query_reference_policy,
+        "semantic_context_profile": semantic_context_profile,
+        "capsule_selection": capsule_selection,
+        "capsule_budget": capsule_budget,
+        "provider": resolve_provider_profile(provider_profile)["provider"],
+    })
+    if semantic_decision_nomination_source is not None:
+        read_nomination_source(source=semantic_decision_nomination_source,
+                               expected_sha256=semantic_decision_nomination_sha256)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract)
     validate_semantic_context_profile(semantic_context_profile, arm=arm)
     validate_numerical_profile(numerical_formalization_profile)
@@ -461,9 +925,25 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     output = output.absolute()
     if output.exists() or output.resolve() != output:
         raise ValueError("fresh trial output required")
-    manifest = json.loads((archive / "manifest.json").read_text())
+    with (archive / "manifest.json").open("rb") as stream:
+        manifest_bytes = stream.read(MAX_RUNTIME_MANIFEST_BYTES + 1)
+    if len(manifest_bytes) > MAX_RUNTIME_MANIFEST_BYTES:
+        raise ValueError("runtime manifest exceeds its bound; rebuild the runtime archive")
+    manifest = json.loads(manifest_bytes)
     if _hash(archive / "runtime.tar.gz") != manifest["archive_sha256"]:
         raise ValueError("runtime archive integrity failed")
+    selected_sources = (_decision_runtime_sources(**({"retrieval_query_reference": True}
+                         if semantic_retrieval_query_reference else {}))
+                        if semantic_native_input or any(key in options for key in ("semantic_decision_policy_artifact", "semantic_decision_nomination_artifact", "semantic_decision_nomination_source"))
+                        else None)
+    if selected_sources is None:
+        runtime_timeout_sources = _require_current_timeout_runtime(archive, manifest)
+        runtime_decision_sources = None
+    else:
+        verified_sources = _require_current_timeout_runtime(archive, manifest, selected_sources=selected_sources)
+        runtime_timeout_sources = {name: digest for name, digest in verified_sources.items()
+                                   if name not in selected_sources}
+        runtime_decision_sources = {name: verified_sources[name] for name in selected_sources}
     model_revision = selected_retrieval_revision(manifest, arm)
     from .terminal_worker_capability import require_worker_capability
     require_worker_capability(manifest, resource_profile)
@@ -529,7 +1009,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     requirements = _load_intent_requirement_contract(intent_requirement_contract, dataset=dataset, task_name=task_name)
     validate_header_planning_selection(selected_source384, requirements, arm)
     declared_config = config_for(dataset, output, archive, arm,
-        model_revision=model_revision,
+        model_revision=model_revision, doctor_dispatch_policy=doctor_dispatch_policy, **options,
         intent_requirement_contract=requirements, resource_profile=resource_profile,
         setup_cache_selection=setup_cache_selection, task_name=task_name, task_profile=selected_task_profile,
         semantic_transport_schema=semantic_transport_schema,
@@ -555,21 +1035,40 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         validate_resource_profile(declared_config, resource_profile)
     config = JobConfig.model_validate(declared_config, extra="forbid")
     output.mkdir(parents=True)
+    nomination_snapshot = None
+    if semantic_decision_nomination_source is not None:
+        nomination_snapshot = capture_nomination_snapshot(
+            source=semantic_decision_nomination_source,
+            expected_sha256=semantic_decision_nomination_sha256, directory=output)
+        options["semantic_decision_nomination_source"] = nomination_snapshot["artifact"]
+        declared_config["agents"][0]["kwargs"]["semantic_decision_nomination_source"] = nomination_snapshot["artifact"]
+        config = JobConfig.model_validate(declared_config, extra="forbid")
     wire = benchmark_controls.canonicalize_serialized_retry_sets(
         config.model_dump(mode="json", context={"redact_sensitive_env": False}))
     _json(output / "config.json", wire)
     harbor = Path(sys.executable).with_name("harbor")
     command = [str(harbor), "run", "--config", str(output / "config.json"), "--yes"]
+    if nomination_snapshot is not None:
+        verify_nomination_snapshot(nomination_snapshot, directory=output)
     dry = subprocess.run([*command, "--dry-run"], capture_output=True, text=True, timeout=60)
     (output / "dry-run.stdout").write_text(dry.stdout)
     (output / "dry-run.stderr").write_text(dry.stderr)
     if _task_hashes(task) != task_hashes:
         raise ValueError("original task changed during supervisor preflight")
     sources = {str(path): _hash(path) for path in Path(__file__).parent.glob("*.py")}
+    if any(sources.get(str(Path(__file__).with_name(name))) != runtime_timeout_sources[
+            TIMEOUT_RUNTIME_ARCHIVE_PREFIX + name] for name in TIMEOUT_RUNTIME_SOURCE_NAMES):
+        raise ValueError("runtime deadline sources changed during preflight; rebuild the runtime archive")
+    if runtime_decision_sources is not None:
+        _require_current_decision_runtime_pins(runtime_decision_sources, native_input=semantic_native_input,
+            **({"retrieval_query_reference": True} if semantic_retrieval_query_reference else {}))
     result = {"schema": "terminal-full-supervisor-preparation@1", "prepared": dry.returncode == 0,
               "arm": arm, "task": task_name, "dataset": str(dataset), "archive": str(archive),
               "archive_sha256": manifest["archive_sha256"], "manifest_sha256": _hash(archive / "manifest.json"),
               "host_source_sha256": sources,
+              "runtime_timeout_source_sha256": runtime_timeout_sources,
+              "prompt_comparison_options": options,
+              "doctor_dispatch_policy": doctor_dispatch_policy,
               "task_input_sha256": task_hashes, "config_sha256": _hash(output / "config.json"),
               "comparison_controls": benchmark_controls.build_controls(
                   json.loads((output / "config.json").read_text()),
@@ -604,6 +1103,15 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
                   "numerical_selection_enabled": arm == "full"} if selected_numerical is not None else {}),
               "resource_profile": resource_profile,
               **({"setup_cache_selection": setup_cache_selection} if setup_cache_selection is not None else {})}
+    if runtime_decision_sources is not None:
+        pin_field = "runtime_native_input_source_sha256" if semantic_native_input else "runtime_decision_source_sha256"
+        result[pin_field] = runtime_decision_sources
+    if semantic_native_input:
+        result["semantic_native_input_requested"] = True
+    if semantic_retrieval_query_reference:
+        result["semantic_retrieval_query_reference_requested"] = True
+    if nomination_snapshot is not None:
+        result["semantic_decision_nomination_snapshot"] = nomination_snapshot
     _json(output / "preparation.json", result)
     if dry.returncode:
         raise RuntimeError("Harbor preflight failed; see retained logs")
@@ -736,6 +1244,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     profile = prepared_provider_identity(prepared, config)
+    prompt_observation = _prompt_option_observation(prepared, config["agents"][0].get("kwargs"))
+    doctor_observation = _doctor_policy_observation(prepared, config["agents"][0].get("kwargs"))
     planning_mode = validate_planning_mode(prepared.get("planning_mode", DEFAULT_PLANNING_MODE),
         intent_requirement_contract=config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"),
         task_profile=config["agents"][0].get("kwargs", {}).get("task_profile"))
@@ -865,6 +1375,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
             durations[field] = (datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() if start and end else None
         trials.append({"trial": path.parent.name, "native_result_sha256": _hash(path),
                        "task": native.get("task_name"), "exact_trial_task_matches": _trial_task_matches(native, task),
+                       **_prompt_option_observation(prepared, ((native.get("config") or {}).get("agent") or {}).get("kwargs")),
+                       **_doctor_policy_observation(prepared, ((native.get("config") or {}).get("agent") or {}).get("kwargs")),
                        "reward": (native.get("verifier_result") or {}).get("rewards"),
                        "exception_type": (native.get("exception_info") or {}).get("exception_type"),
                        "durations_seconds": durations, "agent_context": native.get("agent_result"),
@@ -919,6 +1431,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                 for report in reported_working_sets)
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
               "task": task.name, **profile,
+              **prompt_observation, **doctor_observation,
               **({"provider_profile": prepared["provider_profile"]} if "provider_profile" in prepared else {}),
               **semantic_transport_selection(transport),
               **coding_reply_selection(reply_mode),
@@ -986,6 +1499,10 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   prepared, config, current_task_hashes=_task_hashes(task)),
               "trials": trials, "trial_count": len(trials), "native_job_result_present": (job / "result.json").is_file(),
               "complete_single_trial_receipt": unchanged and len(trials) == 1
+                  and prompt_observation["prompt_comparison_options_valid"] is True
+                  and prompt_observation["prompt_comparison_config_unchanged"] is not False
+                  and doctor_observation["doctor_dispatch_policy_valid"] is True
+                  and doctor_observation["doctor_dispatch_policy_config_unchanged"] is not False
                   and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file()
                   and configured_transport == transport and configured_reply_mode == reply_mode
                   and configured_numerical == numerical_profile and configured_planning == planning_mode
@@ -1041,6 +1558,36 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
                           task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
         raise ValueError("prepared configuration changed")
+    agent = config["agents"][0]
+    prompt_observation = _prompt_option_observation(prepared, agent.get("kwargs"))
+    if (prompt_observation["prompt_comparison_options_valid"] is not True
+            or prompt_observation["prompt_comparison_config_unchanged"] is False
+            or ("prompt_comparison_options" in prepared
+                and prompt_observation["prompt_comparison_config_unchanged"] is not True)):
+        raise ValueError("prepared supervisor prompt options differ from its configuration")
+    decision_selected = any(key in prompt_observation["prompt_comparison_options"]
+                            for key in ("semantic_decision_policy_artifact", "semantic_decision_nomination_artifact", "semantic_decision_nomination_source"))
+    native_selected = prompt_observation["prompt_comparison_options"].get("semantic_native_input") is True
+    retrieval_selected = prompt_observation["prompt_comparison_options"].get("semantic_retrieval_query_reference") is True
+    selected_pin_field = "runtime_native_input_source_sha256" if native_selected else "runtime_decision_source_sha256"
+    nomination_source = prompt_observation["prompt_comparison_options"].get("semantic_decision_nomination_source")
+    if nomination_source is not None:
+        snapshot = prepared.get("semantic_decision_nomination_snapshot")
+        if (type(snapshot) is not dict or snapshot.get("artifact") != nomination_source
+                or snapshot.get("sha256") != prompt_observation["prompt_comparison_options"]["semantic_decision_nomination_sha256"]):
+            raise ValueError("prepared host nomination snapshot differs from its configuration")
+        verify_nomination_snapshot(snapshot, directory=output.absolute())
+    elif "semantic_decision_nomination_snapshot" in prepared:
+        raise ValueError("prepared host nomination snapshot requires its host source configuration")
+    if decision_selected or native_selected:
+        _require_current_decision_runtime_pins(prepared.get(selected_pin_field), native_input=native_selected,
+            **({"retrieval_query_reference": True} if retrieval_selected else {}))
+    doctor_observation = _doctor_policy_observation(prepared, agent.get("kwargs"))
+    if (doctor_observation["doctor_dispatch_policy_valid"] is not True
+            or doctor_observation["doctor_dispatch_policy_config_unchanged"] is False
+            or ("doctor_dispatch_policy" in prepared
+                and doctor_observation["doctor_dispatch_policy_config_unchanged"] is not True)):
+        raise ValueError("prepared supervisor Doctor policy differs from its configuration")
     planning_mode = validate_planning_mode(prepared.get("planning_mode", DEFAULT_PLANNING_MODE),
         intent_requirement_contract=config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"),
         task_profile=config["agents"][0].get("kwargs", {}).get("task_profile"))
@@ -1190,6 +1737,16 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     if _hash(Path(prepared["archive"]) / "manifest.json") != prepared["manifest_sha256"]:
         raise ValueError("runtime dependency manifest changed")
     current_manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
+    if decision_selected or native_selected:
+        # Selected capabilities are replayed even for externally retained
+        # preparation records; an internally consistent archive is insufficient.
+        manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
+        verified = _require_current_timeout_runtime(
+            Path(prepared["archive"]), manifest, selected_sources=_decision_runtime_sources(
+                **({"retrieval_query_reference": True} if retrieval_selected else {})))
+        if any(verified[name] != digest for name, digest in prepared[selected_pin_field].items()):
+            route = "native input" if native_selected else "decision"
+            raise ValueError(f"runtime {route} source pins differ from the packaged worker")
     require_coding_reply_archive(current_manifest, reply_mode)
     require_tool_output_archive(current_manifest, tool_output)
     require_source_view_advisory_archive(current_manifest, source_view_advisory)
@@ -1369,7 +1926,58 @@ def main():
     parser.add_argument("--intent-requirement-contract", type=Path,
         help="Use source-bound @1 provider coverage or @2 reviewed symbolic operations before admission")
     parser.add_argument("--grok-coding-max-turns", type=int, default=DEFAULT_GROK_CODING_MAX_TURNS)
+    parser.add_argument("--semantic-slot-policy-revision", default="legacy@1",
+        choices=("legacy@1", "closed-typed-identifiers@2"),
+        help="Request existing full-arm semantic coding alternatives")
+    parser.add_argument("--semantic-native-input", action="store_true",
+                        help="Full indexed control preserving native input without semantic encoding or projection")
+    parser.add_argument("--semantic-context-projection", action="store_true",
+        help="Request the existing V2 semantic role-view comparison")
+    parser.add_argument("--semantic-decision-policy-artifact",
+        help="Already deployed absolute child-local decision policy; preparation does not stage it")
+    parser.add_argument("--semantic-decision-policy-sha256",
+        help="Exact lowercase SHA-256 of the task-specific decision policy")
+    parser.add_argument("--semantic-decision-nomination-artifact",
+        help="Already deployed child-local capsule nomination; task identity is derived by the owner")
+    parser.add_argument("--semantic-decision-nomination-source",
+        help="Absolute host nomination file to snapshot and deliver to the child owner")
+    parser.add_argument("--semantic-decision-nomination-sha256",
+        help="Exact lowercase SHA-256 of the nomination; mutually exclusive with a prebound policy")
+    parser.add_argument("--disable-semantic-typed-nomination", action="store_true",
+                        help="opt out of source-bound typed dependency selection for an owner nomination")
+    parser.add_argument("--semantic-retrieval-query-reference", action="store_true",
+        help="Reference an exact repeated retrieval query using an owner nomination with typed selection disabled")
+    parser.add_argument("--semantic-decision-max-calls", type=int, default=3,
+        help="Maximum dialogue calls (1 to 4); nondefault values require a policy or nomination")
+    parser.add_argument("--semantic-decision-max-total-input-tokens", type=int,
+        help="Optional sum of rendered input replay counts; estimates cannot guarantee provider usage")
+    parser.add_argument("--prompt-tokenizer-artifact",
+        help="Absolute container-local tokenizer descriptor; not staged by preparation")
+    parser.add_argument("--prompt-tokenizer-sha256",
+        help="Exact lowercase SHA-256 of the supplied tokenizer descriptor")
+    parser.add_argument("--max-input-tokens", type=int,
+        help="Complete user-prompt budget; automatic estimates cannot guarantee provider limits")
+    parser.add_argument("--doctor-dispatch-policy", default="auto", choices=("auto", "model-only"),
+        help="Full-arm ablation: ordinary model coding without Doctor candidate selection")
     args = parser.parse_args()
+    selected_prompt = _prompt_options(args.arm,
+        prompt_tokenizer_artifact=args.prompt_tokenizer_artifact,
+        prompt_tokenizer_sha256=args.prompt_tokenizer_sha256, max_input_tokens=args.max_input_tokens,
+        semantic_slot_policy_revision=args.semantic_slot_policy_revision,
+        semantic_context_projection=args.semantic_context_projection,
+        semantic_native_input=args.semantic_native_input,
+        semantic_decision_policy_artifact=args.semantic_decision_policy_artifact,
+        semantic_decision_policy_sha256=args.semantic_decision_policy_sha256,
+        semantic_decision_nomination_artifact=args.semantic_decision_nomination_artifact,
+        semantic_decision_nomination_source=args.semantic_decision_nomination_source,
+        semantic_decision_nomination_sha256=args.semantic_decision_nomination_sha256,
+        disable_semantic_typed_nomination=args.disable_semantic_typed_nomination,
+        **({"semantic_retrieval_query_reference": True} if args.semantic_retrieval_query_reference else {}),
+        semantic_decision_max_calls=args.semantic_decision_max_calls,
+        semantic_decision_max_total_input_tokens=args.semantic_decision_max_total_input_tokens)
+    if args.operation != "prepare" and (selected_prompt != _prompt_options(args.arm)
+            or args.doctor_dispatch_policy != "auto"):
+        parser.error("prompt and decision options are frozen by preparation; collect/execute cannot select them")
     if args.operation != "prepare" and args.grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS:
         parser.error("Grok coding turn bound is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.planning_mode != DEFAULT_PLANNING_MODE:
@@ -1412,6 +2020,7 @@ def main():
         if args.dataset is None or args.archive is None:
             parser.error("prepare requires --dataset and --archive")
         result = prepare(dataset=args.dataset, output=args.output, archive=args.archive, arm=args.arm,
+                         doctor_dispatch_policy=args.doctor_dispatch_policy, **selected_prompt,
                          intent_requirement_contract=args.intent_requirement_contract,
                          intent_action_384_config=args.intent_action_384_config,
                          source384_config=args.source384_config, resource_profile=args.resource_profile,

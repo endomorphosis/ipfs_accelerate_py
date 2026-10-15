@@ -100,8 +100,41 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {'arm', 'capsule_budget', 'capsule_selection', 'coding_reply_mode', 'grok_coding_max_turns', 'intent_requirement_contract', 'model_revision', 'numerical_formalization_profile', 'planning_mode', 'provider_profile', 'query_reference_policy', 'repository_source_policy', 'resource_profile', 'runtime_archive', 'semantic_context_profile', 'semantic_metadata_view', 'semantic_transport_schema', 'semantic_working_set', 'setup_cache_selection', 'source_edit_mode', 'source_input_policy', 'source_view_advisory_policy', 'source_view_policy', 'source_view_profile', 'task_profile', 'tool_output_policy'}:
+        if set(kwargs) - {'arm', 'capsule_budget', 'capsule_selection', 'coding_reply_mode', 'grok_coding_max_turns', 'intent_requirement_contract', 'model_revision', 'numerical_formalization_profile', 'planning_mode', 'provider_profile', 'query_reference_policy', 'repository_source_policy', 'resource_profile', 'runtime_archive', 'semantic_context_profile', 'semantic_metadata_view', 'semantic_transport_schema', 'semantic_working_set', 'setup_cache_selection', 'source_edit_mode', 'source_input_policy', 'source_view_advisory_policy', 'source_view_policy', 'source_view_profile', 'task_profile', 'tool_output_policy', 'prompt_tokenizer_artifact', 'prompt_tokenizer_sha256', 'max_input_tokens', 'semantic_slot_policy_revision', 'semantic_context_projection', 'semantic_native_input', 'semantic_decision_policy_artifact', 'semantic_decision_policy_sha256', 'semantic_decision_nomination_artifact', 'semantic_decision_nomination_source', 'semantic_decision_nomination_sha256', 'disable_semantic_typed_nomination', 'semantic_retrieval_query_reference', 'semantic_decision_max_calls', 'semantic_decision_max_total_input_tokens', 'doctor_dispatch_policy'}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
+        # Validate additive legacy/typed routes against their native closed
+        # contracts; the full serialized configuration commits their values.
+        from .full_supervisor_benchmark import _prompt_options
+        from .container_worker_deployment import doctor_dispatch_arguments, validate_legacy_semantic_route
+        prompt_options = _prompt_options(kwargs.get("arm"), **{key: kwargs[key] for key in (
+            "prompt_tokenizer_artifact", "prompt_tokenizer_sha256", "max_input_tokens",
+            "semantic_slot_policy_revision", "semantic_context_projection", "semantic_native_input",
+            "semantic_decision_policy_artifact", "semantic_decision_policy_sha256",
+            "semantic_decision_nomination_artifact", "semantic_decision_nomination_source",
+            "semantic_decision_nomination_sha256", "disable_semantic_typed_nomination",
+            "semantic_retrieval_query_reference", "semantic_decision_max_calls",
+            "semantic_decision_max_total_input_tokens") if key in kwargs})
+        renderer_options = {key: kwargs[key] for key in (
+            'semantic_transport_schema',
+            'semantic_metadata_view',
+            'semantic_working_set',
+            'source_view_profile',
+            'source_edit_mode',
+            'source_view_policy',
+            'coding_reply_mode',
+            'tool_output_policy',
+            'source_view_advisory_policy',
+            'repository_source_policy',
+            'source_input_policy',
+            'query_reference_policy',
+            'semantic_context_profile',
+            'capsule_selection',
+            'capsule_budget',
+            "metadata_census_only") if key in kwargs}
+        renderer_options["provider"] = selected["provider"]
+        validate_legacy_semantic_route(policyoptions=prompt_options, rendereroptions=renderer_options)
+        doctor_dispatch_arguments(arm=kwargs.get("arm"),
+            doctor_dispatch_policy=kwargs.get("doctor_dispatch_policy", "auto"))
         from .terminal_source_view_policy import validate_source_context_combination
         validate_source_context_combination(**{key: kwargs[key] for key in (
             "source_view_profile", "source_view_advisory_policy", "repository_source_policy",

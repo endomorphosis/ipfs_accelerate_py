@@ -10,7 +10,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import re
 import shutil
 import stat
 import subprocess
@@ -25,6 +26,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
 from ipfs_accelerate_py.agent_supervisor.validation.deterministic_doctor_policy import DeterministicDoctorPolicy
 from .terminal_symbolic_capabilities import assess_terminal_symbolic_capabilities
+
+
+from .container_worker_deployment import (
+    prompt_tokenizer_arguments, semantic_context_arguments, semantic_decision_arguments,
+    validate_legacy_semantic_route,
+)
 
 
 def _installed_provers() -> tuple[Path, Path]:
@@ -248,8 +255,106 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                         repository_source_policy: str = "legacy",
                         source_input_policy: str = "legacy", query_reference_policy: str = "legacy",
                         semantic_working_set: str = "legacy",
-                        grok_coding_max_turns: int = 128, provider: str = "codex_cli") -> list[str]:
+                        grok_coding_max_turns: int = 128, provider: str = "codex_cli",
+                        prompt_tokenizer_artifact: str | Path | None = None,
+                        prompt_tokenizer_sha256: str | None = None,
+                        max_input_tokens: int | None = None,
+                        semantic_slot_policy_revision: str = "legacy@1",
+                        semantic_context_projection: bool = False,
+                        semantic_native_input: bool = False,
+                        semantic_decision_policy_artifact: str | Path | None = None,
+                        semantic_decision_policy_sha256: str | None = None,
+                        semantic_decision_nomination_artifact: str | Path | None = None,
+                        semantic_decision_nomination_sha256: str | None = None,
+                        disable_semantic_typed_nomination: bool = False,
+                        semantic_retrieval_query_reference: bool = False,
+                        semantic_decision_context_bundle_artifact: str | Path | None = None,
+                        semantic_decision_context_bundle_sha256: str | None = None,
+                        semantic_decision_task_cid: str | None = None,
+                        semantic_decision_task_id: str | None = None,
+                        semantic_decision_max_calls: int = 3,
+                        semantic_decision_max_total_input_tokens: int | None = None) -> list[str]:
     """Closed choice that the admitted launch signs before any worker starts."""
+    if type(semantic_retrieval_query_reference) is not bool:
+        raise ValueError("retrieval query reference must be boolean")
+    retrieval_values = (semantic_decision_context_bundle_artifact,
+                        semantic_decision_context_bundle_sha256, semantic_decision_task_cid)
+    retrieval_arguments = []
+    if semantic_retrieval_query_reference:
+        if any(value is None for value in retrieval_values):
+            raise ValueError("retrieval query reference requires the independently admitted context bundle and task CID")
+        artifact = str(semantic_decision_context_bundle_artifact)
+        relative = PurePosixPath(artifact)
+        if (not isinstance(semantic_decision_context_bundle_artifact, str | Path)
+                or not artifact or artifact != artifact.strip() or len(artifact.encode()) > 4096
+                or relative.is_absolute() or str(relative) != artifact or artifact in {".", ".."}
+                or ".." in relative.parts or any(char in artifact for char in ("\x00", "\n", "\r", "\\", ":"))):
+            raise ValueError("canonical repository-relative signed context bundle required")
+        if (type(semantic_decision_context_bundle_sha256) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", semantic_decision_context_bundle_sha256) is None):
+            raise ValueError("exact signed context bundle SHA256 required")
+        if (type(semantic_decision_task_cid) is not str or not semantic_decision_task_cid
+                or semantic_decision_task_cid != semantic_decision_task_cid.strip()
+                or len(semantic_decision_task_cid.encode()) > 512
+                or any(char in semantic_decision_task_cid for char in ("\x00", "\n", "\r"))):
+            raise ValueError("bounded independently admitted task CID required")
+        retrieval_arguments = ["--semantic-decision-context-bundle-artifact", artifact,
+            "--semantic-decision-context-bundle-sha256", semantic_decision_context_bundle_sha256,
+            "--semantic-decision-task-cid", semantic_decision_task_cid]
+    elif any(value is not None for value in retrieval_values):
+        raise ValueError("signed retrieval context inputs require the explicit query reference opt-in")
+    token_arguments = prompt_tokenizer_arguments(
+        prompt_tokenizer_artifact=prompt_tokenizer_artifact,
+        prompt_tokenizer_sha256=prompt_tokenizer_sha256, max_input_tokens=max_input_tokens)
+    semantic_arguments = semantic_context_arguments(
+        semantic_slot_policy_revision=semantic_slot_policy_revision,
+        semantic_context_projection=semantic_context_projection,
+        **({"semantic_native_input": semantic_native_input} if semantic_native_input is not False else {}))
+    decision_arguments = semantic_decision_arguments(
+        semantic_decision_policy_artifact=semantic_decision_policy_artifact,
+        semantic_decision_policy_sha256=semantic_decision_policy_sha256,
+        semantic_decision_nomination_artifact=semantic_decision_nomination_artifact,
+        semantic_decision_nomination_sha256=semantic_decision_nomination_sha256,
+        disable_semantic_typed_nomination=disable_semantic_typed_nomination,
+        **({"semantic_retrieval_query_reference": semantic_retrieval_query_reference}
+           if semantic_retrieval_query_reference is not False else {}),
+        owner_binding=semantic_decision_nomination_artifact is not None,
+        semantic_decision_max_calls=semantic_decision_max_calls,
+        semantic_decision_max_total_input_tokens=semantic_decision_max_total_input_tokens)
+    if decision_arguments and (semantic_arguments or semantic_repository is None
+            or (doctor is not None and doctor.get("route") != "model_router")):
+        raise ValueError("semantic decision policy requires exclusive bound model coding")
+    nomination = semantic_decision_nomination_artifact is not None
+    if nomination:
+        if (type(semantic_decision_task_id) is not str or not semantic_decision_task_id
+                or semantic_decision_task_id != semantic_decision_task_id.strip()
+                or "\x00" in semantic_decision_task_id
+                or len(semantic_decision_task_id.encode()) > 512):
+            raise ValueError("owner nomination requires the independently admitted task key")
+        decision_arguments += ["--semantic-decision-task-id", semantic_decision_task_id, *retrieval_arguments]
+    elif semantic_decision_task_id is not None:
+        raise ValueError("semantic decision task key requires an owner nomination")
+    if semantic_arguments and (semantic_repository is None
+                               or (doctor is not None and doctor.get("route") != "model_router")):
+        raise ValueError("semantic context options require bound model coding")
+    if token_arguments and doctor is not None and doctor.get("route") != "model_router":
+        raise ValueError("prompt tokenizer and token budget require router invocation")
+    validate_legacy_semantic_route(
+        policyoptions={"semantic_slot_policy_revision": semantic_slot_policy_revision,
+            "semantic_context_projection": semantic_context_projection,
+            "semantic_native_input": semantic_native_input,
+            "semantic_decision_policy_artifact": semantic_decision_policy_artifact,
+            "semantic_decision_policy_sha256": semantic_decision_policy_sha256,
+            "semantic_decision_nomination_artifact": semantic_decision_nomination_artifact,
+            "semantic_decision_nomination_sha256": semantic_decision_nomination_sha256,
+            "semantic_retrieval_query_reference": semantic_retrieval_query_reference},
+        rendereroptions={"semantic_transport_schema": semantic_transport_schema,
+            "semantic_metadata_view": semantic_metadata_view, "semantic_working_set": semantic_working_set,
+            "source_view_profile": source_view_profile, "source_edit_mode": source_edit_mode,
+            "source_view_policy": source_view_policy, "coding_reply_mode": coding_reply_mode,
+            "tool_output_policy": tool_output_policy, "source_view_advisory_policy": source_view_advisory_policy,
+            "repository_source_policy": repository_source_policy, "source_input_policy": source_input_policy,
+            "query_reference_policy": query_reference_policy, "provider": provider})
     from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import validate_grok_coding_max_turns
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider)
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
@@ -352,4 +457,5 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
             *(["--doctor-residual-artifact", doctor["residual_context"]["artifact"],
                "--doctor-residual-sha256", doctor["residual_context"]["sha256"],
                "--doctor-residual-task-cid", doctor["residual_context"]["task_cid"]]
-              if doctor is not None and doctor.get("residual_context") is not None else [])]
+              if doctor is not None and doctor.get("residual_context") is not None else []),
+            *token_arguments, *semantic_arguments, *decision_arguments]

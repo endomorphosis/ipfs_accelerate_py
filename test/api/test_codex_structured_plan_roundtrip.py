@@ -69,13 +69,13 @@ def test_native_schema_custody_keeps_independent_plan_admission(tmp_path, monkey
     monkeypatch.setattr(duckdb_store, "_DEFAULT_STORE", duckdb_store.AllocationStore(tmp_path / "allocation.duckdb"))
 
     if case == "task_title":
-        with pytest.raises(ValueError, match="planning response"):
+        with pytest.raises(llm_router.LLMRouterError, match="structured response failed validation"):
             runner.run(prompt=prompt, provider="codex_cli", model="pinned", timeout=20,
                        max_output_tokens=4096, purpose="planning")
         rows = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith('{')]
         receipt = next(row for row in rows if row.get("schema") == "router-implementation-invocation@1")
         assert receipt["status"] == "failed"
-        assert receipt["failure_phase"] == "provider_result_validation"
+        assert receipt["failure_phase"] == "provider_invocation"
         assert receipt["usage"]["prompt_tokens"] == 15
         assert receipt["usage"]["completion_tokens"] == 4
     else:

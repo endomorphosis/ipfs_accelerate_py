@@ -6556,6 +6556,9 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
         def generate(
             self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
         ) -> str:
+            literal_response = kwargs.pop("codex_cli_literal_response", False)
+            if type(literal_response) is not bool:
+                raise ValueError("Codex literal response must be an explicit Boolean")
             model = (model_name or _codex_default_model()).strip()
             sandbox = (os.getenv("ipfs_accelerate_py_CODEX_SANDBOX", "auto") or "auto").strip()
             skip_git_repo_check = (
@@ -6619,6 +6622,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
             last_msg_path = None
             schema_path = None
             structured_file_invalid_utf8 = False
+            final_message_error = None
             try:
                 with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as last_msg:
                     last_msg_path = last_msg.name
@@ -6667,12 +6671,17 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                     raise
                 try:
                     with open(last_msg_path, "r", encoding="utf-8",
-                              errors="strict" if schema_requested else "replace") as handle:
-                        text_out = handle.read().strip()
-                except UnicodeError:
+                              errors="strict" if schema_requested or literal_response else "replace",
+                              newline="" if literal_response else None) as handle:
+                        text_out = handle.read()
+                        if not literal_response:
+                            text_out = text_out.strip()
+                except UnicodeError as error:
+                    final_message_error = error
                     structured_file_invalid_utf8 = schema_requested
                     text_out = ""
-                except Exception:
+                except Exception as error:
+                    final_message_error = error
                     text_out = ""
             finally:
                 for temporary in (last_msg_path, schema_path):
@@ -6703,7 +6712,9 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
 
             if proc.returncode == 0 or (text_out and not schema_requested):
                 selected = text_out
-                if json_mode and proc.stdout:
+                if literal_response and final_message_error is not None and not schema_requested:
+                    raise LLMRouterError("Codex literal final response unavailable") from final_message_error
+                if not literal_response and json_mode and proc.stdout:
                     extracted = _extract_last_agent_message_from_codex_jsonl(proc.stdout)
                     if extracted:
                         selected = extracted
@@ -6717,7 +6728,8 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         MAX_RESPONSE_BYTES, _bounded_json, _loads,
                     )
 
-                    selected = selected.strip()
+                    if not literal_response:
+                        selected = selected.strip()
                     try:
                         if structured_file_invalid_utf8:
                             raise ValueError("structured response is not valid UTF-8")
@@ -6730,6 +6742,8 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         raise LLMRouterError(
                             "Codex CLI structured response failed validation"
                         ) from None
+                    return selected
+                if literal_response:
                     return selected
                 return _clean_codex_output(selected)
 
@@ -13198,6 +13212,7 @@ def generate_text(
     usage_batch_items: int = 1,
     allocation_session_id: Optional[str] = None,
     allocation_path: Optional[str] = None,
+    codex_cli_literal_response: bool = False,
     **kwargs: object,
 ) -> str:
     """Generate text from an LLM.
@@ -13216,8 +13231,13 @@ def generate_text(
     ``allocation_session_id`` / ``allocation_path`` select the DuckDB CLI vs
     API routing path and accumulate per-session cost, tokens, tokens/sec, and
     latency. They are not forwarded to the provider.
+
+    ``codex_cli_literal_response`` preserves the Codex final-message file
+    exactly for structured decisions. Ordinary Codex prose cleanup is default.
     """
 
+    if type(codex_cli_literal_response) is not bool:
+        raise ValueError("Codex literal response must be an explicit Boolean")
     started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
     call_kwargs = dict(kwargs)
@@ -13292,6 +13312,10 @@ def generate_text(
         except Exception:
             logger.debug("efficient model routing skipped", exc_info=True)
     effective_provider_name = _effective_llm_provider_name(provider)
+    if codex_cli_literal_response:
+        if effective_provider_name != "codex_cli":
+            raise ValueError("Codex literal response requires the Codex CLI provider")
+        kwargs["codex_cli_literal_response"] = True
     cross_provider_fallback_allowed = (
         True
         if allow_cross_provider_fallback is None

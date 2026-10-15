@@ -76,7 +76,7 @@ def test_fresh_merged_builder_contains_all_three_reviewed_owner_chains(packaged)
     assert reviewed["terminal_task_profile_schema"] == "terminal-public-task-profile@4"
     assert reviewed["terminal_semantic_scope_schema"] == "terminal-public-task-semantic-scope@1"
     assert reviewed["worker_child_custody_schema"] == "terminal-worker-child-custody@1"
-    assert len(reviewed["source_sha256"]) == 47
+    assert len(reviewed["source_sha256"]) == 61
     assert "source/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_request_observation.py" in reviewed["source_sha256"]
     assert len(edits.SOURCE_PATHS) == 22 and len(planning.SOURCE_PATHS) == 13
     edits.require_source_edit_archive(manifest, edits.REPEATED_SOURCE_EDIT_MODE)
