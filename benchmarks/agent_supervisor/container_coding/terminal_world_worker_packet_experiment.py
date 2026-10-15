@@ -28,6 +28,11 @@ MAX_TEXT_BYTES = 512 * 1024
 MAX_COUNTER = (1 << 63) - 1
 TOKENIZER_RANKS_SHA256 = "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"
 CASE_COUNTS = (1, 4, 8)
+PRESENTATION_PROFILE = "lossless_model_view@1"
+PRESENTATION_SCHEMA = "terminal-world-packet-presentation-comparison@1"
+PRESENTATION_SOURCE_PATHS = ("ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet_presentation.py",)
+PRESENTATION_CENSUS_FIELDS = frozenset({"shared_fact_count", "shared_reference_count", "json_data_string_count",
+    "original_business_bytes", "presented_business_bytes", "host_custody_field_count", "host_custody_bytes"})
 WORKER_ENTRY = Path("/usr/local/libexec/ipfs-world-packet-delivery-worker")
 WORKER_ARGV = ("/usr/bin/sudo", "-n", "-u", "benchmarkworker", "-g", "supervisor", "--", str(WORKER_ENTRY))
 WORKER_PEER_ARGV = ("/opt/ipfs-supervisor/venv/bin/python", "-I", str(WORKER_ENTRY))
@@ -103,10 +108,12 @@ def report_sha256(report):
     return _sha(_wire(report))
 
 
-def _pins():
+def _pins(*, presentation_profile=None):
+    _need(presentation_profile is None or presentation_profile == PRESENTATION_PROFILE,
+        "unsupported_presentation_profile")
     root = Path(__file__).resolve().parents[3]
     files = {}
-    for name in SOURCE_PATHS:
+    for name in SOURCE_PATHS + (PRESENTATION_SOURCE_PATHS if presentation_profile is not None else ()):
         path = root / name
         _need(path.resolve(strict=True) == path, "source_pin_alias")
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -172,6 +179,10 @@ def _comparison(baseline, candidate, common_trace, counter):
         common_authored_protocol_text=_measurement(common_trace, counter),
         baseline_authored_trace=_measurement(baseline + common_trace, counter),
         candidate_authored_trace=_measurement(candidate + common_trace, counter))
+    return _comparison_record(measured)
+
+
+def _comparison_record(measured):
     old, new = measured["baseline_initial"], measured["candidate_initial"]
     disposition = ("token_count_unavailable" if old["local_o200k_tokens"] is None else
         "compiled_smaller" if new["bytes"] < old["bytes"] and new["local_o200k_tokens"] < old["local_o200k_tokens"]
@@ -181,6 +192,86 @@ def _comparison(baseline, candidate, common_trace, counter):
         trace_scope="one_authored_initial_prompt_plus_same_discovery_guidance_and_helper_receipts_once",
         source_bytes_already_in_initial_prompt=True, ipc_frames_added_to_model_tokens=False,
         protocol_displayed_to_model=None, complete_native_total_tokens=None, billed_tokens=None)
+
+
+def _strictly_smaller(candidate, reference):
+    if candidate["local_o200k_tokens"] is None or reference["local_o200k_tokens"] is None:
+        return None
+    return candidate["bytes"] < reference["bytes"] and candidate["local_o200k_tokens"] < reference["local_o200k_tokens"]
+
+
+def _presentation_initial(*, baseline, original, proposed, codec_mode, counter):
+    _need(codec_mode in {PRESENTATION_PROFILE, "original_fallback"}, "presentation_codec_mode_invalid")
+    metrics = {name: _measurement(text, counter) for name, text in (
+        ("raw_baseline_initial", baseline), ("original_compiled_initial", original),
+        ("proposed_presentation_initial", proposed))}
+    new = metrics["proposed_presentation_initial"]
+    smaller_original = _strictly_smaller(new, metrics["original_compiled_initial"])
+    smaller_baseline = _strictly_smaller(new, metrics["raw_baseline_initial"])
+    reason = ("unsupported_codec" if codec_mode == "original_fallback" else
+        "tokenizer_unavailable" if smaller_original is None else
+        "not_smaller_than_original" if not smaller_original else
+        "not_smaller_than_raw_baseline" if not smaller_baseline else "strictly_smaller_initial_inputs")
+    selected = reason == "strictly_smaller_initial_inputs"
+    return dict(metrics=metrics, selected_mode="presented_view" if selected else "original_packet",
+        reason=reason, efficiency_qualified=selected)
+
+
+def _presentation_finish(*, initial, baseline, original, proposed, common_trace, counter,
+        codec_mode, codec_receipt_sha256, codec_census, sidecar_bytes, inverse_original, native_prompt, proposed_prompt, delivered_prompt):
+    """Actual common trace is known only after delivery; never relabel it."""
+    metrics = dict(initial["metrics"])
+    metrics["common_authored_protocol_text"] = _measurement(common_trace, counter)
+    for key, text in (("raw_baseline_authored_trace", baseline), ("original_compiled_authored_trace", original),
+            ("proposed_presentation_authored_trace", proposed)):
+        metrics[key] = _measurement(text + common_trace, counter)
+    smaller_original = _strictly_smaller(metrics["proposed_presentation_authored_trace"], metrics["original_compiled_authored_trace"])
+    smaller_baseline = _strictly_smaller(metrics["proposed_presentation_authored_trace"], metrics["raw_baseline_authored_trace"])
+    post_smaller = None if smaller_original is None else smaller_original and smaller_baseline
+    post_qualified = None if post_smaller is None else initial["efficiency_qualified"] and post_smaller
+    post_reason = ("tokenizer_unavailable" if post_smaller is None else
+        "original_packet_selected" if not initial["efficiency_qualified"] else
+        "strictly_smaller_full_authored_traces" if post_smaller else "full_authored_traces_not_smaller")
+    pins = lambda text: dict(sha256=_sha(text.encode()), bytes=len(text.encode()))
+    _need(inverse_original == native_prompt, "presentation_inverse_original_differs")
+    result = dict(schema=PRESENTATION_SCHEMA, profile=PRESENTATION_PROFILE, codec_mode=codec_mode,
+        codec_receipt_sha256=codec_receipt_sha256, original_packet=pins(native_prompt),
+        proposed_view=pins(proposed_prompt),
+        codec_census=dict(counts=codec_census, scope="codec_structural_counts_not_per_field_token_attribution"),
+        sidecar=dict(sha256=_sha(sidecar_bytes), bytes=len(sidecar_bytes), count_scope="host_retained_sidecar_excluded_from_model_tokens"),
+        inverse=dict(**pins(inverse_original), exact_original_recovered=True),
+        prelaunch=dict(selected_mode=initial["selected_mode"], reason=initial["reason"],
+            efficiency_qualified=initial["efficiency_qualified"], scope="full_rendered_initial_bytes_and_local_tokens_vs_both_comparators"),
+        renderings=metrics, delivered_prompt=pins(delivered_prompt),
+        post_delivery=dict(proposed_full_traces_smaller=post_smaller, efficiency_qualified=post_qualified,
+            reason=post_reason, scope="three_authored_initial_inputs_plus_same_actual_protocol_text_after_delivery"),
+        actual_provider_input_observed=False, default_adoption_authority=False, provider_usage_verified=False,
+        whole_session_savings_established=False, source_bytes_already_in_initial_inputs=True,
+        sidecar_added_to_model_tokens=False, protocol_displayed_to_model=None)
+    chosen = "proposed_presentation" if initial["selected_mode"] == "presented_view" else "original_compiled"
+    comparison = _comparison_record(dict(baseline_initial=metrics["raw_baseline_initial"],
+        candidate_initial=metrics[chosen + "_initial"], common_authored_protocol_text=metrics["common_authored_protocol_text"],
+        baseline_authored_trace=metrics["raw_baseline_authored_trace"], candidate_authored_trace=metrics[chosen + "_authored_trace"]))
+    if initial["selected_mode"] == "presented_view":
+        comparison["service_delivery_mode"] = "presented_packet_view"
+    return result, comparison
+
+
+def _presentation_sidecar_limit():
+    from ipfs_accelerate_py.agent_supervisor.runtime.repository_world_packet_presentation import MAX_SIDECAR_BYTES
+    _need(type(MAX_SIDECAR_BYTES) is int and MAX_SIDECAR_BYTES > 0, "presentation_sidecar_limit_invalid")
+    return MAX_SIDECAR_BYTES
+
+
+def _representation_population(cases):
+    measured = [row["cycle"]["measurement"]["presentation"] for row in cases if row["cycle"] is not None]
+    return dict(declared_cases=len(CASE_COUNTS), completed_measurement_cases=len(measured),
+        presented_deliveries=sum(item["prelaunch"]["selected_mode"] == "presented_view" for item in measured),
+        original_fallbacks=sum(item["prelaunch"]["selected_mode"] == "original_packet" for item in measured),
+        post_delivery_efficiency_qualified_cases=sum(item["post_delivery"]["efficiency_qualified"] is True for item in measured),
+        post_delivery_negative_cases=sum(item["post_delivery"]["efficiency_qualified"] is False for item in measured),
+        unavailable_efficiency_cases=sum(item["post_delivery"]["efficiency_qualified"] is None for item in measured),
+        unmeasured_cases=len(CASE_COUNTS) - len(measured))
 
 
 def _source(count):
@@ -197,7 +288,9 @@ def _fetch(process):
     return value, raw
 
 
-def _cycle(fixture, count, counter):
+def _cycle(fixture, count, counter, *, presentation_profile=None):
+    _need(presentation_profile is None or presentation_profile == PRESENTATION_PROFILE,
+        "unsupported_presentation_profile")
     import pytest
     from ipfs_accelerate_py.agent_supervisor.context.context_compiler import ContextCompiler, EvidenceValuePolicy
     from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget, ContextReference, ContextTier
@@ -282,9 +375,6 @@ def _cycle(fixture, count, counter):
                         unresolved_obligations=("No native validation commands are declared; no source semantic or provider completion has been verified.",),
                         validation_commands=(), validation_profile="read_only_observation@1", proof_obligations=(),
                         allowed_effects=core["allowed_effects"], write_paths=core["write_paths"], max_bytes=262144)
-                    binding = capture_repository_world_compiled_packet_binding(projection=projection, handoff=handoff, packet=packet)
-                    binding_metadata, packet_text = binding.delivery_material(handoff=handoff, original_prompt=task_text)
-                    checks["original_compiled_binding_current"] = packet_text == packet.prompt
                     capsule_record = json.loads(context_json_bytes(compiled.capsule.provider_input_payload))
                     header = {key: value for key, value in capsule_record.items() if key not in {"evidence", "expansion_references"}}
                     baseline = READONLY_GUIDANCE + "\n" + _wire(dict(schema="authored-raw-inline-comparison@1", native_task_projection=public,
@@ -296,6 +386,46 @@ def _cycle(fixture, count, counter):
                     checks["same_source_and_required_facts_in_both_arms"] = all(
                         ref.summary.encode() == visible[ref.reference_id].summary.encode() for ref in required)
                     baseline_rendered, baseline_advisory = render_model_prompt(prompt=baseline, purpose="coding", workspace=native.workspace, world_packet=True)
+                    prepared_presentation = chosen_presentation = presentation_initial = None
+                    if presentation_profile is not None:
+                        from ipfs_accelerate_py.agent_supervisor.runtime.repository_world_packet_presentation import (
+                            PreparedRepositoryWorldPacketPresentation, prepare_repository_world_packet_presentation,
+                            replay_repository_world_packet_presentation)
+                        prepared_presentation = prepare_repository_world_packet_presentation(packet.prompt)
+                        _need(type(prepared_presentation) is PreparedRepositoryWorldPacketPresentation, "presentation_original_owner_required")
+                        PreparedRepositoryWorldPacketPresentation.validate_original(prepared_presentation, packet.prompt)
+                        presentation_receipt = PreparedRepositoryWorldPacketPresentation.receipt(prepared_presentation)
+                        proposed_prompt = prepared_presentation.prompt
+                        sidecar_bytes = prepared_presentation.sidecar_bytes
+                        _need(type(sidecar_bytes) is bytes and len(sidecar_bytes) <= _presentation_sidecar_limit(), "presentation_sidecar_bound")
+                        inverse_original = replay_repository_world_packet_presentation(view_prompt=proposed_prompt,
+                            sidecar_bytes=sidecar_bytes, expected_sidecar_sha256=_sha(sidecar_bytes),
+                            expected_original_sha256=_sha(packet.prompt.encode()))
+                        _need(inverse_original == packet.prompt, "presentation_inverse_original_differs")
+                        original_rendered, original_advisory = render_model_prompt(prompt=packet.prompt, purpose="coding", workspace=native.workspace, world_packet=True)
+                        proposed_rendered, proposed_advisory = render_model_prompt(prompt=proposed_prompt, purpose="coding", workspace=native.workspace, world_packet=True)
+                        _need(original_advisory == proposed_advisory == baseline_advisory, "comparison_advisory_differs")
+                        presentation_initial = _presentation_initial(baseline=baseline_rendered, original=original_rendered,
+                            proposed=proposed_rendered, codec_mode=presentation_receipt["model_view_mode"], counter=counter)
+                        if presentation_initial["selected_mode"] == "presented_view":
+                            chosen_presentation = prepared_presentation
+                    if chosen_presentation is None:
+                        binding = capture_repository_world_compiled_packet_binding(projection=projection, handoff=handoff, packet=packet)
+                    else:
+                        binding = capture_repository_world_compiled_packet_binding(projection=projection, handoff=handoff,
+                            packet=packet, presentation=chosen_presentation)
+                    binding_metadata, packet_text = binding.delivery_material(handoff=handoff, original_prompt=task_text)
+                    if chosen_presentation is None:
+                        checks["original_compiled_binding_current"] = packet_text == packet.prompt
+                    else:
+                        checks["original_compiled_binding_current"] = (packet_text == proposed_prompt
+                            and binding_metadata["native_prompt_sha256"] == _sha(packet.prompt.encode())
+                            and binding_metadata["native_prompt_bytes"] == len(packet.prompt.encode())
+                            and binding_metadata["presentation_sidecar_sha256"] == _sha(sidecar_bytes)
+                            and binding_metadata["presentation_sidecar_bytes"] == len(sidecar_bytes)
+                            and binding_metadata["presentation_receipt_sha256"] == _sha(_wire(presentation_receipt))
+                            and binding_metadata["presentation_model_view_mode"] == PRESENTATION_PROFILE
+                            and binding_metadata["presentation_codec_supported"] is True)
                     candidate_rendered, candidate_advisory = render_model_prompt(prompt=packet_text, purpose="coding", workspace=native.workspace, world_packet=True)
                     _need(baseline_advisory == candidate_advisory, "comparison_advisory_differs")
                     observer = RepositoryWorldWorkerObserver(handoff=handoff, prompt=task_text,
@@ -344,7 +474,16 @@ def _cycle(fixture, count, counter):
                         and stopped["sent_packet_bytes"] == len(packet_text.encode())
                         and stopped["sent_response_wire_bytes"] == stopped["sent_response_bytes"] + 12)
                     common = GUIDANCE + initial.decode() + "get_packet\n" + positive_raw.decode() + "get_packet\n" + negative_raw.decode()
-                    comparison = _comparison(baseline_rendered, candidate_rendered, common, counter)
+                    if presentation_profile is None:
+                        comparison = _comparison(baseline_rendered, candidate_rendered, common, counter)
+                    else:
+                        presentation_observation, comparison = _presentation_finish(initial=presentation_initial,
+                            baseline=baseline_rendered, original=original_rendered, proposed=proposed_rendered,
+                            common_trace=common, counter=counter, codec_mode=presentation_receipt["model_view_mode"],
+                            codec_receipt_sha256=_sha(_wire(presentation_receipt)),
+                            codec_census={key: presentation_receipt[key] for key in PRESENTATION_CENSUS_FIELDS}, sidecar_bytes=sidecar_bytes,
+                            inverse_original=inverse_original, native_prompt=packet.prompt, proposed_prompt=proposed_prompt,
+                            delivered_prompt=packet_text)
                     measurement = dict(source_sha256=_sha(source), selected_source_files=1,
                         selected_source_bytes=len(source), authored_function_count=count,
                         required_reference_count=len(required), structural_reference_count=sum(ref.reference_id.startswith("repository-symbol:") for ref in selected),
@@ -360,6 +499,8 @@ def _cycle(fixture, count, counter):
                             helper_stdout_bytes=len(positive_raw) + len(negative_raw), packet_body_counted_once=True,
                             byte_scope="actual_service_canonical_response_frames_and_exact_helper_transcript"),
                         comparison=comparison)
+                    if presentation_profile is not None:
+                        measurement["presentation"] = presentation_observation
                 handoff.close(); handoff = None
             finally:
                 if process is not None and process.poll() is None:
@@ -381,11 +522,13 @@ def _failure(error):
         reason_code=text if re.fullmatch(r"[a-z][a-z0-9_]{0,95}", text) else "unspecified_failure")
 
 
-def run_experiment(*, scratch_root: Path, tokenizer_cache: Path | None = None):
+def run_experiment(*, scratch_root: Path, tokenizer_cache: Path | None = None, presentation_profile=None):
+    _need(presentation_profile is None or type(presentation_profile) is str and presentation_profile == PRESENTATION_PROFILE,
+        "unsupported_presentation_profile")
     _need(_LOCK.acquire(blocking=False), "worker_packet_experiment_already_running")
     previous = Path.cwd()
     try:
-        before = _pins()
+        before = _pins() if presentation_profile is None else _pins(presentation_profile=presentation_profile)
         cases = []
         profile = tokenizer = None
         failure = None
@@ -401,7 +544,8 @@ def run_experiment(*, scratch_root: Path, tokenizer_cache: Path | None = None):
                 with _world_private_fixture(scratch_root) as (fixture, cleanup):
                     cleanup["private_fixture_native_contexts_closed"] = False
                     try:
-                        row["cycle"] = _cycle(fixture, count, counter)
+                        row["cycle"] = (_cycle(fixture, count, counter) if presentation_profile is None else
+                            _cycle(fixture, count, counter, presentation_profile=presentation_profile))
                         cleanup["private_fixture_native_contexts_closed"] = True
                         row["status"] = "completed"
                     except Exception as error:
@@ -413,7 +557,7 @@ def run_experiment(*, scratch_root: Path, tokenizer_cache: Path | None = None):
                         reason_code="private_fixture_cleanup_incomplete")
                     row["status"] = "failed"
             cases.append(row)
-        unchanged = before == _pins()
+        unchanged = before == (_pins() if presentation_profile is None else _pins(presentation_profile=presentation_profile))
         cleaned = all(row["cleanup"] is not None and row["cleanup"]["private_fixture_cleanup_complete"] for row in cases)
         qualified = failure is None and unchanged and cleaned and all(row["status"] == "completed" for row in cases)
         dispositions = {name: sum(row["cycle"] is not None and row["cycle"]["measurement"]["comparison"]["offline_comparison_disposition"] == name for row in cases)
@@ -426,6 +570,9 @@ def run_experiment(*, scratch_root: Path, tokenizer_cache: Path | None = None):
             native_transport="authored_FakeQuackTransport_no_actual_TCP",
             provider_usage=dict(complete_native_total_tokens=None, billed_tokens=None, provider_session_population_complete=None),
             **FALSE)
+        if presentation_profile is not None:
+            report["presentation_profile"] = presentation_profile
+            report["representation_efficiency_population"] = _representation_population(cases)
         report["report_sha256"] = _sha(_wire(report))
         _bounded(report)
         _need(len(_wire(report)) <= MAX_REPORT_BYTES, "worker_packet_report_bound")
@@ -448,7 +595,7 @@ def _validate_measurement(value):
         and (value["local_o200k_tokens"] is None or _integer(value["local_o200k_tokens"])), "measurement_invalid")
 
 
-def _validate_comparison(value):
+def _validate_comparison(value, *, service_delivery_mode="compiled_packet_only"):
     fields = {"measurements", "offline_comparison_disposition", "service_delivery_mode", "actual_model_route_fallback",
         "trace_scope", "source_bytes_already_in_initial_prompt", "ipc_frames_added_to_model_tokens",
         "protocol_displayed_to_model", "complete_native_total_tokens", "billed_tokens"}
@@ -464,20 +611,92 @@ def _validate_comparison(value):
     old, new = metrics["baseline_initial"], metrics["candidate_initial"]
     disposition = ("token_count_unavailable" if old["local_o200k_tokens"] is None else "compiled_smaller"
         if new["bytes"] < old["bytes"] and new["local_o200k_tokens"] < old["local_o200k_tokens"] else "raw_comparison_preferred_not_smaller")
-    _need(value["offline_comparison_disposition"] == disposition and value["service_delivery_mode"] == "compiled_packet_only"
+    _need(value["offline_comparison_disposition"] == disposition and value["service_delivery_mode"] == service_delivery_mode
         and value["actual_model_route_fallback"] is False and value["source_bytes_already_in_initial_prompt"] is True
         and value["ipc_frames_added_to_model_tokens"] is False and value["protocol_displayed_to_model"] is None
         and value["complete_native_total_tokens"] is None and value["billed_tokens"] is None
         and value["trace_scope"] == "one_authored_initial_prompt_plus_same_discovery_guidance_and_helper_receipts_once", "comparison_scope_differs")
 
 
-def _validate_cycle(cycle, count, tokenizer):
+def _validate_presentation(value, measurement, tokenizer):
+    fields = {"schema", "profile", "codec_mode", "codec_receipt_sha256", "codec_census", "original_packet", "proposed_view", "sidecar", "inverse",
+        "prelaunch", "renderings", "delivered_prompt", "post_delivery", "actual_provider_input_observed", "default_adoption_authority",
+        "provider_usage_verified", "whole_session_savings_established", "source_bytes_already_in_initial_inputs", "sidecar_added_to_model_tokens",
+        "protocol_displayed_to_model"}
+    _need(type(value) is dict and set(value) == fields and value["schema"] == PRESENTATION_SCHEMA
+        and value["profile"] == PRESENTATION_PROFILE and type(value["codec_mode"]) is str
+        and value["codec_mode"] in {PRESENTATION_PROFILE, "original_fallback"} and _hash(value["codec_receipt_sha256"]), "presentation_fields_differ")
+    for key in ("actual_provider_input_observed", "default_adoption_authority", "provider_usage_verified", "whole_session_savings_established", "sidecar_added_to_model_tokens"):
+        _need(value[key] is False, "presentation_authority_claim")
+    _need(value["source_bytes_already_in_initial_inputs"] is True and value["protocol_displayed_to_model"] is None, "presentation_scope_differs")
+    census = value["codec_census"]
+    _need(type(census) is dict and set(census) == {"counts", "scope"}
+        and census["scope"] == "codec_structural_counts_not_per_field_token_attribution"
+        and type(census["counts"]) is dict and set(census["counts"]) == PRESENTATION_CENSUS_FIELDS
+        and all(_integer(item) for item in census["counts"].values()), "presentation_census_invalid")
+    for key in ("original_packet", "proposed_view", "delivered_prompt"):
+        pin = value[key]
+        _need(type(pin) is dict and set(pin) == {"sha256", "bytes"} and _hash(pin["sha256"])
+            and _integer(pin["bytes"], low=1, high=MAX_TEXT_BYTES), "presentation_body_pin_invalid")
+    sidecar = value["sidecar"]
+    _need(type(sidecar) is dict and set(sidecar) == {"sha256", "bytes", "count_scope"} and _hash(sidecar["sha256"])
+        and _integer(sidecar["bytes"], high=_presentation_sidecar_limit()) and sidecar["count_scope"] == "host_retained_sidecar_excluded_from_model_tokens", "presentation_sidecar_invalid")
+    inverse = value["inverse"]
+    _need(type(inverse) is dict and set(inverse) == {"sha256", "bytes", "exact_original_recovered"}
+        and inverse["exact_original_recovered"] is True and _integer(inverse["bytes"], high=MAX_TEXT_BYTES)
+        and {key: inverse[key] for key in ("sha256", "bytes")} == value["original_packet"], "presentation_inverse_differs")
+    if value["codec_mode"] == "original_fallback":
+        _need(value["proposed_view"] == value["original_packet"], "unsupported_codec_changed_original")
+    metrics = value["renderings"]
+    _need(type(metrics) is dict and set(metrics) == {"raw_baseline_initial", "original_compiled_initial", "proposed_presentation_initial",
+        "common_authored_protocol_text", "raw_baseline_authored_trace", "original_compiled_authored_trace", "proposed_presentation_authored_trace"}, "presentation_comparison_population_differs")
+    for item in metrics.values(): _validate_measurement(item)
+    _need(tokenizer is not None and all((item["local_o200k_tokens"] is not None) is tokenizer["available"] for item in metrics.values()), "presentation_tokenizer_availability_differs")
+    for arm in ("raw_baseline", "original_compiled", "proposed_presentation"):
+        _need(metrics[arm + "_authored_trace"]["bytes"] == metrics[arm + "_initial"]["bytes"] + metrics["common_authored_protocol_text"]["bytes"], "presentation_trace_bytes_differ")
+    _need(metrics["original_compiled_initial"]["bytes"] - value["original_packet"]["bytes"]
+        == metrics["proposed_presentation_initial"]["bytes"] - value["proposed_view"]["bytes"] >= 0, "presentation_advisory_bytes_differ")
+    new = metrics["proposed_presentation_initial"]
+    smaller_original = _strictly_smaller(new, metrics["original_compiled_initial"])
+    smaller_baseline = _strictly_smaller(new, metrics["raw_baseline_initial"])
+    reason = ("unsupported_codec" if value["codec_mode"] == "original_fallback" else
+        "tokenizer_unavailable" if smaller_original is None else "not_smaller_than_original" if not smaller_original
+        else "not_smaller_than_raw_baseline" if not smaller_baseline else "strictly_smaller_initial_inputs")
+    selected = reason == "strictly_smaller_initial_inputs"
+    prelaunch = value["prelaunch"]
+    _need(type(prelaunch) is dict and set(prelaunch) == {"selected_mode", "reason", "efficiency_qualified", "scope"}
+        and prelaunch["selected_mode"] == ("presented_view" if selected else "original_packet")
+        and prelaunch["reason"] == reason and prelaunch["efficiency_qualified"] is selected
+        and prelaunch["scope"] == "full_rendered_initial_bytes_and_local_tokens_vs_both_comparators", "presentation_prelaunch_gate_differs")
+    _need(value["delivered_prompt"] == value["proposed_view" if selected else "original_packet"]
+        and value["delivered_prompt"] == {key: measurement["packet_text"][key] for key in ("sha256", "bytes")}, "presentation_delivered_identity_differs")
+    smaller_original = _strictly_smaller(metrics["proposed_presentation_authored_trace"], metrics["original_compiled_authored_trace"])
+    smaller_baseline = _strictly_smaller(metrics["proposed_presentation_authored_trace"], metrics["raw_baseline_authored_trace"])
+    post_smaller = None if smaller_original is None else smaller_original and smaller_baseline
+    post_qualified = None if post_smaller is None else selected and post_smaller
+    post_reason = ("tokenizer_unavailable" if post_smaller is None else "original_packet_selected" if not selected else
+        "strictly_smaller_full_authored_traces" if post_smaller else "full_authored_traces_not_smaller")
+    post = value["post_delivery"]
+    _need(type(post) is dict and set(post) == {"proposed_full_traces_smaller", "efficiency_qualified", "reason", "scope"}
+        and post["proposed_full_traces_smaller"] is post_smaller and post["efficiency_qualified"] is post_qualified
+        and post["reason"] == post_reason and post["scope"] == "three_authored_initial_inputs_plus_same_actual_protocol_text_after_delivery", "presentation_post_delivery_gate_differs")
+    expected_mode = "presented_packet_view" if selected else "compiled_packet_only"
+    _validate_comparison(measurement["comparison"], service_delivery_mode=expected_mode)
+    chosen = "proposed_presentation" if selected else "original_compiled"
+    expected_metrics = dict(baseline_initial=metrics["raw_baseline_initial"], candidate_initial=metrics[chosen + "_initial"],
+        common_authored_protocol_text=metrics["common_authored_protocol_text"], baseline_authored_trace=metrics["raw_baseline_authored_trace"],
+        candidate_authored_trace=metrics[chosen + "_authored_trace"])
+    _need(measurement["comparison"]["measurements"] == expected_metrics, "presentation_actual_comparison_differs")
+
+
+def _validate_cycle(cycle, count, tokenizer, *, presentation_profile=None):
     _need(type(cycle) is dict and set(cycle) == {"checks", "measurement"} and type(cycle["checks"]) is dict
         and set(cycle["checks"]) == CHECKS and all(value is True for value in cycle["checks"].values()), "cycle_checks_differ")
     value = cycle["measurement"]
     hashed = {"source_sha256", "task_projection_sha256", "binding_metadata_sha256", "positive_receipt_sha256", "negative_receipt_sha256"}
     fields = hashed | {"selected_source_files", "selected_source_bytes", "authored_function_count", "required_reference_count", "structural_reference_count",
         "native_validation_count", "native_validation_coverage", "packet_text", "required_source_text", "worker_peer", "ipc", "comparison"}
+    if presentation_profile is not None: fields.add("presentation")
     _need(type(value) is dict and set(value) == fields and all(_hash(value[name]) for name in hashed), "cycle_fields_differ")
     _need(value["source_sha256"] == _sha(_source(count)) and value["selected_source_files"] == 1
         and type(value["selected_source_files"]) is int and value["selected_source_bytes"] == len(_source(count))
@@ -502,7 +721,10 @@ def _validate_cycle(cycle, count, tokenizer):
         and ipc["sent_packet_bytes"] == value["packet_text"]["bytes"] and ipc["sent_response_bytes"] >= ipc["sent_packet_bytes"]
         and ipc["sent_response_wire_bytes"] == ipc["sent_response_bytes"] + 12 and ipc["packet_body_counted_once"] is True
         and ipc["byte_scope"] == "actual_service_canonical_response_frames_and_exact_helper_transcript", "ipc_population_differs")
-    _validate_comparison(value["comparison"])
+    if presentation_profile is None:
+        _validate_comparison(value["comparison"])
+    else:
+        _validate_presentation(value["presentation"], value, tokenizer)
     _need(tokenizer is not None and all((item["local_o200k_tokens"] is not None) is tokenizer["available"]
         for item in (value["packet_text"], value["required_source_text"], *value["comparison"]["measurements"].values())), "tokenizer_availability_differs")
 
@@ -539,8 +761,13 @@ def _validate_failure(value):
 def validate_report(report, *, expected_report_sha256):
     """Validate a caller-pinned observation; this does not replay native work."""
     _bounded(report)
+    _need(type(report) is dict, "packet_report_fields_or_bound")
     fields = {"schema", "scope", "qualified", "source_pins", "source_pins_unchanged", "profile", "tokenizer", "cases", "failure",
         "private_fixture_cleanup_complete", "offline_comparison_counts", "storage_scope", "inner_resource_accounting_scope", "native_transport", "provider_usage", "report_sha256", *FALSE}
+    presentation_profile = report.get("presentation_profile") if type(report) is dict else None
+    if "presentation_profile" in report:
+        _need(type(presentation_profile) is str and presentation_profile == PRESENTATION_PROFILE, "unsupported_presentation_profile")
+        fields |= {"presentation_profile", "representation_efficiency_population"}
     _need(type(report) is dict and set(report) == fields and len(_wire(report)) <= MAX_REPORT_BYTES, "packet_report_fields_or_bound")
     _need(_hash(expected_report_sha256) and report_sha256(report) == expected_report_sha256, "independent_packet_report_pin_differs")
     body = dict(report); seal = body.pop("report_sha256")
@@ -555,7 +782,8 @@ def validate_report(report, *, expected_report_sha256):
     _need(report["provider_usage"] == dict(complete_native_total_tokens=None, billed_tokens=None, provider_session_population_complete=None), "provider_usage_claim")
     pins = report["source_pins"]
     _need(type(pins) is dict and set(pins) == {"scope", "files"} and pins["scope"] == "listed_source_files_only_not_transitive_provenance"
-        and type(pins["files"]) is dict and set(pins["files"]) == set(SOURCE_PATHS), "source_pin_population_differs")
+        and type(pins["files"]) is dict and set(pins["files"]) == set(SOURCE_PATHS +
+            (PRESENTATION_SOURCE_PATHS if presentation_profile is not None else ())), "source_pin_population_differs")
     for pin in pins["files"].values():
         _need(type(pin) is dict and set(pin) == {"bytes", "sha256"} and _integer(pin["bytes"], high=2 * 1024**2) and _hash(pin["sha256"]), "source_pin_invalid")
     profile = report["profile"]
@@ -591,7 +819,7 @@ def validate_report(report, *, expected_report_sha256):
             _validate_cleanup(row["cleanup"])
             _need(profile is not None and tokenizer is not None, "attempted_case_profile_missing")
             if row["cycle"] is not None:
-                _validate_cycle(row["cycle"], count, tokenizer)
+                _validate_cycle(row["cycle"], count, tokenizer, presentation_profile=presentation_profile)
                 dispositions[row["cycle"]["measurement"]["comparison"]["offline_comparison_disposition"]] += 1
             if row["status"] == "completed":
                 _need(row["cycle"] is not None and row["failure"] is None and row["cleanup"]["private_fixture_cleanup_complete"], "completed_case_invalid")
@@ -603,6 +831,10 @@ def validate_report(report, *, expected_report_sha256):
     cleaned = all(row["cleanup"] is not None and row["cleanup"]["private_fixture_cleanup_complete"] for row in report["cases"])
     qualified = report["failure"] is None and report["source_pins_unchanged"] and cleaned and all(row["status"] == "completed" for row in report["cases"])
     _need(report["private_fixture_cleanup_complete"] is cleaned and report["qualified"] is qualified, "report_qualification_differs")
+    if presentation_profile is not None:
+        population = report["representation_efficiency_population"]
+        _need(type(population) is dict and population == _representation_population(report["cases"])
+            and all(_integer(value, high=len(CASE_COUNTS)) for value in population.values()), "representation_efficiency_population_differs")
     return dict(valid=True, qualified=qualified, report_sha256=expected_report_sha256,
         native_operations_independently_replayed=False, **FALSE)
 
@@ -612,8 +844,10 @@ def main():
     parser.add_argument("--scratch-root", type=Path, required=True)
     parser.add_argument("--tokenizer-cache", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--presentation-profile", choices=(PRESENTATION_PROFILE,))
     arguments = parser.parse_args()
-    report = run_experiment(scratch_root=arguments.scratch_root, tokenizer_cache=arguments.tokenizer_cache)
+    report = run_experiment(scratch_root=arguments.scratch_root, tokenizer_cache=arguments.tokenizer_cache,
+        presentation_profile=arguments.presentation_profile)
     validate_report(report, expected_report_sha256=report_sha256(report))
     with arguments.output.open("xb") as stream: stream.write(_wire(report) + b"\n")
     return 0 if report["qualified"] else 2

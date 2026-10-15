@@ -310,13 +310,19 @@ class NativeRepositoryWorldCompiledPacketBinding:
 
     __slots__ = ("_seal", "_projection", "_handoff", "_packet", "_task", "_adapter", "_session",
         "_compiler", "_compiler_refs", "_session_refs", "_session_bytes", "_packet_refs", "_compilation", "_metadata",
+        "_presentation", "_presentation_refs", "_presentation_receipt_json", "_presentation_sidecar_bytes", "_presentation_prompt",
         "_lock", "_checking", "__weakref__")
 
-    def __init__(self, seal, *, projection, handoff, packet):
+    def __init__(self, seal, *, projection, handoff, packet, presentation=None):
         _need(seal is _SEAL and type(self) is NativeRepositoryWorldCompiledPacketBinding
               and type(projection) is NativeRepositoryWorldTaskProjection
               and type(handoff) is NativeRepositoryWorldWorkerHandoff
               and type(packet) is PreparedRepositoryWorldPacket, "worker_packet_original_owners_required")
+        if presentation is not None:
+            from .repository_world_packet_presentation import PreparedRepositoryWorldPacketPresentation
+            _need(type(presentation) is PreparedRepositoryWorldPacketPresentation,
+                  "worker_packet_original_presentation_required")
+            PreparedRepositoryWorldPacketPresentation._retained(presentation)
         NativeRepositoryWorldTaskProjection.require_current(projection)
         NativeRepositoryWorldWorkerHandoff.require_current(handoff)
         PreparedRepositoryWorldPacket.validate_current(packet, workspace=handoff._workspace,
@@ -331,6 +337,15 @@ class NativeRepositoryWorldCompiledPacketBinding:
               and type(self._compiler) is ContextCompiler, "worker_packet_original_compiler_required")
         self._lock, self._checking = threading.RLock(), False
         self._packet_refs = PreparedRepositoryWorldPacket._seal(packet)
+        self._presentation = presentation
+        self._presentation_refs = self._presentation_receipt_json = None
+        self._presentation_sidecar_bytes = self._presentation_prompt = None
+        if presentation is not None:
+            receipt = PreparedRepositoryWorldPacketPresentation.validate_original(presentation, packet.prompt)
+            self._presentation_refs = PreparedRepositoryWorldPacketPresentation._seal_material(presentation)
+            self._presentation_receipt_json = _wire(receipt)
+            self._presentation_sidecar_bytes = presentation.sidecar_bytes
+            self._presentation_prompt = presentation.prompt
         self._compiler_refs = tuple((key, getattr(self._compiler, key)) for key in
             ("budget", "estimator", "value_policy", "provider_max_input_bytes", "budget_resolution",
              "effective_input_limit", "effective_budget"))
@@ -360,7 +375,8 @@ class NativeRepositoryWorldCompiledPacketBinding:
     def _seal_material(self):
         return (self._seal, self._projection, self._handoff, self._packet, self._task, self._adapter,
             self._session, self._compiler, self._compiler_refs, self._session_refs, self._packet_refs,
-            self._session_bytes, self._compilation, self._metadata, self._lock)
+            self._session_bytes, self._compilation, self._metadata, self._lock, self._presentation,
+            self._presentation_refs, self._presentation_receipt_json, self._presentation_sidecar_bytes, self._presentation_prompt)
 
     def _retained(self, *, issuing=False):
         _need(type(self) is NativeRepositoryWorldCompiledPacketBinding and getattr(self, "_seal", None) is _SEAL,
@@ -397,6 +413,44 @@ class NativeRepositoryWorldCompiledPacketBinding:
         _need(_wire(dict(manifest=self._session._manifest, capture_receipt=self._session._capture_receipt,
             index_receipt=self._session._index_receipt), maximum=4 * MAX_SOURCE_CHARACTERS) == self._session_bytes,
             "worker_packet_original_source_material_changed")
+        if self._presentation is None:
+            _need(all(value is None for value in (self._presentation_refs, self._presentation_receipt_json,
+                self._presentation_sidecar_bytes, self._presentation_prompt)), "worker_packet_unbound_presentation_material")
+        else:
+            from .repository_world_packet_presentation import PreparedRepositoryWorldPacketPresentation
+            _need(type(self._presentation) is PreparedRepositoryWorldPacketPresentation,
+                  "worker_packet_original_presentation_required")
+            PreparedRepositoryWorldPacketPresentation._retained(self._presentation)
+            current = PreparedRepositoryWorldPacketPresentation._seal_material(self._presentation)
+            _need(type(self._presentation_refs) is tuple and len(current) == len(self._presentation_refs)
+                  and all(original is retained for original, retained in zip(self._presentation_refs, current))
+                  and self._presentation.prompt is self._presentation_prompt
+                  and self._presentation.sidecar_bytes is self._presentation_sidecar_bytes,
+                  "worker_packet_original_presentation_replaced")
+
+    def _presented(self, original_prompt, packet_receipt):
+        """Pure inverse and identity checks before the existing native closure."""
+        from .repository_world_packet_presentation import MODE, PreparedRepositoryWorldPacketPresentation
+        receipt = PreparedRepositoryWorldPacketPresentation.validate_original(self._presentation, original_prompt)
+        _need(_wire(receipt) == self._presentation_receipt_json,
+              "worker_packet_presentation_receipt_changed")
+        prompt, sidecar = self._presentation_prompt, self._presentation_sidecar_bytes
+        _need(type(prompt) is str and type(sidecar) is bytes, "worker_packet_presentation_material_invalid")
+        raw = prompt.encode("utf-8", "strict")
+        _need(receipt["original_prompt_sha256"] == packet_receipt["prompt_sha256"]
+              and type(receipt["original_prompt_bytes"]) is int and receipt["original_prompt_bytes"] == packet_receipt["prompt_bytes"]
+              and receipt["presented_prompt_sha256"] == hashlib.sha256(raw).hexdigest()
+              and type(receipt["presented_prompt_bytes"]) is int and receipt["presented_prompt_bytes"] == len(raw)
+              and receipt["sidecar_sha256"] == hashlib.sha256(sidecar).hexdigest()
+              and type(receipt["sidecar_bytes"]) is int and receipt["sidecar_bytes"] == len(sidecar)
+              and type(receipt["codec_supported"]) is bool and type(receipt["model_view_mode"]) is str,
+              "worker_packet_presentation_pins_changed")
+        return prompt, dict(presentation_profile=MODE, presentation_model_view_mode=receipt["model_view_mode"],
+            presentation_codec_supported=receipt["codec_supported"],
+            presentation_receipt_sha256=hashlib.sha256(self._presentation_receipt_json).hexdigest(),
+            presentation_sidecar_sha256=hashlib.sha256(sidecar).hexdigest(), presentation_sidecar_bytes=len(sidecar),
+            native_prompt_sha256=packet_receipt["prompt_sha256"], native_prompt_bytes=packet_receipt["prompt_bytes"],
+            prompt_sha256=hashlib.sha256(raw).hexdigest(), prompt_bytes=len(raw))
 
     def _checked(self):
         projection = NativeRepositoryWorldTaskProjection.require_current(self._projection)
@@ -461,6 +515,10 @@ class NativeRepositoryWorldCompiledPacketBinding:
             native_assignment_continuity_verified=True, **dict.fromkeys(FALSE_FIELDS, False))
         if "intent_world" in packet_receipt:
             metadata["scoped_intent_receipt_sha256"] = hashlib.sha256(_wire(packet_receipt["intent_world"])).hexdigest()
+        original_prompt = prompt
+        if self._presentation is not None:
+            prompt, presentation_metadata = NativeRepositoryWorldCompiledPacketBinding._presented(self, original_prompt, packet_receipt)
+            metadata.update(presentation_metadata)
         _wire(metadata)
         # Repeat original source/optional-intent owner fences after compiler
         # tokenizer callbacks. Final filesystem-only session checks below do
@@ -478,6 +536,9 @@ class NativeRepositoryWorldCompiledPacketBinding:
                   == self._projection._population_json, "worker_packet_closing_native_population_changed")
             RepositorySourceSession._generation(self._session, self._packet._generation)
             RepositorySourceSession._current(self._session)
+        _need(type(original_prompt) is str
+              and hashlib.sha256(original_prompt.encode("utf-8")).hexdigest() == packet_receipt["prompt_sha256"]
+              and len(original_prompt.encode("utf-8")) == packet_receipt["prompt_bytes"], "worker_packet_prompt_changed")
         _need(type(prompt) is str and hashlib.sha256(prompt.encode("utf-8")).hexdigest() == metadata["prompt_sha256"]
               and len(prompt.encode("utf-8")) == metadata["prompt_bytes"], "worker_packet_prompt_changed")
         return metadata, prompt
@@ -509,11 +570,13 @@ class NativeRepositoryWorldCompiledPacketBinding:
         with self._lock if getattr(self, "_lock", None) is not None else _LOCK:
             metadata = NativeRepositoryWorldCompiledPacketBinding.require_for_delivery(self,
                 handoff=handoff, original_prompt=original_prompt)
-            return metadata, self._packet.prompt
+            prompt = self._packet.prompt if self._presentation is None else self._presentation_prompt
+            return metadata, prompt
 
 
-def capture_repository_world_compiled_packet_binding(*, projection, handoff, packet):
-    binding = NativeRepositoryWorldCompiledPacketBinding(_SEAL, projection=projection, handoff=handoff, packet=packet)
+def capture_repository_world_compiled_packet_binding(*, projection, handoff, packet, presentation=None):
+    binding = NativeRepositoryWorldCompiledPacketBinding(_SEAL, projection=projection, handoff=handoff, packet=packet,
+        presentation=presentation)
     with _LOCK:
         _BINDINGS[binding] = NativeRepositoryWorldCompiledPacketBinding._seal_material(binding)
     NativeRepositoryWorldCompiledPacketBinding.require_current(binding)

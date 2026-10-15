@@ -249,3 +249,192 @@ def test_local_fixture_lock_is_released_after_pin_failure(tmp_path, monkeypatch)
     with pytest.raises(ValueError): experiment.run_experiment(scratch_root=tmp_path)
     assert experiment._LOCK.acquire(blocking=False)
     experiment._LOCK.release()
+
+
+def with_presentation(report, *, counter=None, baseline="R" * 400, original="O" * 300,
+        proposed="P" * 100, codec_mode=experiment.PRESENTATION_PROFILE):
+    """Synthetic closed observation only; no codec/native/kernel operation."""
+    report["presentation_profile"] = experiment.PRESENTATION_PROFILE
+    report["source_pins"]["files"].update({name: dict(bytes=10, sha256="a" * 64)
+        for name in experiment.PRESENTATION_SOURCE_PATHS})
+    if counter is not None:
+        report["tokenizer"].update(available=True, encoding="o200k_base",
+            ranks_sha256=experiment.TOKENIZER_RANKS_SHA256, reason=None)
+    for row in report["cases"]:
+        value = row["cycle"]["measurement"]
+        initial = experiment._presentation_initial(baseline=baseline, original=original,
+            proposed=proposed, codec_mode=codec_mode, counter=counter)
+        delivered = proposed if initial["selected_mode"] == "presented_view" else original
+        value["packet_text"] = experiment._measurement(delivered, counter)
+        value["required_source_text"] = experiment._measurement(experiment._source(row["function_count"]).decode(), counter)
+        value["ipc"].update(sent_packet_bytes=len(delivered.encode()),
+            sent_response_bytes=len(delivered.encode()) + 100, sent_response_wire_bytes=len(delivered.encode()) + 112)
+        observed, comparison = experiment._presentation_finish(initial=initial, baseline=baseline,
+            original=original, proposed=proposed, common_trace="COMMON\n", counter=counter,
+            codec_mode=codec_mode, codec_receipt_sha256="a" * 64,
+            codec_census=dict.fromkeys(experiment.PRESENTATION_CENSUS_FIELDS, 0), sidecar_bytes=b"HOST ONLY",
+            inverse_original=original, native_prompt=original, proposed_prompt=proposed, delivered_prompt=delivered)
+        value["presentation"], value["comparison"] = observed, comparison
+    report["offline_comparison_counts"] = {kind: sum(row["cycle"]["measurement"]["comparison"]["offline_comparison_disposition"] == kind
+        for row in report["cases"]) for kind in report["offline_comparison_counts"]}
+    report["representation_efficiency_population"] = experiment._representation_population(report["cases"])
+    reseal(report)
+    return report
+
+
+def test_default_report_retains_original_field_and_source_population(report):
+    assert "presentation_profile" not in report and "representation_efficiency_population" not in report
+    assert set(report["source_pins"]["files"]) == set(experiment.SOURCE_PATHS)
+    assert all("presentation" not in row["cycle"]["measurement"] for row in report["cases"])
+    assert experiment.validate_report(report, expected_report_sha256=experiment.report_sha256(report))["valid"] is True
+
+
+@pytest.mark.parametrize("profile", [True, "legacy", "lossless_model_view@2", "", 1])
+def test_unsupported_profile_refuses_before_source_or_native_access(tmp_path, monkeypatch, profile):
+    monkeypatch.setattr(experiment, "_pins", lambda: pytest.fail("unsupported profile read source"))
+    with pytest.raises(ValueError, match="unsupported_presentation_profile"):
+        experiment.run_experiment(scratch_root=tmp_path, presentation_profile=profile)
+
+
+@pytest.mark.parametrize("baseline,original,proposed,mode,counter,reason", [
+    ("R" * 400, "O" * 300, "P" * 100, experiment.PRESENTATION_PROFILE, len, "strictly_smaller_initial_inputs"),
+    ("R" * 400, "O" * 300, "P" * 300, experiment.PRESENTATION_PROFILE, len, "not_smaller_than_original"),
+    ("R" * 100, "O" * 300, "P" * 100, experiment.PRESENTATION_PROFILE, len, "not_smaller_than_raw_baseline"),
+    ("R" * 400, "O" * 300, "P" * 100, experiment.PRESENTATION_PROFILE, None, "tokenizer_unavailable"),
+    ("R" * 400, "O" * 300, "O" * 300, "original_fallback", len, "unsupported_codec"),
+    ("R" * 400, "O" * 300, "P" * 100, experiment.PRESENTATION_PROFILE, lambda _: 10, "not_smaller_than_original"),
+])
+def test_prelaunch_requires_both_complete_inputs_bytes_and_tokens(baseline, original, proposed, mode, counter, reason):
+    value = experiment._presentation_initial(baseline=baseline, original=original,
+        proposed=proposed, codec_mode=mode, counter=counter)
+    assert value["reason"] == reason
+    assert value["efficiency_qualified"] is (reason == "strictly_smaller_initial_inputs")
+    assert value["selected_mode"] == ("presented_view" if value["efficiency_qualified"] else "original_packet")
+
+
+@pytest.mark.parametrize("counter", [None, len])
+def test_optin_three_arm_report_keeps_structural_and_efficiency_scope_separate(report, counter):
+    value = with_presentation(report, counter=counter)
+    checked = experiment.validate_report(value, expected_report_sha256=experiment.report_sha256(value))
+    assert checked["qualified"] is True
+    population = value["representation_efficiency_population"]
+    assert population["completed_measurement_cases"] == 3
+    assert population["presented_deliveries"] == (0 if counter is None else 3)
+    assert population["original_fallbacks"] == (3 if counter is None else 0)
+    assert population["unavailable_efficiency_cases"] == (3 if counter is None else 0)
+    assert checked["provider_usage_verified"] is False
+
+
+def test_supported_but_not_smaller_proposal_records_genuine_original_delivery(report):
+    value = with_presentation(report, counter=len, proposed="P" * 600)
+    assert experiment.validate_report(value, expected_report_sha256=experiment.report_sha256(value))["qualified"] is True
+    for row in value["cases"]:
+        observed = row["cycle"]["measurement"]["presentation"]
+        assert observed["prelaunch"]["selected_mode"] == "original_packet"
+        assert observed["delivered_prompt"] == observed["original_packet"]
+        assert observed["proposed_view"] != observed["delivered_prompt"]
+    assert value["representation_efficiency_population"]["post_delivery_negative_cases"] == 3
+
+
+def test_unknown_codec_fallback_preserves_original_and_proposal_identity(report):
+    value = with_presentation(report, counter=len, proposed="O" * 300, codec_mode="original_fallback")
+    assert experiment.validate_report(value, expected_report_sha256=experiment.report_sha256(value))["valid"] is True
+    assert all(row["cycle"]["measurement"]["presentation"]["prelaunch"]["reason"] == "unsupported_codec" for row in value["cases"])
+
+
+def test_full_trace_negative_does_not_retroactively_claim_original_delivery(report):
+    def counter(text):
+        return 1000 if text.startswith("P") and text.endswith("COMMON\n") else len(text)
+    value = with_presentation(report, counter=counter)
+    checked = experiment.validate_report(value, expected_report_sha256=experiment.report_sha256(value))
+    assert checked["qualified"] is True
+    assert value["representation_efficiency_population"]["presented_deliveries"] == 3
+    assert value["representation_efficiency_population"]["post_delivery_negative_cases"] == 3
+    for row in value["cases"]:
+        observed = row["cycle"]["measurement"]["presentation"]
+        assert observed["prelaunch"]["efficiency_qualified"] is True
+        assert observed["post_delivery"]["efficiency_qualified"] is False
+        assert observed["delivered_prompt"] == observed["proposed_view"]
+        assert row["cycle"]["measurement"]["comparison"]["service_delivery_mode"] == "presented_packet_view"
+
+
+@pytest.mark.parametrize("fault", ["missing_arm", "extra_arm", "bool_mode", "missing_profile", "missing_sourcepin",
+    "wrong_original_inverse", "inverse_false", "actual_delivery_lie", "fake_initial_gain", "fake_trace_gain",
+    "double_trace_bytes", "missing_tokens", "bool_population", "wrong_population", "sidecar_tokens", "default_authority",
+    "provider_authority", "host_scope", "census_bool", "census_extra", "unknown_census_scope", "fake_comparison"])
+def test_optin_rehashed_population_delivery_and_scientific_forgeries_refuse(report, fault):
+    value = with_presentation(report, counter=len)
+    measured = value["cases"][0]["cycle"]["measurement"]
+    observed = measured["presentation"]
+    if fault == "missing_arm": observed["renderings"].pop("original_compiled_initial")
+    elif fault == "extra_arm": observed["renderings"]["foreign"] = dict(observed["renderings"]["raw_baseline_initial"])
+    elif fault == "bool_mode": value["presentation_profile"] = True
+    elif fault == "missing_profile": value.pop("presentation_profile")
+    elif fault == "missing_sourcepin": value["source_pins"]["files"].pop(experiment.PRESENTATION_SOURCE_PATHS[0])
+    elif fault == "wrong_original_inverse": observed["inverse"]["sha256"] = "b" * 64
+    elif fault == "inverse_false": observed["inverse"]["exact_original_recovered"] = False
+    elif fault == "actual_delivery_lie": observed["delivered_prompt"] = dict(observed["original_packet"])
+    elif fault == "fake_initial_gain": observed["prelaunch"]["efficiency_qualified"] = False
+    elif fault == "fake_trace_gain": observed["post_delivery"]["efficiency_qualified"] = False
+    elif fault == "double_trace_bytes": observed["renderings"]["proposed_presentation_authored_trace"]["bytes"] += 100
+    elif fault == "missing_tokens": observed["renderings"]["original_compiled_authored_trace"]["local_o200k_tokens"] = None
+    elif fault == "bool_population": value["representation_efficiency_population"]["declared_cases"] = True
+    elif fault == "wrong_population": value["representation_efficiency_population"]["presented_deliveries"] = 0
+    elif fault == "sidecar_tokens": observed["sidecar_added_to_model_tokens"] = True
+    elif fault == "default_authority": observed["default_adoption_authority"] = True
+    elif fault == "provider_authority": observed["provider_usage_verified"] = True
+    elif fault == "host_scope": observed["sidecar"]["count_scope"] = "model_input"
+    elif fault == "census_bool": observed["codec_census"]["counts"]["shared_fact_count"] = True
+    elif fault == "census_extra": observed["codec_census"]["counts"]["raw_source"] = "hidden"
+    elif fault == "unknown_census_scope": observed["codec_census"]["scope"] = "measured_token_causality"
+    else: measured["comparison"]["measurements"]["candidate_initial"] = dict(observed["renderings"]["original_compiled_initial"])
+    with pytest.raises(ValueError):
+        experiment.validate_report(value, expected_report_sha256=reseal(value))
+
+
+def test_optin_independent_report_pin_rejects_resealed_sidecar_change(report):
+    value = with_presentation(report, counter=len)
+    pin = experiment.report_sha256(value)
+    value["cases"][0]["cycle"]["measurement"]["presentation"]["sidecar"]["sha256"] = "f" * 64
+    reseal(value)
+    with pytest.raises(ValueError, match="independent_packet_report_pin"):
+        experiment.validate_report(value, expected_report_sha256=pin)
+
+
+def test_three_full_traces_are_counted_directly_not_by_adding_local_counts():
+    seen = []
+    def counter(text):
+        seen.append(text)
+        return len(text)
+    initial = experiment._presentation_initial(baseline="RAW", original="ORIGINAL", proposed="P",
+        codec_mode=experiment.PRESENTATION_PROFILE, counter=counter)
+    experiment._presentation_finish(initial=initial, baseline="RAW", original="ORIGINAL", proposed="P",
+        common_trace="COMMON", counter=counter, codec_mode=experiment.PRESENTATION_PROFILE,
+        codec_receipt_sha256="a" * 64, codec_census=dict.fromkeys(experiment.PRESENTATION_CENSUS_FIELDS, 0),
+        sidecar_bytes=b"HOST", inverse_original="ORIGINAL", native_prompt="ORIGINAL", proposed_prompt="P", delivered_prompt="P")
+    assert seen == ["RAW", "ORIGINAL", "P", "COMMON", "RAWCOMMON", "ORIGINALCOMMON", "PCOMMON"]
+
+
+def test_inverse_mismatch_cannot_make_a_presentation_observation():
+    initial = experiment._presentation_initial(baseline="RAW", original="ORIGINAL", proposed="P",
+        codec_mode=experiment.PRESENTATION_PROFILE, counter=len)
+    with pytest.raises(ValueError, match="presentation_inverse_original"):
+        experiment._presentation_finish(initial=initial, baseline="RAW", original="ORIGINAL", proposed="P",
+            common_trace="COMMON", counter=len, codec_mode=experiment.PRESENTATION_PROFILE,
+            codec_receipt_sha256="a" * 64, codec_census=dict.fromkeys(experiment.PRESENTATION_CENSUS_FIELDS, 0),
+            sidecar_bytes=b"HOST", inverse_original="FOREIGN", native_prompt="ORIGINAL", proposed_prompt="P", delivered_prompt="P")
+
+
+def test_optin_missing_profile_still_retains_closed_unmeasured_population(tmp_path, monkeypatch, report):
+    pins = deepcopy(report["source_pins"])
+    pins["files"].update({name: dict(bytes=10, sha256="a" * 64) for name in experiment.PRESENTATION_SOURCE_PATHS})
+    def fake_pins(**kwargs):
+        assert kwargs == dict(presentation_profile=experiment.PRESENTATION_PROFILE)
+        return pins
+    monkeypatch.setattr(experiment, "_pins", fake_pins)
+    def refused(): raise ValueError("actual_owner_identity_required")
+    monkeypatch.setattr(experiment, "_profile", refused)
+    value = experiment.run_experiment(scratch_root=tmp_path, presentation_profile=experiment.PRESENTATION_PROFILE)
+    assert value["representation_efficiency_population"]["unmeasured_cases"] == 3
+    assert value["representation_efficiency_population"]["presented_deliveries"] == 0
+    assert experiment.validate_report(value, expected_report_sha256=experiment.report_sha256(value))["qualified"] is False

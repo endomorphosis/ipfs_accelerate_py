@@ -31,6 +31,7 @@ ENV = dict(IPFS_ACCEL_SKIP_CORE='1', IPFS_KIT_DISABLE='1',
 TOKENIZER_PACKAGE = Path('/home/barberb/.local/lib/python3.12/site-packages')
 TOKENIZER_RANKS = Path('/tmp/data-gym-cache/fb374d419588a4632f3f557e76b4b70aebbca790')
 RANKS_SHA256 = '446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d'
+PRESENTATION_PROFILE = 'lossless_model_view@1'
 
 
 def _write(path, value):
@@ -197,7 +198,10 @@ def _remove_owned_container(*, name, run_id, container_id, output):
     return check.returncode == 0 and not check.stdout.strip(), 'exact_owned_id_cleanup'
 
 
-def run(*, output, datasets, kit):
+def run(*, output, datasets, kit, presentation_profile=None):
+    if presentation_profile is not None and (type(presentation_profile) is not str
+            or presentation_profile != PRESENTATION_PROFILE):
+        raise ValueError('unsupported_worker_presentation_profile')
     if os.getuid() != 1000 or output.exists() or not output.parent.is_dir():
         raise ValueError('fresh_owned_output_required')
     for root, head in ((datasets, DS_HEAD), (kit, KIT_HEAD)):
@@ -249,6 +253,12 @@ pin=experiment.report_sha256(report);experiment.validate_report(report,expected_
 pathlib.Path('/world-qualification/results/report-pin.txt').write_text(pin+'\\n')
 if report.get('qualified') is not True: raise RuntimeError('inner_worker_handoff_unqualified')
 '''
+    if presentation_profile is not None:
+        original_call = "report=experiment.run_experiment(scratch_root=pathlib.Path('/world-qualification/scratch'),tokenizer_cache=pathlib.Path('/opt/ipfs-supervisor/tokenizer-ranks/o200k.tiktoken'))"
+        if owner.count(original_call) != 1:
+            raise ValueError('worker_experiment_call_changed')
+        owner = owner.replace(original_call, original_call[:-1] +
+            ",presentation_profile=" + repr(presentation_profile) + ")")
     (assets / 'owner.py').write_text(owner); (assets / 'owner.py').chmod(0o444)
     setup = f'''import os,pathlib,pwd,subprocess
 entry=pathlib.Path({ENTRY!r});entry.parent.mkdir(mode=0o755,parents=True,exist_ok=True)
@@ -272,6 +282,8 @@ os.execve({PYTHON!r},[{PYTHON!r},'-I','/qualification/owner.py'],environment)
         source_mounts_readonly=True, host_home_mounted=False, docker_socket_mounted=False,
         private_failed_scratch_retained=False, container_results_exported=False,
         container_removed=False, returncode=None, worker_entry_sha256=hashlib.sha256(worker.encode()).hexdigest())
+    if presentation_profile is not None:
+        record['presentation_profile'] = presentation_profile
     try:
         inspected = json.loads(subprocess.check_output(['docker', 'image', 'inspect', IMAGE], text=True))[0]
         if inspected['Id'] != IMAGE:
@@ -337,8 +349,10 @@ def main():
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--datasets',type=Path,required=True)
     parser.add_argument('--kit',type=Path,required=True)
+    parser.add_argument('--presentation-profile',choices=(PRESENTATION_PROFILE,))
     args=parser.parse_args()
-    print(json.dumps(run(output=args.output.absolute(),datasets=args.datasets.absolute(),kit=args.kit.absolute()),sort_keys=True))
+    print(json.dumps(run(output=args.output.absolute(),datasets=args.datasets.absolute(),kit=args.kit.absolute(),
+        presentation_profile=args.presentation_profile),sort_keys=True))
 
 
 if __name__ == '__main__':
