@@ -842,10 +842,18 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         world_task_packet: PreparedRepositoryWorldPacket | None = None,
         world_packet_audit_directory: Path | None = None,
         codex_cli_literal_response: bool = False,
+        owner_worker_attempt_id: str | None = None,
         receipt_observer: Callable[[dict], None] | None = None) -> tuple[str, dict]:
     """Dispatch once; an optional owner-prepared packet replaces task context."""
     failure_phase = "runner_initialization"
     _refuse_candidate_preparation(prompt)
+    if owner_worker_attempt_id is not None:
+        if (type(owner_worker_attempt_id) is not str or len(owner_worker_attempt_id) != 32
+                or any(char not in "0123456789abcdef" for char in owner_worker_attempt_id)):
+            raise ValueError("owner worker attempt identity requires exactly 32 lowercase hexadecimal characters")
+        if (purpose != "coding" or census_only is not False
+                or container_boundary is None or not container_boundary_sha256):
+            raise ValueError("owner worker attempt identity requires isolated coding generation")
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
     from ipfs_accelerate_py.llm_router import generate_text, get_llm_provider
@@ -1472,6 +1480,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         "usage": None, "completion_authority": False,
         "external_container_boundary": boundary,
     }
+    if owner_worker_attempt_id is not None:
+        # Observation join only: this caller-supplied label grants no child
+        # launch, retry, task, proof, settlement, or completion authority.
+        receipt["owner_worker_attempt_id"] = owner_worker_attempt_id
     if coding_reply_receipt is not None:
         receipt["coding_reply_contract"] = coding_reply_receipt
     if world_packet_receipt is not None:
@@ -1905,6 +1917,8 @@ def main():
     parser.add_argument("--purpose", default="coding", choices=["planning", "coding"])
     parser.add_argument("--container-boundary", type=Path)
     parser.add_argument("--container-boundary-sha256", default="")
+    parser.add_argument("--owner-worker-attempt-id",
+                        help="Owner worker attempt observation identity; grants no launch or retry authority")
     parser.add_argument("--semantic-repository", type=Path)
     parser.add_argument("--source-formalization-handoff", type=Path)
     parser.add_argument("--source-formalization-handoff-sha256")
@@ -1955,6 +1969,7 @@ def main():
                         reasoning_effort=args.reasoning_effort,
                         container_boundary=args.container_boundary,
                         container_boundary_sha256=args.container_boundary_sha256,
+                        owner_worker_attempt_id=args.owner_worker_attempt_id,
                         purpose=args.purpose, semantic_repository=args.semantic_repository,
                         source_formalization_handoff=args.source_formalization_handoff,
                         source_formalization_handoff_sha256=args.source_formalization_handoff_sha256,

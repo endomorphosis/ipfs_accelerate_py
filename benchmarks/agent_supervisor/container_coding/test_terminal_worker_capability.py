@@ -57,6 +57,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_owner_worker_attempt_observation.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_context_evidence.py',
@@ -74,6 +75,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py',
         'source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_worker_attempt.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py',
@@ -123,7 +125,8 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     'context_selection_observation.py', 'worker_source_request_observation.py',
     'terminal_world_packet_audit.py', 'terminal_world_nomination_audit.py', 'repository_world_packet.py',
     'repository_world_packet_replay.py', 'repository_world_invocation_replay.py',
-    'repository_world_artifact_store.py', 'delta_task_packet.py', 'world_model.py'])
+    'repository_world_artifact_store.py', 'delta_task_packet.py', 'world_model.py',
+    'owner_worker_attempt.py', 'terminal_owner_worker_attempt_observation.py'])
 @pytest.mark.parametrize('kind', ['missing', 'stale', 'copied-feature'])
 def test_output_observation_requires_matching_owner_driver_and_collector(packaged, name, kind):
     manifest = copy.deepcopy(packaged[1])
@@ -207,7 +210,8 @@ def test_prepare_rejects_stale_or_mismatched_archive_before_harbor(packaged, tmp
     archive, manifest, dataset = packaged
     (archive / 'manifest.json').write_text(json.dumps(_mutate(manifest, kind)))
     monkeypatch.setattr(benchmark.subprocess, 'run', lambda *a, **k: pytest.fail('unexpected Harbor call'))
-    with pytest.raises(ValueError, match='worker archive capability'):
+    # Deadline source validation can reject the same stale inventory first.
+    with pytest.raises(ValueError, match='worker archive capability|runtime deadline sources differ'):
         benchmark.prepare(dataset=dataset, output=tmp_path / 'trial', archive=archive,
                           arm='full', resource_profile=profile)
     assert not (tmp_path / 'trial').exists()

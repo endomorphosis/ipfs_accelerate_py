@@ -31,6 +31,9 @@ def _inputs(tmp_path):
     bench = roots["source"] / "benchmarks/agent_supervisor/container_coding"
     bench.mkdir(parents=True)
     (bench / "worker.py").write_text("VALUE = 2\n")
+    # Production packaging explicitly includes both namespace initializers.
+    for package in (bench.parent, bench.parent.parent):
+        (package / "__init__.py").write_text('"""Authored benchmark package fixture."""\n')
     extensions = tmp_path / "extensions"
     extensions.mkdir()
     for name in ("ducklake", "httpfs", "quack"):
@@ -42,12 +45,16 @@ def _supervisor_inputs(tmp_path):
     """Packaging fixture with the exact worker capability sources.
 
     This remains a hermetic archive fixture, not an executable full runtime.
-    Generic packaging tests deliberately retain the seven-file _inputs fixture.
+    Generic packaging tests deliberately retain the nine-file _inputs fixture.
     """
     from .terminal_worker_capability import SOURCE_PATHS
+    from .full_supervisor_benchmark import TIMEOUT_RUNTIME_SOURCE_NAMES
     inputs = _inputs(tmp_path)
     checkout = Path(__file__).resolve().parents[3]
-    for name in SOURCE_PATHS:
+    sources = set(SOURCE_PATHS) | {
+        "benchmarks/agent_supervisor/container_coding/" + name
+        for name in TIMEOUT_RUNTIME_SOURCE_NAMES}
+    for name in sorted(sources):
         target = inputs["source"] / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((checkout / name).read_bytes())
@@ -79,7 +86,8 @@ def test_archive_contains_only_explicit_runtime_sources_and_native_assets(tmp_pa
     result = build_runtime_archive(output=tmp_path / "bundle", **_inputs(tmp_path))
     with tarfile.open(tmp_path / "bundle/runtime.tar.gz") as archive:
         names = archive.getnames()
-        assert len(names) == 7
+        assert len(names) == 9
+        assert {"source/benchmarks/__init__.py", "source/benchmarks/agent_supervisor/__init__.py"}.issubset(names)
         assert "source/ipfs_accelerate_py/__init__.py" in names
         assert all(not name.startswith("/") and ".." not in Path(name).parts for name in names)
         assert not any("auth.json" in name or ".env" in name for name in names)

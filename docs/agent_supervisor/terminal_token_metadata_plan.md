@@ -1237,3 +1237,65 @@ wiring and benchmark observations. The datasets and kit commits and actual
 import origins stayed pinned and clean. An early fixture socket-path error
 and an overly broad Lean assertion are retained in the run history alongside
 their corrected results; they are not hidden as successful runs.
+
+## October 15: account for every coding child before enabling continuation
+
+The next execution dependency is complete attempt accounting. The previous
+collector only flagged a missing final coding receipt when no coding receipts
+survived. One recorded invocation could therefore hide a later child with no
+final receipt. That would make a multi-round token comparison unreliable.
+
+Ordinary isolated coding now receives an owner-generated attempt ID. Before
+launch, the owner writes an exclusive private preparation event bound to the
+sealed native prompt, allocated workspace, container boundary, original absolute
+deadline and owner process birth. A second immutable event records the actual
+`Popen` child birth. Retirement records the observed wait, original child exit,
+isolated cleanup and broker closure, including failures. The events form a hash
+chain; files are owner-only, read-only, bounded and never adopted or overwritten.
+IDs and event files are accounting observations and grant no launch permission.
+
+The installed worker forwards the ID to the existing router, which retains it
+on successful and failed final receipts without putting it in model input. The
+Terminal collector matches every child to exactly one distinct invocation with
+the same ID, native prompt digest and workspace identity. Identical repeated
+receipts are harmless. Conflicting receipts remain retained separately and make
+coverage unknown; they cannot disappear through invocation-ID deduplication.
+Planning, provider-free candidates, metadata census, preflight and semantic
+decision dialogues retain their existing accounting routes.
+
+The report's `owner_worker_attempt_census` observes child/receipt coverage,
+separately from native token completeness. A missing later receipt, unfinished
+retirement, malformed event, prompt/workspace mismatch or uncertain child birth sets
+a nonempty `unreceipted_provider_attempt` marker with unknown usage. Existing
+Harbor and comparison projections then withhold complete token totals while
+preserving known receipts and charges. Observed receipt counts are not a complete
+physical provider-call census, and matching all child receipts does not establish
+native usage completeness, billing totals or saved tokens.
+
+A process-creation error before `Popen` assignment leaves preparation-only
+evidence: absence of a recorded PID cannot prove no child ever started. A live
+writer can record an explicit unstarted attempt only when its caller knows no
+launch was attempted. Retirement writing remains possible after deadline expiry;
+write failure preserves the worker outcome and leaves incomplete evidence.
+Archive compatibility now pins both the writer and collector, alongside the
+existing deployment, router and supervisor pins.
+
+This increment prepares accounting for a second coding round. It does not
+enable that round. The remaining launch work must retain the original database
+attempt, task claim, resource reservation and deadline, obtain a fresh typed
+candidate admission on that owner scope, and record a separate child birth.
+The existing finite-proof dispatch broker and database callback are one-use;
+replaying either or removing the candidate router refusal would bypass their
+contract. Candidate artifacts and serialized checkpoints cannot supply that
+admission. A successful coding child followed by validation failure also needs
+its own qualification because the current snapshot factory accepts positive
+failed-child exits only.
+
+Qualification uses real local children through the production monitor and
+writer, plus authored container admission, cleanup commands and provider
+receipts. It includes two separate children, missing second receipts, failed
+registration/cleanup/closure, failed birth observations, private-file drift and
+archive compatibility. These tests invoke no model and do not qualify Docker
+identity isolation or live candidate delivery. Results, dependency revisions and
+retained failed runs are recorded in
+[qualification.json](evidence/owner-worker-attempt-census-20261015/qualification.json).

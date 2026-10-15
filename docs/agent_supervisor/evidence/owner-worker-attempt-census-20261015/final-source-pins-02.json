@@ -1,0 +1,58 @@
+{
+  "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": {
+    "sha256": "e81422703960ec85890ed4f430b9f3817faac5c5e7a38fbf5e155f3fb857ee05",
+    "bytes": 65873
+  },
+  "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+    "sha256": "319ab6dcea89c8736fe2e2fa79ac1c2ab97339e060e024ffb4fe9099ea68e3f7",
+    "bytes": 119834
+  },
+  "benchmarks/agent_supervisor/container_coding/terminal_owner_worker_attempt_observation.py": {
+    "sha256": "7778b4ed4806081840964e9ff9adf00ad9e7e6f4163eb22428ef09b4ffdfee5d",
+    "bytes": 13923
+  },
+  "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": {
+    "sha256": "08dea9ba8888fc5b650cd2e48f78327b094fdbfc5b147d886f2ba0276d18be2c",
+    "bytes": 9262
+  },
+  "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py": {
+    "sha256": "0eeb43ffba6e071e2afd45b07ba3d6478bef7c71d807e4f0f1741507d5f116fe",
+    "bytes": 10239
+  },
+  "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py": {
+    "sha256": "52a4e98f8d50d03073d6d38b10c191e742d7284d3b6f673cf4e27c51a81fbecb",
+    "bytes": 7896
+  },
+  "benchmarks/agent_supervisor/container_coding/test_terminal_owner_worker_attempt_observation.py": {
+    "sha256": "03cdcab8eccac76db6fa304ac25b9a9f70f812c78bf977ed50a12903d39e995f",
+    "bytes": 19347
+  },
+  "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": {
+    "sha256": "dd6330264b5d809866f8b03b9096e4a4393b6ff48006f77509f2adf87c9458be",
+    "bytes": 20298
+  },
+  "docs/agent_supervisor/terminal_token_metadata_plan.md": {
+    "sha256": "30b5aba37c1e0107a1221ff8f9a393e6322426fa426afc8c9be52f42288ad647",
+    "bytes": 88744
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/owner_worker_attempt.py": {
+    "sha256": "cbc35615b6b6bc120293b2b4d183bbcb3a46b9de44a92f4938e0fb4dbdee91c9",
+    "bytes": 15954
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+    "sha256": "0703c965eee93299aece18737e6c6624cf83dc76c960b83beed83a13cdf373ff",
+    "bytes": 128310
+  },
+  "test/api/test_owner_worker_attempt.py": {
+    "sha256": "08353ac86a1bbcd0802d9be31d4263cbc2f06ecff203cb1f71e4ec02b0a35009",
+    "bytes": 15362
+  },
+  "test/api/test_owner_worker_attempt_e2e.py": {
+    "sha256": "5383fcdf310fd9ccb4efaa9e34e6bdc884a0b38b8b9e383f8871ff56933a5523",
+    "bytes": 9112
+  },
+  "test/api/test_router_owner_worker_attempt_identity.py": {
+    "sha256": "0a6429b933940537b724379de35b9a875e697f84a668f5ec4c801420c1a83598",
+    "bytes": 7770
+  }
+}

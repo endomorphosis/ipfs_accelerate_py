@@ -514,16 +514,68 @@ def _collect_provider_usage_rows(report: dict, observations: list[dict]) -> None
         if item.get("schema") in {DIALOGUE_SCHEMA, OWNER_BINDING_SCHEMA}:
             collect_provider_usage_observation(report, item)
     selected = decision_usage_selected(report)
-    seen = {item["invocation_id"] for item in report["provider_invocations"]}
+    seen = {item["invocation_id"]: item for item in report["provider_invocations"]}
     for item in observations:
         if item.get("schema") != "router-implementation-invocation@1":
             continue
         if selected:
             collect_provider_usage_observation(report, item)
-        elif item.get("invocation_id") not in seen:
-            # Retain the existing native/Grok path when no decision scope exists.
-            report["provider_invocations"].append({"phase": "coding", **item})
-            seen.add(item["invocation_id"])
+        else:
+            row = {"phase": "planning" if item.get("purpose") == "planning" else "coding", **item}
+            identity = item.get("invocation_id")
+            if identity not in seen:
+                # Retain the existing native/Grok path when no decision scope exists.
+                report["provider_invocations"].append(row)
+                seen[identity] = row
+            elif (json.dumps(seen[identity], sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                    != json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=False)):
+                # Keep contradictory evidence without making existing native
+                # consumers throw away every otherwise valid charge. The
+                # original row remains in its original population; coverage is
+                # unknown and the conflicting row remains reviewable.
+                conflicts = report.setdefault("provider_invocation_conflicts", [])
+                if not any(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                        == json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                        for value in conflicts):
+                    conflicts.append(row)
+                report["unreceipted_provider_attempt"] = {
+                    "phase": "coding", "usage": None,
+                    "reason": "conflicting_provider_invocation_receipts",
+                }
+
+
+def _collect_owner_worker_attempt_census(report: dict, *, parent: Path) -> None:
+    """A missing later child receipt must invalidate whole-attempt coverage."""
+    if ("owner_worker_attempt_census_expected" not in report
+            or report["owner_worker_attempt_census_expected"] is False):
+        return
+    interrupted = None
+    try:
+        from .terminal_owner_worker_attempt_observation import collect
+
+        observation = collect(parent=parent, report=report)
+        if (type(observation) is not dict
+                or type(observation.get("all_attempts_receipted")) is not bool):
+            raise ValueError("selected worker attempt census is unavailable")
+    except BaseException as error:
+        observation = {"schema": "terminal-owner-worker-attempt-observation@1",
+            "status": "unavailable", "reason": "observation_unavailable",
+            "all_attempts_receipted": False, "attempts": [], "counts": None, "issues": [],
+            "observation_only": True, "execution_authority": False,
+            "completion_authority": False, "retry_authority": False, "settlement_authority": False,
+            "proof_authority": False, "provider_tokens": None,
+            "provider_usage_complete_established": False, "total_token_savings_measured": False,
+            "raw_prompts_exported": False, "raw_sources_exported": False, "raw_paths_exported": False}
+        if not isinstance(error, Exception):
+            interrupted = error
+    report["owner_worker_attempt_census"] = observation
+    if observation["all_attempts_receipted"] is not True:
+        report["unreceipted_provider_attempt"] = {
+            "phase": "coding", "usage": None,
+            "reason": "owner_worker_attempt_census_incomplete",
+        }
+    if interrupted is not None:
+        raise interrupted
 
 
 def _final_context_and_usage(report: dict, *, state: Path, deadline: float) -> None:
@@ -1442,6 +1494,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             native_state = runtime.state
             try:
                 report["coding_dispatch_possible"] = True
+                if (report["implementation_route"] == "model_router"
+                        and not decision_arguments and not metadata_census_only):
+                    report["owner_worker_attempt_census_expected"] = True
                 report["start"] = runtime.start().to_dict()
                 if report["start"]["status"] != "succeeded":
                     raise RuntimeError("native supervisor START failed")
@@ -1574,7 +1629,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     if item not in report.setdefault("doctor_invocations", []):
                         report["doctor_invocations"].append(item)
         _collect_provider_usage_rows(report, usage_observations)
-        if (report.get("coding_dispatch_possible") and report.get("implementation_route") == "model_router"
+        _collect_owner_worker_attempt_census(report, parent=ROOT / "worker-observations")
+        if (("owner_worker_attempt_census_expected" not in report
+                or report["owner_worker_attempt_census_expected"] is False)
+                and report.get("coding_dispatch_possible") and report.get("implementation_route") == "model_router"
                 and not any(
             row.get("phase") == "coding" for row in report["provider_invocations"]
         ) and not report.get("semantic_decision_dialogues")):
