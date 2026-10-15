@@ -6,6 +6,11 @@ is an explicit programmatic option on the existing strict world-packet route;
 defaults and provider selection remain unchanged. Preparing a request calls no
 provider and claims no token saving, resolved obligation or execution authority.
 
+The subsequent [matched residual selection](world_residual_selection.md) option
+compares full and focused evidence with identical residual diagnostics. It
+retains the full residual-bearing input when counts fail, tie or increase.
+The original failure-free packet is never its fallback.
+
 The repository already has whole-tree source representations. The earlier
 [`repository_source_view.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/repository_source_view.py)
 packages bounded original and compact trees and can materialize either view.

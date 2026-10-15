@@ -15,6 +15,12 @@ the complete rendered input, including the residual itself: narrow baseline
 retrieval can make this input larger. Selection remains explicit, and complete
 native session savings remain unqualified.
 
+The subsequent [matched selection](world_residual_selection.md) retains the
+same sealed failure context in both alternatives and compares complete rendered
+inputs. Failed, absent or non-improving local counts retain full evidence;
+counter drift refuses dispatch. This opt-in path uses the existing attempt
+journal and keeps complete-session accounting separate from local estimates.
+
 The October 15 [local tokenizer selection path](metadata_tokenizer_selection.md)
 adds an explicit pinned counter to the container supervisor, router worker and
 historical context audit. It compares complete original and compact coding

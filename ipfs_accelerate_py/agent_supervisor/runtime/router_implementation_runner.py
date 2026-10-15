@@ -363,6 +363,30 @@ def _measure_world_packet_prompt(*, model_prompt, provider, model, token_counter
         "provider_internal_history_measured": False,
     }
 
+
+def _world_residual_counter_snapshot(counter, *, provider, model):
+    """Capture declared counter identity without invoking its callable."""
+    if counter is None:
+        return None
+    if type(counter) is not PromptTokenCounter:
+        raise ValueError("world residual selection requires an exact owner token counter")
+    binding = PromptTokenCounter.binding(counter)
+    if (any(type(value) is not str or not value or value.strip() != value for value in binding.values())
+            or binding["provider"] != provider or binding["model"] != model
+            or not callable(counter.count_tokens)):
+        raise ValueError("world residual counter differs from its pinned provider/model")
+    return counter, tuple(binding.items()), counter.count_tokens
+
+
+def _verify_world_residual_counter_snapshot(counter, snapshot, *, provider, model):
+    current = _world_residual_counter_snapshot(counter, provider=provider, model=model)
+    if snapshot is None:
+        if current is not None:
+            raise ValueError("world residual counter binding changed")
+    elif (current is None or current[0] is not snapshot[0]
+            or current[1] != snapshot[1] or current[2] is not snapshot[2]):
+        raise ValueError("world residual counter binding changed")
+
 def _grok_progress_emitter(invocation_id: str):
     """Keep advisory progress outside native JSON receipt and custody parsers."""
     def emit(value):
@@ -730,8 +754,16 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         world_task_packet: PreparedRepositoryWorldPacket | None = None,
         world_task_presentation: PreparedRepositoryWorldPacketPresentation | None = None,
         world_packet_artifact_dir: Path | None = None,
-        world_task_attempt_journal: RepositoryWorldAttemptJournal | None = None) -> tuple[str, dict]:
+        world_task_attempt_journal: RepositoryWorldAttemptJournal | None = None,
+        world_task_residual_alternatives=None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
+    if world_task_residual_alternatives is not None:
+        from .repository_world_residual_selection import PreparedRepositoryWorldResidualAlternatives
+        if (type(world_task_residual_alternatives) is not PreparedRepositoryWorldResidualAlternatives
+                or world_task_packet is not world_task_residual_alternatives.full_packet
+                or world_task_presentation is not None or world_packet_artifact_dir is not None
+                or world_task_attempt_journal is None or purpose != "coding" or provider != "codex_cli"):
+            raise ValueError("world residual alternatives require their full strict packet and current journal")
     if world_task_packet is not None:
         from .repository_world_packet import PreparedRepositoryWorldPacket
         if type(world_task_packet) is not PreparedRepositoryWorldPacket:
@@ -899,6 +931,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("implementation prompt exceeds its byte bound")
     failure_phase = "prompt_tokenizer"
     tokenizer_source = None
+    residual_local_tokenizer = None
     if type(prompt_tokenizer_sha256) is not str:
         raise ValueError("exact local tokenizer artifact binding required")
     if prompt_tokenizer_artifact is not None or prompt_tokenizer_sha256:
@@ -911,6 +944,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             expected_sha256=prompt_tokenizer_sha256, provider=provider, model=model)
         prompt_token_counter = PromptTokenCounter(**local.binding(), count_tokens=local.count)
         tokenizer_source = local.provenance()
+        if world_task_residual_alternatives is not None:
+            residual_local_tokenizer = local
+    residual_counter_snapshot = None
+    if world_task_residual_alternatives is not None:
+        residual_counter_snapshot = _world_residual_counter_snapshot(
+            prompt_token_counter, provider=provider, model=model)
     failure_phase = "planning_contract"
     response_format = None
     task_contract = None
@@ -953,6 +992,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     router_prompt = prompt
     required_suffix = ""
     world_packet_receipt = None
+    world_residual_alternatives_receipt = None
     if world_task_packet is not None:
         failure_phase = "world_task_packet"
         if world_presentation_snapshot is not None:
@@ -960,6 +1000,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             _world_task_presentation_material(world_task_presentation, world_task_packet, expected=world_presentation_snapshot)
             failure_phase = "world_task_packet"
         world_packet_receipt = PreparedRepositoryWorldPacket.validate_current(world_task_packet, workspace=root, task_text=prompt)
+        if world_task_residual_alternatives is not None:
+            from .repository_world_residual_selection import validate_repository_world_residual_alternatives
+            world_residual_alternatives_receipt = validate_repository_world_residual_alternatives(
+                world_task_residual_alternatives, workspace=root, task_text=prompt)
         router_prompt = (world_task_packet.prompt if world_presentation_snapshot is None
                          else world_presentation_snapshot.presented_prompt)
     if semantic_repository is not None:
@@ -1180,8 +1224,52 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             coding_reply_receipt = candidate_reply
     prompt_selection = None
     world_prompt_measurement = None
+    world_residual_selection = None
     metadata_candidate_receipt = None
-    if world_task_packet is not None and (prompt_token_counter is not None or max_input_tokens is not None):
+    if world_task_residual_alternatives is not None:
+        failure_phase = "prompt_selection"
+        from .repository_world_residual_selection import select_repository_world_residual_prompt
+        from .coding_reply_contract import apply_coding_reply_contract, coding_completion_schema
+        focused_packet = world_task_residual_alternatives.focused_packet
+        focused_router_prompt = focused_packet.prompt
+        focused_model_prompt, focused_advisory = render_model_prompt(
+            prompt=focused_router_prompt, purpose=purpose, workspace=root, world_packet=True,
+            tool_output_binding=tool_output_binding, source_view_binding=source_view_binding,
+            repository_source_binding=repository_source_binding)
+        if focused_advisory != advisory:
+            raise ValueError("world residual alternatives changed the common workspace contract")
+        focused_reply_receipt = None
+        if coding_reply_mode != "legacy":
+            focused_model_prompt, focused_reply_receipt = apply_coding_reply_contract(
+                model_prompt=focused_model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
+            prompt_fields = {"model_prompt_before_sha256", "model_prompt_before_bytes",
+                            "model_prompt_after_sha256", "model_prompt_after_bytes"}
+            if ({key: value for key, value in focused_reply_receipt.items() if key not in prompt_fields}
+                    != {key: value for key, value in coding_reply_receipt.items() if key not in prompt_fields}):
+                raise ValueError("world residual alternatives changed the coding reply contract")
+        _verify_world_residual_counter_snapshot(prompt_token_counter, residual_counter_snapshot,
+            provider=provider, model=model)
+        selected, core_selection, world_prompt_measurement = select_repository_world_residual_prompt(
+            alternatives_receipt=world_residual_alternatives_receipt,
+            full_complete_prompt=model_prompt, focused_complete_prompt=focused_model_prompt,
+            provider=provider, model=model, token_counter=prompt_token_counter,
+            max_input_tokens=max_input_tokens,
+            native_output_schema=coding_completion_schema() if coding_reply_receipt is not None else None)
+        _verify_world_residual_counter_snapshot(prompt_token_counter, residual_counter_snapshot,
+            provider=provider, model=model)
+        current_alternatives = validate_repository_world_residual_alternatives(
+            world_task_residual_alternatives, workspace=root, task_text=prompt)
+        if current_alternatives != world_residual_alternatives_receipt:
+            raise ValueError("world residual alternatives changed during complete prompt selection")
+        if selected == "focused":
+            world_task_packet = focused_packet
+            router_prompt, model_prompt = focused_router_prompt, focused_model_prompt
+            coding_reply_receipt = focused_reply_receipt
+            world_packet_receipt = PreparedRepositoryWorldPacket.receipt(world_task_packet)
+        elif selected != "full":
+            raise ValueError("world residual selector returned an unsupported packet")
+        world_residual_selection = {**core_selection, "dispatch_rechecked": False}
+    elif world_task_packet is not None and (prompt_token_counter is not None or max_input_tokens is not None):
         failure_phase = "prompt_selection"
         from .coding_reply_contract import coding_completion_schema
         world_prompt_measurement = _measure_world_packet_prompt(
@@ -1360,6 +1448,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             invocation_id=invocation, reason="retention_not_requested")
         if world_presentation_snapshot is not None:
             receipt["world_task_presentation"] = json.loads(world_presentation_snapshot.metadata_bytes)
+    if world_residual_selection is not None:
+        receipt["world_task_residual_selection"] = world_residual_selection
     if semantic_component_census is not None:
         receipt["semantic_prompt_components"] = semantic_component_census
     if tool_output_binding is not None:
@@ -1545,6 +1635,22 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             if current_instruction != instruction or current_receipt != instruction_receipt:
                 raise ValueError("signed Terminal scope changed before provider dispatch")
             receipt["terminal_semantic_scope_dispatch_rechecked"] = True
+        if world_task_residual_alternatives is not None:
+            # Provider initialization and earlier local callbacks precede these
+            # checks. Even a count-failure fallback retains asset custody and
+            # the exact same residual diagnostics in its full issued packet.
+            failure_phase = "prompt_tokenizer"
+            if residual_local_tokenizer is not None:
+                from .local_prompt_tokenizer import OwnerPromptTokenizer
+                OwnerPromptTokenizer._verify_binding(residual_local_tokenizer)
+            failure_phase = "world_task_packet_currentness"
+            current_alternatives = validate_repository_world_residual_alternatives(
+                world_task_residual_alternatives, workspace=root, task_text=prompt)
+            if current_alternatives != world_residual_alternatives_receipt:
+                raise ValueError("world residual alternatives changed before provider dispatch")
+            failure_phase = "prompt_tokenizer"
+            _verify_world_residual_counter_snapshot(prompt_token_counter, residual_counter_snapshot,
+                provider=provider, model=model)
         if world_task_attempt_journal is not None:
             # Journal checks may read host custody. Complete all native source
             # closing checks below them; perform no journal write before call.
@@ -1560,6 +1666,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             if current_packet != world_packet_receipt:
                 raise ValueError("world task packet changed before provider dispatch")
             receipt["world_task_packet"]["dispatch_rechecked"] = True
+            if world_residual_selection is not None:
+                receipt["world_task_residual_selection"]["dispatch_rechecked"] = True
             if world_presentation_snapshot is not None:
                 receipt["world_task_presentation"]["dispatch_rechecked"] = True
             if world_packet_artifact_dir is not None:

@@ -40,7 +40,7 @@ _INCOMPATIBLE = frozenset({
     "source_input_policy", "source_input_dispatched", "query_reference_policy",
     "query_reference_selected", "query_reference_dispatched", "query_reference_provider_attempted",
     "representation_displacement", "semantic_metadata_candidate", "prompt_selection",
-    "terminal_semantic_scope_dispatch_rechecked",
+    "terminal_semantic_scope_dispatch_rechecked", "world_task_residual_selection",
 })
 _FALSE = dict(source_currentness_verified=False, owner_currentness_verified=False,
     owner_signature_replayed=False, compiler_token_counts_replayed=False,
@@ -198,9 +198,12 @@ def _replay_repository_world_invocation(data: bytes, *, expected_sha256: str):
     _require(type(recorded) is dict, "world_replay_packet_receipt")
     dispatch_fields = {"dispatch_rechecked", "provider_attempted", "prompt_measurement"}
     packet_receipt = packet.recorded_packet_receipt()
-    _require(set(recorded) == set(packet_receipt) | dispatch_fields
+    retained_parent = {"provider_retained_parent"} if "provider_retained_parent" in recorded else set()
+    _require(set(recorded) == set(packet_receipt) | dispatch_fields | retained_parent
              and _canonical_bytes({key: recorded[key] for key in packet_receipt})
-                 == _canonical_bytes(packet_receipt), "world_replay_packet_receipt")
+                 == _canonical_bytes(packet_receipt)
+             and (not retained_parent or recorded["provider_retained_parent"] is False),
+             "world_replay_packet_receipt")
     _require(type(recorded["dispatch_rechecked"]) is bool
              and type(recorded["provider_attempted"]) is bool
              and (not recorded["provider_attempted"] or recorded["dispatch_rechecked"]),
