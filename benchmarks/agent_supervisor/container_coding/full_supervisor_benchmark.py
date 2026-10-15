@@ -54,6 +54,8 @@ from .terminal_planning_policy import (
 from .terminal_semantic_working_set_policy import (
     DEFAULT_SEMANTIC_WORKING_SET, SEMANTIC_WORKING_SETS, validate_semantic_working_set,
     semantic_working_set_selection, semantic_working_set_observation, require_semantic_working_set_archive,
+    validate_working_set_census, working_set_census_selection, working_set_census_observation,
+    frozen_working_set_census, working_set_census_runtime_matches,
 )
 from .terminal_doctor_coding_policy import (
     DOCTOR_CODING_POLICIES, doctor_coding_selection, doctor_coding_observation, require_doctor_coding_archive,
@@ -258,6 +260,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
+               working_set_census_only: bool = False,
                grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
                candidate_rounds: int = 1,
                doctor_coding_policy: str | None = None,
@@ -286,6 +289,10 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     validate_semantic_working_set(semantic_working_set, arm=arm, source_view_profile=source_view_profile,
         transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
+    validate_working_set_census(working_set_census_only, arm=arm, planning_mode=planning_mode,
+        semantic_working_set=semantic_working_set, source_view_profile=source_view_profile,
+        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view,
+        source_edit_mode=source_edit_mode, candidate_rounds=candidate_rounds)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
@@ -312,6 +319,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **planning_selection(planning_mode),
                    **semantic_metadata_selection(semantic_metadata_view),
                    **semantic_working_set_selection(semantic_working_set),
+                   **working_set_census_selection(working_set_census_only),
                    **grok_coding_selection(grok_coding_max_turns),
                    **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
                    **capsule_selection_options(capsule_selection),
@@ -319,6 +327,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **source_view_selection(source_view_profile, source_view_policy),
                    **source_edit_selection(source_edit_mode)},
     }]
+    if working_set_census_only:
+        config["verifier"] = {**config["verifier"], "disable": True}
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
     if intent_requirement_contract is not None:
@@ -365,6 +375,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
             semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
+            working_set_census_only: bool = False,
             grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
             candidate_rounds: int = 1,
             doctor_coding_policy: str | None = None,
@@ -387,6 +398,10 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     validate_semantic_working_set(semantic_working_set, arm=arm, source_view_profile=source_view_profile,
         transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
+    validate_working_set_census(working_set_census_only, arm=arm, planning_mode=planning_mode,
+        semantic_working_set=semantic_working_set, source_view_profile=source_view_profile,
+        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view,
+        source_edit_mode=source_edit_mode, candidate_rounds=candidate_rounds)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
@@ -477,6 +492,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         coding_reply_mode=coding_reply_mode,
         semantic_metadata_view=semantic_metadata_view,
         **semantic_working_set_selection(semantic_working_set),
+        **working_set_census_selection(working_set_census_only),
         **grok_coding_selection(grok_coding_max_turns),
         **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
         capsule_selection=capsule_selection,
@@ -517,6 +533,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **coding_reply_selection(coding_reply_mode),
               **semantic_metadata_observation(semantic_metadata_view),
               **semantic_working_set_observation(semantic_working_set),
+              **working_set_census_observation(working_set_census_only),
               **grok_coding_selection(grok_coding_max_turns),
               **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
               **capsule_selection_observation(capsule_selection),
@@ -546,6 +563,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
     candidate_rounds = benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
+    working_set_census = frozen_working_set_census(prepared, config)
     doctor_coding_policy = prepared.get("doctor_coding_policy")
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
@@ -673,6 +691,10 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **coding_reply_selection(reply_mode),
               **semantic_metadata_observation(metadata_view),
               **semantic_working_set_observation(working_set),
+              **working_set_census_observation(working_set_census),
+              **({"working_set_census_runtime_matches": bool(trials) and all(
+                    working_set_census_runtime_matches(trial.get("supervisor")) for trial in trials)}
+                 if working_set_census else {}),
               **grok_coding_selection(grok_turns),
               **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
               **({"doctor_coding_runtime_declared_matches": doctor_runtime_matches} if candidate_rounds == 2 else {}),
@@ -718,7 +740,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               "comparison_controls": benchmark_controls.observe_controls(
                   prepared, config, current_task_hashes=_task_hashes(task)),
               "trials": trials, "trial_count": len(trials), "native_job_result_present": (job / "result.json").is_file(),
-              "complete_single_trial_receipt": unchanged and len(trials) == 1
+              "complete_single_trial_receipt": not working_set_census and unchanged and len(trials) == 1
                   and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file()
                   and configured_transport == transport and configured_reply_mode == reply_mode
                   and configured_numerical == numerical_profile and configured_planning == planning_mode
@@ -741,6 +763,15 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               "source384": prepared.get("source384"), "source384_enabled": prepared.get("source384_enabled", False),
               "resource_profile": prepared.get("resource_profile"),
               "intent_selection_config_unchanged": configured_selection == selection}
+    if working_set_census:
+        result["working_set_census_receipt_complete"] = (
+            unchanged and len(trials) == 1 and trials[0]["exact_trial_task_matches"] is True
+            and (job / "result.json").is_file() and trials[0]["reward"] is None
+            and trials[0]["exception_type"] is None
+            and trials[0]["durations_seconds"].get("verifier") is None
+            and result["working_set_census_runtime_matches"] is True
+            and result["comparison_controls"].get("configuration_unchanged") is True
+            and all(value is True for key, value in result.items() if key.endswith("config_unchanged")))
     _json(output / "receipt.json", result)
     return result
 
@@ -750,6 +781,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
     candidate_rounds = benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
+    working_set_census = frozen_working_set_census(prepared, config)
     doctor_coding_policy = prepared.get("doctor_coding_policy")
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
@@ -898,6 +930,8 @@ def main():
         help="Experimental readable coding metadata view; planning unchanged and selection frozen by preparation")
     parser.add_argument("--semantic-working-set", choices=SEMANTIC_WORKING_SETS,
         default=DEFAULT_SEMANTIC_WORKING_SET, help="Opt-in capsule references with live exact expansion; frozen by preparation")
+    parser.add_argument("--working-set-census-only", action="store_true",
+        help="Measure declared-plan capsule references without coding or official verification; frozen by prepare")
     parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
         help="Experimental source-bound capsule ranking; requires an explicit public task profile and is frozen by preparation")
     parser.add_argument("--capsule-budget", choices=CAPSULE_BUDGETS, default=DEFAULT_CAPSULE_BUDGET,
@@ -943,6 +977,8 @@ def main():
         parser.error("semantic metadata view is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_working_set != DEFAULT_SEMANTIC_WORKING_SET:
         parser.error("semantic working set is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.working_set_census_only:
+        parser.error("working set census is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_selection != DEFAULT_CAPSULE_SELECTION:
         parser.error("capsule selection is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_budget != DEFAULT_CAPSULE_BUDGET:
@@ -967,6 +1003,7 @@ def main():
                          coding_reply_mode=args.coding_reply_mode,
                          semantic_metadata_view=args.semantic_metadata_view,
                          **semantic_working_set_selection(args.semantic_working_set),
+                         **working_set_census_selection(args.working_set_census_only),
                          **grok_coding_selection(args.grok_coding_max_turns),
                          candidate_rounds=args.candidate_rounds,
                          doctor_coding_policy=args.doctor_coding_policy,

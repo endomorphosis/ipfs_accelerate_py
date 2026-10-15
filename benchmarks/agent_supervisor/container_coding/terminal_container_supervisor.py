@@ -394,6 +394,64 @@ def _run_live_metadata_census(*, state: Path, report: dict, provider_selection: 
     report["coding_dispatch_possible"] = False
 
 
+def _run_working_set_census(*, state: Path, report: dict, provider_selection: dict,
+        timeout_seconds: int, source_view_profile: str, source_view_policy,
+        coding_reply_mode: str, grok_coding_max_turns: int, require_source384: bool) -> None:
+    """Measure one current declared-plan input through the ordinary owner launcher."""
+    from .terminal_working_set_census import prepare_terminal_working_set_census
+    from .terminal_live_metadata_census import _identity
+    from .terminal_source_view_policy import source_view_policy_argv
+    from .terminal_working_set_census_observation import replay_working_set_census
+    from .terminal_numerical_retrieval_observation import _parse
+
+    if report["provider_invocations"] != []:
+        raise ValueError("declared-plan census requires no provider invocation")
+    deployment = _live_census_boundary(ROOT)
+    audit_parent = ROOT / "worker-observations"
+    before = set(audit_parent.glob("source-view-*-audit.json"))
+    with prepare_terminal_working_set_census(state=state, worktree_root=WORKTREES,
+            worker_writable=True, worker_group_gid=os.getegid(), require_source384=require_source384,
+            coding_reply_mode=coding_reply_mode) as prepared:
+        metadata = prepared["metadata"]
+        if metadata["planning_metadata_sha256"] != _identity(report["planning"]):
+            raise ValueError("declared planning report differs from current owner admission")
+        options = prepared["runner_kwargs"]
+        command = [str(ROUTER), "--provider", provider_selection["provider"],
+            "--model", provider_selection["model"], "--reasoning-effort", provider_selection["reasoning_effort"],
+            "--purpose", "coding", "--timeout", str(timeout_seconds), "--max-output-tokens", "4096",
+            "--semantic-working-set-census-only", "--semantic-working-set", "capsule-references@1",
+            "--semantic-repository", str(options["semantic_repository"]),
+            "--source-view-profile", source_view_profile, "--coding-reply-mode", coding_reply_mode]
+        command += source_view_policy_argv(source_view_policy, profile=source_view_profile)
+        if grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS:
+            command += ["--grok-coding-max-turns", str(grok_coding_max_turns)]
+        for prefix in ("doctor_residual", "public_instruction"):
+            if prefix + "_artifact" in options:
+                for suffix in ("artifact", "sha256", "task_cid"):
+                    command += ["--" + (prefix + "_" + suffix).replace("_", "-"),
+                        str(options[prefix + "_" + suffix])]
+        with prepared["prompt_artifact"].open("rb") as prompt:
+            call = subprocess.run(command, cwd=prepared["workspace"], stdin=prompt,
+                capture_output=True, timeout=timeout_seconds)
+        private = prepared["private_artifact_dir"]
+        (private / "router.stdout").write_bytes(call.stdout)
+        (private / "router.stderr").write_bytes(call.stderr)
+        if call.returncode:
+            raise RuntimeError("isolated working-set census worker refused before observation")
+        if len(call.stdout) > 32769:
+            raise ValueError("bounded working-set census observation required")
+        observed = _parse(call.stdout.strip())
+        source_observation = replay_working_set_census(prepared=prepared, observed=observed,
+            deployment=deployment, provider_selection=provider_selection, source_view_profile=source_view_profile,
+            source_view_policy=source_view_policy,
+            source_audit_paths=sorted(set(audit_parent.glob("source-view-*-audit.json")) - before))
+        metadata["retained_owner_planning_receipt_join_verified"] = True
+    # Publish success only after current owner/source rechecks and allocation cleanup.
+    report.update(working_set_census_context=metadata, working_set_census=observed,
+        working_set_census_source_observation=source_observation,
+        working_set_census_succeeded=True, coding_dispatch_possible=False)
+
+
 def _native_diagnostics(state: Path) -> dict:
     """Retain bounded startup evidence, without prompts or owner credentials."""
     result = {"schema": "native-supervisor-diagnostics@1"}
@@ -710,6 +768,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         capsule_selection: str = "lexical-query-symbol-name@1",
         capsule_budget: str = "legacy",
         metadata_census_only: bool = False,
+        working_set_census_only: bool = False,
         coding_reply_mode: str = "legacy",
         resource_profile: str | None = None,
         model_snapshot: Path | None = None, model_revision="",
@@ -762,6 +821,12 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     )
     validate_semantic_working_set(semantic_working_set, arm=arm, source_view_profile=source_view_profile,
         transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
+    from .terminal_semantic_working_set_policy import validate_working_set_census, working_set_census_observation
+    validate_working_set_census(working_set_census_only, arm=arm, planning_mode=planning_mode,
+        semantic_working_set=semantic_working_set, source_view_profile=source_view_profile,
+        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view,
+        source_edit_mode=source_edit_mode, candidate_rounds=candidate_rounds,
+        metadata_census_only=metadata_census_only)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     if source_view_profile != "disabled" and metadata_census_only:
         raise ValueError("source view qualification requires the coding worker route")
@@ -888,6 +953,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     if metadata_census_only:
         report.update(metadata_census_only=True, metadata_census_succeeded=False,
                       coding_dispatch_possible=False, official_verifier_executed=False)
+    if working_set_census_only:
+        report.update(**working_set_census_observation(True), working_set_census_succeeded=False,
+            coding_dispatch_possible=False, official_verifier_executed=False)
     if semantic_metadata_view != "legacy":
         report["semantic_metadata_view"] = {"requested_mode": semantic_metadata_view,
             "planning_retained": True, "benchmark_advantage_claimed": False,
@@ -1085,6 +1153,17 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                        if semantic_metadata_view != "common-bindings@1" else {}))
             finally:
                 report["phases"]["metadata_census_seconds"] = time.monotonic() - before
+            return report
+        if working_set_census_only:
+            phase = "working_set_census"
+            before = time.monotonic()
+            try:
+                _run_working_set_census(state=state, report=report, provider_selection=provider_selection,
+                    timeout_seconds=min(120, remaining(10)), source_view_profile=source_view_profile,
+                    source_view_policy=source_view_policy, coding_reply_mode=coding_reply_mode,
+                    grok_coding_max_turns=grok_coding_max_turns, require_source384=source384_config is not None)
+            finally:
+                report["phases"]["working_set_census_seconds"] = time.monotonic() - before
             return report
         doctor = None
         if arm == "full":
@@ -1295,7 +1374,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         )
     except (Exception, _BenchmarkPhaseExpired) as error:
         error_type = "TimeoutError" if type(error) is _BenchmarkPhaseExpired else type(error).__name__
-        report["error"] = ({"type": error_type} if metadata_census_only else
+        report["error"] = ({"type": error_type} if metadata_census_only or working_set_census_only else
                            {"type": error_type, "message": str(error)[:2048]})
         report["error_phase"] = phase
         try:
@@ -1325,6 +1404,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             report["task_completed"] = False
             if metadata_census_only:
                 report["metadata_census_succeeded"] = False
+            if working_set_census_only:
+                report["working_set_census_succeeded"] = False
         seen = {item["invocation_id"] for item in report["provider_invocations"]}
         for path in state.rglob("*.log"):
             if path.stat().st_size > 8_000_000:
@@ -1360,8 +1441,14 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "phase": "coding", "usage": None,
                 "reason": "implementation_may_have_dispatched_without_a_final_router_receipt",
             }
-        from .terminal_candidate_attempt_accounting import apply as account_candidate_attempts
-        account_candidate_attempts(report, parent=ROOT / "worker-observations")
+        if working_set_census_only:
+            # This path has no coding attempts. Its independently replayed
+            # source-session accounting is retained by the census itself.
+            if report["provider_invocations"] or report.get("unreceipted_provider_attempt"):
+                report["working_set_census_succeeded"] = False
+        else:
+            from .terminal_candidate_attempt_accounting import apply as account_candidate_attempts
+            account_candidate_attempts(report, parent=ROOT / "worker-observations")
         if metadata_census_only:
             try:
                 from .terminal_live_census_provenance import audit_planning_usage
@@ -1500,6 +1587,7 @@ def main():
     parser.add_argument("--capsule-budget", choices=CAPSULE_BUDGETS, default=DEFAULT_CAPSULE_BUDGET,
         help="Explicit maximum capsules selected for the full indexed arm")
     parser.add_argument("--metadata-census-only", action="store_true")
+    parser.add_argument("--working-set-census-only", action="store_true")
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
         default=DEFAULT_CODING_REPLY_MODE)
@@ -1526,7 +1614,8 @@ def main():
     parser.add_argument("--task-profile", type=Path)
     result = run(**vars(parser.parse_args()))
     print(json.dumps({key: result[key] for key in ("task_completed", "arm", "seconds", "provider_invocations")}))
-    return 0 if (result.get("metadata_census_succeeded") if result.get("metadata_census_only")
+    return 0 if (result.get("working_set_census_succeeded") if result.get("working_set_census_only")
+                 else result.get("metadata_census_succeeded") if result.get("metadata_census_only")
                  else result["task_completed"]) else 1
 
 

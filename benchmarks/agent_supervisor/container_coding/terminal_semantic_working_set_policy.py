@@ -15,6 +15,9 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
     "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
     "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census_observation.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py",
     "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
     "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
     "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
@@ -81,3 +84,81 @@ def require_semantic_working_set_archive(manifest, value):
                 or "bytes" in matches[0] and (type(matches[0]["bytes"]) is not int
                     or matches[0]["bytes"] != path.stat().st_size)):
             raise ValueError("semantic working set requires a newly qualified runtime archive")
+
+
+def validate_working_set_census(value=False, *, arm=None, planning_mode="model",
+        semantic_working_set=DEFAULT_SEMANTIC_WORKING_SET,
+        source_view_profile=DEFAULT_SOURCE_VIEW_PROFILE,
+        transport_schema=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, metadata_view="legacy",
+        source_edit_mode="disabled", candidate_rounds=1, metadata_census_only=False):
+    """Keep observation-only dispatch distinct from coding and metadata census."""
+    if type(value) is not bool or type(metadata_census_only) is not bool:
+        raise ValueError("explicit Boolean working set census selection required")
+    if not value:
+        return False
+    from .terminal_planning_policy import DECLARED_PLANNING_MODE
+    if arm != "full" or planning_mode != DECLARED_PLANNING_MODE:
+        raise ValueError("working set census requires full indexed declared planning")
+    if semantic_working_set != "capsule-references@1":
+        raise ValueError("working set census requires capsule references")
+    validate_semantic_working_set(semantic_working_set, arm=arm,
+        source_view_profile=source_view_profile, transport_schema=transport_schema,
+        metadata_view=metadata_view)
+    if metadata_census_only:
+        raise ValueError("working set census and metadata census are mutually exclusive")
+    if source_edit_mode != "disabled":
+        raise ValueError("working set census cannot enable source edits")
+    if type(candidate_rounds) is not int or candidate_rounds != 1:
+        raise ValueError("working set census cannot enable candidate continuation")
+    return True
+
+
+def working_set_census_selection(value):
+    if type(value) is not bool:
+        raise ValueError("explicit Boolean working set census selection required")
+    return {"working_set_census_only": True} if value else {}
+
+
+def working_set_census_observation(value):
+    return {} if not working_set_census_selection(value) else {
+        "working_set_census_only": True, "measurement_only": True,
+        "coding_dispatched": False, "official_verifier_requested": False,
+        "task_reward_claimed": False,
+    }
+
+
+def working_set_census_runtime_matches(report):
+    """Require a completed observation, without promoting it to task success."""
+    return (type(report) is dict
+        and all(type(report.get(key)) is type(value) and report.get(key) == value
+            for key, value in working_set_census_observation(True).items())
+        and report.get("working_set_census_succeeded") is True
+        and report.get("task_completed") is False
+        and type(report.get("provider_invocations")) is list
+        and report["provider_invocations"] == []
+        and "unreceipted_provider_attempt" not in report
+        and report.get("coding_dispatch_possible") is False
+        and report.get("official_verifier_executed") is False)
+
+
+def frozen_working_set_census(prepared, config):
+    """Validate both frozen selections before any replay side effects."""
+    kwargs = config["agents"][0].get("kwargs", {})
+    def selected(row, arm):
+        return validate_working_set_census(row.get("working_set_census_only", False), arm=arm,
+            planning_mode=row.get("planning_mode", "model"),
+            semantic_working_set=row.get("semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET),
+            source_view_profile=row.get("source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
+            transport_schema=row.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+            metadata_view=row.get("semantic_metadata_view", "legacy"),
+            source_edit_mode=row.get("source_edit_mode", "disabled"),
+            candidate_rounds=row.get("candidate_rounds", 1),
+            metadata_census_only=row.get("metadata_census_only", False))
+    chosen = selected(prepared, prepared.get("arm"))
+    configured = selected(kwargs, kwargs.get("arm"))
+    if chosen != configured:
+        raise ValueError("prepared working set census selection changed")
+    if chosen and (type(config.get("verifier")) is not dict
+            or config["verifier"].get("disable") is not True):
+        raise ValueError("working set census requires disabled official verification")
+    return chosen

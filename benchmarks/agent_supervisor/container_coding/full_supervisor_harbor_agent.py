@@ -59,6 +59,7 @@ from .terminal_planning_policy import (
 from .terminal_semantic_working_set_policy import (
     DEFAULT_SEMANTIC_WORKING_SET, SEMANTIC_WORKING_SETS, validate_semantic_working_set,
     semantic_working_set_selection, semantic_working_set_observation, require_semantic_working_set_archive,
+    validate_working_set_census, working_set_census_observation, working_set_census_runtime_matches,
 )
 from .terminal_doctor_coding_policy import (
     doctor_coding_observation, require_doctor_coding_archive, doctor_coding_runtime_declared_matches,
@@ -349,7 +350,7 @@ class FullSupervisorAgent(BaseAgent):
                  source_edit_mode: str = DEFAULT_SOURCE_EDIT_MODE,
                  numerical_formalization_profile: str | None = None,
                  planning_mode: str = DEFAULT_PLANNING_MODE,
-                 metadata_census_only: bool = False, **kwargs):
+                 metadata_census_only: bool = False, working_set_census_only: bool = False, **kwargs):
         from .benchmark_controls import validate_full_supervisor_candidate_rounds
         selected_rounds = validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
             doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
@@ -404,6 +405,12 @@ class FullSupervisorAgent(BaseAgent):
                 or self.coding_reply_mode != "ordinary-completion@1"):
             raise ValueError("live census requires the full common-bindings ordinary-completion route")
         self.metadata_census_only = metadata_census_only
+        self.working_set_census_only = self._frozen_working_set_census_only = validate_working_set_census(
+            working_set_census_only, arm=arm, planning_mode=self.planning_mode,
+            semantic_working_set=self.semantic_working_set, source_view_profile=self.source_view_profile,
+            transport_schema=self.semantic_transport_schema, metadata_view=self.semantic_metadata_view,
+            source_edit_mode=self.source_edit_mode, candidate_rounds=selected_rounds,
+            metadata_census_only=metadata_census_only)
         self.numerical_formalization_profile = validate_numerical_profile(numerical_formalization_profile)
         if type(disable_intent_autoencoder) is not bool:
             raise ValueError("Intent ablation switch must be boolean")
@@ -487,6 +494,20 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("prepared semantic working set changed")
         return mode
 
+    def _checked_working_set_census(self):
+        selected = validate_working_set_census(getattr(self, "working_set_census_only", False),
+            arm=self.arm, planning_mode=getattr(self, "planning_mode", DEFAULT_PLANNING_MODE),
+            semantic_working_set=getattr(self, "semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET),
+            source_view_profile=getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
+            transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+            metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            source_edit_mode=getattr(self, "source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+            candidate_rounds=getattr(self, "candidate_rounds", 1),
+            metadata_census_only=getattr(self, "metadata_census_only", False))
+        if selected != getattr(self, "_frozen_working_set_census_only", False):
+            raise ValueError("prepared working set census selection changed")
+        return selected
+
     def _checked_source_edit_mode(self, profile):
         mode = validate_source_edit_mode(getattr(self, "source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
             arm=self.arm, source_view_profile=profile)
@@ -520,6 +541,7 @@ class FullSupervisorAgent(BaseAgent):
         return selected
 
     async def setup(self, environment):
+        working_set_census = self._checked_working_set_census()
         candidate_rounds = self._checked_candidate_rounds()
         doctor_coding_policy = getattr(self, "doctor_coding_policy", None)
         from .terminal_setup_cache_advice import (
@@ -579,8 +601,8 @@ class FullSupervisorAgent(BaseAgent):
         boundary = self.logs_dir / "worker-boundary"
         deployed_boundary = await deploy_worker_boundary(environment, output=boundary,
             **({"provider": "grok_cli"} if selected_provider["provider"] == "grok_cli" else {}))
-        if getattr(self, "metadata_census_only", False):
-            if validate_source384_binding(manifest) is None:
+        if getattr(self, "metadata_census_only", False) or working_set_census:
+            if not working_set_census and validate_source384_binding(manifest) is None:
                 raise ValueError("live census requires current Source384 assets")
             # This is the actual independent namespace/permission/termination
             # qualification, protected by container root before owner use.
@@ -592,7 +614,7 @@ class FullSupervisorAgent(BaseAgent):
                                                user="root", cwd="/", timeout_sec=5)
             if protected.return_code:
                 raise RuntimeError("live census qualification protection failed")
-        if selected_provider["provider"] == "grok_cli":
+        if selected_provider["provider"] == "grok_cli" and not working_set_census:
             from .terminal_grok_deployment import require_grok_credential_readiness
             await require_grok_credential_readiness(environment,
                 output=self.logs_dir / "provider-readiness")
@@ -603,6 +625,7 @@ class FullSupervisorAgent(BaseAgent):
                 resource_profile=getattr(self, "resource_profile", None))
 
     async def run(self, instruction: str, environment, context: AgentContext):
+        working_set_census = self._checked_working_set_census()
         candidate_rounds = self._checked_candidate_rounds()
         doctor_coding_policy = getattr(self, "doctor_coding_policy", None)
         from .terminal_setup_cache_advice import validate_setup_cache_selection
@@ -692,6 +715,8 @@ class FullSupervisorAgent(BaseAgent):
         argv += source_view_policy_argv(source_policy, profile=source_view)
         if getattr(self, "metadata_census_only", False):
             argv += ["--metadata-census-only"]
+        if working_set_census:
+            argv += ["--working-set-census-only"]
         task_profile = getattr(self, "task_profile", None)
         if task_profile is not None:
             from .terminal_task_profile import validate_task_profile
@@ -731,6 +756,7 @@ class FullSupervisorAgent(BaseAgent):
                             **source_view_observation(source_view, source_policy),
                             **source_edit_observation(source_edit),
                             **semantic_working_set_observation(working_set),
+                            **working_set_census_observation(working_set_census),
                             **grok_coding_selection(grok_turns),
                             **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
                             **numerical_observation(numerical_profile, self.arm),
@@ -782,6 +808,8 @@ class FullSupervisorAgent(BaseAgent):
                     context.metadata["semantic_working_set_runtime_declared_matches"] = all(
                         type(report.get(key)) is type(value) and report.get(key) == value
                         for key, value in expected_working_set.items())
+                if working_set_census:
+                    context.metadata["working_set_census_runtime_matches"] = working_set_census_runtime_matches(report)
                 if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
                     context.metadata["grok_coding_runtime_declared_matches"] = (
                         type(report.get("grok_coding_max_turns")) is int
@@ -794,7 +822,7 @@ class FullSupervisorAgent(BaseAgent):
                         report, candidate_rounds, doctor_coding_policy)
                 usage = measured_usage(report)
                 populate_harbor_usage(context, usage)
-                context.metadata.update(task_completed=report["task_completed"], usage=usage,
+                context.metadata.update(task_completed=False if working_set_census else report["task_completed"], usage=usage,
                                         supervisor_seconds=report["seconds"], phases=report["phases"],
                                         intent_preplanning=(report.get("planning") or {}).get(
                                             "intent_preplanning", report.get("intent_preplanning")),

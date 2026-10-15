@@ -23,6 +23,7 @@ CAPSULE_BUDGET_SCHEMA = "terminal-benchmark-declared-controls@5"
 SEMANTIC_WORKING_SET_SCHEMA = "terminal-benchmark-declared-controls@6"
 GROK_CODING_SCHEMA = "terminal-benchmark-declared-controls@7"
 DOCTOR_CODING_SCHEMA = "terminal-benchmark-declared-controls@8"
+WORKING_SET_CENSUS_SCHEMA = "terminal-benchmark-declared-controls@9"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 JOB_KEYS = ("n_attempts", "n_concurrent_trials", "retry", "timeout_multiplier",
             "agent_timeout_multiplier", "agent_setup_timeout_multiplier",
@@ -116,6 +117,9 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
     if agent.get("model_name") != model:
         raise ValueError("declared model differs from configuration")
     kwargs = agent.get("kwargs", {})
+    if "working_set_census_only" in kwargs:
+        from .terminal_semantic_working_set_policy import frozen_working_set_census
+        frozen_working_set_census(kwargs, config)
     if agent.get("name") == "codex" and not agent.get("import_path"):
         if kwargs != {"version": cli_version, "reasoning_effort": reasoning_effort}:
             raise ValueError("native model controls differ from declared CLI/reasoning")
@@ -137,7 +141,7 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
             source_edit_mode=kwargs.get("source_edit_mode", "disabled"),
             numerical_formalization_profile=kwargs.get("numerical_formalization_profile"),
             task_profile=kwargs.get("task_profile"))
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "capsule_budget", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode", "semantic_working_set", "grok_coding_max_turns", "candidate_rounds", "doctor_coding_policy"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile", "capsule_selection", "capsule_budget", "source_view_profile", "source_view_policy", "planning_mode", "source_edit_mode", "semantic_working_set", "grok_coding_max_turns", "candidate_rounds", "doctor_coding_policy", "working_set_census_only"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         validate_grok_coding_max_turns(kwargs.get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
             provider=selected["provider"])
@@ -289,11 +293,17 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
     if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
         controls["schema"] = GROK_CODING_SCHEMA
         controls.setdefault("experimental_controls_sha256", {})["grok_coding_max_turns"] = _digest(grok_turns)
+    if "working_set_census_only" in kwargs:
+        from .terminal_semantic_working_set_policy import frozen_working_set_census
+        frozen_working_set_census(kwargs, config)
     if kwargs.get("candidate_rounds", 1) == 2:
         controls["schema"] = DOCTOR_CODING_SCHEMA
         controls.setdefault("experimental_controls_sha256", {}).update(
             candidate_rounds=_digest(kwargs["candidate_rounds"]),
             doctor_coding_policy=_digest(kwargs["doctor_coding_policy"]))
+    if kwargs.get("working_set_census_only", False):
+        controls["schema"] = WORKING_SET_CENSUS_SCHEMA
+        controls.setdefault("experimental_controls_sha256", {})["working_set_census_only"] = _digest(True)
     controls["sha256"] = _digest(controls)
     return controls
 
@@ -304,7 +314,17 @@ def validate_controls(value):
             "agent_controls_sha256", "sha256"}
     if not isinstance(value, dict):
         return False
-    if value.get("schema") == DOCTOR_CODING_SCHEMA:
+    if value.get("schema") == WORKING_SET_CENSUS_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict
+                or not {"working_set_census_only", "semantic_working_set", "planning_mode"} <= set(experiment)
+                or set(experiment) - {"working_set_census_only", "grok_coding_max_turns",
+                    "semantic_working_set", "capsule_budget", "planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())
+                or experiment["working_set_census_only"] != _digest(True)):
+            return False
+    elif value.get("schema") == DOCTOR_CODING_SCHEMA:
         keys.add("experimental_controls_sha256")
         experiment = value.get("experimental_controls_sha256")
         if (type(experiment) is not dict or not {"candidate_rounds", "doctor_coding_policy"} <= set(experiment)
