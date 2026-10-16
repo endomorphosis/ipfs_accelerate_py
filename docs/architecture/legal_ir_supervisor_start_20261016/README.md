@@ -1,38 +1,47 @@
-# LegalIR ordinary worker source-only bootstrap revision r02
+# LegalIR ordinary worker source-only bootstrap revision r03
 
-This r02 proposal derives from the exact committed r01 package at
-`feb96b55e28b282e42b3de85da7f0fc72f781ca2`. The original frozen handoff still
-derives from commit `651d2ea941c720726e234fbe4e319e650ad70f71`.
+This r03 proposal derives from the exact committed r02 package at
+`d548a9353e5fb26b2ab40fdab0d5a50336bdb9f1`. It preserves the complete frozen
+handoff and independent-acceptance gate while reviewing one additional bounded
+engineering attempt. It does not reset or delete durable attempt history.
 
-The previous finite engineering launch started a genuine native supervisor and
-then stopped when the strict storage inventory rejected a legitimate ephemeral
-authentication symlink beneath its attempt directory. Its owner receipt records
-`native_stop_verified: true`, `all_trees_fenced: true` and an owned quiescent
-process group. The owner reported exit status 1; the attached child returned 2.
-The failed attempt and retained disk claim remain preserved. They are not
-relabeled as a completed launch or a provider-generation result, and this packet
-does not release or adopt that claim. See the exact historical
-[`launch01 receipt`](/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-launch01/receipt.json)
-and [`preflight01 receipt`](/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-preflight01/receipt.json)
-paths recorded with byte hashes in `startup-status.json`; those local links
-are engineering references and may be outside a published repository view.
+The r01 supervisor stopped after the strict attempt inventory rejected an
+ephemeral authentication symlink. Its failed attempt and retained disk claim
+remain preserved. That interruption does not prove no provider generation
+occurred. The r02 native supervisor and daemon became active but selection
+reported `task_attempt_limit_backpressure`: LIR-9001 already had one durable
+attempt and the configured total cap was one. No productive provider dispatch
+was observed in the r02 engineering metadata. Root requested STOP only through
+its actually owned launcher, then confirmed native all-trees fencing, a quiescent
+group, ordinary provider cleanup and native finalization. The failed/intentional
+STOP record is preserved rather than relabeled as a productive task result.
+See the [launch02 receipt](/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-launch02/receipt.json)
+and exact engineering identities in `startup-status.json`.
 
-The retry uses a fresh execution namespace and runtime directory; it does not
-reuse the stopped supervisor's state or a foreign Quack campaign. Before any
-native imports, the owning controller must set TMPDIR, TMP and TEMP to the
-separately precharged provider directory
-`/tmp/pytest-of-barberb/legal-ir-ordinary-worker-bootstrap-20261016-provider02`.
-That directory stays outside the strict attempt inventory. Its actual storage
-admission, temporary-file lifecycle and absence checks belong to the native
-owner. No symlink exception, global cap increase, acceptance override or ledger
-mutation is introduced by this source proposal. The native owner must validate
-the prior stopped-generation terminal artifact before admitting the retry.
+This explicit reviewed revision raises `max_task_attempts` to **two total durable
+attempts**. The first attempt remains counted; this permits one further bounded
+engineering attempt. It does not change the implementation, validation or merge
+retry budgets of one, the restart cap of one, provider order/fallback conditions,
+900-second controller duration, source-only scope, or any acceptance/phase gate.
+Future additional attempts require another explicitly reviewed revision.
+
+The r03 master label and runtime directory isolate orchestration artifacts.
+Canonical LIR-9001 identity and durable attempt history can carry across runtime
+revisions, as the r02 backpressure observation demonstrates. They are not reset
+by these path or label changes. Before all native imports, the owning controller
+must set TMPDIR, TMP and TEMP to the
+separately admitted and precharged provider directory
+`/tmp/pytest-of-barberb/legal-ir-ordinary-worker-bootstrap-20261016-provider03`,
+outside the strict attempt inventory. Actual temporary-file custody and cleanup
+belong to that native owner. This proposal supplies no resource grant, symlink
+exception, shared cap increase, task-state reset or claim release. Root must
+verify the stopped r02 generation and current source before admitting r03.
 
 This reviewed proposal derives from the immutable bootstrap package at
 `651d2ea941c720726e234fbe4e319e650ad70f71`. It retains the 18 frozen
 authoring/context source files and the complete task/goal/dependency population.
 It uses the separately owned branch `agent/legal-ir-ordinary-worker-20261016`, execution namespace
-`legal-ir-ordinary-worker-bootstrap-20261016-r02` and dedicated runtime paths. The original authoring
+`legal-ir-ordinary-worker-bootstrap-20261016-r03` and dedicated runtime paths. The original authoring
 namespace is historical provenance; it is not a claim on another controller's
 Quack catalog, database generation, task state, credentials or acceptance.
 
@@ -87,11 +96,11 @@ protected image/build sources are bound by its new canonical config hash. The
 immutable authoring and source-copy inventory hashes remain unchanged. Only a
 reviewed replacement of the source ancestor is excluded from that config hash.
 
-`CURRENT_SOURCE_BINDINGS.json` remains byte-identical pre-r02 metadata from
-the committed r01 package in this proposal. Root must replace it with a fresh
+`CURRENT_SOURCE_BINDINGS.json` remains byte-identical pre-r03 metadata from
+the committed r02 package in this proposal. Root must replace it with a fresh
 actual owner-supplied observation of the current checkout and datasets source
-before binding an r02 run. Its original origin, time and evidence must not be
-relabeled as a current r02 observation.
+before binding an r03 run. Its original origin, time and evidence must not be
+relabeled as a current r03 observation.
 
 The controller must commit the installed source package, bind actual current
 provider/worker/source/resource capabilities, qualify genuine native parsing and
@@ -101,9 +110,9 @@ disabled. Use the genuine task execution slice for LIR-9001 where the chosen
 launcher supports it; phase-blocking all other rows is an additional explicit
 boundary. Manual completion alone does not stop dispatch.
 
-Bound the initial controller to 900 seconds, one lane and one task attempt.
+Bound the controller to 900 seconds and one lane, with at most two total durable task attempts; this revision permits only one additional bounded engineering attempt.
 Runtime worktrees, state, merge queue and logs use the dedicated
-`workspace/legal-ir-ordinary-worker-20261016-r02/` namespace in the owning checkout.
+`workspace/legal-ir-ordinary-worker-20261016-r03/` namespace in the owning checkout.
 Actual writable grants and resource lifecycle belong to the current native owner,
 not these path strings. Do not reuse a foreign campaign's credentials, branch,
 database, resource promise or execution authority.

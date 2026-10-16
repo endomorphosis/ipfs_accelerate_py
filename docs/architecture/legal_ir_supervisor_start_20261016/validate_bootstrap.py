@@ -17,11 +17,11 @@ import sys
 ROOT = Path(__file__).resolve().parent
 PREFIX = "docs/architecture/legal_ir_supervisor_start_20261016"
 PHASE = "bootstrap_LIR-9001_only"
-EXECUTION_NAMESPACE = "legal-ir-ordinary-worker-bootstrap-20261016-r02"
+EXECUTION_NAMESPACE = "legal-ir-ordinary-worker-bootstrap-20261016-r03"
 EXECUTION_BRANCH = "agent/legal-ir-ordinary-worker-20261016"
 RESULT = "data/legal_ir_span_graph_lean_20261016/LIR-9001/handoff-reconciliation.json"
 ANCESTOR_PLACEHOLDER = "FILL_CURRENT_OWNED_ACCELERATOR_SOURCE_ANCESTOR"
-CONFIG_CANONICAL_SHA256 = "9e0d59e2f5a8eb22fc1694f33b2fdca1b8f6ea49aaaa5fa862d3a9d8c6c085b9"
+CONFIG_CANONICAL_SHA256 = "5d25e94505bbed14e5e565af9bb2d161f8577077e22c0b4c396c6443e15d3327"
 SOURCE_MANIFEST_CANONICAL_SHA256 = "43e3f581519506751b613ebe68ccb2af1345304de1bdbf545cc70bc018acf9ad"
 AUTHORING_CANONICAL_SHA256 = "c71f9e4b9c28fea8d0344fa11efb7cccdbcc504b75562c04772eaf7cd84e9ff9"
 BLOCKER = "Bootstrap phase permits only LIR-9001; preserve this task and dependencies pending a separately reviewed phase transition."
@@ -246,7 +246,7 @@ def check_all():
     ancestor = config["source_binding"]["accelerator_required_ancestor"]
     need(ancestor == ANCESTOR_PLACEHOLDER or re.fullmatch(r"[0-9a-f]{40}", ancestor), "invalid ancestor binding")
     need(all(config[name] is False for name in ["objective_refill_enabled", "codebase_refill_enabled", "objective_goal_refinement_enabled"]), "refill enabled")
-    need(config["max_task_attempts"] == 1 and config["max_restarts"] == 1, "unbounded first-task retries")
+    need(config["max_task_attempts"] == 2 and config["max_restarts"] == 1, "reviewed durable-attempt and restart bounds differ")
     policy = config["bootstrap_execution_contract"]
     need(policy["allowed_task_ids"] == ["LIR-9001"] and policy["other_tasks_phase_blocked"] is True, "bootstrap scope differs")
     need(policy["native_grant_supplied"] is False and policy["launch_started"] is False and policy["code_or_test_edits_allowed"] is False, "invented activation grant")

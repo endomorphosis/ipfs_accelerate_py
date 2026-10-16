@@ -6,7 +6,7 @@
   "plan_path": "docs/architecture/legal_ir_supervisor_start_20261016/README.md",
   "validator_path": "docs/architecture/legal_ir_supervisor_start_20261016/validate_bootstrap.py",
   "task_prefix": "## LIR-",
-  "board_namespace": "legal-ir-ordinary-worker-bootstrap-20261016-r02",
+  "board_namespace": "legal-ir-ordinary-worker-bootstrap-20261016-r03",
   "merge_target_branch": "agent/legal-ir-ordinary-worker-20261016",
   "max_lanes": 1,
   "lanes": [
@@ -57,11 +57,11 @@
     "docs/architecture/legal_ir_supervisor_start_20261016/startup-status.json"
   ],
   "runtime_paths": {
-    "root": "workspace/legal-ir-ordinary-worker-20261016-r02",
-    "state": "workspace/legal-ir-ordinary-worker-20261016-r02/state",
-    "worktrees": "workspace/legal-ir-ordinary-worker-20261016-r02/worktrees",
-    "merge_queue": "workspace/legal-ir-ordinary-worker-20261016-r02/merge-queue",
-    "logs": "workspace/legal-ir-ordinary-worker-20261016-r02/logs"
+    "root": "workspace/legal-ir-ordinary-worker-20261016-r03",
+    "state": "workspace/legal-ir-ordinary-worker-20261016-r03/state",
+    "worktrees": "workspace/legal-ir-ordinary-worker-20261016-r03/worktrees",
+    "merge_queue": "workspace/legal-ir-ordinary-worker-20261016-r03/merge-queue",
+    "logs": "workspace/legal-ir-ordinary-worker-20261016-r03/logs"
   },
   "provider": {
     "primary_provider_id": "grok_cli",
@@ -94,7 +94,7 @@
   "implementation_max_timeout_seconds": 900,
   "implementation_log_stall_seconds": 300,
   "max_restarts": 1,
-  "max_task_attempts": 1,
+  "max_task_attempts": 2,
   "implementation_retry_budget": 1,
   "validation_retry_budget": 1,
   "merge_retry_budget": 1,

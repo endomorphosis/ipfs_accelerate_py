@@ -1,10 +1,10 @@
 {
   "schema": "legal-ir-ordinary-worker-bootstrap-startup-status@1",
-  "status": "r02_retry_prepared_after_fenced_launch01_storage_guard_failure",
-  "execution_namespace": "legal-ir-ordinary-worker-bootstrap-20261016-r02",
+  "status": "r03_reviewed_total_attempt_cap_two_after_fenced_r02_backpressure_stop",
+  "execution_namespace": "legal-ir-ordinary-worker-bootstrap-20261016-r03",
   "required_branch": "agent/legal-ir-ordinary-worker-20261016",
   "required_ancestor": "93cfd32f65cd231df57e53736edf0f78b58af009",
-  "source_package_commit": "feb96b55e28b282e42b3de85da7f0fc72f781ca2",
+  "source_package_commit": "d548a9353e5fb26b2ab40fdab0d5a50336bdb9f1",
   "ordinary_image_qualified": true,
   "image_profile_path": "containers/external-agent/ordinary-task-toolchain/image-profile.json",
   "image_profile_observed_sha256": "af9b05224ce4ad7137c13ac9bad12167422b5e90a7e80b751633775d17997ad3",
@@ -47,12 +47,12 @@
     "scope": "Original native preparation/readiness/missing-image observations remain historical and were not rerun by this author."
   },
   "next_actions": [
-    "Authenticate the actual launch01 stopped-generation terminal artifact; preserve its failed attempt and retained disk claim.",
-    "Install and commit this exact r02 source revision in the same owned branch, with fresh execution namespace and runtime paths.",
-    "Set provider TMPDIR/TMP/TEMP before native imports to the separately admitted and precharged external provider directory; do not loosen strict inventory.",
-    "Populate actual fresh r02 owner-supplied source observations, freeze exact source/request hashes, and run new genuine native preflight.",
-    "Start at most one finite source-only LIR-9001 supervisor with the exact qualified ordinary image/provider tuple and genuine all-trees cleanup custody.",
-    "Keep executable report acceptance exit3, the independent factual acceptance gap and all63 future task blockers unchanged."
+    "Preserve stopped r01/r02 evidence and durable attempt history; do not reset counts, delete state or adopt/release prior claims.",
+    "Review and install this explicit r03 revision with two total durable task attempts, fresh namespace/runtime and unchanged remaining bounds.",
+    "Set provider TMPDIR/TMP/TEMP before all native imports to the separately admitted and precharged provider03 directory, keeping strict inventory and shared caps unchanged.",
+    "Populate actual fresh r03 owner source observations, commit controls, freeze source/request hashes and execute new genuine native preflight.",
+    "Start at most one finite source-only LIR-9001 supervisor with genuine native/Docker cleanup custody; observe actual provider/model outcomes without inferring generation absence from earlier failures.",
+    "Keep executable report acceptance exit3, independent factual acceptance unbound and all63 future task blockers unchanged."
   ],
   "revision_author_execution": {
     "product_imports": false,
@@ -61,7 +61,7 @@
     "database_or_payload_reads": false,
     "checkout_or_git_ref_mutations": false
   },
-  "runtime_root": "workspace/legal-ir-ordinary-worker-20261016-r02",
+  "runtime_root": "workspace/legal-ir-ordinary-worker-20261016-r03",
   "previous_launch01": {
     "status": "failed_preserved_stopped_native_generation",
     "supervisor_started": true,
@@ -95,7 +95,7 @@
     }
   },
   "provider_temporary_directory_plan": {
-    "path": "/tmp/pytest-of-barberb/legal-ir-ordinary-worker-bootstrap-20261016-provider02",
+    "path": "/tmp/pytest-of-barberb/legal-ir-ordinary-worker-bootstrap-20261016-provider03",
     "outside_strict_attempt_inventory": true,
     "set_before_native_imports": [
       "TMPDIR",
@@ -104,5 +104,48 @@
     ],
     "requires_actual_native_external_storage_precharge": true,
     "admitted_by_this_document": false
+  },
+  "durable_attempt_cap_revision": {
+    "previous_max_task_attempts": 1,
+    "max_task_attempts": 2,
+    "total_durable_attempts_not_per_restart": true,
+    "additional_bounded_engineering_attempts": 1,
+    "preserve_existing_attempt_history": true,
+    "attempt_count_reset_or_history_deleted": false,
+    "implementation_retry_budget": 1,
+    "validation_retry_budget": 1,
+    "merge_retry_budget": 1,
+    "max_restarts": 1
+  },
+  "previous_launch02": {
+    "status": "intentionally_stopped_after_durable_attempt_limit_backpressure",
+    "supervisor_started": true,
+    "owner_stop_requested_by_root": true,
+    "owned_launcher_pid_signaled_by_root": 1414696,
+    "owner_exit_status_reported": 1,
+    "child_returncode": 2,
+    "failure_type": "TimeoutError",
+    "selector_finding": {
+      "reason": "task_attempt_limit_backpressure",
+      "task_id": "LIR-9001",
+      "attempt_count": 1,
+      "max_task_attempts": 1
+    },
+    "productive_provider_dispatch_observed": false,
+    "native_stop_verified": true,
+    "all_trees_fenced": true,
+    "owned_group_quiescent": true,
+    "ordinary_provider_cleanup_verified": true,
+    "observed_provider_containers": 0,
+    "remaining_provider_lease_directories": 0,
+    "native_owner_finalized_reported_by_root": true,
+    "receipt": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-launch02/receipt.json",
+      "bytes": 1328,
+      "sha256": "53c8773998580a2041bb1b0311d42cd670fcb0302b9585d9a075e90c1eef47d3"
+    },
+    "native_terminal_receipt_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/workspace/legal-ir-ordinary-worker-20261016-r02/state/configured-board-master.pid.terminal.json",
+    "native_terminal_receipt_cid_reported": "baguqeeraxav5yn7tb7n64x2gkxaj2mrv7hjxvamayxxkgcapfpsq525j3ava",
+    "scope": "Root confirmed native/Docker STOP and finalization; selected final engineering receipt fields were observed by this source author. No model, database or provider payload was read, and no legal/task success is inferred."
   }
 }
