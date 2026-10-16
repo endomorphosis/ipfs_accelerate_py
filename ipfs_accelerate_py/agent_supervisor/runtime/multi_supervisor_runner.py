@@ -14596,6 +14596,16 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
                 ),
             )
         )
+    # An explicitly selected worker is independent of the optional bundle of
+    # standard supervisor defaults.  Configured boards supply their own common
+    # policy args and deliberately leave that bundle disabled.
+    if (
+        args.implementation_supervisor_command
+        and "--implementation-command" not in common_args
+    ):
+        common_args.extend(
+            ["--implementation-command", args.implementation_supervisor_command]
+        )
     if (
         bool(
             getattr(

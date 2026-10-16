@@ -6717,6 +6717,7 @@ class PortalSupervisorConfig:
     daemon_interval: float = 300.0
     task_prefix: str = TASK_HEADER_PREFIX
     state_prefix: str = "portal"
+    board_namespace: str = ""
     database_program: DatabaseProgramConfig | None = None
     state_owner_bootstrap_fd: int = -1
     state_owner_client_id: str = ""
@@ -7252,6 +7253,7 @@ class PortalImplementationSupervisor:
         self._last_control_plane_source_probe_monotonic = 0.0
         todo_path = Path(config.todo_path)
         self.board_namespace = infer_board_namespace(
+            board_namespace=config.board_namespace,
             merge_target_branch=config.merge_target_branch,
             todo_path=todo_path,
             state_prefix=config.state_prefix,
@@ -22671,6 +22673,8 @@ class _SingleProductionProviderOption(argparse.Action):
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Supervise the portal implementation backlog daemon")
+    parser.add_argument("--board-namespace", default="",
+                        help="Explicit canonical board namespace; defaults to existing branch/path inference")
     parser.add_argument("--state-owner-bootstrap-fd", type=int, default=-1,
                         help="Inherited private listener forwarded to the native database child")
     parser.add_argument("--state-owner-client-id", default="",
@@ -23660,6 +23664,7 @@ def supervisor_config_from_args(
         daemon_interval=args.daemon_interval,
         task_prefix=args.task_prefix,
         state_prefix=args.state_prefix,
+        board_namespace=str(getattr(args, "board_namespace", "") or ""),
         database_program=database_program,
         state_owner_bootstrap_fd=getattr(args, "state_owner_bootstrap_fd", -1),
         state_owner_client_id=str(getattr(args, "state_owner_client_id", "") or ""),

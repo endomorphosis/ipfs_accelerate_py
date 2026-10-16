@@ -2878,6 +2878,13 @@ def configured_board_common_args(
         "--log-level",
         "INFO",
     ]
+    # Canonical database boards are independent of checkout/merge-branch names.
+    # Ordinary Quack supervisors must carry that exact board into their private
+    # Portal projection; sealed/plan-bound and legacy inference stay unchanged.
+    if (board.database_program is not None
+            and board.database_program.authority_mode == AUTHORITY_MODE_QUACK
+            and not _plan_bound_profile(board)):
+        args.extend(["--board-namespace", board.board_namespace])
     completion_policy = payload.get("completion_policy")
     # Boards that require goal-completion contracts cannot close out if the
     # implementation supervisor is launched with goal reconcile/migration off.
