@@ -1,0 +1,11 @@
+{
+  "schema": "host-worker-uid-availability@1",
+  "owner_uid": 1000,
+  "owner_gid": 1000,
+  "sudo_available": true,
+  "worker_probe_succeeded": false,
+  "model_calls": 0,
+  "provider_calls": 0,
+  "returncode": 1,
+  "error_summary": "sudo: a password is required"
+}

@@ -344,6 +344,10 @@ if owner_workspace_deadline_ns is None and owner_candidate_round_deadline is not
  owner_deadline_numerator,owner_deadline_denominator=owner_candidate_round_deadline.as_integer_ratio()
  owner_workspace_deadline_ns=owner_deadline_numerator*1_000_000_000//owner_deadline_denominator
 from ipfs_accelerate_py.agent_supervisor.runtime.owner_writable_worktree import provision_owner_writable_worktree
+owner_worktree_traversal=None
+if any(name in boundary for name in ('worktree_traversal_anchor','worktree_traversal_directories','worker_shared_group')):
+ from ipfs_accelerate_py.agent_supervisor.runtime.owner_worktree_traversal import provision_owner_worktree_traversal
+ owner_worktree_traversal=provision_owner_worktree_traversal(boundary=root/'container-boundary.json',workspace=cwd,absolute_deadline_ns=owner_workspace_deadline_ns)
 owner_workspace_provisioning=provision_owner_writable_worktree(boundary=root/'container-boundary.json',workspace=cwd,absolute_deadline_ns=owner_workspace_deadline_ns)
 worker_arguments=sys.argv[1:]
 owner_prompt_bytes=None

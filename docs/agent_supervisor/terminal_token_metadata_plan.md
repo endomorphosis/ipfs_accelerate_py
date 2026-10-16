@@ -1759,3 +1759,52 @@ New `0700` parents also do not grant a separate worker UID traversal. Explicit
 read/traverse access to parents and Git controls, daemon-to-wrapper native
 ownership handoff, Docker qualification and matched token measurements remain
 open.
+
+## October 16: publish search permission on explicitly authorized parents
+
+`provision_owner_worktree_traversal(...)` adds a separate initial parent-search
+transition. The authenticated deployment boundary must declare
+`worktree_traversal_anchor`, `worktree_traversal_directories` and
+`worker_shared_group`. The group must exactly match the nonroot owner group.
+Selected directories must lie on the workspace's parent chain within the
+declared managed anchor and match an authenticated worktree root. Boundary
+and owner-private paths must remain disjoint from the selected directories.
+Unselected outer ancestors must already permit search using the declared
+group or other-search bits; private home directories are not inferred into
+the transition.
+
+The helper checks the complete protected ancestry, current boundary and
+private-path policy before changing permissions. Selected owner directories
+can move from `0700` to `0710`; selected `0710` or `0750` directories retain
+their modes. Before opening any `0700` gate, its immediate inventory must
+contain only the next directory on the workspace path. This prevents newly
+exposing readable siblings behind a previously private parent. Links, ACLs,
+foreign ownership/group, writable ancestry, selected mount transitions and
+changed names or controls cause refusal.
+
+Changes use retained no-follow descriptors, deepest parent first, with
+deadline and closing checks. The workspace itself remains `0700` throughout.
+Failures retain conservative permission-attempt and partial-progress evidence;
+the helper performs no rollback, chown, Git permission change or process-wide
+umask change. This remains an initial phase with no live worker, rather than
+an atomic writer lease or a way to revoke existing descriptors.
+
+The generated owner wrapper selects the helper only when any of the three
+opt-in boundary fields is present. Partial policy refuses through the helper.
+It runs before workspace provisioning, source brokers and the first census;
+a future native capture must follow these permission transitions.
+Boundaries without these fields retain their
+existing provisioning path. Exact worker archives now include the helper.
+
+Host filesystem and generated-wrapper qualification is recorded in
+[qualification.json](evidence/owner-worktree-traversal-20261016/qualification.json).
+The host denied the passwordless separate-UID capability probe, so declared
+group search bits do not establish actual worker membership, traversal or
+isolation. The receipt grants no task, run, resource, execution or completion
+authority.
+
+Canonical Git permissions remain unchanged. A later mediated Git profile must
+replace direct worker Git reads in preflight, formalization and candidate
+runners, while retaining owner checks and refusing unsupported routes. Native
+ownership handoff, Docker/separate-UID qualification, an installed continuation
+retry default and matched total-token measurements remain open.
