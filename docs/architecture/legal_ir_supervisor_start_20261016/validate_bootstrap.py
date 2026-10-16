@@ -298,8 +298,22 @@ def main():
             need(load(ROOT / "tasks.execution.json") == projection, "projection differs before rendering")
             (ROOT / "tasks.todo.md").write_text(board_markdown(projection), encoding="utf-8")
             result = {"valid": True, "rendered": "tasks.todo.md", "product_or_provider_execution": False}
+        elif args.check_report:
+            # Shape and hash correspondence are necessary but cannot supply
+            # independent acceptance. No receipt argument, report declaration
+            # or worker-authored field can override this closed capability gap.
+            check_report(args.check_report)
+            print(json.dumps({
+                "valid": False,
+                "reason": "independent_acceptance_capability_not_bound",
+                "report_shape_and_frozen_document_hashes_valid": True,
+                "completion_authority": False,
+                "merge_acceptance_granted": False,
+                "product_or_provider_execution": False,
+            }, sort_keys=True))
+            return 3
         else:
-            result = check_report(args.check_report) if args.check_report else check_all()
+            result = check_all()
         print(json.dumps(result, sort_keys=True))
     except (OSError, UnicodeError, ValueError, TypeError, KeyError) as exc:
         print(json.dumps({"valid": False, "errors": [str(exc)], "product_or_provider_execution": False}, sort_keys=True))

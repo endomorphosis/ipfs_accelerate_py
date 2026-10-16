@@ -92,7 +92,14 @@ and explicit false effect declarations. Missing metadata must be recorded as
 unavailable rather than invented. Report declarations are not authenticated
 proof of behavior; independent acceptance remains mandatory.
 
-## Verification and completion
+## Verification and the closed independent-acceptance gate
+
+The native daemon can mark a successfully merged task complete regardless of
+`Completion: manual`. Manual mode alone does not fence merge or completion.
+This v02 package therefore fails the executable report gate until a separately
+reviewed independent-acceptance capability is actually bound in a future packet.
+The model may produce a candidate report; the required native validation cannot
+pass, so the candidate cannot complete or merge through that validation path.
 
 After deliberate installation, the source-only structure command is:
 
@@ -111,14 +118,25 @@ The first task's executable `Validation` command is:
 python3 -B docs/architecture/legal_ir_supervisor_start_20261016/validate_bootstrap.py --check-report data/legal_ir_span_graph_lean_20261016/LIR-9001/handoff-reconciliation.json
 ```
 
-It checks the bounded report's shape and exact document correspondence. Independent
-acceptance must still verify the factual repository observations, evidence scope,
-collisions and recommendations. Completion stays manual. A missing report fails;
-successful board checking alone cannot complete LIR-9001.
+It first checks the bounded report's shape and exact document correspondence.
+Malformed or missing reports fail. Even a structurally valid report then returns
+nonzero exit code **3**, with the closed reason
+`independent_acceptance_capability_not_bound`. No self-authored receipt, report
+declaration or CLI argument can turn that result into acceptance. There is no
+review receipt writer or fake reviewer authority in this package.
+
+After an actual candidate exists, the owner must prepare a new reviewed packet
+with an independently qualified acceptance adapter. That adapter must establish
+the factual repository observations, evidence scope, collisions and
+recommendations, and bind the exact report/task/source/candidate identities under
+actual independent authority. Only that later packet may change the closed gate.
+Keep this immutable v02 evidence and the original staging package. Successful
+`--check-all` verifies structure only and cannot complete LIR-9001.
 
 ## Subsequent phases
 
-After accepted LIR-9001 output, the owning controller may prepare and review a new
+After the future capability is bound and LIR-9001 output is independently accepted,
+the owning controller may prepare and review a new
 execution revision for LIR-9002 capability mapping. Preserve this immutable
 bootstrap and the untouched authoring plan. Do not clear all future blockers or
 replace the complete board with a one-row document. Proceed through LIR-9002,
