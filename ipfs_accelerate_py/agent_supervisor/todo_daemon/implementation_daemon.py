@@ -35528,6 +35528,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self._run_git(
             ["worktree", "add", "-b", branch_name, str(worktree_path), self._main_branch_name()],
             cwd=self.repo_root,
+            child_umask=0o077,
         )
         baseline_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
         self._initialize_worktree_submodules(
@@ -61402,8 +61403,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return ""
         return result.stdout.strip()
 
-    def _run_git(self, args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-        result = subprocess.run(["git", "--no-optional-locks", *args], cwd=cwd, text=True, capture_output=True, check=False)
+    def _run_git(self, args: list[str], *, cwd: Path,
+                 child_umask: int | None = None) -> subprocess.CompletedProcess[str]:
+        child_options = {}
+        if child_umask is not None:
+            if type(child_umask) is not int or child_umask != 0o077 or args[:2] != ["worktree", "add"]:
+                raise ValueError("owner-only child umask requires an initial Git worktree add")
+            child_options["umask"] = child_umask
+        result = subprocess.run(["git", "--no-optional-locks", *args], cwd=cwd,
+            text=True, capture_output=True, check=False, **child_options)
         if result.returncode != 0:
             raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
         return result

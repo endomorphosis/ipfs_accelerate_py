@@ -1,0 +1,17 @@
+{
+  "accelerate_base": "516dd2febb93a517d384f21c9eaf4b99d4e8eaad",
+  "rows": [
+    {
+      "owner": "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
+      "absent_import": "guarded_worktree_pool_mutation",
+      "unchanged_from_base": true,
+      "sha256": "bbd2c82edbd7f1127a2cb4c79d32e2bc4e16238975a9d054bcaf614e0493ac9e"
+    },
+    {
+      "owner": "ipfs_accelerate_py/agent_supervisor/integrations/llm_merge_resolver_fallback.py",
+      "absent_import": "_DEFAULT_COPILOT_TIMEOUT_SECONDS",
+      "unchanged_from_base": true,
+      "sha256": "1ed6a3100f635c2b36a88221e8b4bdf6735b053333499761d6e33ee6f18bb1db"
+    }
+  ]
+}
