@@ -51,6 +51,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/native_writable_allocation.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/owner_writable_worktree.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/owner_worktree_parent.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_worktree_traversal.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet_replay.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_invocation_replay.py",
