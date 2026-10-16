@@ -451,11 +451,26 @@ class Supervisor:
             from pathlib import Path as _Path
 
             self._composition.state_root = _Path(observation.state_root)
+        # The workflow request is a prompt/scanner contract: its allowlist
+        # and repository-root identities are the scanner's canonical
+        # identities (prompt_directory_scanner), which the scanner and the
+        # preview's scan validation recompute and compare. The
+        # observation's observed-binding identities remain the
+        # binding/status domain (repository_id, state roots, displays).
+        from ipfs_accelerate_py.agent_supervisor.prompt.prompt_directory_scanner import (
+            repository_allowlist_cid,
+            repository_root_cid as _scanner_repository_root_cid,
+        )
+
         workflow_request = construct_prompt_workflow_request(
             prompt,
             repository_root=observation.repository_root,
-            repository_root_cid=observation.repository_root_cid,
-            allowlist_cid=observation.allowlist_cid,
+            repository_root_cid=_scanner_repository_root_cid(
+                observation.repository_root
+            ),
+            allowlist_cid=repository_allowlist_cid(
+                (observation.repository_root,)
+            ),
             program_root=observation.program_root,
             intent_ir_root=observation.intent_ir_root,
             legal_ir_root=observation.legal_ir_root,

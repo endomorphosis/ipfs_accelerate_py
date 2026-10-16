@@ -275,6 +275,24 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                         semantic_decision_max_calls: int = 3,
                         semantic_decision_max_total_input_tokens: int | None = None) -> list[str]:
     """Closed choice that the admitted launch signs before any worker starts."""
+    from .terminal_decision_policy import decision_selection, validate_decision_route
+    decision = decision_selection(
+        semantic_decision_policy_artifact=semantic_decision_policy_artifact,
+        semantic_decision_policy_sha256=semantic_decision_policy_sha256,
+        semantic_decision_nomination_artifact=semantic_decision_nomination_artifact,
+        semantic_decision_nomination_sha256=semantic_decision_nomination_sha256,
+        disable_semantic_typed_nomination=disable_semantic_typed_nomination,
+        semantic_retrieval_query_reference=semantic_retrieval_query_reference,
+        semantic_decision_max_calls=semantic_decision_max_calls,
+        semantic_decision_max_total_input_tokens=semantic_decision_max_total_input_tokens)
+    validate_decision_route(decision, arm='full', provider=provider, timeout=timeout,
+        semantic_transport_schema=semantic_transport_schema,
+        semantic_metadata_view=semantic_metadata_view, semantic_working_set=semantic_working_set,
+        source_view_profile=source_view_profile, source_edit_mode=source_edit_mode,
+        source_view_policy=source_view_policy, coding_reply_mode=coding_reply_mode,
+        tool_output_policy=tool_output_policy, source_view_advisory_policy=source_view_advisory_policy,
+        repository_source_policy=repository_source_policy, source_input_policy=source_input_policy,
+        query_reference_policy=query_reference_policy, grok_coding_max_turns=grok_coding_max_turns)
     if type(semantic_retrieval_query_reference) is not bool:
         raise ValueError("retrieval query reference must be boolean")
     retrieval_values = (semantic_decision_context_bundle_artifact,

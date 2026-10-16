@@ -2835,3 +2835,200 @@ analysis-consumer integration. Convergence remains a separate obligation.
 
 Evidence: [requirement grounding qualification](../agent_supervisor/terminal_codebase_ir_requirement_grounding_qualification.md)
 and [review record](repository_proof_index_and_codebase_ir.requirement_grounding_review.json).
+
+
+### 2026-10-15 — decision launch bindings and offline runtime archive
+
+Published a peer-preserving decision bridge across 15 source/test paths: six
+existing production files, five existing fixture/test files and four additions.
+Sixteen captured peer changes remain intact. Selected execution binds task,
+configuration and archive source bytes; nomination delivery preserves the sealed
+standard-input handoff. Provider-free Doctor routes retain requested controls as
+`not_applicable_provider_free` and make no applied-treatment claim. Collection
+checks frozen requested bindings and retained native usage; independently
+verified packet ingestion remains unknown.
+
+The final fresh boundary run passed **852 tests across 23 suites**, with 2,556
+actual phases, mandatory AST seals, normal conftests, proof reuse off, no skips or
+deselections and **11,262 unchanged source guards**. A separate four-suite fixture
+run passed 347 cases. The canonical offline archive was built and every member
+joined to its manifest and sealed input inventory. This establishes packaging;
+Codex 0.160.0 remains an installation target, with native execution and deployment
+unqualified. The interrupted optional 32-suite diagnostic and all failed attempts
+remain retained; no full 32-suite pass is claimed.
+
+Whole-codebase reversible minification is not required for the token experiment.
+Keep original source authoritative and measure bounded, recoverable context views
+selected through metadata, IR obligations and semantic capsules. The target is
+total provider tokens per independently accepted task, including history, tools,
+retries and amortized preparation. Native input delivery, an accepted model-only
+control and a matched cumulative context/tool-budget comparison remain next.
+No paid trial, cumulative native token-cap qualification or token savings is
+established by this work.
+
+Evidence: `artifacts/supervisor-decision-launch-integration-20261015-01/RESULT.json`
+(SHA-256 `c5aa973ff89952b1c43813fb47c3c34df3e50c430c8951248a240075100f2175`).
+
+
+### 2026-10-15 — native budget scope and Grok decision receipts
+
+The investigated model-only attempt reported 1,122,727 provider tokens; one coding
+session contributed 1,096,829 input tokens. The 65,536-token local allowance
+covered submitted rendered user prompts, excluding native internal history, tools
+and repeated paid requests. Tokenizer correctness alone cannot turn that into a
+cumulative native-session cap. The exact historical response rejection is unknown.
+
+Fixed semantic Grok decision calls that passed an empty allowlist and retained
+default tools. The adapter requests explicit allow/deny policy, `dontAsk` and one
+fresh turn, retaining `effective_toolset_verified=False`. Its `finally` block now
+keeps the existing closed native final-envelope usage and outcome receipts on
+success and failure. Missing categories/completeness stay unknown; Grok task
+totals receive no new promotion.
+
+The final fresh isolated run passed **69 cases / 207 phases**, with normal
+conftests, mandatory actual-call AST seals, proof reuse off, no skips/deselections
+and **11,255 stable guards**. Exact three-path publication preserved 35 captured
+tracked peer changes; 249 observed unowned imports matched MAIN. This is isolated
+component qualification, with no fresh complete MAIN/Harbor lifecycle claim.
+
+The prior sealed archive `af40…` passed actual UID1000-to-UID1001 worker checks,
+six private denials, owned termination/reaping and protected Codex 0.160.0
+version/code-mode-host help checks offline. All owned containers were removed;
+our lease released while an unrelated peer lease remained. The failed initial
+tmpfs copy is retained; container-side copying from regular staging preserved all
+249 public files. No credentials or provider calls were used. A verified successor
+archive `e417…` contains the provider change and preserves all other 13,105
+packaged members; native qualification is not transferred to that successor.
+
+Next qualify per-paid-request reservation/interception for a cumulative native
+cap and the complete canonical Harbor lifecycle, then compare accepted model-only
+and retrieval runs using complete native usage. No accepted task, matched paid
+trial or token savings is established here.
+
+Evidence: `artifacts/supervisor-native-readiness-20261015-01/RESULT.json`
+(SHA-256 `4b07bc85fffe7f43b859d876aa200a920b069f42e4099d54801de26f6ae09ced`).
+
+
+### 2026-10-15 — retained native usage analysis CLI
+
+Added `runtime/native_session_usage_projection.py` and its focused tests, without
+editing the supervisor, deployment or authoritative accounting gates. The pure
+projector and CLI consume declared retained receipt paths, keep Codex cumulative
+sessions separate from Grok final envelopes, and never infer a complete dispatch
+population. Exact wrapper copies deduplicate; conflicting wrappers and shared
+reported Grok identities quarantine aggregates. Counter hashes are not charge
+identities, and requested/reported Grok session IDs remain unverified. Missing
+required counters remain unknown; cache and reasoning conventions are explicit.
+
+The final isolated run passed **188 cases / 564 phases** across four complete
+files: 88 new projector/actual CLI cases, 52 cumulative reconciliation cases,
+44 Grok streaming cases and four existing accounting-gate cases. Normal
+conftests, mandatory actual-call AST seals, proof reuse off, no skips/deselections
+and **11,264 stable guards** were retained. Two exact additions preserved
+41 captured tracked peer changes; 163 observed unowned imports matched MAIN.
+
+The published MAIN CLI then analyzed the pinned historical control report:
+three retained observations represented two native Codex sessions with a known
+scoped subtotal of **1,122,727 tokens**. The nested copy was not charged again.
+Its fresh sidecar binds the exact input SHA and preserves the report bytes.
+`task_attempt_total` and campaign completeness stay unknown; billing, native
+cumulative-cap and token-savings claims remain false. Our shared lease closed
+without requiring the unrelated peer lease to disappear.
+
+From the source checkout, use the existing Python environment:
+
+```sh
+python -m ipfs_accelerate_py.agent_supervisor.runtime.native_session_usage_projection \
+  --report /path/to/supervisor-result.json --output /path/to/fresh-usage.json
+```
+
+This is host-side retained-report analysis; the prior worker archive was not
+rebuilt. Next establish independent dispatch/usage reservation and the accepted
+control/canonical Harbor lifecycle before a matched token-reduction experiment.
+No new provider calls, downloads or installs occurred.
+
+Evidence: `artifacts/supervisor-native-usage-projection-20261015-01/RESULT.json`
+(SHA-256 `b05c6a0fcc6dce55cbe0383f4e6c6cd84436450415c3e73da66cef086cee963e`).
+
+### 2026-10-15 — optional stop before the next semantic provider callback
+
+Added `runtime/observed_native_usage_budget.py` and the default-off shared helper
+option `max_observed_native_tokens_before_next_dispatch` (default `None`). Before
+another callback, the guard requires exact bound, complete, nonconflicting native
+usage below the selected threshold. Equality/excess stops the next callback;
+unknown or incomplete usage also stops continuation. Codex cumulative snapshots
+and Grok final envelopes keep their existing separate accounting conventions.
+
+The guard preserves prior native receipts and charged failures. Local refusals
+declare `provider_called=False` with unknown usage, never fabricated zero native
+usage. Fresh accounting cancellation propagates; secondary accounting failures
+cannot replace an original provider exception. Optional receipt annotations that
+would exceed the existing 65,536-byte boundary are omitted, preserving evidence.
+
+Fresh isolated qualification passed **218 cases / 654 phases**
+across five complete files, including **60 new cases**,
+with normal conftests, mandatory actual-call AST seals, proof reuse off, no
+skips/deselections and **11,266 stable guards**. The actual shared
+helper, native capsule producer and Git-worktree expansion route ran with authored
+provider IO: at threshold or unknown completeness, the second expansion callback
+was refused before the provider spy. The default still made its two calls; known
+usage below the threshold continued. Three exact source paths were published,
+preserving 41 captured tracked peer changes; 231 observed unowned
+imports matched MAIN. Our shared lease closed while unrelated leases could remain.
+
+This is a library-level check between callbacks. **The first callback can exceed
+the threshold, and hidden native CLI model/tool requests remain uncapped.** The
+dialogue loop, Terminal Bench launch wiring and runtime archives were not changed.
+No provider calls, downloads or installs occurred. Native dispatch-population,
+full-task/billing totals, task acceptance and token savings remain unproved.
+Next establish independent native dispatch/reservation coverage and an accepted
+canonical control before a matched token-reduction experiment.
+
+Evidence: `artifacts/supervisor-observed-native-budget-20261015-01/RESULT.json`
+(SHA-256 `e8af6c1c97b82634d91b2b74facd31e23147eed846019cadfd115f155d76a842`).
+
+### 2026-10-15 — explicit Grok turn limits cannot be overridden by custom argv
+
+Fixed a concrete router budget-policy bypass. Previously, an explicit
+`grok_max_turns=2` could dispatch a custom `grok --max-turns 128` unchanged;
+the equals spelling could receive a second option. The new pure
+`cli_runtime/grok_turn_policy.py` binder requires one exact matching native
+argument, appending it only when absent. Conflicting, duplicate, malformed and
+end-of-options commands refuse before prompt-file creation or process launch.
+Opaque string-template routes also refuse when their explicit turn policy
+cannot be bound. Explicit settings require an integer from 1 through 4,294,967,295;
+calls omitting the keyword retain their existing behavior.
+
+The fresh isolated run passed **366 cases / 1098 phases** across six complete
+files, including **100 new cases**, with normal conftests, genuine initializers,
+mandatory actual-call AST seals, proof reuse off, no skips/deselections and
+**11,269 unchanged guards**. A real authored Python streaming
+process received exactly one selected argument and the owned prompt file was
+removed. Authored turn-stop failures retained usage and made no retry. These
+fixtures did not invoke a model or native Grok inference. Three exact source
+paths were published, preserving 48 captured tracked peer changes;
+214 observed unowned imports matched MAIN.
+
+The initial coordinator launch supplied a wrong release digest and refused
+before project imports or scheduler construction. Its log remains; the corrected
+launch used the unchanged release. Our finite shared lease closed without a
+global-idle requirement. No provider calls, downloads, installs, archive rebuilds
+or deployments occurred. Benchmark/owner/deployment and native runner code were
+not changed. This qualifies argv consistency, not native enforcement or a token
+hardcap: a turn may still contain substantial token usage. Accepted-task savings
+remain unproved. Next qualify native effectiveness and an independently accepted
+matched control with complete provider usage.
+
+Evidence: `artifacts/supervisor-grok-explicit-turn-policy-20261015-01/RESULT.json`
+(SHA-256 `86a2be31fdbb959d8f84a1b1786a993d8eca149c6a23adca34ca5b4ebd283d63`).
+
+
+### 2026-10-15 — token controls packaged into the canonical runtime successor
+
+Built and verified a fresh archive with 13,110 members: four source deltas (two additions and two replacements), while preserving all 13,106 other prior member bytes and modes, including the cached CPU wheel and native extensions. The packaged-source smoke verified all tar/staged members before and after. Its actual retained-report CLI recovered 1,122,727 scoped Codex tokens across two sessions and three observations; task-attempt totals remain unknown. The exact Grok argv binder and authored between-callback guard passed. One pinned urllib3 IPv6 loopback capability probe closed normally; denied effects were empty.
+
+The pinned native Grok binary passed the authored loopback turn fixture for one and three requested turns; this is local chat-loop protocol evidence, not authenticated inference. The selected fixture observed 8 HTTP requests: 6 POSTs in all, 2 unsupported Responses POSTs and 4 observed chat-completions POSTs (4 accepted by the authored backend). Those populations are separate; no probe purpose, billing or hidden-request cap is inferred. All native attempts and both owned shared resource requests are closed, without requiring unrelated peer leases to disappear. The earlier failed BuildKit registry lookup attempt is retained; no whole-campaign absence of external network attempts is claimed. There were zero external or paid provider calls and no host credentials or authenticated provider inference.
+
+This does not establish a native token hardcap, complete dispatch population, billing total, accepted task, fresh Harbor lifecycle or token savings. Historical component test counts are kept separate. Next qualify independent native dispatch/reservation and an accepted control; whole-codebase minification is unnecessary for reducing cumulative model-visible context and tool output.
+
+Evidence: `artifacts/supervisor-token-controls-runtime-20261015-01/RESULT.json` (SHA-256 `ec8443ffeec7fdffb20d432369299f1a4c63c889c6165d16dec369d206d5748a`).

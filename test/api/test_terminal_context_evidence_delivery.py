@@ -25,7 +25,7 @@ def _encode(value):
                       allow_nan=False).encode()
 
 
-def _bundle(state, *, private_member=False):
+def _bundle(state, *, private_member=False, typed_retrieval=False):
     leaves = {
         "replay-request.json": ("replay-request", b'{"receipts":[],"decision_report":{}}'),
         "state/prepared.json": ("prepared-state", b"{}"),
@@ -33,7 +33,12 @@ def _bundle(state, *, private_member=False):
     }
     if private_member:
         leaves["state/native-rollout.json"] = ("provider-transcript", b"PRIVATE-TRANSCRIPT-MARKER")
-    manifest = {"schema": evidence.SCHEMA, "profile": evidence.PROFILE,
+    if typed_retrieval:
+        from test.api.test_terminal_context_evidence import _authored_typed_retrieval_transfer
+        del leaves["repository/.runtime/raw-parent.json"]
+        _authored_typed_retrieval_transfer(leaves)
+    profile = evidence.TYPED_RETRIEVAL_PROFILE if typed_retrieval else evidence.PROFILE
+    manifest = {"schema": evidence.SCHEMA, "profile": profile,
         "repository_origin": "/app", "state_origin": state,
         "workspace_root_origin": "/opt/ipfs-supervisor/worktrees",
         "native_prompt_bindings": [], "public_baseline_commit": "0" * 40,
@@ -60,7 +65,7 @@ def _bundle(state, *, private_member=False):
         "manifest_bytes": len(encoded), "file_count": len(leaves),
         "content_bytes": manifest["content_bytes"], "repository_origin": "/app",
         "state_origin": state, "workspace_root_origin": "/opt/ipfs-supervisor/worktrees",
-        "profile": evidence.PROFILE, "provider_calls": 0,
+        "profile": profile, "provider_calls": 0,
         "execution_authority": False, "completion_authority": False}
     return raw, receipt
 
@@ -75,17 +80,19 @@ def _complete_report():
 
 
 class EvidenceEnvironment(Environment):
-    def __init__(self, clock, *, change=None, private_member=False, **kwargs):
+    def __init__(self, clock, *, change=None, private_member=False, typed_retrieval=False, **kwargs):
         super().__init__(clock, report=_complete_report(), **kwargs)
         self.change = change
         self.private_member = private_member
+        self.typed_retrieval = typed_retrieval
         self.bundle = None
         self.state = None
 
     async def exec(self, **kwargs):
         argv = shlex.split(kwargs["command"])
         self.state = argv[argv.index("--state") + 1]
-        self.bundle, receipt = _bundle(self.state, private_member=self.private_member)
+        self.bundle, receipt = _bundle(self.state, private_member=self.private_member,
+                                      typed_retrieval=self.typed_retrieval)
         if self.change is not None:
             self.change(receipt)
         self.report["context_replay_evidence"] = receipt
@@ -148,6 +155,7 @@ def test_verified_closed_archive_is_retained_without_rewriting_report(tmp_path, 
     {"state_origin": "/opt/ipfs-supervisor/state/foreign"},
     {"execution_authority": True}, {"bytes": evidence.MAX_ARCHIVE_BYTES + 1},
     {"sha256": "PRIVATE-DIGEST-MARKER"}, {"private_field": "PRIVATE-RECEIPT-MARKER"},
+    {"profile": "unreviewed-typed-replay@1"},
 ])
 def test_invalid_owner_receipt_is_rejected_before_any_bundle_download(tmp_path, monkeypatch, changes):
     environment = EvidenceEnvironment(Clock(), change=lambda receipt: receipt.update(changes))
@@ -161,7 +169,8 @@ def test_invalid_owner_receipt_is_rejected_before_any_bundle_download(tmp_path, 
 
 
 @pytest.mark.parametrize("changes", [{"sha256": "0" * 64}, {"manifest_sha256": "0" * 64},
-    {"bytes": 1}, {"manifest_bytes": 1}, {"file_count": 1}, {"content_bytes": 1}])
+    {"bytes": 1}, {"manifest_bytes": 1}, {"file_count": 1}, {"content_bytes": 1},
+    {"profile": evidence.TYPED_PROFILE}])
 def test_hash_size_and_manifest_receipt_mismatches_do_not_publish(tmp_path, monkeypatch, changes):
     environment = EvidenceEnvironment(Clock(), change=lambda receipt: receipt.update(changes))
     agent, context = _run(tmp_path, monkeypatch, environment)
@@ -179,6 +188,32 @@ def test_valid_digest_cannot_admit_provider_transcript_member(tmp_path, monkeypa
     assert context.metadata["context_replay_evidence"]["verified"] is False
     assert "PRIVATE-TRANSCRIPT-MARKER" not in json.dumps(context.metadata)
     assert not (agent.logs_dir / "context-replay-evidence.tar").exists()
+    assert not list(agent.logs_dir.glob(".context-replay-evidence-*.tar"))
+    _assert_accounting_retained(context)
+
+
+def test_typed_retrieval_archive_delivery_preserves_custody_and_authored_usage(tmp_path, monkeypatch):
+    environment = EvidenceEnvironment(Clock(), typed_retrieval=True)
+    agent, context = _run(tmp_path, monkeypatch, environment)
+    retained = context.metadata["context_replay_evidence"]
+    assert retained["status"] == "delivered" and retained["verified"] is True
+    assert retained["profile"] == evidence.TYPED_RETRIEVAL_PROFILE
+    archive = agent.logs_dir / "context-replay-evidence.tar"
+    assert archive.read_bytes() == environment.bundle
+    assert archive.stat().st_mode & 0o777 == 0o444 and archive.stat().st_nlink == 1
+    assert not list(agent.logs_dir.glob(".context-replay-evidence-*.tar"))
+    assert json.loads((agent.logs_dir / "supervisor-result.json").read_text()) == environment.report
+    _assert_accounting_retained(context)
+
+
+@pytest.mark.parametrize("profile", [evidence.PROFILE, evidence.TYPED_PROFILE])
+def test_typed_retrieval_receipt_cannot_downgrade_archive_profile(tmp_path, monkeypatch, profile):
+    environment = EvidenceEnvironment(Clock(), typed_retrieval=True,
+        change=lambda receipt: receipt.update(profile=profile))
+    agent, context = _run(tmp_path, monkeypatch, environment)
+    assert context.metadata["context_replay_evidence"]["verified"] is False
+    assert not (agent.logs_dir / "context-replay-evidence.tar").exists()
+    assert not (agent.logs_dir / "context-replay-evidence-receipt.json").exists()
     assert not list(agent.logs_dir.glob(".context-replay-evidence-*.tar"))
     _assert_accounting_retained(context)
 

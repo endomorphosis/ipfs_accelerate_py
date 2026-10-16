@@ -15,6 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
 from benchmarks.agent_supervisor.container_coding import (
     full_supervisor_harbor_agent as adapter,
 )
@@ -25,6 +26,8 @@ from benchmarks.agent_supervisor.container_coding import (
     terminal_doctor_dispatch as dispatch,
 )
 from harbor.models.agent.context import AgentContext
+from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
+from benchmarks.agent_supervisor.container_coding import native_quack_qualification as native_owner
 
 ARTIFACT = Path("/opt/ipfs-supervisor/models/explicit tokenizer/descriptor.json")
 DIGEST = "a" * 64
@@ -204,7 +207,7 @@ def supervisor(tmp_path, monkeypatch):
     def owner(**_):
         yield SimpleNamespace(server=object(), source=SimpleNamespace(get_task=lambda _: task))
 
-    monkeypatch.setattr(driver, "open_existing_native_owner", owner)
+    monkeypatch.setattr(native_owner, "open_existing_native_owner", owner)
     response = SimpleNamespace(to_dict=lambda: {"status": "succeeded"})
 
     def runtime(_state, **kwargs):
@@ -213,10 +216,11 @@ def supervisor(tmp_path, monkeypatch):
                                observe=lambda: {}, close=lambda: None, profile=object(),
                                process=SimpleNamespace(snapshot=lambda _: SimpleNamespace(members=[])))
 
-    monkeypatch.setattr(driver.AdmittedBenchmarkRuntime, "create", runtime)
+    monkeypatch.setattr(AdmittedBenchmarkRuntime, "create", runtime)
     monkeypatch.setattr(driver, "_native_diagnostics", lambda _: {})
     monkeypatch.setattr(driver, "_refresh_completed_context", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(driver, "_final_context_audit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(driver, "_published_retrieval_options", lambda **_: {"published_retrieval_policy": None, "published_learned_artifacts": None})
     return state, planned, signed
 
 
@@ -226,7 +230,7 @@ def test_actual_supervisor_forwards_planning_and_signed_coding_inputs(supervisor
     state, planned, signed = supervisor
     doctor = {"route": route, "status": "candidate_ready" if route == "doctor_candidate" else "residual",
               "provider_calls": 0, "artifact": "/owner/candidate.json", "sha256": "b" * 64, "task_cid": "task"}
-    monkeypatch.setattr(driver, "prepare_terminal_doctor_dispatch", lambda **_: doctor)
+    monkeypatch.setattr(dispatch, "prepare_terminal_doctor_dispatch", lambda **_: doctor)
     result = driver.run(instruction=Path("/fixture/instruction"), state=state, arm=arm, **OPTIONS)
     assert result["task_completed"] is True
     assert len(planned) == len(signed) == 1
@@ -246,7 +250,7 @@ def test_actual_full_supervisor_limits_compact_options_to_signed_model_coding(su
     state, planned, signed = supervisor
     doctor = {"route": route, "status": "residual" if route == "model_router" else "candidate_ready",
               "provider_calls": 0, "artifact": "/owner/candidate.json", "sha256": "b" * 64, "task_cid": "task"}
-    monkeypatch.setattr(driver, "prepare_terminal_doctor_dispatch", lambda **_: doctor)
+    monkeypatch.setattr(dispatch, "prepare_terminal_doctor_dispatch", lambda **_: doctor)
     result = driver.run(instruction=Path("/fixture/instruction"), state=state, arm="full",
                         **OPTIONS, **SEMANTIC_OPTIONS)
     assert result["task_completed"] is True
@@ -275,7 +279,7 @@ def test_bound_planner_model_mismatch_refuses_before_worker_creation(supervisor,
     result = driver.run(instruction=Path("/fixture/instruction"), state=state, arm="no-index", **OPTIONS)
     assert result["task_completed"] is False
     assert result["error"]["type"] == "ValueError"
-    assert "model differs" in result["error"]["message"]
+    assert result["error"]["message"] == "benchmark planner route differs from selected provider profile"
     assert planned == signed == []
 
 
@@ -309,7 +313,7 @@ def test_supervisor_cli_forwards_explicit_compact_options_without_implicit_token
 @pytest.mark.parametrize("arm", ["full", "no-index"])
 @pytest.mark.parametrize("options", [{}, OPTIONS, SEMANTIC_OPTIONS])
 def test_actual_harbor_adapter_forwards_existing_container_path_without_asset_upload(tmp_path, monkeypatch, arm, options):
-    (tmp_path / "manifest.json").write_text(json.dumps({"archive_sha256": "fixture", "learned_requirements": []}))
+    (tmp_path / "manifest.json").write_text(json.dumps(_supervisor_manifest({"archive_sha256": "fixture", "learned_requirements": []})))
     uploads, commands = [], []
 
     class Environment:
@@ -330,11 +334,11 @@ def test_actual_harbor_adapter_forwards_existing_container_path_without_asset_up
     monkeypatch.setattr(adapter, "export_public_outputs", observation)
     if options == SEMANTIC_OPTIONS and arm == "no-index":
         with pytest.raises(ValueError, match="full indexed arm"):
-            adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol",
+            adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name=adapter.resolve_provider_profile()["model"],
                                        runtime_archive=str(tmp_path), arm=arm, **options)
         assert uploads == commands == []
         return
-    agent = adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol",
+    agent = adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name=adapter.resolve_provider_profile()["model"],
                                         runtime_archive=str(tmp_path), arm=arm, **options)
     context = AgentContext()
     asyncio.run(agent.run("literal public instruction", Environment(), context))
@@ -358,5 +362,5 @@ def test_actual_harbor_adapter_forwards_existing_container_path_without_asset_up
 @pytest.mark.parametrize("options", INVALID_OPTIONS[:8])
 def test_harbor_constructor_rejects_bad_inputs_before_archive_discovery(tmp_path, options):
     with pytest.raises(ValueError):
-        adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol",
+        adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name=adapter.resolve_provider_profile()["model"],
                                     runtime_archive=str(tmp_path / "unavailable"), arm="no-index", **options)

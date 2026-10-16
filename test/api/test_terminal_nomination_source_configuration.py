@@ -23,7 +23,7 @@ from test.api.test_benchmark_prompt_options import DEFAULTS
 from test.api.test_terminal_decision_archive import _decision_runtime_archive
 from test.api.test_terminal_decision_configuration import DECISION
 from test.api.test_terminal_decision_nomination_configuration import NOMINATION
-from test.api.test_terminal_timeout_configuration import (
+from test.api.test_current_terminal_archive_fixtures import (
     _authored_prepare_dataset, _timeout_runtime_archive,
 )
 
@@ -34,6 +34,7 @@ SOURCE = {
     "semantic_decision_nomination_sha256": hashlib.sha256(RAW).hexdigest(),
     "semantic_decision_max_calls": 3,
     "semantic_decision_max_total_input_tokens": None,
+    "disable_semantic_typed_nomination": False,
 }
 
 
@@ -187,8 +188,8 @@ def test_cli_forwards_source_pair_without_child_path_or_task_identity(tmp_path, 
     assert {key: calls[0][key] for key in SOURCE} == {
         **SOURCE, "semantic_decision_max_calls": 2, "semantic_decision_max_total_input_tokens": 24000,
     }
-    assert calls[0]["semantic_decision_nomination_artifact"] is None
-    assert calls[0]["semantic_decision_policy_artifact"] is None
+    assert calls[0].get("semantic_decision_nomination_artifact") is None
+    assert calls[0].get("semantic_decision_policy_artifact") is None
     assert not any("task_id" in key or "task_key" in key or "destination" in key for key in calls[0])
 
 
@@ -235,7 +236,7 @@ def test_source_execution_accepts_relative_output_with_original_source_removed(t
     monkeypatch.setattr(benchmark, "collect", collect)
     relative = Path(output.name)
     result = benchmark.execute(relative)
-    assert calls == [prepared["command"]] and collected == [relative]
+    assert calls == [prepared["command"]] and collected == [relative.resolve()]
     assert result["harbor_returncode"] == 0 and result["provider_calls"] == 0
     assert (output / "invocation.json").is_file()
 

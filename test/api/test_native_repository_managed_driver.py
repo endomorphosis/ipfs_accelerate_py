@@ -5,6 +5,27 @@ from pathlib import Path
 import sys
 
 from benchmarks.agent_supervisor.container_coding import native_repository_finite_supervision as driver
+from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_daemon_resources as daemon
+from ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler import policy_sha256
+from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import GlobalResourceScheduler, ResourceSchedulerConfig
+
+
+def _private_existing_resources(tmp_path):
+    # The controlled owner below deliberately fails before native admission;
+    # its prerequisite metadata is nevertheless a real private native state.
+    shared=GlobalResourceScheduler(ResourceSchedulerConfig(
+        total_cpu_slots=4,total_memory_mb=8192,total_child_process_slots=4,
+        total_gpu_memory_mb=None,total_unified_memory_mb=None,
+        state_path=tmp_path/'managed-private-native.json',proof_safety_enabled=True,
+        lane_reservations={'validation':{'cpu_slots':1,'memory_mb':0}},
+        max_waiting_requests=32,auto_renew_leases=False))
+    ledger=tmp_path/'managed-private-disk.json'
+    ledger.write_text(json.dumps({'schema':daemon.SCHEMA,
+        'roots':[daemon._root_identity(tmp_path)],'limit_bytes':daemon.MAX_STORAGE_BYTES,
+        'reservations':{}}))
+    return dict(scheduler_state_path=shared.state_path,
+        expected_scheduler_policy_sha256=policy_sha256(json.loads(shared.state_path.read_bytes())['config']),
+        resource_ledger=ledger,resource_roots=[tmp_path])
 
 
 def test_managed_driver_keeps_primary_failure_and_cleanup_failure_artifact(tmp_path,monkeypatch):
@@ -27,7 +48,8 @@ def test_managed_driver_keeps_primary_failure_and_cleanup_failure_artifact(tmp_p
     monkeypatch.setattr(pipeline,'RepositoryPipelineResources',FailedAdmission)
     monkeypatch.setattr(driver,'ExitStack',FailedCleanup)
     output=tmp_path/'qualification'
-    result=driver.qualify(output=output,python=Path(sys.executable),lean=Path('/unselected/lean'),pipeline_resources=True)
+    result=driver.qualify(output=output,python=Path(sys.executable),lean=Path('/unselected/lean'),pipeline_resources=True,
+        **_private_existing_resources(tmp_path))
     saved=json.loads((output/'result.json').read_text())
     assert saved==result
     assert not result['qualified']
@@ -74,7 +96,8 @@ def test_managed_driver_retains_primary_error_when_both_receipt_observers_fail(t
             yield FailedPipelineObservation()
     monkeypatch.setattr(pipeline,'RepositoryPipelineResources',ControlledOwner)
     output=tmp_path/'failed-receipts'
-    result=driver.qualify(output=output,python=Path(sys.executable),lean=Path('/unselected/lean'),pipeline_resources=True)
+    result=driver.qualify(output=output,python=Path(sys.executable),lean=Path('/unselected/lean'),pipeline_resources=True,
+        **_private_existing_resources(tmp_path))
     assert json.loads((output/'result.json').read_text())==result
     assert result['error']['message']=='primary remaining failure' and not result['qualified']
     assert {item['message'] for item in result['cleanup_errors']}=={

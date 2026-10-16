@@ -30,6 +30,9 @@ def _inputs(tmp_path):
         roots[key] = root
     bench = roots["source"] / "benchmarks/agent_supervisor/container_coding"
     bench.mkdir(parents=True)
+    checkout = Path(__file__).resolve().parents[3]
+    for name in ("benchmarks/__init__.py", "benchmarks/agent_supervisor/__init__.py"):
+        (roots["source"] / name).write_bytes((checkout / name).read_bytes())
     (bench / "worker.py").write_text("VALUE = 2\n")
     extensions = tmp_path / "extensions"
     extensions.mkdir()
@@ -42,12 +45,12 @@ def _supervisor_inputs(tmp_path):
     """Packaging fixture with the exact worker capability sources.
 
     This remains a hermetic archive fixture, not an executable full runtime.
-    Generic packaging tests deliberately retain the seven-file _inputs fixture.
+    Generic packaging tests include the two required benchmark package ancestors.
     """
     from .terminal_worker_capability import SOURCE_PATHS
     inputs = _inputs(tmp_path)
     checkout = Path(__file__).resolve().parents[3]
-    for name in SOURCE_PATHS:
+    for name in (*SOURCE_PATHS, "benchmarks/agent_supervisor/container_coding/timeout_policy.py"):
         target = inputs["source"] / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((checkout / name).read_bytes())
@@ -79,8 +82,11 @@ def test_archive_contains_only_explicit_runtime_sources_and_native_assets(tmp_pa
     result = build_runtime_archive(output=tmp_path / "bundle", **_inputs(tmp_path))
     with tarfile.open(tmp_path / "bundle/runtime.tar.gz") as archive:
         names = archive.getnames()
-        assert len(names) == 7
+        assert len(names) == 9
         assert "source/ipfs_accelerate_py/__init__.py" in names
+        for name in ("benchmarks/__init__.py", "benchmarks/agent_supervisor/__init__.py"):
+            assert "source/" + name in names
+            assert archive.extractfile("source/" + name).read() == (Path(__file__).resolve().parents[3] / name).read_bytes()
         assert all(not name.startswith("/") and ".." not in Path(name).parts for name in names)
         assert not any("auth.json" in name or ".env" in name for name in names)
         assert all(x.uid == 0 and x.gid == 0 and x.isfile() for x in archive.getmembers())

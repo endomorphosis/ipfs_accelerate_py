@@ -244,8 +244,12 @@ class ExportTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(context.metadata["signed_admission_exported"])
             self.assertFalse(context.metadata["task_completed"])
             self.assertIsNone(context.n_input_tokens)
-            self.assertEqual(requested, ["/opt/ipfs-supervisor/state/benchmark-result.json",
-                                         "/opt/ipfs-supervisor/state/benchmark/admission.json"])
+            run_id = context.metadata["adapter_run_id"]
+            self.assertIsInstance(run_id, str)
+            self.assertEqual(len(run_id), 32)
+            self.assertTrue(all(character in "0123456789abcdef" for character in run_id))
+            state = ROOT + "/state/benchmark-" + run_id
+            self.assertEqual(requested, [state + "-result.json", state + "/admission.json"])
             self.before.assert_awaited_once()
             self.after.assert_awaited_once()
             self.assertEqual(context.metadata['public_output_evidence'], {'status': 'captured'})

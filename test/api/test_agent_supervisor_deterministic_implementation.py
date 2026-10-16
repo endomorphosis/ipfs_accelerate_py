@@ -11,6 +11,7 @@ import json
 import shlex
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -19,9 +20,23 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as implementation_daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DETERMINISTIC_DECLARED_OUTPUT_TARGET_REQUIRED,
     PortalTask,
     TodoImplementationDaemon,
     TodoTaskState,
+    inherit_retry_budget_repair_validation,
+    task_is_declared_read_only_validation,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+    ValidationRuntimeError,
+    build_validation_environment,
+    sealed_validation_launcher_argv0_environment,
+    sealed_validation_python_runner,
+    validation_command_launcher_argv0,
+    validation_environment_for_runner,
+    validation_python_executable,
+    validation_python_launcher_environment,
+    validation_shell_command,
 )
 
 
@@ -67,6 +82,7 @@ def _daemon(
         implement=True,
         implementation_command="model-command-must-not-run",
         implementation_protected_paths=protected_paths,
+        worktree_root=repo,
     )
     monkeypatch.setattr(
         daemon,
@@ -488,15 +504,452 @@ def test_deterministic_materialization_rejects_undeclared_output(
 
     assert result["returncode"] != 0
     assert result["validation_result"]["passed"] is False
+    # Out-of-scope untracked files are removed before admission. The empty
+    # tree is not a no-change completion, so the task still fails closed.
     assert result["validation_result"]["reason"] == (
-        "deterministic_materialization_proposal_rejected"
+        "deterministic_no_change_authority_unavailable"
     )
-    assert result["validation_result"]["proposal_gate"]["accepted"] is False
-    assert "undeclared.py" in result["validation_result"]["proposal_gate"][
-        "changed_paths"
-    ]
+    assert not (repo / "undeclared.py").exists()
+    assert "undeclared.py" not in _git_stdout(
+        repo, "status", "--porcelain", "--untracked-files=all"
+    )
     receipt = json.loads(
         Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8")
     )
     assert receipt["isolation_audit"]["model_call_count"] == 0
     assert receipt["isolation_audit"]["provider_call_count"] == 0
+
+
+def _git_stdout(repo: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return completed.stdout.strip()
+
+
+def _read_only_task(validation: str) -> PortalTask:
+    return PortalTask(
+        task_id="SCA-DET-RO",
+        title="Run a declared check without an edit target",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="static-analysis",
+        outputs=[],
+        validation=[validation],
+        acceptance="The declared check passes without staging the checkout.",
+        metadata={"Provider role": "deterministic-only"},
+    )
+
+
+def test_validation_only_task_completes_without_staging_a_clean_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, daemon = _daemon(tmp_path, monkeypatch)
+    completed: list[str] = []
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda task, **_kwargs: completed.append(task.task_id)
+        or {"updated": True, "test_double": True},
+    )
+    head = _git_stdout(repo, "rev-parse", "HEAD")
+
+    result = daemon._run_implementation(
+        _read_only_task(f"{shlex.quote(sys.executable)} -c 'assert True'"),
+        TodoTaskState(),
+    )
+
+    assert result["returncode"] == 0
+    assert result["validation_result"]["passed"] is True
+    assert result["validation_result"]["read_only_declared_validation"] is True
+    assert result["commit_result"]["reason"] == "read_only_declared_validation"
+    assert result["commit_result"]["committed"] is False
+    assert _git_stdout(repo, "rev-parse", "HEAD") == head
+    assert _git_stdout(repo, "status", "--porcelain") == ""
+    assert completed == ["SCA-DET-RO"]
+
+
+def test_validation_only_task_does_not_stage_preexisting_or_command_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, daemon = _daemon(tmp_path, monkeypatch)
+    (repo / "preexisting.txt").write_text("leave me\n", encoding="utf-8")
+    command = _add_validation_script(
+        repo,
+        "read_only_check.py",
+        "from pathlib import Path\n"
+        "Path('check-ok.txt').write_text('ran\\n')\n",
+    )
+    head = _git_stdout(repo, "rev-parse", "HEAD")
+
+    result = daemon._run_implementation(
+        _read_only_task(command),
+        TodoTaskState(),
+    )
+
+    assert result["returncode"] == 0
+    assert result["commit_result"]["committed"] is False
+    assert _git_stdout(repo, "rev-parse", "HEAD") == head
+    status = _git_stdout(repo, "status", "--porcelain", "--untracked-files=all")
+    assert "?? preexisting.txt" in status.splitlines()
+    assert "?? check-ok.txt" in status.splitlines()
+    assert all(not line.startswith(("A ", "M ")) for line in status.splitlines())
+
+
+def test_validation_only_failure_does_not_complete_or_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, daemon = _daemon(tmp_path, monkeypatch)
+    (repo / "preexisting.txt").write_text("leave me\n", encoding="utf-8")
+    head = _git_stdout(repo, "rev-parse", "HEAD")
+    completed: list[str] = []
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda task, **_kwargs: completed.append(task.task_id)
+        or {"updated": True},
+    )
+
+    result = daemon._run_implementation(
+        _read_only_task(
+            f"{shlex.quote(sys.executable)} -c 'raise SystemExit(7)'"
+        ),
+        TodoTaskState(),
+    )
+
+    assert result["returncode"] != 0
+    assert result["validation_result"]["passed"] is False
+    assert completed == []
+    assert _git_stdout(repo, "rev-parse", "HEAD") == head
+    assert "?? preexisting.txt" in _git_stdout(
+        repo, "status", "--porcelain"
+    ).splitlines()
+
+
+def test_predicted_edit_target_is_not_treated_as_read_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, daemon = _daemon(tmp_path, monkeypatch)
+    task = _read_only_task(f"{shlex.quote(sys.executable)} -c 'assert True'")
+    task.metadata["Predicted files"] = "artifact.txt"
+    assert task_is_declared_read_only_validation(task, repo_root=repo) is False
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert (
+        result["validation_result"].get("read_only_declared_validation")
+        is not True
+    )
+    assert result.get("commit_result", {}).get("reason") != (
+        "read_only_declared_validation"
+    )
+    assert result["returncode"] != 0
+
+
+def test_empty_completion_gap_still_requires_an_edit_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, daemon = _daemon(tmp_path, monkeypatch)
+    task = _read_only_task(f"{shlex.quote(sys.executable)} -c 'assert True'")
+    task.metadata["Merge role"] = "completion_gate_gap"
+
+    with pytest.raises(ValueError, match="declared output/edit target"):
+        daemon._deterministic_validation_plan_binding(repo, task)
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    assert result["reason"] == "completion_gap_missing_precise_edit_targets"
+
+
+def test_repaired_read_only_validation_clears_only_its_cooldown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon = _daemon(tmp_path, monkeypatch)
+    check = _read_only_task(f"{shlex.quote(sys.executable)} -c 'assert True'")
+    edit = _task(f"{shlex.quote(sys.executable)} -c 'assert True'")
+    note = "ValueError: " + DETERMINISTIC_DECLARED_OUTPUT_TARGET_REQUIRED
+    daemon.task_queue.defer(check.task_id, 600, reason=note)
+    daemon.task_queue.defer(edit.task_id, 600, reason=note)
+    daemon.task_queue.defer("SCA-OTHER", 600, reason="validation_failed")
+
+    released = daemon._release_repaired_read_only_validation_cooldowns(
+        {check.task_id: check, edit.task_id: edit}
+    )
+
+    assert released == [check.task_id]
+    assert daemon.task_queue.is_cooled_down(check.task_id) is False
+    assert daemon.task_queue.is_cooled_down(edit.task_id) is True
+    assert daemon.task_queue.is_cooled_down("SCA-OTHER") is True
+
+
+def test_absolute_approved_python_uses_the_sealed_launcher() -> None:
+    argv = validation_shell_command(
+        f"{shlex.quote(sys.executable)} -c 'assert True'"
+    )
+    script = argv[-1]
+    assert "python -c 'assert True'" in script
+    assert f"_IPFS_ACCELERATE_VALIDATION_ARGV0={sys.executable}" in script
+
+    with pytest.raises(ValidationRuntimeError, match="sealed python"):
+        validation_shell_command("/no/such/python -c 'assert True'")
+
+
+def test_sealed_launcher_preserves_venv_argv0(tmp_path: Path) -> None:
+    venv = tmp_path / "venv"
+    bin_dir = venv / "bin"
+    bin_dir.mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text(
+        "home = /usr/bin\n"
+        "include-system-site-packages = false\n"
+        "version = 3.12.3\n",
+        encoding="utf-8",
+    )
+    approved = Path(validation_python_executable()).resolve(strict=True)
+    launcher = bin_dir / "python"
+    launcher.symlink_to(approved)
+    command = (
+        f"{shlex.quote(str(launcher))} -c 'import sys; print(sys.prefix)'"
+    )
+    assert validation_command_launcher_argv0(command) == str(launcher)
+
+    @sealed_validation_python_runner
+    def runner() -> None:
+        return None
+
+    environment = sealed_validation_launcher_argv0_environment(
+        validation_environment_for_runner(
+            build_validation_environment(),
+            runner,
+        ),
+        str(launcher),
+    )
+    with validation_python_launcher_environment(
+        environment,
+        argv0=str(launcher),
+    ) as (child, receipt):
+        completed = subprocess.run(
+            validation_shell_command(command),
+            cwd=tmp_path,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=60,
+            check=False,
+            env=child,
+            pass_fds=tuple(receipt.inherited_fds),
+        )
+    assert completed.returncode == 0, completed.stdout
+    prefix = Path(completed.stdout.strip().splitlines()[-1])
+    assert prefix.resolve() == venv.resolve()
+
+
+def test_unverified_argv0_is_rejected() -> None:
+    @sealed_validation_python_runner
+    def runner() -> None:
+        return None
+
+    environment = validation_environment_for_runner(
+        build_validation_environment(),
+        runner,
+    )
+    with pytest.raises(ValidationRuntimeError, match="virtualenv"):
+        sealed_validation_launcher_argv0_environment(
+            environment,
+            "/usr/bin/python3.12",
+        )
+
+
+def test_discovery_repair_of_a_read_only_check_inherits_the_local_role() -> None:
+    source = replace(
+        _read_only_task(f"{shlex.quote(sys.executable)} -c 'assert True'"),
+        task_id="SCA-010",
+    )
+    repair = PortalTask(
+        task_id="SCA-062",
+        title="Resolve implementation retry-budget failure for SCA-010",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["/tmp/discovery-report"],
+        validation=["test -f /tmp/discovery-report/finding.md"],
+        acceptance=(
+            "release SCA-010 from the strategy blocked_tasks"
+        ),
+        metadata={},
+    )
+
+    inherited = inherit_retry_budget_repair_validation([source, repair])
+    repaired = next(task for task in inherited if task.task_id == "SCA-062")
+
+    assert repaired.validation == source.validation
+    assert repaired.metadata["Provider role"] == "deterministic-only"
+    assert task_is_declared_read_only_validation(repaired) is True
+
+
+def test_source_command_repair_of_a_read_only_check_inherits_the_local_role() -> None:
+    validation = f"{shlex.quote(sys.executable)} -c 'assert True'"
+    source = replace(_read_only_task(validation), task_id="SCA-030")
+    repair = PortalTask(
+        task_id="SCA-062",
+        title="Resolve validation retry-budget failure for SCA-030",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=[],
+        validation=[validation],
+        acceptance="release SCA-030 from strategy blocked_tasks",
+        metadata={
+            "Generated by": (
+                "ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1"
+            ),
+            "Retry repair source": "SCA-030",
+            "Retry failure kind": "validation",
+        },
+    )
+    edit_source = replace(
+        _task(validation),
+        task_id="SCA-031",
+        title="Edit a declared artifact",
+    )
+    edit_repair = PortalTask(
+        task_id="SCA-063",
+        title="Resolve validation retry-budget failure for SCA-031",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["artifact.txt"],
+        validation=[validation],
+        acceptance="release SCA-031 from strategy blocked_tasks",
+        metadata={
+            "Generated by": (
+                "ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1"
+            ),
+            "Retry repair source": "SCA-031",
+            "Retry failure kind": "validation",
+        },
+    )
+    scoped_repair = replace(repair, task_id="SCA-065", outputs=["artifact.txt"])
+    role_kept = replace(
+        repair,
+        task_id="SCA-064",
+        metadata={**repair.metadata, "Provider role": "grok-implement"},
+    )
+
+    inherited = inherit_retry_budget_repair_validation(
+        [source, repair, edit_source, edit_repair, scoped_repair, role_kept]
+    )
+    by_id = {task.task_id: task for task in inherited}
+    repaired = by_id["SCA-062"]
+
+    assert repaired.validation == [validation]
+    assert repaired.metadata["Provider role"] == "deterministic-only"
+    assert "Provider role" not in repair.metadata
+    assert task_is_declared_read_only_validation(repaired) is True
+    assert "Provider role" not in by_id["SCA-063"].metadata
+    assert by_id["SCA-063"].validation == [validation]
+    assert "Provider role" not in by_id["SCA-065"].metadata
+    assert by_id["SCA-064"].metadata["Provider role"] == "grok-implement"
+    assert by_id["SCA-064"].validation == [validation]
+
+
+def test_obsolete_provider_repair_cooldown_clears_only_for_that_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon = _daemon(tmp_path, monkeypatch)
+    repair = PortalTask(
+        task_id="SCA-062",
+        title="Resolve implementation retry-budget failure for SCA-010",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=[],
+        validation=[f"{shlex.quote(sys.executable)} -c 'assert True'"],
+        acceptance="release SCA-010 from strategy blocked_tasks",
+        metadata={"Provider role": "deterministic-only"},
+    )
+    kept = PortalTask(
+        task_id="SCA-063",
+        title="Resolve implementation retry-budget failure for SCA-011",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=[],
+        validation=[f"{shlex.quote(sys.executable)} -c 'assert True'"],
+        acceptance="release SCA-011 from strategy blocked_tasks",
+        metadata={"Provider role": "deterministic-only"},
+    )
+    note = "validation_or_implementation_failed"
+    daemon.task_queue.defer(repair.task_id, 600, reason=note)
+    daemon.task_queue.defer(kept.task_id, 600, reason=note)
+    log_dir = daemon.implementation_log_dir
+    log_dir.mkdir(parents=True, exist_ok=True)
+    (log_dir / "sca-062-attempt-1-aaa.log").write_text(
+        "Command: /usr/bin/python -m ipfs_accelerate_py.agent_supervisor.grok_cli_runner\n"
+        "Grok provider isolation unavailable\n",
+        encoding="utf-8",
+    )
+    (log_dir / "sca-063-attempt-1-bbb.log").write_text(
+        "deterministic declared validation failed\n",
+        encoding="utf-8",
+    )
+
+    released = daemon._release_obsolete_provider_repair_cooldowns(
+        {repair.task_id: repair, kept.task_id: kept}
+    )
+
+    assert released == [repair.task_id]
+    assert daemon.task_queue.is_cooled_down(repair.task_id) is False
+    assert daemon.task_queue.is_cooled_down(kept.task_id) is True
+
+
+def test_obsolete_venv_launcher_cooldown_clears_only_for_that_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon = _daemon(tmp_path, monkeypatch)
+    missing = replace(
+        _read_only_task(f"{shlex.quote(sys.executable)} -c 'assert True'"),
+        task_id="SCA-030",
+    )
+    kept = replace(
+        _read_only_task("/usr/bin/python -c 'assert True'"),
+        task_id="SCA-031",
+    )
+    note = "validation_or_implementation_failed"
+    daemon.task_queue.defer(missing.task_id, 600, reason=note)
+    daemon.task_queue.defer(kept.task_id, 600, reason=note)
+    log_dir = daemon.implementation_log_dir
+    log_dir.mkdir(parents=True, exist_ok=True)
+    (log_dir / "sca-030-attempt-1-aaa.log").write_text(
+        "/usr/bin/python3.12: No module named pytest\n",
+        encoding="utf-8",
+    )
+    (log_dir / "sca-031-attempt-1-bbb.log").write_text(
+        "/usr/bin/python3.12: No module named pytest\n",
+        encoding="utf-8",
+    )
+
+    released = daemon._release_obsolete_venv_launcher_cooldowns(
+        {missing.task_id: missing, kept.task_id: kept}
+    )
+
+    assert released == [missing.task_id]
+    assert daemon.task_queue.is_cooled_down(missing.task_id) is False
+    assert daemon.task_queue.is_cooled_down(kept.task_id) is True

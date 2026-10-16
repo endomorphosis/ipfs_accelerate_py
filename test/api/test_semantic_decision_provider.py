@@ -116,7 +116,12 @@ def test_decision_adapter_keeps_complete_wire_and_exact_route(decision_worktree,
     else:
         assert invocation["prompt"] == rendered
         assert invocation["allow_local_fallback"] is False and invocation["allow_cross_provider_fallback"] is False
-        assert invocation["grok_tools"] == "" and invocation["grok_max_turns"] == 1
+        assert invocation["grok_tools"] == "read_file" and invocation["grok_max_turns"] == 1
+        assert invocation["grok_disallowed_tools"] == "read_file,search_tool,use_tool"
+        assert invocation["grok_permission_mode"] == "dontAsk"
+        assert reply.receipt["native_tool_allowlist"] == ["read_file"]
+        assert reply.receipt["native_tool_denylist"] == ["read_file", "search_tool", "use_tool"]
+        assert reply.receipt["effective_toolset_verified"] is False
         assert invocation["grok_cli_cmd"] == ["/fixture/bin/grok"]
         assert invocation["chat_session_id"] == call.call_id
         assert "resume_session_id" not in invocation and "continue_session" not in invocation
@@ -273,3 +278,187 @@ def test_shared_router_convenience_binds_adapter_and_counter(decision_worktree, 
     assert result.text == "done" and len(invocations) == 1
     assert resolutions == ([{"provider": "grok_cli", "model": "pinned"}] if automatic else [])
     assert result.receipt.get("prompt_tokenizer_source") == (provenance if automatic else None)
+
+
+@pytest.mark.parametrize("native_stop", ["end_turn", "tool_use"])
+def test_grok_decision_policy_reaches_actual_cli_argv(
+        decision_worktree, monkeypatch, tmp_path, native_stop):
+    """An authored child proves transport; it does not qualify native Grok."""
+    import sys
+    from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_decision_dialogue import (
+        SemanticDecisionProviderFailure,
+    )
+
+    adapter, call, rendered = _adapter_and_call(decision_worktree, "grok_cli")
+    llm_router = _grok_route(monkeypatch)
+    observed_path = tmp_path / "native-argv-observation.json"
+    executable = tmp_path / "grok"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import hashlib,json,pathlib,sys\n"
+        "argv=sys.argv[1:]\n"
+        "def option(name):\n"
+        "    assert argv.count(name)==1,name\n"
+        "    return argv[argv.index(name)+1]\n"
+        "assert option('--tools')=='read_file'\n"
+        "assert option('--disallowed-tools')=='read_file,search_tool,use_tool'\n"
+        "assert option('--max-turns')=='1'\n"
+        "assert option('--permission-mode')=='dontAsk'\n"
+        "assert option('--model')=='pinned'\n"
+        "assert option('--output-format')=='json'\n"
+        "assert not any(flag in argv for flag in ['--resume','--continue'])\n"
+        "assert all(flag in argv for flag in ['--no-plan','--no-subagents','--disable-web-search','--no-memory'])\n"
+        "prompt_path=pathlib.Path(option('--prompt-file'))\n"
+        "prompt_sha256=hashlib.sha256(prompt_path.read_bytes()).hexdigest()\n"
+        f"pathlib.Path({str(observed_path)!r}).write_text(json.dumps({{'prompt_path':str(prompt_path),'prompt_sha256':prompt_sha256}}))\n"
+        f"print(json.dumps({{'text':'decision','stopReason':{native_stop!r},'num_turns':1,'usage':{{'input_tokens':17,'output_tokens':3}}}}))\n"
+    )
+    executable.chmod(0o700)
+    monkeypatch.setattr(llm_router, "_grok_cli_command", lambda: str(executable))
+    monkeypatch.setattr(grok_cli_runner, "_resolve_trusted_grok_bin", lambda **kwargs: str(executable))
+    native = llm_router._get_grok_cli_provider()
+    assert native is not None
+    monkeypatch.setattr(llm_router, "get_llm_provider", lambda *args, **kwargs: native)
+
+    def route_to_native(prompt, **kwargs):
+        # Isolate the shared-router wrapper from allocation/auth services. The
+        # actual provider constructs argv, writes stdin transport, runs the
+        # authored child, cleans prompt files, and interprets its envelope.
+        assert kwargs["provider"] == "grok_cli" and kwargs["model_name"] == "pinned"
+        assert kwargs["allow_local_fallback"] is False
+        assert kwargs["allow_cross_provider_fallback"] is False
+        for name in ("provider", "provider_instance", "deps", "allow_local_fallback",
+                     "allow_cross_provider_fallback", "task_kind", "allocation_path",
+                     "allocation_session_id"):
+            kwargs.pop(name, None)
+        return native.generate(prompt, **kwargs)
+
+    monkeypatch.setattr(llm_router, "generate_text", route_to_native)
+    if native_stop == "tool_use":
+        with pytest.raises(SemanticDecisionProviderFailure) as captured:
+            adapter(call)
+        receipt = captured.value.receipt
+        assert receipt["status"] == "failed" and receipt["provider_called"] is True
+    else:
+        reply = adapter(call)
+        assert reply.text == "decision"
+        receipt = reply.receipt
+    observed = json.loads(observed_path.read_text())
+    assert observed["prompt_sha256"] == hashlib.sha256(rendered.encode()).hexdigest()
+    assert not Path(observed["prompt_path"]).exists()
+    assert receipt["native_max_turns"] == 1
+    assert receipt["effective_toolset_verified"] is False
+    assert receipt["provider_output_token_cap_enforced"] is False
+    native_usage = receipt["native_rollout_usage"]
+    assert native_usage["usage"] == {"input_tokens": 17, "output_tokens": 3}
+    assert native_usage["totals_scope"] == "native_final_envelope"
+    assert native_usage["usage_complete_observed"] is None
+    assert native_usage["billing_total_verified"] is False
+    assert receipt["native_provider_outcome"]["stop_reason"] == native_stop
+    assert receipt["native_provider_outcome"]["reason_code"] == (
+        "end_turn" if native_stop == "end_turn" else "other_stop")
+
+
+@pytest.mark.parametrize("incomplete", [None, False, True])
+def test_grok_adapter_retains_final_envelope_scope_without_promoting_generic_usage(
+        decision_worktree, monkeypatch, incomplete):
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation
+    from ipfs_accelerate_py.cli_runtime.grok_native_usage import native_grok_observation
+
+    adapter, call, _ = _adapter_and_call(decision_worktree, "grok_cli")
+    llm_router = _grok_route(monkeypatch)
+    payload = {"stopReason": "end_turn", "usage": {
+        "input_tokens": 7, "cache_read_input_tokens": 2,
+        "cache_creation_input_tokens": 1, "output_tokens": 3, "total_tokens": 13},
+        "text": "private-authored-native-body",
+        "modelUsage": {"side_model": {"input_tokens": 999}}}
+    if incomplete is not None:
+        payload["usage_is_incomplete"] = incomplete
+    observation = {"exit_code": 0, **native_grok_observation(payload, exit_code=0)}
+
+    def generate(*args, **kwargs):
+        set_last_cli_observation("grok_cli", observation)
+        return "authored decision"
+
+    monkeypatch.setattr(llm_router, "generate_text", generate)
+    receipt = adapter(call).receipt
+    native = receipt["native_rollout_usage"]
+    assert native["usage"] == {"input_tokens": 7, "cached_input_tokens": 2,
+        "cache_write_input_tokens": 1, "output_tokens": 3, "total_tokens": 13}
+    assert native["usage_complete_observed"] is (None if incomplete is None else not incomplete)
+    assert native["cache_included_in_input"] is False
+    assert native["totals_scope"] == "native_final_envelope"
+    assert native["billing_total_verified"] is False
+    assert native["raw_provider_data_exported"] is False
+    assert receipt["native_provider_outcome"]["reason_code"] == "end_turn"
+    assert receipt["usage"] == {"exit_code": 0} and receipt["usage_status"] == "unknown"
+    assert receipt["provider_output_token_cap_enforced"] is False
+    assert "provider_usage_complete" not in receipt
+    assert "private-authored-native-body" not in json.dumps(receipt)
+    assert "side_model" not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize("usage,expected", [
+    ({}, None),
+    ({"input_tokens": True, "output_tokens": 3}, {"output_tokens": 3}),
+    ({"input_tokens": 7, "prompt_tokens": 8, "output_tokens": 3}, {"output_tokens": 3}),
+])
+def test_grok_adapter_does_not_fill_missing_or_conflicting_native_categories(
+        decision_worktree, monkeypatch, usage, expected):
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation
+    from ipfs_accelerate_py.cli_runtime.grok_native_usage import native_grok_observation
+
+    adapter, call, _ = _adapter_and_call(decision_worktree, "grok_cli")
+    llm_router = _grok_route(monkeypatch)
+    observation = {"exit_code": 0, **native_grok_observation(
+        {"stopReason": "end_turn", "usage": usage}, exit_code=0)}
+
+    def generate(*args, **kwargs):
+        set_last_cli_observation("grok_cli", observation)
+        return "authored decision"
+
+    monkeypatch.setattr(llm_router, "generate_text", generate)
+    receipt = adapter(call).receipt
+    native = receipt["native_rollout_usage"]
+    if expected is None:
+        assert native is None
+    else:
+        assert native["usage"] == expected
+        assert native["usage_complete_observed"] is None
+        assert "input_tokens" not in native["usage"] and "total_tokens" not in native["usage"]
+    assert receipt["native_provider_outcome"]["reason_code"] == "end_turn"
+    assert receipt["usage_status"] == "unknown"
+
+
+@pytest.mark.parametrize("timed_out", [False, True])
+def test_grok_adapter_retains_native_usage_and_outcome_after_provider_failure(
+        decision_worktree, monkeypatch, timed_out):
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation
+    from ipfs_accelerate_py.cli_runtime.grok_native_usage import native_grok_observation
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_decision_dialogue import SemanticDecisionProviderFailure
+
+    adapter, call, _ = _adapter_and_call(decision_worktree, "grok_cli")
+    llm_router = _grok_route(monkeypatch)
+    observation = native_grok_observation({"type": "error", "usage": {
+        "input_tokens": 7, "output_tokens": 3}},
+        exit_code=None if timed_out else 1, timed_out=timed_out)
+    observation.update({"timed_out": True} if timed_out else {"exit_code": 1})
+    original = subprocess.TimeoutExpired(["authored-grok"], 1) if timed_out else RuntimeError("authored failure")
+
+    def generate(*args, **kwargs):
+        set_last_cli_observation("grok_cli", observation)
+        raise original
+
+    monkeypatch.setattr(llm_router, "generate_text", generate)
+    with pytest.raises(SemanticDecisionProviderFailure) as caught:
+        adapter(call)
+    assert caught.value.__cause__ is original
+    receipt = caught.value.receipt
+    assert receipt["status"] == "failed" and receipt["provider_called"] is True
+    assert receipt["native_rollout_usage"]["usage"] == {"input_tokens": 7, "output_tokens": 3}
+    assert receipt["native_rollout_usage"]["task_complete_observed"] is False
+    assert receipt["native_rollout_usage"]["usage_complete_observed"] is None
+    assert receipt["native_provider_outcome"]["process_outcome"] == ("timeout" if timed_out else "failed")
+    assert receipt["native_provider_outcome"]["reason_code"] == ("timeout" if timed_out else "execution_error")
+    assert receipt["usage_status"] == "unknown"

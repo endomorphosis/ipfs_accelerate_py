@@ -567,11 +567,17 @@ def _final_context_audit(report: dict, *, state: Path, deadline: float) -> None:
                 or decision_report.get("semantic_decision_owner_binding_expected") is True
                 or decision_report.get("semantic_decision_owner_bindings")):
             try:
-                from .terminal_context_evidence import collect_terminal_context_evidence
+                from .terminal_context_evidence import (
+                    TYPED_RETRIEVAL_PROFILE, _typed_profile, collect_terminal_context_evidence,
+                )
+                # The combined lineage replays both typed source evidence and
+                # the independently bound retrieval snapshot. Use the native
+                # collector's existing bound without extending the task deadline.
+                export_seconds = 30.0 if _typed_profile(decision_report) == TYPED_RETRIEVAL_PROFILE else 15.0
                 report["context_replay_evidence"] = collect_terminal_context_evidence(
                     state=state, receipts=report.get("provider_invocations", []),
                     workspace_root=WORKTREES, decision_report=decision_report,
-                    timeout_seconds=max(0, min(15.0, deadline - time.monotonic() - 1.0)))
+                    timeout_seconds=max(0, min(export_seconds, deadline - time.monotonic() - 1.0)))
             except BaseException as error:
                 report["context_replay_evidence"] = {
                     "schema": "terminal-context-evidence-export-receipt@1",
@@ -869,6 +875,30 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     if semantic_arguments and arm != "full":
         raise ValueError("semantic context options require the full indexed arm")
     from .benchmark_provider_profile import resolve_provider_profile
+    from .terminal_decision_policy import decision_selection, validate_decision_route
+    decision = decision_selection(
+        semantic_decision_policy_artifact=semantic_decision_policy_artifact,
+        semantic_decision_policy_sha256=semantic_decision_policy_sha256,
+        semantic_decision_nomination_artifact=semantic_decision_nomination_artifact,
+        semantic_decision_nomination_sha256=semantic_decision_nomination_sha256,
+        disable_semantic_typed_nomination=disable_semantic_typed_nomination,
+        semantic_retrieval_query_reference=semantic_retrieval_query_reference,
+        semantic_decision_max_calls=semantic_decision_max_calls,
+        semantic_decision_max_total_input_tokens=semantic_decision_max_total_input_tokens)
+    validate_decision_route(decision, arm=arm, provider=resolve_provider_profile(provider_profile)['provider'],
+        semantic_transport_schema=semantic_transport_schema,
+        semantic_metadata_view=semantic_metadata_view, semantic_working_set=semantic_working_set,
+        source_view_profile=source_view_profile, source_edit_mode=source_edit_mode,
+        source_view_policy=source_view_policy, coding_reply_mode=coding_reply_mode,
+        tool_output_policy=tool_output_policy, source_view_advisory_policy=source_view_advisory_policy,
+        repository_source_policy=repository_source_policy, source_input_policy=source_input_policy,
+        query_reference_policy=query_reference_policy, grok_coding_max_turns=grok_coding_max_turns,
+        planning_mode=planning_mode, capsule_selection=capsule_selection, capsule_budget=capsule_budget,
+        semantic_context_profile=semantic_context_profile, metadata_census_only=metadata_census_only,
+        numerical_formalization_profile=numerical_formalization_profile,
+        numerical_selection_config=numerical_selection_config, source384_config=source384_config,
+        resource_profile=resource_profile, task_profile=task_profile,
+        intent_requirement_contract=intent_requirement_contract)
     validate_legacy_semantic_route(policyoptions={
         'semantic_slot_policy_revision': semantic_slot_policy_revision,
         'semantic_context_projection': semantic_context_projection,
@@ -1319,8 +1349,12 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                                  min(coding_timeout_seconds(resource_profile), remaining(25)))
         if reserved_phases and not provider_free_candidate:
             implementation_budget = coding_timeout_seconds(resource_profile)
+        if decision_arguments and not provider_free_candidate:
+            implementation_budget = min(600, implementation_budget)
         report["provider_coding_timeout_cap_seconds"] = (
             None if provider_free_candidate else coding_timeout_seconds(resource_profile))
+        if decision_arguments and not provider_free_candidate:
+            report["provider_coding_timeout_cap_seconds"] = min(600, coding_timeout_seconds(resource_profile))
         report["provider_coding_timeout_seconds"] = None if provider_free_candidate else implementation_budget
         if decision_arguments and report["implementation_route"] == "model_router":
             # A printed native receipt alone cannot establish that a later
@@ -1382,14 +1416,35 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     "source_edit_mode": source_edit_mode,
                     **semantic_working_set_selection(semantic_working_set),
                     **grok_coding_selection(grok_coding_max_turns),
-                    "source_view_policy": source_view_policy},
+                    "source_view_policy": source_view_policy,
+                    **({"prompt_comparison_options": {
+                        "prompt_tokenizer_artifact": (str(prompt_tokenizer_artifact)
+                            if prompt_tokenizer_artifact is not None else None),
+                        "prompt_tokenizer_sha256": prompt_tokenizer_sha256,
+                        "max_input_tokens": max_input_tokens,
+                        "semantic_slot_policy_revision": semantic_slot_policy_revision,
+                        "semantic_context_projection": semantic_context_projection,
+                        **({"semantic_native_input": True} if semantic_native_input else {}),
+                        **({"semantic_decision_max_calls": semantic_decision_max_calls,
+                            "semantic_decision_max_total_input_tokens": semantic_decision_max_total_input_tokens}
+                           if decision_arguments else {}),
+                        **({"semantic_decision_policy_artifact": str(semantic_decision_policy_artifact),
+                            "semantic_decision_policy_sha256": semantic_decision_policy_sha256}
+                           if semantic_decision_policy_artifact is not None else {}),
+                        **({"semantic_decision_nomination_artifact": str(semantic_decision_nomination_artifact),
+                            "semantic_decision_nomination_sha256": semantic_decision_nomination_sha256,
+                            "disable_semantic_typed_nomination": disable_semantic_typed_nomination}
+                           if semantic_decision_nomination_artifact is not None else {}),
+                        **({"semantic_retrieval_query_reference": True}
+                           if semantic_retrieval_query_reference else {}),
+                    }} if token_arguments or semantic_arguments or decision_arguments else {})},
                 "model_coding_dispatched": False,
                 "token_savings_established": False,
                 "completion_authority": False,
             }
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
             implementation += ["--provider", provider_selection["provider"]]
-        if reserved_phases and not provider_free_candidate:
+        if reserved_phases and not provider_free_candidate and not decision_arguments:
             implementation += ["--budget-profile", resource_profile]
         if report["implementation_route"] == "model_router":
             from ipfs_accelerate_py.agent_supervisor.runtime.router_public_instruction import prepare_public_instruction_context
