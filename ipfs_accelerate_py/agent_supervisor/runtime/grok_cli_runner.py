@@ -1388,6 +1388,9 @@ def _isolated_grok_home(
                     "",
                     "[cli]",
                     "use_leader = false",
+                    "",
+                    '[model."grok-4.7"]',
+                    "temperature = 0.0",
                 )
             )
             + "\n",
