@@ -474,3 +474,5 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !/data/legal_autoformalization_source_alignment/LAC-S11-024/result.json
 !/data/legal_autoformalization_source_alignment/LAC-S11-044/
 !/data/legal_autoformalization_source_alignment/LAC-S11-044/result.json
+
+!data/legal_ir_span_graph_lean_20261016/LIR-9001/handoff-reconciliation.json

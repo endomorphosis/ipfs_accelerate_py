@@ -1,0 +1,138 @@
+{
+  "board_namespace": "legal-ir-span-graph-lean-refinement-20261016",
+  "bootstrap_execution_contract": {
+    "allowed_task_ids": [
+      "LIR-9001"
+    ],
+    "execution_packet": "docs/architecture/legal_ir_grok_parallel_20261016/execution-packet.json",
+    "expected_dependency_count": 115,
+    "expected_goal_count": 34,
+    "expected_legacy_parent_count": 24,
+    "expected_task_count": 64,
+    "future_phase_requires_new_reviewed_projection": true,
+    "launch_started": false,
+    "other_tasks_phase_blocked": true,
+    "source_only_worker": true
+  },
+  "check_interval_seconds": 5,
+  "codebase_refill_enabled": false,
+  "completion_policy": {
+    "goal_completion_contracts_required": false,
+    "task_completion_mode": "source_factual_independent_native_gate"
+  },
+  "daemon_interval_seconds": 5,
+  "database_program": {
+    "authority_mode": "quack",
+    "endpoint_secret_handle": "env://IPFS_LEGAL_IR_GROK_START_QUACK_TOKEN",
+    "event_store_path": "",
+    "explicit_legacy": false,
+    "export_profile": "",
+    "failover_policy": "fail_closed",
+    "interface": "DatabaseProgramConfig@1",
+    "quack_endpoint": "quack:127.0.0.1:43479",
+    "runtime_registry_path": "",
+    "schema": "ipfs_accelerate_py/agent-supervisor/database-program-config@1",
+    "schema_revision": "5",
+    "store_generation": "3",
+    "store_id": "legal-ir-catalog02.duckdb",
+    "task_source_kind": "duckdb",
+    "worktree_root": ""
+  },
+  "dependency_guardrail_enabled": true,
+  "exit_when_all_tracks_terminal": false,
+  "idle_lane_work_stealing": "",
+  "implementation_log_stall_seconds": 300,
+  "implementation_max_timeout_seconds": 900,
+  "implementation_retry_budget": 1,
+  "implementation_timeout_seconds": 900,
+  "lanes": [
+    {
+      "index": 0,
+      "name": "legal-ir-grok-0",
+      "strict_shard_remainder": 0
+    },
+    {
+      "index": 1,
+      "name": "legal-ir-grok-1",
+      "strict_shard_remainder": 1
+    },
+    {
+      "index": 2,
+      "name": "legal-ir-grok-2",
+      "strict_shard_remainder": 2
+    }
+  ],
+  "max_lanes": 3,
+  "max_restarts": 1,
+  "max_task_attempts": 1,
+  "merge_retry_budget": 1,
+  "merge_target_branch": "agent/legal-ir-grok-parallel-20261016",
+  "objective_goal_refinement_enabled": false,
+  "objective_refill_enabled": false,
+  "objectives_path": "docs/architecture/legal_ir_grok_parallel_20261016/goals.objectives.md",
+  "plan_path": "docs/architecture/legal_ir_grok_parallel_20261016/README.md",
+  "poll_interval_seconds": 5,
+  "protected_paths": [
+    ".gitignore",
+    "docs/architecture/legal_ir_grok_parallel_20261016/README.md",
+    "docs/architecture/legal_ir_grok_parallel_20261016/acceptance-contract.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/authoring/README.md",
+    "docs/architecture/legal_ir_grok_parallel_20261016/authoring/campaign.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/authoring/goals.objectives.md",
+    "docs/architecture/legal_ir_grok_parallel_20261016/authoring/source_baseline.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/authoring/tasks.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/authoring/tasks.todo.md",
+    "docs/architecture/legal_ir_grok_parallel_20261016/authoring/validate_plan.py",
+    "docs/architecture/legal_ir_grok_parallel_20261016/context/datasets/docs/autoencoders/legal_ir_span_graph_lean_execution_plan_20261016.md",
+    "docs/architecture/legal_ir_grok_parallel_20261016/context/datasets/docs/autoencoders/legal_ir_uscode_corpus_improvement_plan_20261015.md",
+    "docs/architecture/legal_ir_grok_parallel_20261016/controller-preparation.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/execution-packet.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/factual_acceptance_negative_controls_v01.py",
+    "docs/architecture/legal_ir_grok_parallel_20261016/factual_acceptance_negative_controls_v02.py",
+    "docs/architecture/legal_ir_grok_parallel_20261016/factual_acceptance_v01.py",
+    "docs/architecture/legal_ir_grok_parallel_20261016/factual_acceptance_v02.py",
+    "docs/architecture/legal_ir_grok_parallel_20261016/factual_native_gate_v02.py",
+    "docs/architecture/legal_ir_grok_parallel_20261016/goals.objectives.md",
+    "docs/architecture/legal_ir_grok_parallel_20261016/inputs.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/planning_worker.py",
+    "docs/architecture/legal_ir_grok_parallel_20261016/retained-population-bindings.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/retained-source-audit.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/scheduler_config.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/source-bindings.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/tasks.json",
+    "docs/architecture/legal_ir_grok_parallel_20261016/tasks.todo.md",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+  ],
+  "provider": {
+    "max_concurrency": 3,
+    "model_id": "grok-4.7",
+    "provider_id": "grok_cli",
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "reconciliation_guardrail_enabled": true,
+  "retry_budget_guardrail_enabled": true,
+  "runtime_paths": {
+    "logs": "workspace/legal-ir-grok-parallel-20261016/logs",
+    "merge_queue": "workspace/legal-ir-grok-parallel-20261016/merge_queue",
+    "root": "workspace/legal-ir-grok-parallel-20261016",
+    "state": "workspace/legal-ir-grok-parallel-20261016/state",
+    "worktrees": "workspace/legal-ir-grok-parallel-20261016/worktrees"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.legal_ir_grok_parallel.scheduler_config@1",
+  "source_binding": {
+    "accelerator_required_ancestor": "651d2ea941c720726e234fbe4e319e650ad70f71",
+    "accelerator_required_branch": "agent/legal-ir-grok-parallel-20261016",
+    "bootstrap_task_source": "duckdb",
+    "historical_identity_metadata_not_live_authority": true
+  },
+  "stale_seconds": 120,
+  "status": "actual_native_owner_bound",
+  "strict_task_sharding": false,
+  "task_prefix": "## LIR-",
+  "taskboard_path": "docs/architecture/legal_ir_grok_parallel_20261016/tasks.todo.md",
+  "validation_retry_budget": 1,
+  "validator_path": "docs/architecture/legal_ir_grok_parallel_20261016/factual_acceptance_v02.py",
+  "watchdog_startup_grace_seconds": 30,
+  "worktree_submodule_paths": []
+}
