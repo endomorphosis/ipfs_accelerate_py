@@ -29,11 +29,11 @@
     "export_profile": "",
     "failover_policy": "fail_closed",
     "interface": "DatabaseProgramConfig@1",
-    "quack_endpoint": "quack:127.0.0.1:35387",
+    "quack_endpoint": "quack:127.0.0.1:33423",
     "runtime_registry_path": "",
     "schema": "ipfs_accelerate_py/agent-supervisor/database-program-config@1",
     "schema_revision": "5",
-    "store_generation": "7",
+    "store_generation": "9",
     "store_id": "legal-ir-catalog02.duckdb",
     "task_source_kind": "duckdb",
     "worktree_root": ""
@@ -113,22 +113,22 @@
   "reconciliation_guardrail_enabled": true,
   "retry_budget_guardrail_enabled": true,
   "runtime_paths": {
-    "logs": "workspace/legal-ir-grok-parallel-20261016-r04/logs",
-    "merge_queue": "workspace/legal-ir-grok-parallel-20261016-r04/merge_queue",
-    "root": "workspace/legal-ir-grok-parallel-20261016-r04",
-    "state": "workspace/legal-ir-grok-parallel-20261016-r04/state",
-    "worktrees": "workspace/legal-ir-grok-parallel-20261016-r04/worktrees"
+    "logs": "workspace/legal-ir-grok-parallel-20261016-r05/logs",
+    "merge_queue": "workspace/legal-ir-grok-parallel-20261016-r05/merge_queue",
+    "root": "workspace/legal-ir-grok-parallel-20261016-r05",
+    "state": "workspace/legal-ir-grok-parallel-20261016-r05/state",
+    "worktrees": "workspace/legal-ir-grok-parallel-20261016-r05/worktrees"
   },
   "schema": "ipfs_accelerate_py.agent_supervisor.legal_ir_grok_parallel.scheduler_config@1",
   "source_binding": {
-    "accelerator_required_ancestor": "1629b364177421bde2f5b6833b5a9a92110f9345",
+    "accelerator_required_ancestor": "c6c326ae81e3f995226c46df3f307c1557090534",
     "accelerator_required_branch": "agent/legal-ir-grok-parallel-20261016",
     "bootstrap_task_source": "duckdb",
     "historical_identity_metadata_not_live_authority": true
   },
   "stale_seconds": 120,
   "status": "actual_native_owner_bound",
-  "strict_task_sharding": false,
+  "strict_task_sharding": true,
   "task_prefix": "## LIR-",
   "taskboard_path": "docs/architecture/legal_ir_grok_parallel_20261016/tasks.todo.md",
   "validation_retry_budget": 1,

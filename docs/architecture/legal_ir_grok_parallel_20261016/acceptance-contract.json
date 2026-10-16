@@ -1,7 +1,7 @@
 {
   "board_namespace": "legal-ir-span-graph-lean-refinement-20261016",
   "evidence_kind": "legal_ir_handoff_factual_acceptance_v1",
-  "execution_packet_revision": 5,
+  "execution_packet_revision": 6,
   "expected_route": {
     "model": "grok-4.7",
     "provider": "grok_cli",
