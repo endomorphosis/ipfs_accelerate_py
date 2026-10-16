@@ -67,7 +67,7 @@
   "source_binding": {
     "bootstrap_task_source": "legacy-markdown",
     "accelerator_required_branch": "agent/legal-ir-supervisor-start-20261016",
-    "accelerator_required_ancestor": "90acc9b21c214e2f4c3a6c84769fd891cfdbd627"
+    "accelerator_required_ancestor": "ff69c6dec3608b78aab7af48c053d0e984bb9ffe"
   },
   "exit_when_all_tracks_terminal": false,
   "objective_refill_enabled": false,
