@@ -7290,7 +7290,10 @@ class _LegacyDockerContainerLease:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 cwd="/",
-                env=_docker_control_env(),
+                # The independent reaper validates every temporary path against
+                # tempfile.gettempdir(). Preserve this exact allocation root
+                # while keeping daemon/context and credential variables out.
+                env={**_docker_control_env(), "TMPDIR": str(lease_root.parent)},
                 start_new_session=True,
                 close_fds=True,
                 pass_fds=inherited_control_plane,
