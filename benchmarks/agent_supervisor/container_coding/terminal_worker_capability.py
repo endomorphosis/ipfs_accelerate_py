@@ -42,6 +42,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_admission.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_worker.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_resources.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_provider_deadline.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_context.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_prompt.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py",
