@@ -1,0 +1,63 @@
+{
+  "schema": "legal-ir-ordinary-worker-bootstrap-startup-status@1",
+  "status": "qualified_ordinary_image_bootstrap_revision_pending_native_preflight",
+  "execution_namespace": "legal-ir-ordinary-worker-bootstrap-20261016",
+  "required_branch": "agent/legal-ir-ordinary-worker-20261016",
+  "required_ancestor": "93cfd32f65cd231df57e53736edf0f78b58af009",
+  "source_package_commit": "651d2ea941c720726e234fbe4e319e650ad70f71",
+  "ordinary_image_qualified": true,
+  "image_profile_path": "containers/external-agent/ordinary-task-toolchain/image-profile.json",
+  "image_profile_observed_sha256": "af9b05224ce4ad7137c13ac9bad12167422b5e90a7e80b751633775d17997ad3",
+  "image_id": "sha256:a91a42c918514203bb6cfc7c38b320dfb68e9dfc0571bf01976c0db993e24e5e",
+  "image_label": "2026-10-16-ordinary-v1",
+  "image_qualification_scope": "Owner-reported genuine mounted runtime, ordinary route integration and normal/crash cleanup controls; source profile inspected by this revision author.",
+  "provider_route": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.7",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-6.1-sol",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 1,
+    "primary_executable": "/home/barberb/.local/bin/grok"
+  },
+  "legal_ir_supervisor_started": false,
+  "provider_task_dispatched": false,
+  "native_preflight_for_this_revision_passed": false,
+  "current_source_bindings_fresh_for_this_revision": false,
+  "independent_acceptance": {
+    "bound": false,
+    "valid_report_cli_exit_code": 3,
+    "reason": "independent_acceptance_capability_not_bound",
+    "self_authored_receipt_override": false
+  },
+  "task_population": {
+    "tasks": 64,
+    "goals": 34,
+    "legacy_parents": 24,
+    "eligible_task_ids": [
+      "LIR-9001"
+    ],
+    "phase_blocked": 63
+  },
+  "historical_startup_status": {
+    "commit": "651d2ea941c720726e234fbe4e319e650ad70f71",
+    "path": "docs/architecture/legal_ir_supervisor_start_20261016/startup-status.json",
+    "sha256": "3b2b057a288556ef5bca63521f77da817bc75973e63e34ec1ac24b39d4adbaad",
+    "scope": "Original native preparation/readiness/missing-image observations remain historical and were not rerun by this author."
+  },
+  "next_actions": [
+    "Install and commit this reviewed revision in the new owned checkout; keep foreign planning controls untouched.",
+    "Populate fresh actual owner-supplied source observations, then bind exact source/request hashes.",
+    "Run genuine native structure and preflight controls under current admission/storage ownership.",
+    "Start at most one finite source-only LIR-9001 supervisor using the qualified ordinary image and exact provider tuple; retain all-trees cleanup custody.",
+    "Keep independent factual acceptance unbound until a separately reviewed current-input adapter exists; do not remove future-phase blockers."
+  ],
+  "revision_author_execution": {
+    "product_imports": false,
+    "checker_executed": false,
+    "native_or_provider_jobs": false,
+    "database_or_payload_reads": false,
+    "checkout_or_git_ref_mutations": false
+  }
+}
