@@ -1,10 +1,38 @@
-# LegalIR ordinary worker source-only bootstrap revision
+# LegalIR ordinary worker source-only bootstrap revision r02
+
+This r02 proposal derives from the exact committed r01 package at
+`feb96b55e28b282e42b3de85da7f0fc72f781ca2`. The original frozen handoff still
+derives from commit `651d2ea941c720726e234fbe4e319e650ad70f71`.
+
+The previous finite engineering launch started a genuine native supervisor and
+then stopped when the strict storage inventory rejected a legitimate ephemeral
+authentication symlink beneath its attempt directory. Its owner receipt records
+`native_stop_verified: true`, `all_trees_fenced: true` and an owned quiescent
+process group. The owner reported exit status 1; the attached child returned 2.
+The failed attempt and retained disk claim remain preserved. They are not
+relabeled as a completed launch or a provider-generation result, and this packet
+does not release or adopt that claim. See the exact historical
+[`launch01 receipt`](/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-launch01/receipt.json)
+and [`preflight01 receipt`](/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-preflight01/receipt.json)
+paths recorded with byte hashes in `startup-status.json`; those local links
+are engineering references and may be outside a published repository view.
+
+The retry uses a fresh execution namespace and runtime directory; it does not
+reuse the stopped supervisor's state or a foreign Quack campaign. Before any
+native imports, the owning controller must set TMPDIR, TMP and TEMP to the
+separately precharged provider directory
+`/tmp/pytest-of-barberb/legal-ir-ordinary-worker-bootstrap-20261016-provider02`.
+That directory stays outside the strict attempt inventory. Its actual storage
+admission, temporary-file lifecycle and absence checks belong to the native
+owner. No symlink exception, global cap increase, acceptance override or ledger
+mutation is introduced by this source proposal. The native owner must validate
+the prior stopped-generation terminal artifact before admitting the retry.
 
 This reviewed proposal derives from the immutable bootstrap package at
 `651d2ea941c720726e234fbe4e319e650ad70f71`. It retains the 18 frozen
 authoring/context source files and the complete task/goal/dependency population.
 It uses the separately owned branch `agent/legal-ir-ordinary-worker-20261016`, execution namespace
-`legal-ir-ordinary-worker-bootstrap-20261016` and dedicated runtime paths. The original authoring
+`legal-ir-ordinary-worker-bootstrap-20261016-r02` and dedicated runtime paths. The original authoring
 namespace is historical provenance; it is not a claim on another controller's
 Quack catalog, database generation, task state, credentials or acceptance.
 
@@ -59,10 +87,11 @@ protected image/build sources are bound by its new canonical config hash. The
 immutable authoring and source-copy inventory hashes remain unchanged. Only a
 reviewed replacement of the source ancestor is excluded from that config hash.
 
-`CURRENT_SOURCE_BINDINGS.json` remains byte-identical historical metadata from
-the original package in this proposal. Root must replace it with a fresh actual
-owner-supplied observation of the new checkout and datasets source before binding
-a run. Its historical origin, time and evidence must not be relabeled as current.
+`CURRENT_SOURCE_BINDINGS.json` remains byte-identical pre-r02 metadata from
+the committed r01 package in this proposal. Root must replace it with a fresh
+actual owner-supplied observation of the current checkout and datasets source
+before binding an r02 run. Its original origin, time and evidence must not be
+relabeled as a current r02 observation.
 
 The controller must commit the installed source package, bind actual current
 provider/worker/source/resource capabilities, qualify genuine native parsing and
@@ -74,7 +103,7 @@ boundary. Manual completion alone does not stop dispatch.
 
 Bound the initial controller to 900 seconds, one lane and one task attempt.
 Runtime worktrees, state, merge queue and logs use the dedicated
-`workspace/legal-ir-ordinary-worker-20261016/` namespace in the owning checkout.
+`workspace/legal-ir-ordinary-worker-20261016-r02/` namespace in the owning checkout.
 Actual writable grants and resource lifecycle belong to the current native owner,
 not these path strings. Do not reuse a foreign campaign's credentials, branch,
 database, resource promise or execution authority.

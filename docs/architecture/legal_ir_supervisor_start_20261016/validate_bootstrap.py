@@ -17,11 +17,11 @@ import sys
 ROOT = Path(__file__).resolve().parent
 PREFIX = "docs/architecture/legal_ir_supervisor_start_20261016"
 PHASE = "bootstrap_LIR-9001_only"
-EXECUTION_NAMESPACE = "legal-ir-ordinary-worker-bootstrap-20261016"
+EXECUTION_NAMESPACE = "legal-ir-ordinary-worker-bootstrap-20261016-r02"
 EXECUTION_BRANCH = "agent/legal-ir-ordinary-worker-20261016"
 RESULT = "data/legal_ir_span_graph_lean_20261016/LIR-9001/handoff-reconciliation.json"
 ANCESTOR_PLACEHOLDER = "FILL_CURRENT_OWNED_ACCELERATOR_SOURCE_ANCESTOR"
-CONFIG_CANONICAL_SHA256 = "6a34c5c47a2f6b5d0d316ffd0dc064b8ef9880b9c3a23e2f7b739bff4ceed308"
+CONFIG_CANONICAL_SHA256 = "9e0d59e2f5a8eb22fc1694f33b2fdca1b8f6ea49aaaa5fa862d3a9d8c6c085b9"
 SOURCE_MANIFEST_CANONICAL_SHA256 = "43e3f581519506751b613ebe68ccb2af1345304de1bdbf545cc70bc018acf9ad"
 AUTHORING_CANONICAL_SHA256 = "c71f9e4b9c28fea8d0344fa11efb7cccdbcc504b75562c04772eaf7cd84e9ff9"
 BLOCKER = "Bootstrap phase permits only LIR-9001; preserve this task and dependencies pending a separately reviewed phase transition."

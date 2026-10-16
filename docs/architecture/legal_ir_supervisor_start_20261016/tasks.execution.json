@@ -1,7 +1,7 @@
 {
   "schema": "legal-ir-supervisor-bootstrap-projection/v1",
   "title": "LegalIR span-to-graph-to-Lean supervisor backlog",
-  "board_namespace": "legal-ir-ordinary-worker-bootstrap-20261016",
+  "board_namespace": "legal-ir-ordinary-worker-bootstrap-20261016-r02",
   "plan_revision": "20261016-v1",
   "status": "prepared_bootstrap_not_launched",
   "root_goal_id": "LIR-G000",

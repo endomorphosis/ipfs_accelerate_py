@@ -1,10 +1,10 @@
 {
   "schema": "legal-ir-ordinary-worker-bootstrap-startup-status@1",
-  "status": "qualified_ordinary_image_bootstrap_revision_pending_native_preflight",
-  "execution_namespace": "legal-ir-ordinary-worker-bootstrap-20261016",
+  "status": "r02_retry_prepared_after_fenced_launch01_storage_guard_failure",
+  "execution_namespace": "legal-ir-ordinary-worker-bootstrap-20261016-r02",
   "required_branch": "agent/legal-ir-ordinary-worker-20261016",
   "required_ancestor": "93cfd32f65cd231df57e53736edf0f78b58af009",
-  "source_package_commit": "651d2ea941c720726e234fbe4e319e650ad70f71",
+  "source_package_commit": "feb96b55e28b282e42b3de85da7f0fc72f781ca2",
   "ordinary_image_qualified": true,
   "image_profile_path": "containers/external-agent/ordinary-task-toolchain/image-profile.json",
   "image_profile_observed_sha256": "af9b05224ce4ad7137c13ac9bad12167422b5e90a7e80b751633775d17997ad3",
@@ -47,11 +47,12 @@
     "scope": "Original native preparation/readiness/missing-image observations remain historical and were not rerun by this author."
   },
   "next_actions": [
-    "Install and commit this reviewed revision in the new owned checkout; keep foreign planning controls untouched.",
-    "Populate fresh actual owner-supplied source observations, then bind exact source/request hashes.",
-    "Run genuine native structure and preflight controls under current admission/storage ownership.",
-    "Start at most one finite source-only LIR-9001 supervisor using the qualified ordinary image and exact provider tuple; retain all-trees cleanup custody.",
-    "Keep independent factual acceptance unbound until a separately reviewed current-input adapter exists; do not remove future-phase blockers."
+    "Authenticate the actual launch01 stopped-generation terminal artifact; preserve its failed attempt and retained disk claim.",
+    "Install and commit this exact r02 source revision in the same owned branch, with fresh execution namespace and runtime paths.",
+    "Set provider TMPDIR/TMP/TEMP before native imports to the separately admitted and precharged external provider directory; do not loosen strict inventory.",
+    "Populate actual fresh r02 owner-supplied source observations, freeze exact source/request hashes, and run new genuine native preflight.",
+    "Start at most one finite source-only LIR-9001 supervisor with the exact qualified ordinary image/provider tuple and genuine all-trees cleanup custody.",
+    "Keep executable report acceptance exit3, the independent factual acceptance gap and all63 future task blockers unchanged."
   ],
   "revision_author_execution": {
     "product_imports": false,
@@ -59,5 +60,49 @@
     "native_or_provider_jobs": false,
     "database_or_payload_reads": false,
     "checkout_or_git_ref_mutations": false
+  },
+  "runtime_root": "workspace/legal-ir-ordinary-worker-20261016-r02",
+  "previous_launch01": {
+    "status": "failed_preserved_stopped_native_generation",
+    "supervisor_started": true,
+    "owner_exit_status_reported": 1,
+    "child_returncode": 2,
+    "failure_type": "DaemonResourceError",
+    "failure_summary": "Strict attempt inventory rejected an ephemeral authentication symlink; final strict inventory retained the disk claim.",
+    "native_stop_verified": true,
+    "all_trees_fenced": true,
+    "owned_group_quiescent": true,
+    "provider_generation_established": false,
+    "disk_claim_retained": true,
+    "disk_claim_adopted_or_released_by_this_revision": false,
+    "receipt": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-launch01/receipt.json",
+      "bytes": 1436,
+      "sha256": "09835b8c09716cdaa04d30fce9629345d78f885e4bce2be8e1a51525290326b8"
+    },
+    "native_terminal_receipt_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/workspace/legal-ir-ordinary-worker-20261016/state/configured-board-master.pid.terminal.json",
+    "native_terminal_receipt_cid_reported": "baguqeerajy2dw4t3hn4tpunvc7qonncbnvo3xv27mcjz6roprppr5ztk6mna",
+    "scope": "Selected engineering receipt fields observed; controller must authenticate the exact stopped generation before retry. No database or provider payload was read by this author."
+  },
+  "previous_preflight01": {
+    "status": "completed_for_r01_not_r02",
+    "child_returncode": 0,
+    "owned_group_quiescent": true,
+    "receipt": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-preflight01/receipt.json",
+      "bytes": 637,
+      "sha256": "bf450d1a0fe0c65b6310085e8c23cbe1069eaeeb7b630b0d24116d4b673a9e8c"
+    }
+  },
+  "provider_temporary_directory_plan": {
+    "path": "/tmp/pytest-of-barberb/legal-ir-ordinary-worker-bootstrap-20261016-provider02",
+    "outside_strict_attempt_inventory": true,
+    "set_before_native_imports": [
+      "TMPDIR",
+      "TMP",
+      "TEMP"
+    ],
+    "requires_actual_native_external_storage_precharge": true,
+    "admitted_by_this_document": false
   }
 }
