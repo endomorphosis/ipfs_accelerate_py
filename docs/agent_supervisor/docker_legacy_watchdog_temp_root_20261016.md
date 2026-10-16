@@ -72,3 +72,19 @@ That local configuration/image ID is absent from both engines. No verifiable
 registry reference or original image archive has been found. A reference whose
 manifest configuration matches this ID, or the original Docker/OCI archive, is
 needed to restore it. The fixed toolchain check remains intact.
+
+## Post-acquisition checks and qualification limit
+
+The fresh `readiness03` native run completed and finalized. The actual production
+gates returned `ubuntu_isolation_ready=true` and `codex_toolchain_ready=false`.
+The custom toolchain remained absent on both daemons.
+
+An additional regression was prepared to require watchdog return code 0 and
+exercise cleanup after killing an actual owned launcher. Its first generation
+failed before any container effect because an optional image-template field was
+unavailable. The corrected generation was not admitted: the existing native
+CPU pressure guard recorded `proof_cpu_stall`, and the five-minute admission wait
+ended in `LeaseTimeoutError`. This regression is not qualified. The successful
+initial smoke check establishes observed container lifecycle and final cleanup;
+it does not substitute for the additional crash regression. No shared admission
+threshold, resource cap or foreign lease was changed.
