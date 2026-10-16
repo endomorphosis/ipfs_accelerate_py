@@ -1585,3 +1585,50 @@ Their authenticated writable delegation remains separate work; this composer
 enables no installed retry default, transfers no native authority and measures
 no token saving. Qualification and fixture limits are recorded in
 [qualification.json](evidence/native-candidate-continuation-20261016/qualification.json).
+
+## October 16: capture a separately provisioned writable allocation
+
+`capture_native_delegated_source_worktree_allocation(...)` now captures an
+already provisioned writable worktree through the genuine native task admission.
+It issues the separate exact `NativeDelegatedSourceWorktreeAllocation` type.
+The ordinary `NativeSourceWorktreeAllocation` continues requiring its workspace
+to remain protected from group and other writes.
+
+The delegated root must have exact mode `03770`, owner UID and owner GID, with
+the linked `.git` marker an owner-controlled, single-link regular file at `0440`.
+Opened-descriptor checks retain root and marker device/inode, mount ID and mount
+namespace, and refuse access/default POSIX ACLs. Directory contents may change;
+the root custody and immutable marker witness may not. All canonical Git,
+registered worktree, Portal, lifecycle/index and attempt controls keep the
+existing strict native verification in a shared private kernel.
+
+Capture retains the actual first `OwnerWorkerAttempt`, its original prepared
+event and protected file witness, owner birth, boundary, workspace identity and
+absolute deadline. The workspace and host worktree root must be in the boundary's
+authenticated scope. The first attempt must remain unspent through the closing
+check after native constructor callbacks. Later observations allow that same
+attempt to advance through actual birth and retirement without rebinding it.
+
+Candidate admission and the continuation composer explicitly accept this new
+type and require its exact original first attempt, source-broker boundary and
+selected worker UID, workspace and deadline. Their native fences reuse the
+shared kernel. Delegation checks inspect retained controls and census evidence;
+they do not replay candidate source after a child has been born. Source binding
+retains the original publication and committed-inventory checks. The separate
+`SourceLookupWorkerBroker` launch lane remains restricted to the ordinary type.
+
+This API performs no chmod and certifies no permission transition. Its metadata
+states `permission_transition_verified=False`,
+`current_workspace_policy_verified=True` and `worker_isolation_qualified=False`.
+It does not qualify nested-tree permission safety, continuously prevent worker
+links, change group membership or reconstruct a native handle from metadata.
+Owner reads and candidate generation retain their existing source checks.
+
+Qualification uses actual host chmod, native authority, immutable controls,
+local first/second children and nested resource leases. Boundary/UID admission
+remains an authored host seam. The generated production permission loop, actual
+separate worker UID, Docker deployment and daemon-to-wrapper ownership handoff
+remain unqualified. No installed retry default or token-savings claim is enabled.
+Initial fixture provisioning and renewable-parent assertion failures are retained
+with the successful reruns in
+[qualification.json](evidence/native-delegated-allocation-20261016/qualification.json).

@@ -89,6 +89,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_prompt.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_writable_allocation.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py',
@@ -145,7 +146,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     'native_candidate_round_admission.py', 'native_candidate_round_worker.py',
     'native_candidate_round_resources.py',
     'owner_provider_deadline.py',
-    'native_candidate_continuation.py',
+    'native_candidate_continuation.py', 'native_writable_allocation.py',
     'owner_candidate_round_context.py', 'owner_candidate_round_prompt.py',
     'current_source_task_admission.py', 'current_source_worktree_allocation.py'])
 @pytest.mark.parametrize('kind', ['missing', 'stale', 'copied-feature'])

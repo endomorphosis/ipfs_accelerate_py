@@ -67,11 +67,14 @@ def spawn_child(case, *, code=0):
 
 
 @contextmanager
-def _candidate_case(tmp_path, monkeypatch, *, prior_flags=True):
+def _candidate_case(tmp_path, monkeypatch, *, prior_flags=True,
+        provision_workspace=None, capture_allocation=None):
     """Reusable real owner fixture; no native source-reader binding is spent."""
     with _allocation_case(tmp_path, monkeypatch, defer_source_binding=True,
             source_files={b"module.py": SOURCE}) as allocated:
         native = allocated.native
+        if provision_workspace is not None:
+            provision_workspace(allocated)
         semantic_output = native.canonical / ".runtime/native-candidate-round-context"
         prepare_semantic_context(repository=native.canonical, paths=["module.py"],
             program_paths=["module.py"], required_raw_paths=["module.py"],
@@ -120,6 +123,9 @@ def _candidate_case(tmp_path, monkeypatch, *, prior_flags=True):
             descriptors.append(initial_fd)
             prior = attempts.prepare_owner_worker_attempt(boundary=boundary, workspace=native.workspace,
                 input_fd=initial_fd, absolute_deadline=deadline)
+            if capture_allocation is not None:
+                allocated.guard = capture_allocation(allocated, prior)
+                native.factory["worktree_admission"] = allocated.guard
             first = subprocess.Popen([sys.executable, "-I", "-c",
                 "import sys;from pathlib import Path;sys.stdin.buffer.read();"
                 "Path(sys.argv[1]).write_bytes(bytes.fromhex(sys.argv[2]));raise SystemExit(7)",

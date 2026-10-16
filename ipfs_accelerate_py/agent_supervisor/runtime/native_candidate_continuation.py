@@ -24,7 +24,10 @@ from . import owner_candidate_round_prompt as prompts
 from . import owner_worker_attempt as attempts
 from .candidate_dispatch_broker import CandidateDispatchBroker
 from .candidate_dispatch_client import validate_policy
-from .current_source_worktree_allocation import NativeSourceWorktreeAllocation
+from .current_source_worktree_allocation import (
+    NativeDelegatedSourceWorktreeAllocation, _NativeSourceWorktreeAllocationKernel,
+    require_native_source_worktree_allocation,
+)
 from .worker_source_broker import WorkerSourceBroker
 
 SCHEMA = "native-candidate-continuation@1"
@@ -365,19 +368,23 @@ def prepare_native_candidate_continuation(*, allocation, run_coordinator, run_le
             and requirements._source_broker is source_broker
             and source_broker.original_requirements is requirements,
             "exact original requirements captured before the first worker required")
-        _need(type(allocation) is NativeSourceWorktreeAllocation
-            and source_broker.workspace == allocation._workspace
+        require_native_source_worktree_allocation(allocation)
+        _need(source_broker.workspace == allocation._workspace
             and source_broker.repository == allocation._canonical_repository
             and prior_worker_attempt._state.process is source_broker._process
             and prior_worker_attempt._boundary == source_broker.boundary
             and prior_worker_attempt._workspace == source_broker.workspace,
             "first worker and source broker differ from their native allocation")
+        if type(allocation) is NativeDelegatedSourceWorktreeAllocation:
+            NativeDelegatedSourceWorktreeAllocation.require_candidate_binding(allocation,
+                prior_worker_attempt=prior_worker_attempt, source_broker=source_broker,
+                absolute_deadline_ns=prior["absolute_deadline_ns"])
         baseline = contexts._closed_baseline(source_broker, prior_worker_attempt._state.process.returncode)
         _need(baseline["prior_child"]["pid"] == prior_worker_attempt._state.child[0]
             and baseline["prior_child"]["start_time_ticks"] == prior_worker_attempt._state.child[2]
             and _sha(source_broker.prompt.encode("utf-8")) == prior["native_prompt_sha256"],
             "first worker census and closed source birth differ")
-        NativeSourceWorktreeAllocation.require_current(allocation)
+        _NativeSourceWorktreeAllocationKernel.require_current(allocation)
         authority_arguments = dict(allocation=allocation, run_coordinator=run_coordinator,
             run_lease=run_lease, parent_lease=parent_lease, cpu_slots=cpu_slots,
             memory_mb=memory_mb, child_process_slots=child_process_slots,
