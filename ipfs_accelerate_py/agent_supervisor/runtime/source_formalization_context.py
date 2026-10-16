@@ -291,7 +291,8 @@ def validate_source_formalization_context(*, prompt, repository, workspace, boun
     return _observation(payload, text, chunks, sources, inherited=inherited)
 
 
-def prepare_container_source_formalization_dispatch(*, argv, boundary, workspace, input_fd=0):
+def prepare_container_source_formalization_dispatch(*, argv, boundary, workspace, input_fd=0,
+        absolute_deadline=None):
     """Owner-only stdin capture and optional handoff; caller closes returned fd.
 
     The returned sealed memfd must replace child stdin. No prompt is logged or
@@ -303,6 +304,11 @@ def prepare_container_source_formalization_dispatch(*, argv, boundary, workspace
             or any(arg == flag or arg.startswith(flag + "=") for arg in argv for flag in HANDOFF_FLAGS)):
         raise ValueError("owner creates formalization handoff arguments independently")
     deadline = time.monotonic() + 90.
+    if absolute_deadline is not None:
+        if (type(absolute_deadline) not in (int, float)
+                or not 0 < absolute_deadline < float('inf')):
+            raise ValueError("finite positive owner prompt deadline required")
+        deadline = min(deadline, absolute_deadline)
     data = bytearray()
     while True:
         remaining = deadline-time.monotonic()

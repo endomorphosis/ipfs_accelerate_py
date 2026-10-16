@@ -857,10 +857,17 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         world_packet_audit_directory: Path | None = None,
         codex_cli_literal_response: bool = False,
         owner_worker_attempt_id: str | None = None,
+        owner_provider_deadline_ns: int | None = None,
         candidate_round_input: AdmittedCandidateRouterInput | None = None,
         receipt_observer: Callable[[dict], None] | None = None) -> tuple[str, dict]:
     """Dispatch once; an optional owner-prepared packet replaces task context."""
     failure_phase = "runner_initialization"
+    if owner_provider_deadline_ns is not None:
+        if type(owner_provider_deadline_ns) is not int or not 0 < owner_provider_deadline_ns < (1 << 63):
+            raise ValueError("bounded exact owner provider deadline restriction required")
+        if (purpose != "coding" or census_only is not False or owner_worker_attempt_id is None
+                or container_boundary is None or not container_boundary_sha256):
+            raise ValueError("owner provider deadline restriction requires isolated owner coding")
     if candidate_round_input is None:
         _refuse_candidate_preparation(prompt)
         from .worker_candidate_round_client import DESCRIPTOR_ENV, DIGEST_ENV
@@ -1541,6 +1548,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         # Observation join only: this caller-supplied label grants no child
         # launch, retry, task, proof, settlement, or completion authority.
         receipt["owner_worker_attempt_id"] = owner_worker_attempt_id
+    if owner_provider_deadline_ns is not None:
+        receipt["owner_provider_deadline_ns"] = owner_provider_deadline_ns
     if candidate_receipt is not None:
         receipt["candidate_round_dispatch"] = dict(candidate_receipt,
             dispatch_requested=False, dispatch_consumed=False, provider_attempted=False)
@@ -1783,6 +1792,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 receipt["candidate_round_dispatch"].update(candidate_dispatch,
                     dispatch_consumed=True, provider_attempted=True)
                 failure_phase = "provider_invocation"
+            if owner_provider_deadline_ns is not None:
+                remaining = (owner_provider_deadline_ns - time.monotonic_ns()) / 1_000_000_000
+                if remaining <= 0:
+                    raise TimeoutError("original owner provider deadline exhausted before invocation")
+                timeout = min(timeout, remaining)
+                receipt["timeout_seconds"] = timeout
             if source_input_view is not None:
                 receipt["source_input_dispatched"] = True
             if query_reference_view is not None:
@@ -1995,6 +2010,8 @@ def main():
     parser.add_argument("--container-boundary-sha256", default="")
     parser.add_argument("--owner-worker-attempt-id",
                         help="Owner worker attempt observation identity; grants no launch or retry authority")
+    parser.add_argument("--owner-provider-deadline-ns", type=int,
+                        help="Original monotonic deadline restriction; grants no dispatch authority")
     parser.add_argument("--candidate-dispatch-descriptor", type=Path,
                         help="Explicit native-owner candidate dispatch endpoint")
     parser.add_argument("--candidate-dispatch-descriptor-sha256")
@@ -2059,6 +2076,7 @@ def main():
                         container_boundary=args.container_boundary,
                         container_boundary_sha256=args.container_boundary_sha256,
                         owner_worker_attempt_id=args.owner_worker_attempt_id,
+                        owner_provider_deadline_ns=args.owner_provider_deadline_ns,
                         candidate_round_input=candidate_input,
                         purpose=args.purpose, semantic_repository=args.semantic_repository,
                         source_formalization_handoff=args.source_formalization_handoff,

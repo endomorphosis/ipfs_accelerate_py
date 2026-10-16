@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 from collections import Counter
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -312,6 +313,7 @@ def launch_process_child(
     text: bool = False,
     pass_fds: Sequence[int] = (),
     dispatch_binding: Mapping[str, object] | None = None,
+    absolute_deadline: float | None = None,
 ) -> subprocess.Popen[Any]:
     """Launch a supervisor-owned child process with normalized runtime defaults."""
 
@@ -337,7 +339,29 @@ def launch_process_child(
     if text:
         kwargs["text"] = True
     literal = [str(part) for part in command]
+    deadline_handoff = nullcontext(None)
+    if absolute_deadline is not None:
+        from ..runtime.owner_provider_deadline import (
+            DEADLINE_FD_ENV, DEADLINE_SHA256_ENV, owner_provider_deadline_selected,
+            prepare_owner_provider_deadline_handoff,
+        )
+        if owner_provider_deadline_selected(literal):
+            if any(name in child_env for name in (DEADLINE_FD_ENV, DEADLINE_SHA256_ENV)):
+                raise ValueError("owner provider deadline environment is created by the launcher")
+            deadline_handoff = prepare_owner_provider_deadline_handoff(
+                command=literal, workspace=cwd, absolute_deadline=absolute_deadline)
     proof_flags = ("--finite-proof-query-context", "--finite-proof-query-sha256", "--finite-proof-query-context-cid")
+    with deadline_handoff as handoff:
+        if handoff is not None:
+            kwargs["env"] = {**child_env, **handoff.environment}
+            kwargs["pass_fds"] = (*normalized_pass_fds, *handoff.pass_fds)
+        return _launch_bound_process_child(literal, kwargs, child_env=kwargs["env"],
+            proof_flags=proof_flags, cwd=cwd, dispatch_binding=dispatch_binding,
+            start_new_session=start_new_session)
+
+
+def _launch_bound_process_child(literal, kwargs, *, child_env, proof_flags, cwd,
+        dispatch_binding, start_new_session):
     if not any(part == flag or part.startswith(flag + "=") for part in literal for flag in proof_flags):
         return subprocess.Popen(literal, **kwargs)
     from ..runtime.finite_proof_query_worker_dispatch import require_finite_proof_query_worker_dispatch
@@ -1227,6 +1251,11 @@ def run_process_group_stream(
             )
         poll_seconds = max(0.01, requested_poll_seconds)
     remaining_absolute_budget()
+    deadline_options = {}
+    if absolute_deadline is not None:
+        from ..runtime.owner_provider_deadline import owner_provider_deadline_selected
+        if owner_provider_deadline_selected(command):
+            deadline_options["absolute_deadline"] = absolute_deadline
     process = launch_process_child(
         command,
         cwd=cwd,
@@ -1239,6 +1268,7 @@ def run_process_group_stream(
         start_new_session=True,
         text=text,
         pass_fds=pass_fds,
+        **deadline_options,
         **({"dispatch_binding": dispatch_binding} if dispatch_binding is not None else {}),
     )
     callback_failure_cleaned = False

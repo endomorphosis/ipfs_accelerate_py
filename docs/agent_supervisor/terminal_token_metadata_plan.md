@@ -1487,3 +1487,51 @@ waiting, failed and partial publication, explicit recovery, and the existing
 candidate route. Deployment UID/path admission remains authored, and no provider
 model or target code runs. Results and explicit limits are retained in
 [qualification.json](evidence/native-candidate-resources-20261015/qualification.json).
+
+## October 16: retain the provider deadline across the owner wrapper
+
+The daemon already creates an absolute provider deadline before its streamed
+launch. The exact `/opt/ipfs-supervisor/bin/router-worker` command now receives
+that restriction through an anonymous sealed descriptor. The payload binds the
+direct parent PID and birth, UID, boot, literal command, target workspace inode
+and process/mount namespaces, plus the time namespace where available. It carries
+no native task, resource, dispatch,
+retry or completion authority. The daemon may remain in its canonical repository
+while the child starts in the allocated worktree.
+
+The generated owner entry consumes the descriptor before changing workspace
+permissions, removes its private environment markers and closes it on acceptance
+or refusal. A partial pair, changed bytes or identity, missing seals, changed
+workspace, different direct parent or expired deadline refuses the handoff.
+Existing launches without a descriptor retain their previous contract.
+
+The owner uses the earlier of that inherited deadline and its valid requested
+local timeout cap. An invalid local timeout cannot erase the inherited limit.
+Workspace setup and prompt capture consume that budget. The effective deadline
+also bounds actual isolated child birth and wait and failed-worker candidate
+refresh, and is bound into the worker census. Retirement publication remains
+possible after expiry. A late birth is reaped through existing cleanup and remains
+an observed birth; an expired or interrupted wait keeps its census uncertainty.
+Cleanup retains its independent grace period rather than claiming that expiry
+has already stopped descendants.
+
+For ordinary coding, the owner generates `--owner-provider-deadline-ns` and
+rejects caller-supplied versions at its inlet. The isolated entry forwards only
+this integer restriction and the existing census identity. The router retains
+the deadline in its invocation receipt and recalculates remaining time after
+provider initialization and descriptor-context entry, immediately before its
+one provider attempt. Positive fractional timeouts are preserved; expiry keeps
+zero router calls. The value supplies no dispatch authority and does not enter
+the model prompt. The outer owner wait still bounds subsequent provider-adapter
+preparation and execution. Planning, decision dialogues and provider-free paths
+receive the owner wait limit, without this ordinary-coding router argument.
+
+Qualification exercises real sealed descriptors, direct children, a foreign
+grandchild refusal, differing daemon/worker directories, actual monitor waits
+and reaps, and the streamed launcher path. Deployment paths and cleanup remain
+authored host seams; router provider observations remain stubs. The generated
+scripts have not been installed or qualified in Docker by this increment.
+Shared native ownership, writable allocation delegation, quantitative production
+resources and the explicit second-child policy remain separate work. This
+change enables no candidate retry and measures no token saving. Results are in
+[qualification.json](evidence/owner-provider-deadline-20261015/qualification.json).
