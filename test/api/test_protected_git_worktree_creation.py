@@ -58,8 +58,10 @@ git(repo,"config","core.filemode","true")
 git(repo,"add","plain.txt","sub/bin/run")
 git(repo,"commit","-m","inert protected checkout source")
 expected_head=git(repo,"rev-parse","HEAD")
-root=base/"worktrees"
-root.mkdir(mode=0o700)
+root=base/"managed"/"worktrees"
+if CONFIG.get("unsafe_parent",False):
+    root.parent.mkdir(mode=0o700)
+    root.mkdir(mode=0o775)
 owner=base/"owner"
 owner.mkdir(mode=0o700)
 boundary=owner/"boundary.json"
@@ -105,8 +107,48 @@ daemon._seed_untracked_worktree_context=unselected
 def forbidden_umask(*args):
     raise AssertionError("production path changed process-wide owner umask")
 os.umask=forbidden_umask
-actual_head=daemon._create_seeded_worktree(workspace,"implementation/protected-child",
-    allow_pool=False,seed_context=False,offline_local_only=True)
+births=[]
+original_mkdir=os.mkdir
+original_chmod,original_fchmod=os.chmod,os.fchmod
+def observed_mkdir(path,mode=0o777,*,dir_fd=None):
+    result=original_mkdir(path,mode,dir_fd=dir_fd)
+    named=Path(os.fsdecode(path))
+    if dir_fd is not None:
+        named=Path(os.readlink("/proc/self/fd/"+str(dir_fd)))/named
+    if named in (root.parent,root):
+        info=os.stat(path,dir_fd=dir_fd,follow_symlinks=False)
+        births.append((str(named),mode,stat.S_IMODE(info.st_mode)))
+    return result
+def forbidden_chmod(*args,**kwargs):
+    raise AssertionError("managed parent creation normalized a permission")
+os.mkdir=observed_mkdir
+os.chmod=os.fchmod=forbidden_chmod
+try:
+    if CONFIG.get("unsafe_parent",False):
+        before=(root.stat().st_dev,root.stat().st_ino,mode(root))
+        try:
+            daemon._create_seeded_worktree(workspace,"implementation/protected-child",
+                allow_pool=False,seed_context=False,offline_local_only=True,
+                protected_initial_parent=True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unsafe existing parent reached Git creation")
+        assert calls==[] and births==[]
+        assert (root.stat().st_dev,root.stat().st_ino,mode(root))==before
+        assert not workspace.exists() and mask()==before_mask
+        assert (private.stat().st_ino,mode(private),private.read_bytes())==private_before
+        print("[protected-checkout] "+json.dumps(dict(unsafe_parent_refused=True,
+            git_creation_called=False,parent_umask_unchanged=True,provider_calls=0)))
+        raise SystemExit(0)
+    actual_head=daemon._create_seeded_worktree(workspace,"implementation/protected-child",
+        allow_pool=False,seed_context=False,offline_local_only=True,
+        protected_initial_parent=True)
+finally:
+    os.mkdir=original_mkdir
+    os.chmod,os.fchmod=original_chmod,original_fchmod
+assert births==[(str(root.parent),0o700,0o700),(str(root),0o700,0o700)]
+assert mode(root.parent)==mode(root)==0o700
 assert actual_head==expected_head
 assert len(submodule_calls)==1
 assert submodule_calls[0]==dict(path=str(workspace),branch_name="implementation/protected-child",
@@ -156,9 +198,17 @@ def current_umask():
 @pytest.mark.parametrize("ambient_umask", [0o002, 0o000])
 def test_actual_factory_creates_provisionable_private_checkout_without_parent_umask_change(
         tmp_path, monkeypatch, ambient_umask):
+    observation = run_creation_driver(tmp_path, monkeypatch, ambient_umask)
+    assert observation["ambient_umask"] == ambient_umask
+    assert observation["parent_umask_unchanged"] is True
+    assert observation["provisioned"] is True
+    assert observation["provider_calls"] == 0
+
+
+def run_creation_driver(tmp_path, monkeypatch, ambient_umask, *, unsafe_parent=False):
     parent_mask = current_umask()
     driver = tmp_path / "private-checkout-driver.py"
-    public = dict(base=str(tmp_path), ambient_umask=ambient_umask,
+    public = dict(base=str(tmp_path), ambient_umask=ambient_umask, unsafe_parent=unsafe_parent,
         runtime_paths=[path for path in sys.path if type(path) is str and path])
     source = "CONFIG = " + repr(public) + "\n" + DRIVER
     ast.parse(source, filename=str(driver))
@@ -191,11 +241,16 @@ def test_actual_factory_creates_provisionable_private_checkout_without_parent_um
         if line.startswith("[protected-checkout] ")]
     assert len(observations) == 1
     observation = json.loads(observations[0])
-    assert observation["ambient_umask"] == ambient_umask
-    assert observation["parent_umask_unchanged"] is True
-    assert observation["provisioned"] is True
-    assert observation["provider_calls"] == 0
     assert current_umask() == parent_mask
+    return observation
+
+
+def test_actual_factory_refuses_unsafe_existing_parent_before_any_git_creation(tmp_path, monkeypatch):
+    observation = run_creation_driver(tmp_path, monkeypatch, 0o002, unsafe_parent=True)
+    assert observation["unsafe_parent_refused"] is True
+    assert observation["git_creation_called"] is False
+    assert observation["parent_umask_unchanged"] is True
+    assert observation["provider_calls"] == 0
 
 
 @pytest.fixture

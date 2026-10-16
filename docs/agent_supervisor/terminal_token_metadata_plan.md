@@ -1715,3 +1715,47 @@ Host tests and fixture limits are recorded in
 Daemon-to-wrapper native ownership handoff, actual Docker/separate-UID
 qualification, an installed continuation retry default and matched token
 measurements remain open.
+
+## October 16: prepare protected parents in the explicit initial factory path
+
+`_create_seeded_worktree(..., protected_initial_parent=True)` now selects a
+separate initial path before fresh Git creation. It requires no selected pool,
+no context seeding, no effective submodules, and an absent candidate below the
+configured worktree root. The daemon retains the original configured root
+spelling so this path can refuse symlink aliases that ordinary constructor
+resolution would otherwise erase. Its existing workspace-quarantine decorator
+still runs before parent mutation.
+
+`prepare_owner_worktree_parent(...)` validates the existing protected prefix
+through no-follow directory descriptors before creating missing components.
+Existing owner-controlled `0700` or protected `0750` directories can be reused
+without changing their modes. Group/other writes, foreign ownership or group,
+links, POSIX ACLs and a target mount differing from its protected parent cause
+refusal. New components use descriptor-relative `mkdir(..., 0700)` and must
+actually have the declared owner, group, mode, mount and named inode.
+
+The helper performs no chmod, chown or process-wide umask change. It refuses an
+`EEXIST` race instead of adopting the competing entry, rechecks the complete
+named chain before success, and reports creation attempts and retained prefixes
+on failure. It does not roll back partially created directories or claim an
+atomic filesystem writer lease. A serialized receipt grants no native task,
+allocation, run, resource, worker-traversal or completion authority.
+
+Qualification extends the isolated permissive-mask factory tests to start with
+missing managed parents. The actual selected factory creates protected parents
+and a private Git checkout; the strict workspace provisioner then accepts those
+outputs without fixture parent or checkout normalization. Focused refusal,
+race, deadline and descriptor-closure checks and retained default-path
+regressions are recorded in
+[qualification.json](evidence/protected-parent-creation-20261016/qualification.json).
+The factory drivers use `offline_local_only=True`; the existing nonoffline
+submodule-configuration repair path is not qualified by these drivers.
+
+The ordinary outer implementation/manual paths retain their existing ambient
+parent creation. The new initial API must be selected before those legacy
+paths create an unsafe root; it refuses an existing writable root. This change
+does not install that selection in TerminalBench or enable a retry default.
+New `0700` parents also do not grant a separate worker UID traversal. Explicit
+read/traverse access to parents and Git controls, daemon-to-wrapper native
+ownership handoff, Docker qualification and matched token measurements remain
+open.

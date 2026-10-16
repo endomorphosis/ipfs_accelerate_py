@@ -5323,6 +5323,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # relative --worktree-root cannot be resolved a second time below it.
         if not configured_worktree_root.is_absolute():
             configured_worktree_root = self.repo_root / configured_worktree_root
+        self._configured_worktree_root_lexical = configured_worktree_root
         self.worktree_root = configured_worktree_root.resolve()
         self.worktree_pool_enabled = (
             _env_bool(WORKTREE_POOL_ENABLED_ENV, True)
@@ -35450,7 +35451,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         allow_pool: bool = True,
         seed_context: bool = True,
         offline_local_only: bool = False,
+        protected_initial_parent: bool = False,
     ) -> str:
+        if type(protected_initial_parent) is not bool:
+            raise ValueError("protected initial worktree parent selection must be an exact boolean")
+        if protected_initial_parent:
+            from ..runtime.owner_worktree_parent import prepare_owner_worktree_parent
+
+            lexical_root = self._configured_worktree_root_lexical
+            candidate = Path(worktree_path)
+            if ((self.worktree_pool is not None and allow_pool is not False)
+                    or seed_context is not False or self._effective_worktree_submodule_paths(task)
+                    or not lexical_root.is_absolute() or ".." in lexical_root.parts
+                    or lexical_root.resolve() != lexical_root or self.worktree_root != lexical_root
+                    or not candidate.is_absolute() or ".." in candidate.parts
+                    or candidate == lexical_root or not candidate.is_relative_to(lexical_root)
+                    or candidate.resolve() != candidate or candidate.exists() or candidate.is_symlink()):
+                raise ValueError("protected initial parent requires an absent native-profile checkout within its lexical root")
+            prepare_owner_worktree_parent(directory=candidate.parent)
         if self.worktree_pool is not None and allow_pool:
             base_ref = self._main_branch_name()
             cache_key = self._implementation_worktree_cache_key()

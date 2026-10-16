@@ -1,0 +1,264 @@
+{
+  "schema": "protected-parent-creation-qualification@1",
+  "recorded_utc": "2026-10-16T03:35:34.069275+00:00",
+  "accelerate_base": "2b8e44e28ccd5ff6c8f2a2a526c71a52929f6465",
+  "branch": "codex/candidate-owner-continuation-20261015",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "dependency_note": "Qualification uses the pinned sibling datasets checkout; accelerate gitlink remains d0d44b3e0f7c2ba804b0d9115f7a1efd2ad926c3.",
+  "dataset_resource_scheduler_source": {
+    "bytes": 121503,
+    "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+  },
+  "resource_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "policy_unchanged": true,
+  "qualification_and_candidate_resource_rows_remaining": 0,
+  "root_only_runtime": true,
+  "agent_work": "Static reads/AST/edits/security review only; no agent runtime, imports, tests or probes.",
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/protected-parent-creation-20261016-01",
+  "qualification_counts": {
+    "tests": 328,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": 9
+  },
+  "focused_parent_cases": 35,
+  "factory_policy_refusal_cases": 13,
+  "actual_decorated_factory_driver_cases": 3,
+  "git_runner_api_cases": 18,
+  "qualified_modules": [
+    "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+    "test.api.test_agent_supervisor_checkout_git_serialization",
+    "test.api.test_agent_supervisor_prior_attempt_seed",
+    "test.api.test_owner_worktree_parent",
+    "test.api.test_owner_writable_worktree",
+    "test.api.test_protected_git_worktree_creation",
+    "test.api.test_provider_failure_checkpoint_retention",
+    "test.api.test_workspace_root_quarantine"
+  ],
+  "qualifying_runs": [
+    "parent-focused-v01",
+    "parent-git-integration-v01",
+    "parent-archive-regression-v01"
+  ],
+  "runs": [
+    {
+      "label": "parent-archive-regression-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "parent-archive-regression-v01",
+        "started_utc": "2026-10-16T03:33:36.605004+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T03:34:46.308028+00:00"
+      },
+      "junit": {
+        "tests": 241,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_owner_writable_worktree"
+        ],
+        "normalized_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_owner_writable_worktree"
+        ],
+        "bytes": 51798,
+        "sha256": "147272473fefc317462cb26ff1ca535798536a70c3ca5abfbfa01cd906ee6eeb"
+      },
+      "stdout.log": {
+        "bytes": 58370,
+        "sha256": "451f86bf8354c74d63e3aecd14af33b67c2b715749214a5474ca57030d3a4cbf"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "parent-environment-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "parent-environment-v01",
+        "started_utc": "2026-10-16T03:23:58.422120+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T03:24:30.588760+00:00"
+      },
+      "nonqualifying_reason": "Native environment probe; no contribution to test counts.",
+      "stdout.log": {
+        "bytes": 419,
+        "sha256": "b7975c0879d316fb4b9ce0d804fc0562f8cb7eda756f3fa8771d2e4d4c2df4bd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "parent-focused-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "parent-focused-v01",
+        "started_utc": "2026-10-16T03:33:36.587404+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T03:34:15.125248+00:00"
+      },
+      "junit": {
+        "tests": 35,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "api.test_owner_worktree_parent"
+        ],
+        "normalized_modules": [
+          "test.api.test_owner_worktree_parent"
+        ],
+        "bytes": 5588,
+        "sha256": "0c0d3938693256a236168818779dec6f7d6b870e100b45c0bc85cc8f201b748f"
+      },
+      "stdout.log": {
+        "bytes": 17246,
+        "sha256": "696e74cc666f1f4b06448bb12cc4f28d69fefbe547b15d0e0bed0ed3888d6bdd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "parent-git-integration-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "parent-git-integration-v01",
+        "started_utc": "2026-10-16T03:33:36.606820+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T03:34:28.171802+00:00"
+      },
+      "junit": {
+        "tests": 52,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "api.test_agent_supervisor_checkout_git_serialization",
+          "api.test_agent_supervisor_prior_attempt_seed",
+          "api.test_protected_git_worktree_creation",
+          "api.test_provider_failure_checkpoint_retention",
+          "api.test_workspace_root_quarantine"
+        ],
+        "normalized_modules": [
+          "test.api.test_agent_supervisor_checkout_git_serialization",
+          "test.api.test_agent_supervisor_prior_attempt_seed",
+          "test.api.test_protected_git_worktree_creation",
+          "test.api.test_provider_failure_checkpoint_retention",
+          "test.api.test_workspace_root_quarantine"
+        ],
+        "bytes": 9098,
+        "sha256": "cd38fc3ca6b18951913acf852e2354e8e14934c9e8fe23145f7f7a0d3b14a350"
+      },
+      "stdout.log": {
+        "bytes": 31660,
+        "sha256": "487c7f8cd3dcbee5c0f157c46ee7e58ff7d8ab00fdfd4592737b87c655052b13"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "module_normalization": "api.* and test.api.* pytest classnames are normalized to the same test/api source module.",
+  "source_verification": "All seven changed source files, including untracked modules and embedded driver, were frozen and whitespace/AST checked before qualification. Exact hashes verified again before publication; no source revision during qualification.",
+  "static_review": {
+    "helper_sha256": "1300a94e3852c81deeed5c2cc10badcd6371adaf3905c14df0266739b84f7bfe",
+    "daemon_sha256": "5f615708d61f1b7521f25c1eeebddbb6968049205ec197f0342ebc5ba3d0d12d",
+    "outcome": "No blocking unsafe gap found in bounded helper, explicit factory selection, frozen tests or claims."
+  },
+  "environment": {
+    "duckdb_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "model_calls": 0,
+    "native_default_owner_bound_to_existing_policy": true,
+    "native_default_owner_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "native_sql_health_check": true,
+    "network_dependency_installation": false,
+    "schema": "world-prelaunch-environment@1"
+  },
+  "model_inference_calls": 0,
+  "external_provider_calls": 0,
+  "docker_runs": 0,
+  "network_dependency_installation": false,
+  "matched_terminalbench_runs": 0,
+  "real_boundaries": [
+    "Actual missing parent creation through no-follow directory descriptors; requested and observed mode700; protected existing prefixes and private sentinels preserved without chmod/chown/global umask normalization",
+    "Real filesystem effects with authored EEXIST, second-mkdir failure, apply-then-raise mkdir and reentry triggers; actual prefix rename replacement; failures retain verified prefixes and conservative uncertain effects; descriptor closure verified",
+    "Actual decorated PortalImplementationDaemon opt-in nonpooled/no-seed/no-submodule/offline factory and actual Git worktree add under isolated ambient masks002 and000",
+    "Driver starts with missing managed parents; actual parent births700 precede private checkout birth and strict owner workspace provisioner; no fixture normalization of parents or checkout",
+    "Third actual factory driver refuses an existing775 managed root before any Git command or parent birth, preserving inode/mode and private sentinel",
+    "Actual owner /proc Umask and before/after sentinel modes stay unchanged; Git executable index100755 and source bytes preserved",
+    "Default checkout/index contention and quarantine barriers remain intact; cold pooled/nonpooled failed inert children preserve commits without completion authority; independent cold pool and submodule baseline/index regressions pass",
+    "Existing provisioner, generated wrapper, native continuation and archive source-pin refusal regressions pass; new helper included in exact worker archive source set"
+  ],
+  "authored_fixture_boundaries": [
+    "Owner deployment authentication and selected separate worker UID are authored host seams; real factory/provisioning runs use the owner UID",
+    "Foreign ownership/GID, ACL and target-mount refusal tests inject narrow metadata seams, not actual foreign principals, ACL installation or mount operations",
+    "EEXIST, partial mkdir failure, apply-then-raise mkdir, reentry and deadline expiry use authored fault triggers around actual filesystem operations; no naturally occurring concurrent kernel fault is claimed",
+    "Factory drivers select offline_local_only=True; unchanged nonoffline submodule configuration repair behavior is not qualified by these drivers",
+    "Isolated drivers use the unchanged pinned native-owner runner and private orchestration paths; public runtime controls only, no provider/native auth or sealed parent FD metadata forwarded",
+    "Default-path retention regression authors an inert Python child rather than calling a model adapter; no warm pooled reuse claim",
+    "Retained provisioner/candidate fixture authors Quack transport and deployment admission; actual controls, host children and native resource leaf remain real"
+  ],
+  "limitations": [
+    "Explicit initial factory opt-in only; ordinary outer/manual ambient parent creation is unchanged and installed TerminalBench paths do not select this API",
+    "Existing ancestry must already be protected; unsafe existing roots are refused, not normalized; no seeded, selected pool or effective-submodule creation profile",
+    "Sequential filesystem observations only, no atomic writer lease or live-worker revocation; mkdir failure may leave effects beyond the reported verified prefix; no rollback or EEXIST adoption",
+    "Legitimate existing ancestor mount-transition acceptance and actual concurrent ACL/ownership/mount changes are not qualified by these tests",
+    "Direct helper accepts a supplied absolute deadline; factory currently supplies none, so factory deadline inheritance is not qualified",
+    "New parents and Git administration remain owner-only; separate-UID worker traversal and minimal Git-control read delegation remain open",
+    "Signed-route helper0400 authority blobs require a separate protected-file policy before composition",
+    "Legacy incremental/todo regression modules known uncollectable at base were not rerun or repaired; their prior evidence is in protected-git-creation-20261016",
+    "No cross-owner native allocation/run/resource handoff, actual Docker/separate-UID deployment or installed continuation retry default enabled",
+    "No model/provider/training run, matched TerminalBench measurement, total token-savings or legal correctness claim"
+  ],
+  "evidence_writer": {
+    "bytes": 12244,
+    "sha256": "fc27eec8beb57942e9ea4ad7d548dca43d38efb84c0b6296a37745d9887d84a4"
+  }
+}
