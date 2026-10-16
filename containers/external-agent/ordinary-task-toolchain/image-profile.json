@@ -25,8 +25,8 @@
   },
   "ordinary_mounted_runtime_qualified": true,
   "normal_watchdog_returncode": 0,
-  "crash_cleanup_qualified": false,
-  "route_integration_tests_passed": false,
+  "crash_cleanup_qualified": true,
+  "route_integration_tests_passed": true,
   "provider_task_dispatched": false,
   "training_or_lean_qualified": false,
   "protected_route_authority": false,
@@ -34,5 +34,15 @@
     "/usr",
     "/etc/ssl/certs",
     "/usr/bin/python3.12:/opt/ipfs-task-tools/bin/python"
-  ]
+  ],
+  "route_integration_test_count": 28,
+  "route_implementation_tested_commit": "93cfd32f65cd231df57e53736edf0f78b58af009",
+  "archive_bytes": 179565056,
+  "archive_sha256": "9fced6382d3ad13f16c17aea382cdca43f20969c1d887d9fb16623a9b623ee61",
+  "archive_local_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-worker-image-20261016-integration02/ordinary-worker-arm64.docker.tar",
+  "archive_registry_published": false,
+  "legal_ir_supervisor_started": false,
+  "evidence_directory": "evidence/20261016",
+  "integration_result_sha256": "df3263bfea8c03f7a5515710a1bbba47c67f3f46f4290f72df456e4c9f5e09b7",
+  "watchdog_regression_sha256": "128a031755411cc62296f21d143520b0e111d56b07a7ac6c46a565931354fcc6"
 }

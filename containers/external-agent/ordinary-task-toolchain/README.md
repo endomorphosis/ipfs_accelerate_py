@@ -51,7 +51,39 @@ verified container absence and watchdog disappearance before finalization.
 `qualify_runtime.py` is the container-side checker and requires a read-only
 `/opt/installed-files.json` input plus an owned writable `/workspace`.
 
-Ordinary-route integration tests and abrupt-launcher cleanup qualification are
-recorded separately after they run. This image qualification does not establish
-provider/model access, Legal IR task completion, training accuracy or a Lean build.
-No provider credential is embedded in the image or build context.
+All 28 runner integration and existing confinement tests passed against commit
+`93cfd32f65cd231df57e53736edf0f78b58af009`. Actual image inspection accepted the
+new immutable identity and the protected image pin remained unchanged. Separate
+real-container controls passed for normal cleanup (watchdog return code 0) and
+an abruptly killed owned launcher (child return code -9, container, lease root
+and watcher gone). The abrupt case cannot observe the watcher's return code;
+it records absence and does not invent an exit status. Native owners completed
+and finalized after their container/process absence checks.
+
+Small qualification records and test results are committed in
+[`evidence/20261016`](evidence/20261016); [`image-profile.json`](image-profile.json)
+records the exact archive and evidence hashes. The local reloadable Docker
+archive is 179,565,056 bytes, with SHA256
+`9fced6382d3ad13f16c17aea382cdca43f20969c1d887d9fb16623a9b623ee61`, at:
+
+```
+/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-worker-image-20261016-integration02/ordinary-worker-arm64.docker.tar
+```
+
+To restore that archive on an ARM64 system daemon, verify its SHA256, then run
+`docker --host=unix:///var/run/docker.sock image load --input PATH_TO_ARCHIVE`
+and inspect the restored immutable identity and label before execution. The
+large archive and downloaded wheels are retained locally, not committed to Git
+or published to a container registry.
+
+Earlier failed attempts remain separate local records: one storage lock wait,
+one staging symlink rejection, and one pytest fixture symlink rejection. The
+successful staging uses a regular launcher; the successful regression gives
+pytest a separately charged fixture directory outside the strict artifact tree.
+None of the failed attempts were relabeled as successful or used as completion
+authority.
+
+This qualification does not establish provider/model access, Legal IR task
+completion, training accuracy or a Lean build. No Legal IR supervisor or provider
+task was started during image qualification. No provider credential is embedded
+in the image or build context.
