@@ -1680,3 +1680,38 @@ Host qualification and authored deployment seams are recorded in
 Separate-UID and Docker isolation, daemon-to-wrapper native ownership handoff,
 an installed continuation retry default and measured total token savings remain
 open.
+
+## October 16: create fresh checkout inputs with a child-only umask
+
+The fresh nonpooled branch of `_create_seeded_worktree(...)` now requests
+`child_umask=0o077` for its initial root `git worktree add`. `_run_git(...)`
+accepts this restriction only as the exact integer `077` on a worktree-add
+command and passes it directly to `subprocess.run`. Default calls omit the
+umask keyword entirely. The daemon changes no process-wide umask and uses no
+`preexec_fn`, so concurrent owner threads retain their permission defaults.
+
+Qualification exercises the real decorated daemon factory in isolated parent
+processes created with permissive `002` and `000` masks. With pooling disabled,
+seeding disabled and no submodules, ordinary Git creation produces protected
+root, tracked directories/files and the linked Git marker while preserving
+executable bits. The strict workspace provisioner can then inspect those
+creation outputs without fixture chmod normalization of the checkout. Parent
+mask observations and sentinel writes check that the restriction stays in the
+Git child.
+
+This closes the ambient-umask gap for ordinary fresh Git creation. It does not
+certify all outputs of the seeded-worktree method: later copies, shared links,
+prior-attempt replay, submodules and pooled reuse retain their existing
+contracts. Parent-directory protection remains a prerequisite. Inherited
+ACLs/GID and Git configuration/hooks can still affect creation outputs; the
+provisioner independently validates the resulting workspace.
+New Git administration can also become owner-only; separate-UID worker access
+to those controls needs explicit read delegation. The signed-route hardening
+helper's protected in-tree authority blobs likewise cannot be composed with
+ordinary writable source provisioning without a separate policy.
+
+Host tests and fixture limits are recorded in
+[qualification.json](evidence/protected-git-creation-20261016/qualification.json).
+Daemon-to-wrapper native ownership handoff, actual Docker/separate-UID
+qualification, an installed continuation retry default and matched token
+measurements remain open.

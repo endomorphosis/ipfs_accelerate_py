@@ -1,0 +1,19 @@
+{
+  "recorded_utc": "2026-10-16T03:05:54.870286+00:00",
+  "tmpdir": "/home/barberb/.p",
+  "runs": {
+    "creation-focused-v02": {
+      "basetemp": "/home/barberb/.g16f02",
+      "orchestration": "/home/barberb/lift_coding/artifacts/protected-git-creation-20261016-01/creation-focused-v02-orchestration"
+    },
+    "creation-checkout-regression-v02": {
+      "basetemp": "/home/barberb/.g16r02",
+      "orchestration": "/home/barberb/lift_coding/artifacts/protected-git-creation-20261016-01/creation-checkout-regression-v02-orchestration"
+    },
+    "creation-archive-provisioning-v02": {
+      "basetemp": "/home/barberb/.g16a02",
+      "orchestration": "/home/barberb/lift_coding/artifacts/protected-git-creation-20261016-01/creation-archive-provisioning-v02-orchestration"
+    }
+  },
+  "reason": "Explicit per-run orchestration directories plus fixture-local driver/daemon overrides; no shared account catalog is intended in final qualification."
+}
