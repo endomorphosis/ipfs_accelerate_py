@@ -29,11 +29,11 @@
     "export_profile": "",
     "failover_policy": "fail_closed",
     "interface": "DatabaseProgramConfig@1",
-    "quack_endpoint": "quack:127.0.0.1:41607",
+    "quack_endpoint": "quack:127.0.0.1:35387",
     "runtime_registry_path": "",
     "schema": "ipfs_accelerate_py/agent-supervisor/database-program-config@1",
     "schema_revision": "5",
-    "store_generation": "5",
+    "store_generation": "7",
     "store_id": "legal-ir-catalog02.duckdb",
     "task_source_kind": "duckdb",
     "worktree_root": ""
@@ -113,15 +113,15 @@
   "reconciliation_guardrail_enabled": true,
   "retry_budget_guardrail_enabled": true,
   "runtime_paths": {
-    "logs": "workspace/legal-ir-grok-parallel-20261016-r03/logs",
-    "merge_queue": "workspace/legal-ir-grok-parallel-20261016-r03/merge_queue",
-    "root": "workspace/legal-ir-grok-parallel-20261016-r03",
-    "state": "workspace/legal-ir-grok-parallel-20261016-r03/state",
-    "worktrees": "workspace/legal-ir-grok-parallel-20261016-r03/worktrees"
+    "logs": "workspace/legal-ir-grok-parallel-20261016-r04/logs",
+    "merge_queue": "workspace/legal-ir-grok-parallel-20261016-r04/merge_queue",
+    "root": "workspace/legal-ir-grok-parallel-20261016-r04",
+    "state": "workspace/legal-ir-grok-parallel-20261016-r04/state",
+    "worktrees": "workspace/legal-ir-grok-parallel-20261016-r04/worktrees"
   },
   "schema": "ipfs_accelerate_py.agent_supervisor.legal_ir_grok_parallel.scheduler_config@1",
   "source_binding": {
-    "accelerator_required_ancestor": "8c30d89aa6b9cac2835da97729ccc628400ec3b2",
+    "accelerator_required_ancestor": "1629b364177421bde2f5b6833b5a9a92110f9345",
     "accelerator_required_branch": "agent/legal-ir-grok-parallel-20261016",
     "bootstrap_task_source": "duckdb",
     "historical_identity_metadata_not_live_authority": true
