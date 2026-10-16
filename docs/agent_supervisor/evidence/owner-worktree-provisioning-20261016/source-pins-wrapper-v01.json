@@ -1,0 +1,22 @@
+{
+  "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": {
+    "bytes": 67933,
+    "sha256": "2a685e2c9de96c754e711405b68ccbfc7b713da4bcde919a28cad12f673f5627"
+  },
+  "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": {
+    "bytes": 10509,
+    "sha256": "cd8e646637554f8c2151056a3b3db5712edaeae159bfe286768227d928b90410"
+  },
+  "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": {
+    "bytes": 22269,
+    "sha256": "fbafcbe290390698db9c6b6ed5c915ce9c1ad0ec4d79d0a20d441bd3e7c83c70"
+  },
+  "benchmarks/agent_supervisor/container_coding/test_owner_provider_deadline_wiring.py": {
+    "bytes": 12489,
+    "sha256": "778a84743cd817cc97e5c9c1c2465143c3c5b1d6b59f09a1f2928dc08716d7f0"
+  },
+  "benchmarks/agent_supervisor/container_coding/test_owner_writable_worktree_wiring.py": {
+    "bytes": 4590,
+    "sha256": "6ee94c0d5f476510bfda5246d66910d2e50ec09f65d54818e4f643ddd131fa9d"
+  }
+}

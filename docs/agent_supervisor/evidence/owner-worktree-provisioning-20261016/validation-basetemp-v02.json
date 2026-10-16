@@ -1,0 +1,12 @@
+{
+  "recorded_utc": "2026-10-16T02:29:19.610790+00:00",
+  "pytest_basetemp": {
+    "provisioning-direct-wiring-v02": "/home/barberb/.w16d02",
+    "provisioning-native-continuation-v02": "/home/barberb/.w16n02",
+    "provisioning-archive-deployment-v02": "/home/barberb/.w16a02"
+  },
+  "paths_initially_absent": true,
+  "all_existing_ancestors_actually_protected": true,
+  "existing_permissions_changed": false,
+  "reason": "First native attempt exceeded AF_UNIX pathname length under the long protected TMPDIR. Explicit fresh shorter basetemp retains actual ancestry checks."
+}

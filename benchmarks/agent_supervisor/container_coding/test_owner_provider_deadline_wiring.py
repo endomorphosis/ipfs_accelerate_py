@@ -161,7 +161,7 @@ def test_owner_consumes_restriction_before_rejecting_caller_deadline_and_before_
         exec(compile(OWNER_ENTRY[start:stop], "<installed-owner-private-deadline>", "exec"),
             dict(cwd=tmp_path, sys=sys))
     assert seen == [dict(command=list(sys.argv), workspace=tmp_path)]
-    assert stop < OWNER_ENTRY.index("for base,dirs,files in os.walk")
+    assert stop < OWNER_ENTRY.index("owner_workspace_provisioning=")
 
 
 @pytest.mark.parametrize("timeout", ["1", "90", "1800", "nan"])
@@ -172,7 +172,7 @@ def test_inherited_deadline_limits_census_and_refresh_independently_of_fresh_wra
         owner_provider_deadline_ns=inherited, sys=sys, math=math)
     monkeypatch.setattr(sys, "argv", [deadline_module.OWNER_WRAPPER, "--timeout", timeout])
     start = OWNER_ENTRY.index("# The fixed lease includes")
-    stop = OWNER_ENTRY.index("worker_arguments=sys.argv[1:]")
+    stop = OWNER_ENTRY.index("# Initial provisioning completes")
     exec(compile(OWNER_ENTRY[start:stop], "<installed-owner-original-budget>", "exec"), namespace)
     result = namespace["owner_candidate_round_deadline"]
     effective = inherited
