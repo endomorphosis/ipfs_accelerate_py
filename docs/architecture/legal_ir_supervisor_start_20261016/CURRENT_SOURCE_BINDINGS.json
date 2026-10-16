@@ -1,0 +1,94 @@
+{
+  "schema": "legal-ir-supervisor-current-source-bindings/v1",
+  "status": "observed_metadata",
+  "observation": {
+    "origin": "genuine native controller preparation owner; observations before control commit",
+    "observed_at_utc": "2026-10-16T20:00:38.097017+00:00",
+    "evidence_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-start-20261016-preparation05/child.sanitized.log"
+  },
+  "repositories": [
+    {
+      "repository": "ipfs_accelerate_py",
+      "status": "observed_metadata",
+      "checkout_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller",
+      "head": "90acc9b21c214e2f4c3a6c84769fd891cfdbd627",
+      "tree": "8cb3f1f5c608ed0490184847f1370eb4965eb396",
+      "branch": "agent/legal-ir-supervisor-start-20261016",
+      "source_files": [
+        {
+          "path": "scripts/ops/agent_supervisor/configured_board_scheduler.py",
+          "bytes": 2408,
+          "sha256": "e526c145f751e88b5bfbc207cafdd4344fb1d8bde016d6e96b7e40dcdd386214"
+        },
+        {
+          "path": "scripts/run_legal_autoformalization_supervisor.py",
+          "bytes": 26621,
+          "sha256": "d05e9c92fa77aa09dc65a6c4c2484908e06ba95307cce16b2a58be3667248e6d"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+          "bytes": 266206,
+          "sha256": "9a3db2b03f792f977ddd84e76a6d5fb522ac9b94678c6d13122c264461c31580"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+          "bytes": 624176,
+          "sha256": "da85f716215df06edd5fd3664e510f1e10dae3534b3da2174663a4c69e7397f8"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "bytes": 3270606,
+          "sha256": "bbe90c8862ea6019beee45cd7b36af9ef43d6b593ee4fa7534c19379fb5f7561"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_implementation_route.py",
+          "bytes": 342403,
+          "sha256": "56126c1bfb8db68750909559b76deee2ae61bf6f82636f1e170a339941d253f2"
+        },
+        {
+          "path": "ipfs_accelerate_py/llm_router.py",
+          "bytes": 572677,
+          "sha256": "3c8f1459992c557e41729d8d4c6e7b99daa6473e9b6408bf4c251fe69c751a70"
+        }
+      ]
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "status": "observed_metadata",
+      "checkout_path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets",
+      "head": "3947a23bb6bda1c20d6811ac3ad247d6f53df22d",
+      "tree": "6eabca8911839485193d861c25bfbb44dd7dd43b",
+      "branch": "codex/legal-ir-supervisor-task-plan-20261016",
+      "source_files": [
+        {
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/tasks.json",
+          "bytes": 206904,
+          "sha256": "66ebc6a95adde4fc717dd19ffaf5f03387f909662d1a47eccbb5c2a51857e9e6"
+        },
+        {
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/goals.objectives.md",
+          "bytes": 17303,
+          "sha256": "d2dd64a7565754fbd60513dd2c19adb0baca8f5c864b2eed3a0d782dbbd070a3"
+        },
+        {
+          "path": "docs/autoencoders/legal_ir_uscode_corpus_improvement_plan_20261015.md",
+          "bytes": 102284,
+          "sha256": "5f26e211cb2d4a7ecf62d81b4e40654bfacd09bda807a6e33de0b8ad957e4215"
+        },
+        {
+          "path": "docs/autoencoders/legal_ir_span_graph_lean_execution_plan_20261016.md",
+          "bytes": 40549,
+          "sha256": "fe4ec5697ad38b341116c0f6bac892fccff6e747a261a4d53079eb68068cf42a"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Accelerator HEAD/tree observed before the bootstrap control commit; the resulting control-only commit is reported by preparation output.",
+    "Six selected source hashes match canonical working files. The committed router differs only by the specifically pinned unpublished generic Grok turn-limit edit, preserved and deferred to LIR-9001; this is not all-files equivalence.",
+    "Metadata and successful preflight do not prove isolated provider execution or semantic completion.",
+    "The source clone shares read-only Git objects; foreign garbage collection could require rehydration before a later run."
+  ],
+  "execution_authority": false,
+  "independent_acceptance_required": true
+}

@@ -1,0 +1,114 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.legal_ir_bootstrap.scheduler_config@1",
+  "status": "prepared_source_only_bootstrap_template",
+  "taskboard_path": "docs/architecture/legal_ir_supervisor_start_20261016/tasks.todo.md",
+  "objectives_path": "docs/architecture/legal_ir_supervisor_start_20261016/goals.objectives.md",
+  "plan_path": "docs/architecture/legal_ir_supervisor_start_20261016/README.md",
+  "validator_path": "docs/architecture/legal_ir_supervisor_start_20261016/validate_bootstrap.py",
+  "task_prefix": "## LIR-",
+  "board_namespace": "legal-ir-span-graph-lean-refinement-20261016",
+  "merge_target_branch": "agent/legal-ir-supervisor-start-20261016",
+  "max_lanes": 1,
+  "lanes": [
+    {
+      "index": 0,
+      "name": "legal-ir-bootstrap",
+      "strict_shard_remainder": 0
+    }
+  ],
+  "strict_task_sharding": false,
+  "idle_lane_work_stealing": "",
+  "worktree_submodule_paths": [],
+  "protected_paths": [
+    "docs/architecture/legal_ir_supervisor_start_20261016/scheduler_config.json",
+    "docs/architecture/legal_ir_supervisor_start_20261016/validate_bootstrap.py",
+    "docs/architecture/legal_ir_supervisor_start_20261016/README.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/tasks.todo.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/goals.objectives.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/tasks.execution.json",
+    "docs/architecture/legal_ir_supervisor_start_20261016/source-copy-manifest.json",
+    "docs/architecture/legal_ir_supervisor_start_20261016/authoring/README.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/authoring/tasks.json",
+    "docs/architecture/legal_ir_supervisor_start_20261016/authoring/tasks.todo.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/authoring/goals.objectives.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/authoring/campaign.json",
+    "docs/architecture/legal_ir_supervisor_start_20261016/authoring/source_baseline.json",
+    "docs/architecture/legal_ir_supervisor_start_20261016/authoring/validate_plan.py",
+    "docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_ir_uscode_corpus_improvement_plan_20261015.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_ir_span_graph_lean_execution_plan_20261016.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_ir_asset_reconciliation_20261016.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_ir_decoder_output_integration_20261016.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_statutory_definition_correspondence_pilot.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_relational_decoder_target_contract_v1.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/pilots/uscode_definition_component/README.md",
+    "docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/pilots/uscode_definition_component/pilot_spec.json",
+    "docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/pilots/uscode_definition_component/pilot_spec.schema.json",
+    "docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/evidence/legal-ir-typed-semantic-integration-20261015/retained-typed-join-inputs.json",
+    "docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/evidence/legal-ir-retained-source-correspondence-20261015/retained-inputs.json",
+    "docs/architecture/legal_ir_supervisor_start_20261016/CURRENT_SOURCE_BINDINGS.json"
+  ],
+  "runtime_paths": {
+    "root": "workspace/legal-ir-supervisor-start-20261016",
+    "state": "workspace/legal-ir-supervisor-start-20261016/state",
+    "worktrees": "workspace/legal-ir-supervisor-start-20261016/worktrees",
+    "merge_queue": "workspace/legal-ir-supervisor-start-20261016/merge-queue",
+    "logs": "workspace/legal-ir-supervisor-start-20261016/logs"
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.7",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-6.1-sol",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 1,
+    "primary_executable": "/home/barberb/.local/bin/grok"
+  },
+  "source_binding": {
+    "bootstrap_task_source": "legacy-markdown",
+    "accelerator_required_branch": "agent/legal-ir-supervisor-start-20261016",
+    "accelerator_required_ancestor": "90acc9b21c214e2f4c3a6c84769fd891cfdbd627"
+  },
+  "exit_when_all_tracks_terminal": false,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "objective_goal_refinement_enabled": false,
+  "retry_budget_guardrail_enabled": true,
+  "dependency_guardrail_enabled": true,
+  "reconciliation_guardrail_enabled": true,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 5,
+  "check_interval_seconds": 5,
+  "stale_seconds": 120,
+  "watchdog_startup_grace_seconds": 30,
+  "implementation_timeout_seconds": 900,
+  "implementation_max_timeout_seconds": 900,
+  "implementation_log_stall_seconds": 300,
+  "max_restarts": 1,
+  "max_task_attempts": 1,
+  "implementation_retry_budget": 1,
+  "validation_retry_budget": 1,
+  "merge_retry_budget": 1,
+  "completion_policy": {
+    "goal_completion_contracts_required": false,
+    "task_completion_mode": "manual_independent_report_acceptance"
+  },
+  "bootstrap_execution_contract": {
+    "allowed_task_ids": [
+      "LIR-9001"
+    ],
+    "expected_task_count": 64,
+    "expected_goal_count": 34,
+    "expected_legacy_parent_count": 24,
+    "other_tasks_phase_blocked": true,
+    "native_grant_supplied": false,
+    "launch_started": false,
+    "finite_controller_duration_seconds": 900,
+    "source_only_worker": true,
+    "writable_result_paths": [
+      "data/legal_ir_span_graph_lean_20261016/LIR-9001/handoff-reconciliation.json"
+    ],
+    "code_or_test_edits_allowed": false,
+    "future_phase_requires_new_reviewed_projection": true
+  }
+}

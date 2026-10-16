@@ -1,0 +1,135 @@
+{
+  "schema": "legal-ir-supervisor-source-copy-manifest/v1",
+  "source_repository": "ipfs_datasets_py",
+  "source_checkout": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets",
+  "source_git_calls_performed_by_stager": false,
+  "payload_or_product_execution": false,
+  "files": [
+    {
+      "path": "authoring/README.md",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_ir_supervisor_plan/README.md",
+      "bytes": 13524,
+      "sha256": "87ad482e07cc1e21e8b93467015588f500232ef397d9a1d67b3fd32ba09a2df8"
+    },
+    {
+      "path": "authoring/tasks.json",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_ir_supervisor_plan/tasks.json",
+      "bytes": 206904,
+      "sha256": "66ebc6a95adde4fc717dd19ffaf5f03387f909662d1a47eccbb5c2a51857e9e6"
+    },
+    {
+      "path": "authoring/tasks.todo.md",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_ir_supervisor_plan/tasks.todo.md",
+      "bytes": 131062,
+      "sha256": "a0ca9420e38a507cad4b8c2998a31a39b9b019c7b95bbbef2e4e710d0c37a7de"
+    },
+    {
+      "path": "authoring/goals.objectives.md",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_ir_supervisor_plan/goals.objectives.md",
+      "bytes": 17303,
+      "sha256": "d2dd64a7565754fbd60513dd2c19adb0baca8f5c864b2eed3a0d782dbbd070a3"
+    },
+    {
+      "path": "authoring/campaign.json",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_ir_supervisor_plan/campaign.json",
+      "bytes": 7409,
+      "sha256": "37e78a51a9a70d0b1f3f2efb8f3e032d5872e63c6165b905e28861534912837f"
+    },
+    {
+      "path": "authoring/source_baseline.json",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_ir_supervisor_plan/source_baseline.json",
+      "bytes": 25721,
+      "sha256": "ebbec529f9f52a3ebce46c48c1b973d658a1880155c2daf631e4160b0f475a28"
+    },
+    {
+      "path": "authoring/validate_plan.py",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_ir_supervisor_plan/validate_plan.py",
+      "bytes": 12171,
+      "sha256": "97b18bae969936a7449ad2a7265ff7bfbdc592375f03215c540efcbc5f4f90f4"
+    },
+    {
+      "path": "context/datasets/docs/autoencoders/legal_ir_uscode_corpus_improvement_plan_20261015.md",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_ir_uscode_corpus_improvement_plan_20261015.md",
+      "bytes": 102284,
+      "sha256": "5f26e211cb2d4a7ecf62d81b4e40654bfacd09bda807a6e33de0b8ad957e4215"
+    },
+    {
+      "path": "context/datasets/docs/autoencoders/legal_ir_span_graph_lean_execution_plan_20261016.md",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_ir_span_graph_lean_execution_plan_20261016.md",
+      "bytes": 40549,
+      "sha256": "fe4ec5697ad38b341116c0f6bac892fccff6e747a261a4d53079eb68068cf42a"
+    },
+    {
+      "path": "context/datasets/docs/autoencoders/legal_ir_asset_reconciliation_20261016.md",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_ir_asset_reconciliation_20261016.md",
+      "bytes": 11574,
+      "sha256": "cbe6857dcf9502401aacfd0799b76a31cbbce3803d0ea3bd892e524c423f6f4c"
+    },
+    {
+      "path": "context/datasets/docs/autoencoders/legal_ir_decoder_output_integration_20261016.md",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_ir_decoder_output_integration_20261016.md",
+      "bytes": 16834,
+      "sha256": "c8fe81472f637cf99f30a9b8bc218b1a7d1fcd80982bfccdb8edc6fededea1a6"
+    },
+    {
+      "path": "context/datasets/docs/autoencoders/legal_statutory_definition_correspondence_pilot.md",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_statutory_definition_correspondence_pilot.md",
+      "bytes": 6604,
+      "sha256": "866a094791476f22058a743e039d10cb47367e717b7f0605465e3f13a71f1a4b"
+    },
+    {
+      "path": "context/datasets/docs/autoencoders/legal_relational_decoder_target_contract_v1.md",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/legal_relational_decoder_target_contract_v1.md",
+      "bytes": 12380,
+      "sha256": "c7b7c17c130605cc54de1c7417bdbf90fa1c9d57ae52d75e416d35fcbf19cdea"
+    },
+    {
+      "path": "context/datasets/docs/autoencoders/pilots/uscode_definition_component/README.md",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/pilots/uscode_definition_component/README.md",
+      "bytes": 7488,
+      "sha256": "550bbaefe436c4cde13f5905b4a28c753a9bce56b0d120f88d48554172243f57"
+    },
+    {
+      "path": "context/datasets/docs/autoencoders/pilots/uscode_definition_component/pilot_spec.json",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/pilots/uscode_definition_component/pilot_spec.json",
+      "bytes": 12979,
+      "sha256": "dd08f3de9ab0ea9cbf5a57cf52b1cdf8517ed41fa0d25f61a3e2753475a25279"
+    },
+    {
+      "path": "context/datasets/docs/autoencoders/pilots/uscode_definition_component/pilot_spec.schema.json",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/pilots/uscode_definition_component/pilot_spec.schema.json",
+      "bytes": 12928,
+      "sha256": "562d44725a0f83c3185e3afec3d402eda93e1fdd4b81ee2e86ecfd92b88ade18"
+    },
+    {
+      "path": "context/datasets/docs/autoencoders/evidence/legal-ir-typed-semantic-integration-20261015/retained-typed-join-inputs.json",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/evidence/legal-ir-typed-semantic-integration-20261015/retained-typed-join-inputs.json",
+      "bytes": 8882,
+      "sha256": "f65694fd8e2c63e77fa24d2c36e08977e5f5156b62d06f464c539a8661ee125c"
+    },
+    {
+      "path": "context/datasets/docs/autoencoders/evidence/legal-ir-retained-source-correspondence-20261015/retained-inputs.json",
+      "origin_repository": "ipfs_datasets_py",
+      "origin_path": "docs/autoencoders/evidence/legal-ir-retained-source-correspondence-20261015/retained-inputs.json",
+      "bytes": 4737,
+      "sha256": "fbd75a2b03d322ccd32daa747c11a53fb6eef5ca51f2d52c19b292d4aa5b7736"
+    }
+  ]
+}
