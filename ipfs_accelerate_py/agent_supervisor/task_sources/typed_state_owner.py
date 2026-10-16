@@ -90,6 +90,12 @@ LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS: Final = 125.0
 _LOCAL_COMPLETION_REQUEST_DEADLINE = ContextVar("local_completion_request_deadline", default=None)
 TYPED_STATE_OWNER_SOCKET_FILENAME: Final = "typed-state-owner.sock"
 TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
+NAMESPACE_GUARD_ADJUDICATION_OPERATION: Final = (
+    "namespace_guard_nonreachability_adjudicate/v1"
+)
+NAMESPACE_GUARD_ADJUDICATION_ADMIN_CLIENT_ID: Final = (
+    "namespace-guard-nonreachability-administrator"
+)
 TYPED_RETRY_COOLDOWN_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/typed-retry-cooldown@1"
 )
@@ -445,6 +451,7 @@ _STATUS_SESSION_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
 )
 _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
+        NAMESPACE_GUARD_ADJUDICATION_OPERATION,
         "source.get",
         "local.task.validation.run",
         "derived.coordination.read",
@@ -5494,6 +5501,9 @@ class TypedStateOwnerGateway:
         self._database_closeout_profile: Any = None
         self._legacy_merge_queue_service: Any | None = None
         self._legacy_merge_recovery_service: Any | None = None
+        self._namespace_guard_adjudication_service: Any | None = None
+        self._namespace_guard_adjudication_creator_pid = os.getpid()
+        self._namespace_guard_adjudication_creator_birth = kernel_process_birth_id(os.getpid())
         self._derived_coordination_service: Any | None = None
         self._current_source_lookup: Any | None = None
         self._current_source_read_guard = threading.Lock()
@@ -5876,6 +5886,97 @@ class TypedStateOwnerGateway:
         _mirror_legacy_merge_binding(
             "legacy_merge_recovery_binding", repository_id, target_branch
         )
+
+    def _require_namespace_guard_adjudication_owner(self) -> None:
+        self._require_live_server_binding()
+        if (os.getpid() != self._namespace_guard_adjudication_creator_pid
+                or kernel_process_birth_id(os.getpid())
+                != self._namespace_guard_adjudication_creator_birth):
+            raise TypedStateOwnerAuthorizationError("adjudication requires its original creator process")
+
+    def bind_namespace_guard_adjudication_service(
+        self, *, expected_identity: Mapping[str, Any],
+        authority_context: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Register one reviewed historical proof with the exclusive owner.
+
+        Only the host administrator calls this binding API. Transport callers
+        provide a proof identity and CAS revision, never paths or source bytes.
+        Binding opens no database and issues no ordinary worker capability.
+        """
+        from ..todo_daemon.namespace_guard_adjudication import (
+            namespace_guard_adjudication_scope,
+        )
+        from .database_task_source import DatabaseTaskSource
+        from .intent_repository import IntentRepository
+
+        frozen = canonical_json_bytes(dict(authority_context))
+        if len(frozen) > 64 * 1024:
+            raise TypedStateOwnerProtocolError("adjudication context exceeds its bound")
+        with self._transaction_lock:
+            self._require_namespace_guard_adjudication_owner()
+            if (canonical_json_bytes(dict(expected_identity))
+                    != canonical_json_bytes(dict(self.identity))):
+                raise TypedStateOwnerAuthorizationError("adjudication owner identity differs")
+            if self._namespace_guard_adjudication_service is not None:
+                raise TypedStateOwnerAuthorizationError("adjudication service is already bound")
+            context = json.loads(frozen)
+            scope = dict(namespace_guard_adjudication_scope(context))
+            database_paths = [(row[0],) for row in self._connection.execute(
+                "SELECT path FROM duckdb_databases() WHERE database_name = current_database()"
+            ).fetchall()]
+            if (database_paths != [(scope["canonical_store_id"],)]
+                    or scope["logical_store_id"] != self.store_id
+                    or self.identity.get("store_id") != self.store_id):
+                raise TypedStateOwnerAuthorizationError("adjudication canonical store differs")
+            repository = IntentRepository(
+                bound_connection=self._connection, install_schema=False,
+                owner_id=str(self.identity["server_id"]),
+                session_id=NAMESPACE_GUARD_ADJUDICATION_ADMIN_CLIENT_ID,
+            )
+            source = DatabaseTaskSource(intent=repository, install_schema=False)
+            self._namespace_guard_adjudication_service = (source, frozen, scope)
+            return MappingProxyType(dict(scope))
+
+    def issue_namespace_guard_adjudication_grant(
+        self, *, peer_pid: int | None = None,
+        ttl_seconds: float = 60.0,
+    ) -> tuple[str, OwnerClientGrant]:
+        """Issue a dedicated ADMIN service capability, never a worker grant."""
+        with self._transaction_lock:
+            self._require_namespace_guard_adjudication_owner()
+            service = self._namespace_guard_adjudication_service
+            if service is None:
+                raise TypedStateOwnerAuthorizationError("adjudication service is unavailable")
+            scope = service[2]
+            selected_pid = os.getpid() if peer_pid is None else int(peer_pid)
+            return self.issue_grant(
+                client_id=NAMESPACE_GUARD_ADJUDICATION_ADMIN_CLIENT_ID,
+                process_birth_id=kernel_process_birth_id(selected_pid),
+                peer_pid=selected_pid, ttl_seconds=ttl_seconds,
+                allowed_operations=(NAMESPACE_GUARD_ADJUDICATION_OPERATION,),
+                entity_scopes={"task_cid": scope["task_cid"],
+                               "recovery_scope_cid": scope["recovery_scope_cid"]},
+            )
+
+    def _require_namespace_guard_adjudication_grant(
+        self, grant: OwnerClientGrant,
+    ) -> tuple[Any, bytes, Mapping[str, Any]]:
+        self._require_namespace_guard_adjudication_owner()
+        service = self._namespace_guard_adjudication_service
+        if service is None:
+            raise TypedStateOwnerAuthorizationError("adjudication service is unavailable")
+        scope = service[2]
+        if (grant.client_id != NAMESPACE_GUARD_ADJUDICATION_ADMIN_CLIENT_ID
+                or grant.allowed_operations != frozenset({NAMESPACE_GUARD_ADJUDICATION_OPERATION})
+                or grant.allowed_command_operations or grant.allowed_database_task_commands
+                or grant.tenant_id or grant.federation_id or grant.authority_profile
+                or not grant.process_birth_id
+                or dict(grant.entity_scopes) != {
+                    "task_cid": scope["task_cid"],
+                    "recovery_scope_cid": scope["recovery_scope_cid"]}):
+            raise TypedStateOwnerAuthorizationError("adjudication requires its exact ADMIN grant")
+        return service
 
     def _bind_eaaef_typed_owner_command_service_from_server(
         self,
@@ -6435,6 +6536,10 @@ class TypedStateOwnerGateway:
             issued_at=issued_at,
             expires_at=issued_at + int(ttl * 1_000),
         )
+        if NAMESPACE_GUARD_ADJUDICATION_OPERATION in operations:
+            self._require_namespace_guard_adjudication_grant(grant)
+            if grant.process_birth_id != kernel_process_birth_id(selected_pid):
+                raise TypedStateOwnerAuthorizationError("adjudication administrator birth differs")
         if "source.get" in operations:
             with self._transaction_lock:
                 self._authorize_source_grant(grant, self._current_source_lookup)
@@ -6716,6 +6821,10 @@ class TypedStateOwnerGateway:
                 "typed owner clients did not quiesce before teardown"
             )
         with self._transaction_lock:
+            adjudication_service = self._namespace_guard_adjudication_service
+            self._namespace_guard_adjudication_service = None
+            if adjudication_service is not None:
+                adjudication_service[0].close()
             with self._eaaef_service_bind_lock:
                 plan_service = self._eaaef_plan_r2_owner_service
                 command_service = self._eaaef_typed_owner_command_service
@@ -7576,6 +7685,25 @@ class TypedStateOwnerGateway:
                         finally:
                             self._transaction_lock.release()
                         response = {"ok": True, "result": dict(observation_result)}
+                    elif action == NAMESPACE_GUARD_ADJUDICATION_OPERATION:
+                        if (set(request) != {"schema", "action", "request_id", "payload"}
+                                or request.get("schema") != TYPED_STATE_OWNER_SCHEMA):
+                            raise TypedStateOwnerProtocolError("adjudication request fields differ")
+                        if transaction_active or type(request.get("payload")) is not dict:
+                            raise TypedStateOwnerAuthorizationError("adjudication requires a standalone request")
+                        if not self._transaction_lock.acquire(timeout=30.0):
+                            raise TypedStateOwnerProtocolError("adjudication owner is busy")
+                        try:
+                            grant = self._require_active_grant(
+                                grant, peer_identity=peer_identity, session_id=session_id,
+                            )
+                            source, frozen_context, _scope = self._require_namespace_guard_adjudication_grant(grant)
+                            result = source.adjudicate_namespace_guard_nonreachability(
+                                request["payload"], authority_context=json.loads(frozen_context),
+                            )
+                        finally:
+                            self._transaction_lock.release()
+                        response = {"ok": True, "result": dict(result)}
                     elif action == "database_task_command":
                         self._reject_unknown(
                             request,
@@ -14214,6 +14342,29 @@ class TypedStateOwnerConnection:
             )
         return dict(result)
 
+    def adjudicate_namespace_guard_nonreachability(
+        self, payload: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Request the separately granted, audit-only administrator operation."""
+        if self._active:
+            raise TypedStateOwnerProtocolError("adjudication requires a standalone request")
+        try:
+            response = self._request(
+                NAMESPACE_GUARD_ADJUDICATION_OPERATION, payload=dict(payload),
+            )
+            result = response.get("result")
+            if not isinstance(result, Mapping):
+                raise TypedStateOwnerProtocolError("adjudication result is invalid")
+        except TypedStateOwnerRemoteError:
+            raise
+        except (OSError, TypedStateOwnerProtocolError) as exc:
+            # An audit may have committed before transport loss. Preserve its
+            # exact proof identity for lookup; this is not retry admission.
+            raise TypedStateOwnerNamespaceGuardOutcomeUnknownError(
+                str(payload.get("proof_id") or "")
+            ) from exc
+        return MappingProxyType(dict(result))
+
     def execute_database_task_command(
         self,
         command: str,
@@ -14317,6 +14468,9 @@ def open_typed_state_owner_connection(
 
 
 __all__ = [
+    "NAMESPACE_GUARD_ADJUDICATION_ADMIN_CLIENT_ID",
+    "NAMESPACE_GUARD_ADJUDICATION_OPERATION",
+    "TypedStateOwnerNamespaceGuardOutcomeUnknownError",
     "LOCAL_COMPLETION_RPC_TIMEOUT_ENV",
     "LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS",
     "COMPLETION_PROGRESS_SNAPSHOT_OPERATION",
@@ -14444,6 +14598,14 @@ class TypedStateOwnerDatabaseTaskCommandError(TypedStateOwnerError):
         # Never forward a repository or driver exception message over the
         # wire. It can contain SQL, paths, or caller-controlled values.
         super().__init__("database-task command failed an owner gate")
+
+class TypedStateOwnerNamespaceGuardOutcomeUnknownError(TypedStateOwnerError):
+    """An exact ADMIN audit may have committed without a received response."""
+
+    def __init__(self, proof_id: str) -> None:
+        self.proof_id = str(proof_id or "")
+        super().__init__("namespace adjudication audit outcome is unknown")
+
 
 class TypedStateOwnerDatabaseTaskOutcomeUnknownError(TypedStateOwnerError):
     """A task command was dispatched but no authoritative response arrived."""
