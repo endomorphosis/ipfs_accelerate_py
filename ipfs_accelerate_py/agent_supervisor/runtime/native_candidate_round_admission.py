@@ -25,7 +25,10 @@ from ..merge.database_coordination import (
     LeaseKind, LeaseMode, LeaseState,
 )
 from .current_source_task_admission import _owned_file
-from .current_source_worktree_allocation import NativeSourceWorktreeAllocation
+from .current_source_worktree_allocation import (
+    NativeDelegatedSourceWorktreeAllocation, _NativeSourceWorktreeAllocationKernel,
+    require_native_source_worktree_allocation,
+)
 from .owner_candidate_round_context import OwnerCandidateRoundContext
 from .owner_candidate_round_prompt import OwnerCandidateRoundPrompt
 from . import owner_worker_attempt as attempts
@@ -249,6 +252,10 @@ class NativeCandidateRoundAdmission:
             and self._candidate_prompt._snapshot is self._snapshot
             and self._snapshot._source_broker is self._source_broker,
             "candidate admission original inputs changed")
+        if type(self._allocation) is NativeDelegatedSourceWorktreeAllocation:
+            NativeDelegatedSourceWorktreeAllocation.require_candidate_binding(self._allocation,
+                prior_worker_attempt=self._prior_worker_attempt, source_broker=self._source_broker,
+                absolute_deadline_ns=json.loads(self._worker_attempt._common)["absolute_deadline_ns"])
         with _REGISTRY_LOCK:
             original = _ISSUED.get(self)
             _need(original is None or (original[0] is self._token and original[1] == self._binding),
@@ -347,7 +354,7 @@ class NativeCandidateRoundAdmission:
         NativeCandidateRoundAdmission._retained(self)
         # Native controls close AFTER source/producer and owner-file observers.
         # This does not enter another claim transaction or read source bytes.
-        NativeSourceWorktreeAllocation._observe_callback_boundary(self._allocation)
+        _NativeSourceWorktreeAllocationKernel._observe_callback_boundary(self._allocation)
         NativeCandidateRoundAdmission._resources_final(self)
         _expiry(protected, minimum_ms=MINIMUM_REMAINING_MS)
         if time.monotonic_ns() + MINIMUM_REMAINING_MS * 1_000_000 >= deadline:
@@ -391,9 +398,9 @@ class NativeCandidateRoundAdmission:
                     OwnerCandidateRoundPrompt.revalidate(self._candidate_prompt)
                     OwnerCandidateRoundContext.revalidate(self._snapshot)
                     NativeCandidateRoundAdmission._retained(self)
-                    NativeSourceWorktreeAllocation._observe_callback_boundary(self._allocation)
+                    _NativeSourceWorktreeAllocationKernel._observe_callback_boundary(self._allocation)
                 protected_leases.update(task=claim_lease, run=protected)
-            NativeSourceWorktreeAllocation.execute_with_current_claim(self._allocation,
+            _NativeSourceWorktreeAllocationKernel.execute_with_current_claim(self._allocation,
                 checked, minimum_remaining_ms=MINIMUM_REMAINING_MS)
             # Observe one current run-lease result after closing native clocks,
             # including an authentic same-fence shortening. This authority's
@@ -407,7 +414,7 @@ class NativeCandidateRoundAdmission:
             OwnerCandidateRoundContext.revalidate(self._snapshot)
             NativeCandidateRoundAdmission._retained(self)
             with self._allocation._server._lock:
-                NativeSourceWorktreeAllocation._observe_callback_boundary(self._allocation)
+                _NativeSourceWorktreeAllocationKernel._observe_callback_boundary(self._allocation)
             NativeCandidateRoundAdmission._resources_final(self)
             _expiry(protected_leases["task"], minimum_ms=MINIMUM_REMAINING_MS)
             _expiry(protected_leases["run"], minimum_ms=MINIMUM_REMAINING_MS)
@@ -458,7 +465,7 @@ class NativeCandidateRoundAdmission:
                     NativeCandidateRoundAdmission._run_current(self)
                     NativeCandidateRoundAdmission._retained(self)
                     return process
-                result = NativeSourceWorktreeAllocation.execute_with_current_claim(self._allocation,
+                result = _NativeSourceWorktreeAllocationKernel.execute_with_current_claim(self._allocation,
                     checked, minimum_remaining_ms=MINIMUM_REMAINING_MS)
                 # Native coordinator closing callbacks have now finished.
                 NativeCandidateRoundAdmission._resources_current(self)
@@ -468,7 +475,7 @@ class NativeCandidateRoundAdmission:
                 # observer effects with detached task/allocation checks, without
                 # replaying candidate source after a child has been born.
                 with self._allocation._server._lock:
-                    NativeSourceWorktreeAllocation._observe_callback_boundary(self._allocation)
+                    _NativeSourceWorktreeAllocationKernel._observe_callback_boundary(self._allocation)
                 NativeCandidateRoundAdmission._resources_final(self)
                 _expiry(protected_leases["task"], minimum_ms=MINIMUM_REMAINING_MS)
                 _expiry(protected_leases["run"], minimum_ms=MINIMUM_REMAINING_MS)
@@ -483,11 +490,12 @@ def capture_native_candidate_round_admission(*, allocation, run_coordinator, run
         candidate_prompt, prior_worker_attempt, worker_attempt, resources=None):
     """Capture one real host-native candidate admission per original source worker.
 
-    This deliberately retains the existing allocation's protected-directory
-    contract. It does not qualify the deployed writable container workspace.
+    Plain allocations retain their protected-directory contract. A separately
+    issued delegated allocation must match this exact original first worker.
+    Neither route qualifies the deployed daemon-to-wrapper ownership crossing.
     """
-    _need(type(allocation) is NativeSourceWorktreeAllocation
-        and type(candidate_prompt) is OwnerCandidateRoundPrompt
+    require_native_source_worktree_allocation(allocation)
+    _need(type(candidate_prompt) is OwnerCandidateRoundPrompt
         and type(candidate_prompt._snapshot) is OwnerCandidateRoundContext
         and type(candidate_prompt._snapshot._source_broker) is WorkerSourceBroker
         and type(prior_worker_attempt) is attempts.OwnerWorkerAttempt
@@ -549,7 +557,7 @@ def capture_native_candidate_round_admission(*, allocation, run_coordinator, run
                 candidate_artifacts_advisory=True,
                 proof_authority=False, completion_authority=False, retry_authority=False,
                 production_container_dispatch_qualified=False)
-        binding = NativeSourceWorktreeAllocation.execute_with_current_claim(allocation,
+        binding = _NativeSourceWorktreeAllocationKernel.execute_with_current_claim(allocation,
             checked, minimum_remaining_ms=MINIMUM_REMAINING_MS)
         NativeCandidateRoundAdmission._run_current(result)
         NativeCandidateRoundAdmission._retained(result)
