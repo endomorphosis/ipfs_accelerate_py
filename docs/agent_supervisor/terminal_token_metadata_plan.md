@@ -1535,3 +1535,53 @@ Shared native ownership, writable allocation delegation, quantitative production
 resources and the explicit second-child policy remain separate work. This
 change enables no candidate retry and measures no token saving. Results are in
 [qualification.json](evidence/owner-provider-deadline-20261015/qualification.json).
+
+## October 16: compose the native second-child owner lifecycle
+
+`prepare_native_candidate_continuation(...)` now combines the existing live
+owner components into one reusable entrypoint. Callers must already hold the
+exact native allocation, independent run coordinator and lease, quantitative
+resource parent, closed first source broker, original requirements and retired
+first worker census in the same owner process. This API reconstructs none of
+those handles from a checkpoint or deadline observation.
+
+The caller must explicitly select `max_worker_children=2` and the provider,
+model, timeout, reasoning effort, output cap and candidate resource demand.
+This bounds the composed lifecycle to the observed first worker and one
+candidate child. It does not count arbitrary subprocesses elsewhere in the
+owner; their demand remains part of quantitative resource admission.
+
+Preparation first verifies the actual positive failed exit and immutable
+wait/cleanup/broker retirement evidence, exact original requirements and
+deadline. Existing task/grant, independent run and keyed native parent checks
+precede fresh candidate generation. The composer then prepares the candidate
+snapshot and complete prompt, seals its input, creates a fresh worker census,
+reserves genuine child capacity, captures native admission and starts the
+authenticated candidate dispatch broker. Original authority material is
+retained across preparation callbacks and rechecked before later handoffs.
+
+`session.run(...)` consumes its one attempt before command validation. It
+appends the actual owner-generated dispatch bindings and census identity,
+rejects conflicting caller-supplied binding flags and delegates birth, prompt
+delivery, cancellation, wait and retirement to the existing native worker.
+A preparation failure consumes preparation for that original source broker;
+neither a missing acknowledgement nor an exception authorizes another attempt.
+Successful child exit remains a provider outcome, without task completion or
+proof acceptance.
+
+Errors after issuance retain the exact session when available. Uncertain
+native capacity retains strong custody based on the resource kernel's verified
+retirement state, rather than a local release acknowledgement. Preallocated
+broker objects remain reachable through partial construction failures.
+`abort_unstarted()` closes the retained service before delegating unstarted
+resource retirement; `recover_retirement(cleanup=...)` uses the existing
+known-child recovery and preserves historical census flags. The caller retains
+ownership of its original allocation, run lease and parent reservation.
+
+This closes manual orchestration of the host round-two path. The deployed
+daemon and wrapper still have separate live ownership scopes, and the ordinary
+native allocation contract continues rejecting group-writable workspaces.
+Their authenticated writable delegation remains separate work; this composer
+enables no installed retry default, transfers no native authority and measures
+no token saving. Qualification and fixture limits are recorded in
+[qualification.json](evidence/native-candidate-continuation-20261016/qualification.json).
