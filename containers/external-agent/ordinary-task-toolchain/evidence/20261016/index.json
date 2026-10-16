@@ -1,0 +1,47 @@
+{
+  "schema": "legal-ir-ordinary-worker-public-evidence-index@1",
+  "implementation_tested_commit": "93cfd32f65cd231df57e53736edf0f78b58af009",
+  "evidence_files": {
+    "build-native-receipt.json": {
+      "sha256": "7317604517dbaddfd35033f794ba11adbc0bb7c9af4431fe4b0b5f310f8d5ce3",
+      "bytes": 1004
+    },
+    "docker-allocation.json": {
+      "sha256": "d762436ec2182a303f2683deb08a4ca1ed0516101e7e105bd5a234acc07f46ad",
+      "bytes": 1959
+    },
+    "image-qualification.json": {
+      "sha256": "f6b7ba781e443a6e369a831d8347d0d76e51fbc1a9add59d3b57f424ae1618ad",
+      "bytes": 4673
+    },
+    "integration-native-receipt.json": {
+      "sha256": "23fb88da3def87f20cf81d482d64284f386da0541da3ae481f7acaf8f630edd9",
+      "bytes": 690
+    },
+    "integration-result.json": {
+      "sha256": "df3263bfea8c03f7a5515710a1bbba47c67f3f46f4290f72df456e4c9f5e09b7",
+      "bytes": 880
+    },
+    "integration-tests.xml": {
+      "sha256": "059c9874b0f75803d3d09bb5a8d3db5e3cf99f0099b10e20e1c279d7cdecfd1d",
+      "bytes": 6040
+    },
+    "runtime-report.json": {
+      "sha256": "d6fa01fa493491088434b9ffca9c1eb9106bd832cda9783e297e4d6b2efffcdd",
+      "bytes": 3797
+    },
+    "sbom.spdx.json": {
+      "sha256": "68343e0de1011f2340059669930c22c7dd2bdc4439681c1bd9a9633f7cd1eb42",
+      "bytes": 345118
+    },
+    "staging-receipt.json": {
+      "sha256": "89323ce933b804d37e0f6767bd7fa3ed89beaaa48c7db81dfe2213b171f557f5",
+      "bytes": 939
+    },
+    "watchdog-regression.json": {
+      "sha256": "128a031755411cc62296f21d143520b0e111d56b07a7ac6c46a565931354fcc6",
+      "bytes": 1953
+    }
+  },
+  "completion_authority": false
+}
