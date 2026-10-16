@@ -3,16 +3,16 @@
   "status": "observed_metadata",
   "observation": {
     "origin": "actual finite native bootstrap preparation owner; bounded Git/file metadata observed before source-metadata commit",
-    "observed_at_utc": "2026-10-16T23:09:01.903571+00:00",
-    "evidence_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-preflight01/preflight.json"
+    "observed_at_utc": "2026-10-16T23:22:40.397249+00:00",
+    "evidence_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-preflight03/preflight.json"
   },
   "repositories": [
     {
       "repository": "ipfs_accelerate_py",
       "status": "observed_metadata",
       "checkout_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller",
-      "head": "460326a574af1cbcdd14786373562d67636288b9",
-      "tree": "337efc42758bfd3808e1c5a7e2d30d32ee36f846",
+      "head": "624ddb50e2f8b28a9f4111e84ed58f72de99caf5",
+      "tree": "30d871bd8ab3e3d33c9c8047c0d39b578b30f61a",
       "branch": "agent/legal-ir-ordinary-worker-20261016",
       "source_files": [
         {
@@ -67,13 +67,13 @@
         },
         {
           "path": "docs/architecture/legal_ir_supervisor_start_20261016/scheduler_config.json",
-          "bytes": 6946,
-          "sha256": "00fb410990ff15d4c6879967cc28d8f20c91fa50c77e38949400e3cc0819e368"
+          "bytes": 6970,
+          "sha256": "8d75b127c777def2b62c8c5eec6b275796df4669488e0457830b38f8fab5ad44"
         },
         {
           "path": "docs/architecture/legal_ir_supervisor_start_20261016/validate_bootstrap.py",
-          "bytes": 23133,
-          "sha256": "af69f0d5790b6a2fddacdfac7d68761c41cedbe4cd02554733b0dd58282c0059"
+          "bytes": 23137,
+          "sha256": "e4b8f9500e156c1743d9cf09d5f8dd32ed615e019106119ac79772ed292bce7a"
         }
       ]
     },
