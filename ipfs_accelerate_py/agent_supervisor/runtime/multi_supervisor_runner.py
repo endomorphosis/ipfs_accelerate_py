@@ -7378,13 +7378,12 @@ def start_track(
     authority_executable_fd: int | None = None
     try:
         try:
-            # An ordinary Quack track is a trusted control child. The reusable
-            # broker descriptor must cross this hop only after the exact child
-            # has execed and established its kernel isolation boundary. Other
-            # tracks retain their existing sealed/gated or legacy launch paths.
-            if (not plan_bound_dispatch and not live_seal_required
-                    and resolved.database_program is not None
-                    and resolved.database_program.authority_mode == AUTHORITY_MODE_QUACK):
+            # Ordinary control tracks can receive their Quack selection via
+            # shared CLI arguments, leaving database_program metadata unset.
+            # The actual sealed broker binding determines whether this trusted
+            # control hop needs a post-hardening handoff. Unbound legacy tracks
+            # and existing sealed/gated paths retain their launch behavior.
+            if not plan_bound_dispatch and not live_seal_required:
                 from .process_security import (
                     STATE_AUTHORITY_DESCRIPTOR_ENV_NAMES,
                     STATE_AUTHORITY_DESCRIPTOR_SOCKET_ENV,

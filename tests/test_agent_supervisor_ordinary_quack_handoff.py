@@ -161,3 +161,43 @@ def test_incomplete_broker_binding_fails_closed_before_birth(transport, monkeypa
     with pytest.raises(security.StateAuthorityProcessIsolationError, match="binding is incomplete"):
         _start(transport, _track(transport, script))
     assert not (transport["root"] / "lane/supervisor.pid").exists()
+
+
+def test_real_cli_tracks_with_shared_quack_flags_redeem_without_program_metadata(transport):
+    root=transport['root']
+    receipt=root/'cli-handoff-result.json'
+    script=_write_script(root/'trusted_cli_supervisor.py', '''
+import argparse,json,os,signal
+from pathlib import Path
+signal.alarm(15)
+parser=argparse.ArgumentParser()
+parser.add_argument('--fixture-result',required=True)
+args,_unknown=parser.parse_known_args()
+raw_descriptor_at_exec=bool(os.environ.get('IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD'))
+from ipfs_accelerate_py.agent_supervisor.runtime.process_security import harden_state_authority_process,state_authority_pass_fds
+harden_state_authority_process()
+fds=state_authority_pass_fds(os.environ)
+assert len(fds)==1
+Path(args.fixture_result).write_text(json.dumps({'raw_descriptor_at_exec':raw_descriptor_at_exec,'received_sealed_descriptor':True}))
+''')
+    flag='--implementation-track'
+    spec=runner.implementation_supervisor_compact_track_spec(name='actual-cli-fixture',
+        script_path=script,state_dir=root/'cli-lane',state_prefix='fixture_cli')
+    common=[*transport['program'].cli_args(),'--fixture-result',str(receipt)]
+    parsed=runner.build_arg_parser().parse_args(['--repo-root',str(root),flag,spec,
+                                                *['--common-arg='+arg for arg in common]])
+    tracks=runner.tracks_from_parsed_args(parsed)
+    actual_common=runner.common_args_from_parsed_args(parsed)
+    assert len(tracks)==1 and tracks[0].database_program is None
+    assert actual_common[actual_common.index('--authority-mode')+1]=='quack'
+    process=runner.start_track(tracks[0],repo_root=root,common_args=actual_common,
+        python_executable=sys.executable,output=lambda _:None)
+    try:
+        assert process.wait(timeout=20)==0
+        assert json.loads(receipt.read_text())=={'raw_descriptor_at_exec':False,
+                                                'received_sealed_descriptor':True}
+    finally:
+        if process.poll() is None:
+            fenced,_=runner._terminate_managed_process(process,grace_seconds=2)
+            assert fenced
+            process.wait(timeout=5)
