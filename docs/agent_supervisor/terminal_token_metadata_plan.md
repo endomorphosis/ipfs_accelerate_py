@@ -1632,3 +1632,51 @@ remain unqualified. No installed retry default or token-savings claim is enabled
 Initial fixture provisioning and renewable-parent assertion failures are retained
 with the successful reruns in
 [qualification.json](evidence/native-delegated-allocation-20261016/qualification.json).
+
+## October 16: provision the initial owner-only workspace through descriptors
+
+The generated owner wrapper now calls `provision_owner_writable_worktree(...)`
+before source-broker construction or the first worker census. It derives the
+existing local timeout cap before provisioning and passes the minimum of that
+cap and any inherited provider deadline. Reserved first-attempt and deadline
+arguments are refused before workspace mutation.
+
+The provisioner supports an initial protected tree containing only owner-owned
+directories and single-link regular files in the declared shared group. It
+authenticates the existing boundary and exact allocated scope, requires declared
+owner-private paths to remain disjoint from the worktree, preflights the
+complete bounded inventory, and refuses links, special files, foreign ownership,
+group/other writes, POSIX ACLs and mount differences before any mode change.
+The root mount must also match its protected parent, preventing a separate root
+mount from being adopted solely because its descendants match each other.
+Worker-owned entries require separate retirement custody and are refused.
+Checkouts created with group-writable ambient permissions are also refused;
+supplying a protected fresh checkout remains a prerequisite. This change does
+not alter the daemon's worktree-creation umask.
+Nested `.git` controls are refused, so submodule and nested-repository trees
+require a separate provisioning policy.
+
+After preflight it gates the root to `0700`, applies changes through verified
+descriptors, and checks the complete inventory while the root remains private.
+Nested directories become `02770`, ordinary files `0660`, executable files
+`0770`, and the owner Git marker `0440`. It publishes root mode `03770` last.
+The original deadline continues to apply throughout these operations.
+
+Failure after mutation does not claim rollback. The helper attempts to keep the
+original root at `0700` and reports partial progress and whether quarantine of
+the still-named root was observed. Uncertain custody prevents success and the
+wrapper proceeds to neither source brokers nor the first census. Recovery of a
+partially provisioned tree requires separate owner action.
+
+This is an initial-workspace filesystem transition, not a kernel writer lease:
+root gating cannot revoke descriptors already held by another process. The
+caller must control the initial phase with no live worker. The receipt is inert
+and cannot replace native task, allocation, run or resource authority. Native
+delegated capture remains a separate check after actual first-census preparation;
+it does not upgrade its metadata from a provisioning receipt.
+
+Host qualification and authored deployment seams are recorded in
+[qualification.json](evidence/owner-worktree-provisioning-20261016/qualification.json).
+Separate-UID and Docker isolation, daemon-to-wrapper native ownership handoff,
+an installed continuation retry default and measured total token savings remain
+open.

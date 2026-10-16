@@ -1,0 +1,6 @@
+{
+  "path": "/home/barberb/.w16t02",
+  "mode": "0700",
+  "protected_ancestors_verified": true,
+  "reason": "Short private tempfile root also bounds WorkerSourceBroker AF_UNIX path length."
+}
