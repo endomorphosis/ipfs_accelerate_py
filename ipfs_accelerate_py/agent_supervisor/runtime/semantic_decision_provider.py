@@ -273,6 +273,11 @@ class SharedRouterDecisionProvider:
             # Keep native final-envelope evidence on both return and failure.
             # These closed projections do not establish complete task usage.
             receipt["native_rollout_usage"] = grok_usage_receipt(observed)
+            try:
+                from ipfs_accelerate_py.cli_runtime.grok_prompt_accounting import grok_prompt_accounting_receipt
+                receipt["native_prompt_accounting"] = grok_prompt_accounting_receipt(observed)
+            except Exception:
+                receipt["native_prompt_accounting"] = None
             receipt["native_provider_outcome"] = grok_outcome_receipt(observed)
 
 

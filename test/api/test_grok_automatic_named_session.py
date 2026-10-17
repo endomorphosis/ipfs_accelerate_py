@@ -1041,3 +1041,143 @@ class StrictAllocationBindingSourceTests(unittest.TestCase):
                 self.assertTrue(observed.exception.side_effects_started)
                 self.assertFalse(observed.exception.retryable)
                 self.assertEqual((request._phase, request.completed_session_id), ("response_accepted", SESSION))
+
+
+class AutomaticNamedSessionOutputBudgetRefusalTests(unittest.TestCase):
+    """Append to the existing named-session test module; source proposal only.
+
+    The inherited fixture methods create synthetic source-bound owner inputs.
+    No lower TOML scalar is presented as qualified native effective policy.
+    """
+    setUp = AutomaticNamedSessionSourceTests.setUp
+    request = AutomaticNamedSessionSourceTests.request
+    provider_call = AutomaticNamedSessionSourceTests.provider_call
+    prepared_home_fixture = AutomaticNamedSessionSourceTests.prepared_home_fixture
+
+    def refused_call(self, options, expected):
+        from ipfs_accelerate_py import llm_router as router
+        request = self.request()
+        original = {path: (path.read_bytes(), path.stat().st_ino,
+                           path.stat().st_mode, path.stat().st_mtime_ns)
+                    for path in (self.configuration, self.requirements, self.binary)}
+        environment = dict(os.environ)
+        key_context = tuple(getattr(router._API_KEY_CONTEXT, field, None)
+                            for field in ("slot", "fingerprint"))
+        with contextlib.chdir(request.workspace), \
+             patch.object(router, "_grok_cli_command", return_value=str(self.binary)), \
+             patch.object(router, "_cli_available", return_value=True), \
+             patch.object(helper, "validate_preparation_option", side_effect=AssertionError("owner precheck forbidden")) as precheck, \
+             patch.object(helper, "NamedSessionLifetime", side_effect=AssertionError("lifetime forbidden")) as lifetime, \
+             patch.object(helper, "prepare_native_home", side_effect=AssertionError("preparation forbidden")) as prepare, \
+             patch.object(helper, "_bootstrap", side_effect=AssertionError("bootstrap forbidden")) as bootstrap, \
+             patch.object(router.subprocess, "run", side_effect=AssertionError("headless forbidden")) as run, \
+             patch.object(router.subprocess, "Popen", side_effect=AssertionError("process forbidden")) as popen:
+            provider = router._get_grok_cli_provider()
+            with self.assertRaisesRegex(ValueError, expected):
+                provider.generate("unit only", model_name="grok-4.7", temperature=0,
+                    grok_named_session_request=request, grok_cli_cmd=[str(self.binary)], **options)
+        for forbidden in (precheck, lifetime, prepare, bootstrap, run, popen):
+            forbidden.assert_not_called()
+        self.assertEqual(request._phase, "prepared")
+        self.assertEqual(original, {path: (path.read_bytes(), path.stat().st_ino,
+                           path.stat().st_mode, path.stat().st_mtime_ns)
+                    for path in original})
+        self.assertEqual(environment, dict(os.environ))
+        self.assertEqual(key_context, tuple(getattr(router._API_KEY_CONTEXT, field, None)
+                                            for field in ("slot", "fingerprint")))
+        self.assertEqual(list(request.native_home.iterdir()), [])
+        self.assertEqual(list(request.preparation.home.iterdir()), [])
+        self.assertEqual(list(request.audit_directory.iterdir()), [])
+
+    def test_each_budget_alias_and_equal_aliases_refuse_before_native_work(self):
+        aliases = ("max_tokens", "max_new_tokens", "max_completion_tokens")
+        for options in (*({name: 4096} for name in aliases), dict.fromkeys(aliases, 4096)):
+            with self.subTest(options=options):
+                self.refused_call(options, "qualified pinned owner cap")
+
+    def test_even_pinned_lower_or_equal_caps_need_effective_native_qualification(self):
+        # A scalar is not a qualified effective-cap receipt for initialization.
+        marker = '[model."grok-4.7"]\ntemperature = 0.0\n'
+        for cap in (None, 2048, 4096, 8192):
+            config = CONFIG if cap is None else CONFIG.replace(
+                marker, marker + "max_completion_tokens = " + str(cap) + "\n")
+            self.assertEqual(config.count("max_completion_tokens"), int(cap is not None))
+            self.configuration.write_text(config)
+            with self.subTest(pinned_selected_cap=cap):
+                self.refused_call({"max_tokens": 4096}, "qualified pinned owner cap")
+
+    def test_invalid_or_conflicting_budget_aliases_keep_shared_validation(self):
+        for value in (True, None, 0, -1, 4096.0, "4096"):
+            with self.subTest(value=value):
+                self.refused_call({"max_tokens": value}, "positive TOML integer")
+        self.refused_call({"max_tokens": 4096, "max_completion_tokens": 2048}, "aliases conflict")
+
+    def test_named_route_without_caller_budget_keeps_existing_owner_handoff(self):
+        output, request, observed = self.provider_call()
+        self.assertEqual(output, "unit planning response")
+        self.assertEqual(self.last_preparation_count, 1)
+        self.assertEqual(self.last_headless_count, 1)
+        self.assertEqual(observed[0]["environment"]["GROK_HOME"], str(request.native_home))
+        self.assertEqual(observed[0]["environment"]["XAI_API_KEY"], KEY)
+        self.assertTrue(request.receipt()["response_accepted"])
+
+    def refused_public_call(self, options, expected):
+        from ipfs_accelerate_py import llm_router as router
+        from ipfs_accelerate_py.llm_allocation import api_key_slots
+        request = self.request()
+        before_environment = dict(os.environ)
+        before_allocation = router._allocation_context()
+        before_keys = tuple(getattr(router._API_KEY_CONTEXT, field, None)
+                            for field in ("slot", "fingerprint"))
+        before_inputs = {path: (path.read_bytes(), path.stat().st_ino,
+                               path.stat().st_mode, path.stat().st_mtime_ns)
+                         for path in (self.configuration, self.requirements, self.binary)}
+        with contextlib.ExitStack() as stack:
+            forbidden = []
+            for module, name in (
+                (helper, "validate_public_dispatch"),
+                (router, "get_default_router_deps"),
+                (router, "_resolve_allocation_session_id"),
+                (router, "get_allocation_session"),
+                (router, "_set_allocation_context"),
+                (api_key_slots, "apply_api_key_to_kwargs"),
+                (router, "_clear_last_generation_trace"),
+                (router, "_set_last_usage_admission"),
+                (router, "get_llm_provider"),
+                (helper, "NamedSessionLifetime"),
+                (helper, "prepare_native_home"),
+                (helper, "_bootstrap"),
+                (router.subprocess, "Popen"),
+                (router.subprocess, "run"),
+            ):
+                forbidden.append(stack.enter_context(patch.object(module, name,
+                    side_effect=AssertionError("public refusal reached " + name))))
+            with self.assertRaisesRegex(ValueError, expected):
+                router.generate_text("unit only", provider="grok_cli", model_name="grok-4.7",
+                    temperature=0, side_effecting=True, allow_local_fallback=False,
+                    allow_cross_provider_fallback=False, allocation_session_id="unit-allocation",
+                    grok_named_session_request=request, **options)
+            for check in forbidden:
+                check.assert_not_called()
+        self.assertEqual(before_environment, dict(os.environ))
+        self.assertEqual(before_allocation, router._allocation_context())
+        self.assertEqual(before_keys, tuple(getattr(router._API_KEY_CONTEXT, field, None)
+                                            for field in ("slot", "fingerprint")))
+        self.assertEqual(before_inputs, {path: (path.read_bytes(), path.stat().st_ino,
+                               path.stat().st_mode, path.stat().st_mtime_ns)
+                         for path in before_inputs})
+        self.assertEqual(request._phase, "prepared")
+        for directory in (request.native_home, request.preparation.home, request.audit_directory):
+            self.assertEqual(list(directory.iterdir()), [])
+
+    def test_public_budget_aliases_refuse_before_owner_credentials_or_allocation(self):
+        aliases = ("max_tokens", "max_new_tokens", "max_completion_tokens")
+        for options in (*({name: 4096} for name in aliases), dict.fromkeys(aliases, 4096)):
+            with self.subTest(options=options):
+                self.refused_public_call(options, "qualified pinned owner cap")
+
+    def test_public_invalid_or_conflicting_aliases_fail_without_dispatch_side_effects(self):
+        for value in (True, None, 0, -1, 4096.0, "4096"):
+            with self.subTest(value=value):
+                self.refused_public_call({"max_tokens": value}, "positive TOML integer")
+        self.refused_public_call({"max_tokens": 4096, "max_new_tokens": 2048}, "aliases conflict")

@@ -8369,6 +8369,11 @@ def _grok_request_requirements(path: Path, model: str, *, zero_temperature: bool
     return policy
 
 
+def _grok_requirements_allow_zero(path: Path, model: str) -> None:
+    """Keep named-session requirements checks on the shared policy validator."""
+    _grok_request_requirements(path, model, zero_temperature=True)
+
+
 @contextmanager
 def _grok_zero_temperature_environment(environment, *, model: str, command,
                                      zero_temperature: bool = True,
@@ -8488,6 +8493,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             named_request = kwargs.pop("grok_named_session_request", None)
             named_base_parts = None
             if named_request is not None:
+                if _grok_output_token_budget(dict(kwargs)) is not None:
+                    raise ValueError("Named Grok output token budgets require a qualified pinned owner cap")
                 from .cli_runtime.grok_named_session import validate_preparation_option
                 validate_preparation_option("grok_cli", named_request, kwargs)
                 if (not structured_cli or "temperature" not in kwargs
@@ -8733,7 +8740,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         cmd.extend(["--resume", resume_session_id])
                         env = named_lifetime.environment
                         timeout = named_lifetime.headless_timeout(timeout)
-                    elif temperature_supplied:
+                    elif temperature_supplied or output_token_budget is not None:
                         env = sampling_scope.enter_context(_grok_zero_temperature_environment(
                             env, model=model, command=cmd, zero_temperature=temperature_supplied,
                             output_token_budget=output_token_budget))
@@ -13567,6 +13574,8 @@ def generate_text(
 
     named_request = kwargs.get("grok_named_session_request")
     if named_request is not None:
+        if _grok_output_token_budget(dict(kwargs)) is not None:
+            raise ValueError("Named Grok output token budgets require a qualified pinned owner cap")
         from .cli_runtime.grok_named_session import validate_public_dispatch
         validate_public_dispatch(provider=provider, model=model_name,
             request=kwargs["grok_named_session_request"], options=kwargs,
