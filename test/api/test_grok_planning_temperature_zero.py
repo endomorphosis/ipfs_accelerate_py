@@ -355,6 +355,101 @@ class GrokPlanningTemperatureTests(unittest.TestCase):
         self.assertEqual(len(observed), 1)
         self.assertFalse(receipt["completion_authority"])
 
+    def _planning_resume_call(self, *, supplied=None, observed=None, provider="grok_cli", failure=None):
+        """Exercise the real runner and allocation contract with mocked transport."""
+        from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation
+        from ipfs_accelerate_py.llm_allocation import intelligence_index
+        from ipfs_accelerate_py.llm_allocation.paths import inject_cli_session_kwargs
+        from ipfs_accelerate_py.agent_supervisor.runtime import multi_supervisor_runner
+        from ipfs_accelerate_py.agent_supervisor.runtime import context_delivery_accounting
+
+        calls = []
+        self.stack.enter_context(patch.dict(os.environ))
+        for name in (*multi_supervisor_runner.DATABASE_PROGRAM_ENV_NAMES,
+                     *multi_supervisor_runner.STATE_CREDENTIAL_ENV_NAMES,
+                     "IPFS_ACCELERATE_AGENT_STATE_OWNER_TOKEN"):
+            os.environ.pop(name, None)
+
+        def generate(prompt, **kwargs):
+            calls.append(kwargs)
+            self.assertEqual(kwargs["temperature"], 0)
+            self.assertFalse(kwargs["allow_local_fallback"])
+            self.assertFalse(kwargs["allow_cross_provider_fallback"])
+            self.assertEqual(kwargs["max_tokens"], 4096)
+            self.assertEqual(kwargs["grok_tools"], "read_file")
+            self.assertEqual(kwargs["grok_disallowed_tools"], "read_file,search_tool,use_tool")
+            self.assertTrue(kwargs["side_effecting"])
+            bound = dict(kwargs)
+            inject_cli_session_kwargs("grok_cli", bound,
+                allocation_session_id=kwargs["allocation_session_id"])
+            if supplied is None:
+                self.assertNotIn("resume_session_id", kwargs)
+                self.assertEqual(bound["chat_session_id"], kwargs["allocation_session_id"])
+            else:
+                self.assertEqual(kwargs["resume_session_id"], supplied)
+                self.assertEqual(bound["resume_session_id"], supplied)
+                self.assertNotIn("chat_session_id", bound)
+                self.assertNotIn("continue_session", bound)
+            if failure is not None:
+                raise failure
+            metadata = {"exit_code": 0}
+            if observed is not None:
+                metadata["session_id"] = observed
+            set_last_cli_observation("grok_cli", metadata)
+            return "unit planning response"
+
+        with (patch.object(ctypes.util, "find_library", side_effect=_fixture_library_resolver()),
+              patch.object(subprocess, "check_output", return_value=str(self.root)),
+              contextlib.chdir(self.root),
+              patch.object(intelligence_index, "discover_available_providers", return_value=[provider]),
+              patch.object(intelligence_index, "select_efficient_route", return_value=SimpleNamespace(
+                  provider=provider, model_name="grok-4.7", catalog_revision="unit-only")),
+              patch.object(self.canonical_router, "get_llm_provider", return_value=object()),
+              patch.object(self.canonical_router, "generate_text", side_effect=generate),
+              patch.object(context_delivery_accounting, "observe_invocation", return_value={"status": "unit-only"}),
+              contextlib.redirect_stdout(io.StringIO())):
+            output, receipt = self.runner.run(prompt="unit planning instruction", provider=provider,
+                model="grok-4.7", purpose="planning", timeout=90, max_output_tokens=4096,
+                resume_session_id=supplied)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(output, "unit planning response")
+        self.assertFalse(receipt["completion_authority"])
+        return receipt
+
+    def test_explicit_native_resume_preserves_actual_uuid_and_tools_policy(self):
+        session = "21e7c5f3-35d8-49e0-a135-8c99a10b938b"
+        receipt = self._planning_resume_call(supplied=session, observed=session)
+        self.assertEqual(receipt["provider_invocation_policy"]["native_resume_session_id"], session)
+        self.assertTrue(receipt["provider_invocation_policy"]["native_resume_identity_verified"])
+
+    def test_default_native_resume_retains_allocation_create_on_first_behavior(self):
+        receipt = self._planning_resume_call()
+        self.assertNotIn("native_resume_session_id", receipt["provider_invocation_policy"])
+
+    def test_invalid_explicit_resume_refuses_before_transport(self):
+        for value in (True, 7, [], "", "not-a-uuid", "--continue", "21E7C5F3-35D8-49E0-A135-8C99A10B938B",
+                      "21e7c5f335d849e0a1358c99a10b938b"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "canonical session UUID"):
+                self._planning_resume_call(supplied=value)
+
+    def test_explicit_resume_on_non_grok_provider_refuses_before_transport(self):
+        with self.assertRaisesRegex(ValueError, "Grok CLI provider"):
+            self._planning_resume_call(supplied="21e7c5f3-35d8-49e0-a135-8c99a10b938b", provider="codex_cli")
+
+    def test_native_resume_observation_mismatch_refuses(self):
+        with self.assertRaisesRegex(RuntimeError, "differs from the explicit request"):
+            self._planning_resume_call(supplied="21e7c5f3-35d8-49e0-a135-8c99a10b938b",
+                observed="32e7c5f3-35d8-49e0-a135-8c99a10b938b")
+
+    def test_native_resume_missing_observation_refuses(self):
+        with self.assertRaisesRegex(RuntimeError, "differs from the explicit request"):
+            self._planning_resume_call(supplied="21e7c5f3-35d8-49e0-a135-8c99a10b938b")
+
+    def test_native_resume_keeps_primary_provider_exception(self):
+        with self.assertRaisesRegex(RuntimeError, "unit transport refusal"):
+            self._planning_resume_call(supplied="21e7c5f3-35d8-49e0-a135-8c99a10b938b",
+                failure=RuntimeError("unit transport refusal"))
+
 
 if __name__ == "__main__":
     unittest.main()

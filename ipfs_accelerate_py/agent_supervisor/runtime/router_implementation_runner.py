@@ -809,6 +809,7 @@ def _refuse_candidate_preparation(prompt):
 def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int,
         reasoning_effort: str = "high", container_boundary: Path | None = None,
         container_boundary_sha256: str = "", purpose: str = "coding",
+        resume_session_id: str | None = None,
         semantic_repository: Path | None = None,
         source_formalization_handoff: Path | None = None,
         source_formalization_handoff_sha256: str | None = None,
@@ -880,6 +881,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("Codex literal response requires the Codex CLI provider")
     if receipt_observer is not None and not callable(receipt_observer):
         raise ValueError("explicit receipt observer callback required")
+    if resume_session_id is not None:
+        if provider != "grok_cli" or type(resume_session_id) is not str:
+            raise ValueError("explicit native resume requires the Grok CLI provider and a canonical session UUID")
+        try:
+            canonical_session_id = str(uuid.UUID(resume_session_id))
+        except (ValueError, AttributeError):
+            raise ValueError("explicit native resume requires a canonical session UUID") from None
+        if canonical_session_id != resume_session_id:
+            raise ValueError("explicit native resume requires a canonical session UUID")
     if world_packet_audit_directory is not None and world_task_packet is None:
         raise ValueError("world packet audit capture requires a prepared world packet")
     if world_task_packet is not None:
@@ -1603,6 +1613,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "disallowed_tools": provider_options["grok_disallowed_tools"].split(","),
             "effective_toolset_verified": False,
         }
+        if resume_session_id is not None:
+            # An owner may resume a genuinely created and independently
+            # attested native session. Explicit kwargs keep allocation routing
+            # from creating a different chat session. This does not create,
+            # inspect or qualify the supplied session's content or toolset.
+            provider_options["resume_session_id"] = resume_session_id
+            receipt["provider_invocation_policy"]["native_resume_session_id"] = resume_session_id
+            receipt["provider_invocation_policy"]["native_resume_identity_verified"] = False
         if purpose == "coding":
             provider_options.update(grok_stream_progress=True,
                                     grok_progress_callback=_grok_progress_emitter(invocation))
@@ -1799,6 +1817,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             )
         failure_phase = "provider_result_validation"
         observation = get_last_cli_observation(provider)
+        if resume_session_id is not None:
+            if observation.get("session_id") != resume_session_id:
+                raise RuntimeError("observed Grok native resume session differs from the explicit request")
+            receipt["provider_invocation_policy"]["native_resume_identity_verified"] = True
         if repository_source_binding is not None and (
                 observation.get("codex_repository_source_config_sha256") != repository_source_binding["config_sha256"]
                 or observation.get("codex_repository_source_configured") is not True):
