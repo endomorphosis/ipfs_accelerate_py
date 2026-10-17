@@ -1,0 +1,79 @@
+{
+  "checks": [
+    "Both actual ADMIN and full settlement post-owner records must be root-pinned0exit/released observations with exact production parent schema, operation, resource IDs and absent owner PID; same unbound input and genuine ADMIN-result lineage are required before the one current ledger read.",
+    "Original foreign reservation36c3 must remain retained, same actual historical ownerPID2516780 and exact canonical SHA of the complete immutable a7db baseline record. This is the only full historical record-equality claim.",
+    "Failed Status reservatione7db must retain observed status, ownerPID1815325,512MiB budget and exact attempt path. Device/inode are validated current identity fields, not claimed historically equal.",
+    "All other reservation rows are reduced to current digest-map SHA/count only; complete historical baseline and historical equality are explicitly false.",
+    "Read-only metadata access uses regular owned single-link nonalias stable generations, bounded reads, duplicate/nonfinite JSON refusal. The current ledger bound is8MiB and4096 reservations.",
+    "No code path creates native leases, ACKs, native receipts, process probes, DB/WAL handles, ledger writes, record release, provider calls or policy/context authority. Output is bounded16KiB JSON stdout."
+  ],
+  "exact_delta_checks": {
+    "all_other_functions_AST_identical": true,
+    "changed_existing_functions": [
+      "main"
+    ],
+    "output_schema_changes_only_to_retention_comparison_at2": true,
+    "v01_original_unchanged": true,
+    "whole_patch_matches_actual_source_diff": true
+  },
+  "exact_patch_pin": {
+    "bytes": 2486,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/retention-comparator-native-attempt-identity-v02.patch",
+    "sha256": "eea10121e6f09775e55378b18aa12f6f4830ea8ebff5d5167e8e2851b6561ca1"
+  },
+  "existing_actual_outer_observer_source_pin": {
+    "bytes": 7370,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/observe_finalized_production_owner_v03.py",
+    "sha256": "f7f5602fe7cbd7595e88f670628e1c144d309175727a63b009b6d6b138705047"
+  },
+  "immutable_failed_Status_observation_pin": {
+    "bytes": 1268,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-attempt01-failure-post-owner-v01.json",
+    "sha256": "f13fce3d6c3c6e2cba170d9191031396c4273820490686b61526dc7a33265cbd"
+  },
+  "immutable_original_retention_baseline_pin": {
+    "bytes": 2290,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/foreign-original-retention-baseline-v01.json",
+    "sha256": "a7db7d0b83f95be85aa8401824ee3b27109154f290eeb9590c27d29b45f04d05"
+  },
+  "limitations": [
+    "This source review did not run the comparator or read current ledger/process/resource/native result state; no final retention equality or actual stop qualification is asserted. Root may execute only after actual ADMIN and settlement tools exit/release and supplies their real immutable post-owner pins.",
+    "The root post-owner observations are separate observational prerequisites, not native receipts or independently recreated kernel custody. This comparator neither rechecks native process liveness nor proves remote outcome/callback closure.",
+    "Original full-record equality and failed-Status selected-field preservation do not establish historical equality for other foreign records. No foreign retained reservation is authorized for cleanup."
+  ],
+  "method": {
+    "comparator_helper_native_or_product_import_execution": false,
+    "current_ledger_DB_WAL_process_resource_or_native_outputs_read_or_queried": false,
+    "exact_source_AST_and_named_immutable_metadata_only": true,
+    "native_jobs_tests_provider_calls_C_or_production_input_edits": false
+  },
+  "native_ledger_contract_source_pin": {
+    "bytes": 40999,
+    "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+    "sha256": "b9c8ca9f889366df93fd82887b7d6fcbfda9edee12a58a5667b485fe2c8a54ed"
+  },
+  "preserved_baseline_source_pin": {
+    "bytes": 9056,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compare_finalized_production_retention_v01.py",
+    "sha256": "acfd79842f95f1990ddb69ec11da90dc583fbfccb68210469810a5828e049d99"
+  },
+  "resolved_findings": [
+    {
+      "v01_blocker": "Native ledger attempt_directory is an identity object; immutable f13 failed-observation attempt_directory is a path string. Direct equality would reject the genuine record.",
+      "v02_correction": "Require closed {path,device,inode} object, exact historical path string and strictly positive integer device/inode, consistent with actual native _root_identity source."
+    },
+    {
+      "scope_clarification": "f13 supplies selected historical fields, not a full historical failed-reservation record digest.",
+      "v02_correction": "Failed Status explicitly selected_fields_compared_only=true, complete_historical_record_baseline=false and historical_full_record_equality_claimed=false; current record digest is an observation only."
+    }
+  ],
+  "reviewed_at_utc": "2026-10-17T13:32:09.518929+00:00",
+  "schema": "production-local-stop-retention-comparator-independent-static-review@2",
+  "source_pin": {
+    "bytes": 9566,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compare_finalized_production_retention_v02.py",
+    "sha256": "8942fbd4d169b184832a9ab75a96a69d3619342b11459c07dac1ac4cce5a62a7"
+  },
+  "status": "static_clear_actual_post_finalization_retention_comparison_pending",
+  "unresolved_static_blockers": []
+}

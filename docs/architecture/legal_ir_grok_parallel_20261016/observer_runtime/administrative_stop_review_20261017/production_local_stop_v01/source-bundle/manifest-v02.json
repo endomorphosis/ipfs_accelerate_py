@@ -1,0 +1,147 @@
+{
+  "author_product_import_native_job_database_WAL_read_or_source_C_edit": false,
+  "authority_context_sealed": false,
+  "controller_head": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "current_A_protocol_is_corroboration_only_not_historical_leaf_attestation": true,
+  "files": [
+    {
+      "bytes": 14714,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-adapters-and-unbound-compiler-source-contract-v02.json",
+      "sha256": "d850ca50c1af494ab5b85bc823270c6befcbe75140ad02d80ee3e8149f2af6cc"
+    },
+    {
+      "bytes": 31245,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_admin_worker_v01.py",
+      "sha256": "4fd503c0632ee880503acb70bf6c7b689cba39f8e3be57034c5e8d16956e438b"
+    },
+    {
+      "bytes": 51717,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v01.py",
+      "sha256": "160184262e4f0008ab1b25e30164f97e6e601a6704df05c87470e4ed5ea540f8"
+    },
+    {
+      "bytes": 52247,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v02.py",
+      "sha256": "db2efe5e16bf10aa0ba94de041cd533d4cf3374ea6ffc911feab4ab5299e8665"
+    },
+    {
+      "bytes": 26188,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_settlement_worker_v01.py",
+      "sha256": "e2c9fc6774183a52f02ddd99cb72a457fef117f2ec5d374c7b722ff13d7a5ec5"
+    },
+    {
+      "bytes": 24753,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compile_production_admin_inputs_v02.py",
+      "sha256": "253a77280af682b4a81b7b2c71c5418e9f37e5f5a425fea4a5b51611aee5a7ba"
+    },
+    {
+      "bytes": 18052,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_admin_worker_v01-production-derivative.patch",
+      "sha256": "43f530e9a990a8389e72401605e5fd9831fc4860b4be2884615524faa3139438"
+    },
+    {
+      "bytes": 36953,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v01-production-derivative.patch",
+      "sha256": "190304fe1eac4020ccc941e3962551f5bda64f0bc709165b6cb11d50392e2e85"
+    },
+    {
+      "bytes": 19101,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_settlement_worker_v01-production-derivative.patch",
+      "sha256": "6f6e31548cf2e80df6975cc3a65ba473e1742eb8822f04d0b1cbe39629563643"
+    },
+    {
+      "bytes": 2024,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-parent-retain-first-response-v02-candidate.patch",
+      "sha256": "876f0563ab8f92a23e02f1fc9f2f66ce5accff2cdb4096f06cddd282d4a3247e"
+    },
+    {
+      "bytes": 5192,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-three-adapters-independent-static-review-v01.json",
+      "sha256": "10b9ed2ebe01df57002a4f2503e549a7b2d84db4db99fc57e260da972bfef800"
+    },
+    {
+      "bytes": 2583,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-parent-first-response-independent-review-v02.json",
+      "sha256": "5af125c84bc916a14d6bbda3d3dd64cbb9ba5ed947c84c66680f9c51faa31ab7"
+    },
+    {
+      "bytes": 6252,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compiler-independent-review-v02.json",
+      "sha256": "46745adc2823d3411865a5cca80880f98585bb69ba4f84b801958a581ca60514"
+    },
+    {
+      "bytes": 4925,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-current-protocol-independent-review-v02.json",
+      "sha256": "e9228ac41cc9f93f6d2c6c1069e7612ad77e5d9144d19becedd543b3c4fba821"
+    },
+    {
+      "bytes": 6354,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-owner-and-policy-tests-independent-review-v01.json",
+      "sha256": "817aaa177cd247ba9b67c66623a086093f3ad41f0d5bdf546b577d1cf5926d49"
+    },
+    {
+      "bytes": 42267,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-current-protocol-v02/production_unknown_closed_status_owner_v01.py",
+      "sha256": "bd73cc7fba06a670e6ca26693fe73815718df1949445c6ab30ba848d610e79e7"
+    },
+    {
+      "bytes": 18258,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/prepare_production_closed_status_request_v02.py",
+      "sha256": "4ba97eac12c814995a5a66c9d515820ec487bc9be466c48449390f0ba35f0371"
+    },
+    {
+      "bytes": 7370,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/observe_finalized_production_owner_v03.py",
+      "sha256": "f7f5602fe7cbd7595e88f670628e1c144d309175727a63b009b6d6b138705047"
+    },
+    {
+      "bytes": 5970,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-local-stop-command-templates-v02.json",
+      "sha256": "332d09f324893be896219d18af06fe0304ba383446abc98bf177b40b5f9ee5ad"
+    }
+  ],
+  "final_runtime_sources": {
+    "admin": {
+      "bytes": 31245,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_admin_worker_v01.py",
+      "sha256": "4fd503c0632ee880503acb70bf6c7b689cba39f8e3be57034c5e8d16956e438b"
+    },
+    "parent": {
+      "bytes": 52247,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v02.py",
+      "sha256": "db2efe5e16bf10aa0ba94de041cd533d4cf3374ea6ffc911feab4ab5299e8665"
+    },
+    "settlement": {
+      "bytes": 26188,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_settlement_worker_v01.py",
+      "sha256": "e2c9fc6774183a52f02ddd99cb72a457fef117f2ec5d374c7b722ff13d7a5ec5"
+    },
+    "unbound_compiler": {
+      "bytes": 24753,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compile_production_admin_inputs_v02.py",
+      "sha256": "253a77280af682b4a81b7b2c71c5418e9f37e5f5a425fea4a5b51611aee5a7ba"
+    }
+  },
+  "historical_fixture_authority_reused": false,
+  "missing_gates": [
+    "Actual completed closedStatus output and independent native resource/process release observation",
+    "Metadata compiler actual final unbound output and root review",
+    "Actual production ADMIN and settlement native owners and retained evidence reviews"
+  ],
+  "must_preserve": [
+    "Raw ordinal1 and2 UNKNOWN results/IDs/times/fences",
+    "Attempt cap2 and UNKNOWN retry exclusions",
+    "Original native v08 source/launch/terminal artifacts",
+    "Unrelated63 canonical tasks/normalized children/DAG",
+    "No remote/provider completion or nonreachability claim"
+  ],
+  "patch_recipe": "Qualified ADMIN1ade\u2192production patch43f530; qualified parentd774\u2192production v01 patch190304, then narrow first-response patch876f0563\u2192v02; qualified settlementa30a\u2192production patch6f6e31. Runtime executes final standalone reviewed files. Frozen v01 parent160184 remains historical.",
+  "policy_verified_by_authors": false,
+  "runtime_status_at_freeze": {
+    "closed_status": "Root reports actual tool76683 active; native read/close/result/release still pending.",
+    "policy_regressions": "Root reports92 actual PASS with actual full owner release; independent retained test-outcome review belongs to root.",
+    "production_ADMIN": "Not executed.",
+    "production_settlement": "Not executed."
+  },
+  "schema": "production-exact-local-stop-reviewed-source-bundle@2"
+}

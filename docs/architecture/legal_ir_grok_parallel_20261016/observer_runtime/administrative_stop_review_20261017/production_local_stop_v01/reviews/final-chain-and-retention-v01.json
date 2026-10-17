@@ -1,0 +1,122 @@
+{
+  "attribution_limits": [
+    "The reviewer rehashed immutable metadata, source and publication-copy inputs only. Actual process/resource absence facts are retained root-observer observations; no fresh queries were made.",
+    "Actual row/count/UNKNOWN/history/other63/DAG/exact-replay preservation and native close are pinned genuine worker/policy assertions, complemented by separate independent metadata CID/digest reviews; no DB or WAL was opened, read, hashed or statted here.",
+    "The retention comparator alone read the current ledger after completed owner gates. This review verifies its pinned report/source/baselines, not a new ledger snapshot.",
+    "The33-row map is prepared metadata and does not itself copy files into C, grant authority, or qualify future Git history integration. New independent final review and retention rows belong in the separate append-only mapv02.",
+    "Historical original v08 owner provenance and the unrecorded historical A protocol leaf remain explicitly distinguished from current corroborating protocol/source bytes."
+  ],
+  "conclusion": "No concrete blocker in the final immutable closeout, retention comparison and initial publication metadata chain.",
+  "final_native_state_attributed_to_genuine_worker": {
+    "attempt_id": "attempt:e1ddbe57f2a0408bacf841b2ba471a1f",
+    "both_raw_UNKNOWN_rows_preserved": true,
+    "claim_state": "released",
+    "control_revision": 13,
+    "control_status": "blocked",
+    "coordination_attempt_status": "failed",
+    "execution_revision": 3,
+    "execution_status": "failed",
+    "fence_epoch": 2,
+    "fencing_token": 2,
+    "lease_state": "released",
+    "no_automatic_replay_operator_rearm_successor_or_cap_increase": true,
+    "no_callback_closure_remote_cancellation_model_nonreachability_or_completion_authority": true,
+    "ordinal": 2,
+    "possible_external_effects": "unverified",
+    "provider_outcome": "unknown",
+    "task_alias": "LIR-9001",
+    "unique_terminal_count": 1
+  },
+  "future_work_separate_from_original_runtime": [
+    "Append actual final reviews/retention report to a NEW map while preserving this initial map and original523 runtime pins.",
+    "Any later source merge and regression qualification must retain its own actual merged HEAD; future documentation-only validation must remain separate from the completed original production closeout."
+  ],
+  "independent_checks": {
+    "actual_ADMIN_tool_session": 34007,
+    "actual_settlement_tool_session": 86759,
+    "all_copy_rows_review_only_and_native_authority_false": true,
+    "all_target_paths_unique_and_within_exact_new_review_subdirectory": true,
+    "both_parent_reservation_statuses": "released",
+    "both_post_owner_actual_exits": 0,
+    "exact_parent_owner_PIDs_absent_in_post_records": true,
+    "exact_publication_source_pins_rehashed": 33,
+    "exact_root_facts_pins_rehashed": 10,
+    "exact_root_facts_summary_and_map_links": true,
+    "genuine_worker_actual_native_close_returned": true,
+    "raw_DB_WAL_snapshot_unbound_or_credential_content_selected": false,
+    "same_unbound_input_and_actual_ADMIN_parent_link": true,
+    "settlement_stage": "execute_full",
+    "three_exact_lease_ids_absent_in_each_post_record": true,
+    "worker_production_custody_verifier_replaced": false
+  },
+  "original_qualified_runtime_HEAD": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "pins": {
+    "actual_retention_comparison": {
+      "bytes": 3654,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-final-retention-comparison-v01.json",
+      "sha256": "2ca710202b5fd75b5ad0b5051694fd4e6e2a28758ca64e527f991b8b182253c6"
+    },
+    "comparator_independent_source_review": {
+      "bytes": 5992,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/retention-comparator-independent-static-review-v02.json",
+      "sha256": "f826f4d73b2b4e5207b267a0ee86b99e8c5cb479a1396ac9588ba75617447dfb"
+    },
+    "comparator_source": {
+      "bytes": 9566,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compare_finalized_production_retention_v02.py",
+      "sha256": "8942fbd4d169b184832a9ab75a96a69d3619342b11459c07dac1ac4cce5a62a7"
+    },
+    "derived_publication_summary": {
+      "bytes": 9524,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-local-stop-publication-summary-v01.json",
+      "sha256": "c28acb47d90def61ad6afb60aefc0afff8c570d21793045828987c6e56f4a4e9"
+    },
+    "genuine_ADMIN_independent_review": {
+      "bytes": 6409,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-admin-retained-evidence-independent-review-v01.json",
+      "sha256": "c97ead1b64ffef37fa94b74e09f2d1027fa724c0773dbcab75345aa757e0026d"
+    },
+    "genuine_settlement_independent_review": {
+      "bytes": 7644,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-settlement-retained-evidence-independent-review-v01.json",
+      "sha256": "38144fad670d2470e36ee86a1f2b8adb1de650704fc373ec636ec231b5cb10e8"
+    },
+    "genuine_status_independent_review": {
+      "bytes": 8036,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-attempt02-retained-evidence-independent-review-v01.json",
+      "sha256": "79c319ee0bd8bfb86e52bfcc1c01b645de8d1e1995e7ae7d2dd67cc4971ec3c2"
+    },
+    "initial_exact_publication_map": {
+      "bytes": 43271,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-local-stop-publication-map-v01.json",
+      "sha256": "1621d6d2de18fab84734f67939fa1cb9811c4449cd741e822932669dbee5227a"
+    },
+    "root_actual_completed_facts": {
+      "bytes": 3671,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-local-stop-publication-root-facts-v01.json",
+      "sha256": "228c6d321f2fe0daa6add6501622606acc5cbd9a0917d63cf44ddca2e3c81b28"
+    }
+  },
+  "retention_scope": {
+    "first_failed_Status_reservation_id": "e7dba9e4219b45c0bff55cddf990c382",
+    "first_failed_Status_scope": "Selected identity/status/storage/attempt-path fields only; no full historical record equality claimed.",
+    "first_failed_Status_status": "retained",
+    "first_failed_Status_storage_bytes": 536870912,
+    "ledger_pin_in_report_was_not_followed_by_reviewer": true,
+    "ledger_rows_mutated_or_released_by_comparator": false,
+    "original_baseline_and_current_canonical_record_SHA256": "90143f4793de683b1cb29ac4d7c0d87e29375990189c12025b4b46aa71046f6f",
+    "original_reservation_id": "36c3ec43207e430abdadf4bbededef94",
+    "original_status": "retained",
+    "other_reservation_inventory_count": 953,
+    "other_reservations_scope": "Current digest inventory only; complete historical baseline unavailable and historical equality not claimed.",
+    "root_reported_comparator_actual_exit": 0
+  },
+  "reviewer": "unknown_event_forensics",
+  "reviewer_actions": {
+    "C_or_production_mutations": false,
+    "DB_WAL_credentials_live_ledger_process_or_resource_queries": false,
+    "imports_native_jobs_or_comparator_execution": false,
+    "metadata_and_source_only": true
+  },
+  "schema": "production-local-stop-final-chain-and-retention-independent-metadata-review@1"
+}

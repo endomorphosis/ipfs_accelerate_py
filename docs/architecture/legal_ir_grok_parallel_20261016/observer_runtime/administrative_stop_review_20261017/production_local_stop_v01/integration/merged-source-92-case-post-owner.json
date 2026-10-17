@@ -1,0 +1,31 @@
+{
+  "actual_disk_reservation_id": "e483273a76ab4690a566747373046617",
+  "actual_lease_ids_observed_absent": [
+    "c4ed435056aa41ddb4a7851e0b0d3acd",
+    "15dcd85bb7c446e4880ac0697ea518df",
+    "9c640bc43fa040a89409c34e32857b20"
+  ],
+  "actual_pids_observed_absent": [
+    2628230,
+    2636031
+  ],
+  "child_live_group_observed_absent": true,
+  "database_opened": false,
+  "native_ACK_or_receipt_created": false,
+  "native_custody_fields_selected_from": "top_level_result",
+  "observation_only": true,
+  "observed_at_epoch": 1792246194.756279,
+  "observed_reservation_status": "released",
+  "original_result_rewritten": false,
+  "production_actions_performed": false,
+  "result_pin": {
+    "bytes": 637,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-13/receipt.json",
+    "sha256": "cf8b62a668672e41f9fe3edf71ea86f8e9fb23734c0e3514505f6eecb43bcf64"
+  },
+  "root_reported_actual_tool_exit": 0,
+  "root_reported_actual_tool_session": 26436,
+  "schema": "finalized-fixture-owner-readonly-observation@1",
+  "semantic_or_operator_authority_asserted": false,
+  "source_result_schema": "legal-ir-native-orchestration-receipt@1"
+}

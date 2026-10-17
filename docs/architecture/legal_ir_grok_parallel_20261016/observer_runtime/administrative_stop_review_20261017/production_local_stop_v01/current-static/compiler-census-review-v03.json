@@ -1,0 +1,84 @@
+{
+  "baseline_pin": {
+    "bytes": 24753,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compile_production_admin_inputs_v02.py",
+    "sha256": "253a77280af682b4a81b7b2c71c5418e9f37e5f5a425fea4a5b51611aee5a7ba"
+  },
+  "census_helper_pin": {
+    "bytes": 15403,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_runtime_tree_census_v01.py",
+    "sha256": "5d00a43b2bcd35f361e4b0608432341331ce2d2e471d37e7142f8d1db0348f51"
+  },
+  "census_metadata_pin": {
+    "bytes": 3745,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-retained-log-links-metadata-v01.json",
+    "sha256": "3bb9c81cbc71cf4f5da79b42e5f18e332b04f3705c246a9bca292b901b201fa2"
+  },
+  "checks": [
+    "New exact bf766 request pins the reviewed c0a749 status actor at frozen controller HEAD523; no historical request/result is relabeled as current success.",
+    "Actual status result must point to exact fixed census helper5d00 and metadata3bb. Genuine closed-status receipt must include both exact pins in source_pins.",
+    "Controls report must be a private closed pin at the exact actual request attempt path, schema nonadmitting-runtime-tree-census-controls@1, exact nine ordered case names, each sole case/passed pair with passed true, expected/passed9.",
+    "Control report explicitly requires fresh private objects, synthetic-special cleanup before strict native guard, no production-tree or target-DB reads, no native custody/authority, and separate genuine production-status qualification.",
+    "The three new provenance objects become immutable native context input pins and are rehashed as metadata/source only; they do not replace any native status, policy, custody, authorization or release predicate.",
+    "Closed receipt45-key native shape extraction, content digest, actual owner/kernel birth and resource crosswalk, exact v03 post-owner observation schema, actual0exit/released/absent lease/PID joins remain.",
+    "Actual raw/snapshot/auth pins, exact approved subject and original current/historical UNKNOWN semantics, six actual production custody artifacts, unchanged execution physical generation, all current Python+SQL source closure, native context byte/pin bounds remain.",
+    "Output remains unsealed @2 with all live owner/creator/context fields missing, native policy and worker qualification false; genuine subsequent ADMIN/settlement must establish current custody.",
+    "Current A protocol corroboration remains explicitly distinct from absent historical proof-leaf byte attestation. Historical fixture manifest remains source provenance only."
+  ],
+  "exact_delta": {
+    "MAX_JSON_MAX_SOURCE_SOURCES_ARTIFACTS_UNBOUND_KEYS_AST_identical": true,
+    "all_other_existing_functions_AST_identical": true,
+    "changed_existing_functions": [
+      "compile_inputs"
+    ],
+    "only_status_request_digest_changes_cb2cc_to_bf766": true,
+    "patch_matches_whole_source_unified_diff": true,
+    "two_fixed_census_provenance_pins_added": true
+  },
+  "exact_patch_pin": {
+    "bytes": 6250,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-unbound-new-status-and-census-v03.patch",
+    "sha256": "052e04f4626d1f8fcbae9c65819d8f58a0b8ff035aa786e547b51242b28f1739"
+  },
+  "immutable_prepared_status_request_pin": {
+    "bytes": 1344646,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-request-v03.json",
+    "sha256": "bf766688224e3e4a53674bdf08ee918deeb80e197d9802c7045890082f290804"
+  },
+  "limitations": [
+    "This review did not read any status result, closed receipt, post-owner observation, actual controls report or active owner output. Actual nine controls, production native read/close, physical generation preservation and owner/resource release remain pending until root retains genuine finished evidence.",
+    "The census helper remains cooperative and non-atomic as its independent review states; adding its pins or control report grants no continuous filesystem custody or universal confinement.",
+    "Compiler metadata and root post-owner observations supply no native receipt, context seal, write authority, completion, remote cancellation, callback closure, retry/rearm or successor authority."
+  ],
+  "method": {
+    "AST_or_helper_product_execution": false,
+    "DB_WAL_bytes_connections_or_live_process_resource_queries": false,
+    "active_or_future_native_outputs_read_or_hashed": false,
+    "native_jobs_tests_provider_calls_or_C_edits": false,
+    "source_AST_and_immutable_prepared_metadata_only": true
+  },
+  "observer_source_pin": {
+    "bytes": 7370,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/observe_finalized_production_owner_v03.py",
+    "sha256": "f7f5602fe7cbd7595e88f670628e1c144d309175727a63b009b6d6b138705047"
+  },
+  "prior_review_preserved": {
+    "bytes": 6252,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compiler-independent-review-v02.json",
+    "sha256": "46745adc2823d3411865a5cca80880f98585bb69ba4f84b801958a581ca60514"
+  },
+  "reviewed_at_utc": "2026-10-17T13:09:41.612079+00:00",
+  "schema": "production-admin-unbound-compiler-census-independent-static-review@3",
+  "source_pin": {
+    "bytes": 27483,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compile_production_admin_inputs_v03.py",
+    "sha256": "ceaf84d615aba7bbb5ae5bacaaa31b04269c8a35cb5d966f9355872c91ede532"
+  },
+  "status": "static_clear_actual_closed_status_controls_and_release_pending",
+  "status_actor_source_pin": {
+    "bytes": 50588,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-charges-and-log-census-v03/production_unknown_closed_status_owner_v01.py",
+    "sha256": "c0a7494b8de54641ae759c1754110c548a52f6be647c26a3329d75d3a972eee3"
+  },
+  "unresolved_static_blockers": []
+}

@@ -1,0 +1,35 @@
+{
+  "all_other_pytest_roots_preserved": true,
+  "completed_at_epoch": 1792245771.6387246,
+  "current_reservation_observed_released": true,
+  "database_payload_read_or_opened": false,
+  "fresh_owner_child_group_and_three_leases_observed_absent": true,
+  "ledger_records_mutated_by_cleanup": false,
+  "native_reservations_released_by_cleanup": false,
+  "pre_cleanup_manifest_pin": {
+    "bytes": 159055,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/successful-pytest-s17b-pre-cleanup-manifest-v01.json",
+    "sha256": "c2b720fb5dfb87b3bbe582eaaa94fe5da105ce9ab8407e07d184f0147d51b914"
+  },
+  "production_failed_retained_foreign_stores_or_model_assets_removed": false,
+  "receipt_and_event_forensics_preserved_exactly": [
+    {
+      "bytes": 634,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-status-and-event-controls-20261017-02/receipt.json",
+      "sha256": "679b270c6f76f849d900b62a8132e77a1db5a2da35c8143c14e0c51e56856a62"
+    },
+    {
+      "bytes": 13928,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-status-and-event-controls-20261017-02/launch06-event-forensics.json",
+      "sha256": "ceb6149c55f7693520e9c4084a5220e04a4686af22fa6245c3f3d10e04454662"
+    }
+  ],
+  "removed_apparent_bytes": 1139919104,
+  "removed_metadata_entries": 799,
+  "removed_path": "/tmp/pytest-of-barberb/s17b",
+  "removed_root_device": 66306,
+  "removed_root_inode": 6303161,
+  "sanitized_console_preserved": true,
+  "schema": "owned-successful-pytest-disposable-tree-cleanup@1",
+  "separate_historical_outer_tool_observation_available": false
+}

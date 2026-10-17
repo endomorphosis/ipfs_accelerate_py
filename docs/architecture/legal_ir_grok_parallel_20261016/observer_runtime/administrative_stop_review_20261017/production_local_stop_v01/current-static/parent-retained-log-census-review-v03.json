@@ -1,0 +1,79 @@
+{
+  "controller_head": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "exact_changed_scope": {
+    "Runtime_methods": [
+      "__init__",
+      "guard"
+    ],
+    "new_constants": [
+      "R06_CENSUS_HELPER_PIN",
+      "R06_CENSUS_METADATA_PIN"
+    ],
+    "top_level_definitions": [
+      "validate_production_input",
+      "Runtime",
+      "native"
+    ]
+  },
+  "findings": [
+    "The candidate pins the exact5d00 helper and3bb metadata, requires their registered context provenance, rehashes them through source_guard, and loads the pure metadata definitions before actual native operation.",
+    "Only the R06 runtime tree census call is replaced. Canonical, exact coordination-file and control/socket census checks remain unchanged.",
+    "Runtime receives the actual pinned callable. The original helper bounds remain128MiB; no request key, authorization, same-attempt identity, cap2, F07 envelope or worker deadline changes.",
+    "ActualChild, real Popen ownership/registration/reap, grants, first/replayed ADMIN response retention, settlement and all close/finalization paths remain unchanged.",
+    "The helper whitelist preserves the three observed links and counts targets once without following their bytes. It remains a cooperative bounded non-atomic filesystem metadata observation, not adversarial namespace closure."
+  ],
+  "method": [
+    "Read exact candidate and unified patch; parsed source AST without executing it.",
+    "Compared all existing top-level function/class ASTs and every ActualChild/Runtime method AST to frozen parent v02.",
+    "Read genuine helper source and fixed metadata schema; did not traverse actual production tree."
+  ],
+  "qualification": {
+    "actual_parent_runtime_qualified": false,
+    "imports_or_source_execution": false,
+    "production_DB_WAL_or_credentials_read": false,
+    "production_filesystem_or_live_resource_queries": false,
+    "production_mutations": false,
+    "source_review_only": true,
+    "tests_or_native_jobs": false
+  },
+  "remaining_gates": [
+    "Actual genuine closed Status owner result and full outer finalization/release before input compilation.",
+    "Genuine ADMIN and fresh same-attempt native settlement under the exact pins; preserve raw UNKNOWNs/history and no successor/rearm.",
+    "Observe actual outer tool exit and released real resource custody separately from result publication."
+  ],
+  "reviewed_pins": {
+    "baseline_parent": {
+      "bytes": 52247,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v02.py",
+      "sha256": "db2efe5e16bf10aa0ba94de041cd533d4cf3374ea6ffc911feab4ab5299e8665"
+    },
+    "candidate_parent": {
+      "bytes": 53242,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v03.py",
+      "sha256": "3332b8a3d77c944177878957fda2709c75a20ba046f5c9bb41daee2e146afff4"
+    },
+    "exact_patch": {
+      "bytes": 5695,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-parent-exact-retained-log-census-v03.patch",
+      "sha256": "0d5e4d90c57f7aa1de642a5082308b6f2a507c54da1a77d08b8772c4005dc75b"
+    },
+    "helper_independent_review": {
+      "bytes": 3987,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/runtime-tree-census-independent-review-v01.json",
+      "sha256": "865f21da9c34f03b179855db3ed6e4796ea1cb588d5fc472ccc3b3261d9f0d36"
+    },
+    "link_metadata": {
+      "bytes": 3745,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-retained-log-links-metadata-v01.json",
+      "sha256": "3bb9c81cbc71cf4f5da79b42e5f18e332b04f3705c246a9bca292b901b201fa2"
+    },
+    "runtime_census_helper": {
+      "bytes": 15403,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_runtime_tree_census_v01.py",
+      "sha256": "5d00a43b2bcd35f361e4b0608432341331ce2d2e471d37e7142f8d1db0348f51"
+    }
+  },
+  "reviewer": "unknown_event_forensics",
+  "schema": "production-parent-exact-retained-log-census-independent-static-review@3",
+  "static_conclusion": "No concrete static blocker in the exact narrow derivative."
+}

@@ -1,0 +1,109 @@
+{
+  "actual_parent_result_pin": {
+    "bytes": 2784,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-production-unknown-admin-20261017-02/parent-result.json",
+    "sha256": "cff84121cf49a838082d7a1bb9f05fee4a13abb6c1572e418dce9d41093895e5"
+  },
+  "actual_post_owner_observation_pin": {
+    "bytes": 1260,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-admin-attempt02-post-owner-v01.json",
+    "sha256": "fd4d554320023dec1c09cf29326f474d161fcaae843cb331db481dfd37e0de4f"
+  },
+  "actual_request_pin": {
+    "bytes": 2733,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-local-stop-admin-request-v04.json",
+    "sha256": "986b0dbc9e354f1f1d3d232be9223c22c967acab70b63a0d56793abb7ebfee7c"
+  },
+  "attribution": {
+    "independently_checked": "Exact JSON/source pins; typed canonical objects; sealed context, audit body and evidence CIDs; snapshot and unchanged raw UNKNOWN digest content; request/owner/creator/grant/close/retirement joins; native initial and replay response equality.",
+    "native_assertions": "Actual native audit insertion/durable uniqueness and registered state preimage validation are asserted by the genuine gateway/service and returned receipts, not independently queried from DuckDB by this reviewer.",
+    "outer_observation": "Actual tool exit0, released reservation, absent ancestry leases and owner PID are attributed to the root post-owner observation. Its group observation is null; no independent process-group check is claimed.",
+    "qualification_limits": "This ADMIN audit records a local administrative decision. It does not establish provider outcome, external effects, callback closure, remote cancellation, nonreachability, successful legal reconstruction, or model execution. Native settlement has not been reviewed or inferred here."
+  },
+  "checks": {
+    "actual_graceful_native_gateway_close_creator_retirement_witness_crosswalk": true,
+    "actual_registered_ADMIN_owner_creator_public_singleton_grant_and_gateway_crosswalk": true,
+    "credential_or_admin_token_artifacts_read_or_hashed": false,
+    "database_or_WAL_read_opened_or_hashed": false,
+    "durable_audit_body_and_evidence_CIDs_independently_recomputed": true,
+    "exact_approved_task_attempt_ordinal_fences_and_cap_preserved_in_context": true,
+    "exact_completed_request_and_outer_release_crosswalk": true,
+    "first_response_replayed_false_and_same_live_replay_replayed_true": true,
+    "initial_and_replay_canonical_decision_receipt_equal": true,
+    "native_authority_context_2_CID_independently_recomputed": true,
+    "native_or_completion_authority_created_by_reviewer": false,
+    "native_process_or_resource_API_queried_by_reviewer": false,
+    "registered_native_preimage_and_both_UNKNOWN_digests_independently_recomputed": true,
+    "unmodified_native_verifier_and_exact_reviewed_runtime_source_pins": true
+  },
+  "checks_passed": true,
+  "existing_artifacts_or_source_rewritten": false,
+  "external_effects": "unverified",
+  "helper_independent_static_review_pin": {
+    "bytes": 3646,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/immutable-review-helper-independent-static-review-v03.json",
+    "sha256": "efdb5d559f0c5f46588242619d8efb9f6bed165c6a7c9c5bf1a8bbae0cd9c3f6"
+  },
+  "helper_pin": {
+    "bytes": 25958,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/review_production_local_stop_immutable_v03.py",
+    "sha256": "3eedad548781bd06bba2b837a567e8a71f866969f880bb80af2074755942c2ef"
+  },
+  "independent_recomputation": {
+    "audit_body_cid": "baguqeera6foooytcu6otahaa4iqrkubkpgb6vg4betvy6mpacmju2p4iulcq",
+    "audit_evidence_id": "baguqeerakv6ctbkews2hpby75mgv3hrbsn2sohvwssbqvqqhkb2u7zkbuv4q",
+    "context_cid": "baguqeerafgczsse6dedcehtjumnqp4lyihexmldoan3oa3xvb7agaanc5yjq",
+    "current_UNKNOWN_rows_digest": "sha256:40ce52b53b17f4335eaacb149432602bc0c3bb09cfcfa5aefa69c503be64827e",
+    "historical_UNKNOWN_rows_digest": "sha256:7c5cc3e1449291c785c388fb7222469b89a17f6170a0b12c2bc2fc4a86d64e15",
+    "registered_snapshot_digest": "sha256:2210f611db5e7e218bbe51fc575a849904a94f4698bb642b994d89d7f779c8fa",
+    "typed_bool_integer_distinctions_checked": true
+  },
+  "logical_provider_retry_rearm_successor_or_model_call_admitted": false,
+  "production_settlement_status": "pending separate actual execution and retained review",
+  "provider_outcome": "unknown",
+  "review_helper_execution": {
+    "checks_passed": true,
+    "exit_code": 0,
+    "flags": [
+      "-I",
+      "-S",
+      "-B"
+    ],
+    "interpreter": "/usr/bin/python3.12",
+    "operation": "admin",
+    "product_imports": false
+  },
+  "review_scope": "completed actual production ADMIN attempt02 immutable metadata and source only",
+  "reviewed_response_and_close_pins": {
+    "actual_child_close_record": {
+      "bytes": 1111,
+      "path": "/tmp/pytest-of-barberb/pls17c/admin-exited.json",
+      "sha256": "4e511c0d9a4661ed850b24a6a9ed52e1d6d82264ab6b6b6556922859709901af"
+    },
+    "actual_creator_exit_witness": {
+      "bytes": 696,
+      "path": "/tmp/pytest-of-barberb/pls17c/admin-exit-witness.json",
+      "sha256": "afc7e3558c8587527f9dfb628ed134d897dcf20dc57c2fe70627116243eca474"
+    },
+    "context": {
+      "bytes": 18674,
+      "path": "/tmp/pytest-of-barberb/pls17c/sealed-context.json",
+      "sha256": "ca5bc96223ae35d0dd373af7e177c062f7727967510157be34ddf6741a57ce95"
+    },
+    "first_response": {
+      "bytes": 40478,
+      "path": "/tmp/pytest-of-barberb/pls17c/audit-first-response.json",
+      "sha256": "9f2afc244af84cf7ec6617a4c107e7ee8a7fb93556c75cab1f23214b005e7a3d"
+    },
+    "replay_response": {
+      "bytes": 40477,
+      "path": "/tmp/pytest-of-barberb/pls17c/audit-response.json",
+      "sha256": "1553723a9396eb5ab401c880d26f047defee4131737e9c10e037c50c1f2f6f95"
+    }
+  },
+  "reviewer": "/root/grok_confinement_review",
+  "root_reported_actual_tool_exit": 0,
+  "root_reported_actual_tool_session": 34007,
+  "runtime_source_HEAD": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "schema": "production-local-stop-ADMIN-retained-evidence-independent-review@1"
+}

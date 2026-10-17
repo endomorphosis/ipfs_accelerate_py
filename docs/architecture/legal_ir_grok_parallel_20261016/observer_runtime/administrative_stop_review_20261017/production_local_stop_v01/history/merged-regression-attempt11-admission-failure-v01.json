@@ -1,0 +1,23 @@
+{
+  "actual_tool_exit": 1,
+  "actual_tool_session": 64390,
+  "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-11",
+  "attempt_directory_empty": true,
+  "database_opened": false,
+  "error_type": "LeaseTimeoutError",
+  "failure_before_resource_admission_or_test_worker_start": true,
+  "native_ACK_created": false,
+  "observed_at_epoch": 1792244883.6367767,
+  "own_disk_reservation_observed_absent": true,
+  "own_native_leases_and_waiter_observed_absent": true,
+  "owner_pid_observed_absent": 2384778,
+  "production_actions_performed": false,
+  "pytest_started": false,
+  "request_pin": {
+    "bytes": 753460,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-administrative-controls-request-v11.json",
+    "sha256": "cffd0bf55750993efe27fda2b97398fdcca9c22cf84757862bb869c48d569108"
+  },
+  "schema": "merged-supervisor-regression-pre-admission-failure-observation@1",
+  "source_HEAD": "04556f5fe1907a38faf89b059dedfce66527a5b4"
+}

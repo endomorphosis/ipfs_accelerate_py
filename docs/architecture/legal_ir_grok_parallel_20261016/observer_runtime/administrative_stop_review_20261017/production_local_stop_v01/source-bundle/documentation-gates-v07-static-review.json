@@ -1,0 +1,48 @@
+{
+  "conclusion": "No concrete static blocker in the fixed v13/fresh documentation binding.",
+  "pins": {
+    "contract": {
+      "bytes": 3934,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/local-documentation-gates-v03/fixed-v13-documentation-gates-contract-v07.json",
+      "sha256": "325d0313f5f0d83dc92bd738e1705dca8c152881feca30ab9a620168a68909e4"
+    },
+    "fresh_v13_review": {
+      "bytes": 2634,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-regression-v13-independent-static-review.json",
+      "sha256": "8e77ab67990ceecd0ff1cd4b9dc5133edeb580fea09c0bbb61aa265ff141201b"
+    },
+    "patch": {
+      "bytes": 7756,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/local-documentation-gates-v03/fixed-v13-qualification-fresh-docs-v07.patch",
+      "sha256": "3b98ceb955c85fd8c9ee17a5817ea3b886b6470285d4d14bff47784034496ef8"
+    },
+    "preparer": {
+      "bytes": 22167,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/local-documentation-gates-v03/prepare_local_documentation_gates_v07.py",
+      "sha256": "8aa54ff40e25d59c36afb987298ae2e88b38f00aae06345c0b3b27880d70f80b"
+    },
+    "prior_review": {
+      "bytes": 3594,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/local-documentation-gates-v03/conditional-v12-doc-gates-independent-static-review-v06.json",
+      "sha256": "0065566c32f3db26d92620c368dfcadd799baef53e1d02cfb3f7130f611134a8"
+    },
+    "runner": {
+      "bytes": 10299,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/local-documentation-gates-v03/run_local_documentation_gates_v06.py",
+      "sha256": "95bfc4c17c0f7140ed94bd60f1f0474811f8fa73c4050376b6a648f7fa095ab7"
+    }
+  },
+  "preserved": [
+    "Only genuine successful complete v13 full92 report/request/inputs/receipt and actual0/released threeleases/owner+child+group absence can select this path.",
+    "Original523 production runtime remains distinct from qualified merged source HEAD and later docs-only HEAD;523/08fb/2fe ancestry checks remain.",
+    "Nativee2f66 exact pin/argv, originalv05 historical dependency pin, four verbatim workflow bodies/parser, target-copy bytes/SHA and600s/640MiB/C512MiB remain unchanged."
+  ],
+  "reviewer": "unknown_event_forensics",
+  "reviewer_actions": {
+    "preparation_execution_native_queries_DB_or_C_mutations": false,
+    "source_AST_and_exact_text_only": true
+  },
+  "runtime_outcome": "Unqualified until actual v13 fullpass/release and later root-only doc gate execution.",
+  "schema": "fixed-v13-qualification-fresh-doc-gates-independent-static-review@7",
+  "whole_text_proof": "Restoring only declared qualificationv13/attempt13/pa17m/sourceSHAs and fresh docattempt06/inputrequestv06/runnerv06 names produces exact reviewed predecessors."
+}

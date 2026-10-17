@@ -1,0 +1,103 @@
+{
+  "checks": {
+    "WAL_absence_checked_before_during_after": true,
+    "actual_native_handles_None_and_closed_flag_checked": true,
+    "actual_native_status_read_only_open_observe_close_used": true,
+    "actual_status_owner_kernel_birth_and_four_F07_IDS_recorded": true,
+    "allocation_and_tmp_caches_bound_under_native_attempt": true,
+    "before_after_execution_bytes_and_physical_lock_identities_equal": true,
+    "case_counts": {
+      "test_closed_status_receipt_accepts_only_its_explicit_decision_shape": 1,
+      "test_closed_status_receipt_refuses_false_or_unbound_claims": 13,
+      "test_current_closed_status_refuses_a_new_wal": 1,
+      "test_default_stopped_process_contract_still_requires_positive_birth": 1,
+      "test_exact_tagged_original_owner_absence_is_a_distinct_decision": 1,
+      "test_later_settlement_does_not_rehash_mutable_execution_bytes": 1,
+      "test_positive_births_do_not_require_an_absence_tag": 1,
+      "test_unrecorded_owner_decision_refuses_ambiguous_identity": 12,
+      "test_v1_still_rejects_the_six_artifact_closed_status_population": 1,
+      "test_v2_does_not_accept_the_seven_artifact_maintenance_population": 1
+    },
+    "coordination_exact_known_sidecar_census_64MiB_and_foreign_siblings_untouched": true,
+    "exact_task_attempt_namespace_cap_and_authorization_bound": true,
+    "existing_policy_shared_lock_is_released_after_actual_native_close": true,
+    "existing_v1_population_rejection_covered": true,
+    "focused_primary_cases": 33,
+    "genuine_original_v08_child_and_master_birth_crosswalk_retained": true,
+    "later_settlement_does_not_rehash_mutable_execution_file_covered": true,
+    "legacy_loader_MAX_DATABASE_not_used_for_real_status_database": true,
+    "native_finalization_separate_from_owner_result_write": true,
+    "negative_cases_reach_relevant_decision_guards_by_source_review": true,
+    "private_meta_index_bound_under_native_attempt": true,
+    "raw_full_snapshot_status_metadata_and_UNKNOWN_crosswalks_present": true,
+    "receipt_key_count": 45,
+    "receipt_keyset_exactly_equal": true,
+    "same_F07_contexts_retained_on_native_or_policy_close_failure": true,
+    "same_resource_loader_instance_used_for_product_origin_checks": true,
+    "source_and_full_product_SQL_closure_checked": true,
+    "status_actor_bound_64MiB": true,
+    "status_receipt_explicitly_no_maintenance_write_backup_completion_retry_remoteclosure": true,
+    "tagged_unrecorded_owner_absence_is_explicit_and_refuses_any_present_PID": true,
+    "test_fixtures_deliberately_inert_and_do_not_claim_native_authority": true,
+    "test_raw_metadata_snapshot_source_owner_shapes_align_with_validator": true
+  },
+  "findings": [
+    {
+      "description": "Actor a516 lacked an explicit private META index path. Final d0f5 adds only the admitted-attempt private path alongside allocation; source checked.",
+      "severity": "resolved_before_freeze"
+    }
+  ],
+  "limitations": [
+    "No genuine status read, connection close, lock release, file preservation, process absence or resource finalization is independently established by this static review. Root-owned native qualification remains required.",
+    "Pure 33-case regressions use inert data and simulated proc decisions; they have not executed and cannot supply native custody.",
+    "Receipt creation occurs inside active F07 custody. A later context must append the actual completed status-owner birth only after independently observed full native release.",
+    "Initial byte/file generation corroboration applies before audit. Later native settlement must use check_current_file=False while still rechecking immutable original receipt/raw/snapshot/source pins.",
+    "Original owner birth is not reconstructed; tagged absence declares current strict PID absence only, with original child/master positive birth joins retained.",
+    "Production ADMIN/settlement source candidates still require final current qualified HEAD alignment and independent source review before execution."
+  ],
+  "method": {
+    "C_source_or_HEAD_mutation": false,
+    "database_or_WAL_reads_or_hashes": false,
+    "native_jobs": false,
+    "process_or_resource_queries": false,
+    "product_helper_import_or_execution": false,
+    "read_only_source_and_ast": true,
+    "test_execution": false
+  },
+  "reviewer": "/root/grok_confinement_review",
+  "schema": "production-closed-status-actor-and-focused-tests-independent-static-review@1",
+  "source_pins": {
+    "actor": {
+      "bytes": 41137,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_closed_status_owner_v01.py",
+      "sha256": "d0f5a707f3b67beeec337ca20990ab410734663f75659e04887b258554e19cf5"
+    },
+    "native_status": {
+      "bytes": 38565,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_execution_status_owner.py",
+      "sha256": "123436fc56c3f701e8bd5d6b2ef2dccc74fb80f03b9fd3d8101789f570b476ce"
+    },
+    "patch": {
+      "bytes": 21305,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-policy-v02/planning-unknown-closed-status-and-owner-absence-v02.patch",
+      "sha256": "95290f5664f7c5f22161fa8c9e0bfad536a7ad34027315011e6f0de67b98a650"
+    },
+    "policy": {
+      "bytes": 50619,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-policy-v02/planning_unknown_abandonment.py",
+      "sha256": "0a090a6ac961cdb5e0e14514f00eb280feeb858b24332d0f9956d524585dfdda"
+    },
+    "policy_contract": {
+      "bytes": 4803,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-policy-v02/source-contract-v02.json",
+      "sha256": "f0a5137f7213765393de914b85f87fb744bd1be1ddfe1e6c4e0dc8ede63fcc19"
+    },
+    "tests": {
+      "bytes": 14480,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-policy-v02/test_planning_unknown_closed_status_custody.py",
+      "sha256": "0b4993ce780f60cd09f6443564e6557d139996a5d082c775b1321d66fa7ebc7e"
+    }
+  },
+  "status": "static_review_clear_runtime_pending",
+  "unresolved_static_blockers": []
+}

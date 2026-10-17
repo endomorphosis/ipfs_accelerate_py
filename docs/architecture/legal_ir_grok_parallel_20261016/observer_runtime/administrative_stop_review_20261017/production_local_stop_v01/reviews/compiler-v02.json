@@ -1,0 +1,62 @@
+{
+  "DB_WAL_bytes_read_or_native_connections_opened": false,
+  "actual_request_full_product_source_count": 2816,
+  "actual_status_request_pin": {
+    "bytes": 1344640,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-request-v02.json",
+    "sha256": "cb2cc49857e3c3f8ab4c99883572324afab274b9d98a9e36fbca79ba3e106824"
+  },
+  "checks": {
+    "binding_identity": "Native bindingCID is sha256 of actual binding to_dict JSON, matching native property; no nonexistent binding_cid field is assumed. Execution physical before/after pins/identities match raw observation and binding; currenttargetWAL absent required.",
+    "closed_receipt": "Checks content digest, exact45-field current native shape, read/close/WAL absence/UNKNOWN retention claims, and rejects maintenance/write/backup/closure/completion claims. Six custody slots join original production launch/receipt/terminal and actual status binding/observation/closed-status receipt.",
+    "current_sources": "Rechecks each actual Python/SQL product source within owned package under4096-file/256MiB bounds, twelve actual policy/native source pins, and every metadata/source immutable pin. Exact whole closure is additionally re-enumerated in status actor and actual ADMIN child; compiler cannot independently grant source authority.",
+    "fixed_scope": "Exactcb2cc status request, current523HEAD/ownedC, immutable d6df approval and compiled20dd/raw3c4145 snapshots, cap2 and exact LIR-9001 existing attempt are joined before unbound output. Worker literal scopes/HEAD/unbound keys must match.",
+    "future_status_completion_gate": "Requires status owner result at exact request attempt/owner-result path, actual positive kernel birth, receipt resource IDs, and separate observerv03 actual tool exit0/released reservation/exact lease and PID absence joins. Post-owner observation remains explicitly observational, never a native ACK.",
+    "historical_protocol_limit": "CurrentA/C protocol corroboration and originalv08 import-declaration verification are explicit. historical_protocol_leaf_was_pinned_by_launch and historical_protocol_leaf_bytes_attested must both remain false. Historical fixture manifest is utility source provenance only.",
+    "native_boundary": "Compiler emits context_preimage with no registered owner, creator orcontextCID and authority_context_sealed/policy_verified/runtime_workers_qualified false. Real ADMIN child must validate actual native custody before canonical write opening, create actual typed gateway/peer grant and seal live fields.",
+    "privacy": "Private bounded metadata/source reads and exclusive0600 output only; DB/WAL suffix reads refused. Installed backend binding is only private actual metadata here; native isolated child must verify installed origin/version later.",
+    "settlement_boundary": "Retired statusowner positive birth is appended only after exact completed-resource joins. Compiler does not admit retry/rearm/successor/cap increase or native settlement. Fresh admitted parent/settlement stage must validate genuine durable audit/exit witnesses and current preimage through product policy.",
+    "unrelated_work": "Canonical population equals immutable raw observation; exact snapshot/full product checks remain mandatory in real child. Compiler has no DB connection/write operation and cannot mutate other tasks."
+  },
+  "compiler_or_product_modules_imported_or_executed": false,
+  "current_native_policy_source_pin": {
+    "bytes": 50619,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment.py",
+    "sha256": "0a090a6ac961cdb5e0e14514f00eb280feeb858b24332d0f9956d524585dfdda"
+  },
+  "limits": [
+    "Source-only review: future genuine status owner result/post-release files do not exist yet for this compiler review and were not fabricated or consumed.",
+    "This review does not replace root-observed actual tool exit, released native resources, real peer grant/current custody checks or subsequent native settlement results.",
+    "Original A protocol leaf bytes were not historically pinned; current protocol validation cannot establish historical exact-source attestation.",
+    "No production UNKNOWN has been resolved, no taskcompletion granted, and no remote cancellation/callback closure/nonreachability claim follows from compiler success."
+  ],
+  "native_jobs_or_production_operations_performed": false,
+  "native_or_operator_authority": false,
+  "process_resource_or_runtime_status_queried": false,
+  "review_result": "No concrete static blocker found for the metadata-only unbound@2 compiler. Future status-owner completion/release and genuine ADMIN/native policy/settlement qualification remain separate.",
+  "reviewed_at_utc": "2026-10-17T12:51:14.884154+00:00",
+  "reviewed_compiler_pin": {
+    "bytes": 24753,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compile_production_admin_inputs_v02.py",
+    "sha256": "253a77280af682b4a81b7b2c71c5418e9f37e5f5a425fea4a5b51611aee5a7ba"
+  },
+  "schema": "production-admin-unbound-compiler-independent-static-review@2",
+  "source_AST_parsed_only": true,
+  "source_overlap_adapter_pins": [
+    {
+      "bytes": 31245,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_admin_worker_v01.py",
+      "sha256": "4fd503c0632ee880503acb70bf6c7b689cba39f8e3be57034c5e8d16956e438b"
+    },
+    {
+      "bytes": 51717,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v01.py",
+      "sha256": "160184262e4f0008ab1b25e30164f97e6e601a6704df05c87470e4ed5ea540f8"
+    },
+    {
+      "bytes": 26188,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_settlement_worker_v01.py",
+      "sha256": "e2c9fc6774183a52f02ddd99cb72a457fef117f2ec5d374c7b722ff13d7a5ec5"
+    }
+  ]
+}

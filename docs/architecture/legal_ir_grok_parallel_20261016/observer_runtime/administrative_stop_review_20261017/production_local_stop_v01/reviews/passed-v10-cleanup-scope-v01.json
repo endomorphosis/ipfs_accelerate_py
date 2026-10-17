@@ -1,0 +1,29 @@
+{
+  "attribution": "Actual size and fresh root metadata/process/resource eligibility checks belong to root; this reviewer read only immutable successful-v10 metadata and runner source.",
+  "checked_evidence": {
+    "actual_completed_primary_cases": 92,
+    "released_reservation_id": "051ea7af6aa44c218be079bd2a7b7d2e",
+    "report_JUnit_and_receipt_directory_outside_removal_scope": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-10",
+    "runner_fixture_base": "/tmp/pytest-of-barberb/pa17j",
+    "separate_actual_exit_release_observation_sha256": "0cca53905c612392c75c94a69b9b934f7cbd8bcd05df77d8b1bb595180f99ad5",
+    "successful_v10_report_sha256": "a7e6fa368fa5faedb0048d47e24b610a3b267ae2ee8476b3ef15b16d2ca56a0f",
+    "unsuccessful_or_excluded_cases": 0
+  },
+  "conclusion": "No static or retained-metadata blocker to root deleting only this completed synthetic pytest fixture tree after fresh eligibility checks.",
+  "exact_removal_scope": "/tmp/pytest-of-barberb/pa17j",
+  "native_or_foreign_reservation_release_authorized_or_performed": false,
+  "preserve": [
+    "Every other pytest root.",
+    "All OWNED reports/JUnit/receipts/source pins and metadata evidence.",
+    "All production, failed, retained and foreign stores/paths and every ledger reservation."
+  ],
+  "reviewer": "unknown_event_forensics",
+  "reviewer_deleted_or_queried_target_tree": false,
+  "root_fresh_gates_required": [
+    "Exact ordinary parent/root directory device,inode,uid and path match; preserve a bounded metadata-only predelete manifest.",
+    "Actual released051ea reservation/three leases/owner+child+group absence and no active or retained external-charge references to this root.",
+    "Descriptor-anchored no-follow removal using symlink-safe shutil.rmtree; refuse mounted or changed root generation."
+  ],
+  "schema": "passed-v10-disposable-pytest-root-cleanup-scope-review@1",
+  "test_or_production_native_job_executed": false
+}

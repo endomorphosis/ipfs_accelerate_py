@@ -1,0 +1,209 @@
+{
+  "actual_owner_birth_available_in_this_survey": false,
+  "child_and_master_birth_not_reused_as_owner_birth": true,
+  "credentials_DB_WAL_or_native_jobs_accessed": false,
+  "genuine_owner_birth_records_found": [],
+  "matching_records": [
+    {
+      "hits": [
+        {
+          "JSON_path": "/1/body/identity/process_birth",
+          "identity_fields": {
+            "boot_id": "82e446b4-5572-47d2-a5ea-4259f31bb2d9",
+            "parent_pid": 2516780,
+            "pid": 2533842,
+            "start_time_ticks": 121662980
+          }
+        },
+        {
+          "JSON_path": "/2/body/actual_owner_identity/process_birth",
+          "identity_fields": {
+            "boot_id": "82e446b4-5572-47d2-a5ea-4259f31bb2d9",
+            "parent_pid": 2516780,
+            "pid": 2533842,
+            "start_time_ticks": 121662980
+          }
+        }
+      ],
+      "owner_PID_bytes_present": true,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/launch-operations.json"
+    },
+    {
+      "hits": [
+        {
+          "JSON_path": "",
+          "identity_fields": {
+            "owner_pid": 2516780
+          }
+        }
+      ],
+      "owner_PID_bytes_present": true,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/receipt.json"
+    }
+  ],
+  "native_policy_changed": false,
+  "owner_pid": 2516780,
+  "prior_separately_authorized_live_metadata_lookup": "Selected reservation36c3ec retains ownerPID and child birth only; current scheduler originalroot/phase/owner leases absent. No marker obtained.",
+  "production_mutation_performed": false,
+  "schema": "production-original-owner-birth-bounded-metadata-survey@1",
+  "searched_file_count": 31,
+  "searched_files": [
+    {
+      "bytes": 30530,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-inputs-v01.json",
+      "sha256": "1e01091a23066697094168e8be10249006db9a2afa2806bbb6dfb6f0dbdff145"
+    },
+    {
+      "bytes": 31820,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-inputs-v02.json",
+      "sha256": "e30cdb8c072896563e0607ef562c50bc102eb0fb2725dc7771bfda942eaaa90e"
+    },
+    {
+      "bytes": 36779,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-inputs-v03.json",
+      "sha256": "1df4facb8aedc4a8a597409f2a5038df0abfb9fe93f8350ab576c134fa37083f"
+    },
+    {
+      "bytes": 38068,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-inputs-v04.json",
+      "sha256": "fc849eb1f979eae98d1e4984695f13af33859dcef7165c6e5dc70ae97f3a2292"
+    },
+    {
+      "bytes": 39596,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-inputs-v05.json",
+      "sha256": "de0f375dd8f4bb5657a96bdd7bc89556e016f7c0966e995d37b6dd3ec63dfe4d"
+    },
+    {
+      "bytes": 49979,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-inputs-v06.json",
+      "sha256": "50cc9a0d3d77498936bc3827fdddd9d45aa1314e4f7c9d728a7ee6773456c5b2"
+    },
+    {
+      "bytes": 0,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-owner-stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-owner-stdout.json",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 21416,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-request-v01.json",
+      "sha256": "efdf255993e5e453697716e1c191bfb536bcfc1cb3f64d00a5ea45a9f2b12514"
+    },
+    {
+      "bytes": 23032,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-request-v02.json",
+      "sha256": "9e0f68fc70c87995cdc649d0cefbffdc68cf0adb015486b3fbcc6211dc6d4683"
+    },
+    {
+      "bytes": 26255,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-request-v03.json",
+      "sha256": "896ab0a9dec982a2533c477973b12775891f84e397214e22552a37ed312de7c9"
+    },
+    {
+      "bytes": 27246,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-request-v04.json",
+      "sha256": "0bb898bcb8e2e78a40b122b602e736b8d28c6f534df40cd652cb5c21821364d0"
+    },
+    {
+      "bytes": 28416,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-request-v05.json",
+      "sha256": "bbf3dac3fe8ce9dc4538822d7816c9a47f1c30b224868e864ffdc89ffd107f75"
+    },
+    {
+      "bytes": 36622,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-request-v06.json",
+      "sha256": "a7d7374865fa9f62289932a6d26b7da9944331ce0d0e9592abdfb06cf413ba95"
+    },
+    {
+      "bytes": 0,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch02-owner-stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 276,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch02-owner-stdout.json",
+      "sha256": "b9c52e82a2c2adf45072230d0f371e0db3ce5166fb6ce7df2df526dbc5954c20"
+    },
+    {
+      "bytes": 44252,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/launch06-attempt2-inspection-inputs-v03.json",
+      "sha256": "8a46e5d12b9f0c015ea9756bc9461e71a3b0e05fdaad70d8423687b161681bbf"
+    },
+    {
+      "bytes": 45006,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/launch06-attempt2-inspection-inputs-v04.json",
+      "sha256": "da3d4e17745340a8326792fed9e2dbcd34b375949fdf9d5cf114fba1b194f157"
+    },
+    {
+      "bytes": 38738,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/launch06-attempt2-inspection-request-v03.json",
+      "sha256": "5f37237704d735aec97f97db9303e39c38ec8b456f882544e8d0734b4f65d632"
+    },
+    {
+      "bytes": 40392,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/launch06-attempt2-inspection-request-v04.json",
+      "sha256": "be86d7f891770c2a00e2ab761bdc143b9d746e109265bb2a27050eddadac2329"
+    },
+    {
+      "bytes": 2905,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/launch06-attempt2-inspection-v05-preparation-plan-v01.json",
+      "sha256": "e42f596696801a152a80c68f75b6c3f1a3441537948186106c00e9ea879fcef6"
+    },
+    {
+      "bytes": 3922,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/launch06-attempt2-inspection-v05-preparation-plan-v02.json",
+      "sha256": "21ac1b9b43427fc72367e9ffc238829efb9c925d357f2052a2f981990bd02508"
+    },
+    {
+      "bytes": 10096,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/retained-population-bindings.json",
+      "sha256": "783b407457f7adb478a7ec5a27682852d61f194f74319a578c8d83153a80e68b"
+    },
+    {
+      "bytes": 1352,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/child.sanitized.log",
+      "sha256": "c175116fcd5170f844be61808a658350f248bcfbd96b73fd4f1a178a31fc03f7"
+    },
+    {
+      "bytes": 58188,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/launch-operations.json",
+      "sha256": "f8ca5d12af1141452820d0401ede88bba96f56993b8c5392093ca8cd22e9f9a1"
+    },
+    {
+      "bytes": 258,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/launch-status.json",
+      "sha256": "62f42a2aace2e9f3c5110fe004b02c3cd91929d4786716e6984125ede00648a6"
+    },
+    {
+      "bytes": 4766,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/master.sanitized.log",
+      "sha256": "220947413f84c1fc35f2c62ae9a9b7a973ad332b4af103e824af885fdf1bffcf"
+    },
+    {
+      "bytes": 483,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/native-master-launch-intent.json",
+      "sha256": "2aa7eeb3ad2c3395fb9319538c356446b4748348eab12f9c8a0e3eb2da5934f5"
+    },
+    {
+      "bytes": 3136,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/receipt.json",
+      "sha256": "0a8aa7ba8ea389ab614bca79647d1a3b50b870d46d7a86877ccd129733e6fd7a"
+    },
+    {
+      "bytes": 4766,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/workspace/legal-ir-grok-parallel-20261016-r06/logs/configured-board-20261017T005558Z.log",
+      "sha256": "220947413f84c1fc35f2c62ae9a9b7a973ad332b4af103e824af885fdf1bffcf"
+    },
+    {
+      "bytes": 1215,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/workspace/legal-ir-grok-parallel-20261016-r06/state/configured-board-master.pid.terminal.json",
+      "sha256": "d86090129a85955c478e9bc644544f34f19683012dd6fd6d7be13ab0d1c594c6"
+    }
+  ],
+  "searched_total_bytes": 649510,
+  "source_metadata_only": true
+}

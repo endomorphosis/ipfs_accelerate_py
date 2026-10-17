@@ -1,0 +1,149 @@
+{
+  "actual_tool_session": 26436,
+  "attribution": {
+    "historical": "Original523 production ADMIN/settlement qualification remains historical and unchanged. The fresh045 source regression does not repeat or reopen that production stop, settle unknown remote outcomes, or replace GitHub CI.",
+    "independent": "Exact immutable metadata pins, all2883 declared source bytes, independently inventoried current2832-file Python/six-SQL closure,208 loaded-origin paths,92 unique primary results and counts,92 unique JUnit cases and no failed/skipped/error entries; typed request/report/input/receipt/release joins through reviewed pure metadata functions.",
+    "native": "Test execution, native adapter behavior and fixture assertions are attributed to the actual native pytest runner and its immutable reports. The native integration custody seam is explicitly nonadmitting; this regression does not create production custody authority.",
+    "outer": "Actual native owner exit0/released reservation/absent three ancestry leases and parent-child group facts are root post-owner observations, not newly queried by reviewer."
+  },
+  "checks_passed": true,
+  "independent_reconciliation": {
+    "all_declared_source_pins_rehashed_equal": true,
+    "all_loaded_owned_origins_in_actual_pinned_package": true,
+    "all_primary_outcomes_passed": true,
+    "case_exclusions": [],
+    "current_package_inventory_equals_declared_full_closure": true,
+    "declared_source_bytes": 109125238,
+    "declared_source_files": 2883,
+    "expected_preparer_pin": {
+      "bytes": 11043,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/prepare_planning_unknown_administrative_controls_v13.py",
+      "sha256": "f02caf3eaf4dfe1e1963e3d02267856c81c571437d2d4cfa4dacd874dbff556f"
+    },
+    "expected_runner_pin": {
+      "bytes": 10320,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/run_planning_unknown_administrative_controls_v13.py",
+      "sha256": "d0b70d6ae549d922504321b3df34f0f5b8d5ff4719a3a598c68493c8acfcc1e2"
+    },
+    "expected_runtime_native_helper_pin": {
+      "bytes": 10304,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/run_planning_unknown_native_owner_v06.py",
+      "sha256": "e2f66d5901f73ea99028d704703698745a16b83b4328589aa5e1b47c04d532c7"
+    },
+    "junit_cases": 92,
+    "junit_failures_errors_or_skips": 0,
+    "junit_unique_cases": 92,
+    "loaded_owned_module_origins": 208,
+    "package_Python_files": 2826,
+    "package_Python_plus_SQL_files": 2832,
+    "package_SQL_resources": 6,
+    "package_inventory_directory_entries_seen": 3212,
+    "package_source_bytes": 107315589,
+    "policy_conflict_resolved_exact_retained_0a09_pin": {
+      "bytes": 50619,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment.py",
+      "sha256": "0a090a6ac961cdb5e0e14514f00eb280feeb858b24332d0f9956d524585dfdda"
+    },
+    "primary_cases": 92,
+    "primary_counts_by_file": {
+      "tests/test_planning_unknown_abandonment_native_integration.py": 14,
+      "tests/test_planning_unknown_abandonment_policy.py": 45,
+      "tests/test_planning_unknown_closed_status_custody.py": 33
+    },
+    "primary_outcomes_canonical_sha256": "15adaa6453ce09ad98c7c0b801ad8adb61e413bcec13c12a03c3222aaad137cd",
+    "primary_unique_nodeids": 92,
+    "source_digest_map_canonical_sha256": "b2522ce6a564c4be2a339eb5525ff45313766857ec7ae3c24cee3f5989a4883d",
+    "subtest_reports": 0
+  },
+  "inputs_pin": {
+    "bytes": 695,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-administrative-controls-inputs-v13.json",
+    "sha256": "6abff8a439dcbb951cfcca99e06c1db8ce59bccba9a19e5b1cb2fb0245c99f2f"
+  },
+  "junit_pin": {
+    "bytes": 15924,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-13/pytest.junit.xml",
+    "sha256": "4f09fc3a1600656f4314eeba6c942fded14990db6314f3ce2d958b52ca5c2be4"
+  },
+  "metadata_verifier_invocation": {
+    "checks_passed": true,
+    "exact_pinned_module_imports_and_literal_assignments_only": true,
+    "main_git_documentation_preparation_or_product_code_executed": false,
+    "selected_exact_reviewed_functions": [
+      "need",
+      "regular",
+      "checked",
+      "metadata_object",
+      "metadata_pin",
+      "completed_regression92"
+    ]
+  },
+  "original_production_runtime_HEAD": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "outer_evidence_crosswalk": {
+    "actual_PIDs_observed_absent": [
+      2628230,
+      2636031
+    ],
+    "actual_lease_IDs_observed_absent": [
+      "c4ed435056aa41ddb4a7851e0b0d3acd",
+      "15dcd85bb7c446e4880ac0697ea518df",
+      "9c640bc43fa040a89409c34e32857b20"
+    ],
+    "actual_reservation_id": "e483273a76ab4690a566747373046617",
+    "child_live_group_observed_absent": true,
+    "native_child_returncode": 0,
+    "native_owned_group_quiescent": true,
+    "native_receipt_schema": "legal-ir-native-orchestration-receipt@1",
+    "native_status": "completed",
+    "observed_reservation_status": "released",
+    "request_report_receipt_SHA_equal": true
+  },
+  "owner_receipt_pin": {
+    "bytes": 637,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-13/receipt.json",
+    "sha256": "cf8b62a668672e41f9fe3edf71ea86f8e9fb23734c0e3514505f6eecb43bcf64"
+  },
+  "post_owner_observation_pin": {
+    "bytes": 1262,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/merged-regression-attempt13-post-owner-v01.json",
+    "sha256": "e7425439c2d5a8b58f5731ef493a9950f07b78441d9673bd04a46372ddeab4ed"
+  },
+  "qualified_merged_source_HEAD": "04556f5fe1907a38faf89b059dedfce66527a5b4",
+  "report_pin": {
+    "bytes": 70575,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-13/administrative-controls-result.json",
+    "sha256": "90236e81c441343c34fb9d43d1c33af2d41179735434bb81ff30fa804b0c9b41"
+  },
+  "request_pin": {
+    "bytes": 753650,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-administrative-controls-request-v13.json",
+    "sha256": "eb399d80a38074d40cbc9c00271e2a9b8c8e6845e892ca4b181454f41a55a877"
+  },
+  "reviewed_metadata_verifier_independent_static_review_pin": {
+    "bytes": 2955,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/local-documentation-gates-v03/fixed-v13-doc-gates-independent-static-review-v07.json",
+    "sha256": "fc5b7a49842943dbf3f7f1f1e10d939eff96e4662647348408b452df9038ed75"
+  },
+  "reviewed_metadata_verifier_source_pin": {
+    "bytes": 22167,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/local-documentation-gates-v03/prepare_local_documentation_gates_v07.py",
+    "sha256": "8aa54ff40e25d59c36afb987298ae2e88b38f00aae06345c0b3b27880d70f80b"
+  },
+  "reviewer": "/root/grok_confinement_review",
+  "reviewer_access": {
+    "C_source_HEAD_or_existing_artifacts_modified": false,
+    "Git_or_documentation_preparation_executed": false,
+    "database_WAL_weights_or_credential_reads": false,
+    "live_process_or_resource_API_queries": false,
+    "native_jobs": false,
+    "product_or_backend_imports": false
+  },
+  "root_reported_actual_tool_exit": 0,
+  "runtime_scope": {
+    "native_integration_custody_seam": "explicitly nonadmitting",
+    "new_native_ACK_semantic_or_completion_authority": false,
+    "production_custody_qualified": false,
+    "provider_calls": false
+  },
+  "schema": "merged-source-administrative-92-regression-retained-independent-review@1"
+}

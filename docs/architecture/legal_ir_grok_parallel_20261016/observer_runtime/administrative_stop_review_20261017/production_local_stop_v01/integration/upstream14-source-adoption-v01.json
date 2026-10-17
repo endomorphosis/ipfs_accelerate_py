@@ -1,0 +1,164 @@
+{
+  "PR293_observed": {
+    "base_ref": "main",
+    "base_sha": "d98f1fbab4d6869fdd55f9a92e3bc67e84e60499",
+    "draft": true,
+    "head_ref": "agent/legal-ir-planning-unknown-abandonment-20261017",
+    "head_sha": "7c15d91651960791a29666a59a4fe3bc284dfa67",
+    "merged": false,
+    "number": 293,
+    "state": "open"
+  },
+  "byte_identical_count": 13,
+  "changed_source_count": 14,
+  "exact_upstream_commit": "08fb614b2d0d79b610e82d6dc81a8ce73899504e",
+  "exact_upstream_parent": "d98f1fbab4d6869fdd55f9a92e3bc67e84e60499",
+  "expected_policy_difference_count": 1,
+  "integration_plan_only": "After actual active native owner exits and root permits source/HEAD changes, adopt main history while preserving all13 already-identical blobs and the separately qualified newer local policy @2. Do not blindly reset policy to older upstream bytes. No merge performed by this survey.",
+  "latest_main_at_observation": "08fb614b2d0d79b610e82d6dc81a8ce73899504e",
+  "main_advanced_again_beyond_reviewed_adoption": false,
+  "method": {
+    "C_fetch_merge_HEAD_source_or_docs_writes": false,
+    "GitHub_commits_and_contents_and_ref_PR_APIs_read_only": true,
+    "active_native_outputs_DB_WAL_resource_or_process_state_read": false,
+    "imports_tests_native_jobs_or_provider_calls": false,
+    "local_git_hash_object_without_writes_only": true
+  },
+  "observed_at_utc": "2026-10-17T13:10:22.245126+00:00",
+  "owned_controller_head": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "qualification_limit": "GitHub source adoption supplies no production administrative-stop/native status/settlement qualification or authority. Current active Status73846 remains owned and observed by root separately.",
+  "schema": "production-local-stop-parallel-main-source-adoption-readonly-survey@1",
+  "source_comparisons": [
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "6c2f0155577fc3f0ac96ddc05d0b7b67a80ac2d0",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "upstream_bytes": 247157,
+      "upstream_git_blob": "6c2f0155577fc3f0ac96ddc05d0b7b67a80ac2d0",
+      "upstream_status": "modified"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "93b3d077e2d55a66a2d49c4ba887f4b27ac32911",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+      "upstream_bytes": 205700,
+      "upstream_git_blob": "93b3d077e2d55a66a2d49c4ba887f4b27ac32911",
+      "upstream_status": "modified"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "1c70aa825beab064f71697d6fd611613d0ce4990",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "upstream_bytes": 671092,
+      "upstream_git_blob": "1c70aa825beab064f71697d6fd611613d0ce4990",
+      "upstream_status": "modified"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "5f8026bdcc5b51e40e1a600e7acac4519a8498b2",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "upstream_bytes": 3298714,
+      "upstream_git_blob": "5f8026bdcc5b51e40e1a600e7acac4519a8498b2",
+      "upstream_status": "modified"
+    },
+    {
+      "byte_identical": false,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "ced4f083ac684a1906f97f603a2b96c28039fccd",
+      "current_source_sha256": "0a090a6ac961cdb5e0e14514f00eb280feeb858b24332d0f9956d524585dfdda",
+      "expected_difference": "Current local policy @2 closed-status/native-owner-absence change is separately qualified by genuine full92 suite; upstream adopts earlier reviewed policy only. Preserve current local policy bytes during later integration.",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment.py",
+      "upstream_bytes": 32448,
+      "upstream_git_blob": "433badaac8f1dd55231f72ca0f1d57840356be51",
+      "upstream_source_sha256": "2c41ec13d6493da394d3285686e662e5fa36e88439eb840271260ce1605e60e7",
+      "upstream_status": "added"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "30bde46d8f46f534bd3366444c1edbe8e5a01d91",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment_settlement.py",
+      "upstream_bytes": 16649,
+      "upstream_git_blob": "30bde46d8f46f534bd3366444c1edbe8e5a01d91",
+      "upstream_status": "added"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "aa3dfa4b08822ac102270318fda536066d666751",
+      "path": "tests/native_three_store_crash_copy_fixture.py",
+      "upstream_bytes": 23940,
+      "upstream_git_blob": "aa3dfa4b08822ac102270318fda536066d666751",
+      "upstream_status": "added"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "d3ece3d92892a405ebe2db58f9bd966716871716",
+      "path": "tests/native_unknown_admin_owner_fixture.py",
+      "upstream_bytes": 43192,
+      "upstream_git_blob": "d3ece3d92892a405ebe2db58f9bd966716871716",
+      "upstream_status": "added"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "e9629d35916a3043a8629fcb360a131275288a8c",
+      "path": "tests/test_planning_unknown_abandonment_exact_owner_identity.py",
+      "upstream_bytes": 2185,
+      "upstream_git_blob": "e9629d35916a3043a8629fcb360a131275288a8c",
+      "upstream_status": "added"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "085d72b459dd5f364ae44eca77c8e1b57f0922a5",
+      "path": "tests/test_planning_unknown_abandonment_gateway.py",
+      "upstream_bytes": 13102,
+      "upstream_git_blob": "085d72b459dd5f364ae44eca77c8e1b57f0922a5",
+      "upstream_status": "added"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "7aab41b4c40fc77c77c8bfe652908c8ff58a735b",
+      "path": "tests/test_planning_unknown_abandonment_native_integration.py",
+      "upstream_bytes": 36624,
+      "upstream_git_blob": "7aab41b4c40fc77c77c8bfe652908c8ff58a735b",
+      "upstream_status": "added"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "7f76ed3a070c75c7c848b69033520ec6229c5fdc",
+      "path": "tests/test_planning_unknown_abandonment_policy.py",
+      "upstream_bytes": 16909,
+      "upstream_git_blob": "7f76ed3a070c75c7c848b69033520ec6229c5fdc",
+      "upstream_status": "added"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "898262b21d8ef2940f7ab1d17b6321d340747964",
+      "path": "tests/test_planning_unknown_abandonment_reconciliation.py",
+      "upstream_bytes": 3932,
+      "upstream_git_blob": "898262b21d8ef2940f7ab1d17b6321d340747964",
+      "upstream_status": "added"
+    },
+    {
+      "byte_identical": true,
+      "contents_API_sha_matches_commit_file_sha": true,
+      "current_owned_git_blob": "fb76c3b22e10d7054b5d0db29940fe517778e305",
+      "path": "tests/test_planning_unknown_original_v05_birth_crosswalk.py",
+      "upstream_bytes": 2978,
+      "upstream_git_blob": "fb76c3b22e10d7054b5d0db29940fe517778e305",
+      "upstream_status": "added"
+    }
+  ],
+  "upstream_commit_subject": "Adopt reviewed planning UNKNOWN administrative-stop source from PR293",
+  "upstream_tree": "a8af4f3137b85a24ab8d4c7e935a9b09e9c8118d"
+}

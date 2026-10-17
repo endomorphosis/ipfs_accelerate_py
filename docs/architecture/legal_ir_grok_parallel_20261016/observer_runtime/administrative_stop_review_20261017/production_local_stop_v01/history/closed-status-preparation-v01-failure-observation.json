@@ -1,0 +1,35 @@
+{
+  "automatic_retry_admitted": false,
+  "completion_authority": false,
+  "failure": "Metadata preparer required a historical A protocol leaf entry that the genuine original launch source inventory did not record. The same unjustified join existed in the unexecuted old status actor.",
+  "genuine_original_launch_request_pin": {
+    "bytes": 36622,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-supervisor-launch-request-v06.json",
+    "sha256": "a7d7374865fa9f62289932a6d26b7da9944331ce0d0e9592abdfb06cf413ba95"
+  },
+  "independently_inspected_launch_source_inventory": {
+    "historical_leaf_pin_present": false,
+    "proof_leaf_path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py"
+  },
+  "native_status_owner_executed_by_this_failed_preparation": false,
+  "old_actor_pin": {
+    "bytes": 41137,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_closed_status_owner_v01.py",
+    "sha256": "d0f5a707f3b67beeec337ca20990ab410734663f75659e04887b258554e19cf5"
+  },
+  "old_preparation_report_exists": false,
+  "old_request_output_exists": false,
+  "production_DB_WAL_bytes_read_or_opened": false,
+  "production_write_or_native_action_performed": false,
+  "replacement": "Versioned current-protocol derivatives preserve exact original launch bytes and explicitly label the historical leaf unrecorded; current A/C protocol validation is separate.",
+  "root_reported_actual_metadata_process_exit": 2,
+  "root_reported_exception_type": "KeyError",
+  "root_reported_source_line": 213,
+  "runtime_scope": "Tool exit/type/line are root report; inventory absence and source pins are independently read metadata. No native or target store state was queried.",
+  "schema": "production-closed-status-request-preparation-failure-observation@1",
+  "source_pin": {
+    "bytes": 17438,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/prepare_production_closed_status_request_v01.py",
+    "sha256": "40e582b9411ee90f0b68319098e3a4722cfcaf9fa4e4797ca261bdd4ec407cba"
+  }
+}

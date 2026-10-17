@@ -1,0 +1,25 @@
+{
+  "actual_tool_exit": 1,
+  "actual_tool_session": 49324,
+  "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-12",
+  "attempt_directory_empty": true,
+  "database_opened": false,
+  "error": "storage reservation capacity exceeded",
+  "error_type": "DaemonResourceError",
+  "failure_before_disk_reservation_and_test_worker_start": true,
+  "global_storage_limit_unchanged": 160000000000,
+  "native_ACK_created": false,
+  "observed_at_epoch": 1792245368.0924015,
+  "own_disk_reservation_observed_absent": true,
+  "own_native_leases_and_waiter_observed_absent": true,
+  "owner_pid_observed_absent": 2491610,
+  "production_actions_performed": false,
+  "pytest_started": false,
+  "request_pin": {
+    "bytes": 753650,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-administrative-controls-request-v12.json",
+    "sha256": "cf113bf0c6daa534229bc6e80e7d9d404e222ed2ba9ac2b6d2666cb2de3ba6e7"
+  },
+  "schema": "merged-supervisor-regression-storage-admission-failure-observation@1",
+  "source_HEAD": "04556f5fe1907a38faf89b059dedfce66527a5b4"
+}
