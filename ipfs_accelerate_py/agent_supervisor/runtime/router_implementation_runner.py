@@ -810,6 +810,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         reasoning_effort: str = "high", container_boundary: Path | None = None,
         container_boundary_sha256: str = "", purpose: str = "coding",
         resume_session_id: str | None = None,
+        grok_named_session_request=None,
         semantic_repository: Path | None = None,
         source_formalization_handoff: Path | None = None,
         source_formalization_handoff_sha256: str | None = None,
@@ -881,6 +882,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("Codex literal response requires the Codex CLI provider")
     if receipt_observer is not None and not callable(receipt_observer):
         raise ValueError("explicit receipt observer callback required")
+    if grok_named_session_request is not None:
+        from ipfs_accelerate_py.cli_runtime.grok_named_session import validate_preparation_option
+        if (purpose != "planning" or provider != "grok_cli" or model != "grok-4.7"
+                or resume_session_id is not None):
+            raise ValueError("automatic named session requires its exclusive Grok planning route")
+        validate_preparation_option(provider, grok_named_session_request, {})
+        # Preserve the caller's integer contract; the provider applies the
+        # precise remaining deadline only when headless actually starts.
+        grok_named_session_request.remaining_seconds(timeout)
     if resume_session_id is not None:
         if provider != "grok_cli" or type(resume_session_id) is not str:
             raise ValueError("explicit native resume requires the Grok CLI provider and a canonical session UUID")
@@ -1488,6 +1498,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     instance = get_llm_provider(provider, deps=deps, use_cache=False)
     set_last_cli_observation(provider, {})
     invocation = uuid.uuid4().hex
+    if grok_named_session_request is not None and invocation == grok_named_session_request.allocation_session_id:
+        raise ValueError("automatic allocation and fresh invocation identities must differ")
     started = time.monotonic()
     previous = os.environ.get("ipfs_accelerate_py_CODEX_SANDBOX")
     previous_bytecode = os.environ.get("PYTHONDONTWRITEBYTECODE")
@@ -1613,6 +1625,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "disallowed_tools": provider_options["grok_disallowed_tools"].split(","),
             "effective_toolset_verified": False,
         }
+        if grok_named_session_request is not None:
+            provider_options["grok_named_session_request"] = grok_named_session_request
+            provider_options["grok_cli_cmd"] = [str(grok_named_session_request.binary.path)]
+            receipt["provider_invocation_policy"]["owned_named_session_requested"] = True
+            receipt["provider_invocation_policy"]["allocation_session_id"] = grok_named_session_request.allocation_session_id
+            receipt["provider_invocation_policy"]["named_session_binary_sha256"] = grok_named_session_request.binary.sha256
+            receipt["provider_invocation_policy"]["production_configuration_qualified"] = False
         if resume_session_id is not None:
             # An owner may resume a genuinely created and independently
             # attested native session. Explicit kwargs keep allocation routing
@@ -1810,13 +1829,26 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 # Both purposes launch a workspace-capable agent and require a fresh
                 # native receipt. Cached response text cannot replay those effects.
                 side_effecting=True,
-                task_kind="coding", allocation_path="cli", allocation_session_id=invocation,
+                task_kind="coding", allocation_path="cli",
+                allocation_session_id=(grok_named_session_request.allocation_session_id
+                    if grok_named_session_request is not None else invocation),
                 codex_cli_literal_response=codex_cli_literal_response,
                 temperature=0,
                 **provider_options,
             )
         failure_phase = "provider_result_validation"
         observation = get_last_cli_observation(provider)
+        if grok_named_session_request is not None:
+            named_receipt = grok_named_session_request.receipt()
+            native_id = grok_named_session_request.completed_session_id
+            if (not native_id or observation.get("session_id") != native_id
+                    or named_receipt.get("bootstrap_successful") is not True
+                    or named_receipt.get("lifetime_closed") is not True
+                    or named_receipt.get("response_accepted") is not True):
+                raise RuntimeError("owned named session lifecycle or native observation differs")
+            receipt["provider_invocation_policy"]["owned_named_session"] = named_receipt
+            receipt["provider_invocation_policy"]["native_resume_session_id"] = native_id
+            receipt["provider_invocation_policy"]["native_resume_identity_verified"] = True
         if resume_session_id is not None:
             if observation.get("session_id") != resume_session_id:
                 raise RuntimeError("observed Grok native resume session differs from the explicit request")
