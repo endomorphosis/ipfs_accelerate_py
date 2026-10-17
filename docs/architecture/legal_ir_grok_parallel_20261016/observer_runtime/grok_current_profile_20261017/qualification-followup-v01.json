@@ -1,0 +1,108 @@
+{
+  "actual_exit_and_release_observation": {
+    "bytes": 1241,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-post-owner-v03.json",
+    "sha256": "c4f65980851b6a80fa96e65f1afc88cee1580ffad11b24eb9a22ae60b53f996b"
+  },
+  "actual_tool_exit_code": 0,
+  "actual_tool_session": 97538,
+  "additional_cleanup": "1443547686 apparent bytes from completed owned pa17m synthetic fixtures; all eight retained report/input/JUnit identities preserved. No ledger mutation or model/production/retained/foreign asset deletion.",
+  "auxiliary_feature_toggles": "Stock unchanged; title generation is declined and dashboard replies are synthetic in this fixture.",
+  "backing_scope": "Private synthetic config/auth/requirements/AGENTS files; actual sampling links and unchanged bytes observed at native Popen. No ambient credentials/config bytes copied. No browser auth, signed requirements or native resume qualification.",
+  "canonical_provider_output_token_cap_enforced": false,
+  "cases": [
+    {
+      "case": "positive-read-file",
+      "passed": true,
+      "primary_requests": 2,
+      "source": {
+        "bytes": 36923,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/case-result.json",
+        "sha256": "349ce38f91fb8ffba5d4725823d68ff8f09cc8bf639a1beb0ed6160c273b3bda"
+      }
+    },
+    {
+      "case": "empty-tools-control",
+      "passed": true,
+      "primary_requests": 1,
+      "source": {
+        "bytes": 36611,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/empty-tools-control/case-result.json",
+        "sha256": "4cd28c920936f02c1fd781aa42d2f2d9e2844ddebce547ba867b9193e757dbfb"
+      }
+    },
+    {
+      "case": "canonical-planning-adversarial",
+      "passed": true,
+      "primary_requests": 2,
+      "source": {
+        "bytes": 148335,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/case-result.json",
+        "sha256": "0b468d4268c38e8c2e23aecdbd847381e90295cceae1ad251a9906645ec30293"
+      }
+    }
+  ],
+  "config_mapping": "Selected [model.\"grok-4.7\"].max_completion_tokens=4096 maps to max_tokens=4096 on the captured native Chat Completions requests.",
+  "current_tool_profile": "Nonempty read_file allowlist plus read_file/search_tool/use_tool denial produced zero offered primary tools; eight injected native parse-stage refusals matched exact call IDs, names and arguments. Empty --tools remained the unsafe default-tool positive control.",
+  "fixture_only": true,
+  "historical_unknown_resolved": false,
+  "native_task_or_semantic_authority": false,
+  "post_owner_inventory": {
+    "apparent_bytes": 2365768,
+    "continuous_custody_proved": false,
+    "entries": 204,
+    "point_in_time": true
+  },
+  "production_configuration_qualified": false,
+  "publication_scope": "Exact bounded evidence copies for review; producer paths and original runtime pins preserved. Copies confer no native authority.",
+  "qualification_result": {
+    "bytes": 133024,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/qualification-result.json",
+    "sha256": "9486aae975cf107ed3436755c699ce8f4ee0c83d6504b266af93f62b0877ff5f"
+  },
+  "qualified_source_head": "500fb4ee4d538c5abb1a395c171c979636b8092a",
+  "real_server_generation_or_spend_enforcement_qualified": false,
+  "remaining_steps": [
+    {
+      "scope": "The generic Grok CLI path currently ignores caller max_tokens kwargs; mock wire mapping does not alter that API or make a real provider cap claim.",
+      "step": "Bind the supported per-model request budget to the actual future router/profile; validate conflicting aliases and stricter operator/requirements limits before dispatch."
+    },
+    {
+      "scope": "Initial-title suppression and total billed-token savings remain unknown.",
+      "step": "Account for auxiliary calls, or separately qualify documented refresh/summary/dashboard settings."
+    },
+    {
+      "scope": "Preserve retired LIR-9001 packets, both UNKNOWNs, cap2, blocked LIR-9002 prerequisite and all other task dependencies.",
+      "step": "Prepare a genuinely distinct task with fresh current-source inputs, worker output contract, independent factual validation and native authority."
+    },
+    {
+      "scope": "This prose fixture does not establish structured-schema, legal meaning, training gold, checkpoint quality or Lean acceptance.",
+      "step": "Qualify canonical structured planning transport if selected, then a bounded legal-span-to-LegalIR-to-graph/Lean pilot using existing assets."
+    }
+  ],
+  "schema": "current-grok-profile-qualified-followup@1",
+  "two_prior_storage_refusals": "Both before disk reservation and worker launch; no Grok/provider attempt. Failures preserved.",
+  "wire_profiles": [
+    {
+      "calls": 5,
+      "class": "primary_agent",
+      "max_tokens": 4096,
+      "model": "grok-4.7",
+      "temperature": 0
+    },
+    {
+      "calls": 3,
+      "class": "auxiliary_dashboard_summary",
+      "max_tokens": 4096,
+      "model": "grok-4.7",
+      "temperature": 0
+    },
+    {
+      "calls": 3,
+      "class": "auxiliary_session_title",
+      "max_output_tokens": 100,
+      "model": "grok-4.6",
+      "temperature": 1
+    }
+  ]
+}
