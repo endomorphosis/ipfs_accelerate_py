@@ -8286,16 +8286,47 @@ def _grok_sampling_config_text(path: Path) -> str:
         os.close(descriptor)
 
 
-def _grok_zero_temperature_config(text: str, model: str) -> str:
+def _grok_sampling_config(text: str, *, label: str = "config") -> dict:
     # toml is already a declared runtime dependency. No package is installed.
     import toml
-
     try:
         original = toml.loads(text)
     except ValueError:
-        raise ValueError("Grok sampling config is malformed") from None
+        raise ValueError(f"Grok sampling {label} is malformed") from None
     if any(original.get(key) for key in ("experiments", "version_overrides", "campaigns")):
-        raise ValueError("Grok sampling requires qualification of user config patches")
+        raise ValueError(f"Grok sampling requires qualification of {label} patches")
+    return original
+
+
+def _validate_grok_output_token_budget(value) -> int:
+    if type(value) is not int or not 1 <= value <= 2**63 - 1:
+        raise ValueError("Grok output token budget must be a positive TOML integer")
+    return value
+
+
+def _grok_output_token_budget(kwargs) -> Optional[int]:
+    values = [_validate_grok_output_token_budget(kwargs.pop(key))
+              for key in ("max_tokens", "max_new_tokens", "max_completion_tokens") if key in kwargs]
+    if values and any(value != values[0] for value in values):
+        raise ValueError("Grok output token budget aliases conflict")
+    return values[0] if values else None
+
+
+def _grok_config_token_budgets(config: dict, model: str) -> list[int]:
+    models = config.get("model", {})
+    defaults = config.get("models", {})
+    if not isinstance(models, dict) or not isinstance(defaults, dict):
+        raise ValueError("Grok token budget configuration tables are invalid")
+    selected = models.get(model, {})
+    if not isinstance(selected, dict):
+        raise ValueError("Grok selected model configuration is not a table")
+    return [_validate_grok_output_token_budget(table["max_completion_tokens"])
+            for table in (defaults, selected) if "max_completion_tokens" in table]
+
+
+def _grok_request_config(original: dict, model: str, *, zero_temperature: bool,
+                         output_token_budget: Optional[int]) -> str:
+    import toml
     from copy import deepcopy
     expected = deepcopy(original)
     models = expected.setdefault("model", {})
@@ -8305,7 +8336,10 @@ def _grok_zero_temperature_config(text: str, model: str) -> str:
     table = models.setdefault(model, {})
     if not isinstance(table, dict):
         raise ValueError("Grok selected model configuration is not a table")
-    table["temperature"] = 0.0
+    if zero_temperature:
+        table["temperature"] = 0.0
+    if output_token_budget is not None:
+        table["max_completion_tokens"] = output_token_budget
     # A leader can outlive the invocation or retain earlier sampling settings.
     cli["use_leader"] = False
     rendered = toml.dumps(expected)
@@ -8314,27 +8348,32 @@ def _grok_zero_temperature_config(text: str, model: str) -> str:
     return rendered
 
 
-def _grok_requirements_allow_zero(path: Path, model: str) -> None:
-    import toml
+def _grok_zero_temperature_config(text: str, model: str) -> str:
+    return _grok_request_config(_grok_sampling_config(text, label="user config"), model,
+                               zero_temperature=True, output_token_budget=None)
 
-    try:
-        policy = toml.loads(_grok_sampling_config_text(path))
-    except ValueError:
-        raise ValueError("Grok sampling requirements are malformed") from None
-    # Experiment arms can change config values. Their resolver is native CLI
-    # policy; an unqualified rewrite must not try to override or interpret it.
-    if any(policy.get(key) for key in ("experiments", "version_overrides", "campaigns")):
-        raise ValueError("Grok sampling requires qualification of requirements config patches")
-    if policy.get("cli", {}).get("use_leader") is True:
+
+def _grok_request_requirements(path: Path, model: str, *, zero_temperature: bool) -> dict:
+    policy = _grok_sampling_config(_grok_sampling_config_text(path), label="requirements config")
+    cli = policy.get("cli", {})
+    models = policy.get("model", {})
+    if not isinstance(cli, dict) or not isinstance(models, dict):
+        raise ValueError("Grok sampling requirements tables are invalid")
+    if cli.get("use_leader") is True:
         raise ValueError("Grok private sampling cannot require a leader")
-    selected = policy.get("model", {}).get(model, {})
-    if "temperature" in selected:
+    selected = models.get(model, {})
+    if not isinstance(selected, dict):
+        raise ValueError("Grok selected model requirements are not a table")
+    if zero_temperature and "temperature" in selected:
         _validate_grok_zero_temperature(selected["temperature"])
+    return policy
 
 
 @contextmanager
-def _grok_zero_temperature_environment(environment, *, model: str, command):
-    """Yield private sampling settings, preserving original context and auth.
+def _grok_zero_temperature_environment(environment, *, model: str, command,
+                                     zero_temperature: bool = True,
+                                     output_token_budget: Optional[int] = None):
+    """Yield private request settings, preserving original context and auth.
 
     HOME and all other environment values are retained. Other immediate Grok
     home entries are referenced without opening or copying their contents.
@@ -8343,9 +8382,19 @@ def _grok_zero_temperature_environment(environment, *, model: str, command):
     Both user and system requirements remain enforced; a known conflict fails
     before any provider process. Native effective-config validation remains a
     separate requirement for qualification.
+    Token budgets configure a per-response request field only. They do not
+    establish server enforcement or a ceiling on auxiliary calls or spend.
     """
     _validate_grok_sampling_model_command(command, model)
     inherited = dict(environment)
+    if output_token_budget is not None:
+        _validate_grok_output_token_budget(output_token_budget)
+        # Overlay merging and arbitrary config flags have not been qualified
+        # for this binding. Never silently bypass a stricter external setting.
+        if any(str(inherited.get(key) or "").strip() for key in ("GROK_CONFIG", "GROK_CONFIG_PATH")):
+            raise ValueError("Grok output token budget requires qualification of config overlays")
+        if "--" in command or any(str(token).startswith("--config") for token in command):
+            raise ValueError("Grok output token budget conflicts with custom config options")
     home_value = inherited.get("GROK_HOME")
     if home_value:
         source = Path(home_value).expanduser()
@@ -8361,9 +8410,25 @@ def _grok_zero_temperature_environment(environment, *, model: str, command):
                 if len(entries) >= _GROK_SAMPLING_MAX_HOME_ENTRIES:
                     raise ValueError("Grok sampling home exceeds its metadata bound")
                 entries.append(source / entry.name)
-    config = _grok_zero_temperature_config(_grok_sampling_config_text(source / "config.toml"), model)
-    _grok_requirements_allow_zero(source / "requirements.toml", model)
-    _grok_requirements_allow_zero(Path("/etc/grok/requirements.toml"), model)
+    original = _grok_sampling_config(_grok_sampling_config_text(source / "config.toml"), label="user config")
+    requirements = [_grok_request_requirements(path, model, zero_temperature=zero_temperature)
+                    for path in (source / "requirements.toml", Path("/etc/grok/requirements.toml"))]
+    if output_token_budget is not None:
+        managed = [_grok_sampling_config(_grok_sampling_config_text(path), label="managed config")
+                   for path in (Path("/etc/grok/managed_config.toml"), source / "managed_config.toml")]
+        limits = [output_token_budget]
+        for layer in (original, *managed, *requirements):
+            limits.extend(_grok_config_token_budgets(layer, model))
+        output_token_budget = min(limits)
+        for policy in requirements:
+            defaults = policy.get("models", {})
+            if "default" in defaults and defaults["default"] != model:
+                raise ValueError("Grok requirements select a different model for the output token budget")
+            selected = policy.get("model", {}).get(model, {})
+            if selected.get("max_completion_tokens", output_token_budget) > output_token_budget:
+                raise ValueError("Grok requirements conflict with the stricter output token budget")
+    config = _grok_request_config(original, model, zero_temperature=zero_temperature,
+                                  output_token_budget=output_token_budget)
     with tempfile.TemporaryDirectory(prefix="llm-router-grok-sampling-") as directory:
         root = Path(directory)
         root.chmod(0o700)
@@ -8425,6 +8490,10 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 _validate_grok_zero_temperature(kwargs.pop("temperature"))
                 if not structured_cli:
                     raise ValueError("Grok zero temperature requires a structured native CLI")
+
+            output_token_budget = _grok_output_token_budget(kwargs)
+            if output_token_budget is not None and not structured_cli:
+                raise ValueError("Grok output token budget requires a structured native CLI")
 
             explicit_max_turns = "grok_max_turns" in kwargs
             if explicit_max_turns:
@@ -8632,9 +8701,10 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         env[key] = value
                 from contextlib import ExitStack
                 with ExitStack() as sampling_scope:
-                    if temperature_supplied:
+                    if temperature_supplied or output_token_budget is not None:
                         env = sampling_scope.enter_context(_grok_zero_temperature_environment(
-                            env, model=model, command=cmd))
+                            env, model=model, command=cmd, zero_temperature=temperature_supplied,
+                            output_token_budget=output_token_budget))
                     try:
                         if stream_progress:
                             from .cli_runtime.grok_stream_capture import capture_grok_stream
