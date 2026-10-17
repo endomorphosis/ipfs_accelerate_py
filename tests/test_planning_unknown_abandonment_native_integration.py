@@ -115,7 +115,7 @@ def real_daemon(stores, *, source=None, coordinator=None):
         state_dir=Path(stores["execution"]).parent, state_prefix="crash-copy",
         task_shard_count=3, task_shard_index=1, strict_task_sharding=True,
         authority_mode="embedded_exclusive", task_source_kind="duckdb", task_source=source,
-        coordinator=coordinator, require_real_execution=True, lease_ms=86_400_000)
+        coordinator=coordinator, require_real_execution=True, lease_ms=3_600_000)
 
 
 def close_native(daemon):
