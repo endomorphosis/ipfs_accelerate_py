@@ -407,8 +407,8 @@ def assert_exact_preservation(case, daemon):
         "SELECT attempt_id,attempt_number,owner_session_id,fencing_token,fence_epoch FROM task_attempts WHERE task_cid=? ORDER BY attempt_number",
         [TASK]).fetchall()
     assert [(row[0], row[1]) for row in rows] == [(earlier["attempt_id"], 1), (attempt.attempt_id, 2)]
-    assert tuple(rows[1][2:]) == tuple(case.snapshot["attempt"][key] for key in
-                                     ("owner_session_id", "fencing_token", "fence_epoch"))
+    assert tuple(rows[1][key] for key in ("owner_session_id", "fencing_token", "fence_epoch")) == tuple(
+        case.snapshot["attempt"][key] for key in ("owner_session_id", "fencing_token", "fence_epoch"))
 
 
 def assert_closed(case, daemon, result):
