@@ -25,6 +25,7 @@ import base64
 import fcntl
 import hashlib
 import json
+import math
 import logging
 import os
 import secrets
@@ -4319,6 +4320,8 @@ class QuackStateServer:
     _logs: list[str] = field(default_factory=list, init=False, repr=False)
     _command_gateway: Any = field(default=None, init=False, repr=False)
     _database_status_startup_json: bytes | None = field(default=None, init=False, repr=False)
+    _native_execution_status_startup_json: bytes | None = field(default=None, init=False, repr=False)
+    _native_execution_status_deadline: float = field(default=0.0, init=False, repr=False)
     typed_command_socket_override: Path | None = None
     _grant_broker: Any = field(default=None, init=False, repr=False)
     _grant_bootstrap_fd: int | None = field(default=None, init=False, repr=False)
@@ -4479,9 +4482,12 @@ class QuackStateServer:
         descriptor, self._grant_bootstrap_fd = self._grant_bootstrap_fd, None
         if descriptor is not None:
             os.close(descriptor)
-        gateway, self._command_gateway = self._command_gateway, None
+        gateway = self._command_gateway
         if gateway is not None:
             gateway.stop()
+            # Failed native cleanup must retain its actual server-owned handle.
+            if self._command_gateway is gateway:
+                self._command_gateway = None
 
     def configure_database_status_before_start(
         self,
@@ -4538,6 +4544,50 @@ class QuackStateServer:
                 raise QuackStateServerControlError("startup queue scope is incomplete")
             self._database_status_startup_json = canonical_json_bytes(
                 {"database": database, "queue": queue}
+            )
+
+    def configure_native_execution_status_before_start(
+        self, *, binding: Mapping[str, Any], control_identity: Mapping[str, Any],
+        deadline_monotonic: float,
+    ) -> None:
+        """Freeze operator-local read metadata; this does not issue a grant."""
+        from ..todo_daemon.native_execution_status_owner import MAX_LIFETIME_SECONDS, NativeExecutionStatusBinding
+        from ..task_sources.typed_state_owner import _NATIVE_EXECUTION_STATUS_CONTROL_KEYS
+        with self._lock:
+            if (self._lifecycle is not ServerLifecycle.CREATED
+                    or self._native_execution_status_startup_json is not None
+                    or self._database_status_startup_json is None):
+                raise QuackStateServerControlError("native status startup scope cannot be rebound")
+            selected = NativeExecutionStatusBinding.from_dict(binding)
+            scope = json.loads(self._database_status_startup_json)
+            if selected.task_cid not in scope["database"]["task_cids"]:
+                raise QuackStateServerControlError("native status task is outside the startup scope")
+            if (not isinstance(control_identity, Mapping)
+                    or set(control_identity) != _NATIVE_EXECUTION_STATUS_CONTROL_KEYS
+                    or any(type(control_identity[key]) is not str or not control_identity[key] or len(control_identity[key].encode("utf-8")) > 1024
+                           for key in ("store_id", "database_uuid", "schema_fingerprint"))
+                    or type(control_identity["schema_revision"]) is not int
+                    or control_identity["schema_revision"] != selected.control_schema_version
+                    or control_identity["store_id"] != selected.control_store_id):
+                raise QuackStateServerControlError("native status control identity is incomplete")
+            now = time.monotonic()
+            if (type(deadline_monotonic) not in (float, int)
+                    or not math.isfinite(deadline_monotonic)
+                    or not now < deadline_monotonic <= now + MAX_LIFETIME_SECONDS):
+                raise QuackStateServerControlError("native status deadline is invalid")
+            self._native_execution_status_startup_json = canonical_json_bytes({
+                "binding": selected.to_dict(), "control_identity": dict(control_identity),
+            })
+            self._native_execution_status_deadline = float(deadline_monotonic)
+
+    def issue_native_execution_status_grant(
+        self, *, process_birth_id: str, peer_pid: int, ttl_seconds: float = 30.0,
+    ) -> tuple[str, Any]:
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY or self._command_gateway is None:
+                raise QuackStateServerNotRunningError("native status requires a ready owner")
+            return self._command_gateway.issue_native_execution_status_grant(
+                process_birth_id=process_birth_id, peer_pid=peer_pid, ttl_seconds=ttl_seconds,
             )
 
     def bind_database_status_scope(self, **binding: Any) -> None:
@@ -4658,10 +4708,17 @@ class QuackStateServer:
             owner_liveness_probe=self.owner_liveness_probe,
             transaction_lock=self._lock,
         )
+        # Retain the real handle before any startup binding opens resources;
+        # the existing server emergency cleanup must own partial-start failure.
+        self._command_gateway = gateway
         token = gateway.configure_status_bootstrap()
         self._bind_configured_database_status(gateway)
+        native = self._native_execution_status_startup_json
+        if native is not None:
+            gateway.bind_native_execution_status_before_start(
+                **json.loads(native), deadline_monotonic=self._native_execution_status_deadline,
+            )
         gateway.start()
-        self._command_gateway = gateway
         _atomic_write_text(self.typed_command_token_path(), token, mode=0o600)
 
     def status_path(self) -> Path:
@@ -5174,14 +5231,17 @@ class QuackStateServer:
         except Exception as exc:
             self._log(f"worker facet cleanup warning: {type(exc).__name__}")
         gateway = self._command_gateway
-        self._command_gateway = None
         if gateway is not None:
             try:
-                stop = getattr(gateway, "stop", None)
-                if callable(stop):
-                    stop()
-            except Exception:
-                pass
+                gateway.stop()
+                if self._command_gateway is gateway:
+                    self._command_gateway = None
+            except Exception as exc:
+                self._log(f"typed owner cleanup pending: {type(exc).__name__}")
+            if self._command_gateway is not None:
+                # FAILED still owns the primary lease and genuine gateway.
+                # A later explicit fenced STOP can retry; never report release.
+                return
         try:
             if self.transport is not None:
                 self.transport.stop(self._connection)
@@ -5376,7 +5436,12 @@ class QuackStateServer:
 
         # Quiesce client threads without holding the lock they need to observe
         # STOPPING. No worker can dispatch once that lifecycle seal is set.
-        self._stop_worker_facets()
+        try:
+            self._stop_worker_facets()
+        except BaseException:
+            with self._lock:
+                self._lifecycle = ServerLifecycle.FAILED
+            raise
         with self._lock:
             try:
                 if self.transport is not None:
