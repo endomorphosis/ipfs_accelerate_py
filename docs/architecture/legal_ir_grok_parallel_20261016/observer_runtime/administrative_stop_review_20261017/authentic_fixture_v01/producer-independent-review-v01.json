@@ -1,0 +1,88 @@
+{
+  "actual_A_C_source_observation": {
+    "A_pin": {
+      "bytes": 83470,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "sha256": "2fd9f10b07d778247d04889d9ca1f08bfddf5249aa2a800b689c80d454bcdbbd"
+    },
+    "C_pin": {
+      "bytes": 83470,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "sha256": "2fd9f10b07d778247d04889d9ca1f08bfddf5249aa2a800b689c80d454bcdbbd"
+    },
+    "compared_function_names": [
+      "_canonical_value",
+      "canonical_json",
+      "canonical_json_bytes",
+      "content_identity"
+    ],
+    "entire_bytes_equal": true,
+    "runtime_check": "Wrapper computes actual native terminal CID using both compiled actual A source and loaded pinned C implementation.",
+    "runtime_protocol_equivalence_claimed": false,
+    "selected_function_AST_equal": true
+  },
+  "findings": [
+    {
+      "evidence": "Exact native bridge-bound callback is passed to real run_provider. _run_provider_impl durably inserts genuine database-portal-callback-intent before bridge dispatch. Factory raises actual InertFactoryRefusal before Portal construction. No provider row is inserted by producer SQL.",
+      "id": "native-unknown",
+      "result": "No static blocker"
+    },
+    {
+      "evidence": "two_attempt uses actual caught factory error for native historical failure settlement, native disposable source/coordinator rearm, original closed sidecar pin and genuine ordinal2 claim/context. Production stores are not inputs.",
+      "id": "native-history",
+      "result": "No static blocker"
+    },
+    {
+      "evidence": "Actual producer is native master, genuine empty-track runner publishes ACTIVE and terminal. Producer saves actual ACTIVE bytes during native callback and joins real ACTIVE CID to terminal CID; it creates no owner/fence receipt.",
+      "id": "actual-master",
+      "result": "No static blocker"
+    },
+    {
+      "evidence": "Provider rows and metadata use Mapping-aware named fields; native DuckDBRow subclasses Mapping. Count uses supported integer index; no native row slicing or tuple(row) assumptions found.",
+      "id": "mapping-row-contract",
+      "result": "No static blocker"
+    },
+    {
+      "evidence": "Exact isolated -I -S -B flags; finite CPU/address/file/FD/wall limits; actual original owner PID/birth witness rechecked; no nested F07 root; closed child environment before backend/product imports; external dispatch audit hook; actual current execution/WAL/locks remain owned until kernel exit.",
+      "id": "finite-parent-scope",
+      "result": "No static blocker"
+    },
+    {
+      "evidence": "Producer explicitly leaves callback closure, model nonreachability, remote cancellation, semantic completion, automatic retry and original owner finalization unproved. Inert fixture refusal does not establish those claims for production R06.",
+      "id": "truthful-limits",
+      "result": "Retain"
+    }
+  ],
+  "fixture_only": true,
+  "producer_pin": {
+    "bytes": 28496,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/produce_authentic_unknown_master_v01.py",
+    "sha256": "d11e0221419b2736366dfb5a9d1031c8050a95209f4f3378e1718d489f6f1e1a"
+  },
+  "qualification": {
+    "C_edits": false,
+    "approval_for_production_abandonment": false,
+    "databases_opened": false,
+    "imports": false,
+    "native_jobs": false,
+    "production_mutation": false,
+    "status": "STATIC_ONLY_NOT_NATIVE_QUALIFIED",
+    "tests_executed": false
+  },
+  "remaining_static_blockers": [],
+  "required_native_gates": [
+    "Exact full-producer controller_preparation preflight succeeds on distinct NEW root before supervisor_launch. A failed/absent real terminal fails gate; never synthesize terminal/fence fallback.",
+    "Exact original v05/A NativeFenceObserver launch produces genuine current generation stop proof, actual child reap/group quiescence and actual parent owner exit/native reservation finalization.",
+    "Physical fixture WAL maintenance and post-maintenance status preserve genuine raw UNKNOWN row(s), fences/ordinals, metadata and closed canonical/coordinator bytes.",
+    "Separate two_attempt unmocked ADMIN/creator-exit/staged-settlement gate before any production policy proposal."
+  ],
+  "review_method": [
+    "Read exact producer bytes and AST parse only; no module execution/import.",
+    "Read native DatabaseImplementationDaemon provider/claim/phase/heartbeat methods, actual DatabasePortalExecutionBridge factory path, strict task shard key, published status binding/close contracts and empty-track multi-supervisor runner source.",
+    "Compare actual A/C formal content identity source AST; runtime two-protocol terminal check remains mandatory."
+  ],
+  "reviewer": "/root/unknown_event_forensics",
+  "schema": "authentic-unknown-producer-independent-static-review@1",
+  "source_reference_head": "c1fd0d8c435ce8c5b16975ce762f83e3f84db314",
+  "source_reference_head_origin": "Parent frozen current C; no source changes or native jobs by reviewer."
+}

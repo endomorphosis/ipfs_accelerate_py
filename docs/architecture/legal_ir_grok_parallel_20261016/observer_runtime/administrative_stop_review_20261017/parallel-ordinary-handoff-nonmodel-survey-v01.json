@@ -1,0 +1,172 @@
+{
+  "actual_lifecycle_events": [
+    "invocation_started",
+    "route_selected",
+    "task_started",
+    "watchdog_native_attached",
+    "lease_created",
+    "lease_closed"
+  ],
+  "actual_live_component_capacity_observations": [],
+  "artifact_not_modified": true,
+  "artifact_pin": {
+    "bytes": 14178,
+    "device": 66306,
+    "inode": 75255951,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/native/positive/primary/mechanical-case.json",
+    "sha256": "f0831d712784ae3c54708b85e01a56dd5145342eb9f2580750382ed3edbf07e1",
+    "stable_metadata_during_read": true
+  },
+  "capacity_acknowledgement_after_cleanup": {
+    "Docker_quiescence_verified": false,
+    "acceptance_authority": false,
+    "cleanup_verified": false,
+    "completion_authority": false,
+    "dispatch_authority": false,
+    "hold_references_forgotten": true,
+    "independent_cleanup_not_authenticated_by_this_helper": true,
+    "native_consumers_acknowledged_and_absent": true,
+    "native_leases_released_by_this_helper": false,
+    "observation_only": true,
+    "productive_authority_granted": false,
+    "provider_execution_qualified": false,
+    "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+  },
+  "case_reported_cleanup": {
+    "actual_allocation_observed": true,
+    "actual_kernel_scope_captured": false,
+    "actual_transport_group_dead": true,
+    "actual_watchdog_group_dead": true,
+    "cleanup_known": true,
+    "container_absent_by_id_and_name": true,
+    "kernel_scope_quiescent": true,
+    "lease_home_prompt_absent": true,
+    "preserve_for_recovery_reported": false
+  },
+  "exact_case_flags": {
+    "acceptance_authority": false,
+    "canonical_tasks_accepted": 0,
+    "failure_reason": "actual_fixture_config_differs:Env",
+    "failure_type": "RuntimeError",
+    "finish_or_success_callback_called": false,
+    "fixture_case": "positive",
+    "fixture_only": true,
+    "models_called": 0,
+    "passed": false,
+    "positive_immediate_start_race_preserved": true,
+    "provider_calls_performed": false,
+    "public_wrapper_exercised": false
+  },
+  "native_inventory_scope": {
+    "primary": {
+      "artifacts_durable_asserted": false,
+      "child_process_slots": 8,
+      "enforcement": "cooperative_admission_and_polled_usage_not_kernel_quota",
+      "external_file_growth_monitored": false,
+      "owner_pid": 1614042,
+      "reservation_id": "d0361f4a5518443a9ab6ad3cd1a93777",
+      "resource_lease_released_at_snapshot": false,
+      "status": "active"
+    },
+    "watchdog": {
+      "artifacts_durable_asserted": false,
+      "child_process_slots": 4,
+      "enforcement": "cooperative_admission_and_polled_usage_not_kernel_quota",
+      "external_file_growth_monitored": false,
+      "owner_pid": 1614042,
+      "reservation_id": "b9fc41d9c33447c3947649cc095e8d54",
+      "resource_lease_released_at_snapshot": false,
+      "status": "active"
+    }
+  },
+  "observed_at_utc": "2026-10-17T05:58:34.098562+00:00",
+  "owner_relation": "Separate foreign native owner; not this campaign admission or qualification. Processes, trees, resource ledger and artifacts were not modified.",
+  "parent_reported_scheduler_observation": {
+    "all16_child_slots_reserved": true,
+    "foreign_owner_pid": 1614042,
+    "independently_read_scheduler_or_ledger": false,
+    "our_owner_session93203_queued": true,
+    "request": "legal-ir-ordinary-handoff-nonmodel-gate-v01"
+  },
+  "post_cleanup_capacity_hold": {
+    "Docker_quiescence_verified": false,
+    "acceptance_authority": false,
+    "capacity_records_retained": true,
+    "cleanup_verified": false,
+    "completion_authority": false,
+    "consumer_ancestry_cancelled": [
+      false,
+      false
+    ],
+    "consumer_native_lease_ids": [
+      "9d2612f04e3d4d259c381984927a229c",
+      "07edbd006aaa4b6d9707d87e32898464"
+    ],
+    "consumer_objects_released": [
+      false,
+      false
+    ],
+    "consumer_records_present": [
+      true,
+      true
+    ],
+    "dispatch_authority": false,
+    "host_process_death_survival_guaranteed": false,
+    "independent_stopped_cleanup_required_before_acknowledgement": true,
+    "no_extra_global_root_allocation": true,
+    "observation_only": true,
+    "owner_pid": 1614042,
+    "productive_ancestry_retained": true,
+    "productive_authority_granted": false,
+    "provider_execution_qualified": false,
+    "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+  },
+  "pre_effect_capacity_hold": {
+    "Docker_quiescence_verified": false,
+    "acceptance_authority": false,
+    "capacity_records_retained": true,
+    "cleanup_verified": false,
+    "completion_authority": false,
+    "consumer_ancestry_cancelled": [
+      false,
+      false
+    ],
+    "consumer_native_lease_ids": [
+      "9d2612f04e3d4d259c381984927a229c",
+      "07edbd006aaa4b6d9707d87e32898464"
+    ],
+    "consumer_objects_released": [
+      false,
+      false
+    ],
+    "consumer_records_present": [
+      true,
+      true
+    ],
+    "dispatch_authority": false,
+    "host_process_death_survival_guaranteed": false,
+    "independent_stopped_cleanup_required_before_acknowledgement": true,
+    "no_extra_global_root_allocation": true,
+    "observation_only": true,
+    "owner_pid": 1614042,
+    "productive_ancestry_retained": true,
+    "productive_authority_granted": false,
+    "provider_execution_qualified": false,
+    "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+  },
+  "qualification_limits": [
+    "The positive mechanical case failed with actual_fixture_config_differs:Env; this is failure evidence, not a passed handoff qualification.",
+    "No provider/model calls occurred and zero canonical tasks were accepted; public_wrapper_exercised is false.",
+    "Capacity holds/acknowledgements are observation-only. Productive/dispatch/completion/acceptance authority and provider execution qualification all remain false.",
+    "The artifact is explicitly an inventory before finalization with active reservations and unreleased leases; it cannot establish final foreign cleanup or scheduler release.",
+    "Case cleanup reports transport/watchdog groups dead and container absent, while actual_kernel_scope_captured is false and the capacity observation explicitly refuses independent cleanup authentication; those different scopes must not be conflated.",
+    "No authentic production launch custody, continuous custody, UNKNOWN outcome resolution or retry permission follows from this snapshot."
+  ],
+  "reuse_opportunities": [
+    "Reuse the separately implemented native parent/consumer capacity hold and acknowledgement observations as candidate regression fixtures after reviewing their source and matching configuration.",
+    "Compare the exact expected/effective fixture Env contract before another bounded nonmodel attempt; retain this failed case and do not reinterpret it as a provider execution result.",
+    "Correlate the native lifecycle/watchdog/lease events with the shared ordinary worker image and supervisor path already merged in official main.",
+    "After the foreign owner independently finalizes, consult its final immutable receipt instead of releasing, cancelling or adopting its admission as ours."
+  ],
+  "schema": "parallel-ordinary-handoff-nonmodel-survey/v1"
+}
