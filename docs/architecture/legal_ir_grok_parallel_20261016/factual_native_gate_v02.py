@@ -274,7 +274,7 @@ def main(argv=None):
             return v.main(['--check-all', '--controller-prefix', str(args.controller_prefix)])
         v.need(args.receipt_root is not None and args.owner_gate is not None,
                'native_receipt_root_and_owner_gate_required')
-        v.need(1 <= args.wait_seconds <= 300, 'bounded_owner_gate_wait_required')
+        v.need(1 <= args.wait_seconds <= 600, 'bounded_owner_gate_wait_required')
         deadline = time.monotonic() + args.wait_seconds
         while not args.owner_gate.exists():
             v.need(time.monotonic() < deadline, 'independent_native_factual_gate_pending')
