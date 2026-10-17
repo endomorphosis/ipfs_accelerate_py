@@ -678,6 +678,55 @@ def test_unverified_native_close_retains_writer_guard_until_real_close(store, mo
     assert_released(instance, store)
 
 
+@pytest.mark.parametrize("failed_closes", [0, 2])
+def test_policy_verification_failure_retains_raw_handle_until_verified_close(store, monkeypatch, failed_closes):
+    genuine = duckdb.connect
+    captured = []
+
+    class ExplicitFixturePolicyFailure:
+        def __init__(self, native):
+            self.native = native
+            self.remaining_failed_closes = failed_closes
+
+        def execute(self, sql, values=None):
+            if "current_setting(" in sql:
+                raise RuntimeError("explicit fixture policy verification fault")
+            return self.native.execute(sql, values or [])
+
+        def interrupt(self):
+            self.native.interrupt()
+
+        def close(self):
+            if self.remaining_failed_closes:
+                self.remaining_failed_closes -= 1
+                raise RuntimeError("explicit fixture uncertain factory cleanup")
+            self.native.close()
+
+    def connect(*args, **kwargs):
+        wrapped = ExplicitFixturePolicyFailure(genuine(*args, **kwargs))
+        captured.append(wrapped)
+        return wrapped
+
+    monkeypatch.setattr(duckdb, "connect", connect)
+    instance = owner(store)
+    reason = "native_connection_close_unverified" if failed_closes else "native_read_only_open_failed"
+    with pytest.raises(NativeExecutionStatusError, match="^" + reason + "$"):
+        instance.open()
+    assert len(captured) == 1
+    if failed_closes:
+        assert instance._connection is captured[0]
+        assert instance._database_fd is not None and instance._lock_fd is not None
+        assert captured[0].native.execute("SELECT 1").fetchone() == (1,)
+        fd = os.open(store["lock"], os.O_RDONLY)
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(fd)
+        instance.close()
+    assert_released(instance, store)
+
+
 def test_no_public_mutation_dispatch_or_sql_surface(store):
     instance = owner(store)
     assert {name for name, value in vars(type(instance)).items() if not name.startswith("_") and callable(value)} == {"open", "observe_attempt", "close", "cancel"}

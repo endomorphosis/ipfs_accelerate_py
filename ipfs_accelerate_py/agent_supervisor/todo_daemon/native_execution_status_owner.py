@@ -478,9 +478,20 @@ class NativeExecutionStatusOwner:
                 policy_code = getattr(duckdb_state.connect_duckdb_with_policy, "__code__", None)
                 if policy_path not in self.binding.source_bindings or policy_code is None or str(Path(policy_code.co_filename).absolute()) != policy_path:
                     _refuse("loaded_backend_policy_source_not_bound")
+
+                class RetainedBackend:
+                    def connect(_backend, *args: Any, **kwargs: Any) -> Any:
+                        # Policy verification can fail before the factory
+                        # returns, and its cleanup can fail too. Retain the
+                        # genuine handle before either operation so the
+                        # original guard cannot be released around it.
+                        connection = duckdb.connect(*args, **kwargs)
+                        self._connection = connection
+                        return connection
+
                 try:
                     self._connection = duckdb_state.connect_duckdb_with_policy(
-                        duckdb, Path(self.binding.execution_path), read_only=True,
+                        RetainedBackend(), Path(self.binding.execution_path), read_only=True,
                         configuration={"threads": 1, "memory_limit": "256MB"},
                     )
                 except Exception:
