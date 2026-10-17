@@ -140,4 +140,3 @@ def test_readiness_observation_never_mutates_native_state_or_derived_identity():
     before = copy.deepcopy((state, observed))
     assert watcher._native_portal_attempt(Validator, state, observed) is None
     assert (state, observed) == before
-

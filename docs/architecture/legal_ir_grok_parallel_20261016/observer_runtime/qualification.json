@@ -1,0 +1,79 @@
+{
+  "actual_qualified_test_command": [
+    "/usr/bin/python3",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "-o",
+    "addopts=",
+    "--basetemp=/tmp/pytest-of-barberb/legal-ir-watcher-readiness-20261017-02",
+    "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/test_factual_watcher_readiness_v01.py"
+  ],
+  "allocation_and_forwarding_tests_previously_passed": 35,
+  "canonical_revision_observed": 12,
+  "completion_authority": false,
+  "goals_dependencies_and_edges_exact": true,
+  "native_launch06_fenced_and_finalized": true,
+  "native_owner_completed_and_fully_finalized": true,
+  "operator_stop_extension_implemented": false,
+  "other63_tasks_unchanged": true,
+  "production_recovery_executed": false,
+  "publication_only_whitespace_normalized": [
+    "test_factual_watcher_readiness_v01.py"
+  ],
+  "published_sources_ast_identical_to_qualified_sources": true,
+  "qualification_native_receipt": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-launch06-attempt2-readonly-inspection-20261017-04/receipt.json",
+  "qualified_source_bytes_identical": false,
+  "readiness_tests_passed": 24,
+  "reproduction_requires_native_owner_and_precharged_pytest_temp": true,
+  "reproduction_test_command": [
+    "/usr/bin/python3",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "-o",
+    "addopts=",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/test_factual_watcher_readiness_v01.py"
+  ],
+  "schema": "legal-ir-observer-runtime-qualification/v1",
+  "sources": [
+    {
+      "bytes": 17391,
+      "name": "factual_root_watcher_v04.py",
+      "qualified_source_sha256": "69861fc2d7cd41dcc8bc005c46a6d4dbdc1a5ce39a57c962207fa515ebe8e391",
+      "sha256": "69861fc2d7cd41dcc8bc005c46a6d4dbdc1a5ce39a57c962207fa515ebe8e391"
+    },
+    {
+      "bytes": 13148,
+      "name": "observe_private_portal_state_v01.py",
+      "qualified_source_sha256": "86c82bb34808805ca3671b0a0a277bb183da421ff6d56c4b473523381a61bab2",
+      "sha256": "86c82bb34808805ca3671b0a0a277bb183da421ff6d56c4b473523381a61bab2"
+    },
+    {
+      "bytes": 6289,
+      "name": "test_factual_watcher_readiness_v01.py",
+      "qualified_source_sha256": "ca414ad9c688172edc35277a080f2577817bbfc43088d9e8a21044c9a438ad41",
+      "sha256": "a83480205ec993f4a841107b51f9eddc368385c6a59355f1cea96b8d59c0e88f"
+    },
+    {
+      "bytes": 9217,
+      "name": "test_private_portal_state_observer_v01.py",
+      "qualified_source_sha256": "c8a3fa7727066f174eb0960e6bc094b60629edfe2485026867583d086223d05f",
+      "sha256": "c8a3fa7727066f174eb0960e6bc094b60629edfe2485026867583d086223d05f"
+    }
+  ],
+  "state_inspection_result": {
+    "bytes": 21926,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-launch06-attempt2-readonly-inspection-20261017-04/attempt2-state-inspection.json",
+    "sha256": "d90d45e230844984da300ca4db85f75d9e8f0d50c8688ebaab8dbff7a1e125be"
+  },
+  "supervisor_operational": false,
+  "training_or_lean_admission": false,
+  "verified_grok_task_dispatch": false
+}
