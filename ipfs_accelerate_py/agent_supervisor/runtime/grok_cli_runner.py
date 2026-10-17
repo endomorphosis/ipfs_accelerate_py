@@ -7679,6 +7679,81 @@ class _LegacyDockerContainerLease:
             pass
 
 
+def _remove_legacy_task_container_launchers(lease_root: Path) -> bool:
+    """Remove only generated launchers below this already-cleaned owned lease.
+
+    Container absence is the caller's prerequisite. Never traverse a symlink,
+    read file contents, recurse into unexpected entries, or relax permissions.
+    An incomplete/unsafe directory remains available for explicit recovery.
+    """
+
+    root_fd = launcher_fd = None
+    try:
+        temporary_root = Path(tempfile.gettempdir()).resolve(strict=True)
+        if (
+            not lease_root.is_absolute()
+            or lease_root.parent != temporary_root
+            or lease_root != lease_root.resolve(strict=True)
+            or not lease_root.name.startswith(("asref-grok-container-", "asref-codex-container-"))
+        ):
+            return False
+        root_fd = os.open(lease_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        root_metadata = os.fstat(root_fd)
+        if (root_metadata.st_uid != os.geteuid()
+                or stat.S_IMODE(root_metadata.st_mode) != 0o700):
+            return False
+        try:
+            launcher_fd = os.open(
+                "task-launchers", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=root_fd,
+            )
+        except FileNotFoundError:
+            return True
+        directory_metadata = os.fstat(launcher_fd)
+        if (directory_metadata.st_uid != os.geteuid()
+                or stat.S_IMODE(directory_metadata.st_mode) != 0o700):
+            return False
+        names = os.listdir(launcher_fd)
+        if not set(names) <= {"provider-command-env", "task-bootstrap.py"}:
+            return False
+        identities = {}
+        identity = lambda value: (value.st_dev, value.st_ino, value.st_mode,
+                                  value.st_uid, value.st_gid, value.st_nlink,
+                                  value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+        for name in names:
+            metadata = os.stat(name, dir_fd=launcher_fd, follow_symlinks=False)
+            if (not stat.S_ISREG(metadata.st_mode)
+                    or metadata.st_uid != os.geteuid()
+                    or metadata.st_nlink != 1
+                    or metadata.st_mode & 0o022
+                    or metadata.st_size > 1024 * 1024):
+                return False
+            identities[name] = identity(metadata)
+        # Validate the entire member set before unlinking any known source.
+        # File mode 000 remains safe to unlink through this owned directory;
+        # no chmod or file-content access is necessary.
+        for name in names:
+            if identity(os.stat(name, dir_fd=launcher_fd, follow_symlinks=False)) != identities[name]:
+                return False
+        for name in names:
+            os.unlink(name, dir_fd=launcher_fd)
+        os.fsync(launcher_fd)
+        current = os.stat("task-launchers", dir_fd=root_fd, follow_symlinks=False)
+        if ((current.st_dev, current.st_ino)
+                != (directory_metadata.st_dev, directory_metadata.st_ino)):
+            return False
+        os.rmdir("task-launchers", dir_fd=root_fd)
+        os.fsync(root_fd)
+        return True
+    except (OSError, ValueError):
+        return False
+    finally:
+        if launcher_fd is not None:
+            os.close(launcher_fd)
+        if root_fd is not None:
+            os.close(root_fd)
+
+
 def _legacy_docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
     """Remove a leaked container after the owning runner closes or dies."""
 
@@ -7839,6 +7914,8 @@ def _legacy_docker_cleanup_watchdog_main(argv: Sequence[str]) -> int:
             except FileNotFoundError:
                 pass
             _robust_remove_runner_temp_tree(provider_home)
+            if not _remove_legacy_task_container_launchers(lease_root):
+                cleanup_failed = True
             try:
                 cidfile.unlink()
             except FileNotFoundError:
