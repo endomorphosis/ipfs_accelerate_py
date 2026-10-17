@@ -1,4 +1,4 @@
-"""Repository MCP selection reaches the admitted coding worker without live calls."""
+"""Repository selection is retained; isolated MCP dispatch requires an owner transport."""
 from __future__ import annotations
 
 import argparse
@@ -223,7 +223,7 @@ def test_generated_worker_guard_refuses_incompatible_dispatch(monkeypatch, mode,
         exec("parser=argparse.ArgumentParser()" + source, namespace)
 
 
-def test_signed_coding_route_reaches_runtime_with_custody_and_current_workspace(tmp_path, monkeypatch, mode):
+def test_signed_coding_route_refuses_unavailable_owner_transport_before_custody(tmp_path, monkeypatch, mode):
     from benchmarks.agent_supervisor.container_coding.container_worker_deployment import WORKER_ENTRY
     from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import implementation_argv
     from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runtime
@@ -249,13 +249,18 @@ def test_signed_coding_route_reaches_runtime_with_custody_and_current_workspace(
     namespace = worker_namespace(monkeypatch, argv)
     with pytest.raises(SystemExit) as stopped:
         exec("parser=argparse.ArgumentParser()" + WORKER_ENTRY.split("parser=argparse.ArgumentParser()", 1)[1], namespace)
-    assert stopped.value.code == 0 and custody_calls == [main]
+    assert stopped.value.code == "repository_source_owner_transport_unavailable"
+    assert custody_calls == [] and observed == []
+    # The same installed parser still reaches the original legacy route.
+    namespace = worker_namespace(monkeypatch, original)
+    with pytest.raises(SystemExit) as legacy_stopped:
+        exec("parser=argparse.ArgumentParser()" + WORKER_ENTRY.split("parser=argparse.ArgumentParser()", 1)[1], namespace)
+    assert legacy_stopped.value.code == 0 and custody_calls == [main]
     assert len(observed) == 1 and observed[0]["workspace"] == selected
     forwarded = observed[0]["argv"]
-    assert forwarded[forwarded.index("--repository-source-policy") + 1] == mode
+    assert "--repository-source-policy" not in forwarded
     assert forwarded[forwarded.index("--semantic-repository") + 1] == "/app"
     assert forwarded[forwarded.index("--container-boundary-sha256") + 1] == "a" * 64
-    assert "--source-view-advisory-policy" not in forwarded
 
 
 @pytest.mark.parametrize("observed", [True, False])
@@ -329,10 +334,23 @@ def test_prepare_rejects_current_inventory_with_unqualified_tar(tmp_path, mode):
     archive = archive_fixture(tmp_path / "archive")
     policy.require_repository_source_archive(
         json.loads((archive / "manifest.json").read_text()), mode, archive=archive / "runtime.tar.gz")
-    body = b"AUTHORED-NON-TAR"
-    (archive / "runtime.tar.gz").write_bytes(body)
+    # Preserve the earlier deadline archive contract so this test exercises
+    # the repository-source qualification check, not malformed gzip handling.
+    corrupted = archive / "corrupted.tar.gz"
+    changed = []
+    with tarfile.open(archive / "runtime.tar.gz", "r:gz") as original, tarfile.open(corrupted, "w:gz") as output:
+        for member in original:
+            with original.extractfile(member) as source:
+                body = source.read()
+            if member.name == "source/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_mcp.py":
+                body = b"# Authored incompatible repository source fixture.\n"
+                member.size = len(body)
+                changed.append(member.name)
+            output.addfile(member, io.BytesIO(body))
+    assert len(changed) == 1
+    corrupted.replace(archive / "runtime.tar.gz")
     manifest = json.loads((archive / "manifest.json").read_text())
-    manifest["archive_sha256"] = hashlib.sha256(body).hexdigest()
+    manifest["archive_sha256"] = hashlib.sha256((archive / "runtime.tar.gz").read_bytes()).hexdigest()
     (archive / "manifest.json").write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match="newly qualified runtime archive"):
         benchmark.prepare(dataset=dataset, output=tmp_path / "output", archive=archive,

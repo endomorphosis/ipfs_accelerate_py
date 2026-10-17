@@ -828,6 +828,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         tool_output_policy: str = "legacy",
         source_view_advisory_policy: str = "legacy",
         repository_source_policy: str = "legacy",
+        repository_source_parent_lease=None,
+        repository_source_scheduler_policy_sha256: str | None = None,
+        repository_source_deadline_monotonic: float | None = None,
+        repository_source_owner_descriptor: Path | None = None,
+        repository_source_owner_descriptor_sha256: str | None = None,
         source_input_policy: str = "legacy",
         query_reference_policy: str = "legacy",
         census_only: bool = False,
@@ -852,6 +857,23 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     from ipfs_accelerate_py.router_deps import RouterDeps
 
     failure_phase = "argument_validation"
+    repository_resources = (repository_source_parent_lease,
+        repository_source_scheduler_policy_sha256, repository_source_deadline_monotonic)
+    repository_owner_selected = any(value is not None for value in (
+        repository_source_owner_descriptor, repository_source_owner_descriptor_sha256))
+    if repository_owner_selected:
+        if (repository_source_owner_descriptor is None or not repository_source_owner_descriptor_sha256
+                or repository_source_policy == "legacy" or purpose != "coding" or provider != "codex_cli"
+                or census_only or any(value is not None for value in repository_resources)):
+            raise ValueError("exact repository owner descriptor requires its exclusive Codex coding route")
+    if any(value is not None for value in repository_resources):
+        if (any(value is None for value in repository_resources) or repository_source_policy == "legacy"
+                or purpose != "coding" or provider != "codex_cli"):
+            raise ValueError("explicit repository source parent, policy and deadline require its Codex coding route")
+        from .repository_source_resource_handoff import validate_owner_resources
+        validate_owner_resources(parent_lease=repository_source_parent_lease,
+            expected_policy_sha256=repository_source_scheduler_policy_sha256,
+            deadline_monotonic=repository_source_deadline_monotonic)
     if type(codex_cli_literal_response) is not bool:
         raise ValueError("Codex literal response must be an explicit Boolean")
     if codex_cli_literal_response and provider != "codex_cli":
@@ -1191,7 +1213,22 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         required_suffix += source_lookup_guidance
     failure_phase = "model_prompt"
     repository_source_binding = None
-    if repository_source_policy != "legacy":
+    if repository_owner_selected:
+        from .repository_source_owner_binding import create_binding as create_owner_binding
+        repository_source_binding = create_owner_binding(workspace=root,
+            requested_policy=repository_source_policy, descriptor_path=repository_source_owner_descriptor,
+            descriptor_sha256=repository_source_owner_descriptor_sha256)
+        if container_boundary is not None:
+            descriptor = repository_source_binding["descriptor"]
+            # A public manifest digest alone does not identify its nominated
+            # owner. Bind the live descriptor to the identities returned by
+            # the existing boundary verifier, without rereading its artifact.
+            if (type(boundary) is not dict
+                    or descriptor["boundary_manifest_sha256"] != container_boundary_sha256
+                    or any(type(boundary.get(key)) is not int or descriptor[key] != boundary[key]
+                           for key in ("owner_uid", "worker_uid"))):
+                raise ValueError("repository owner differs from the selected container boundary")
+    elif repository_source_policy != "legacy":
         from .repository_source_policy import create_binding as create_repository_binding
         repository_source_binding = create_repository_binding(workspace=root, requested_policy=repository_source_policy,
             **({"tokenizer": {"artifact": tokenizer_source["descriptor_path"],
@@ -1594,12 +1631,47 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     tool_output_store_identity = None
     source_view_store_identity = None
     repository_store_identity = None
+    worker_forwarding_outbox = None
+    worker_forwarding_fallback = None
+    worker_forwarding_interruption = None
     pending_provider_error = None
     try:
-        if repository_source_binding is not None:
+        if repository_owner_selected:
+            failure_phase = "repository_source_worker_forwarding"
+            try:
+                from . import repository_source_worker_receipts as worker_receipts
+                from .repository_source_owner_binding import with_worker_forwarding
+                worker_forwarding_fallback = worker_receipts.unavailable_capture(
+                    session_id=repository_source_binding["session_id"],
+                    descriptor_sha256=repository_source_binding["descriptor_sha256"],
+                    invocation_id=invocation, reason="capture_unavailable")
+                receipt["repository_source_worker_forwarding"] = {
+                    **worker_forwarding_fallback, "receipts": []}
+                worker_forwarding_outbox = worker_receipts.create_outbox(workspace=root,
+                    session_id=repository_source_binding["session_id"],
+                    descriptor_sha256=repository_source_binding["descriptor_sha256"],
+                    invocation_id=invocation)
+                observed_binding = with_worker_forwarding(
+                    repository_source_binding, worker_forwarding_outbox.target)
+            except Exception:
+                # Optional worker accounting cannot prevent a source/provider
+                # invocation. Any created outbox still belongs to this finally.
+                pass
+            else:
+                repository_source_binding = observed_binding
+                receipt["repository_source_policy"] = observed_binding
+                provider_options["codex_repository_source_binding"] = observed_binding
+            failure_phase = "provider_invocation"
+        if repository_source_binding is not None and not repository_owner_selected:
             failure_phase = "repository_source_store"
             from .repository_source_policy import create_runtime_store
             repository_store_identity = create_runtime_store(repository_source_binding)
+            if repository_source_parent_lease is not None:
+                from .repository_source_resource_handoff import install_repository_source_resources
+                install_repository_source_resources(repository_source_binding,
+                    parent_lease=repository_source_parent_lease,
+                    expected_policy_sha256=repository_source_scheduler_policy_sha256,
+                    deadline_monotonic=repository_source_deadline_monotonic)
             failure_phase = "provider_invocation"
         if source_view_binding is not None:
             failure_phase = "source_view_store"
@@ -1679,6 +1751,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 _source_descriptor_environment(source_view_descriptor, source_view_descriptor_sha256), \
                 _source_lookup_descriptor_environment(source_lookup_descriptor,
                                                       source_lookup_descriptor_sha256):
+            if repository_source_parent_lease is not None:
+                failure_phase = "repository_source_resources"
+                validate_owner_resources(parent_lease=repository_source_parent_lease,
+                    expected_policy_sha256=repository_source_scheduler_policy_sha256,
+                    deadline_monotonic=repository_source_deadline_monotonic)
+            if repository_owner_selected:
+                failure_phase = "repository_source_owner_currentness"
+                from .repository_source_owner_binding import validate_binding as validate_owner_binding
+                validate_owner_binding(repository_source_binding, workspace=root, materialized=True)
             if scoped_instruction:
                 # Initialization, descriptor checks and working-set preflight
                 # may run caller code. Close the complete signed source replay
@@ -1780,7 +1861,23 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise
     finally:
         try:
-            if repository_source_binding is not None:
+            if worker_forwarding_outbox is not None:
+                try:
+                    receipt["repository_source_worker_forwarding"] = worker_forwarding_outbox.collect_and_close()
+                except BaseException as capture_error:
+                    # Setup established this closed snapshot before allocating
+                    # the outbox. Reuse it without another fallible metadata
+                    # callback or mutable binding lookup during finalization.
+                    receipt["repository_source_worker_forwarding"] = {
+                        **worker_forwarding_fallback, "reason": "capture_failed", "receipts": []}
+                    # Preserve an existing provider failure. A fresh control-flow
+                    # interruption propagates after ordinary receipt publication.
+                    if not isinstance(capture_error, Exception) and pending_provider_error is None:
+                        worker_forwarding_interruption = capture_error
+            if repository_owner_selected and repository_source_binding is not None:
+                from .repository_source_owner_binding import unavailable_usage
+                repository_source_binding["usage"] = unavailable_usage()
+            elif repository_source_binding is not None:
                 from .repository_source_policy import finish_runtime_store
                 repository_source_binding["usage"] = finish_runtime_store(repository_source_binding,
                     expected_identity=repository_store_identity)
@@ -1882,11 +1979,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 receipt_observer(json.loads(json.dumps(receipt)))
             except BaseException as observer_error:
                 receipt["receipt_observer_error_type"] = type(observer_error).__name__
-                # Diagnostic callbacks cannot replace a pending provider failure.
+                # Diagnostic callbacks cannot replace a pending provider failure
+                # or the first deferred capture interruption.
                 # A fresh interruption still propagates after environment cleanup.
-                if not isinstance(observer_error, Exception) and pending_provider_error is None:
+                if (not isinstance(observer_error, Exception) and pending_provider_error is None
+                        and worker_forwarding_interruption is None):
                     raise
         print(json.dumps(receipt, sort_keys=True), flush=True)
+        if worker_forwarding_interruption is not None:
+            raise worker_forwarding_interruption
 
 
 def main():
@@ -1927,6 +2028,8 @@ def main():
     parser.add_argument("--source-view-advisory-policy", default="legacy", choices=SOURCE_VIEW_POLICIES)
     from .repository_source_policy import POLICIES as REPOSITORY_SOURCE_POLICIES
     parser.add_argument("--repository-source-policy", default="legacy", choices=REPOSITORY_SOURCE_POLICIES)
+    parser.add_argument("--repository-source-owner-descriptor", type=Path)
+    parser.add_argument("--repository-source-owner-descriptor-sha256")
     from .source_input_policy import POLICIES as SOURCE_INPUT_POLICIES
     parser.add_argument("--source-input-policy", default="legacy", choices=SOURCE_INPUT_POLICIES)
     from .query_reference_policy import POLICIES as QUERY_REFERENCE_POLICIES
@@ -1973,6 +2076,8 @@ def main():
                         tool_output_policy=args.tool_output_policy,
                         source_view_advisory_policy=args.source_view_advisory_policy,
                         repository_source_policy=args.repository_source_policy,
+                        repository_source_owner_descriptor=args.repository_source_owner_descriptor,
+                        repository_source_owner_descriptor_sha256=args.repository_source_owner_descriptor_sha256,
                         source_input_policy=args.source_input_policy,
                         query_reference_policy=args.query_reference_policy,
                         census_only=args.semantic_metadata_census_only,

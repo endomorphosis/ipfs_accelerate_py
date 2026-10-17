@@ -419,7 +419,20 @@ class CodeSourceView:
             data, _info = _read_fd(parent, name)
         return _decode(data)[0]
 
-    def replace(self, path: str, symbol: str, expected_sha256: str, replacement: str, format: str = "compact") -> dict:
+    def replace(self, path: str, symbol: str, expected_sha256: str, replacement: str, format: str = "compact",
+                *, checkpoint=None) -> dict:
+        """Replace atomically, with optional cooperative fences before writing.
+
+        After commit, finish the bounded outcome observation even if controls
+        change; the caller needs truthful mutation evidence for cleanup/retry.
+        Lock acquisition remains bounded by the existing editor lock policy.
+        """
+        if checkpoint is not None and not callable(checkpoint):
+            raise SourceViewError("invalid_checkpoint")
+        def check():
+            if checkpoint is not None:
+                checkpoint()
+        check()
         path = _path(path)
         if format not in {"raw", "compact"}:
             raise SourceViewError("invalid_format")
@@ -430,6 +443,7 @@ class CodeSourceView:
         if not isinstance(replacement, str) or len(replacement.encode("utf-8")) > MAX_CONTENT_BYTES:
             raise SourceViewError("replacement_limit")
         with self._locked(path):
+            check()
             with _parent(self.root, path) as (parent, name):
                 original, info = _read_fd(parent, name)
                 if _sha(original) != expected_sha256:
@@ -459,6 +473,7 @@ class CodeSourceView:
                     updated = updated_text.encode(encoding)
                     if len(updated) > MAX_SOURCE_BYTES:
                         raise SourceViewError("source_limit")
+                    check()
                     temporary = ".source-view-" + uuid.uuid4().hex + ".tmp"
                     temp_fd = None
                     try:
@@ -478,6 +493,7 @@ class CodeSourceView:
                         with _parent(self.root, path) as (current_parent, _):
                             if (os.fstat(current_parent).st_dev, os.fstat(current_parent).st_ino) != (os.fstat(parent).st_dev, os.fstat(parent).st_ino):
                                 raise SourceViewError("stale_source")
+                        check()
                         os.replace(temporary, name, src_dir_fd=parent, dst_dir_fd=parent)
                         os.fsync(parent)
                     finally:

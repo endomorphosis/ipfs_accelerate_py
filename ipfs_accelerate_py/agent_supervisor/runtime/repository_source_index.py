@@ -129,16 +129,75 @@ def _native_scope(manifest):
     return eligible, coverage
 
 
+def _resource_controls(*, scheduler=None, parent_lease=None, cancel_event=None):
+    """Validate borrowed native controls without admitting or owning capacity."""
+    if scheduler is not None or parent_lease is not None or cancel_event is not None:
+        from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import (
+            GlobalResourceScheduler, ResourceLease,
+        )
+        _require(not (scheduler is not None and parent_lease is not None), "invalid_resource_controls")
+        _require(scheduler is None or isinstance(scheduler, GlobalResourceScheduler), "invalid_resource_controls")
+        _require(parent_lease is None or isinstance(parent_lease, ResourceLease), "invalid_resource_controls")
+        _require(cancel_event is None or callable(getattr(cancel_event, "is_set", None)), "invalid_resource_controls")
+    return (parent_lease.combined_cancellation_signal(cancel_event)
+            if parent_lease is not None else cancel_event)
+
+
+def _validate_resource_deadline(deadline_monotonic):
+    """Validate an optional caller-clock deadline without starting a new budget."""
+    if deadline_monotonic is None:
+        return None
+    try:
+        valid = type(deadline_monotonic) in (int, float) and math.isfinite(deadline_monotonic)
+    except OverflowError:
+        valid = False
+    _require(valid, "invalid_resource_deadline")
+    return deadline_monotonic
+
+
+def _remaining_resource_seconds(deadline_monotonic):
+    if deadline_monotonic is None:
+        return None
+    remaining = deadline_monotonic - time.monotonic()
+    if remaining <= 0:
+        from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import LeaseTimeoutError
+
+        raise LeaseTimeoutError("repository native index deadline exceeded")
+    return remaining
+
+
+def _check_resource_cancellation(signal, deadline_monotonic=None):
+    if signal is not None and signal.is_set():
+        from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import LeaseCancelledError
+
+        raise LeaseCancelledError("repository native index cancelled")
+    _remaining_resource_seconds(deadline_monotonic)
+
+
 class NativeRepositoryIndex:
     """One exclusive datasets SQL/CAS owner; roots stay outside source checkouts.
 
     ``scheduler`` is an optional native datasets scheduler. Without one, native
-    preparation uses the shared default admission/backoff policy. Its memory
+    preparation uses the shared default admission/backoff policy. Alternatively,
+    ``parent_lease`` borrows an actual datasets lease; callers retain its lifetime
+    and must not supply a scheduler as well. ``cancel_event`` is propagated into
+    native admission and cooperative checkpoints. These controls cover native
+    index operations, not the surrounding session's source capture or edits.
+    ``deadline_monotonic`` optionally supplies the caller's absolute cooperative
+    deadline; nested work cannot reset it. A parent lease itself is not an
+    execution deadline. Its memory
     reservation is cooperative; the separately configured SQL limits constrain
     DuckDB, not the Python parser. No target code is imported or executed.
     """
 
-    def __init__(self, state_dir: Path, *, scheduler=None):
+    def __init__(self, state_dir: Path, *, scheduler=None, parent_lease=None, cancel_event=None,
+                 deadline_monotonic=None):
+        # Invalid or already cancelled explicit controls must refuse before
+        # creating private state or opening the native database.
+        deadline_monotonic = _validate_resource_deadline(deadline_monotonic)
+        cancellation = _resource_controls(scheduler=scheduler, parent_lease=parent_lease,
+                                          cancel_event=cancel_event)
+        _check_resource_cancellation(cancellation, deadline_monotonic)
         self._lock = threading.RLock()
         self._closed = False
         self._current = None
@@ -146,6 +205,10 @@ class NativeRepositoryIndex:
         self._cx = None
         self._owner_fd = None
         self._scheduler = scheduler
+        self._parent_lease = parent_lease
+        self._cancel_event = cancel_event
+        self._resource_cancellation = cancellation
+        self._deadline_monotonic = deadline_monotonic
         self._pid = os.getpid()
         try:
             path = Path(os.path.abspath(state_dir))
@@ -174,10 +237,12 @@ class NativeRepositoryIndex:
             from ipfs_datasets_py.logic.software_contracts.duckdb_ast_store import DuckDBASTStore
             from ipfs_datasets_py.logic.software_contracts.duckdb_ingest import DuckDBASTIngestor
 
+            _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
             self._cx = duckdb.connect(str(path / "native.duckdb"), config={
                 "threads": "1", "memory_limit": "128MB", "max_temp_directory_size": "128MB",
                 "temp_directory": str(path / "spill"),
             })
+            _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
             self._cx.execute("SET enable_external_access = false")
             store = DuckDBASTStore(connection=self._cx)
             artifacts = ImmutableCAS(path / "cas")
@@ -185,6 +250,7 @@ class NativeRepositoryIndex:
             self._index = RepositoryCodebaseIndex(ingestor=self._ingestor, artifacts=artifacts,
                                                   catalog=CodebaseCatalog(store, artifacts))
             self.repository_id = "repository-source-session:" + _hash(os.fsencode(path))
+            _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
         except BaseException:
             self.close()
             raise
@@ -192,6 +258,7 @@ class NativeRepositoryIndex:
     def _check_owner(self):
         try:
             _require(not self._closed and self._pid == os.getpid(), "index_closed_or_foreign_owner")
+            _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
             info = self.state_dir.stat()
             _require((info.st_dev, info.st_ino) == self._state_identity
                      and self.state_dir.resolve() == self.state_dir, "index_state_replaced")
@@ -199,17 +266,29 @@ class NativeRepositoryIndex:
             self._current = self._capsules = None
             raise
 
+    def _resource_options(self):
+        """Borrow the same native admission owner; never serialize its token."""
+        _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
+        return dict(scheduler=self._scheduler, parent_lease=self._parent_lease, cancel_event=self._cancel_event)
+
     def _controls(self, memory_mb, *, timeout_seconds=30.0, admission_timeout_seconds=10.0):
-        return dict(scheduler=self._scheduler, timeout_seconds=timeout_seconds,
+        options = self._resource_options()
+        remaining = _remaining_resource_seconds(self._deadline_monotonic)
+        if remaining is not None:
+            timeout_seconds = min(timeout_seconds, remaining)
+            admission_timeout_seconds = min(admission_timeout_seconds, remaining)
+        return dict(**options, timeout_seconds=timeout_seconds,
                     admission_timeout_seconds=admission_timeout_seconds, memory_mb=memory_mb)
 
     def _join(self, observation, package_manifest, root):
+        _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
         native = observation.manifest
         _require(native.snapshot.mode == "filesystem", "non_filesystem_snapshot")
         expected, _retained = _native_scope(package_manifest)
         actual = {entry.path: entry for entry in native.snapshot.entries}
         _require(set(actual) == set(expected), "native_snapshot_scope_differs")
         for name, entry in expected.items():
+            _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
             captured = actual[name]
             if entry["kind"] == "symlink":
                 _require(captured.is_opaque and captured.opaque_reason == "symlink_or_nonregular",
@@ -245,6 +324,7 @@ class NativeRepositoryIndex:
                      and expected[symbol.module_path]["kind"] == "file"
                      for symbol in native.semantic_state.symbols),
                  "symbol_source_outside_native_scope")
+        _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
         return native
 
     def refresh(self, materialized_root: Path, manifest: dict) -> dict:
@@ -285,6 +365,7 @@ class NativeRepositoryIndex:
                                                           **self._controls(reservation))
                 native = self._join(observation, manifest, root)
                 _check_materialization(root, manifest)
+                _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
                 after = self._ingestor.stats()
                 receipt = dict(schema=SCHEMA, package_manifest_sha256=digest,
                     source_tree_sha256=manifest["source_tree_sha256"], head=publication.head.to_dict(),
@@ -296,11 +377,16 @@ class NativeRepositoryIndex:
                                          admission_memory_mb=reservation, parser_hard_rss_limit=False),
                     authority="structural_only", proof_authority=False, execution_authority=False,
                     completion_authority=False)
+                result = copy.deepcopy(receipt)
+                _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
                 self._current = (root, manifest, publication.head, reservation, receipt)
-                return copy.deepcopy(receipt)
+                _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
+                return result
             except RepositorySourceIndexError:
+                self._current = self._capsules = None
                 raise
             except Exception as error:
+                self._current = self._capsules = None
                 raise RepositorySourceIndexError("native_index_refresh_failed") from error
 
     def symbols(self, *, path: str | None = None, query: str = "", limit: int = 100) -> list[dict]:
@@ -373,6 +459,7 @@ class NativeRepositoryIndex:
             # is established, including changes during result assembly.
             self._index.observe_current(root, expected_head=head, **self._controls(reservation))
             _check_materialization(root, manifest)
+            _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
             return rows
         except Exception as error:
             self._current = self._capsules = None
@@ -411,6 +498,8 @@ class NativeRepositoryIndex:
                 raise RepositorySourceIndexError(error.code, preserves_index=True) from error
             root, manifest, head, reservation, _receipt = self._current
             deadline = time.monotonic() + 30.0
+            if self._deadline_monotonic is not None:
+                deadline = min(deadline, self._deadline_monotonic)
 
             def remaining():
                 duration = deadline - time.monotonic()
@@ -431,6 +520,7 @@ class NativeRepositoryIndex:
                     native = self._join(observed, manifest, root) if join else observed.manifest
                     _check_materialization(root, manifest)
                     remaining()
+                    _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
                     return native
                 except RepositoryCapsuleError as error:
                     self._capsules = None
@@ -452,10 +542,12 @@ class NativeRepositoryIndex:
                 # Observe's own lease has ended. Acquire separate shared host
                 # admission for producer compilation, ranking and expansion.
                 # This is cooperative accounting, not a hard Python RSS cap.
-                with acquire_codebase_resources(scheduler=self._scheduler,
+                with acquire_codebase_resources(**self._resource_options(),
                         timeout_seconds=min(10.0, remaining()), memory_mb=512) as lease, public_replay_without_metadata():
+                    cancelled = lease.combined_cancellation_signal(self._cancel_event)
+
                     def checkpoint():
-                        if lease.cancelled:
+                        if cancelled.is_set():
                             raise RepositoryCapsuleError("capsule_cancelled")
                         remaining()
 
@@ -465,6 +557,7 @@ class NativeRepositoryIndex:
                     _require(self._capsules.identity["semantic_state_cid"] == native.semantic_state.state_cid,
                              "capsule_native_identity_differs")
                     response = getattr(self._capsules, operation)(**arguments, checkpoint=checkpoint)
+                    checkpoint()
             except RepositoryCapsuleError as error:
                 if error.code not in {"capsule_root_differs", "capsule_symbol_unavailable", "capsule_response_limit"}:
                     self._capsules = None
@@ -486,10 +579,11 @@ class NativeRepositoryIndex:
             fence()
             if optional_error is not None:
                 raise optional_error
+            _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
             return response
 
     def close(self):
-        """Release this owner only; historical source/CAS artifacts are retained."""
+        """Release index handles only; borrowed resource parents stay caller-owned."""
         with self._lock:
             self._current = None
             self._capsules = None

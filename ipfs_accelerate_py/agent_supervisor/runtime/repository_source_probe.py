@@ -284,6 +284,8 @@ def validate_probe(value, *, allow_legacy=False):
                     "artifacts_retained_after_invocation"}
     if not legacy or type(usage) is dict and "retrieval_observation" in usage:
         usage_fields.add("retrieval_observation")
+    if type(usage) is dict and "read_observation" in usage:
+        usage_fields.add("read_observation")
     if (type(usage) is not dict or set(usage) != usage_fields or usage.get("status") != "observed"
             or any(type(usage.get(key)) is not int or usage[key] != number for key, number in expected.items())
             or type(usage.get("returned_bytes")) is not int or not 0 < usage["returned_bytes"] <= 128 * 1024
@@ -292,6 +294,11 @@ def validate_probe(value, *, allow_legacy=False):
         raise ValueError("repository runtime probe usage differs")
     if "retrieval_observation" in usage:
         _validate_retrieval(usage)
+    if "read_observation" in usage:
+        from .repository_source_read_observation import validate_read_observation
+        validate_read_observation(usage["read_observation"], successful_reads=usage["successful_reads"],
+            compact_reads=usage["compact_reads"], returned_bytes=usage["returned_bytes"],
+            tool_calls=usage["tool_calls"], errors=usage["errors"])
     return value
 
 

@@ -111,10 +111,8 @@ def _supported_preparation(expected, prepared, packet):
 def _helper_checks(receipt):
     checks = {}
     if receipt.get("repository_source_policy") is not None:
-        from ipfs_accelerate_py.agent_supervisor.runtime import repository_source_mcp
-        source = Path(repository_source_mcp.__file__).read_bytes()
-        checks["repository_source_helper_source"] = (
-            hashlib.sha256(source).hexdigest() == receipt["repository_source_policy"]["helper_sha256"])
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_policy import helper_sources_match
+        checks["repository_source_helper_source"] = helper_sources_match(receipt["repository_source_policy"])
     if receipt.get("tool_output_policy") is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime import tool_output_artifact
         source = Path(tool_output_artifact.__file__).read_bytes()
@@ -233,6 +231,27 @@ def audit_world_terminal_context(*, state: Path, receipts: list[dict], workspace
                     status="verified_exact_model_input" if match["model_input_verified"] else "verified_native_input_only",
                     reason="exact_world_context_and_input_digests_match" if match["model_input_verified"]
                         else "world_model_projection_mismatch")
+                if match["model_input_verified"]:
+                    # The final message, not the separately rendered compiled
+                    # capsule, owns this census. Slice by UTF-8 bytes and pin
+                    # the exact advisory before parsing the world preamble.
+                    try:
+                        model_bytes = replay.model_prompt.encode("utf-8")
+                        size = row["workspace_advisory_bytes"]
+                        if type(size) is not int or not 0 <= size <= min(8192, len(model_bytes)):
+                            raise ValueError("world census advisory bound")
+                        advisory_bytes = model_bytes[:size]
+                        if audit._sha(advisory_bytes) != row["workspace_advisory_sha256"]:
+                            raise ValueError("world census advisory pin")
+                        advisory = advisory_bytes.decode("utf-8", errors="strict")
+                    except Exception:
+                        result["rendered_input_census"]["unavailable"].append({
+                            "invocation_id_sha256": audit._sha(row["invocation_id"].encode()),
+                            "reason": "census_bound_or_input_unavailable"})
+                    else:
+                        audit._add_rendered_input_census(result, model_prompt=replay.model_prompt,
+                            workspace_advisory=advisory, invocation_id=row["invocation_id"],
+                            input_representation="world_task_packet")
             except Exception as error:
                 result["read_errors"].append({"kind": "world_packet_replay", "error_type": type(error).__name__})
                 if isinstance(error, ValueError) and str(error).startswith("world replay unsupported retained"):
@@ -247,4 +266,4 @@ def audit_world_terminal_context(*, state: Path, receipts: list[dict], workspace
         else "verified_some_observed_model_inputs" if result["any_model_input_verified"]
         else "verified_native_input_only" if result["any_native_input_verified"] else "unverified")
     result["reason"] = "per_invocation_context_and_input_comparison"
-    return result
+    return audit._finish_rendered_input_census(result)

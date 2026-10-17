@@ -1728,6 +1728,39 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "proof_authority": False, "execution_authority": False, "completion_authority": False,
                 "retry_authority": False, "settlement_authority": False, "automatic_retry_admitted": False,
             }
+        if (report.get("repository_source_policy", "legacy") != "legacy"
+                or (type(report.get("provider_invocations")) is list and any(
+                    type(row) is dict and type(row.get("repository_source_policy")) is dict
+                    and row["repository_source_policy"].get("schema") == "supervisor-repository-source-owner-binding@1"
+                    for row in report["provider_invocations"]))):
+            # This separate observation cannot replace the worker's unavailable
+            # usage, prove tool adoption or change completion/provider charges.
+            try:
+                from .terminal_repository_owner_observation import (
+                    collect as collect_repository_owner, unavailable as repository_owner_unavailable,
+                )
+            except Exception:
+                # Match the closed factory shape even when its module cannot
+                # load, so diagnostics never suppress the durable result.
+                report["repository_source_owner_observation"] = {
+                    "schema": "terminal-repository-owner-observation@1", "status": "unavailable",
+                    "reason": "collector_failed", "sessions": [], "session_count": None,
+                    "transport": None, "prepared_mcp_counts": None, "delivered_tool_calls": None,
+                    "delivered_reads": None, "model_consumed_tokens": None,
+                    "unknown_reason": "missing_per_operation_correlation_and_model_ingestion_evidence",
+                    "observation_only": True, "proof_authority": False, "execution_authority": False,
+                    "completion_authority": False, "task_correctness_established": False,
+                    "source_semantics_verified": False, "provider_ingestion_verified": False,
+                    "token_savings_measured": False, "raw_content_exported": False,
+                    "observer_provider_calls": 0, "native_parent_release_verified": False,
+                    "worker_cleanup_independently_verified": False,
+                }
+            else:
+                try:
+                    report["repository_source_owner_observation"] = collect_repository_owner(
+                        parent=ROOT / "worker-observations", scope=output_observation_scope, report=report)
+                except Exception:
+                    report["repository_source_owner_observation"] = repository_owner_unavailable("collector_failed")
         report["seconds"] = time.monotonic() - started
         _write(report_path, report)
     return report

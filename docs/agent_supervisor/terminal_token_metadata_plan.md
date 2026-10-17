@@ -1237,3 +1237,1079 @@ wiring and benchmark observations. The datasets and kit commits and actual
 import origins stayed pinned and clean. An early fixture socket-path error
 and an overly broad Lean assertion are retained in the run history alongside
 their corrected results; they are not hidden as successful runs.
+
+## October 15: distinguish representation size from native session cost
+
+The retained-receipt comparator now uses the existing context-delivery
+reconciler automatically for supervisor trials. Codex counters describe a
+cumulative native session: two receipts reporting 120 and then 180 tokens
+for that session contribute 180, not 300. Grok final envelopes retain their
+invocation scope. Original invocation observations, failed attempts and local
+measurements remain available separately. This is offline accounting; it does
+not dispatch providers, change supervisor admission, or train an IR.
+
+Complete supervisor totals require the native provider, model, session or
+envelope custody, coherent counters, native completeness, and an explicit
+`unreceipted_provider_attempt: false`. A missing marker remains unknown.
+Earlier contradictory snapshots cannot be erased by a later valid snapshot;
+ordinary incomplete snapshots may be superseded by a valid cumulative result.
+Legacy receipts that lack these facts retain their reported invocation
+counters but cannot establish complete totals. Do not manufacture missing
+fields when reanalysing historical trials.
+
+Session identity overlap is checked across all supplied supervisor trials,
+including different arms and outcome subsets. Affected aggregates withhold
+token and cost totals and per-pass ratios: cumulative counters alone do not
+allocate costs between their verifier outcomes. Costs from different
+invocations sharing one session also remain unknown because their receipts
+do not declare whether dollars are cumulative or incremental. The native
+baseline retains its prior summary contract; baseline-to-supervisor session
+overlap is explicitly not checked. This is a supplied-population accounting
+check, not independent authentication or proof of whole-campaign completeness.
+
+Each input observation now includes `request_exposure`. It checks the complete
+rendered user prompt's hash and byte count, and joins the selected semantic
+metadata representation to that same pair. A hash or length mismatch prevents
+a bound local-token observation without erasing independent native usage.
+Provider system instructions, conversation history, framing, ingestion and
+cache hits remain unknown. Identical prompt hashes do not imply cache reuse;
+a tiny internal delta does not replace the measured full rendered prompt.
+The helper currently supports prompt sizes up to 256,000 bytes and reports
+larger or malformed commitments as unavailable.
+
+`context_delivery_observation` separately composes the existing owner-send and
+prepared-MCP-response counters. A malformed optional context observation does
+not erase valid native usage. Prompt bytes, prepared replies, successful owner
+sends, local tokenizer counts and native session tokens are distinct scopes;
+none of the first four is added to native usage or treated as token savings.
+
+The next measurement gap is repeated source content: the ordinary repository
+MCP audit lacks retained read identities needed to distinguish unique reads,
+same-generation repeats, and content returned after refresh. Extend that
+existing audit with content-free identities before attempting a duplication
+estimate. Inline overlap additionally needs an owner-derived source manifest
+for the initial prompt. Until those joins exist, keep overlap unknown. A
+matched live token/reward comparison remains necessary to establish actual
+savings; these accounting tests establish neither savings nor a new benchmark
+result.
+
+Focused validation passed 322 authored tests across six suites under the
+existing native `VALIDATION` admission policy, using one serial child. The
+source hashes remained unchanged during execution and the lease was released.
+The fixtures exercise the public receipt comparator and existing reconciliation
+contracts; they do not replay private provider transcripts or run live tasks.
+
+## October 15: retain repeated source-read observations
+
+Selected repository MCP sessions now automatically record a content-free read
+observation in their existing operation journal. The model-visible tool reply
+does not grow. Each successful bound read records the generation, file/symbol
+scope, selected representation and encoding, a source-identity commitment,
+and the hash and UTF-8 byte length of the returned content string. Canonical
+JSON over the relative path, canonical file hash, scope and native symbol ID
+forms the source identity; the path and symbol text are not retained in the
+observation. These hashes are commitments, not a claim of anonymization or
+independent source authentication. JSON-RPC request IDs are excluded.
+
+Cleanup retains a bounded histogram before removing the private journal.
+The histogram distinguishes first identities, repeated reads in one generation,
+and additional generation groups returning the same source/representation/
+content identity. Those categories partition identified reads and content bytes.
+A changed canonical file hash produces a distinct identity even when compact
+output happens to be identical. Different files or symbols are also distinct;
+this is exact read-identity repetition, not substring overlap or semantic
+equivalence. The same fields permit recounting grouped arithmetic after cleanup,
+but the event-chain digest alone cannot reconstruct the original event order.
+
+Content counts cover UTF-8 returned strings, including base64 text for binary
+files. Separate byte totals cover successful read payloads, failed read
+payloads and other operation payloads. These are inner JSON bytes, excluding
+the outer MCP envelope and line framing. The existing 512-read and 512 KiB
+journal bounds remain in force. Imported summaries must match the parent
+successful/compact read, tool-call, error and byte counters; their grouped
+counts and byte partitions are recomputed before retention by the benchmark
+collector. Contradictory content hashes/lengths and source/view identities
+are refused. The runtime probe accepts and validates this optional field, and
+archive compatibility includes the new helper's source pin.
+
+`complete` means every successful read in the supplied validated audit rows has
+a retained identity. Historical or unbound successful reads keep full content
+totals null and preserve known partial counts separately. A wholly historical
+journal has no new observation. There is no journal-closure or provider-receipt
+claim: audit recording precedes stdio output, so even a broken receiver can
+leave a valid prepared-read observation. Provider ingestion, per-tool tokens,
+token savings and duplication against the initial prompt remain unknown.
+
+The local transport qualification uses real source snapshots, compact rendering,
+symbol extraction, generation fences, stdio and cleanup with the existing
+authored `SymbolIndex` adapter. It does not qualify the native DuckDB index,
+live model adoption or benchmark savings. Native stdio currently obtains its
+own default scheduler roots without receiving a parent validation lease; the
+scoped test does not exercise or change that admission path. The next required
+join is an owner-derived initial-prompt source manifest before measuring inline
+duplication or choosing a prompt-displacement treatment.
+
+Focused qualification passed 608 tests across six suites under the existing
+native `VALIDATION` policy, reserving one CPU slot, 1,536 MiB and two child
+process slots. Runtime and test hashes stayed fixed during execution; the
+lease was released. The stdio fixture retains ten successful read observations
+with five first identities, three within-generation repeats and two additional
+generation repeats. It also tests stale reads, binary and symbol scope,
+cleanup, a broken receiver and the full supported journal population. These
+are authored fixture results, not Terminal Bench performance measurements.
+
+## October 15: join initial inline files to subsequent prepared reads
+
+The existing final-input audit already reconstructs the selected model prompt
+and checks its hash and UTF-8 length. Its optional rendered-input census now
+records a bounded, content-free inventory of literal whole files in supported
+`translated_semantic.raw_sources` slots. The observer reads the exact JSON
+prefix after the verified workspace advisory. It checks each literal body
+against that envelope's source manifest and uses the same source identity as
+the repository MCP read journal. Only hashes and counts leave the observer;
+relative paths, source bodies and exception text do not.
+
+This first inventory supports ordinary semantic transports, common metadata
+bindings and capsule working-set views. Native prose/compiled context, world
+packets, query/source-input wrappers and instruction-reference relocation
+remain unavailable. A source listed only in a manifest is not inline. An
+unselected candidate or source-like text in an opaque suffix is not inspected.
+The 256,000-byte input ceiling, 64-source inventory limit and existing census
+and audit-output limits bound this diagnostic. Failure or budget exhaustion
+leaves the original input verification and accounting intact.
+
+The Terminal Bench delivery collector joins the inventory to a repository MCP
+observation only within a uniquely bound invocation and final prompt identity,
+with the retained exact-input audit checks present. It compares original
+whole-file UTF-8 content by source identity, content hash and content length.
+Generation changes alone do not prevent a match; changed source identities,
+even with equal text elsewhere, do. Repeated prepared reads count repeatedly.
+Compact, symbol, binary and unidentified reads remain outside the supported
+comparison. Known matches can be retained as partial counts, while totals
+over the whole successful-read population require complete supported coverage.
+
+These are logical UTF-8 source-content bytes, excluding JSON escaping and
+framing. They do not measure serialized wire overlap, provider ingestion,
+cache hits, saved tokens or safe deletion. A qualified zero means no match
+within the declared raw-source carrier; other prompt passages remain outside
+the metric. Missing historical inventories remain null. The generic
+`inline_overlap_bytes` field remains null, and native provider totals are
+unchanged. Retained audit assertions are joined here; this collector does not
+independently replay their private evidence or authenticate their origin.
+
+This join identifies a potential prompt-displacement treatment without
+changing dispatch, representations, source availability or production defaults.
+Actual savings still require a matched Terminal Bench comparison with the same
+task/reward checks and complete native session accounting. The next coverage
+work is to qualify the remaining explicit source carriers and parent admission
+for the native index before attempting a live comparison.
+
+Focused qualification passed 719 tests across twelve suites in 14.31 seconds.
+The existing native `VALIDATION` policy admitted one CPU slot, 1,536 MiB and two
+child slots; selected runtime/test hashes remained fixed and the lease was
+released. A real MCP stdio fixture reads the same file twice, cleans up its
+private store, and retains two exact initial-source matches through the
+collector. That fixture explicitly authors its index adapter, final-input audit
+assertions and native counters. Separately, the actual bounded context-audit
+child reconstructs a pure compiled capsule and leaves its unsupported native
+carrier unknown. No provider, native-index evaluation or live task was run.
+
+## October 15: explicit source carriers and world-input coverage
+
+Source observation can follow a single declared query-reference or factored
+source-input wrapper to its still-literal raw-source map. The wrapper is checked
+against its explicit schema and selected-input boundaries; references are never
+expanded to manufacture text absent from the prompt. Supplemental compact and
+symbol source-read views remain outside the whole-original-file comparison.
+Additive source-input mode keeps the already supported semantic JSON prefix;
+its appended read-view block is still outside that scope.
+
+Instruction relocation has a deliberately narrower boundary: one bound public
+instruction block must start exactly at the JSON suffix. Its declared UTF-8
+length, fixed delimiters, source hash and complete simple-block hash identify
+the actual text. Remaining literal raw-source entries keep their ordinary
+manifest checks. Preceding guidance, extended instruction blocks, ambiguous
+references or any binding mismatch leave the inventory unavailable. This does
+not search arbitrary prompt text or restore an unselected representation.
+
+These additional carriers use a versioned observation with an explicit scope
+path. Existing direct-carrier observations retain their original schema. The
+collector reports the joined source schema and scope, keeping arithmetic and
+coverage separate from provider usage. An observed zero remains specific to
+the qualified carrier rather than every possible source passage.
+
+World inputs require a different census boundary. Their exact fixed guidance
+precedes the packet JSON after the workspace advisory. Census runs over the
+historically reconstructed final model prompt and partitions workspace
+advisory, world guidance, JSON and trailing instructions separately. Compiled
+capsule bytes remain a distinct artifact; they cannot stand in for delivered
+world input. Mixed-route audits retain both legacy and world observations
+within the existing diagnostic budget.
+
+World packets retain selected context references, including opaque summary
+strings that may contain chunks of semantic JSON. They have no directly typed
+whole-file source map at the supported boundary. World source overlap therefore
+remains null with an explicit unsupported-carrier reason. Supporting those
+references requires a separate bounded chunk join and source-body-to-manifest
+hash check over the actual selected packet. These changes provide observations
+without changing prompt selection, source availability, or completion rules.
+
+Qualification passed 869 selected tests across eighteen files in 20.30 seconds,
+including six explicitly selected existing audit tests. The retained native
+`VALIDATION` policy admitted one CPU slot, 1,536 MiB and two child slots;
+selected source hashes stayed fixed and the lease was released. Query and
+instruction tests exercise the real pure codecs; factored source-input tests
+use authored wrapper records. The world tests use the real context compiler,
+packet renderer, artifact freeze/replay and bounded audit child with authored
+historical owner bindings and metadata mirrors suppressed. They do not establish
+live owner admission or provider delivery. Failure, tampering and output-budget
+cases preserve the underlying audit verdicts. No provider or native-index
+workload was run. A matched Terminal Bench comparison with native usage and
+task/reward checks remains necessary to establish token savings.
+
+## October 15: selected world-source joins and borrowed native admission
+
+World source observation now accepts one complete selected semantic artifact.
+It follows only evidence members carrying typed `semantic-context` references
+from the existing text-reference builder. The reference records, member
+digests, repository and tree identities, artifact locator, chunk indexes and
+counts, individual content hashes and complete artifact hash must agree before
+the joined text is parsed. Missing chunks are never fetched. Only the declared
+literal `raw_sources` of the supported worker-context schemas are counted;
+manifest-only entries, capsule summaries and projection text remain outside
+the comparison. Multiple artifacts and unsupported or incomplete carriers
+remain unknown. The bound relative artifact locator is never opened.
+
+Successful world observations use `inline-source-observation@3` with scope
+`world_packet.selected_semantic_context.raw_sources`. Final-message SHA and
+UTF-8 length still bind the result to one invocation, and each source must
+match its manifest SHA. Logical bytes remain separate from escaped packet
+bytes and provider tokens. The repetition census still leaves nested JSON
+opaque; its separate optional source observer can decode one complete declared
+semantic artifact. An unavailable source result does not establish whether
+that nested decode occurred. The observer authenticates content consistency,
+not the producer's authority or current repository freshness.
+
+The native index, source session and trusted in-process MCP constructor now
+accept an existing datasets `parent_lease` and optional `cancel_event`.
+The index's preparation, observation, capsule work and context compilation
+use children of that parent. Supplying both a scheduler and parent is rejected
+by the native path. Already cancelled controls refuse startup, and subsequent
+native operations check cancellation. The caller retains ownership of the
+parent; closing the index or session releases only its own handles and child
+leases. Custom factories must consume explicitly supplied controls or fail;
+there is no retry that silently drops admission dependencies.
+
+This is an in-process dependency path. The closed MCP configuration and
+production CLI do not serialize native capabilities or automatically delegate
+a parent to the source server. Source capture, ordinary reads and edits still
+need lifecycle qualification before claiming coverage of a whole task. Parent
+admission is cooperative accounting, not a hard RSS limit, and a lease alone
+does not supply an overall execution deadline. Existing standalone defaults
+and native pressure/backoff policy are unchanged. Live comparison therefore
+still requires production worker delegation and an authorized task/reward
+benchmark with complete native session usage.
+
+Qualification covers 954 selected cases across 22 files. The first run passed
+952 cases; two authored factory tests incorrectly entered a filesystem-backed
+context after suppressing filesystem setup. Correcting those fixtures exposed
+four one-second setup-admission timeouts in the affected suite. Their waits now
+match the adapter's existing ten-second bound; the final affected suite passed
+all 19 cases. Runtime source hashes stayed fixed across these runs. The 935
+unchanged cases passed in the first run, and the complete changed test file
+passed in the final run. Every attempt and its original hashes is retained.
+
+The native tests use an actual validation parent delegated through the existing
+datasets token API into a bounded pytest subprocess. Native index preparation,
+observation, capsule queries, context compilation and in-process MCP calls
+assert children of that supplied parent and verify their release. Cancelled,
+released and externally signalled parents refuse subsequent native work.
+Each run retained the existing policy with one CPU, 1,536 MiB and two process
+slots at the root, with a 1,024 MiB child envelope, and a 180-second subprocess
+limit. Parent and child leases released, and the private capability files and
+test stores were removed. These are admission budgets, not measured peak RSS.
+The admission timeouts are retained without inferring their external cause.
+No provider or live Terminal Bench comparison was run; source and owner
+bindings used by the world observer tests remain authored fixtures.
+
+
+## October 15: private MCP delegation and cooperative source lifecycle
+
+The router now accepts a trusted owner’s actual `repository_source_parent_lease`,
+`repository_source_scheduler_policy_sha256` and absolute
+`repository_source_deadline_monotonic` together on its Codex coding source-tool
+route. It validates these before creating state and again before dispatch.
+The existing public MCP configuration stays capability-free. A separate private
+0400 grant in the existing 0700 invocation directory carries the native token;
+only its path and SHA enter the launch binding. The receiver checks that grant
+against the workspace, configuration, helper bytes, private directory identity,
+owner PID/start time/boot/UID, deadline and exact existing scheduler policy.
+It never initializes a missing scheduler or silently substitutes default
+admission. Malformed and expired grants refuse startup, including deadlines
+outside the finite supported range.
+
+The actual MCP CLI consumes this grant and holds a delegated one-CPU, 512-MiB,
+one-process envelope across startup, synchronous handlers and session cleanup.
+Nested indexing and context compilation borrow children of this parent.
+The trusted grant deadline is at most one hour; native child admission waits
+at most ten seconds and cannot extend the remaining deadline. A grant can be
+reused while its owner/deadline remain live, within native parent capacity;
+it is resource accounting, not a single-use execution or proof authorization.
+The original caller retains ownership of its parent.
+
+Explicitly controlled MCP stdio now polls nonblocking file descriptors for
+cancellation and deadlines while input is idle or partial and output is full.
+No background worker can release capacity underneath a synchronous handler.
+Indexing, capsules and context compilation inherit the absolute deadline.
+Source sessions check controls around capture, restoration, current-source
+checks, reads, publication and edit preflight. The editor checks immediately
+before atomic replacement. If cancellation arrives after a successful write,
+the audit preserves the observed mutation and refresh requirement; a raised
+postcommit error with unavailable reobservation remains uncertain. Transport
+cancellation can suppress a reply after its mutation audit has been recorded.
+Cleanup remains available after cancellation or expiry.
+
+The final bounded qualification passed 1,185 selected cases across 29 files in
+41.05 seconds, with no failures or skips. The initial 1,176-case passing run
+is retained at its original hashes; review then found the eager optional
+dependency import. The fix and nine additional cases passed in the complete
+final run. It includes actual private-grant MCP
+subprocesses using native DuckDB/CAS source sessions, owner cancellation and EOF,
+plus deterministic authored tests for blocked pipes, deadline boundaries and
+post-write outcomes. The router forwarding test uses an authored provider
+callback; no provider was invoked. Existing source-edit, policy, world-source
+and token-accounting regressions also passed. Tests borrowed the existing
+scheduler policy under one CPU, 1,536 MiB and two process slots, with a 1,024-MiB
+pytest child. All owned leases released, grants and test stores were removed,
+and tested source hashes stayed fixed. Two existing eight-process editor tests
+and the policy process-group stress test were excluded from this bounded run.
+
+The explicit owner API and real MCP child path are qualified. The current
+Terminal Bench CLI still does not supply that native parent automatically;
+there is no inferred parent from task metadata and no default-policy change.
+Cancellation and deadlines remain cooperative: synchronous parsing, lock waits
+and cleanup are not hard preemption, and admission is not a hard RSS limit.
+Provider lifetime cancellation and escaped processes are outside this change.
+A matched live Terminal Bench comparison still needs actual owner delegation,
+complete native session usage and equal task/reward checks before claiming
+net token savings or safe source omission.
+
+
+## October 16: owner service and isolated-worker admission boundary
+
+Tracing the actual full Terminal Bench route found no datasets native resource
+parent to forward. The admitted runtime's coordination lease and the daemon's
+checkout claims serve different purposes from native resource admission. The
+installed owner launches a different-UID worker, which clears its environment
+and cannot read owner-private scheduler state. The prior same-UID MCP grant
+therefore does not complete this deployment path.
+
+The installed owner and worker entry scripts now reject nonlegacy repository
+source-policy selections before candidate access or provider dispatch with
+`repository_source_owner_transport_unavailable`. The early guard covers separate
+and equals-style arguments, supported abbreviations, and duplicate arguments
+that otherwise could hide an earlier unsupported selection. The parsed worker
+policy is checked again. Legacy routing and the separately qualified trusted
+Python router API retain their existing behavior.
+
+`OwnerRepositoryMCPBroker` provides an explicit owner-side read service using
+the existing numerical broker's socket lifecycle, owner boundary and launched
+descendant authentication. Its constructor requires an actual locally owned
+native parent, exact existing scheduler policy SHA, absolute deadline, repository,
+allocated workspace and trusted container boundary. The caller registers its
+actual launched worker through the inherited `note_spawned` API. This class is
+not automatically created by Terminal Bench, and the new protocol's descriptor
+flags are not installed worker CLI options.
+
+The service thread acquires one native child with one CPU, 512 MiB and one
+process slot, and constructs, handles and closes the existing repository MCP
+server on that thread. Nested indexing and context compilation borrow that
+child. Public worker descriptors contain identity and source-configuration
+hashes; they do not carry native capabilities or control-database locators.
+The closed protocol exposes source status, listing, symbols, reads, queries,
+capsule expansion, cache inventory and refresh. Refresh writes the private
+index. Canonical source edits are neither advertised nor accepted.
+
+Each session admits at most 64 connections, including malformed attempts and
+notifications, and at most 524,288 prepared-for-transport response bytes. A
+response too large for the remaining budget is replaced by a closed refusal;
+prepared and transmitted response hashes remain distinct. Frame transfers have
+one two-second deadline across partial I/O. Client connection and response-start
+waiting have a separate maximum thirty-second deadline, shortened by the caller
+and session deadline. No request is retried automatically. The public descriptor
+never extends the native parent deadline; its own expiry also cancels native
+work and frame transport. Boundary, workspace and peer checks run before and
+after handling and before delivery.
+
+Close stops public access immediately and waits at most three seconds. If a
+handler is still running, it reports incomplete cleanup and keeps native capacity
+reserved. The same service thread closes the server, retains the exact validated
+content-free MCP operation records, cleans its private store, and only then
+releases the child. The original parent remains caller-owned. Cleanup failures
+retain custody and are reported; repeated close can observe a handler that has
+since finished, but does not force-close a blocked handler. Prepared source-read
+audits and transport delivery records remain separate observations.
+
+The bounded local run passed 1,440 cases out of 1,452 in 58.49 seconds across
+36 selected files. All 114 protocol, 17 owner-service and 32 new deployment-guard
+cases passed. The other twelve cases failed because the optional Harbor package
+is absent, not because their assertions completed and disagreed. An earlier
+attempt stopped at collection for the same missing dependency in three additional
+archive-capability selectors. Both attempts and their original source hashes are
+retained at `artifacts/owner-source-service-20261015T235422Z`; these missing checks
+are not counted as passes. No dependencies were installed or substituted.
+
+Real native parent/child admission, source capture, DuckDB/CAS indexing,
+read/query/refresh, framing, audit retention and source-byte/mode preservation
+were exercised. Authored tests covered slow-handler custody, malformed frames,
+expired sessions, refused peers and blocked writes. Container manifests, Git
+allocation admission and cross-UID peer admission in the new broker fixtures
+were controlled substitutes. This is not a completed cross-UID deployment test.
+Both runs used the unchanged existing scheduler policy under one CPU, 1,536 MiB
+and two process slots at the root, with a 1,024-MiB pytest child and 180-second
+wall limit. All owned leases released, private grants and test stores were
+removed, and source hashes remained fixed. The existing larger process-stress
+tests remain outside this two-slot envelope.
+
+The remaining integration requires a real owner native-admission lifecycle in
+the full Terminal route, a worker-side MCP transport using this public protocol,
+and actual different-UID launch/peer/cancellation/cleanup qualification before
+enabling source policies there. Harbor-dependent checks require the supported
+benchmark environment. A matched live task/reward comparison with complete
+provider-native usage is still needed to measure net token savings. No provider,
+model training, GPU job, tool installation or live benchmark ran in this phase.
+Admission and cancellation remain cooperative, without a hard RSS guarantee.
+
+
+## October 16: worker stdio bridge and public owner bindings
+
+The worker can now use the explicit owner service through
+`repository_source_owner_stdio.py`. Its isolated, standard-library CLI accepts
+the public descriptor path, descriptor SHA and allocated workspace. It relays
+the existing MCP newline-JSON messages through the bounded owner protocol,
+preserving request IDs and silent notifications. Unsupported edits are refused
+before an owner call. Idle input, partial lines, blocked output and owner calls
+share the descriptor/caller deadline and cooperative cancellation. Local request
+and byte budgets also count malformed input and refusal replies; insufficient
+remaining response budget prevents another owner call. There are no automatic
+retries. EOF stops the bridge while owner cleanup remains the caller's duty.
+
+The trusted router API and router CLI accept the paired
+`repository_source_owner_descriptor` / `repository_source_owner_descriptor_sha256`
+arguments (`--repository-source-owner-descriptor` and its `-sha256` companion).
+This requires the explicit nonlegacy Codex coding source-policy route and
+excludes a simultaneous private native grant. These are router interfaces; the
+installed isolated-worker entry guard still refuses nonlegacy source policies.
+The full Terminal owner has no actual native lease or exact scheduler-policy
+pin to forward. Its selected profile and scheduler pathname can refer to an
+uninitialized scheduler, and its coordination lease cannot substitute for native
+capacity. Automatic launch remains guarded until that owner lifecycle exists.
+
+`repository_source_owner_binding.py` binds the public session, source
+representation, workspace, fixed bridge/protocol/client hashes and actual Python
+interpreter identity into the existing provider MCP configuration path. The
+fixed command uses `-I -B`, inherits no environment-variable allowlist, and
+advertises only read/query/refresh tools. The worker launch configuration SHA
+is distinct from the owner's private source-configuration SHA. Materialized
+validation reloads the live descriptor and checks the exact local implementation
+before dispatch. The worker creates and cleans no source index or audit store.
+Its usage receipt keeps tool counts and owner cleanup null with
+`owner_audit_required`; a separate owner audit must establish those observations.
+The dispatch report now preserves that reason and unknown cleanup value.
+
+Historical public binding metadata can reconstruct the exact prompt after a
+session retires or its deployment path changes. This does not authorize a live
+launch. Historical helper checks compare the three fixed helper hashes;
+materialized checks additionally require the exact current helper path and
+interpreter. Existing source and world-input auditors use the correct helper
+family. Reusing one owner configuration across multiple invocations remains
+conservatively unverified by the aggregate report until session observations can
+be attributed to individual invocations; no nonce fabricates a configuration
+change or independent observation.
+
+Five native owner/stdio roundtrip cases passed. The core case exercised eight
+real owner exchanges with sixteen client-side kernel peer/PID-birth checks and
+eight socket-identity checks, plus native source capture, read/query/refresh,
+exact retained read audit hashes and source byte/mode preservation. Container
+manifests, Git allocation, descriptor-access isolation and broker-side worker
+ancestry were authored fixtures. These checks therefore establish the client
+transport and native service connection, not a different-UID deployment or a
+complete provider invocation against that service.
+
+The initial native regression run passed 1,586 cases in 66.47 seconds. Review
+then corrected the unknown-cleanup projection; all 321 affected cases passed,
+including three new malformed-usage controls. The previously missing Harbor
+dependency was found in the documented existing environment at
+`.venvs/terminal-bench-harbor`. Its interpreter and Harbor/Pydantic dependencies
+were used with read-only access to the existing same-ABI workspace pytest
+dependencies; exact imported module paths, versions and hashes are recorded.
+Nothing was installed. That run exposed four assertion failures and ten setup
+errors in stale archive fixtures, with eight cases passing. The fixtures now
+include the required benchmark package markers and current deadline-source
+members. The negative repository test alters its intended MCP archive member
+while retaining valid deadline evidence. Production archive checks were unchanged.
+The final affected archive/routing selection passed all 69 cases in 11.15 seconds,
+including every previously failing or uncollected Harbor-dependent case.
+
+Across the initial and targeted runs, 1,616 distinct retained case names passed;
+the earlier failures and original hashes remain in
+`artifacts/owner-source-bridge-20261016T002458Z`. All runs used the existing native
+scheduler policy with one CPU, 1,536 MiB and two process slots at the root, a
+1,024-MiB pytest child, bounded admission and a 180-second wall limit. All owned
+leases released, private grants/test stores were removed, and tested source
+hashes stayed fixed within each attempt. Native admission budgets are not
+measured peak RSS or hard memory limits.
+
+The remaining work is the full Terminal owner's native admission and shutdown
+custody, actual different-UID launch qualification, and an owner audit join for
+invocation-level use. Production entry defaults remain unchanged. No provider,
+live benchmark, GPU/training campaign, installation, deployment or publication
+ran here. Net provider token savings still require matched task/reward trials
+with complete native session accounting.
+
+## October 16: explicit native owner admission and retained cleanup
+
+`RepositorySourceOwnerLifecycle` now owns the source service's native
+reservation around the existing owner broker. Its constructor only validates
+configuration. `start()` opens the explicitly selected existing scheduler and
+exact policy digest, requires its pressure safety and native renewal settings,
+and requests one CPU, 512 MiB and one process slot. It can borrow a genuine
+current-process parent lease; it never translates a coordination lease into
+native capacity or initializes a scheduler. The reservation covers the source
+service, not provider execution or the worker process.
+
+Admission and readiness share one absolute budget of at most thirty seconds,
+within the source lifetime. A readiness event alone cannot establish success:
+the native child, server, service thread and current context must also be live.
+The public descriptor arguments become available only after these checks.
+Native pressure admission and backoff remain the existing scheduler's behavior.
+The persisted policy digest covers stored capacities and safety settings;
+renewal and lease TTL use the existing facade's operational defaults.
+
+`close()` retires public access and releases the owned reservation only after
+the broker confirms stopped service, completed store cleanup and released child
+capacity, or an explicitly known absence of a child. A blocked handler keeps
+both nested leases. Failed cleanup retains the original owner object; there is
+no automatic cleanup thread or context-manager release. If native acquisition
+is interrupted before returning a handle, acquisition stays null/unknown. The
+implementation does not reconstruct a capability from scheduler state. A native
+release error also records that continued heartbeat renewal is unproven.
+
+Broker construction now retains custody when `Thread.start()` is interrupted
+before its thread identity becomes visible. Partial close handles unstarted
+sessions, join refusal and incomplete store cleanup. A failure before resource
+creation has a known empty cleanup scope, so it need not strand the lifecycle's
+reservation. Unexpected child-acquisition failures cannot become a false
+zero-child or completed-cleanup result.
+
+The bounded qualification passed all **252 cases** in 33.37 seconds, including
+60 new lifecycle cases and nine construction cases. Native checks used the
+runner's actual parent to admit the source reservation and broker child, read
+source through MCP, and retain capacity through a blocked handler and interrupted
+thread publication. Root-mode admission and failure injection were authored
+controls; container identity and server-side worker ancestry remain authored.
+All 156 source pins stayed fixed. The one-CPU, 1,536-MiB, two-process-slot runner
+released its root and child, stopped the child process, and removed the private
+grant. Receipts and the cumulative patch are retained at
+`artifacts/owner-source-native-lifecycle-20261016T005348Z`.
+
+Automatic Terminal wiring is still guarded. Its coordination lease and resource
+profile do not supply an exact native scheduler-policy binding. Integration
+must bind that owner configuration, start the service before launch, register
+the actual spawned worker, forward the public descriptor, and retain the owner
+through incomplete cleanup after worker reaping. The existing monitor currently
+ignores broker close results, so successful return cannot yet authorize its exit.
+Different-UID deployment, per-invocation owner audit joins and matched live token
+savings remain unqualified. No providers, Docker deployment, installation or
+training ran in this phase. Cooperative budgets do not establish a hard RSS cap.
+
+## October 16: guarded Terminal owner wiring and cleanup retention
+
+The installer now accepts an optional `repository_source_resources` binding
+for the Codex route. Its closed schema names an existing scheduler below the
+owner-private state directory, the exact policy SHA-256, a bounded admission
+timeout, and the source-service-only resource scope. Validation precedes
+installer or deployment I/O. The owner loader verifies the protected root-owned
+boundary, current owner identity and private ancestry, then checks scheduler
+file metadata without opening its contents. Actual policy, availability and
+admission remain with the existing native scheduler; nothing initializes a
+scheduler or substitutes an environment default.
+
+The new dispatch adapter validates an exclusive source route and returns an
+unstarted lifecycle. Legacy calls avoid source configuration access. The
+generated owner stores the lifecycle before starting it, installs interruption
+handlers before admission, appends only its public descriptor arguments, and
+registers the actual spawned process. Failure cleanup reaches source retirement
+even if another broker's cleanup raises. Startup failures establish the same
+signal-ignore cleanup policy as the existing monitor.
+
+Retirement stays in that monitor, retaining the exact current-process lifecycle
+until its receipt affirmatively reports completed cleanup and a known native
+parent disposition. Close requests are one second; backoff starts at 0.1 seconds
+and doubles to a one-second cap. These are cooperative per-attempt bounds.
+Persistent uncertainty intentionally retains the monitor indefinitely, so total
+shutdown time is not bounded and outer guardian containment is not newly
+qualified. No separate controller, cleanup thread, new admission, or inferred
+grant recovery is introduced. Live ownership retention does not establish
+recovery after a process crash or SIGKILL.
+
+Two native-admitted qualifications passed **681 cases**: 612 focused cases in
+32.36 seconds and 69 Harbor archive/routing cases in 11.43 seconds. The 360 new
+cases comprise 98 configuration, 150 dispatch, 59 retirement and 53 generated
+wiring cases. One retirement case exercises an actual blocked native handler
+and its nested reservations; root/container identity, worker processes, signal
+delivery and installer I/O are authored controls. Native lifecycle and bridge
+regressions also passed. Both runs held 164 source pins fixed, released their
+validation leases, stopped their children and removed private grants. They used
+the existing one-CPU, 1,536-MiB root reservation, 1,024-MiB child and two process
+slots, with 55-second admission and 180-second wall limits. The Harbor run used
+the previously installed Harbor interpreter with read-only access to the
+existing primary environment's same-ABI pytest/native dependencies. Imported
+module paths, versions and hashes are retained. No installation occurred.
+
+Evidence, run receipts and the cumulative local patch are in
+`artifacts/owner-source-terminal-wiring-20261016T022840Z`. Archive compatibility
+pins now include the selected owner lifecycle and transport dependencies. The installed nonlegacy source
+guard remains enabled: `WORKER_ENTRY` still needs public descriptor parsing and
+forwarding, followed by a real different-UID deployment qualification before
+the route can be enabled. Owner audit joins and matched task/reward trials with
+complete provider usage remain necessary to establish net token savings. No
+provider calls, Docker operations, deployment, training or publication ran in
+this phase. Resource reservations do not establish measured peak RSS or hard
+memory limits.
+
+## October 16: guarded worker forwarding and verified owner identities
+
+`WORKER_ENTRY` now parses the public repository-owner descriptor and SHA-256
+pair and forwards them unchanged to the existing router CLI with the selected
+policy and container-boundary pins. It rejects partial, duplicate or abbreviated
+public options, noncanonical raw paths, malformed digests and incompatible
+routes. The existing nonlegacy deployment guard remains enabled. Tests of the
+dormant forwarding fragments establish argument transport only; full-script
+tests still refuse the selected route before router or provider dispatch.
+
+Adding the two flags made formerly unique policy abbreviations ambiguous.
+Explicit argparse aliases preserve the earlier spellings from `--rep` through
+the full policy flag. Review also found that the phase10 owner factory rejected
+those legacy spellings. It now accepts exclusively-legacy aliases and repetitions
+without accessing source configuration. Active routes still require one exact
+policy flag, and private capability arguments remain refused.
+
+The router now checks descriptor owner and worker UIDs against the identities
+returned by the existing container-boundary verifier, alongside its manifest
+digest. This rejects a descriptor naming an owner with a different UID while
+copying the public boundary digest. It does not reread the boundary artifact or infer a
+container boundary for the trusted direct API. The protocol still owns live
+descriptor, process, socket, workspace, permission and deadline checks.
+
+Two native-admitted selections passed **767 cases**: 688 focused checks in
+10.26 seconds and 79 Harbor archive/census checks in 11.51 seconds. These include
+284 new authored worker cases, 214 dispatch cases (previously 150), 13 new
+boundary-identity controls, and affected native transport and worker regressions.
+The forwarding and identity tests use authored boundaries and inert provider
+owners; they do not establish a deployed different-UID path. Both runs preserved
+174 source pins and released their root and child leases after stopping the
+children and removing private grants. Resource limits remain the existing
+one-CPU, 1,536-MiB root, 1,024-MiB child and two process slots, with bounded
+admission and a 180-second wall limit. Harbor used its installed interpreter and
+the existing same-ABI dependencies; no installation occurred.
+
+Evidence and the cumulative local patch are retained in
+`artifacts/owner-source-worker-forwarding-20261016T031254Z`. The reviewed host
+locations contain no provisioned protected runtime or owner/worker identities
+for actual different-UID qualification. The package records the smallest
+required runtime, scheduler and allocated-worktree inputs. Separately, owner
+audits already retain session identities, prepared operations, delivery records
+and cleanup evidence, but the worker binding's usage remains null until an
+independent invocation-level join is implemented. That join must distinguish
+prepared from delivered responses and reject ambiguous session reuse. Net token
+savings still require matched task/reward trials with complete provider session
+usage. No providers, Docker operations, deployment, training or publication ran
+in this phase; reservation budgets do not establish hard RSS limits.
+
+## October 16: retained owner audits joined to coding invocations
+
+The Terminal report now has a separate `repository_source_owner_observation`
+for explicitly selected owner source sessions. It joins each invocation to its
+historical descriptor, owner-prepared public instruction, admitted task scope,
+container boundary identities and exact retained operation bytes. Reused
+sessions, duplicate invocation IDs across phases, policy mismatches, missing
+files and incomplete cleanup produce null totals with reasons. No partial
+population is exported as a qualified subtotal. Legacy reports retain their
+existing shape unless an owner binding is actually present.
+
+The collector uses fixed session-derived filenames, protected owner directories,
+sealed 0400 single-link files, bounded no-follow reads and before/after identity
+checks. It reads no control database and performs no live descriptor admission.
+The existing MCP parser now exposes a pure bytes entry point for copied audits;
+its original file wrapper retains its private-directory and 0600 checks.
+The selected archive and worker capability pin both new observation modules.
+
+Prepared operations, response reservations and completed server socket sends
+remain distinct. The retained request records contain no per-operation
+correlation identity, so neither delivered tool/read counts nor model ingestion
+can be reconstructed. Outer response success also does not imply MCP tool
+success. Parent lease release has no retained lifecycle receipt and remains
+unknown even when the session's native child and private store are cleaned.
+The worker binding's unavailable usage, provider charges, adoption claims and
+task outcome are unchanged by the separate observation.
+
+Validation produced **512 passing test executions** across three bounded
+native-admitted runs: 433 focused cases, 78 passing archive cases and one
+corrected archive assertion. The initial archive run also retained one failure:
+its exhaustive expected source list omitted the two newly pinned modules.
+Only that expectation changed, and its affected case passed on the next run.
+The original test bytes, failure, source pins and correction remain in the
+evidence package. No implementation source changed after the focused run.
+
+The new coverage includes 322 authored parser, join, filesystem and driver cases
+plus two actual native producer-to-copied-audit cases. Both native cases complete
+five socket sends; the successful read case records one read and no tool errors,
+while the stale-read case records zero successful reads and one tool error.
+Their content-free observation results are retained in JUnit and a derived JSON
+artifact. Container, peer, task and invocation identities in those native tests
+are explicitly authored; this is not a deployed different-UID qualification.
+
+All three runs retained 181 source pins and released their validation root and
+child leases, stopped their children and removed private grants. The existing
+one-CPU/1,536-MiB root and one-CPU/1,024-MiB child reservations, two process slots,
+55-second admission limit and 180-second wall limit remained unchanged. Native
+source services used the existing nested one-CPU/512-MiB child admission. These
+are cooperative reservations, not measured peak RSS or hard memory limits.
+
+Evidence, original failures, historical test bytes and the cumulative local
+patch are in `artifacts/owner-source-invocation-accounting-20261016T060611Z`.
+The production guard remains enabled. Remaining requirements are an actual
+protected different-UID deployment, a retained parent-lifecycle receipt, explicit
+operation-to-response correlation, and authorized matched task/reward trials
+with complete provider session usage. Those trials are needed to establish net
+token savings. No providers, Docker operations, installation, training, direct
+active database reads or publication ran in this phase.
+
+## October 17: retained source-owner lifecycle disposition
+
+The existing synchronous source-owner monitor now attempts to retain a sealed
+lifecycle receipt after it has established cleanup. The exporter accepts only
+the current process's exact lifecycle object, obtains its existing lock and
+snapshots its public receipt. It cannot accept a caller-supplied receipt or
+destination. The new file is derived from the session identity and is bound to
+the exact retained broker audit. Existing identical bytes are accepted without
+rewriting; different files, links, unsafe permissions and changed identities
+are refused. The monitor imports the exporter after cleanup, and retention
+failure returns unavailable evidence without restarting cleanup or replacing
+the worker's outcome.
+
+This receipt establishes an owner-reported local release disposition for the
+source-service reservation. The native lease's `released` flag does not prove
+an affirmative scheduler acknowledgement, capacity reclamation or termination
+of all descendants. The observer therefore leaves independent scheduler
+capacity verification false, borrowed-caller release null, and worker cleanup,
+provider ingestion and task authority unclaimed. A previous release exception's
+`renewal_unproven` history survives a later successful close.
+
+The invocation report adds an optional nested `lifecycle_observation`. It joins
+the sidecar to exact session-audit bytes, descriptor identity and the broker
+child's parent lease. All selected sessions must have valid lifecycle evidence
+before the aggregate reports their own service reservations released. Historical
+or damaged lifecycle files leave that disposition unknown while preserving
+valid prepared-operation counts. The existing `native_parent_release_verified`
+flag stays false: this is retained owner evidence, not independent live scheduler
+verification. The producer refuses to export when the broker's first-stopped
+audit differs from the lifecycle's later cleanup snapshot; it never rewrites
+the original audit to manufacture agreement.
+
+Two bounded native-admitted runs passed **839 test executions**: 760 focused
+cases in 27.553 seconds and 79 archive/capability cases in 11.375 seconds, with
+no failures, errors or skips. New coverage includes 153 authored cases and two
+native lifecycle-to-copied-evidence roundtrips. Both real cases use protected
+home directories, native source-service reservations, sockets and sealed files;
+one injects a single release exception. They verify idempotent retention,
+matching parent/child identities, preserved renewal uncertainty and an untouched
+borrowed caller lease. Container, peer, task and invocation identities remain
+explicitly authored. This does not qualify a deployed different-UID path.
+
+Each run preserved 186 source pins. Validation children stopped, private grants
+were removed, and validation root and child leases were released. The same
+one-CPU/1,536-MiB root, one-CPU/1,024-MiB validation child, two process slots,
+55-second admission limit and 180-second wall limit were retained. The source
+lifecycle and broker each used their existing nested one-CPU/512-MiB admission.
+These reservations are cooperative bounds, not measured peak RSS or hard limits.
+
+Evidence and the cumulative local patch are in
+`artifacts/owner-source-retirement-accounting-20261017T035057Z`. The production
+guard remains enabled. Explicit operation-to-response correlation, actual
+protected different-UID deployment and authorized matched provider/task/reward
+trials remain necessary before claiming token savings. No providers, Docker
+operations, deployment, installation, training, direct active database reads or
+publication ran in this phase.
+
+## October 17: explicit source-operation and socket-response correlation
+
+The native source audit now offers a scoped witness for one synchronous MCP
+handler invocation. Each reference commits the exact fully appended JSONL line,
+including its newline, using sequence, byte length and SHA-256. It does not
+reconstruct bytes from parsed objects or infer association from sequence deltas.
+The native operation schemas remain unchanged. Owner-session audit version 2
+places the explicit witness inside its accepted request record, alongside that
+request's ordinal and hash. Control requests can complete with zero operations;
+pre-handler refusals remain `not_entered`. Failed writes, interrupted handlers,
+capture overflow and observation failures remain incomplete. Ordinary witness
+publication failures preserve successful MCP replies; control-flow interruptions
+still propagate. Nested and foreign-thread capture are refused.
+
+The offline reader requires a complete, ordered one-to-one match between all
+retained operation lines and their references. A separate `operation_correlation`
+projection counts operation results in completed owner socket sends only when
+the prepared and final response hashes and byte lengths match, the outer response
+is successful, and the send returned successfully. Budget substitutions exclude
+the prepared result. Native operation success determines successful reads;
+outer success can carry an MCP tool error. Native payload bytes remain distinct
+from envelope bytes, source-only bytes and provider tokens. An unconfirmed send
+can still have written bytes and does not establish that the worker received
+nothing.
+
+Version 1 owner audits remain readable with unknown correlation. Incomplete or
+malformed inner references preserve valid prepared-operation counts but leave
+correlation totals null. Aggregate correlation requires every selected session
+to qualify; mixed legacy/new populations do not produce a qualified subtotal.
+Lifecycle and retirement readers accept both explicit audit versions and retain
+their independent exact-byte joins. Worker receipt, model ingestion, task
+correctness and token savings remain unclaimed.
+
+Final native-admitted validation passed **954 test executions**: 875 focused
+cases and 79 archive/worker checks. New coverage includes 103 authored cases and
+12 native fixture cases, plus four existing native-to-copied-evidence cases now
+checking operation correlation. Native fixtures exercise actual reservations,
+source indexing, sockets and audit retention, with explicitly authored
+container/peer/task/router identities. Transport tests include replay, genuine
+budget replacement using an authored oversized status payload, post-handler
+failures, partial writes and cancellation after all frame bytes were written.
+
+The first attempt passed 873 cases and failed two new assertions in normal
+retirement fixtures, which expected three confirmed sends and observed two.
+Immediate cleanup after client receive can interrupt the owner's final send
+check. The fixtures now wait at most two seconds for real owner request
+accounting before normal cleanup; production send behavior is unchanged.
+Dedicated send-interruption tests retain their uncertain outcomes. The original
+failed logs, source pins and changed fixture versions are retained. Exact raw
+files for the failed private fixtures were already removed by the qualifier,
+so their missing per-request details are not reconstructed.
+
+All three runs retained 190 source pins, stopped their validation children,
+removed private grants and released validation root/child leases. Existing
+one-CPU/1,536-MiB root and one-CPU/1,024-MiB child reservations, two process slots,
+55-second admission and 180-second wall limits were preserved, including the
+existing nested one-CPU/512-MiB source-service admissions. These are cooperative
+reservations; peak RSS and hard memory limits were not measured.
+
+Evidence and the cumulative local patch are in
+`artifacts/owner-source-operation-correlation-20261017T040236Z`. The production
+guard remains enabled. Next are bounded worker receipt/forwarding observations,
+qualification of the actual protected different-UID route, and authorized
+matched provider/task/reward trials with complete usage and rate-limit accounting.
+No providers, Docker operations, deployment, installation, training, active
+database access or publication ran in this phase.
+
+## October 17: optional worker receipt and forwarding observations
+
+The existing stdio bridge now accepts an optional one-use
+`ForwardingObservation` through its Python `serve()` API. A caller can retain a
+bounded content-free snapshot containing exact canonical request/response
+hashes, planned newline-output hashes and write-completion status. An owner
+reply is recorded after validation and before the next cancellation check;
+stdout completion is recorded only after the existing write method returns.
+Ordinary observation failures preserve bridge behavior and make the receipt
+incomplete. Control-flow interruptions propagate. The default CLI and launch
+configuration remain unchanged.
+
+The pure `summarize_worker_forwarding()` reader joins supplied copied receipts
+to version 2 owner evidence using the exact session, descriptor, request hash
+and response hash/length. It requires the complete owner request population,
+unique identities, synchronous order within each bridge and complete operation
+correlation. Missing, ambiguous, legacy or contradictory evidence leaves counts
+null. Refusals, budget stops and interrupted writes must terminate a receipt
+with return code 2. Notifications, synthesized local errors, unsuccessful tool
+results and budget-replaced prepared results remain distinct.
+
+All joined counts are explicitly worker-reported. A worker can obtain a genuine
+response and fabricate a matching forwarding receipt while discarding output.
+Matching hashes and configured helper pins therefore do not independently
+establish pipe execution, downstream consumption, model ingestion or token
+savings. Counts describe validated owner-response events; local parse-error
+output is outside their scope. Planned output lengths are not delivered-byte
+measurements. Unconfirmed stdout operations include every owner-prepared
+operation lacking a reported preserved-result write, including replacements.
+
+Inspection found no existing production receipt destination or inherited
+observation descriptor in the bridge launch configuration. Protected owner
+observation storage is not worker-writable, and existing rollout fingerprints
+use a different byte scope. This phase provides an optional in-process API and
+offline reader; production receipt collection remains unwired and the
+production guard remains enabled.
+
+Validation passed **1,158 test executions**: 1,079 focused cases and 79 checks
+in the existing Harbor environment. New files contribute 40 bridge cases,
+92 pure-reader cases and three native forwarding fixtures. Those fixtures use
+actual admitted source indexing, sockets and FIFO output with authored
+container/worker/task/router identities. They cover a successful read, a failed
+read carried in a successful outer response, and a cancellation checkpoint
+after a full pipe write. In the last case, all three response lines were
+captured, while only two of three operation writes were confirmed. This
+demonstrates why interrupted forwarding cannot be interpreted as zero output.
+Retained JUnit properties contain content-free observations and stdout hashes;
+private fixture files and raw stdout content were removed after validation.
+
+Both runs preserved all 194 source pins, stopped their children, removed private
+grants and released root/child reservations. They used the existing one-CPU,
+1,536-MiB root and one-CPU, 1,024-MiB child admission, two process slots,
+55-second admission timeout and 180-second wall limit, including the existing
+nested one-CPU/512-MiB source-service reservations. These are cooperative
+reservations; peak RSS and hard memory limits were not measured.
+
+Evidence and the cumulative local patch are in
+`artifacts/owner-source-worker-receipts-20261017T044421Z`. Next are a specifically
+provisioned bounded receipt handoff in the existing worker/provider lifecycle,
+qualification of the actual protected different-UID route, and authorized
+matched provider/task/reward trials including rate-limit retries. No providers,
+Docker operations, deployment, installation, training, active database access
+or publication ran in this phase.
+
+## October 17: bounded worker receipt handoff through the existing router
+
+The selected owner-source router now provisions a fresh worker-owned 0700
+outbox outside the checkout and binds its exact directory identity, session,
+descriptor and invocation into the existing helper launch configuration. The
+optional `--worker-forwarding-target` argument enables publication from the
+isolated stdio helper after its existing service finalizes. Target metadata is
+part of the launch hash; it does not enter the model advisory or prompt. Bindings
+without a target retain their historical configuration and helper source set.
+The new helper is pinned when selected, and the worker archive capability
+includes its source. The deployed production entry guard remains enabled.
+
+The router collects receipts in its existing provider-finalization path and
+retains them in `repository_source_worker_forwarding` on the invocation report.
+The mechanism uses 16 fixed slot names, with at most 65,536 bytes per receipt.
+No-follow directory walks, directory/file identity checks, bounded reads,
+canonical JSON equality and closed content-free schemas protect the capture.
+It neither enumerates arbitrary directory contents nor recursively deletes
+worker files. Stable safe regular slot files can be removed even when their
+JSON is invalid; unsafe or replaced files remain untouched and can leave
+cleanup incomplete. These bounds limit this implementation's work and writes;
+they do not establish a hostile same-UID disk quota.
+
+Ordinary setup, optional-import, publication and capture failures preserve the
+existing provider/MCP result. A pending provider or bridge interruption takes
+precedence over an accounting interruption; a fresh control-flow interruption
+still propagates. Interrupted scans and final validation cannot leave a
+completed capture behind. Missing publication remains unavailable with null
+receipt totals. A completed receipt with no owner exchanges is distinct from
+an empty directory with no receipt. No retries or additional provider calls
+are introduced, and original rate-limit status and retry timing remain intact.
+
+The existing owner collector joins retained row captures to sealed owner
+session/operation evidence. It checks exact canonical receipt hashes and target,
+session, worker UID and invocation bindings, then requires complete owner
+request and operation coverage. `worker_forwarding_observation` retains
+per-session observations and sums only an entirely qualified selected-session
+population. Optional receipt failure cannot erase valid owner prepared counts,
+socket-send correlation or lifecycle observations. The owner protocol and
+protected evidence directory permissions are unchanged.
+
+This is a snapshot of worker claims. A same-UID worker can forge or omit
+receipts, and complete owner-request coverage does not prove that every helper
+invocation published. The existing provider process-group cleanup is not
+independent proof of helper quiescence. Receipt hashes do not establish provider
+ingestion, task correctness or token savings; those claims remain unavailable.
+
+Final native-admitted validation passed **1,276 test executions**: 1,197 focused
+cases and 79 checks in the existing Harbor environment. New coverage comprises
+55 outbox/CLI cases, 15 router cases, 36 captured-evidence cases, four native
+publication/collection fixtures and eight binding cases. The native fixtures
+exercise actual source indexing, sockets, FIFO output, bound helper arguments,
+receipt files and copied owner evidence. Container/task/cleanup metadata and a
+narrow outbox worker-UID projection are explicitly authored; real file identity
+and permission checks remain active. Valid publication reports three forwarded
+operations and one successful read. Deleted, truncated and tampered receipts
+retain those owner results while leaving forwarding counts null.
+
+The first attempt passed 1,193 cases and failed one authored empty-capture
+reason-code assertion. The reader correctly returned unknown counts; the test
+now matches the strengthened capture contract and separately checks the actual
+unavailable empty-scan result. Three additional controls verify that optional
+accounting imports and initial metadata cannot prevent provider dispatch.
+Initial logs, source pins and candidate sources are preserved alongside the
+final revised sources. All three validation runs preserved 199 pins, stopped
+their children, removed private grants and released root/child reservations.
+The existing one-CPU/1,536-MiB root, one-CPU/1,024-MiB child, two-process,
+55-second admission and 180-second wall limits remain in use, with existing
+nested one-CPU/512-MiB source reservations. Peak RSS and hard memory limits were
+not measured.
+
+Evidence and the cumulative local patch are in
+`artifacts/owner-source-worker-handoff-20261017T050000Z`. The implementation
+handoff is now connected; actual guarded different-UID deployment qualification
+and authorized matched provider/task/reward trials remain outstanding. No live
+providers, Docker operations, deployment, installation, training, active control
+database access or external publication ran in this phase.
+
+## October 17: preserve provider outcomes and expose retained source evidence
+
+The router now retains its initial closed unavailable-capture snapshot before
+allocating a worker outbox. If collection fails, finalization reuses that snapshot
+without calling another metadata helper or consulting mutable binding fields.
+This closes a compound-failure path that could replace a provider result, timeout
+or rate limit and skip native usage and receipt publication. An earlier capture
+interruption also retains priority over a later receipt-observer interruption;
+an original provider error keeps priority over either. Unknown capture totals
+remain null, and the existing single provider invocation remains unchanged.
+
+Receipt publication now closes the newly opened slot descriptor if its first
+metadata lookup fails or is interrupted. When that lookup supplies no file
+identity, the publisher leaves the unidentified slot untouched. A later valid
+sibling receipt cannot qualify that incomplete scan; counts stay unknown and
+cleanup remains incomplete. This is bounded local descriptor/file handling,
+without a new cleanup controller or a claim of hostile-writer disk isolation.
+
+The benchmark comparison now retains a separate projection of owner prepared
+operations, operation/socket-send correlation, lifecycle reports and worker
+forwarding summaries. The pure projector checks bounded invocation/session/config
+identities, selected policy, count relationships and complete population sums.
+Missing, contradictory or partial optional summaries preserve unknown totals
+without discarding valid owner preparation counts or native usage. These are
+retained-summary consistency checks: the comparison does not reopen original
+audits or independently authenticate worker reports. Neither source-byte counts
+nor reported pipe writes become provider tokens, ingestion or tool adoption.
+
+JSON and Markdown also retain per-invocation provider stops and the strongest
+trial stop, derived through the existing closed provider-stop reader. Bounded
+retry-delay hints remain distinguishable from missing, invalid and unbounded
+hints, with no retry authority or additional provider call. Existing invocation
+columns retain their original order; the diagnostic columns follow them.
+
+Final validation passed **506 test executions**: 361 focused cases in 10.24
+seconds and 145 checks in the existing Harbor environment in 11.56 seconds.
+There are 44 new cases: 18 router compound-failure/interrupt cases, two publication
+descriptor-failure cases and 24 comparison cases. The comparison fixtures use
+the actual retained owner collector and public comparison/Markdown interfaces;
+their histories and provider usage counters are authored. Four existing native
+source/FIFO receipt fixtures also passed, retaining their explicitly authored
+worker/container/task isolation limits. No token-savings benchmark ran.
+
+The first run passed 359 cases and failed two existing Markdown assertions after
+new columns separated error and timeout fields. Restoring the original column
+order resolved both without changing those tests. The original logs, source pins
+and candidate snapshots remain retained. All three runs preserved 203 pins,
+stopped their child, removed private grants and released root/child reservations.
+They used the existing one-CPU/1,536-MiB root, one-CPU/1,024-MiB child,
+two-process, 55-second admission and 180-second wall limits, with existing nested
+one-CPU/512-MiB source-service reservations. These remain cooperative limits;
+peak RSS and hard memory limits were not measured.
+
+Evidence and the cumulative local patch are in
+`artifacts/owner-source-reporting-20261017T052230Z`. A fresh source audit confirms
+both deployed entry guards remain active. Earlier legacy source-only Docker
+qualification does not qualify this repository-MCP route. The remaining work is
+actual protected different-UID deployment qualification, followed by authorized
+matched provider/task/reward trials with complete native usage and failed-attempt
+accounting. No live providers, Docker operations, deployment, installation,
+training, active control database access or publication ran in this phase.

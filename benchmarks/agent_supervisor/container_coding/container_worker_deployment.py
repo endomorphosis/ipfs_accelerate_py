@@ -223,6 +223,8 @@ try:
  if broker is not None:broker.note_spawned(process)
  source_broker=globals().get("worker_source_broker")
  if source_broker is not None:source_broker.note_spawned(process)
+ repository_owner=globals().get("repository_source_owner")
+ if repository_owner is not None:repository_owner.note_spawned(process)
  guard=globals().get("proof_query_guard")
  if guard is not None:guard.note_spawned(process)
  code=process.wait()
@@ -249,8 +251,14 @@ finally:
     broker=globals().get("numerical_obligation_broker")
     if broker is not None:broker.close()
    finally:
-    source_broker=globals().get("worker_source_broker")
-    if source_broker is not None:source_broker.close()
+    try:
+     source_broker=globals().get("worker_source_broker")
+     if source_broker is not None:source_broker.close()
+    finally:
+     repository_owner=globals().get("repository_source_owner")
+     if repository_owner is not None:
+      from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_monitor import retire_repository_source_owner
+      repository_source_retirement=retire_repository_source_owner(repository_owner)
 # Retired worker observations cannot authorize another child or completion.
 # Refresh only after native wait, isolated cleanup and every broker retirement.
 source_broker=globals().get("worker_source_broker")
@@ -277,6 +285,18 @@ if worker_waited and worker_cleanup_succeeded and type(code) is int and code>0 a
 raise SystemExit(code)
 """
 
+# Both deployed identities must refuse this route until an owner-backed source
+# transport is qualified. The direct trusted Python router API remains separate.
+# Inspect every occurrence, including argparse long-option abbreviations: a
+# later legacy selection must not hide an earlier unsupported selection.
+_REPOSITORY_SOURCE_ISOLATION_GUARD = r"""
+for source_policy_index,source_policy_argument in enumerate(sys.argv[1:],1):
+ source_policy_flag,source_policy_separator,source_policy_value=source_policy_argument.partition('=')
+ if source_policy_flag.startswith('--') and len(source_policy_flag)>2 and '--repository-source-policy'.startswith(source_policy_flag):
+  if not source_policy_separator:source_policy_value=sys.argv[source_policy_index+1] if source_policy_index+1<len(sys.argv) else None
+  if source_policy_value!='legacy':raise SystemExit('repository_source_owner_transport_unavailable')
+"""
+
 OWNER_ENTRY = (
     r"""#!/opt/ipfs-supervisor/venv/bin/python -I
 import json,os,pathlib,sys,time
@@ -284,7 +304,9 @@ owner_candidate_round_started=time.monotonic()
 root=pathlib.Path('/opt/ipfs-supervisor')
 boundary=json.loads((root/'container-boundary.json').read_text())
 if os.getuid()!=boundary['owner_uid'] or os.geteuid()!=boundary['owner_uid']:raise SystemExit('owner identity required')
-cwd=pathlib.Path.cwd()
+"""
+    + _REPOSITORY_SOURCE_ISOLATION_GUARD
+    + r"""cwd=pathlib.Path.cwd()
 if cwd.resolve()!=cwd or not any(cwd!=pathlib.Path(p) and cwd.is_relative_to(p) for p in boundary['allowed_worktree_roots']):raise SystemExit('allocated candidate required')
 marker=cwd/'.git'
 if not marker.is_file() or marker.is_symlink() or marker.stat().st_uid!=1000:raise SystemExit('owner allocated Git worktree marker required')
@@ -342,6 +364,7 @@ if any(part==flag or part.startswith(flag+'=') for part in sys.argv[1:] for flag
  proof_query_guard=require_finite_proof_query_isolated_worker_dispatch(command=command,environment=dict(os.environ),worktree=cwd)
 numerical_obligation_broker=None
 worker_source_broker=None
+repository_source_owner=None
 try:
  from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import prepare_numerical_obligation_broker
  numerical_obligation_broker=prepare_numerical_obligation_broker(argv=handoff['argv'],boundary=root/'container-boundary.json',workspace=cwd,input_fd=0)
@@ -349,14 +372,31 @@ try:
  from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_broker import prepare_worker_source_broker
  worker_source_broker=prepare_worker_source_broker(argv=handoff['argv'],boundary=root/'container-boundary.json',workspace=cwd,input_fd=0)
  if worker_source_broker is not None:command.extend(worker_source_broker.extra_argv)
+ from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_dispatch import configure_repository_source_owner_dispatch
+ repository_source_owner=configure_repository_source_owner_dispatch(argv=handoff['argv'],boundary=root/'container-boundary.json',workspace=cwd,deadline_monotonic=owner_candidate_round_deadline)
+ if repository_source_owner is not None:
+  import signal
+  def repository_source_interrupted(signum,frame):
+   raise InterruptedError('repository source owner interrupted')
+  for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,repository_source_interrupted)
+  from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_monitor import retire_repository_source_owner
+  repository_source_owner.start()
+  command.extend(repository_source_owner.extra_argv)
 except BaseException:
+ if repository_source_owner is not None:
+  for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,signal.SIG_IGN)
  try:
   if proof_query_guard is not None:proof_query_guard.abort()
  finally:
   try:
    if numerical_obligation_broker is not None:numerical_obligation_broker.close()
   finally:
-   if worker_source_broker is not None:worker_source_broker.close()
+   try:
+    if worker_source_broker is not None:worker_source_broker.close()
+   finally:
+    if repository_source_owner is not None:
+     from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_monitor import retire_repository_source_owner
+     repository_source_retirement=retire_repository_source_owner(repository_source_owner)
  raise
 """
     + OWNER_MONITOR
@@ -372,7 +412,7 @@ command=['/usr/bin/sudo','-n','-u','benchmarkworker','--','/opt/ipfs-supervisor/
     + OWNER_MONITOR
 )
 
-WORKER_ENTRY = r"""#!/opt/ipfs-supervisor/venv/bin/python -I
+WORKER_ENTRY = (r"""#!/opt/ipfs-supervisor/venv/bin/python -I
 import argparse,ctypes,hashlib,json,os,pathlib,sys,time
 root=pathlib.Path('/opt/ipfs-supervisor')
 if os.getuid()!=1001 or os.geteuid()!=1001:raise SystemExit('worker identity required')
@@ -443,7 +483,12 @@ parser.add_argument('--semantic-metadata-census-only',action='store_true')
 parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion@1'],default='legacy')
 parser.add_argument('--tool-output-policy',choices=['legacy','artifact-preview@1','artifact-preview@2'],default='legacy')
 parser.add_argument('--source-view-advisory-policy',choices=['legacy','source-view-raw@1','source-view-compact@1'],default='legacy')
-parser.add_argument('--repository-source-policy',choices=['legacy','repository-source-raw@1','repository-source-compact@1'],default='legacy')
+# Preserve the policy's previously unique argparse abbreviations after adding
+# the public owner pair; --re was already ambiguous with --reasoning-effort.
+repository_source_policy_options=tuple('--repository-source-policy'[:size] for size in range(len('--rep'),len('--repository-source-policy')+1))
+parser.add_argument(*repository_source_policy_options,dest='repository_source_policy',choices=['legacy','repository-source-raw@1','repository-source-compact@1'],default='legacy')
+parser.add_argument('--repository-source-owner-descriptor')
+parser.add_argument('--repository-source-owner-descriptor-sha256')
 parser.add_argument('--source-input-policy',choices=['legacy','source-input-raw@1','source-input-compact@1','source-input-ast-ref-raw@1','source-input-ast-ref-compact@1'],default='legacy')
 parser.add_argument('--query-reference-policy',choices=['legacy','required-instruction-ref@1'],default='legacy')
 parser.add_argument('--doctor-candidate-artifact',type=pathlib.Path)
@@ -476,6 +521,16 @@ parser.add_argument('--source-edit-mode',default='disabled',choices=('disabled',
 parser.add_argument('--source-view-descriptor',type=pathlib.Path)
 parser.add_argument('--source-view-descriptor-sha256')
 parser.add_argument('--preflight',action='store_true');parser.add_argument('--preflight-sleep',type=int,default=0)
+# Inspect original spellings before argparse can normalize or overwrite them.
+# Only the owner creates this public pair; private native grants have no CLI.
+repository_source_owner_options=('--repository-source-owner-descriptor','--repository-source-owner-descriptor-sha256')
+repository_source_owner_seen=set()
+for repository_source_owner_argument in sys.argv[1:]:
+ repository_source_owner_flag=repository_source_owner_argument.partition('=')[0]
+ if repository_source_owner_flag in repository_source_owner_options:
+  if repository_source_owner_flag in repository_source_owner_seen:raise SystemExit('duplicate repository source owner option')
+  repository_source_owner_seen.add(repository_source_owner_flag)
+ elif repository_source_owner_flag.startswith('--') and len(repository_source_owner_flag)>2 and repository_source_owner_flag not in repository_source_policy_options and any(option.startswith(repository_source_owner_flag) for option in repository_source_owner_options):raise SystemExit('exact repository source owner option required')
 args=parser.parse_args()
 if args.provider!=selected_provider:raise SystemExit('provider differs from deployed worker route')
 doctor_values=(args.doctor_candidate_artifact,args.doctor_candidate_sha256,args.doctor_task_cid)
@@ -528,6 +583,18 @@ if any(instruction_values) and (not all(instruction_values) or args.preflight or
 if any(contract_values) and (not all(contract_values) or any(doctor_values) or any(residual_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact local contract candidate invocation required')
 if any(doctor_values) and (not all(doctor_values) or args.preflight or args.semantic_repository is not None or any(residual_values)):raise SystemExit('exact Doctor handoff or router invocation required')
 if any(residual_values) and (not all(residual_values) or args.preflight or args.semantic_repository is None or args.purpose!='coding'):raise SystemExit('exact Doctor residual context requires semantic coding route')
+repository_source_owner_values=(args.repository_source_owner_descriptor,args.repository_source_owner_descriptor_sha256)
+if any(value is not None for value in repository_source_owner_values):
+ if not all(repository_source_owner_values) or args.repository_source_policy=='legacy' or args.provider!='codex_cli' or args.purpose!='coding' or args.semantic_repository is None or args.preflight or args.semantic_metadata_census_only or args.source_view_advisory_policy!='legacy' or args.source_view_profile!='disabled' or args.source_edit_mode!='disabled' or any(source_view_values) or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values) or any(residual_values) or decision_options:raise SystemExit('exact repository source owner pair requires exclusive semantic Codex coding')
+ repository_source_owner_path=pathlib.Path(args.repository_source_owner_descriptor)
+ try:repository_source_owner_path_bytes=len(args.repository_source_owner_descriptor.encode('utf-8'))
+ except UnicodeError:raise SystemExit('canonical repository source owner descriptor path required')
+ if not 1<=repository_source_owner_path_bytes<=4096 or not repository_source_owner_path.is_absolute() or str(repository_source_owner_path)!=args.repository_source_owner_descriptor or args.repository_source_owner_descriptor.startswith('//') or str(repository_source_owner_path)=='/' or '..' in repository_source_owner_path.parts or any(ord(char)<32 or ord(char)==127 or char=='\\' for char in args.repository_source_owner_descriptor):raise SystemExit('canonical repository source owner descriptor path required')
+ if len(args.repository_source_owner_descriptor_sha256)!=64 or any(char not in '0123456789abcdef' for char in args.repository_source_owner_descriptor_sha256):raise SystemExit('exact repository source owner descriptor SHA-256 required')
+"""
+    + _REPOSITORY_SOURCE_ISOLATION_GUARD
+    + r"""if args.repository_source_policy!='legacy':raise SystemExit('repository_source_owner_transport_unavailable')
+if args.repository_source_policy!='legacy' and not all(repository_source_owner_values):raise SystemExit('repository source policy requires its owner descriptor pair')
 from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as router_runtime
 # Earlier archives have no shared constant and retain the original worker cap.
 worker_timeout_limit=getattr(router_runtime,'MAX_IMPLEMENTATION_TIMEOUT_SECONDS',300)
@@ -602,6 +669,7 @@ else:
  if args.tool_output_policy!='legacy':sys.argv+=['--tool-output-policy',args.tool_output_policy]
  if args.source_view_advisory_policy!='legacy':sys.argv+=['--source-view-advisory-policy',args.source_view_advisory_policy]
  if args.repository_source_policy!='legacy':sys.argv+=['--repository-source-policy',args.repository_source_policy]
+ if args.repository_source_owner_descriptor is not None:sys.argv+=['--repository-source-owner-descriptor',args.repository_source_owner_descriptor,'--repository-source-owner-descriptor-sha256',args.repository_source_owner_descriptor_sha256]
  if args.source_input_policy!='legacy':sys.argv+=['--source-input-policy',args.source_input_policy]
  if args.query_reference_policy!='legacy':sys.argv+=['--query-reference-policy',args.query_reference_policy]
  if args.doctor_residual_artifact is not None:sys.argv+=['--doctor-residual-artifact',str(args.doctor_residual_artifact),'--doctor-residual-sha256',args.doctor_residual_sha256,'--doctor-residual-task-cid',args.doctor_residual_task_cid]
@@ -613,12 +681,18 @@ else:
  if args.source_view_profile!='disabled':sys.argv+=['--source-view-profile',args.source_view_profile,'--source-view-descriptor',str(args.source_view_descriptor),'--source-view-descriptor-sha256',args.source_view_descriptor_sha256]
  if args.source_edit_mode!='disabled':sys.argv+=['--source-edit-mode',args.source_edit_mode]
  raise SystemExit(run_with_child_custody(main))
-"""
+""")
 
 
-async def install_worker_boundary(environment, *, container_name: str, output: Path, provider: str = "codex_cli") -> dict:
+async def install_worker_boundary(environment, *, container_name: str, output: Path, provider: str = "codex_cli",
+                                  repository_source_resources: dict | None = None) -> dict:
     if provider not in {"codex_cli", "grok_cli"}:
         raise ValueError("explicit supported container provider required")
+    from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_configuration import validate_source_owner_configuration
+    repository_source_resources = validate_source_owner_configuration(repository_source_resources,
+        owner_private_paths=[ROOT + "/state"])
+    if repository_source_resources is not None and provider != "codex_cli":
+        raise ValueError("repository source resources require the Codex worker boundary")
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
 
@@ -694,6 +768,8 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
         "validation_repository_roots": ["/app"],
         "single_worker": True,
     }
+    if repository_source_resources is not None:
+        boundary["repository_source_resources"] = repository_source_resources
     raw = (json.dumps(boundary, sort_keys=True, indent=2) + "\n").encode()
     sudoers = (
         "Defaults:supervisor !use_pty\nsupervisor ALL=(benchmarkworker) NOPASSWD: "
@@ -736,15 +812,22 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
     return result
 
 
-async def deploy_worker_boundary(environment, *, output: Path, provider: str = "codex_cli") -> dict:
+async def deploy_worker_boundary(environment, *, output: Path, provider: str = "codex_cli",
+                                 repository_source_resources: dict | None = None) -> dict:
     """Fresh Harbor deployment: install and exercise the actual worker boundary."""
+    from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_configuration import validate_source_owner_configuration
+    repository_source_resources = validate_source_owner_configuration(
+        repository_source_resources, owner_private_paths=[ROOT + "/state"])
+    if repository_source_resources is not None and provider != "codex_cli":
+        raise ValueError("repository source resources require the Codex worker route")
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     # Harbor's own service lookup resolves the original running task container;
     # the installer independently compares engine and in-container namespaces.
     container = await environment._platform._resolve_service_container("main")
     installed = await install_worker_boundary(
-        environment, container_name=container, output=output / "installation", provider=provider
+        environment, container_name=container, output=output / "installation", provider=provider,
+        **({"repository_source_resources": repository_source_resources} if repository_source_resources is not None else {})
     )
     qualified = await qualify_worker_boundary(environment, output=output / "qualification")
     result = {**installed, "qualified": qualified["qualified"], "qualification": qualified}

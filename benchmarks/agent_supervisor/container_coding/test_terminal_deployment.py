@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import hashlib
 import json
 import tarfile
 from pathlib import Path
@@ -42,15 +43,19 @@ def _inputs(tmp_path):
 
 
 def _supervisor_inputs(tmp_path):
-    """Packaging fixture with the exact worker capability sources.
+    """Packaging fixture with the exact worker capability and deadline sources.
 
     This remains a hermetic archive fixture, not an executable full runtime.
     Generic packaging tests include the two required benchmark package ancestors.
     """
     from .terminal_worker_capability import SOURCE_PATHS
+    from .full_supervisor_benchmark import TIMEOUT_RUNTIME_SOURCE_NAMES, TIMEOUT_RUNTIME_ARCHIVE_PREFIX
     inputs = _inputs(tmp_path)
     checkout = Path(__file__).resolve().parents[3]
-    for name in (*SOURCE_PATHS, "benchmarks/agent_supervisor/container_coding/timeout_policy.py"):
+    required = set(SOURCE_PATHS) | {
+        TIMEOUT_RUNTIME_ARCHIVE_PREFIX.removeprefix("source/") + name
+        for name in TIMEOUT_RUNTIME_SOURCE_NAMES}
+    for name in sorted(required):
         target = inputs["source"] / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((checkout / name).read_bytes())
@@ -66,14 +71,20 @@ def _supervisor_manifest(manifest):
     """
     import copy
     from .terminal_worker_capability import KEY, _current_capability
+    from .full_supervisor_benchmark import TIMEOUT_RUNTIME_SOURCE_NAMES, TIMEOUT_RUNTIME_ARCHIVE_PREFIX
     value = copy.deepcopy(manifest)
     capability = _current_capability()
     checkout = Path(__file__).resolve().parents[3]
+    required = dict(capability["source_sha256"])
+    for name in TIMEOUT_RUNTIME_SOURCE_NAMES:
+        source = Path(__file__).with_name(name)
+        required[TIMEOUT_RUNTIME_ARCHIVE_PREFIX + name] = hashlib.sha256(source.read_bytes()).hexdigest()
     value["files"] = [row for row in value.get("files", [])
-                      if row.get("path") not in capability["source_sha256"]]
+                      if row.get("path") not in required]
     value["files"].extend({"path": name, "sha256": digest, "mode": 0o644,
                           "bytes": (checkout / name.removeprefix("source/")).stat().st_size}
-                          for name, digest in capability["source_sha256"].items())
+                          for name, digest in required.items())
+    value.setdefault("schema", "terminal-supervisor-runtime-archive@1")
     value[KEY] = capability
     return value
 
