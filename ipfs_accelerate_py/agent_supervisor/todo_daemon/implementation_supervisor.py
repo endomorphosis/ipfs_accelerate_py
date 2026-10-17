@@ -6717,7 +6717,6 @@ class PortalSupervisorConfig:
     daemon_interval: float = 300.0
     task_prefix: str = TASK_HEADER_PREFIX
     state_prefix: str = "portal"
-    board_namespace: str = ""
     database_program: DatabaseProgramConfig | None = None
     state_owner_bootstrap_fd: int = -1
     state_owner_client_id: str = ""
@@ -6881,6 +6880,7 @@ class PortalSupervisorConfig:
     repo_root: Path = field(default_factory=Path.cwd)
     daemon_script_path: Path | None = None
     supervisor_script_path: Path | None = None
+    board_namespace: str = ""
 
     def __post_init__(self) -> None:
         _validated_validation_max_workers(self.validation_max_workers)
@@ -12158,6 +12158,7 @@ class PortalImplementationSupervisor:
 
     def _repo_merge_lock_path(self) -> Path:
         namespace = getattr(self, "board_namespace", "") or infer_board_namespace(
+            board_namespace=self.config.board_namespace,
             merge_target_branch=self.config.merge_target_branch,
             todo_path=self.config.todo_path,
             state_prefix=self.config.state_prefix,
@@ -22673,8 +22674,12 @@ class _SingleProductionProviderOption(argparse.Action):
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Supervise the portal implementation backlog daemon")
-    parser.add_argument("--board-namespace", default="",
-                        help="Explicit canonical board namespace; defaults to existing branch/path inference")
+    parser.add_argument(
+        "--board-namespace",
+        default="",
+        action=_SingleProductionProviderOption,
+        help="Explicit board namespace; defaults to branch/path inference.",
+    )
     parser.add_argument("--state-owner-bootstrap-fd", type=int, default=-1,
                         help="Inherited private listener forwarded to the native database child")
     parser.add_argument("--state-owner-client-id", default="",
